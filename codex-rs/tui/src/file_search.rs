@@ -1,14 +1,18 @@
 //! Session-based orchestration for `@` file searches.
 //!
 //! `ChatComposer` publishes every change of the `@token` as
-//! `AppEvent::StartFileSearch(query)`. This manager owns a single
-//! `codex-file-search` session for the current search root, updates the query
-//! on every keystroke, and drops the session when the query becomes empty.
+//! `AppEvent::StartFileSearch(query)`. This manager routes ordinary tokens to
+//! a single `codex-file-search` session rooted at the current search dir. It
+//! handles path-like tokens such as `~`, `../`, `./`, and absolute paths with
+//! shell-style direct disk completion.
 
 use codex_file_search as file_search;
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread;
 
 use crate::app_event::AppEvent;
 use crate::app_event_sender::AppEventSender;
@@ -23,6 +27,17 @@ struct SearchState {
     latest_query: String,
     session: Option<file_search::FileSearchSession>,
     session_token: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FileSearchRequest {
+    ProjectFuzzy(String),
+    DiskCompletion {
+        original_query: String,
+        directory: PathBuf,
+        entry_prefix: String,
+        display_prefix: String,
+    },
 }
 
 impl FileSearchManager {
@@ -64,11 +79,38 @@ impl FileSearchManager {
             return;
         }
 
-        if st.session.is_none() {
-            self.start_session_locked(&mut st);
-        }
-        if let Some(session) = st.session.as_ref() {
-            session.update_query(&query);
+        let request =
+            resolve_file_search_request(&query, &self.search_dir, dirs::home_dir().as_deref());
+        match request {
+            FileSearchRequest::ProjectFuzzy(query) => {
+                if st.session.is_none() {
+                    self.start_session_locked(&mut st);
+                }
+                if let Some(session) = st.session.as_ref() {
+                    session.update_query(&query);
+                }
+            }
+            FileSearchRequest::DiskCompletion {
+                original_query,
+                directory,
+                entry_prefix,
+                display_prefix,
+            } => {
+                st.session.take();
+                st.session_token = st.session_token.wrapping_add(1);
+                let session_token = st.session_token;
+                drop(st);
+                spawn_disk_completion(
+                    self.state.clone(),
+                    self.app_tx.clone(),
+                    session_token,
+                    original_query,
+                    directory,
+                    entry_prefix,
+                    display_prefix,
+                    file_search::FileSearchOptions::default().limit.get(),
+                );
+            }
         }
     }
 
@@ -97,6 +139,216 @@ impl FileSearchManager {
             }
         }
     }
+}
+
+fn spawn_disk_completion(
+    state: Arc<Mutex<SearchState>>,
+    app_tx: AppEventSender,
+    session_token: usize,
+    original_query: String,
+    directory: PathBuf,
+    entry_prefix: String,
+    display_prefix: String,
+    limit: usize,
+) {
+    thread::spawn(move || {
+        let matches =
+            collect_disk_completion_matches(&directory, &entry_prefix, &display_prefix, limit)
+                .unwrap_or_else(|err| {
+                    tracing::debug!("disk completion failed for {directory:?}: {err}");
+                    Vec::new()
+                });
+        send_disk_completion_result_if_current(
+            &state,
+            &app_tx,
+            session_token,
+            original_query,
+            matches,
+        );
+    });
+}
+
+fn send_disk_completion_result_if_current(
+    state: &Arc<Mutex<SearchState>>,
+    app_tx: &AppEventSender,
+    session_token: usize,
+    query: String,
+    matches: Vec<file_search::FileMatch>,
+) {
+    #[expect(clippy::unwrap_used)]
+    let st = state.lock().unwrap();
+    if st.session_token != session_token || st.latest_query != query || st.latest_query.is_empty() {
+        return;
+    }
+    drop(st);
+
+    app_tx.send(AppEvent::FileSearchResult { query, matches });
+}
+
+fn resolve_file_search_request(
+    query: &str,
+    cwd: &Path,
+    home_dir: Option<&Path>,
+) -> FileSearchRequest {
+    if let Some(request) = resolve_tilde_query(query, home_dir) {
+        return request;
+    }
+    if is_explicit_relative_path_query(query) {
+        return resolve_disk_query(query, cwd, query);
+    }
+    if Path::new(query).is_absolute() {
+        return resolve_disk_query(query, Path::new(""), query);
+    }
+
+    FileSearchRequest::ProjectFuzzy(query.to_string())
+}
+
+fn resolve_tilde_query(query: &str, home_dir: Option<&Path>) -> Option<FileSearchRequest> {
+    let home_dir = home_dir?;
+    if query == "~" {
+        return Some(FileSearchRequest::DiskCompletion {
+            original_query: query.to_string(),
+            directory: home_dir.to_path_buf(),
+            entry_prefix: String::new(),
+            display_prefix: "~/".to_string(),
+        });
+    }
+
+    let rest = query
+        .strip_prefix("~/")
+        .or_else(|| query.strip_prefix(r"~\"))?;
+    let (directory_prefix, entry_prefix) = split_path_query(rest);
+    Some(FileSearchRequest::DiskCompletion {
+        original_query: query.to_string(),
+        directory: lexically_normalize(&home_dir.join(directory_prefix)),
+        entry_prefix: entry_prefix.to_string(),
+        display_prefix: format!("~/{directory_prefix}"),
+    })
+}
+
+fn resolve_disk_query(query: &str, anchor: &Path, display_query: &str) -> FileSearchRequest {
+    if query == "." {
+        return FileSearchRequest::DiskCompletion {
+            original_query: display_query.to_string(),
+            directory: lexically_normalize(anchor),
+            entry_prefix: String::new(),
+            display_prefix: "./".to_string(),
+        };
+    }
+    if query == ".." {
+        return FileSearchRequest::DiskCompletion {
+            original_query: display_query.to_string(),
+            directory: lexically_normalize(&anchor.join("..")),
+            entry_prefix: String::new(),
+            display_prefix: "../".to_string(),
+        };
+    }
+
+    let (directory_prefix, entry_prefix) = split_path_query(query);
+    FileSearchRequest::DiskCompletion {
+        original_query: display_query.to_string(),
+        directory: lexically_normalize(&anchor.join(directory_prefix)),
+        entry_prefix: entry_prefix.to_string(),
+        display_prefix: directory_prefix.to_string(),
+    }
+}
+
+fn split_path_query(query: &str) -> (&str, &str) {
+    match query.rfind(is_path_separator) {
+        Some(index) => {
+            let separator_len = query[index..]
+                .chars()
+                .next()
+                .map(char::len_utf8)
+                .unwrap_or(0);
+            query.split_at(index + separator_len)
+        }
+        None => ("", query),
+    }
+}
+
+fn is_explicit_relative_path_query(query: &str) -> bool {
+    matches!(query, "." | "..")
+        || query.starts_with("./")
+        || query.starts_with("../")
+        || query.starts_with(r".\")
+        || query.starts_with(r"..\")
+}
+
+fn collect_disk_completion_matches(
+    directory: &Path,
+    entry_prefix: &str,
+    display_prefix: &str,
+    limit: usize,
+) -> std::io::Result<Vec<file_search::FileMatch>> {
+    let mut matches = Vec::new();
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if !file_name.starts_with(entry_prefix) {
+            continue;
+        }
+        if entry_prefix.is_empty() && file_name.starts_with('.') {
+            continue;
+        }
+
+        let is_dir = fs::metadata(entry.path())
+            .map(|metadata| metadata.is_dir())
+            .or_else(|_| entry.file_type().map(|file_type| file_type.is_dir()))?;
+        let match_type = if is_dir {
+            file_search::MatchType::Directory
+        } else {
+            file_search::MatchType::File
+        };
+        let path = PathBuf::from(format!("{display_prefix}{file_name}"));
+        matches.push(file_search::FileMatch {
+            score: 1,
+            path,
+            match_type,
+            root: directory.to_path_buf(),
+            indices: completion_indices(display_prefix, entry_prefix),
+        });
+    }
+
+    matches.sort_by(|left, right| left.path.cmp(&right.path));
+    matches.truncate(limit);
+    Ok(matches)
+}
+
+fn completion_indices(display_prefix: &str, entry_prefix: &str) -> Option<Vec<u32>> {
+    if entry_prefix.is_empty() {
+        return None;
+    }
+    let start = display_prefix.chars().count() as u32;
+    Some((start..start + entry_prefix.chars().count() as u32).collect())
+}
+
+fn lexically_normalize(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            std::path::Component::Prefix(_)
+            | std::path::Component::RootDir
+            | std::path::Component::Normal(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+
+    if normalized.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        normalized
+    }
+}
+
+fn is_path_separator(ch: char) -> bool {
+    matches!(ch, '/' | '\\')
 }
 
 struct TuiSessionReporter {
@@ -131,3 +383,7 @@ impl file_search::SessionReporter for TuiSessionReporter {
 
     fn on_complete(&self) {}
 }
+
+#[cfg(test)]
+#[path = "file_search_tests.rs"]
+mod tests;
