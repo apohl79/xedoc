@@ -2,6 +2,8 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 // Note: Table-based layout previously used Constraint; the manual renderer
 // below no longer requires it.
+use ratatui::style::Style;
+use ratatui::style::Styled;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
@@ -28,6 +30,7 @@ use super::scroll_state::ScrollState;
 #[derive(Default)]
 pub(crate) struct GenericDisplayRow {
     pub name: String,
+    pub name_style: Option<Style>,
     pub name_prefix_spans: Vec<Span<'static>>,
     pub display_shortcut: Option<KeyBinding>,
     pub match_indices: Option<Vec<usize>>, // indices to bold (char positions)
@@ -444,6 +447,7 @@ fn build_full_line(row: &GenericDisplayRow, desc_col: usize) -> Line<'static> {
         .unwrap_or(usize::MAX);
 
     let mut name_spans: Vec<Span> = Vec::with_capacity(row.name.len());
+    let name_style = row.name_style.unwrap_or_default();
     let mut used_width = 0usize;
     let mut truncated = false;
 
@@ -460,9 +464,9 @@ fn build_full_line(row: &GenericDisplayRow, desc_col: usize) -> Line<'static> {
 
             if idx_iter.peek().is_some_and(|next| **next == char_idx) {
                 idx_iter.next();
-                name_spans.push(ch.to_string().bold());
+                name_spans.push(ch.to_string().set_style(name_style.bold()));
             } else {
-                name_spans.push(ch.to_string().into());
+                name_spans.push(ch.to_string().set_style(name_style));
             }
         }
     } else {
@@ -474,14 +478,14 @@ fn build_full_line(row: &GenericDisplayRow, desc_col: usize) -> Line<'static> {
                 break;
             }
             used_width = next_width;
-            name_spans.push(ch.to_string().into());
+            name_spans.push(ch.to_string().set_style(name_style));
         }
     }
 
     if truncated {
         // If there is at least one cell available, add an ellipsis.
         // When name_limit is 0, we still show an ellipsis to indicate truncation.
-        name_spans.push("…".into());
+        name_spans.push("…".set_style(name_style));
     }
 
     if row.disabled_reason.is_some() {

@@ -114,6 +114,7 @@ impl SkillPopup {
                 };
                 GenericDisplayRow {
                     name,
+                    name_style: None,
                     name_prefix_spans: Vec::new(),
                     match_indices: indices,
                     display_shortcut: None,
