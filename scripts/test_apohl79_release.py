@@ -10,7 +10,6 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from apohl79_release import build_codesign_command
-from apohl79_release import base_version_from_release_tag
 from apohl79_release import derive_fork_version
 from apohl79_release import latest_release_version_from_ls_remote
 from apohl79_release import main
@@ -46,19 +45,28 @@ class Apohl79ReleaseTest(unittest.TestCase):
             "0.140.0-alpha.10-apohl79",
         )
 
-    def test_release_version_prefers_reachable_release_tag(self) -> None:
+    def test_release_version_uses_latest_upstream_tag_instead_of_reachable_tag(self) -> None:
         self.assertEqual(
             derive_fork_version(
                 "0.0.0",
                 describe_tag="rust-v0.139.0",
                 ls_remote_stdout="aaa\trefs/tags/rust-v0.140.0-alpha.10\n",
             ),
-            "0.139.0-apohl79",
+            "0.140.0-alpha.10-apohl79",
         )
 
-    def test_base_version_from_release_tag_rejects_malformed_tag(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "Invalid Codex release tag"):
-            base_version_from_release_tag("rust-vrust-v0.139.0")
+    def test_release_version_ignores_reachable_fork_tag(self) -> None:
+        self.assertEqual(
+            derive_fork_version(
+                "0.0.0",
+                describe_tag="rust-v0.140.0-alpha.10-apohl79",
+                ls_remote_stdout=(
+                    "aaa\trefs/tags/rust-v0.140.0-alpha.20\n"
+                    "bbb\trefs/tags/rust-v0.140.0-alpha.21\n"
+                ),
+            ),
+            "0.140.0-alpha.21-apohl79",
+        )
 
     def test_latest_release_version_rejects_missing_valid_tags(self) -> None:
         with self.assertRaisesRegex(
@@ -138,15 +146,41 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_main_reports_missing_codesign_identity_without_traceback(self) -> None:
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
-            exit_code = main(
-                ["--base-version", "0.140.0-alpha.10", "--codesign-identity", ""]
-            )
+            exit_code = main(["--codesign-identity", ""])
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(
             stderr.getvalue(),
             "Error: Must pass --codesign-identity or set APPLE_CODESIGN_IDENTITY.\n",
         )
+
+    def test_main_rejects_base_version_argument(self) -> None:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as raised:
+                main(["--base-version", "0.140.0-alpha.10"])
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("unrecognized arguments: --base-version", stderr.getvalue())
+
+    def test_help_omits_base_version_and_mentions_zip_default(self) -> None:
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            with self.assertRaises(SystemExit) as raised:
+                main(["--help"])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertNotIn("--base-version", stdout.getvalue())
+        self.assertIn(".zip", stdout.getvalue())
+
+    def test_shell_wrapper_does_not_pin_version(self) -> None:
+        wrapper = Path(__file__).with_name("build_apohl79_release.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("--base-version", wrapper)
+        self.assertNotIn("0.140.0", wrapper)
+        self.assertIn("--target aarch64-apple-darwin", wrapper)
 
 
 if __name__ == "__main__":
