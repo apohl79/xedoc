@@ -4,6 +4,7 @@ use ratatui::layout::Rect;
 use ratatui::widgets::WidgetRef;
 
 use super::candidate::Candidate;
+use super::candidate::MentionType;
 use super::candidate::SearchResult;
 use super::candidate::Selection;
 use super::filter::filtered_candidates;
@@ -51,6 +52,14 @@ impl Popup {
         let rows = self.rows();
         let idx = self.state.selected_idx?;
         rows.get(idx).map(|row| row.selection.clone())
+    }
+
+    pub(crate) fn selected_is_directory(&self) -> bool {
+        let rows = self.rows();
+        self.state
+            .selected_idx
+            .and_then(|idx| rows.get(idx))
+            .is_some_and(|row| row.mention_type == MentionType::Directory)
     }
 
     pub(crate) fn move_up(&mut self) {

@@ -246,6 +246,7 @@ use codex_app_server_protocol::AppInfo;
 use codex_core_skills::model::SkillInterface;
 use codex_core_skills::model::SkillMetadata;
 use codex_file_search::FileMatch;
+use codex_file_search::MatchType;
 #[cfg(test)]
 use codex_plugin::AppConnectorId;
 use codex_plugin::PluginCapabilitySummary;
@@ -1825,7 +1826,13 @@ impl ChatComposer {
                     };
                 };
 
-                let sel_path = sel.to_string_lossy().to_string();
+                let sel_path = sel.path.to_string_lossy().to_string();
+                let sel_match_type = sel.match_type;
+                if key_event.code == KeyCode::Tab && sel_match_type == MatchType::Directory {
+                    self.insert_selected_directory_path(&sel_path);
+                    return (InputResult::None, true);
+                }
+
                 if Self::is_image_path(&sel_path) {
                     let path_buf = PathBuf::from(&sel_path);
                     match image::image_dimensions(&path_buf) {
@@ -1959,6 +1966,7 @@ impl ChatComposer {
         };
 
         let mut selected: Option<MentionV2Selection> = None;
+        let mut selected_enters_directory = false;
         let mut close_popup = false;
         let mut submit_without_popup = false;
 
@@ -2022,6 +2030,7 @@ impl ChatComposer {
             KeyEvent {
                 code: KeyCode::Tab, ..
             } => {
+                selected_enters_directory = popup.selected_is_directory();
                 selected = popup.selected();
                 close_popup = true;
                 (InputResult::None, true)
@@ -2043,14 +2052,21 @@ impl ChatComposer {
             if let Some(selected) = selected {
                 match selected {
                     MentionV2Selection::File(path) => {
-                        self.insert_selected_file_path(path.to_string_lossy().as_ref());
+                        let path = path.to_string_lossy();
+                        if selected_enters_directory {
+                            self.insert_selected_directory_path(path.as_ref());
+                        } else {
+                            self.insert_selected_file_path(path.as_ref());
+                        }
                     }
                     MentionV2Selection::Tool { insert_text, path } => {
                         self.insert_selected_mention(&insert_text, path.as_deref());
                     }
                 }
             }
-            self.popups.active = ActivePopup::None;
+            if !selected_enters_directory {
+                self.popups.active = ActivePopup::None;
+            }
             if submit_without_popup {
                 return self.handle_key_event_without_popup(key_event);
             }
@@ -2423,12 +2439,12 @@ impl ChatComposer {
         Self::current_prefixed_token(&self.draft.textarea, '$', /*allow_empty*/ true)
     }
 
-    /// Replace the active `@token` (the one under the cursor) with `path`.
+    /// Returns the byte range for the active completion token under the cursor.
     ///
     /// The algorithm mirrors `current_at_token` so replacement works no matter
     /// where the cursor is within the token and regardless of how many
     /// `@tokens` exist in the line.
-    fn insert_selected_path(&mut self, path: &str) {
+    fn active_completion_token_range(&self) -> Range<usize> {
         let cursor_offset = self.draft.textarea.cursor();
         let text = self.draft.textarea.text();
         // Clamp to a valid char boundary to avoid panics when slicing.
@@ -2451,6 +2467,14 @@ impl ChatComposer {
             .unwrap_or(after_cursor.len());
         let end_idx = safe_cursor + end_rel_idx;
 
+        start_idx..end_idx
+    }
+
+    /// Replace the active `@token` (the one under the cursor) with `path`.
+    fn insert_selected_path(&mut self, path: &str) {
+        let token_range = self.active_completion_token_range();
+        let start_idx = token_range.start;
+
         // If the path contains whitespace, wrap it in double quotes so the
         // local prompt arg parser treats it as a single argument. Avoid adding
         // quotes when the path already contains one to keep behavior simple.
@@ -2465,9 +2489,29 @@ impl ChatComposer {
         // large-paste placeholders, remain atomic and can still expand on submit.
         self.draft
             .textarea
-            .replace_range(start_idx..end_idx, &format!("{inserted} "));
+            .replace_range(token_range, &format!("{inserted} "));
         let new_cursor = start_idx.saturating_add(inserted.len()).saturating_add(1);
         self.draft.textarea.set_cursor(new_cursor);
+    }
+
+    fn insert_selected_directory_path(&mut self, path: &str) {
+        let token_range = self.active_completion_token_range();
+        let start_idx = token_range.start;
+        let mut path = path.to_string();
+        if !path.ends_with('/') && !path.ends_with('\\') {
+            let separator = if path.contains('\\') && !path.contains('/') {
+                '\\'
+            } else {
+                '/'
+            };
+            path.push(separator);
+        }
+        let inserted = format!("@{path}");
+
+        self.draft.textarea.replace_range(token_range, &inserted);
+        self.draft
+            .textarea
+            .set_cursor(start_idx.saturating_add(inserted.len()));
     }
 
     fn insert_selected_mention(&mut self, insert_text: &str, path: Option<&str>) {
@@ -9023,6 +9067,89 @@ mod tests {
             }
             _ => panic!("expected Submitted"),
         }
+    }
+
+    #[test]
+    fn tab_on_directory_file_completion_enters_directory_and_keeps_popup_open() {
+        use crossterm::event::KeyCode;
+        use crossterm::event::KeyEvent;
+        use crossterm::event::KeyModifiers;
+
+        let (tx, mut rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+
+        composer.insert_str("@src");
+        while rx.try_recv().is_ok() {}
+        composer.on_file_search_result(
+            "src".to_string(),
+            vec![FileMatch {
+                score: 1,
+                path: PathBuf::from("src"),
+                match_type: codex_file_search::MatchType::Directory,
+                root: PathBuf::from("/tmp"),
+                indices: None,
+            }],
+        );
+
+        let (_result, _needs_redraw) =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+        assert_eq!(composer.draft.textarea.text(), "@src/");
+        assert_eq!(composer.draft.textarea.cursor(), "@src/".len());
+        assert!(matches!(composer.popups.active, ActivePopup::File(_)));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(AppEvent::StartFileSearch(query)) if query == "src/"
+        ));
+    }
+
+    #[test]
+    fn tab_on_directory_mentions_v2_completion_enters_directory_and_keeps_popup_open() {
+        use crossterm::event::KeyCode;
+        use crossterm::event::KeyEvent;
+        use crossterm::event::KeyModifiers;
+
+        let (tx, mut rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        composer.set_mentions_v2_enabled(/*enabled*/ true);
+
+        composer.insert_str("@src");
+        while rx.try_recv().is_ok() {}
+        composer.on_file_search_result(
+            "src".to_string(),
+            vec![FileMatch {
+                score: 1,
+                path: PathBuf::from("src"),
+                match_type: codex_file_search::MatchType::Directory,
+                root: PathBuf::from("/tmp"),
+                indices: None,
+            }],
+        );
+
+        let (_result, _needs_redraw) =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+        assert_eq!(composer.draft.textarea.text(), "@src/");
+        assert_eq!(composer.draft.textarea.cursor(), "@src/".len());
+        assert!(matches!(composer.popups.active, ActivePopup::MentionV2(_)));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(AppEvent::StartFileSearch(query)) if query == "src/"
+        ));
     }
 
     /// Behavior: multiple paste operations can coexist; placeholders should be expanded to their

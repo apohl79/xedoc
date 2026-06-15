@@ -175,7 +175,7 @@ fn content_line(
 
 fn primary_spans(row: &SearchResult, base_style: Style) -> Vec<Span<'static>> {
     if let Some(file_name) = file_name(row) {
-        let style = if row.mention_type == MentionType::File {
+        let style = if row.mention_type.is_filesystem() {
             base_style.fg(Color::Cyan)
         } else {
             base_style
@@ -187,7 +187,7 @@ fn primary_spans(row: &SearchResult, base_style: Style) -> Vec<Span<'static>> {
     let name_style = match row.mention_type {
         MentionType::Plugin => base_style.magenta(),
         MentionType::Skill => base_style.dim(),
-        MentionType::File | MentionType::Directory => base_style,
+        MentionType::File | MentionType::Directory => base_style.fg(Color::Cyan),
     };
     if let Some(indices) = row.match_indices.as_ref() {
         let mut idx_iter = indices.iter().peekable();
@@ -296,5 +296,34 @@ fn file_name_start(row: &SearchResult) -> usize {
             .map(|idx| row.display_name[..idx + 1].chars().count())
             .unwrap_or(0),
         Selection::File(_) | Selection::Tool { .. } => usize::MAX,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use ratatui::style::Color;
+    use std::path::PathBuf;
+
+    #[test]
+    fn directory_primary_name_uses_visible_accent_color() {
+        let row = SearchResult {
+            display_name: "src/components".to_string(),
+            description: None,
+            mention_type: MentionType::Directory,
+            selection: Selection::File(PathBuf::from("src/components")),
+            match_indices: None,
+            score: 1,
+        };
+
+        let line = build_line(
+            &row,
+            /*selected*/ false,
+            /*width*/ 40,
+            primary_text_width(&row),
+        );
+
+        assert_eq!(line.spans[0].style.fg, Some(Color::Cyan));
     }
 }

@@ -1,8 +1,8 @@
-use std::path::PathBuf;
-
 use codex_file_search::FileMatch;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
+use ratatui::style::Style;
 use ratatui::widgets::WidgetRef;
 
 use crate::render::Insets;
@@ -91,11 +91,10 @@ impl FileSearchPopup {
         self.state.ensure_visible(len, len.min(MAX_POPUP_ROWS));
     }
 
-    pub(crate) fn selected_match(&self) -> Option<&PathBuf> {
+    pub(crate) fn selected_match(&self) -> Option<&FileMatch> {
         self.state
             .selected_idx
             .and_then(|idx| self.matches.get(idx))
-            .map(|file_match| &file_match.path)
     }
 
     pub(crate) fn calculate_required_height(&self) -> u16 {
@@ -119,6 +118,7 @@ impl WidgetRef for &FileSearchPopup {
                 .iter()
                 .map(|m| GenericDisplayRow {
                     name: m.path.to_string_lossy().to_string(),
+                    name_style: Some(Style::default().fg(Color::Cyan)),
                     name_prefix_spans: Vec::new(),
                     match_indices: m
                         .indices
@@ -158,6 +158,7 @@ mod tests {
     use super::*;
     use codex_file_search::MatchType;
     use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
 
     fn file_match(index: usize) -> FileMatch {
         FileMatch {
@@ -180,5 +181,21 @@ mod tests {
             (0..MAX_POPUP_ROWS).map(file_match).collect::<Vec<_>>()
         );
         assert_eq!(popup.calculate_required_height(), MAX_POPUP_ROWS as u16);
+    }
+
+    #[test]
+    fn unselected_file_names_are_rendered_with_a_visible_accent_color() {
+        use ratatui::layout::Rect;
+        use ratatui::style::Color;
+
+        let mut popup = FileSearchPopup::new();
+        popup.set_query("file");
+        popup.set_matches("file", vec![file_match(0), file_match(1)]);
+        let area = Rect::new(0, 0, 40, 2);
+        let mut buf = Buffer::empty(area);
+
+        (&popup).render_ref(area, &mut buf);
+
+        assert_eq!(buf[(2, 1)].style().fg, Some(Color::Cyan));
     }
 }
