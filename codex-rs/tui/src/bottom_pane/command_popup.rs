@@ -208,6 +208,7 @@ impl CommandPopup {
                 let description = item.description().to_string();
                 GenericDisplayRow {
                     name,
+                    name_style: None,
                     name_prefix_spans: Vec::new(),
                     match_indices: indices.map(|v| v.into_iter().map(|i| i + 1).collect()),
                     display_shortcut: None,

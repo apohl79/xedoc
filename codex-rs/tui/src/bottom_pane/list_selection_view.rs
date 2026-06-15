@@ -601,6 +601,7 @@ impl ListSelectionView {
                     let wrap_indent = description.is_none().then_some(wrap_prefix_width);
                     GenericDisplayRow {
                         name: name_with_marker,
+                        name_style: None,
                         name_prefix_spans,
                         display_shortcut: item.display_shortcut,
                         match_indices: None,
