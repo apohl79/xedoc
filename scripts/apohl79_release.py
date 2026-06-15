@@ -22,9 +22,6 @@ VERSION_RE = re.compile(
     r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)"
     r"(?:-(?P<pre_label>alpha|beta)(?:\.(?P<pre_number>[0-9]+))?)?$"
 )
-RELEASE_TAG_RE = re.compile(
-    r"^rust-v(?P<version>[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta)(?:\.[0-9]+)?)?)$"
-)
 LS_REMOTE_TAG_RE = re.compile(
     r"^[0-9a-fA-F]+\s+refs/tags/rust-v(?P<version>"
     r"[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta)(?:\.[0-9]+)?)?"
@@ -50,15 +47,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=sorted(TARGET_SPECS),
         default=default_target(),
         help="Rust target triple to package.",
-    )
-    parser.add_argument(
-        "--base-version",
-        help=(
-            "Base Codex version before adding -apohl79. If omitted, the script "
-            "uses codex-rs/Cargo.toml unless it is 0.0.0, then the newest "
-            "reachable rust-v* tag for the build ref, then the newest valid "
-            "upstream rust-v* tag."
-        ),
     )
     parser.add_argument(
         "--version-suffix",
@@ -90,8 +78,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         help=(
-            "Archive output path. May be repeated. Defaults to a .tar.gz under "
-            "--output-dir/version."
+            "Archive output path. May be repeated. Defaults to a versioned "
+            ".zip under --output-dir/version."
         ),
     )
     parser.add_argument(
@@ -151,18 +139,7 @@ def build_release(args: argparse.Namespace) -> None:
         )
 
         cargo_toml = source_root / "codex-rs" / "Cargo.toml"
-        if (
-            args.base_version is None
-            and read_workspace_version(cargo_toml) == WORKSPACE_VERSION_SENTINEL
-        ):
-            run(["git", "fetch", "--quiet", "--tags", "upstream"], cwd=REPO_ROOT)
-
-        base_version = resolve_base_version(
-            cargo_toml,
-            args.base_version,
-            describe_tag=describe_release_tag(source_root),
-            ls_remote_stdout=None,
-        )
+        base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
         fork_version = fork_version_from_base(base_version, args.version_suffix)
         patch_workspace_version(cargo_toml, fork_version)
 
@@ -219,7 +196,7 @@ def build_release(args: argparse.Namespace) -> None:
             else output_dir / fork_version / f"codex-package-{args.target}"
         )
         archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
-            output_dir / fork_version / f"codex-package-{args.target}.tar.gz"
+            output_dir / fork_version / f"codex-{args.target}-{fork_version}.zip"
         ]
 
         package_args = [
@@ -262,20 +239,12 @@ def build_release(args: argparse.Namespace) -> None:
 
 def resolve_base_version(
     cargo_toml: Path,
-    explicit_base_version: str | None,
     *,
-    describe_tag: str | None,
     ls_remote_stdout: str | None,
 ) -> str:
-    if explicit_base_version:
-        return validate_release_version(explicit_base_version)
-
     cargo_version = read_workspace_version(cargo_toml)
     if cargo_version != WORKSPACE_VERSION_SENTINEL:
         return validate_release_version(cargo_version)
-
-    if describe_tag is not None:
-        return base_version_from_release_tag(describe_tag)
 
     if ls_remote_stdout is None:
         ls_remote_stdout = subprocess.check_output(
@@ -300,10 +269,9 @@ def derive_fork_version(
     ls_remote_stdout: str,
     suffix: str = DEFAULT_SUFFIX,
 ) -> str:
+    _ = describe_tag
     if cargo_version != WORKSPACE_VERSION_SENTINEL:
         base_version = validate_release_version(cargo_version)
-    elif describe_tag is not None:
-        base_version = base_version_from_release_tag(describe_tag)
     else:
         base_version = latest_release_version_from_ls_remote(ls_remote_stdout)
     return fork_version_from_base(base_version, suffix)
@@ -325,34 +293,6 @@ def latest_release_version_from_ls_remote(stdout: str) -> str:
     if not versions:
         raise RuntimeError("No valid upstream rust release tags found.")
     return max(versions, key=release_version_sort_key)
-
-
-def base_version_from_release_tag(tag: str) -> str:
-    match = RELEASE_TAG_RE.match(tag)
-    if match is None:
-        raise RuntimeError(f"Invalid Codex release tag: {tag}")
-    return validate_release_version(match.group("version"))
-
-
-def describe_release_tag(source_root: Path) -> str | None:
-    result = subprocess.run(
-        [
-            "git",
-            "describe",
-            "--tags",
-            "--match",
-            "rust-v[0-9]*",
-            "--abbrev=0",
-            "HEAD",
-        ],
-        cwd=source_root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        return result.stdout.strip()
-    return None
 
 
 def release_version_sort_key(version: str) -> tuple[int, int, int, int, int]:
