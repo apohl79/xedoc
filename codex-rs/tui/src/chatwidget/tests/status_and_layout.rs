@@ -2172,9 +2172,9 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
                 ..TokenUsage::default()
             },
             last_token_usage: TokenUsage {
-                input_tokens: 8,
-                cached_input_tokens: 5,
-                output_tokens: 2,
+                input_tokens: 120_000,
+                cached_input_tokens: 20_000,
+                output_tokens: 8_000,
                 total_tokens: 128_000,
                 ..TokenUsage::default()
             },
@@ -2195,19 +2195,97 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
     assert_eq!(payload["context_window"]["context_window_size"], 1_000_000);
     assert_eq!(
         payload["context_window"]["current_usage"]["input_tokens"],
-        3
+        100_000
     );
     assert_eq!(
         payload["context_window"]["current_usage"]["cache_read_input_tokens"],
-        5
+        20_000
     );
     assert_eq!(
         payload["context_window"]["current_usage"]["output_tokens"],
-        2
+        8_000
     );
+    assert_eq!(payload["context_window"]["used_percentage"], 13);
+    assert_eq!(payload["context_window"]["remaining_percentage"], 87);
     assert_eq!(payload["context_window"]["total_input_tokens"], 10);
     assert_eq!(payload["context_window"]["total_output_tokens"], 3);
     assert_eq!(payload["version"], CODEX_CLI_VERSION);
+}
+
+#[tokio::test]
+async fn status_line_command_payload_reports_context_total_without_breakdown() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    handle_token_count(
+        &mut chat,
+        Some(TokenUsageInfo {
+            total_token_usage: TokenUsage {
+                total_tokens: 42_000,
+                ..TokenUsage::default()
+            },
+            last_token_usage: TokenUsage {
+                total_tokens: 42_000,
+                ..TokenUsage::default()
+            },
+            model_context_window: Some(100_000),
+        }),
+    );
+
+    let payload: Value =
+        serde_json::from_str(&chat.status_line_command_payload()).expect("valid json payload");
+
+    assert_eq!(payload["context_window"]["context_window_size"], 100_000);
+    assert_eq!(
+        payload["context_window"]["current_usage"]["input_tokens"],
+        42_000
+    );
+    assert_eq!(
+        payload["context_window"]["current_usage"]["output_tokens"],
+        0
+    );
+    assert_eq!(
+        payload["context_window"]["current_usage"]["cache_read_input_tokens"],
+        0
+    );
+    assert_eq!(payload["context_window"]["used_percentage"], 42);
+    assert_eq!(payload["context_window"]["remaining_percentage"], 58);
+}
+
+#[tokio::test]
+async fn token_usage_update_refreshes_custom_status_line_payload() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
+        "missing-statusline-command".to_string(),
+    ]));
+    let zero_payload = chat.status_line_command_payload();
+    chat.status_line_command_last_payload = Some(zero_payload);
+
+    handle_token_count(
+        &mut chat,
+        Some(TokenUsageInfo {
+            total_token_usage: TokenUsage {
+                total_tokens: 42_000,
+                ..TokenUsage::default()
+            },
+            last_token_usage: TokenUsage {
+                total_tokens: 42_000,
+                ..TokenUsage::default()
+            },
+            model_context_window: Some(100_000),
+        }),
+    );
+
+    let pending_payload = chat
+        .status_line_command_pending_payload
+        .as_deref()
+        .expect("token usage update should request a fresh statusline payload");
+    let payload: Value = serde_json::from_str(pending_payload).expect("valid json payload");
+
+    assert_eq!(payload["context_window"]["context_window_size"], 100_000);
+    assert_eq!(
+        payload["context_window"]["current_usage"]["input_tokens"],
+        42_000
+    );
+    assert!(chat.status_line_command_pending_request_id.is_some());
 }
 
 #[tokio::test]
