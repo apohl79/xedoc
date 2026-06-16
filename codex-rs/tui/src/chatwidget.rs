@@ -1141,6 +1141,7 @@ impl ChatWidget {
                 self.token_info = None;
             }
         }
+        self.refresh_status_surfaces();
     }
 
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
