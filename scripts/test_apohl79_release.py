@@ -194,6 +194,11 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "resolve_codesign_identity",
                     return_value="Developer ID Application: Example",
                 ),
+                mock.patch.object(
+                    apohl79_release,
+                    "default_cargo_build_jobs",
+                    return_value=4,
+                ),
                 mock.patch.object(apohl79_release, "run", side_effect=fake_run),
                 mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
             ):
@@ -235,6 +240,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             assert cargo_env is not None
             self.assertEqual(cargo_env["CARGO_TARGET_DIR"], str(target_dir.resolve()))
             self.assertEqual(cargo_env["CODEX_RELEASE_VERSION"], "0.141.0-apohl79")
+            self.assertEqual(cargo_env["CARGO_BUILD_JOBS"], "4")
             package_commands = [
                 command
                 for command, _cwd, _env, _check in commands
@@ -495,6 +501,69 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "Apple Development: Example (TEAMID)",
                 },
             )
+
+    def test_default_cargo_build_jobs_uses_apple_performance_cores(self) -> None:
+        def fake_sysctl_int(name: str) -> int | None:
+            return {
+                "hw.perflevel0.physicalcpu": 4,
+                "hw.physicalcpu": 10,
+                "hw.logicalcpu": 10,
+            }.get(name)
+
+        with mock.patch.object(
+            apohl79_release,
+            "sysctl_int",
+            side_effect=fake_sysctl_int,
+        ):
+            self.assertEqual(apohl79_release.default_cargo_build_jobs(), 4)
+
+    def test_default_cargo_build_jobs_falls_back_to_physical_cores(self) -> None:
+        def fake_sysctl_int(name: str) -> int | None:
+            return {
+                "hw.perflevel0.physicalcpu": None,
+                "hw.physicalcpu": 8,
+                "hw.logicalcpu": 16,
+            }.get(name)
+
+        with mock.patch.object(
+            apohl79_release,
+            "sysctl_int",
+            side_effect=fake_sysctl_int,
+        ):
+            self.assertEqual(apohl79_release.default_cargo_build_jobs(), 8)
+
+    def test_default_cargo_build_jobs_falls_back_to_one(self) -> None:
+        with (
+            mock.patch.object(apohl79_release, "sysctl_int", return_value=None),
+            mock.patch.object(apohl79_release.os, "cpu_count", return_value=None),
+        ):
+            self.assertEqual(apohl79_release.default_cargo_build_jobs(), 1)
+
+    def test_sysctl_int_parses_positive_integer(self) -> None:
+        with mock.patch.object(
+            subprocess,
+            "check_output",
+            return_value="4\n",
+        ):
+            self.assertEqual(
+                apohl79_release.sysctl_int("hw.perflevel0.physicalcpu"),
+                4,
+            )
+
+    def test_sysctl_int_ignores_missing_or_invalid_values(self) -> None:
+        with mock.patch.object(
+            subprocess,
+            "check_output",
+            side_effect=subprocess.CalledProcessError(1, ["sysctl"]),
+        ):
+            self.assertIsNone(apohl79_release.sysctl_int("missing"))
+
+        with mock.patch.object(
+            subprocess,
+            "check_output",
+            return_value="not-an-int\n",
+        ):
+            self.assertIsNone(apohl79_release.sysctl_int("invalid"))
 
     def test_run_reports_command_failure_as_runtime_error(self) -> None:
         with mock.patch.object(
