@@ -16,6 +16,7 @@ use super::DoctorCheck;
 use super::describe_install_context;
 use super::doctor_install_context;
 use super::push_path_detail;
+use crate::version::CODEX_CLI_VERSION;
 
 /// Builds the process provenance row for the current Codex executable.
 ///
@@ -29,7 +30,7 @@ pub(super) fn runtime_check() -> DoctorCheck {
     let platform = format!("{os}-{arch}");
     let install_method = install_method_name(&install_context);
     let mut details = vec![
-        format!("version: {}", env!("CARGO_PKG_VERSION")),
+        format!("version: {CODEX_CLI_VERSION}"),
         format!("platform: {platform}"),
         format!(
             "install method: {}",

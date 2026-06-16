@@ -57,6 +57,7 @@ mod remote_control_cmd;
 #[cfg(target_os = "windows")]
 mod sandbox_setup;
 mod state_db_recovery;
+mod version;
 #[cfg(not(windows))]
 mod wsl_paths;
 
@@ -94,7 +95,7 @@ use codex_terminal_detection::TerminalName;
 #[derive(Debug, Parser)]
 #[clap(
     author,
-    version,
+    version = crate::version::CODEX_CLI_VERSION,
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
