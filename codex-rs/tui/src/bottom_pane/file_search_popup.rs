@@ -70,7 +70,7 @@ impl FileSearchPopup {
         }
 
         self.display_query = query.to_string();
-        self.matches = matches.into_iter().take(MAX_POPUP_ROWS).collect();
+        self.matches = matches;
         self.waiting = false;
         let len = self.matches.len();
         self.state.clamp_selection(len);
@@ -89,6 +89,16 @@ impl FileSearchPopup {
         let len = self.matches.len();
         self.state.move_down_wrap(len);
         self.state.ensure_visible(len, len.min(MAX_POPUP_ROWS));
+    }
+
+    pub(crate) fn page_up(&mut self) {
+        let len = self.matches.len();
+        self.state.page_up_clamped(len, len.min(MAX_POPUP_ROWS));
+    }
+
+    pub(crate) fn page_down(&mut self) {
+        let len = self.matches.len();
+        self.state.page_down_clamped(len, len.min(MAX_POPUP_ROWS));
     }
 
     pub(crate) fn selected_match(&self) -> Option<&FileMatch> {
@@ -171,16 +181,22 @@ mod tests {
     }
 
     #[test]
-    fn set_matches_keeps_only_the_first_page_of_results() {
+    fn set_matches_keeps_results_past_first_page_selectable() {
         let mut popup = FileSearchPopup::new();
         popup.set_query("file");
-        popup.set_matches("file", (0..(MAX_POPUP_ROWS + 2)).map(file_match).collect());
+        let matches = (0..(MAX_POPUP_ROWS + 2))
+            .map(file_match)
+            .collect::<Vec<_>>();
+        popup.set_matches("file", matches.clone());
 
-        assert_eq!(
-            popup.matches,
-            (0..MAX_POPUP_ROWS).map(file_match).collect::<Vec<_>>()
-        );
+        assert_eq!(popup.matches, matches);
         assert_eq!(popup.calculate_required_height(), MAX_POPUP_ROWS as u16);
+
+        popup.page_down();
+
+        let expected = file_match(MAX_POPUP_ROWS);
+        assert_eq!(popup.selected_match(), Some(&expected));
+        assert_eq!(popup.state.scroll_top, 1);
     }
 
     #[test]

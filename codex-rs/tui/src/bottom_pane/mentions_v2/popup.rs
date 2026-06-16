@@ -74,6 +74,16 @@ impl Popup {
         self.state.ensure_visible(len, MAX_POPUP_ROWS.min(len));
     }
 
+    pub(crate) fn page_up(&mut self) {
+        let len = self.rows().len();
+        self.state.page_up_clamped(len, MAX_POPUP_ROWS.min(len));
+    }
+
+    pub(crate) fn page_down(&mut self) {
+        let len = self.rows().len();
+        self.state.page_down_clamped(len, MAX_POPUP_ROWS.min(len));
+    }
+
     pub(crate) fn previous_search_mode(&mut self) {
         self.search_mode = self.search_mode.previous();
         self.clamp_selection();
@@ -145,7 +155,7 @@ impl FileSearch {
         }
 
         self.display_query = query.to_string();
-        self.matches = matches.into_iter().take(MAX_POPUP_ROWS).collect();
+        self.matches = matches;
         self.waiting = false;
     }
 
@@ -159,5 +169,59 @@ impl FileSearch {
         } else {
             "no matches"
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codex_file_search::MatchType;
+    use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
+
+    fn file_match(index: usize) -> FileMatch {
+        FileMatch {
+            score: 1,
+            path: PathBuf::from(format!("src/file_{index:02}.rs")),
+            match_type: MatchType::File,
+            root: PathBuf::from("/tmp/repo"),
+            indices: None,
+        }
+    }
+
+    #[test]
+    fn file_matches_past_first_page_remain_selectable() {
+        let mut popup = Popup::new(Vec::new());
+        popup.set_query("file");
+        popup.set_file_matches("file", (0..(MAX_POPUP_ROWS + 2)).map(file_match).collect());
+
+        popup.page_down();
+
+        let Some(Selection::File(path)) = popup.selected() else {
+            panic!("expected selected file");
+        };
+        assert_eq!(path, PathBuf::from("src/file_08.rs"));
+        assert_eq!(popup.state.scroll_top, 1);
+    }
+
+    fn render_popup_snapshot(popup: &Popup, width: u16) -> String {
+        let area = Rect::new(0, 0, width, popup.calculate_required_height(width));
+        let mut buf = Buffer::empty(area);
+        popup.render_ref(area, &mut buf);
+        format!("{buf:?}")
+    }
+
+    #[test]
+    fn file_matches_scroll_rendered_window_snapshot() {
+        let mut popup = Popup::new(Vec::new());
+        popup.set_query("file");
+        popup.set_file_matches("file", (0..(MAX_POPUP_ROWS + 2)).map(file_match).collect());
+
+        popup.page_down();
+
+        insta::assert_snapshot!(
+            "mentions_v2_file_matches_scrolled",
+            render_popup_snapshot(&popup, /*width*/ 72)
+        );
     }
 }
