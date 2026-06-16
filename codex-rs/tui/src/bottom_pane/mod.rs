@@ -1293,6 +1293,10 @@ impl BottomPane {
         self.composer.should_handle_vim_insert_escape(key_event)
     }
 
+    pub(crate) fn composer_vim_mode_label(&self) -> Option<&'static str> {
+        self.composer.vim_mode_label()
+    }
+
     pub(crate) fn is_task_running(&self) -> bool {
         self.is_task_running
     }

@@ -34,6 +34,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::openai_models::ModelPreset;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_approval_presets::ApprovalPreset;
+use ratatui::text::Line;
 
 use crate::app_command::AppCommand;
 use crate::app_server_session::AppServerStartedThread;
@@ -1008,10 +1009,16 @@ pub(crate) enum AppEvent {
         request_id: u64,
         result: Result<crate::workspace_messages::WorkspaceHeadlineFetchResult, String>,
     },
+    /// Async output from the external status-line command.
+    StatusLineCommandUpdated {
+        request_id: u64,
+        line: Option<Line<'static>>,
+    },
     /// Apply a user-confirmed status-line item ordering/selection.
     StatusLineSetup {
         items: Vec<StatusLineItem>,
         use_theme_colors: bool,
+        command: Option<codex_config::types::StatusLineCommand>,
     },
     /// Dismiss the status-line setup UI without changing config.
     StatusLineSetupCancelled,

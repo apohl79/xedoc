@@ -16,6 +16,7 @@ use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::models::PermissionProfile;
 use codex_utils_sandbox_summary::summarize_permission_profile;
+use serde_json::json;
 
 use super::status_state::TerminalTitleStatusKind;
 
@@ -86,7 +87,12 @@ pub(super) struct CachedProjectRootName {
 
 impl ChatWidget {
     fn status_surface_selections(&self) -> StatusSurfaceSelections {
-        let (status_line_items, invalid_status_line_items) = self.status_line_items_with_invalids();
+        let (status_line_items, invalid_status_line_items) =
+            if self.config.tui_status_line_command.is_some() {
+                (Vec::new(), Vec::new())
+            } else {
+                self.status_line_items_with_invalids()
+            };
         let (terminal_title_items, invalid_terminal_title_items) =
             self.terminal_title_items_with_invalids();
         StatusSurfaceSelections {
@@ -175,6 +181,11 @@ impl ChatWidget {
     }
 
     fn refresh_status_line_from_selections(&mut self, selections: &StatusSurfaceSelections) {
+        if self.config.tui_status_line_command.is_some() {
+            self.refresh_status_line_from_command();
+            return;
+        }
+
         let enabled = !selections.status_line_items.is_empty();
         self.bottom_pane.set_status_line_enabled(enabled);
         if !enabled {
@@ -200,6 +211,55 @@ impl ChatWidget {
             .then(|| self.status_line_pull_request_url())
             .flatten();
         self.set_status_line_hyperlink(hyperlink_url);
+    }
+
+    fn refresh_status_line_from_command(&mut self) {
+        self.bottom_pane.set_status_line_enabled(true);
+        self.set_status_line(self.status_line_command_output.clone());
+        self.set_status_line_hyperlink(/*url*/ None);
+        self.request_status_line_command_refresh();
+    }
+
+    fn request_status_line_command_refresh(&mut self) {
+        let Some(command) = self.config.tui_status_line_command.clone() else {
+            return;
+        };
+        let payload = self.status_line_command_payload();
+        if self.status_line_command_last_payload.as_deref() == Some(payload.as_str())
+            || self.status_line_command_pending_payload.as_deref() == Some(payload.as_str())
+            || self.status_line_command_pending_request_id.is_some()
+        {
+            return;
+        }
+
+        let request_id = self.next_status_line_command_request_id;
+        self.next_status_line_command_request_id =
+            self.next_status_line_command_request_id.saturating_add(1);
+        self.status_line_command_pending_payload = Some(payload.clone());
+        self.status_line_command_pending_request_id = Some(request_id);
+        let cwd = self.status_line_cwd().to_path_buf();
+        let tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let line =
+                crate::status_line_command::run_status_line_command(command, payload, cwd).await;
+            tx.send(AppEvent::StatusLineCommandUpdated { request_id, line });
+        });
+    }
+
+    pub(crate) fn set_status_line_command_output(
+        &mut self,
+        request_id: u64,
+        line: Option<Line<'static>>,
+    ) {
+        if self.status_line_command_pending_request_id != Some(request_id) {
+            return;
+        }
+
+        self.status_line_command_pending_request_id = None;
+        self.status_line_command_last_payload = self.status_line_command_pending_payload.take();
+        self.status_line_command_output = line;
+        self.refresh_status_surfaces();
+        self.frame_requester.schedule_frame();
     }
 
     /// Clears the terminal title Codex most recently wrote, if any.
@@ -413,6 +473,11 @@ impl ChatWidget {
         })
     }
 
+    pub(super) fn status_line_is_configured(&self) -> bool {
+        self.config.tui_status_line_command.is_some()
+            || !self.configured_status_line_items().is_empty()
+    }
+
     /// Parses configured terminal-title ids into known items and collects unknown ids.
     ///
     /// Unknown ids are deduplicated in insertion order for warning messages.
@@ -434,6 +499,87 @@ impl ChatWidget {
         self.current_cwd
             .as_deref()
             .unwrap_or(self.config.cwd.as_path())
+    }
+
+    pub(super) fn status_line_command_payload(&mut self) -> String {
+        let cwd = self.status_line_cwd().to_path_buf();
+        let project_dir = self
+            .status_line_project_root_for_cwd(&cwd)
+            .unwrap_or_else(|| cwd.clone());
+        let total_usage = self.status_line_total_usage();
+        let last_usage = self
+            .token_info
+            .as_ref()
+            .map(|info| info.last_token_usage.clone())
+            .unwrap_or_default();
+        let context_window_size = self.status_line_context_window_size().unwrap_or(0);
+        let used_tokens = last_usage.tokens_in_context_window().max(0);
+        let used_percentage = self.status_line_context_used_percent().unwrap_or(0);
+        let remaining_percentage = (100 - used_percentage).clamp(0, 100);
+        let reasoning = self.effective_reasoning_effort();
+        let reasoning_level = reasoning
+            .as_ref()
+            .map(codex_protocol::openai_models::ReasoningEffort::as_str)
+            .unwrap_or("default");
+        let thinking_enabled = reasoning
+            .as_ref()
+            .is_some_and(|effort| *effort != ReasoningEffortConfig::None);
+        let vim_mode = self
+            .bottom_pane
+            .composer_vim_mode_label()
+            .map(str::to_ascii_uppercase);
+
+        json!({
+            "session_id": self.thread_id.map(|id| id.to_string()),
+            "transcript_path": self.current_rollout_path.as_ref().map(|path| path.display().to_string()),
+            "cwd": cwd.display().to_string(),
+            "effort": {
+                "level": reasoning_level,
+            },
+            "session_name": self.thread_name.as_deref(),
+            "model": {
+                "id": self.current_model(),
+                "display_name": self.model_display_name(),
+            },
+            "workspace": {
+                "current_dir": cwd.display().to_string(),
+                "project_dir": project_dir.display().to_string(),
+                "added_dirs": [],
+            },
+            "version": CODEX_CLI_VERSION,
+            "output_style": {
+                "name": "default",
+            },
+            "cost": {
+                "total_cost_usd": null,
+                "total_duration_ms": null,
+                "total_api_duration_ms": null,
+                "total_lines_added": null,
+                "total_lines_removed": null,
+            },
+            "context_window": {
+                "total_input_tokens": total_usage.input_tokens.max(0),
+                "total_output_tokens": total_usage.output_tokens.max(0),
+                "context_window_size": context_window_size.max(0),
+                "current_usage": {
+                    "input_tokens": last_usage.non_cached_input(),
+                    "output_tokens": last_usage.output_tokens.max(0),
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": last_usage.cached_input(),
+                },
+                "used_percentage": used_percentage,
+                "remaining_percentage": remaining_percentage,
+            },
+            "exceeds_200k_tokens": used_tokens > 200_000,
+            "fast_mode": self.current_service_tier() == Some(ServiceTier::Fast.request_value()),
+            "thinking": {
+                "enabled": thinking_enabled,
+            },
+            "vim": {
+                "mode": vim_mode,
+            },
+        })
+        .to_string()
     }
 
     /// Resolves the project root associated with `cwd`.

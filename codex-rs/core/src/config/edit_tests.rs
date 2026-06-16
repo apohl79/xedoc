@@ -4,6 +4,7 @@ use codex_config::types::McpServerOAuthConfig;
 use codex_config::types::McpServerToolConfig;
 use codex_config::types::McpServerTransportConfig;
 use codex_config::types::SessionPickerViewMode;
+use codex_config::types::StatusLineCommand;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::openai_models::ReasoningEffort;
@@ -74,6 +75,44 @@ fn set_service_tier_preserves_unknown_service_tier() {
 
     let contents = std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
     assert_eq!(contents, "service_tier = \"experimental-tier-id\"\n");
+}
+
+#[test]
+fn status_line_command_edit_sets_string_command() {
+    let tmp = tempdir().expect("tmpdir");
+    let codex_home = tmp.path();
+
+    apply_blocking(
+        codex_home,
+        &[status_line_command_edit(Some(&StatusLineCommand::Command(
+            "~/.claude/statusline.sh".to_string(),
+        )))],
+    )
+    .expect("persist");
+
+    let contents = std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
+    assert_eq!(
+        contents,
+        "[tui]\nstatus_line_command = \"~/.claude/statusline.sh\"\n"
+    );
+}
+
+#[test]
+fn status_line_command_edit_clears_command() {
+    let tmp = tempdir().expect("tmpdir");
+    let codex_home = tmp.path();
+
+    apply_blocking(
+        codex_home,
+        &[status_line_command_edit(Some(&StatusLineCommand::Command(
+            "~/.claude/statusline.sh".to_string(),
+        )))],
+    )
+    .expect("persist");
+    apply_blocking(codex_home, &[status_line_command_edit(None)]).expect("persist");
+
+    let contents = std::fs::read_to_string(codex_home.join(CONFIG_TOML_FILE)).expect("read config");
+    assert_eq!(contents, "[tui]\n");
 }
 
 #[test]

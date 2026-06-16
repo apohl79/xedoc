@@ -1071,6 +1071,10 @@ impl ChatComposer {
         self.draft.textarea.is_vim_enabled()
     }
 
+    pub(crate) fn vim_mode_label(&self) -> Option<&'static str> {
+        self.draft.textarea.vim_mode_label()
+    }
+
     /// Return whether Escape should be routed to the textarea before popups.
     ///
     /// Vim insert mode owns Escape as a transition back to normal mode. The app

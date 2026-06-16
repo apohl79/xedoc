@@ -276,6 +276,25 @@ impl MultiSelectPicker {
         self.filtered_indices.len()
     }
 
+    pub(crate) fn selected_item_id(&self) -> Option<&str> {
+        let selected_idx = self.state.selected_idx?;
+        let actual_idx = self.filtered_indices.get(selected_idx)?;
+        self.items.get(*actual_idx).map(|item| item.id.as_str())
+    }
+
+    pub(crate) fn update_item<F>(&mut self, id: &str, update: F) -> bool
+    where
+        F: FnOnce(&mut MultiSelectItem),
+    {
+        let Some(item) = self.items.iter_mut().find(|item| item.id == id) else {
+            return false;
+        };
+        update(item);
+        self.apply_filter();
+        self.update_preview_line();
+        true
+    }
+
     /// Returns the maximum number of rows that can be displayed at once.
     fn max_visible_rows(len: usize) -> usize {
         MAX_POPUP_ROWS.min(len.max(1))

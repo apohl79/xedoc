@@ -107,13 +107,26 @@ impl ChatWidget {
     /// Applies status-line item selection from the setup view to in-memory config.
     ///
     /// An empty selection persists as an explicit empty list.
-    pub(crate) fn setup_status_line(&mut self, items: Vec<StatusLineItem>, use_theme_colors: bool) {
+    pub(crate) fn setup_status_line(
+        &mut self,
+        items: Vec<StatusLineItem>,
+        use_theme_colors: bool,
+        command: Option<codex_config::types::StatusLineCommand>,
+    ) {
         tracing::info!(
-            "status line setup confirmed with items: {items:#?}, use_theme_colors: {use_theme_colors}"
+            "status line setup confirmed with items: {items:#?}, use_theme_colors: {use_theme_colors}, custom_command: {}",
+            command.is_some()
         );
         let ids = items.iter().map(ToString::to_string).collect::<Vec<_>>();
         self.config.tui_status_line = Some(ids);
         self.config.tui_status_line_use_colors = use_theme_colors;
+        if self.config.tui_status_line_command != command {
+            self.status_line_command_output = None;
+            self.status_line_command_last_payload = None;
+            self.status_line_command_pending_payload = None;
+            self.status_line_command_pending_request_id = None;
+        }
+        self.config.tui_status_line_command = command;
         self.refresh_status_line();
     }
 
@@ -288,10 +301,13 @@ impl ChatWidget {
 
     pub(super) fn open_status_line_setup(&mut self) {
         let configured_status_line_items = self.configured_status_line_items();
+        let status_line_command = self.config.tui_status_line_command.clone();
+        let preview_data = self.status_surface_preview_data();
         let view = StatusLineSetupView::new(
             Some(configured_status_line_items.as_slice()),
             self.config.tui_status_line_use_colors,
-            self.status_surface_preview_data(),
+            status_line_command.as_ref(),
+            preview_data,
             self.app_event_tx.clone(),
             self.bottom_pane.list_keymap(),
         );

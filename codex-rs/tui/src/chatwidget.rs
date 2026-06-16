@@ -699,6 +699,12 @@ pub(crate) struct ChatWidget {
     status_line_invalid_items_warned: Arc<AtomicBool>,
     // Shared latch so we only warn once about invalid terminal-title item IDs.
     terminal_title_invalid_items_warned: Arc<AtomicBool>,
+    // Cached output for the external status-line command, if configured.
+    status_line_command_output: Option<Line<'static>>,
+    status_line_command_last_payload: Option<String>,
+    status_line_command_pending_payload: Option<String>,
+    status_line_command_pending_request_id: Option<u64>,
+    next_status_line_command_request_id: u64,
     // Last terminal title emitted, to avoid writing duplicate OSC updates.
     pub(crate) last_terminal_title: Option<String>,
     // Last visible "action required" state observed by the terminal-title renderer.

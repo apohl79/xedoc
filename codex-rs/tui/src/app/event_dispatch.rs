@@ -2109,20 +2109,26 @@ impl App {
             AppEvent::StatusLineSetup {
                 items,
                 use_theme_colors,
+                command,
             } => {
                 let ids = items.iter().map(ToString::to_string).collect::<Vec<_>>();
                 let items_edit = crate::legacy_core::config::edit::status_line_items_edit(&ids);
                 let colors_edit =
                     crate::legacy_core::config::edit::status_line_use_colors_edit(use_theme_colors);
+                let command_edit =
+                    crate::legacy_core::config::edit::status_line_command_edit(command.as_ref());
                 let apply_result = ConfigEditsBuilder::for_config(&self.config)
-                    .with_edits([items_edit, colors_edit])
+                    .with_edits([items_edit, colors_edit, command_edit])
                     .apply()
                     .await;
                 match apply_result {
                     Ok(()) => {
+                        let command_config = command;
                         self.config.tui_status_line = Some(ids.clone());
                         self.config.tui_status_line_use_colors = use_theme_colors;
-                        self.chat_widget.setup_status_line(items, use_theme_colors);
+                        self.config.tui_status_line_command = command_config.clone();
+                        self.chat_widget
+                            .setup_status_line(items, use_theme_colors, command_config);
                     }
                     Err(err) => {
                         let error = format_config_error(&err);
@@ -2148,6 +2154,11 @@ impl App {
                 {
                     tui.frame_requester().schedule_frame();
                 }
+            }
+            AppEvent::StatusLineCommandUpdated { request_id, line } => {
+                self.chat_widget
+                    .set_status_line_command_output(request_id, line);
+                self.refresh_status_line();
             }
             AppEvent::StatusLineSetupCancelled => {
                 self.chat_widget.cancel_status_line_setup();

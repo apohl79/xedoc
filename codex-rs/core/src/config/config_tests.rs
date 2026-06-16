@@ -825,6 +825,7 @@ fn config_toml_deserializes_model_availability_nux() {
             alternate_screen: AltScreenMode::default(),
             status_line: None,
             status_line_use_colors: true,
+            status_line_command: None,
             terminal_title: None,
             theme: None,
             pet: None,
@@ -870,6 +871,25 @@ status_line_use_colors = false
         !cfg.tui
             .expect("tui config should deserialize")
             .status_line_use_colors
+    );
+}
+
+#[test]
+fn config_toml_deserializes_status_line_command_string() {
+    let toml = r#"
+[tui]
+status_line_command = "~/.claude/statusline.sh"
+"#;
+    let cfg: ConfigToml =
+        toml::from_str(toml).expect("TOML deserialization should succeed for status line command");
+
+    assert_eq!(
+        cfg.tui
+            .expect("tui config should deserialize")
+            .status_line_command,
+        Some(codex_config::types::StatusLineCommand::Command(
+            "~/.claude/statusline.sh".to_string()
+        ))
     );
 }
 
@@ -3664,6 +3684,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             alternate_screen: AltScreenMode::Auto,
             status_line: None,
             status_line_use_colors: true,
+            status_line_command: None,
             terminal_title: None,
             theme: None,
             pet: None,
