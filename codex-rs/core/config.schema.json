@@ -2835,6 +2835,20 @@
       },
       "type": "object"
     },
+    "StatusLineCommand": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "External status-line command configuration.\n\nA string is executed through the user's shell for Claude Code-style compatibility. A list is executed directly as argv."
+    },
     "ThreadStoreToml": {
       "oneOf": [
         {
@@ -3194,6 +3208,15 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "status_line_command": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/StatusLineCommand"
+            }
+          ],
+          "default": null,
+          "description": "External command used to render the status line.\n\nThe command receives a Claude Code-compatible JSON payload on stdin and should write the status line to stdout. When set, this takes precedence over `status_line`."
         },
         "status_line_use_colors": {
           "default": true,

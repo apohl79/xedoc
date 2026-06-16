@@ -3,8 +3,11 @@ use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;
 use crate::chatwidget::rate_limits::get_limits_duration;
 use codex_app_server_protocol::SpendControlLimitSnapshot;
+use codex_config::types::StatusLineCommand;
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
+use ratatui::text::Line;
+use serde_json::Value;
 use serial_test::serial;
 
 fn enable_test_ambient_pet(chat: &mut ChatWidget) {
@@ -2133,6 +2136,76 @@ async fn status_line_invalid_items_warn_once() {
         cells.is_empty(),
         "expected invalid status line warning to emit only once"
     );
+}
+
+#[tokio::test]
+async fn status_line_command_payload_uses_claude_compatible_shape() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+    chat.thread_name = Some("Check statusline".to_string());
+    chat.config.model_context_window = Some(1_000_000);
+    handle_token_count(
+        &mut chat,
+        Some(TokenUsageInfo {
+            total_token_usage: TokenUsage {
+                input_tokens: 10,
+                cached_input_tokens: 4,
+                output_tokens: 3,
+                total_tokens: 13,
+                ..TokenUsage::default()
+            },
+            last_token_usage: TokenUsage {
+                input_tokens: 8,
+                cached_input_tokens: 5,
+                output_tokens: 2,
+                total_tokens: 128_000,
+                ..TokenUsage::default()
+            },
+            model_context_window: Some(1_000_000),
+        }),
+    );
+
+    let payload: Value =
+        serde_json::from_str(&chat.status_line_command_payload()).expect("valid json payload");
+
+    assert_eq!(payload["session_id"], thread_id.to_string());
+    assert_eq!(payload["session_name"], "Check statusline");
+    assert_eq!(payload["model"]["id"], "gpt-test");
+    assert_eq!(
+        payload["workspace"]["current_dir"],
+        chat.config.cwd.display().to_string()
+    );
+    assert_eq!(payload["context_window"]["context_window_size"], 1_000_000);
+    assert_eq!(
+        payload["context_window"]["current_usage"]["input_tokens"],
+        3
+    );
+    assert_eq!(
+        payload["context_window"]["current_usage"]["cache_read_input_tokens"],
+        5
+    );
+    assert_eq!(
+        payload["context_window"]["current_usage"]["output_tokens"],
+        2
+    );
+    assert_eq!(payload["context_window"]["total_input_tokens"], 10);
+    assert_eq!(payload["context_window"]["total_output_tokens"], 3);
+    assert_eq!(payload["version"], CODEX_CLI_VERSION);
+}
+
+#[tokio::test]
+async fn status_line_command_output_overrides_builtin_status_line_items() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_status_line = Some(vec!["model".to_string()]);
+    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
+        "missing-statusline-command".to_string(),
+    ]));
+    chat.status_line_command_output = Some(Line::from("custom status"));
+
+    chat.refresh_status_line();
+
+    assert_eq!(status_line_text(&chat), Some("custom status".to_string()));
 }
 
 #[tokio::test]

@@ -4,18 +4,18 @@ expression: "render_lines(&view, 72)"
 ---
                                                                         
   Configure Status Line                                                 
-  Select which items to display in the status line.                     
+  Select items, or enable Custom command; tab edits it.                 
                                                                         
   Type to search                                                        
   >                                                                     
 › [x] Use theme colors      Apply colors from the active /theme         
+  [ ] Custom command        ~/.claude/statusline.sh (tab to edit)       
   ───────────────────────                                               
   [x] model                 Current model name                          
   [x] current-dir           Current working directory                   
   [x] git-branch            Current Git branch (omitted when unavaila…  
   [ ] model-with-reasoning  Current model name with reasoning level     
   [ ] reasoning             Current reasoning level                     
-  [ ] project-name          Project name (omitted when unavailable)     
                                                                         
   gpt-5-codex · ~/codex-rs · jif/statusline-preview                     
   Press space to toggle; ←/→ to move; enter to confirm and close; esc to

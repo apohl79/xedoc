@@ -1126,6 +1126,7 @@ async fn token_usage_update_refreshes_status_line_with_runtime_context_window() 
     app.chat_widget.setup_status_line(
         vec![crate::bottom_pane::StatusLineItem::ContextWindowSize],
         /*use_theme_colors*/ true,
+        /*command*/ None,
     );
 
     assert_eq!(app.chat_widget.status_line_text(), None);

@@ -142,6 +142,17 @@ pub(crate) fn log_inbound_app_event(event: &AppEvent) {
             });
             LOGGER.write_json_line(value);
         }
+        AppEvent::StatusLineCommandUpdated { request_id, line } => {
+            let value = json!({
+                "ts": now_ts(),
+                "dir": "to_tui",
+                "kind": "app_event",
+                "variant": "StatusLineCommandUpdated",
+                "request_id": request_id,
+                "has_line": line.is_some(),
+            });
+            LOGGER.write_json_line(value);
+        }
         AppEvent::InsertHistoryCell(cell) => {
             let value = json!({
                 "ts": now_ts(),
