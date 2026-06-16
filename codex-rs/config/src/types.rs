@@ -725,6 +725,14 @@ pub struct Tui {
     #[serde(default = "default_true")]
     pub status_line_use_colors: bool,
 
+    /// External command used to render the status line.
+    ///
+    /// The command receives a Claude Code-compatible JSON payload on stdin and
+    /// should write the status line to stdout. When set, this takes precedence
+    /// over `status_line`.
+    #[serde(default)]
+    pub status_line_command: Option<StatusLineCommand>,
+
     /// Ordered list of terminal title item identifiers.
     ///
     /// When set, the TUI renders the selected items into the terminal window/tab title.
@@ -774,6 +782,17 @@ pub struct Tui {
     #[serde(default)]
     #[schemars(range(min = 0))]
     pub terminal_resize_reflow_max_rows: Option<usize>,
+}
+
+/// External status-line command configuration.
+///
+/// A string is executed through the user's shell for Claude Code-style
+/// compatibility. A list is executed directly as argv.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(untagged)]
+pub enum StatusLineCommand {
+    Command(String),
+    Args(Vec<String>),
 }
 
 const fn default_true() -> bool {

@@ -46,6 +46,7 @@ use codex_config::types::ModelAvailabilityNuxConfig;
 use codex_config::types::Notice;
 use codex_config::types::OAuthCredentialsStoreMode;
 use codex_config::types::SessionPickerViewMode;
+use codex_config::types::StatusLineCommand;
 use codex_config::types::ToolSuggestConfig;
 use codex_config::types::ToolSuggestDisabledTool;
 use codex_config::types::ToolSuggestDiscoverable;
@@ -764,6 +765,9 @@ pub struct Config {
 
     /// Whether to color status line items with colors from the active syntax theme.
     pub tui_status_line_use_colors: bool,
+
+    /// External command used to render the TUI status line.
+    pub tui_status_line_command: Option<StatusLineCommand>,
 
     /// Ordered list of terminal title item identifiers for the TUI.
     ///
@@ -3959,6 +3963,10 @@ impl Config {
                 .as_ref()
                 .map(|t| t.status_line_use_colors)
                 .unwrap_or(true),
+            tui_status_line_command: cfg
+                .tui
+                .as_ref()
+                .and_then(|t| t.status_line_command.clone()),
             tui_terminal_title: cfg.tui.as_ref().and_then(|t| t.terminal_title.clone()),
             tui_theme: cfg.tui.as_ref().and_then(|t| t.theme.clone()),
             tui_pet: cfg.tui.as_ref().and_then(|t| t.pet.clone()),

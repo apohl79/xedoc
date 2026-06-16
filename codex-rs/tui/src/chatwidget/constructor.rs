@@ -217,6 +217,11 @@ impl ChatWidget {
             session_network_proxy: None,
             status_line_invalid_items_warned,
             terminal_title_invalid_items_warned,
+            status_line_command_output: None,
+            status_line_command_last_payload: None,
+            status_line_command_pending_payload: None,
+            status_line_command_pending_request_id: None,
+            next_status_line_command_request_id: 0,
             last_terminal_title: None,
             last_terminal_title_requires_action: false,
             terminal_title_setup_original_items: None,
@@ -251,7 +256,7 @@ impl ChatWidget {
             .set_vim_enabled(widget.config.tui_vim_mode_default);
         widget
             .bottom_pane
-            .set_status_line_enabled(!widget.configured_status_line_items().is_empty());
+            .set_status_line_enabled(widget.status_line_is_configured());
         widget
             .bottom_pane
             .set_collaboration_modes_enabled(/*enabled*/ true);

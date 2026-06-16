@@ -4,6 +4,7 @@ use anyhow::Context;
 use codex_config::CONFIG_TOML_FILE;
 use codex_config::types::McpServerConfig;
 use codex_config::types::SessionPickerViewMode;
+use codex_config::types::StatusLineCommand;
 use codex_config::types::ToolSuggestDisabledTool;
 use codex_features::FEATURES;
 use codex_protocol::config_types::Personality;
@@ -124,6 +125,31 @@ pub fn status_line_use_colors_edit(enabled: bool) -> ConfigEdit {
     ConfigEdit::SetPath {
         segments: vec!["tui".to_string(), "status_line_use_colors".to_string()],
         value: value(enabled),
+    }
+}
+
+/// Produces a config edit that sets or clears `[tui].status_line_command`.
+pub fn status_line_command_edit(command: Option<&StatusLineCommand>) -> ConfigEdit {
+    let segments = vec!["tui".to_string(), "status_line_command".to_string()];
+    match command {
+        Some(StatusLineCommand::Command(command)) if !command.trim().is_empty() => {
+            ConfigEdit::SetPath {
+                segments,
+                value: value(command.trim().to_string()),
+            }
+        }
+        Some(StatusLineCommand::Args(args)) if args.iter().any(|arg| !arg.trim().is_empty()) => {
+            let array = args
+                .iter()
+                .filter(|arg| !arg.trim().is_empty())
+                .cloned()
+                .collect::<toml_edit::Array>();
+            ConfigEdit::SetPath {
+                segments,
+                value: TomlItem::Value(array.into()),
+            }
+        }
+        _ => ConfigEdit::ClearPath { segments },
     }
 }
 
