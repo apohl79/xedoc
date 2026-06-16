@@ -514,14 +514,8 @@ impl ChatWidget {
             .unwrap_or_default();
         let context_window_size = self.status_line_context_window_size().unwrap_or(0);
         let used_tokens = last_usage.tokens_in_context_window().max(0);
-        let used_percentage = if context_window_size > 0 && used_tokens > 0 {
-            ((used_tokens as f64 / context_window_size as f64) * 100.0)
-                .clamp(0.0, 100.0)
-                .round() as i64
-        } else {
-            0
-        };
-        let remaining_percentage = (100 - used_percentage).clamp(0, 100);
+        let remaining_percentage = self.status_line_context_remaining_percent().unwrap_or(100);
+        let used_percentage = self.status_line_context_used_percent().unwrap_or(0);
         let cached_input_tokens = last_usage.cached_input();
         let output_tokens = last_usage.output_tokens.max(0);
         let mut input_tokens = last_usage.non_cached_input();
