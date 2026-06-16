@@ -2191,8 +2191,8 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
         payload["context_window"]["current_usage"]["output_tokens"],
         8_000
     );
-    assert_eq!(payload["context_window"]["used_percentage"], 13);
-    assert_eq!(payload["context_window"]["remaining_percentage"], 87);
+    assert_eq!(payload["context_window"]["used_percentage"], 12);
+    assert_eq!(payload["context_window"]["remaining_percentage"], 88);
     assert_eq!(payload["context_window"]["total_input_tokens"], 10);
     assert_eq!(payload["context_window"]["total_output_tokens"], 3);
     assert_eq!(payload["task_indicator"]["text"], "Tasks 2/5");
@@ -2235,8 +2235,49 @@ async fn status_line_command_payload_reports_context_total_without_breakdown() {
         payload["context_window"]["current_usage"]["cache_read_input_tokens"],
         0
     );
-    assert_eq!(payload["context_window"]["used_percentage"], 42);
-    assert_eq!(payload["context_window"]["remaining_percentage"], 58);
+    assert_eq!(payload["context_window"]["used_percentage"], 34);
+    assert_eq!(payload["context_window"]["remaining_percentage"], 66);
+}
+
+#[tokio::test]
+async fn status_line_command_payload_context_percentages_match_builtin_items() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    handle_token_count(
+        &mut chat,
+        Some(TokenUsageInfo {
+            total_token_usage: TokenUsage {
+                total_tokens: 26_300,
+                ..TokenUsage::default()
+            },
+            last_token_usage: TokenUsage {
+                total_tokens: 26_300,
+                ..TokenUsage::default()
+            },
+            model_context_window: Some(258_400),
+        }),
+    );
+
+    let payload: Value =
+        serde_json::from_str(&chat.status_line_command_payload()).expect("valid json payload");
+
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::ContextUsed),
+        Some(format!(
+            "Context {}% used",
+            payload["context_window"]["used_percentage"]
+                .as_i64()
+                .expect("used percentage")
+        ))
+    );
+    assert_eq!(
+        chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::ContextRemaining),
+        Some(format!(
+            "Context {}% left",
+            payload["context_window"]["remaining_percentage"]
+                .as_i64()
+                .expect("remaining percentage")
+        ))
+    );
 }
 
 #[tokio::test]
