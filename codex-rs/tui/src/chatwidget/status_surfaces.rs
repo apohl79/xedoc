@@ -514,8 +514,23 @@ impl ChatWidget {
             .unwrap_or_default();
         let context_window_size = self.status_line_context_window_size().unwrap_or(0);
         let used_tokens = last_usage.tokens_in_context_window().max(0);
-        let used_percentage = self.status_line_context_used_percent().unwrap_or(0);
+        let used_percentage = if context_window_size > 0 && used_tokens > 0 {
+            ((used_tokens as f64 / context_window_size as f64) * 100.0)
+                .clamp(0.0, 100.0)
+                .round() as i64
+        } else {
+            0
+        };
         let remaining_percentage = (100 - used_percentage).clamp(0, 100);
+        let cached_input_tokens = last_usage.cached_input();
+        let output_tokens = last_usage.output_tokens.max(0);
+        let mut input_tokens = last_usage.non_cached_input();
+        let current_usage_tokens = input_tokens
+            .saturating_add(cached_input_tokens)
+            .saturating_add(output_tokens);
+        if used_tokens > current_usage_tokens {
+            input_tokens = input_tokens.saturating_add(used_tokens - current_usage_tokens);
+        }
         let reasoning = self.effective_reasoning_effort();
         let reasoning_level = reasoning
             .as_ref()
@@ -562,10 +577,10 @@ impl ChatWidget {
                 "total_output_tokens": total_usage.output_tokens.max(0),
                 "context_window_size": context_window_size.max(0),
                 "current_usage": {
-                    "input_tokens": last_usage.non_cached_input(),
-                    "output_tokens": last_usage.output_tokens.max(0),
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
                     "cache_creation_input_tokens": 0,
-                    "cache_read_input_tokens": last_usage.cached_input(),
+                    "cache_read_input_tokens": cached_input_tokens,
                 },
                 "used_percentage": used_percentage,
                 "remaining_percentage": remaining_percentage,
