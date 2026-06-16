@@ -144,6 +144,7 @@ def build_release(args: argparse.Namespace) -> None:
     env = os.environ.copy()
     env["CARGO_TARGET_DIR"] = str(target_dir)
     env["CODEX_RELEASE_VERSION"] = fork_version
+    env.setdefault("CARGO_BUILD_JOBS", str(default_cargo_build_jobs()))
     env.setdefault("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed")
     env.setdefault("CARGO_NET_GIT_FETCH_WITH_CLI", "true")
 
@@ -333,6 +334,39 @@ def native_codesign_identities() -> set[str]:
             identities.add(match.group(1))
             identities.add(match.group(2))
     return identities
+
+
+def default_cargo_build_jobs() -> int:
+    return first_positive_int(
+        sysctl_int("hw.perflevel0.physicalcpu"),
+        sysctl_int("hw.physicalcpu"),
+        sysctl_int("hw.logicalcpu"),
+        os.cpu_count(),
+    )
+
+
+def first_positive_int(*values: int | None) -> int:
+    for value in values:
+        if value is not None and value > 0:
+            return value
+    return 1
+
+
+def sysctl_int(name: str) -> int | None:
+    try:
+        stdout = subprocess.check_output(
+            ["sysctl", "-n", name],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+    try:
+        value = int(stdout.strip())
+    except ValueError:
+        return None
+    return value if value > 0 else None
 
 
 def resolve_base_version(
