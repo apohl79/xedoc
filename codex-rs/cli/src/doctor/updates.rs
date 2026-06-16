@@ -20,6 +20,7 @@ use super::doctor_install_context;
 use super::doctor_managed_by_npm;
 use super::npm_global_root_check;
 use super::run_command;
+use crate::version::CODEX_CLI_VERSION;
 
 const VERSION_FILE_NAME: &str = "version.json";
 const GITHUB_LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
@@ -88,7 +89,7 @@ pub(super) fn updates_check(config: &Config) -> DoctorCheck {
     match fetch_latest_version(&install_context) {
         Ok(latest_version) => {
             details.push(format!("latest version: {latest_version}"));
-            if is_newer(&latest_version, env!("CARGO_PKG_VERSION")) == Some(true) {
+            if is_newer(&latest_version, CODEX_CLI_VERSION) == Some(true) {
                 details.push("latest version status: newer version is available".to_string());
             } else {
                 details.push("latest version status: current version is not older".to_string());

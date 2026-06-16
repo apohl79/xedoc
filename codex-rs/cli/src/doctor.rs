@@ -66,6 +66,8 @@ use http::HeaderValue;
 use serde::Serialize;
 use supports_color::Stream;
 
+use crate::version::CODEX_CLI_VERSION;
+
 mod background;
 mod git;
 mod output;
@@ -487,7 +489,7 @@ async fn build_report(
         schema_version: 1,
         generated_at: generated_at(),
         overall_status,
-        codex_version: env!("CARGO_PKG_VERSION").to_string(),
+        codex_version: CODEX_CLI_VERSION.to_string(),
         checks,
     }
 }
