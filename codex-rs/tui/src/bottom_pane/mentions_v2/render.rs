@@ -9,8 +9,6 @@ use ratatui::text::Span;
 use ratatui::widgets::Widget;
 
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
-use crate::style::accent_style;
-
 use super::candidate::MentionType;
 use super::candidate::SearchResult;
 use super::candidate::Selection;
@@ -18,6 +16,8 @@ use super::footer::render_footer;
 use super::search_mode::SearchMode;
 use crate::bottom_pane::popup_consts::MAX_POPUP_ROWS;
 use crate::bottom_pane::scroll_state::ScrollState;
+
+const SELECTED_ROW_BG: Color = Color::Rgb(55, 60, 67);
 
 pub(super) fn render_popup(
     area: Rect,
@@ -147,11 +147,16 @@ fn build_line(
     }
     spans.push(tag);
     if selected {
-        let style = accent_style();
-        spans.iter_mut().for_each(|span| span.style = style);
+        apply_selected_style(&mut spans);
     }
 
     Line::from(spans)
+}
+
+fn apply_selected_style(spans: &mut [Span<'static>]) {
+    for span in spans {
+        span.style = span.style.bg(SELECTED_ROW_BG);
+    }
 }
 
 fn content_line(
@@ -304,6 +309,7 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     use ratatui::style::Color;
+    use ratatui::style::Modifier;
     use std::path::PathBuf;
 
     #[test]
@@ -328,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_row_uses_accent_style_across_full_line() {
+    fn selected_row_uses_background_without_inverting_text_colors() {
         let row = SearchResult {
             display_name: "src/components".to_string(),
             description: Some("~/project".to_string()),
@@ -345,8 +351,20 @@ mod tests {
             primary_text_width(&row),
         );
 
-        let actual = line.spans.iter().map(|span| span.style).collect::<Vec<_>>();
-        let expected = vec![accent_style(); line.spans.len()];
-        assert_eq!(actual, expected);
+        assert_eq!(line.spans[0].content.as_ref(), "> ");
+        assert_eq!(line.spans[1].style.fg, Some(Color::Cyan));
+        assert!(line.spans.iter().any(|span| {
+            span.style.add_modifier.contains(Modifier::DIM) && span.style.fg.is_none()
+        }));
+        assert!(
+            line.spans
+                .iter()
+                .all(|span| span.style.bg == Some(SELECTED_ROW_BG))
+        );
+        assert!(
+            line.spans
+                .iter()
+                .all(|span| !span.style.add_modifier.contains(Modifier::REVERSED))
+        );
     }
 }
