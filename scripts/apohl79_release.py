@@ -4,10 +4,9 @@ import argparse
 import os
 from pathlib import Path
 import re
-import shutil
+import shlex
 import subprocess
 import sys
-import tempfile
 
 from codex_package.targets import TARGET_SPECS
 from codex_package.targets import default_target
@@ -17,6 +16,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_REF = "main-fork"
 DEFAULT_SUFFIX = "apohl79"
+PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
+DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
 WORKSPACE_VERSION_SENTINEL = "0.0.0"
 VERSION_RE = re.compile(
     r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)"
@@ -58,7 +59,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.environ.get("APPLE_CODESIGN_IDENTITY"),
         help=(
             "Developer ID identity for native codesign. Can also be set with "
-            "APPLE_CODESIGN_IDENTITY."
+            "APPLE_CODESIGN_IDENTITY. Defaults to the sole Developer ID "
+            "Application identity in the keychain."
         ),
     )
     parser.add_argument(
@@ -95,7 +97,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--keep-worktree",
         action="store_true",
-        help="Keep the temporary patched source worktree for inspection.",
+        help=(
+            "Deprecated compatibility flag. Release builds now use the current "
+            "checkout directly so Cargo can reuse incremental artifacts."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -118,10 +123,7 @@ def build_release(args: argparse.Namespace) -> None:
             "macOS targets. Pass an *-apple-darwin target."
         )
 
-    if not args.codesign_identity:
-        raise RuntimeError(
-            "Must pass --codesign-identity or set APPLE_CODESIGN_IDENTITY."
-        )
+    codesign_identity = resolve_codesign_identity(args.codesign_identity)
 
     output_dir = resolve_repo_path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -130,111 +132,207 @@ def build_release(args: argparse.Namespace) -> None:
     )
     target_dir = target_dir.resolve()
 
-    temp_root = Path(tempfile.mkdtemp(prefix="codex-apohl79-release-"))
-    source_root = temp_root / "source"
-    try:
-        run(
-            ["git", "worktree", "add", "--detach", str(source_root), args.ref],
-            cwd=REPO_ROOT,
-        )
+    source_root = REPO_ROOT
+    cargo_toml = source_root / "codex-rs" / "Cargo.toml"
+    cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+    ensure_current_checkout_matches_ref(args.ref)
+    ensure_git_path_clean(cargo_toml)
+    ensure_git_path_clean(cargo_lock)
+    base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
+    fork_version = fork_version_from_base(base_version, args.version_suffix)
 
-        cargo_toml = source_root / "codex-rs" / "Cargo.toml"
-        base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
-        fork_version = fork_version_from_base(base_version, args.version_suffix)
-        patch_workspace_version(cargo_toml, fork_version)
+    env = os.environ.copy()
+    env["CARGO_TARGET_DIR"] = str(target_dir)
+    env["CODEX_RELEASE_VERSION"] = fork_version
+    env.setdefault("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed")
+    env.setdefault("CARGO_NET_GIT_FETCH_WITH_CLI", "true")
 
-        env = os.environ.copy()
-        env["CARGO_TARGET_DIR"] = str(target_dir)
-        env.setdefault("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed")
-        env.setdefault("CARGO_NET_GIT_FETCH_WITH_CLI", "true")
-
-        run(
-            [
-                args.cargo,
-                "build",
-                "--manifest-path",
-                str(source_root / "codex-rs" / "Cargo.toml"),
-                "--package",
-                "codex-cli",
-                "--bin",
-                "codex",
-                "--profile",
-                "release",
-                "--target",
-                args.target,
-            ],
-            cwd=source_root / "codex-rs",
-            env=env,
-        )
-
-        entrypoint = (
-            target_dir / spec.target / "release" / f"codex{spec.exe_suffix}"
-        ).resolve()
-        if not entrypoint.is_file():
-            raise RuntimeError(f"Built entrypoint not found: {entrypoint}")
-
-        signing_script = (
-            source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
-        )
-        entitlements = (
-            source_root / ".github/scripts/macos-signing/codex.entitlements.plist"
-        )
-        run(
-            build_codesign_command(
-                target=entrypoint,
-                identity=args.codesign_identity,
-                entitlements=entitlements,
-                signing_script=signing_script,
-            ),
-            cwd=source_root,
-        )
-        run(["codesign", "--verify", "--strict", "--verbose=2", str(entrypoint)])
-
-        package_dir = (
-            resolve_repo_path(args.package_dir)
-            if args.package_dir is not None
-            else output_dir / fork_version / f"codex-package-{args.target}"
-        )
-        archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
-            output_dir / fork_version / f"codex-{args.target}-{fork_version}.zip"
-        ]
-
-        package_args = [
-            sys.executable,
-            str(source_root / "scripts/build_codex_package.py"),
+    run(
+        [
+            args.cargo,
+            "build",
+            "--locked",
+            "--manifest-path",
+            str(source_root / "codex-rs" / "Cargo.toml"),
+            "--package",
+            "codex-cli",
+            "--bin",
+            "codex",
+            "--profile",
+            "release",
             "--target",
             args.target,
-            "--variant",
-            "codex",
-            "--entrypoint-bin",
-            str(entrypoint),
-            "--cargo-profile",
-            "release",
-            "--package-dir",
-            str(package_dir),
-        ]
-        for archive_output in archive_outputs:
-            package_args.extend(["--archive-output", str(archive_output)])
-        if args.force:
-            package_args.append("--force")
+        ],
+        cwd=source_root / "codex-rs",
+        env=env,
+    )
 
-        run(package_args, cwd=source_root)
+    entrypoint = (
+        target_dir / spec.target / "release" / f"codex{spec.exe_suffix}"
+    ).resolve()
+    if not entrypoint.is_file():
+        raise RuntimeError(f"Built entrypoint not found: {entrypoint}")
 
-        print(f"Built apohl79 Codex release {fork_version}")
-        print(f"Package directory: {package_dir}")
-        for archive_output in archive_outputs:
-            print(f"Archive: {archive_output}")
-    finally:
-        if args.keep_worktree:
-            print(f"Kept temporary source worktree: {source_root}")
-        else:
-            if source_root.exists():
-                run(
-                    ["git", "worktree", "remove", "--force", str(source_root)],
-                    cwd=REPO_ROOT,
-                    check=False,
-                )
-            shutil.rmtree(temp_root, ignore_errors=True)
+    signing_script = source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
+    entitlements = (
+        source_root / ".github/scripts/macos-signing/codex.entitlements.plist"
+    )
+    run(
+        build_codesign_command(
+            target=entrypoint,
+            identity=codesign_identity,
+            entitlements=entitlements,
+            signing_script=signing_script,
+        ),
+        cwd=source_root,
+    )
+    run(["codesign", "--verify", "--strict", "--verbose=2", str(entrypoint)])
+
+    package_dir = (
+        resolve_repo_path(args.package_dir)
+        if args.package_dir is not None
+        else output_dir / fork_version / f"codex-package-{args.target}"
+    )
+    archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
+        output_dir / fork_version / f"codex-{args.target}-{fork_version}.zip"
+    ]
+
+    package_args = [
+        sys.executable,
+        str(source_root / "scripts/build_codex_package.py"),
+        "--target",
+        args.target,
+        "--variant",
+        "codex",
+        "--version",
+        fork_version,
+        "--entrypoint-bin",
+        str(entrypoint),
+        "--cargo-profile",
+        "release",
+        "--package-dir",
+        str(package_dir),
+    ]
+    for archive_output in archive_outputs:
+        package_args.extend(["--archive-output", str(archive_output)])
+    if args.force:
+        package_args.append("--force")
+
+    run(package_args, cwd=source_root)
+
+    print(f"Built apohl79 Codex release {fork_version}")
+    print(f"Package directory: {package_dir}")
+    for archive_output in archive_outputs:
+        print(f"Archive: {archive_output}")
+
+
+def ensure_current_checkout_matches_ref(ref: str) -> None:
+    head_commit = git_commit("HEAD")
+    ref_commit = git_commit(ref)
+    if head_commit != ref_commit:
+        raise RuntimeError(
+            f"Current checkout HEAD ({head_commit[:12]}) does not match "
+            f"--ref {ref} ({ref_commit[:12]}). Check out {ref} before running "
+            "the incremental apohl79 release build."
+        )
+
+
+def git_commit(ref: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"],
+            cwd=REPO_ROOT,
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError as err:
+        raise RuntimeError(f"Could not resolve git ref {ref!r} to a commit.") from err
+
+
+def ensure_git_path_clean(path: Path) -> None:
+    relative_path = path.relative_to(REPO_ROOT)
+    for diff_args in (["diff", "--quiet"], ["diff", "--cached", "--quiet"]):
+        result = subprocess.run(
+            ["git", *diff_args, "--", str(relative_path)],
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        if result.returncode == 1:
+            raise RuntimeError(
+                f"{relative_path} has local changes. Commit or stash them before "
+                "running the apohl79 release build."
+            )
+        if result.returncode != 0:
+            raise RuntimeError(f"Could not check git status for {relative_path}.")
+
+
+def resolve_codesign_identity(explicit_identity: str | None) -> str:
+    if explicit_identity == PLACEHOLDER_CODESIGN_IDENTITY:
+        raise RuntimeError(
+            "APPLE_CODESIGN_IDENTITY still contains the placeholder value. "
+            "Set it to a valid Developer ID Application identity or pass "
+            "--codesign-identity."
+        )
+
+    if os.environ.get("OAI_CODESIGN_BACKEND") == "akv-pkcs11":
+        return explicit_identity or "akv-pkcs11"
+
+    identities = native_codesign_identities()
+    if explicit_identity:
+        ensure_codesign_identity_ready(explicit_identity, identities)
+        return explicit_identity
+
+    developer_id_identities = sorted(
+        identity
+        for identity in identities
+        if identity.startswith(DEVELOPER_ID_APPLICATION_PREFIX)
+    )
+    if len(developer_id_identities) == 1:
+        return developer_id_identities[0]
+    if not developer_id_identities:
+        raise RuntimeError(
+            "No Developer ID Application codesign identity was found. "
+            "Run `security find-identity -v -p codesigning` to list valid "
+            "identities, then set APPLE_CODESIGN_IDENTITY or pass --codesign-identity."
+        )
+
+    choices = "\n".join(f"  - {identity}" for identity in developer_id_identities)
+    raise RuntimeError(
+        "Multiple Developer ID Application codesign identities were found. "
+        "Set APPLE_CODESIGN_IDENTITY or pass --codesign-identity with one of:\n"
+        f"{choices}"
+    )
+
+
+def ensure_codesign_identity_ready(identity: str, identities: set[str]) -> None:
+    if identity not in identities:
+        raise RuntimeError(
+            f"No native codesign identity named {identity!r} was found. "
+            "Run `security find-identity -v -p codesigning` to list valid "
+            "identities, then set APPLE_CODESIGN_IDENTITY or pass --codesign-identity."
+        )
+
+
+def native_codesign_identities() -> set[str]:
+    try:
+        stdout = subprocess.check_output(
+            ["security", "find-identity", "-v", "-p", "codesigning"],
+            text=True,
+        )
+    except FileNotFoundError as err:
+        raise RuntimeError(
+            "The macOS `security` command was not found; native codesign "
+            "identity preflight can only run on macOS."
+        ) from err
+    except subprocess.CalledProcessError as err:
+        raise RuntimeError("Could not list native codesign identities.") from err
+
+    identities: set[str] = set()
+    for line in stdout.splitlines():
+        match = re.match(r'^\s*\d+\)\s+([0-9A-Fa-f]+)\s+"(.+)"$', line)
+        if match is not None:
+            identities.add(match.group(1))
+            identities.add(match.group(2))
+    return identities
 
 
 def resolve_base_version(
@@ -339,29 +437,6 @@ def read_workspace_version(cargo_toml: Path) -> str:
     raise RuntimeError(f"Could not find [workspace.package].version in {cargo_toml}")
 
 
-def patch_workspace_version(cargo_toml: Path, version: str) -> None:
-    validate_release_version(version.rsplit("-", maxsplit=1)[0])
-    lines = cargo_toml.read_text(encoding="utf-8").splitlines(keepends=True)
-    in_workspace_package = False
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == "[workspace.package]":
-            in_workspace_package = True
-            continue
-        if in_workspace_package and stripped.startswith("["):
-            break
-        if in_workspace_package:
-            line_without_newline = line.rstrip("\r\n")
-            newline = line[len(line_without_newline) :]
-            match = WORKSPACE_VERSION_LINE_RE.match(line_without_newline)
-            if match is not None:
-                lines[index] = f'{match.group(1)}"{version}"{match.group(2)}{newline}'
-                cargo_toml.write_text("".join(lines), encoding="utf-8")
-                return
-
-    raise RuntimeError(f"Could not find [workspace.package].version in {cargo_toml}")
-
-
 def build_codesign_command(
     *,
     target: Path,
@@ -401,5 +476,10 @@ def run(
     env: dict[str, str] | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess:
-    print("+ " + " ".join(command), flush=True)
-    return subprocess.run(command, cwd=cwd, env=env, check=check)
+    print("+ " + shlex.join(command), flush=True)
+    try:
+        return subprocess.run(command, cwd=cwd, env=env, check=check)
+    except subprocess.CalledProcessError as err:
+        raise RuntimeError(
+            f"Command failed with exit status {err.returncode}: {shlex.join(command)}"
+        ) from err

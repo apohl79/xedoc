@@ -17,6 +17,7 @@ use crate::legacy_core::format_exec_policy_error_with_source;
 use crate::session_resume::ResolveCwdOutcome;
 use crate::session_resume::resolve_cwd_for_resume_or_fork;
 pub use crate::startup_error::LocalStateDbStartupError;
+use crate::version::CODEX_CLI_VERSION;
 use additional_dirs::add_dir_warning_message;
 use app::App;
 pub use app::AppExitInfo;
@@ -397,7 +398,7 @@ async fn connect_remote_app_server(
     let app_server = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
         endpoint,
         client_name: "codex-tui".to_string(),
-        client_version: env!("CARGO_PKG_VERSION").to_string(),
+        client_version: CODEX_CLI_VERSION.to_string(),
         experimental_api: true,
         mcp_server_openai_form_elicitation: false,
         opt_out_notification_methods: Vec::new(),
@@ -561,7 +562,7 @@ where
             .unwrap_or_else(|err| panic!("cli session source should deserialize: {err}")),
         enable_codex_api_key_env: false,
         client_name: "codex-tui".to_string(),
-        client_version: env!("CARGO_PKG_VERSION").to_string(),
+        client_version: CODEX_CLI_VERSION.to_string(),
         experimental_api: true,
         mcp_server_openai_form_elicitation: false,
         opt_out_notification_methods: Vec::new(),
@@ -1072,7 +1073,7 @@ pub async fn run_main(
     let otel = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         codex_app_server_client::build_otel_provider(
             &config,
-            env!("CARGO_PKG_VERSION"),
+            CODEX_CLI_VERSION,
             /*service_name_override*/ None,
             /*default_analytics_enabled*/ true,
         )

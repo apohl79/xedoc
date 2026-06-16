@@ -75,6 +75,10 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--version",
+        help="Package metadata version. Defaults to the workspace package version.",
+    )
+    parser.add_argument(
         "--entrypoint-bin",
         type=Path,
         help=(
@@ -156,7 +160,7 @@ def main() -> int:
             "--codex-windows-sandbox-setup-bin",
         ),
     )
-    version = read_workspace_version()
+    version = args.version or read_workspace_version()
     inputs = PackageInputs(
         entrypoint_bin=source_outputs.entrypoint_bin,
         rg_bin=resolve_rg_bin(spec, args.rg_bin),
