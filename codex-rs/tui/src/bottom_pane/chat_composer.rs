@@ -1801,6 +1801,20 @@ impl ChatComposer {
                 (InputResult::None, true)
             }
             KeyEvent {
+                code: KeyCode::PageUp,
+                ..
+            } => {
+                popup.page_up();
+                (InputResult::None, true)
+            }
+            KeyEvent {
+                code: KeyCode::PageDown,
+                ..
+            } => {
+                popup.page_down();
+                (InputResult::None, true)
+            }
+            KeyEvent {
                 code: KeyCode::Esc, ..
             } => {
                 if let Some(tok) = Self::current_at_token(&self.draft.textarea) {
@@ -1992,6 +2006,20 @@ impl ChatComposer {
                 ..
             } => {
                 popup.move_down();
+                (InputResult::None, true)
+            }
+            KeyEvent {
+                code: KeyCode::PageUp,
+                ..
+            } => {
+                popup.page_up();
+                (InputResult::None, true)
+            }
+            KeyEvent {
+                code: KeyCode::PageDown,
+                ..
+            } => {
+                popup.page_down();
                 (InputResult::None, true)
             }
             KeyEvent {

@@ -326,4 +326,27 @@ mod tests {
 
         assert_eq!(line.spans[0].style.fg, Some(Color::Cyan));
     }
+
+    #[test]
+    fn selected_row_uses_accent_style_across_full_line() {
+        let row = SearchResult {
+            display_name: "src/components".to_string(),
+            description: Some("~/project".to_string()),
+            mention_type: MentionType::Directory,
+            selection: Selection::File(PathBuf::from("src/components")),
+            match_indices: None,
+            score: 1,
+        };
+
+        let line = build_line(
+            &row,
+            /*selected*/ true,
+            /*width*/ 40,
+            primary_text_width(&row),
+        );
+
+        let actual = line.spans.iter().map(|span| span.style).collect::<Vec<_>>();
+        let expected = vec![accent_style(); line.spans.len()];
+        assert_eq!(actual, expected);
+    }
 }
