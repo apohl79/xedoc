@@ -542,8 +542,21 @@ impl ChatWidget {
             .bottom_pane
             .composer_vim_mode_label()
             .map(str::to_ascii_uppercase);
+        let task_indicator = self
+            .transcript
+            .last_plan_progress
+            .and_then(|(completed, total)| {
+                (total > 0).then(|| {
+                    json!({
+                        "text": format!("Tasks {completed}/{total}"),
+                        "completed": completed,
+                        "total": total,
+                    })
+                })
+            });
 
         json!({
+            "harness": "codex",
             "session_id": self.thread_id.map(|id| id.to_string()),
             "transcript_path": self.current_rollout_path.as_ref().map(|path| path.display().to_string()),
             "cwd": cwd.display().to_string(),
@@ -589,6 +602,7 @@ impl ChatWidget {
             "thinking": {
                 "enabled": thinking_enabled,
             },
+            "task_indicator": task_indicator,
             "vim": {
                 "mode": vim_mode,
             },

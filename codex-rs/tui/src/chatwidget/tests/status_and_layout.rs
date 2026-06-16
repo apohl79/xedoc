@@ -2160,6 +2160,7 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
     let thread_id = ThreadId::new();
     chat.thread_id = Some(thread_id);
     chat.thread_name = Some("Check statusline".to_string());
+    chat.transcript.last_plan_progress = Some((2, 5));
     chat.config.model_context_window = Some(1_000_000);
     handle_token_count(
         &mut chat,
@@ -2185,6 +2186,7 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
     let payload: Value =
         serde_json::from_str(&chat.status_line_command_payload()).expect("valid json payload");
 
+    assert_eq!(payload["harness"], "codex");
     assert_eq!(payload["session_id"], thread_id.to_string());
     assert_eq!(payload["session_name"], "Check statusline");
     assert_eq!(payload["model"]["id"], "gpt-test");
@@ -2209,6 +2211,9 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
     assert_eq!(payload["context_window"]["remaining_percentage"], 87);
     assert_eq!(payload["context_window"]["total_input_tokens"], 10);
     assert_eq!(payload["context_window"]["total_output_tokens"], 3);
+    assert_eq!(payload["task_indicator"]["text"], "Tasks 2/5");
+    assert_eq!(payload["task_indicator"]["completed"], 2);
+    assert_eq!(payload["task_indicator"]["total"], 5);
     assert_eq!(payload["version"], CODEX_CLI_VERSION);
 }
 
@@ -2285,6 +2290,76 @@ async fn token_usage_update_refreshes_custom_status_line_payload() {
         payload["context_window"]["current_usage"]["input_tokens"],
         42_000
     );
+    assert!(chat.status_line_command_pending_request_id.is_some());
+}
+
+#[tokio::test]
+async fn plan_update_refreshes_custom_status_line_task_indicator() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
+        "missing-statusline-command".to_string(),
+    ]));
+    let payload_without_tasks = chat.status_line_command_payload();
+    chat.status_line_command_last_payload = Some(payload_without_tasks);
+
+    chat.on_plan_update(UpdatePlanArgs {
+        explanation: None,
+        plan: vec![
+            PlanItemArg {
+                step: "Inspect".to_string(),
+                status: StepStatus::Completed,
+            },
+            PlanItemArg {
+                step: "Patch".to_string(),
+                status: StepStatus::InProgress,
+            },
+            PlanItemArg {
+                step: "Verify".to_string(),
+                status: StepStatus::Pending,
+            },
+        ],
+    });
+
+    let pending_payload = chat
+        .status_line_command_pending_payload
+        .as_deref()
+        .expect("plan update should request a fresh statusline payload");
+    let payload: Value = serde_json::from_str(pending_payload).expect("valid json payload");
+
+    assert_eq!(payload["task_indicator"]["text"], "Tasks 1/3");
+    assert_eq!(payload["task_indicator"]["completed"], 1);
+    assert_eq!(payload["task_indicator"]["total"], 3);
+    assert!(chat.status_line_command_pending_request_id.is_some());
+}
+
+#[tokio::test]
+async fn thread_name_update_refreshes_custom_status_line_session_name() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
+        "missing-statusline-command".to_string(),
+    ]));
+    let unnamed_payload = chat.status_line_command_payload();
+    chat.status_line_command_last_payload = Some(unnamed_payload);
+
+    chat.handle_server_notification(
+        ServerNotification::ThreadNameUpdated(
+            codex_app_server_protocol::ThreadNameUpdatedNotification {
+                thread_id: thread_id.to_string(),
+                thread_name: Some("Roadmap cleanup".to_string()),
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+
+    let pending_payload = chat
+        .status_line_command_pending_payload
+        .as_deref()
+        .expect("thread rename should request a fresh statusline payload");
+    let payload: Value = serde_json::from_str(pending_payload).expect("valid json payload");
+
+    assert_eq!(payload["session_name"], "Roadmap cleanup");
     assert!(chat.status_line_command_pending_request_id.is_some());
 }
 
