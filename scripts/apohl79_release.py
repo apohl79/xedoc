@@ -139,6 +139,13 @@ def build_release(args: argparse.Namespace) -> None:
     ensure_git_path_clean(cargo_toml)
     ensure_git_path_clean(cargo_lock)
     base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
+    repair_stale_release_lockfiles(
+        cargo=args.cargo,
+        source_root=source_root,
+        cargo_toml=cargo_toml,
+        cargo_lock=cargo_lock,
+        target=args.target,
+    )
     fork_version = fork_version_from_base(base_version, args.version_suffix)
 
     env = os.environ.copy()
@@ -264,6 +271,142 @@ def ensure_git_path_clean(path: Path) -> None:
             )
         if result.returncode != 0:
             raise RuntimeError(f"Could not check git status for {relative_path}.")
+
+
+def repair_stale_release_lockfiles(
+    *,
+    cargo: str,
+    source_root: Path,
+    cargo_toml: Path,
+    cargo_lock: Path,
+    target: str,
+) -> None:
+    expected_version = read_workspace_version(cargo_toml)
+    if expected_version == WORKSPACE_VERSION_SENTINEL:
+        return
+
+    stale_packages = stale_workspace_lock_packages(cargo_lock, expected_version)
+    if not stale_packages:
+        return
+
+    preview = ", ".join(stale_packages[:5])
+    if len(stale_packages) > 5:
+        preview = f"{preview}, ..."
+    print(
+        "Cargo.lock workspace package versions are stale; regenerating "
+        f"for {expected_version} ({preview}).",
+        flush=True,
+    )
+
+    run(
+        [
+            cargo,
+            "metadata",
+            "--manifest-path",
+            str(cargo_toml),
+            "--format-version=1",
+            "--filter-platform",
+            target,
+        ],
+        cwd=source_root / "codex-rs",
+        stdout=subprocess.DEVNULL,
+    )
+    refresh_bazel_lockfiles(source_root)
+
+    remaining_stale_packages = stale_workspace_lock_packages(
+        cargo_lock, expected_version
+    )
+    if remaining_stale_packages:
+        preview = ", ".join(remaining_stale_packages[:5])
+        if len(remaining_stale_packages) > 5:
+            preview = f"{preview}, ..."
+        raise RuntimeError(
+            "Cargo.lock still has stale workspace package versions after "
+            f"regeneration: {preview}"
+        )
+
+
+def stale_workspace_lock_packages(cargo_lock: Path, expected_version: str) -> list[str]:
+    stale_packages: list[str] = []
+    for name, version in read_path_lock_packages(cargo_lock):
+        if version != expected_version:
+            stale_packages.append(f"{name}={version}")
+    return stale_packages
+
+
+def read_path_lock_packages(cargo_lock: Path) -> list[tuple[str, str]]:
+    packages: list[tuple[str, str]] = []
+    current_name: str | None = None
+    current_version: str | None = None
+    current_has_source = False
+
+    def finish_package() -> None:
+        if (
+            current_name is not None
+            and current_version is not None
+            and not current_has_source
+        ):
+            packages.append((current_name, current_version))
+
+    with open(cargo_lock, encoding="utf-8") as fh:
+        for line in fh:
+            stripped = line.strip()
+            if stripped == "[[package]]":
+                finish_package()
+                current_name = None
+                current_version = None
+                current_has_source = False
+                continue
+            if current_name is None and current_version is None and not stripped:
+                continue
+            if (
+                current_name is None
+                and current_version is None
+                and stripped.startswith("version = ")
+            ):
+                continue
+            if stripped.startswith("name = "):
+                current_name = lock_string_value(stripped, "name")
+            elif stripped.startswith("version = "):
+                current_version = lock_string_value(stripped, "version")
+            elif stripped.startswith("source = "):
+                current_has_source = True
+
+    finish_package()
+    return packages
+
+
+def lock_string_value(line: str, key: str) -> str | None:
+    prefix = f'{key} = "'
+    if not line.startswith(prefix) or not line.endswith('"'):
+        return None
+    return line[len(prefix) : -1]
+
+
+def refresh_bazel_lockfiles(source_root: Path) -> None:
+    if not (source_root / "MODULE.bazel").is_file():
+        return
+
+    env = env_with_common_homebrew_bins()
+    run(["just", "bazel-lock-update"], cwd=source_root, env=env)
+    run(["just", "bazel-lock-check"], cwd=source_root, env=env)
+
+
+def env_with_common_homebrew_bins() -> dict[str, str]:
+    env = os.environ.copy()
+    existing_entries = env.get("PATH", "").split(os.pathsep)
+    prepend_entries = [
+        str(path)
+        for path in (Path("/opt/homebrew/bin"), Path("/usr/local/bin"))
+        if path.is_dir()
+    ]
+    env["PATH"] = os.pathsep.join(
+        [
+            *prepend_entries,
+            *[entry for entry in existing_entries if entry not in prepend_entries],
+        ]
+    )
+    return env
 
 
 def resolve_codesign_identity(explicit_identity: str | None) -> str:
@@ -509,10 +652,13 @@ def run(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     check: bool = True,
+    stdout: int | None = None,
 ) -> subprocess.CompletedProcess:
     print("+ " + shlex.join(command), flush=True)
     try:
-        return subprocess.run(command, cwd=cwd, env=env, check=check)
+        return subprocess.run(command, cwd=cwd, env=env, check=check, stdout=stdout)
+    except FileNotFoundError as err:
+        raise RuntimeError(f"Command not found: {command[0]}") from err
     except subprocess.CalledProcessError as err:
         raise RuntimeError(
             f"Command failed with exit status {err.returncode}: {shlex.join(command)}"
