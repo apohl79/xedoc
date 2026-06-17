@@ -261,6 +261,172 @@ class Apohl79ReleaseTest(unittest.TestCase):
             self.assertEqual(len(signing_commands), 1)
             self.assertIn("Developer ID Application: Example", signing_commands[0])
 
+    def test_build_release_repairs_stale_cargo_lock_before_locked_build(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml.parent.mkdir(parents=True)
+            (repo_root / "MODULE.bazel").write_text("", encoding="utf-8")
+            original_cargo_toml = "\n".join(
+                [
+                    "[workspace]",
+                    'members = ["cli"]',
+                    "",
+                    "[workspace.package]",
+                    'version = "0.141.0-alpha.5"',
+                    'edition = "2024"',
+                    "",
+                ]
+            )
+            stale_cargo_lock = "\n".join(
+                [
+                    "version = 4",
+                    "",
+                    "[[package]]",
+                    'name = "codex-cli"',
+                    'version = "0.0.0"',
+                    "",
+                    "[[package]]",
+                    'name = "codex-core"',
+                    'version = "0.0.0"',
+                    "",
+                    "[[package]]",
+                    'name = "external"',
+                    'version = "1.2.3"',
+                    'source = "registry+https://github.com/rust-lang/crates.io-index"',
+                    "",
+                ]
+            )
+            repaired_cargo_lock = stale_cargo_lock.replace(
+                'version = "0.0.0"', 'version = "0.141.0-alpha.5"'
+            )
+            cargo_toml.write_text(original_cargo_toml, encoding="utf-8")
+            cargo_lock.write_text(stale_cargo_lock, encoding="utf-8")
+            (repo_root / "scripts").mkdir()
+            (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
+            target_dir = repo_root / "target"
+            commands = []
+            lock_snapshots = {}
+
+            def fake_run(
+                command: list[str],
+                *,
+                cwd: Path | None = None,
+                env: dict[str, str] | None = None,
+                check: bool = True,
+                stdout: int | None = None,
+            ) -> subprocess.CompletedProcess:
+                commands.append((command, cwd, env, check, stdout))
+                if command[:2] == ["cargo", "metadata"]:
+                    self.assertEqual(cwd, repo_root / "codex-rs")
+                    self.assertIn("--filter-platform", command)
+                    self.assertEqual(stdout, subprocess.DEVNULL)
+                    cargo_lock.write_text(repaired_cargo_lock, encoding="utf-8")
+                if command[:2] == ["cargo", "build"]:
+                    lock_snapshots["cargo_build"] = cargo_lock.read_text(
+                        encoding="utf-8"
+                    )
+                    entrypoint = (
+                        target_dir / "aarch64-apple-darwin" / "release" / "codex"
+                    )
+                    entrypoint.parent.mkdir(parents=True)
+                    entrypoint.write_text("codex", encoding="utf-8")
+                    entrypoint.chmod(0o755)
+                if command[:1] == [sys.executable]:
+                    lock_snapshots["package"] = cargo_lock.read_text(encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0)
+
+            args = argparse.Namespace(
+                archive_output=[],
+                cargo="cargo",
+                codesign_identity=None,
+                force=True,
+                keep_worktree=False,
+                output_dir=Path("dist/apohl79"),
+                package_dir=None,
+                ref="main-fork",
+                target="aarch64-apple-darwin",
+                version_suffix="apohl79",
+            )
+
+            with (
+                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(
+                    apohl79_release,
+                    "ensure_current_checkout_matches_ref",
+                    return_value=None,
+                ),
+                mock.patch.object(
+                    apohl79_release, "ensure_git_path_clean", return_value=None
+                ),
+                mock.patch.object(
+                    apohl79_release,
+                    "resolve_codesign_identity",
+                    return_value="Developer ID Application: Example",
+                ),
+                mock.patch.object(
+                    apohl79_release,
+                    "default_cargo_build_jobs",
+                    return_value=4,
+                ),
+                mock.patch.object(apohl79_release, "run", side_effect=fake_run),
+                mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
+            ):
+                apohl79_release.build_release(args)
+
+            self.assertEqual(
+                cargo_lock.read_text(encoding="utf-8"), repaired_cargo_lock
+            )
+            self.assertEqual(
+                lock_snapshots,
+                {"cargo_build": repaired_cargo_lock, "package": repaired_cargo_lock},
+            )
+            command_names = [command[:2] for command, *_ in commands]
+            self.assertLess(
+                command_names.index(["cargo", "metadata"]),
+                command_names.index(["cargo", "build"]),
+            )
+            self.assertLess(
+                command_names.index(["just", "bazel-lock-update"]),
+                command_names.index(["cargo", "build"]),
+            )
+            self.assertLess(
+                command_names.index(["just", "bazel-lock-check"]),
+                command_names.index(["cargo", "build"]),
+            )
+
+    def test_stale_workspace_lock_packages_ignores_registry_packages(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cargo_lock = Path(temp_dir) / "Cargo.lock"
+            cargo_lock.write_text(
+                "\n".join(
+                    [
+                        "version = 4",
+                        "",
+                        "[[package]]",
+                        'name = "codex-cli"',
+                        'version = "0.0.0"',
+                        "",
+                        "[[package]]",
+                        'name = "external"',
+                        'version = "1.2.3"',
+                        'source = "registry+https://github.com/rust-lang/crates.io-index"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                apohl79_release.stale_workspace_lock_packages(
+                    cargo_lock, "0.141.0-alpha.5"
+                ),
+                ["codex-cli=0.0.0"],
+            )
+
     def test_build_release_leaves_manifests_unchanged_after_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
