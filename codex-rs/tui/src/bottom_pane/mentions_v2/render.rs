@@ -324,7 +324,7 @@ mod tests {
             primary_text_width(&row),
         );
 
-        assert_eq!(line.spans[0].style.fg, Some(Color::Cyan));
+        assert_eq!(line.spans[1].style.fg, Some(Color::Cyan));
     }
 
     #[test]
