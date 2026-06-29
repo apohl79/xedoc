@@ -8,7 +8,6 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Widget;
 
-use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use super::candidate::MentionType;
 use super::candidate::SearchResult;
 use super::candidate::Selection;
@@ -16,7 +15,9 @@ use super::footer::render_footer;
 use super::search_mode::SearchMode;
 use crate::bottom_pane::popup_consts::MAX_POPUP_ROWS;
 use crate::bottom_pane::scroll_state::ScrollState;
+use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 
+#[allow(clippy::disallowed_methods)]
 const SELECTED_ROW_BG: Color = Color::Rgb(55, 60, 67);
 
 pub(super) fn render_popup(

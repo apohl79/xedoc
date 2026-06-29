@@ -9,14 +9,14 @@ instead of maintaining a second feature list.
 
 Comparison snapshot:
 
-- Fork branch: `main-fork` at `854a5d312d`
-- Upstream baseline: `upstream/main` at `4808c162ee`
-- Merge base: `a72433d560`
+- Fork branch: `main-fork` at `0c8e88c8ee`
+- Upstream baseline: `rust-v0.142.4` at `d0fd96663e`
+- Merge base: `d0fd96663e`
 - Snapshot date: 2026-06-29
 - Refresh commands:
-  - `git fetch upstream main`
-  - `git log --cherry-pick --right-only upstream/main...main-fork`
-  - `git diff upstream/main...main-fork`
+  - `git fetch upstream refs/tags/rust-v0.142.4:refs/tags/rust-v0.142.4`
+  - `git log --cherry-pick --right-only rust-v0.142.4...main-fork`
+  - `git diff rust-v0.142.4...main-fork`
 
 The inventory below lists behavior that is present on the fork and not in the
 upstream baseline above. It does not repeat upstream-only changes.
@@ -142,10 +142,10 @@ Primary files:
 - Added default Cargo job limiting for apohl79 release builds.
 - Added automatic apohl79 release version detection.
 - Added release lockfile repair for stale workspace package versions.
-- Synced generated files and TUI snapshots after the 0.142.0 fork rebase.
+- Synced generated files and TUI snapshots after the 0.142.4 fork rebase.
 - Added `.gitleaksignore` entries for upstream fixture secrets that can trip
   local scans.
-- Pinned the fork workspace version to `0.142.0` for the fork release line.
+- Pinned the fork workspace version to `0.142.4` for the fork release line.
 
 ## Notes For Maintainers
 

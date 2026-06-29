@@ -23,6 +23,11 @@ stacked `feature/*` and `fix/*` branches.
   - Stop for confirmation if the remote names or URLs differ.
 - Treat local `main` as the exact upstream release base after it is updated.
   Do not push `main` to `origin` unless the user separately asks for that.
+- Prefer fast-forwarding local `main` to the requested upstream tag. If local
+  `main` points exactly at an older upstream release tag and has no local
+  changes or commits, a backup-protected ref move to the requested tag is
+  allowed after explicit user confirmation. Do not use `upstream/main` as the
+  base for a release-tag upgrade.
 - Discover local upgrade branches from `refs/heads/feature` and
   `refs/heads/fix`, then show the list and application order before rewriting
   branches. If dependencies are unclear, ask for the order.
@@ -59,7 +64,7 @@ stacked `feature/*` and `fix/*` branches.
 
    ```bash
    tag=<requested-upstream-tag>
-   git fetch upstream "refs/tags/$tag:refs/tags/$tag"
+   git fetch upstream "refs/tags/${tag}:refs/tags/${tag}"
    git rev-parse --verify "$tag^{commit}"
    ```
 
@@ -106,7 +111,7 @@ stacked `feature/*` and `fix/*` branches.
    done
    ```
 
-6. Update local `main` to the upstream tag with a fast-forward only:
+6. Update local `main` to the upstream tag, preferring a fast-forward:
 
    ```bash
    git switch main
@@ -114,8 +119,29 @@ stacked `feature/*` and `fix/*` branches.
    git status --short --branch
    ```
 
-   Stop if `main` cannot fast-forward to the tag. Report the divergence instead
-   of resetting it.
+   If `main` cannot fast-forward to the tag, do not reset it. First verify
+   whether `main` is exactly an older upstream release tag with no local
+   changes:
+
+   ```bash
+   git tag --points-at main
+   git diff --stat "$(git tag --points-at main | head -n1)"..main
+   git log --cherry-pick --right-only --oneline \
+     "$(git tag --points-at main | head -n1)"...main
+   git log --left-right --cherry-pick --oneline main..."$tag"
+   ```
+
+   If `main` has no diff and no right-only commits relative to the older
+   release tag, ask for confirmation. After backup refs have been created, move
+   only the local `main` ref to the requested release commit:
+
+   ```bash
+   git update-ref refs/heads/main "$tag^{commit}"
+   ```
+
+   Stop and report the divergence if local `main` contains any non-upstream
+   commits, the previous release tag cannot be verified, or the user does not
+   confirm the ref move.
 
 7. Update every feature/fix branch onto the new `main`:
 
