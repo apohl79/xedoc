@@ -85,6 +85,8 @@ The fork adds release helpers for building apohl79-branded packages from
 - `scripts/build_apohl79_release.py` and
   `scripts/build_apohl79_release.sh` provide release entry points.
 - `scripts/apohl79_release.py` contains the shared release implementation.
+- `scripts/install/install-apohl79.sh` installs the fork binary release for the
+  current `rust-v*-apohl79` tag.
 - The default release ref is `main-fork`.
 - The default fork suffix is `apohl79`.
 - The default output directory is `dist/apohl79`.
@@ -101,6 +103,9 @@ The fork adds release helpers for building apohl79-branded packages from
   checkout and `codex-rs/target` as the default target directory.
 - The helper can auto-repair stale workspace package versions in
   `codex-rs/Cargo.lock` before a locked release build.
+- The installer targets GitHub releases in `apohl79/codex`, resolves the
+  current fork tag from a checked-out tag or `[workspace.package].version`, and
+  verifies the uploaded asset SHA-256 before installing.
 - Release helper tests cover version detection, signing validation, Cargo job
   limiting, target-dir behavior, and lockfile repair.
 
@@ -109,6 +114,7 @@ Primary files:
 - `scripts/apohl79_release.py`
 - `scripts/build_apohl79_release.py`
 - `scripts/build_apohl79_release.sh`
+- `scripts/install/install-apohl79.sh`
 - `scripts/test_apohl79_release.py`
 - `scripts/codex_package/cli.py`
 
