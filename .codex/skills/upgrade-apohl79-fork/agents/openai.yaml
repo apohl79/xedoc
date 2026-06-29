@@ -1,4 +1,4 @@
 interface:
   display_name: "Upgrade apohl79 Fork"
-  short_description: "Sync local fork branches from upstream tags"
-  default_prompt: "Use $upgrade-apohl79-fork to update my apohl79 Codex fork from an upstream release tag."
+  short_description: "Upgrade fork using README inventory"
+  default_prompt: "Use $upgrade-apohl79-fork to update my apohl79 Codex fork from an upstream release tag while preserving the README.fork.md feature/fix inventory."

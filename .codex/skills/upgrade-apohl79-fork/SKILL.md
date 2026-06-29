@@ -1,6 +1,6 @@
 ---
 name: upgrade-apohl79-fork
-description: Upgrade the local apohl79 Codex fork from an OpenAI upstream release tag. Use when asked to pull a requested openai/codex tag onto local main, rebase or merge local feature/* and fix/* branches onto that main, rebase main-fork onto upstream main, re-apply the feature/fix branches, and push the updated feature/fix and main-fork branches to apohl79.
+description: Upgrade the local apohl79 Codex fork from an OpenAI upstream release tag while preserving fork-only features and fixes from README.fork.md. Use when asked to pull a requested openai/codex tag onto local main, rebase or merge local feature/* and fix/* branches onto that main, rebase main-fork onto upstream main, re-apply the feature/fix branches, verify the README.fork.md inventory, and push the updated feature/fix and main-fork branches to apohl79.
 ---
 
 # Upgrade Apohl79 Fork
@@ -8,8 +8,8 @@ description: Upgrade the local apohl79 Codex fork from an OpenAI upstream releas
 ## Overview
 
 Use this workflow to advance the apohl79 fork to a requested upstream Codex
-release tag while preserving fork-local work and stacked `feature/*` and
-`fix/*` branches.
+release tag while preserving fork-local features, fixes, release tooling, and
+stacked `feature/*` and `fix/*` branches.
 
 ## Guardrails
 
@@ -33,6 +33,14 @@ release tag while preserving fork-local work and stacked `feature/*` and
   it.
 - Use `git push --force-with-lease`, never `git push --force`, for rebased
   branches.
+- Treat `README.fork.md` as the single source of truth for fork-only features
+  and fixes. Do not keep a second feature list in this skill.
+- Preserve every fork feature and fix listed in `README.fork.md`. Do not drop an
+  item just because upstream changed nearby code. If upstream now implements an
+  equivalent feature, verify the equivalent behavior and update `README.fork.md`
+  to explain that it is no longer fork-only.
+- Keep `README.fork.md` current when the upgrade changes which features or fixes
+  are fork-only.
 - Do not delete branches or run `git reset --hard` unless the user explicitly
   asks for that destructive operation.
 
@@ -55,7 +63,28 @@ release tag while preserving fork-local work and stacked `feature/*` and
    git rev-parse --verify "$tag^{commit}"
    ```
 
-3. Discover the local feature/fix branches:
+3. Establish the fork preservation baseline before rewriting branches:
+
+   ```bash
+   git switch main-fork
+   test -f README.fork.md
+   sed -n '1,240p' README.fork.md
+   git log --cherry-pick --right-only --oneline "$tag"...main-fork
+   git diff --name-status "$tag"...main-fork -- \
+     README.fork.md \
+     .gitleaksignore \
+     .codex/skills/upgrade-apohl79-fork \
+     codex-rs/config/src \
+     codex-rs/tui/src \
+     scripts
+   ```
+
+   Record the current fork-only feature/fix inventory from `README.fork.md`.
+   Use the log and focused diff as evidence for conflict resolution, not as a
+   second source of truth. Stop if `README.fork.md` is missing; recreate or
+   recover it from git evidence before rewriting branches.
+
+4. Discover the local feature/fix branches:
 
    ```bash
    feature_fix_branches=$(git for-each-ref \
@@ -67,7 +96,7 @@ release tag while preserving fork-local work and stacked `feature/*` and
    Confirm the branch set and order before continuing unless the user already
    supplied the exact ordered branch list.
 
-4. Create backup refs for every branch that can be rewritten:
+5. Create backup refs for every branch that can be rewritten:
 
    ```bash
    timestamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -77,7 +106,7 @@ release tag while preserving fork-local work and stacked `feature/*` and
    done
    ```
 
-5. Update local `main` to the upstream tag with a fast-forward only:
+6. Update local `main` to the upstream tag with a fast-forward only:
 
    ```bash
    git switch main
@@ -88,7 +117,7 @@ release tag while preserving fork-local work and stacked `feature/*` and
    Stop if `main` cannot fast-forward to the tag. Report the divergence instead
    of resetting it.
 
-6. Update every feature/fix branch onto the new `main`:
+7. Update every feature/fix branch onto the new `main`:
 
    ```bash
    for branch in $feature_fix_branches; do
@@ -102,18 +131,22 @@ release tag while preserving fork-local work and stacked `feature/*` and
    If the conflict cannot be resolved confidently, run `git rebase --abort`,
    leave the backup ref intact, and report the blocked branch.
 
-7. Rebase `main-fork` onto the updated `main`:
+8. Rebase `main-fork` onto the updated `main`:
 
    ```bash
    git switch main-fork
    git rebase main
    ```
 
-   Resolve conflicts as fork-local changes. If Rust code, tests, schema files,
-   or dependencies are changed during conflict resolution, follow the repository
+   Resolve conflicts by preserving the fork-only features and fixes listed in
+   `README.fork.md`. Do not accept upstream wholesale when doing so removes fork
+   behavior. If upstream changed the same feature, compare behavior instead of
+   only comparing files; keep the fork behavior unless upstream is verified to
+   provide an equal or better equivalent. If Rust code, tests, schema files, or
+   dependencies are changed during conflict resolution, follow the repository
    `just` validation rules for the affected crate or workspace.
 
-8. Re-apply the feature/fix branches onto `main-fork` in the confirmed order:
+9. Re-apply the feature/fix branches onto `main-fork` in the confirmed order:
 
    ```bash
    git switch main-fork
@@ -123,21 +156,70 @@ release tag while preserving fork-local work and stacked `feature/*` and
    ```
 
    Resolve each merge conflict before moving to the next branch. Keep the final
-   `main-fork` history readable and report any branch that was already fully
-   contained.
+   `main-fork` history readable. After each merge, re-check the touched paths
+   against the `README.fork.md` inventory before continuing and report any
+   branch that was already fully contained.
 
-9. Verify the final branch state:
+10. Verify the final branch state:
 
    ```bash
    git status --short --branch
    git log --oneline --decorate --graph --max-count=30 \
      main main-fork $feature_fix_branches
+   git diff --name-status main...main-fork -- \
+     README.fork.md \
+     .gitleaksignore \
+     .codex/skills/upgrade-apohl79-fork \
+     codex-rs/config/src \
+     codex-rs/tui/src \
+     scripts
    ```
 
    Confirm that `main-fork` contains the updated `main` base and the current
-   feature/fix branch heads.
+   feature/fix branch heads. Confirm that every item listed in `README.fork.md`
+   is still present or that `README.fork.md` explains why upstream now covers it.
+   Derive any source searches from the paths and behavior described in
+   `README.fork.md`; do not add a separate hardcoded feature checklist to this
+   skill.
 
-10. Push the updated feature/fix branches and `main-fork` to apohl79:
+11. Run targeted validation for changed fork areas:
+
+    - For TUI `@` completion, popup rendering, status line, or TUI snapshots,
+      from `codex-rs`:
+
+      ```bash
+      cd codex-rs
+      just fmt
+      just test -p codex-tui
+      cargo insta pending-snapshots -p codex-tui
+      ```
+
+      Review and accept intended snapshot changes before pushing.
+
+    - For release helper changes, from the repository root:
+
+      ```bash
+      python3 scripts/test_apohl79_release.py
+      ```
+
+    - For config schema changes, from `codex-rs`:
+
+      ```bash
+      cd codex-rs
+      just write-config-schema
+      ```
+
+    - For dependency changes, from the repository root:
+
+      ```bash
+      just bazel-lock-update
+      just bazel-lock-check
+      ```
+
+    Run any additional repository-required checks for files changed during
+    conflict resolution.
+
+12. Push the updated feature/fix branches and `main-fork` to apohl79:
 
     ```bash
     git push --force-with-lease origin $feature_fix_branches main-fork
@@ -168,5 +250,6 @@ release tag while preserving fork-local work and stacked `feature/*` and
 ## Reporting
 
 Report the requested tag, the updated branch list, the backup ref timestamp,
-the validation performed, and the push result. Distinguish local-only updates
-from updates already pushed to `origin`.
+the `README.fork.md` inventory result, any `README.fork.md` updates, the
+validation performed, and the push result. Distinguish local-only updates from
+updates already pushed to `origin`.
