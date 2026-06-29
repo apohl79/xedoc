@@ -1,0 +1,4 @@
+interface:
+  display_name: "List apohl79 Fork Upstream Changes"
+  short_description: "List fork to stable upstream changes"
+  default_prompt: "Use $list-apohl79-fork-upstream-changes to list every upstream change between this fork version and the latest stable upstream OpenAI Codex release."
