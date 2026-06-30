@@ -141,7 +141,7 @@ impl FileSearchManager {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn spawn_disk_completion(
     state: Arc<Mutex<SearchState>>,
     app_tx: AppEventSender,

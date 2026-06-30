@@ -108,6 +108,11 @@ where
     if let Some(reader) = reader {
         let mut limited = reader.take(cap);
         let _ = limited.read_to_end(&mut buf).await;
+        // Drain any output beyond the cap (discarding it) so the child can
+        // finish writing and exit instead of blocking on a full pipe; the
+        // surrounding timeout bounds a child that never stops.
+        let reader = limited.into_inner();
+        let _ = tokio::io::copy(reader, &mut tokio::io::sink()).await;
     }
     buf
 }
