@@ -526,9 +526,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "resolve_codesign_identity",
                     return_value="Developer ID Application: Example",
                 ),
-                mock.patch.object(
-                    apohl79_release, "git_commit", return_value="c" * 40
-                ),
+                mock.patch.object(apohl79_release, "git_commit", return_value="c" * 40),
                 mock.patch.object(
                     apohl79_release,
                     "github_release_env",
