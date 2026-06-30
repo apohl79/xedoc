@@ -427,6 +427,103 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 ["codex-cli=0.0.0"],
             )
 
+    def test_repair_stale_release_lockfiles_raises_when_still_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_root = Path(temp_dir)
+            cargo_toml = source_root / "codex-rs" / "Cargo.toml"
+            cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+            cargo_toml.parent.mkdir(parents=True)
+            cargo_toml.write_text(
+                '[workspace.package]\nversion = "0.141.0-alpha.5"\n',
+                encoding="utf-8",
+            )
+            cargo_lock.write_text(
+                "\n".join(
+                    [
+                        "version = 4",
+                        "",
+                        "[[package]]",
+                        'name = "codex-cli"',
+                        'version = "0.0.0"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(apohl79_release, "run", return_value=None),
+                self.assertRaises(RuntimeError) as ctx,
+            ):
+                apohl79_release.repair_stale_release_lockfiles(
+                    cargo="cargo",
+                    source_root=source_root,
+                    cargo_toml=cargo_toml,
+                    cargo_lock=cargo_lock,
+                    target="aarch64-apple-darwin",
+                )
+
+            self.assertIn("codex-cli=0.0.0", str(ctx.exception))
+
+    def test_repair_stale_release_lockfiles_no_op_when_lock_in_sync(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_root = Path(temp_dir)
+            cargo_toml = source_root / "codex-rs" / "Cargo.toml"
+            cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+            cargo_toml.parent.mkdir(parents=True)
+            cargo_toml.write_text(
+                '[workspace.package]\nversion = "0.141.0-alpha.5"\n',
+                encoding="utf-8",
+            )
+            cargo_lock.write_text(
+                "\n".join(
+                    [
+                        "version = 4",
+                        "",
+                        "[[package]]",
+                        'name = "codex-cli"',
+                        'version = "0.141.0-alpha.5"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(apohl79_release, "run") as run_mock:
+                apohl79_release.repair_stale_release_lockfiles(
+                    cargo="cargo",
+                    source_root=source_root,
+                    cargo_toml=cargo_toml,
+                    cargo_lock=cargo_lock,
+                    target="aarch64-apple-darwin",
+                )
+
+            run_mock.assert_not_called()
+
+    def test_repair_stale_release_lockfiles_skips_sentinel_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_root = Path(temp_dir)
+            cargo_toml = source_root / "codex-rs" / "Cargo.toml"
+            cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+            cargo_toml.parent.mkdir(parents=True)
+            cargo_toml.write_text(
+                "[workspace.package]\n"
+                f'version = "{apohl79_release.WORKSPACE_VERSION_SENTINEL}"\n',
+                encoding="utf-8",
+            )
+            cargo_lock.write_text("version = 4\n", encoding="utf-8")
+
+            with mock.patch.object(apohl79_release, "run") as run_mock:
+                apohl79_release.repair_stale_release_lockfiles(
+                    cargo="cargo",
+                    source_root=source_root,
+                    cargo_toml=cargo_toml,
+                    cargo_lock=cargo_lock,
+                    target="aarch64-apple-darwin",
+                )
+
+            run_mock.assert_not_called()
+
     def test_build_release_leaves_manifests_unchanged_after_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)

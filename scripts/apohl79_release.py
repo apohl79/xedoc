@@ -403,7 +403,11 @@ def env_with_common_homebrew_bins() -> dict[str, str]:
     env["PATH"] = os.pathsep.join(
         [
             *prepend_entries,
-            *[entry for entry in existing_entries if entry not in prepend_entries],
+            *[
+                entry
+                for entry in existing_entries
+                if entry and entry not in prepend_entries
+            ],
         ]
     )
     return env
@@ -533,6 +537,7 @@ def resolve_base_version(
             ],
             cwd=REPO_ROOT,
             text=True,
+            timeout=60,
         )
     return latest_release_version_from_ls_remote(ls_remote_stdout)
 
