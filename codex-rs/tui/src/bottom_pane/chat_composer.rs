@@ -2203,9 +2203,19 @@ impl ChatComposer {
         }
     }
 
+    /// Expands a leading `~/` to the home directory for filesystem access.
+    fn expand_user_path(path: &str) -> PathBuf {
+        if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix(r"~\"))
+            && let Some(home) = dirs::home_dir()
+        {
+            return home.join(rest);
+        }
+        PathBuf::from(path)
+    }
+
     fn insert_selected_file_path(&mut self, token_range: Range<usize>, selected_path: &str) {
         if Self::is_image_path(selected_path) {
-            let path_buf = PathBuf::from(selected_path);
+            let path_buf = Self::expand_user_path(selected_path);
             match image::image_dimensions(&path_buf) {
                 Ok((width, height)) => {
                     tracing::debug!("selected image dimensions={}x{}", width, height);
