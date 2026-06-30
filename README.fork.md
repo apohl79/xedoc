@@ -1,27 +1,16 @@
 # apohl79 Codex Fork Notes
 
-This branch is the `apohl79/codex` fork branch `main-fork`. It tracks
-OpenAI Codex while carrying fork-local features, release tooling, and fixes.
+`main-fork` is the canonical `apohl79/codex` fork branch. It tracks OpenAI
+Codex while carrying fork-local features, release tooling, and fixes.
 
 This file is the single source of truth for the fork feature/fix inventory used
 by `.codex/skills/upgrade-apohl79-fork`. The upgrade skill must read this file
-instead of maintaining a second feature list.
-
-Comparison snapshot:
-
-- Fork branch: `main-fork` at `854a5d312d`
-- Upstream baseline: `upstream/main` at `4808c162ee`
-- Merge base: `a72433d560`
-- Snapshot date: 2026-06-29
-- Refresh commands:
-  - `git fetch upstream main`
-  - `git log --cherry-pick --right-only upstream/main...main-fork`
-  - `git diff upstream/main...main-fork`
+instead of maintaining a second feature list or a durable feature-branch list.
 
 The inventory below lists behavior that is present on the fork and not in the
-upstream baseline above. It does not repeat upstream-only changes.
+upstream release baseline being compared during a fork upgrade.
 
-## Fork-Only Features
+## Fork-Only Inventory
 
 ### TUI `@` File-Path Completion
 
@@ -40,6 +29,7 @@ search path.
   result set is larger than the rendered window.
 - The selected row keeps the `> ` gutter marker and uses a dark gray background:
   `Color::Rgb(55, 60, 67)`.
+- Snapshot coverage verifies selected-row rendering.
 
 Primary files:
 
@@ -68,14 +58,86 @@ external command mode.
   session name, task indicator, context-window usage, token usage, git/project
   details, model/reasoning settings, approval and sandbox status, rate-limit
   information, and current status text.
+- Custom status-line context usage aligns with `/status` output.
+- The built-in status line is hidden while a custom command is pending so stale
+  built-in content does not flash as a fallback.
+- Custom command failures and status-line errors are surfaced instead of being
+  silently replaced.
+- Status-line output is preserved across TUI clear/rebuild flows when the
+  configured command has not changed.
 
 Primary files:
 
 - `codex-rs/config/src/types.rs`
 - `codex-rs/tui/src/bottom_pane/status_line_setup.rs`
+- `codex-rs/tui/src/chatwidget/status_controls.rs`
 - `codex-rs/tui/src/chatwidget/status.rs`
 - `codex-rs/tui/src/chatwidget/status_surfaces.rs`
 - `codex-rs/tui/src/status_line_command.rs`
+
+### TUI Session Name Composer Label
+
+The fork shows the current session name in the composer when a name is set.
+
+- Named or renamed threads render the session name at the top-right of the user
+  entry box.
+- Empty or whitespace-only names are hidden.
+- Long names are truncated with an ellipsis to preserve composer layout.
+- Session-load and thread-name-update paths both keep the composer label in
+  sync.
+- The composer label keeps the dedicated session-name color and does not inherit
+  the dim active-thread footer color.
+- Snapshot coverage verifies session-load rendering, rename rendering, and
+  truncation.
+
+Primary files:
+
+- `codex-rs/tui/src/bottom_pane/chat_composer.rs`
+- `codex-rs/tui/src/bottom_pane/mod.rs`
+- `codex-rs/tui/src/chatwidget/session_flow.rs`
+- `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
+
+### Automatic Session Naming
+
+The fork can generate short session names automatically from the conversation
+without changing the visible model response.
+
+- Generated names are capped at 32 characters.
+- The side-band naming task runs after completed turns and can refresh a
+  generated name as the conversation changes.
+- App-server sessions can request a generated name mid-turn from early
+  streaming assistant text.
+- Manual `/rename` names are treated as explicit user overrides and are not
+  overwritten by generated names.
+- Generated names persist through the same thread metadata path as manual
+  names, so session-name rendering, status-line payloads, history, and resume
+  views consume them uniformly.
+- Thread title metadata records whether a name is derived, generated, or set by
+  the user, and app-server `thread/name/updated` notifications expose that
+  source.
+- The `auto_session_name` setting defaults to enabled and can be toggled with
+  `/rename --auto on|off`.
+- The optional `model_fast` setting can select the cheaper side-band model for
+  non-OpenAI providers. OpenAI providers prefer an available `mini` model.
+- Unsafe display characters are stripped from generated names, and
+  secret-shaped generated names fall back to a generic safe label.
+- Generated names preserve whole words, trim repeated title prefixes, handle
+  malformed model output, and accumulate both final message items and
+  `response.output_text.delta` chunks.
+- Integration and snapshot coverage verify generated updates, manual override
+  behavior, fork behavior, setting persistence, and composer rendering.
+
+Primary files:
+
+- `codex-rs/core/src/session/session_name.rs`
+- `codex-rs/app-server/src/auto_session_name.rs`
+- `codex-rs/app-server/src/thread_state.rs`
+- `codex-rs/app-server-protocol/src/protocol/v2/thread.rs`
+- `codex-rs/state/migrations/0040_threads_title_source.sql`
+- `codex-rs/state/src/model/thread_metadata.rs`
+- `codex-rs/thread-store/src/local/update_thread_metadata.rs`
+- `codex-rs/tui/src/chatwidget/slash_dispatch.rs`
+- `codex-rs/tui/src/config_update.rs`
 
 ### Persistent Active Task List
 
@@ -97,6 +159,137 @@ Primary files:
 - `codex-rs/tui/src/chatwidget/turn_runtime.rs`
 - `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
 
+### Active Agent and Thread Context UI
+
+The fork keeps multi-agent and side-thread context visible without replacing the
+custom status line.
+
+- Active child agents are listed above the active task list in the bottom pane.
+- Each active-agent row shows the task name, elapsed runtime, provider/model
+  metadata when available, and token usage when available.
+- The active-agent list caps visible rows and summarizes overflow.
+- Agent metadata comes from child-agent activity and thread session state. It
+  does not fall back to the parent session provider/model.
+- The footer renders active thread context on the right side, including side
+  thread names and active-agent labels.
+- Active thread labels are dimmed right-side context, not status-line segments.
+- Goal status and other right-side indicators remain visible alongside the
+  active thread label when space allows.
+- Active agent lifecycle state is updated on spawn, resume, interrupt, message,
+  and completion paths.
+
+Primary files:
+
+- `codex-rs/protocol/src/protocol.rs`
+- `codex-rs/app-server-protocol/src/protocol/event_mapping.rs`
+- `codex-rs/tui/src/app/agent_navigation.rs`
+- `codex-rs/tui/src/app/session_lifecycle.rs`
+- `codex-rs/tui/src/app/thread_routing.rs`
+- `codex-rs/tui/src/bottom_pane/active_agent_list.rs`
+- `codex-rs/tui/src/bottom_pane/footer.rs`
+- `codex-rs/tui/src/bottom_pane/mod.rs`
+- `codex-rs/tui/src/multi_agents.rs`
+
+### Hook Output Visibility
+
+The fork makes hook transcript output configurable while keeping the default TUI
+quiet.
+
+- `show_hook_output` defaults to `false`.
+- Successful hooks with no visible output stay hidden after completion.
+- Long-running hooks reveal only after a short delay to avoid viewport flashes.
+- Quiet successful hooks linger briefly if they became visible.
+- Failures, blocked/stopped hooks, and hooks with persistent output remain in
+  history.
+- Setting `show_hook_output = true` renders completed hook output entries.
+
+Primary files:
+
+- `codex-rs/config/src/config_toml.rs`
+- `codex-rs/core/src/config/mod.rs`
+- `codex-rs/core/config.schema.json`
+- `codex-rs/tui/src/chatwidget/hook_lifecycle.rs`
+- `codex-rs/tui/src/history_cell/hook_cell.rs`
+
+### Multi-Provider Agent Message Delivery
+
+The fork carries fixes for mixed-provider multi-agent sessions.
+
+- Non-OpenAI parent providers send `spawn_agent`, `send_message`, and
+  `followup_task` traffic as plaintext `agent_message` envelopes.
+- OpenAI parent providers keep using encrypted content for agent-message tool
+  traffic.
+- Mixed OpenAI-to-Claude delivery avoids passing unreadable encrypted payloads
+  to non-OpenAI child agents when plaintext is required.
+- Agent-message serialization includes task name, sender, and payload headers
+  for plaintext envelopes.
+- Tests cover OpenAI encrypted delivery and non-OpenAI plaintext delivery.
+
+Primary files:
+
+- `codex-rs/core/src/agent/control.rs`
+- `codex-rs/core/src/tools/handlers/multi_agents_v2.rs`
+- `codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs`
+- `codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs`
+- `codex-rs/core/tests/suite/subagent_notifications.rs`
+
+### Inter-Agent Trace Diagnostics
+
+The fork adds opt-in API tracing for debugging inter-agent request and stream
+payload shape without writing full sensitive payloads by default.
+
+- Setting `CODEX_INTER_AGENT_TRACE` to a file path enables JSONL trace output.
+- The trace records request, websocket request, and stream-event summaries.
+- Trace entries include request method/path, top-level body keys, input length,
+  agent-message summaries, encrypted-content summaries, item identifiers, and
+  compact string previews.
+- Long string values are summarized rather than fully copied.
+- The trace path is append-only for the current process.
+
+Primary files:
+
+- `codex-rs/codex-api/src/inter_agent_trace.rs`
+- `codex-rs/codex-api/src/endpoint/responses_websocket.rs`
+- `codex-rs/codex-api/src/endpoint/session.rs`
+- `codex-rs/codex-api/src/sse/responses.rs`
+
+### Provider Stream and Error Handling Fixes
+
+The fork includes provider-compatibility fixes that should be preserved across
+upstream rebases.
+
+- Responses-provider streams preserve streamed assistant text even when a
+  provider closes without a final completed response event.
+- Claude prompt-too-long errors are mapped to the standard context-window
+  exhaustion path so the TUI and core recovery behavior treat them consistently.
+
+Primary files:
+
+- `codex-rs/core/src/session/turn.rs`
+- `codex-rs/core/tests/suite/stream_no_completed.rs`
+- `codex-rs/codex-api/src/api_bridge.rs`
+- `codex-rs/codex-api/src/api_bridge_tests.rs`
+
+### Queued Input Recall Cleanup
+
+The fork fixes TUI prompt-history recall when input has already been queued or
+sent as a pending steer.
+
+- Recalling a queued message removes the matching queued input instead of
+  leaving it to be submitted later.
+- Recalling a pending steer removes the matching pending steer.
+- Stale pending-steer operations are detected and ignored after the matching
+  input has been recalled.
+- Recall matching handles text, image attachments, and paste placeholders.
+
+Primary files:
+
+- `codex-rs/tui/src/app_command.rs`
+- `codex-rs/tui/src/chatwidget/input_queue.rs`
+- `codex-rs/tui/src/chatwidget/input_restore.rs`
+- `codex-rs/tui/src/chatwidget/input_submission.rs`
+- `codex-rs/tui/src/chatwidget/user_messages.rs`
+
 ### apohl79 Release Packaging
 
 The fork adds release helpers for building apohl79-branded packages from
@@ -117,21 +310,34 @@ The fork adds release helpers for building apohl79-branded packages from
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
 - The helper builds `codex-cli` with Cargo `--locked`, signs the binary, verifies
-  the signature, and then invokes the Codex package builder with an explicit
+  the signature, and invokes the Codex package builder with an explicit
   entrypoint and version.
 - Release builds preserve incremental Cargo artifacts by using the current
   checkout and `codex-rs/target` as the default target directory.
+- The helper limits default Cargo parallelism while respecting explicit caller
+  settings through `--cargo-build-jobs`, `APOHL79_CARGO_BUILD_JOBS`, or Cargo's
+  native `CARGO_BUILD_JOBS`.
 - The helper can auto-repair stale workspace package versions in
   `codex-rs/Cargo.lock` before a locked release build.
+- `scripts/apohl79_build_number.txt` stores the monotonically increasing fork
+  build number. Fork release versions use
+  `[codex-version]-apohl79-[build-number]` and GitHub release tags use
+  `rust-v[codex-version]-apohl79-[build-number]`.
 - The installer targets GitHub releases in `apohl79/codex`, resolves the
-  current fork tag from a checked-out tag or `[workspace.package].version`, and
-  verifies the uploaded asset SHA-256 before installing.
-- Release helper tests cover version detection, signing validation, Cargo job
-  limiting, target-dir behavior, and lockfile repair.
+  current fork tag from a checked-out tag or `[workspace.package].version` plus
+  the tracked build number, and verifies the uploaded asset SHA-256 before
+  installing.
+- The release helper creates the matching GitHub release in `apohl79/codex` if
+  it does not already exist.
+- The release helper uploads generated archives to the release with clobbering
+  enabled so rebuilding the same version replaces the previous asset.
+- The release helper uses the stored `apohl79` `gh` token by default for release
+  publishing, while respecting an explicit `GH_TOKEN` or `GITHUB_TOKEN`.
 
 Primary files:
 
 - `scripts/apohl79_release.py`
+- `scripts/apohl79_build_number.txt`
 - `scripts/build_apohl79_release.py`
 - `scripts/build_apohl79_release.sh`
 - `scripts/install/install-apohl79.sh`
@@ -141,44 +347,53 @@ Primary files:
 ### Fork Upgrade Tooling
 
 The fork includes a local Codex skill for upgrading this fork from upstream
-OpenAI Codex release tags.
+OpenAI Codex release tags and a local report skill for checking upstream
+release drift.
 
 - The skill documents the fork upgrade workflow.
 - The skill includes an `openai` subagent for upstream inspection.
-- The workflow preserves fork-only changes while rebasing or replaying onto a
-  requested upstream release.
+- The workflow preserves fork-only changes while rebasing or replaying
+  `main-fork` onto a requested upstream release.
+- The upstream-changes skill lists stable upstream `rust-vX.Y.Z` releases
+  between the current apohl79 fork base and the latest non-alpha OpenAI Codex
+  tag.
+- The upstream-changes report excludes fork-added behavior from the main
+  changelog and uses this file only to flag heuristic overlaps with fork
+  features/fixes.
 
 Primary files:
 
 - `.codex/skills/upgrade-apohl79-fork/SKILL.md`
 - `.codex/skills/upgrade-apohl79-fork/agents/openai.yaml`
+- `.codex/skills/list-apohl79-fork-upstream-changes/SKILL.md`
+- `.codex/skills/list-apohl79-fork-upstream-changes/scripts/list_apohl79_fork_upstream_changes.py`
 
-## Fork-Only Fixes and Maintenance
+### Repository Hygiene
 
-- Improved `@` mention popup scrolling and active-row visibility.
-- Improved selected-row contrast for the `@` picker with the dark gray active
-  background.
-- Kept directory `@` completion active after entering a directory with Tab.
-- Added snapshot coverage for the `@` mention popup selected-row rendering.
-- Fixed custom status-line context usage so it aligns with `/status` output.
-- Exposed status-line harness metadata for custom command payloads.
-- Added session-name and task-progress metadata to status surfaces.
-- Added a persistent active task list above the TUI user entry field.
-- Kept apohl79 release builds incremental instead of forcing disposable build
-  directories.
-- Added default Cargo job limiting for apohl79 release builds.
-- Added automatic apohl79 release version detection.
-- Added release lockfile repair for stale workspace package versions.
-- Synced generated files and TUI snapshots after the 0.142.0 fork rebase.
-- Added `.gitleaksignore` entries for upstream fixture secrets that can trip
+The fork carries small repository-maintenance changes that support local
+development and release hygiene.
+
+- `.gitleaksignore` includes entries for upstream fixture secrets that can trip
   local scans.
-- Pinned the fork workspace version to `0.142.0` for the fork release line.
+- Generated files and TUI snapshots are refreshed after release rebases when
+  upstream changes require it.
+- The workspace version is pinned to the current fork release line.
+- `scripts/apohl79_build_number.txt` is incremented for each feature/fix merged
+  to `main-fork`.
+
+Primary files:
+
+- `.gitleaksignore`
+- `codex-rs/Cargo.toml`
+- `codex-rs/tui/src/**/*.snap`
+- `scripts/apohl79_build_number.txt`
 
 ## Notes For Maintainers
 
 - Refresh this file after rebasing `main-fork` onto a newer upstream baseline.
-- Use behavior-level summaries rather than raw commit counts: the fork history
-  contains duplicated `@` completion commits from a feature branch that was
-  later merged back into `main-fork`.
+- Feature and fix branches are short-lived staging or review branches. Do not
+  maintain them as durable fork inventory once `main-fork` contains their
+  commits.
+- Use behavior-level summaries rather than raw commit counts.
 - Keep the selected `@` picker row visually distinct. The fork's expected
   selected-row background is `Color::Rgb(55, 60, 67)`.
