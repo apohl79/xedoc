@@ -20,6 +20,7 @@ use crate::app::app_server_requests::ResolvedAppServerRequest;
 use crate::app_event::AppEvent;
 use crate::app_event::ConnectorsSnapshot;
 use crate::app_event_sender::AppEventSender;
+use crate::bottom_pane::active_task_list::ActiveTaskList;
 use crate::bottom_pane::pending_input_preview::PendingInputPreview;
 use crate::bottom_pane::pending_thread_approvals::PendingThreadApprovals;
 use crate::bottom_pane::unified_exec_footer::UnifiedExecFooter;
@@ -40,6 +41,7 @@ use codex_features::Features;
 use codex_file_search::FileMatch;
 use codex_plugin::PluginCapabilitySummary;
 use codex_protocol::ThreadId;
+use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::user_input::TextElement;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -51,6 +53,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 mod action_required_title;
+mod active_task_list;
 mod app_link_view;
 mod approval_overlay;
 mod mcp_server_elicitation;
@@ -235,6 +238,8 @@ pub(crate) struct BottomPane {
     unified_exec_footer: UnifiedExecFooter,
     /// Preview of pending steers and queued drafts shown above the composer.
     pending_input_preview: PendingInputPreview,
+    /// Current update_plan checklist shown directly above the composer while a task runs.
+    active_task_list: ActiveTaskList,
     /// Inactive threads with pending approval requests.
     pending_thread_approvals: PendingThreadApprovals,
     context_window_percent: Option<i64>,
@@ -291,6 +296,7 @@ impl BottomPane {
             status: None,
             unified_exec_footer: UnifiedExecFooter::new(),
             pending_input_preview: PendingInputPreview::new(),
+            active_task_list: ActiveTaskList::new(),
             pending_thread_approvals: PendingThreadApprovals::new(),
             esc_backtrack_hint: false,
             animations_enabled,
@@ -969,6 +975,11 @@ impl BottomPane {
     }
 
     #[cfg(test)]
+    pub(crate) fn active_task_list_visible(&self) -> bool {
+        !self.active_task_list.is_empty()
+    }
+
+    #[cfg(test)]
     pub(crate) fn status_line_text(&self) -> Option<String> {
         self.composer.status_line_text()
     }
@@ -996,6 +1007,7 @@ impl BottomPane {
 
         if running {
             if !was_running {
+                self.active_task_list.clear();
                 if self.status.is_none() {
                     self.status = Some(StatusIndicatorWidget::new(
                         self.app_event_tx.clone(),
@@ -1013,6 +1025,7 @@ impl BottomPane {
         } else {
             // Hide the status indicator when a task completes, but keep other modal views.
             self.hide_status_indicator();
+            self.active_task_list.clear();
         }
     }
 
@@ -1047,6 +1060,11 @@ impl BottomPane {
             status.set_interrupt_hint_visible(visible);
             self.request_redraw();
         }
+    }
+
+    pub(crate) fn set_active_task_list(&mut self, tasks: Vec<PlanItemArg>) {
+        self.active_task_list.set_tasks(tasks);
+        self.request_redraw();
     }
 
     pub(crate) fn set_context_window(&mut self, percent: Option<i64>, used_tokens: Option<i64>) {
@@ -1711,7 +1729,17 @@ impl BottomPane {
                 /*flex*/ 1,
                 RenderableItem::Borrowed(&self.pending_input_preview),
             );
-            if !has_inline_previews && has_status_or_footer {
+            let has_active_task_list = !self.active_task_list.is_empty();
+            if has_active_task_list && (has_inline_previews || has_status_or_footer) {
+                flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
+            }
+            if has_active_task_list {
+                flex.push(
+                    /*flex*/ 0,
+                    RenderableItem::Borrowed(&self.active_task_list),
+                );
+            }
+            if !has_active_task_list && !has_inline_previews && has_status_or_footer {
                 flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
             }
             let mut flex2 = FlexRenderable::new();
@@ -1858,6 +1886,7 @@ mod tests {
     use crate::test_support::PathBufExt;
     use crate::test_support::test_path_buf;
     use codex_app_server_protocol::CommandExecutionApprovalDecision;
+    use codex_protocol::plan_tool::StepStatus;
     use crossterm::event::KeyCode;
     use crossterm::event::KeyEvent;
     use crossterm::event::KeyEventKind;
@@ -1907,6 +1936,13 @@ mod tests {
             animations_enabled: true,
             skills: Some(Vec::new()),
         })
+    }
+
+    fn plan_task(step: &str, status: StepStatus) -> codex_protocol::plan_tool::PlanItemArg {
+        codex_protocol::plan_tool::PlanItemArg {
+            step: step.to_string(),
+            status,
+        }
     }
 
     fn exec_request() -> ApprovalRequest {
@@ -2438,6 +2474,73 @@ mod tests {
         let height = pane.desired_height(width);
         let area = Rect::new(0, 0, width, height);
         assert_snapshot!("status_only_snapshot", render_snapshot(&pane, area));
+    }
+
+    #[test]
+    fn active_task_list_snapshot() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = BottomPane::new(BottomPaneParams {
+            app_event_tx: tx,
+            frame_requester: FrameRequester::test_dummy(),
+            has_input_focus: true,
+            enhanced_keys_supported: false,
+            placeholder_text: "Ask Codex to do anything".to_string(),
+            disable_paste_burst: false,
+            animations_enabled: false,
+            skills: Some(Vec::new()),
+        });
+
+        pane.set_task_running(/*running*/ true);
+        pane.set_active_task_list(vec![
+            plan_task(
+                "Inspect current bottom-pane plan handling",
+                StepStatus::Completed,
+            ),
+            plan_task(
+                "Render the active task list above the entry field",
+                StepStatus::InProgress,
+            ),
+            plan_task("Run targeted TUI tests", StepStatus::Pending),
+        ]);
+
+        let width = 64;
+        let height = pane.desired_height(width);
+        let area = Rect::new(0, 0, width, height);
+        assert_snapshot!("active_task_list_snapshot", render_snapshot(&pane, area));
+    }
+
+    #[test]
+    fn active_task_list_overflow_is_capped() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = test_pane(tx);
+        let tasks = (1..=8)
+            .map(|index| plan_task(&format!("Task {index}"), StepStatus::Pending))
+            .collect();
+
+        pane.set_active_task_list(tasks);
+
+        let width = 40;
+        let area = Rect::new(0, 0, width, pane.desired_height(width));
+        let rendered = render_snapshot(&pane, area);
+        assert!(rendered.contains("... 1 more"));
+        assert!(!rendered.contains("Task 8"));
+    }
+
+    #[test]
+    fn active_task_list_clears_when_task_completes() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = test_pane(tx);
+
+        pane.set_task_running(/*running*/ true);
+        pane.set_active_task_list(vec![plan_task("Patch", StepStatus::InProgress)]);
+        assert!(pane.active_task_list_visible());
+
+        pane.set_task_running(/*running*/ false);
+
+        assert!(!pane.active_task_list_visible());
     }
 
     #[test]
