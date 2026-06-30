@@ -16,6 +16,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_REF = "main-fork"
 DEFAULT_SUFFIX = "apohl79"
+DEFAULT_GITHUB_REPO = "apohl79/codex"
 PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
 DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
 WORKSPACE_VERSION_SENTINEL = "0.0.0"
@@ -93,6 +94,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--force",
         action="store_true",
         help="Replace existing package directory and archive outputs.",
+    )
+    parser.add_argument(
+        "--github-repo",
+        default=DEFAULT_GITHUB_REPO,
+        help="GitHub repository that receives the release and uploaded archives.",
+    )
+    parser.add_argument(
+        "--gh",
+        default="gh",
+        help="GitHub CLI executable used for release publishing.",
+    )
+    parser.add_argument(
+        "--skip-github-release",
+        action="store_true",
+        help="Build the package without creating or uploading a GitHub release.",
     )
     parser.add_argument(
         "--keep-worktree",
@@ -228,7 +244,19 @@ def build_release(args: argparse.Namespace) -> None:
 
     run(package_args, cwd=source_root)
 
+    release_tag = github_release_tag(fork_version)
+    if not args.skip_github_release:
+        publish_github_release(
+            gh=args.gh,
+            repo=args.github_repo,
+            tag=release_tag,
+            title=fork_version,
+            target=git_commit("HEAD"),
+            archive_outputs=archive_outputs,
+        )
+
     print(f"Built apohl79 Codex release {fork_version}")
+    print(f"GitHub release: {release_tag}")
     print(f"Package directory: {package_dir}")
     for archive_output in archive_outputs:
         print(f"Archive: {archive_output}")
@@ -562,6 +590,67 @@ def fork_version_from_base(base_version: str, suffix: str) -> str:
     if not suffix:
         raise RuntimeError("Version suffix must not be empty.")
     return f"{base_version}-{suffix}"
+
+
+def github_release_tag(fork_version: str) -> str:
+    return f"rust-v{fork_version}"
+
+
+def publish_github_release(
+    *,
+    gh: str,
+    repo: str,
+    tag: str,
+    title: str,
+    target: str,
+    archive_outputs: list[Path],
+) -> None:
+    if github_release_exists(gh=gh, repo=repo, tag=tag):
+        print(f"GitHub release {tag} already exists in {repo}.", flush=True)
+    else:
+        print(f"Creating GitHub release {tag} in {repo}.", flush=True)
+        run(
+            [
+                gh,
+                "release",
+                "create",
+                tag,
+                "--repo",
+                repo,
+                "--title",
+                title,
+                "--notes",
+                f"apohl79 Codex {title}",
+                "--target",
+                target,
+            ],
+            cwd=REPO_ROOT,
+        )
+
+    for archive_output in archive_outputs:
+        run(
+            [
+                gh,
+                "release",
+                "upload",
+                tag,
+                str(archive_output),
+                "--repo",
+                repo,
+                "--clobber",
+            ],
+            cwd=REPO_ROOT,
+        )
+
+
+def github_release_exists(*, gh: str, repo: str, tag: str) -> bool:
+    result = run(
+        [gh, "release", "view", tag, "--repo", repo],
+        cwd=REPO_ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
 
 
 def latest_release_version_from_ls_remote(stdout: str) -> str:

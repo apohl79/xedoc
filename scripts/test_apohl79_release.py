@@ -81,6 +81,129 @@ class Apohl79ReleaseTest(unittest.TestCase):
         ):
             latest_release_version_from_ls_remote("aaa\trefs/tags/rust-vrust-v0.1.0\n")
 
+    def test_github_release_tag_uses_rust_prefix(self) -> None:
+        self.assertEqual(
+            apohl79_release.github_release_tag("0.141.0-apohl79"),
+            "rust-v0.141.0-apohl79",
+        )
+
+    def test_publish_github_release_creates_missing_release_and_uploads_archives(
+        self,
+    ) -> None:
+        commands = []
+
+        def fake_run(
+            command: list[str],
+            *,
+            cwd: Path | None = None,
+            env: dict[str, str] | None = None,
+            check: bool = True,
+            stdout: int | None = None,
+        ) -> subprocess.CompletedProcess:
+            _ = env
+            commands.append((command, cwd, check, stdout))
+            returncode = 1 if command[:3] == ["gh", "release", "view"] else 0
+            return subprocess.CompletedProcess(command, returncode)
+
+        with mock.patch.object(apohl79_release, "run", side_effect=fake_run):
+            apohl79_release.publish_github_release(
+                gh="gh",
+                repo="apohl79/codex",
+                tag="rust-v0.141.0-apohl79",
+                title="0.141.0-apohl79",
+                target="abc123",
+                archive_outputs=[Path("/tmp/codex.zip")],
+            )
+
+        self.assertEqual(
+            commands,
+            [
+                (
+                    [
+                        "gh",
+                        "release",
+                        "view",
+                        "rust-v0.141.0-apohl79",
+                        "--repo",
+                        "apohl79/codex",
+                    ],
+                    apohl79_release.REPO_ROOT,
+                    False,
+                    subprocess.DEVNULL,
+                ),
+                (
+                    [
+                        "gh",
+                        "release",
+                        "create",
+                        "rust-v0.141.0-apohl79",
+                        "--repo",
+                        "apohl79/codex",
+                        "--title",
+                        "0.141.0-apohl79",
+                        "--notes",
+                        "apohl79 Codex 0.141.0-apohl79",
+                        "--target",
+                        "abc123",
+                    ],
+                    apohl79_release.REPO_ROOT,
+                    True,
+                    None,
+                ),
+                (
+                    [
+                        "gh",
+                        "release",
+                        "upload",
+                        "rust-v0.141.0-apohl79",
+                        "/tmp/codex.zip",
+                        "--repo",
+                        "apohl79/codex",
+                        "--clobber",
+                    ],
+                    apohl79_release.REPO_ROOT,
+                    True,
+                    None,
+                ),
+            ],
+        )
+
+    def test_publish_github_release_reuses_existing_release(self) -> None:
+        commands = []
+
+        def fake_run(
+            command: list[str],
+            *,
+            cwd: Path | None = None,
+            env: dict[str, str] | None = None,
+            check: bool = True,
+            stdout: int | None = None,
+        ) -> subprocess.CompletedProcess:
+            _ = env
+            commands.append((command, cwd, check, stdout))
+            return subprocess.CompletedProcess(command, 0)
+
+        with mock.patch.object(apohl79_release, "run", side_effect=fake_run):
+            apohl79_release.publish_github_release(
+                gh="gh",
+                repo="apohl79/codex",
+                tag="rust-v0.141.0-apohl79",
+                title="0.141.0-apohl79",
+                target="abc123",
+                archive_outputs=[Path("/tmp/codex-a.zip"), Path("/tmp/codex-b.zip")],
+            )
+
+        command_names = [command[:3] for command, *_ in commands]
+        self.assertNotIn(["gh", "release", "create"], command_names)
+        self.assertEqual(
+            command_names,
+            [
+                ["gh", "release", "view"],
+                ["gh", "release", "upload"],
+                ["gh", "release", "upload"],
+            ],
+        )
+
     def test_codesign_command_matches_release_binary_signing_shape(self) -> None:
         self.assertEqual(
             build_codesign_command(
@@ -171,10 +294,13 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,
+                gh="gh",
+                github_repo="apohl79/codex",
                 keep_worktree=False,
                 output_dir=Path("dist/apohl79"),
                 package_dir=None,
                 ref="main-fork",
+                skip_github_release=True,
                 target="aarch64-apple-darwin",
                 version_suffix="apohl79",
             )
@@ -261,6 +387,127 @@ class Apohl79ReleaseTest(unittest.TestCase):
             self.assertEqual(len(signing_commands), 1)
             self.assertIn("Developer ID Application: Example", signing_commands[0])
 
+    def test_build_release_publishes_github_release_after_packaging(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml.parent.mkdir(parents=True)
+            cargo_toml.write_text(
+                "\n".join(
+                    [
+                        "[workspace.package]",
+                        'version = "0.141.0"',
+                        'edition = "2024"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            cargo_lock.write_text("version = 4\n", encoding="utf-8")
+            (repo_root / "scripts").mkdir()
+            (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
+            target_dir = repo_root / "target"
+            archive_output = Path("dist/apohl79/custom.zip")
+            published = {}
+
+            def fake_run(
+                command: list[str],
+                *,
+                cwd: Path | None = None,
+                env: dict[str, str] | None = None,
+                check: bool = True,
+                stdout: int | None = None,
+            ) -> subprocess.CompletedProcess:
+                _ = cwd
+                _ = env
+                _ = check
+                _ = stdout
+                if command[:2] == ["cargo", "build"]:
+                    entrypoint = (
+                        target_dir / "aarch64-apple-darwin" / "release" / "codex"
+                    )
+                    entrypoint.parent.mkdir(parents=True)
+                    entrypoint.write_text("codex", encoding="utf-8")
+                    entrypoint.chmod(0o755)
+                return subprocess.CompletedProcess(command, 0)
+
+            def fake_publish_github_release(
+                *,
+                gh: str,
+                repo: str,
+                tag: str,
+                title: str,
+                target: str,
+                archive_outputs: list[Path],
+            ) -> None:
+                published.update(
+                    {
+                        "gh": gh,
+                        "repo": repo,
+                        "tag": tag,
+                        "title": title,
+                        "target": target,
+                        "archive_outputs": archive_outputs,
+                    }
+                )
+
+            args = argparse.Namespace(
+                archive_output=[archive_output],
+                cargo="cargo",
+                codesign_identity=None,
+                force=True,
+                gh="custom-gh",
+                github_repo="apohl79/codex",
+                keep_worktree=False,
+                output_dir=Path("dist/apohl79"),
+                package_dir=None,
+                ref="main-fork",
+                skip_github_release=False,
+                target="aarch64-apple-darwin",
+                version_suffix="apohl79",
+            )
+
+            with (
+                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(
+                    apohl79_release,
+                    "ensure_current_checkout_matches_ref",
+                    return_value=None,
+                ),
+                mock.patch.object(
+                    apohl79_release, "ensure_git_path_clean", return_value=None
+                ),
+                mock.patch.object(
+                    apohl79_release,
+                    "resolve_codesign_identity",
+                    return_value="Developer ID Application: Example",
+                ),
+                mock.patch.object(
+                    apohl79_release, "git_commit", return_value="c" * 40
+                ),
+                mock.patch.object(apohl79_release, "run", side_effect=fake_run),
+                mock.patch.object(
+                    apohl79_release,
+                    "publish_github_release",
+                    side_effect=fake_publish_github_release,
+                ),
+                mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
+            ):
+                apohl79_release.build_release(args)
+
+            self.assertEqual(
+                published,
+                {
+                    "gh": "custom-gh",
+                    "repo": "apohl79/codex",
+                    "tag": "rust-v0.141.0-apohl79",
+                    "title": "0.141.0-apohl79",
+                    "target": "c" * 40,
+                    "archive_outputs": [(repo_root / archive_output).resolve()],
+                },
+            )
+
     def test_build_release_repairs_stale_cargo_lock_before_locked_build(
         self,
     ) -> None:
@@ -344,10 +591,13 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,
+                gh="gh",
+                github_repo="apohl79/codex",
                 keep_worktree=False,
                 output_dir=Path("dist/apohl79"),
                 package_dir=None,
                 ref="main-fork",
+                skip_github_release=True,
                 target="aarch64-apple-darwin",
                 version_suffix="apohl79",
             )
@@ -570,10 +820,13 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,
+                gh="gh",
+                github_repo="apohl79/codex",
                 keep_worktree=False,
                 output_dir=Path("dist/apohl79"),
                 package_dir=None,
                 ref="main-fork",
+                skip_github_release=True,
                 target="aarch64-apple-darwin",
                 version_suffix="apohl79",
             )
@@ -889,6 +1142,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
         self.assertNotIn("0.140.0", wrapper)
         self.assertNotIn("YOUR NAME", wrapper)
         self.assertIn("--target aarch64-apple-darwin", wrapper)
+        self.assertIn("--github-repo apohl79/codex", wrapper)
         self.assertIn('"$@"', wrapper)
 
 
