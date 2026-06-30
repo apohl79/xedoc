@@ -1,27 +1,16 @@
 # apohl79 Codex Fork Notes
 
-This branch is the `apohl79/codex` fork branch `main-fork`. It tracks
-OpenAI Codex while carrying fork-local features, release tooling, and fixes.
+`main-fork` is the canonical `apohl79/codex` fork branch. It tracks OpenAI
+Codex while carrying fork-local features, release tooling, and fixes.
 
 This file is the single source of truth for the fork feature/fix inventory used
 by `.codex/skills/upgrade-apohl79-fork`. The upgrade skill must read this file
-instead of maintaining a second feature list.
-
-Comparison snapshot:
-
-- Fork branch: `main-fork` at `0c8e88c8ee`
-- Upstream baseline: `rust-v0.142.4` at `d0fd96663e`
-- Merge base: `d0fd96663e`
-- Snapshot date: 2026-06-29
-- Refresh commands:
-  - `git fetch upstream refs/tags/rust-v0.142.4:refs/tags/rust-v0.142.4`
-  - `git log --cherry-pick --right-only rust-v0.142.4...main-fork`
-  - `git diff rust-v0.142.4...main-fork`
+instead of maintaining a second feature list or a durable feature-branch list.
 
 The inventory below lists behavior that is present on the fork and not in the
-upstream baseline above. It does not repeat upstream-only changes.
+upstream release baseline being compared during a fork upgrade.
 
-## Fork-Only Features
+## Fork-Only Inventory
 
 ### TUI `@` File-Path Completion
 
@@ -40,6 +29,7 @@ search path.
   result set is larger than the rendered window.
 - The selected row keeps the `> ` gutter marker and uses a dark gray background:
   `Color::Rgb(55, 60, 67)`.
+- Snapshot coverage verifies selected-row rendering.
 
 Primary files:
 
@@ -68,6 +58,7 @@ external command mode.
   session name, task indicator, context-window usage, token usage, git/project
   details, model/reasoning settings, approval and sandbox status, rate-limit
   information, and current status text.
+- Custom status-line context usage aligns with `/status` output.
 
 Primary files:
 
@@ -117,17 +108,17 @@ The fork adds release helpers for building apohl79-branded packages from
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
 - The helper builds `codex-cli` with Cargo `--locked`, signs the binary, verifies
-  the signature, and then invokes the Codex package builder with an explicit
+  the signature, and invokes the Codex package builder with an explicit
   entrypoint and version.
 - Release builds preserve incremental Cargo artifacts by using the current
   checkout and `codex-rs/target` as the default target directory.
+- The helper limits default Cargo parallelism while respecting explicit caller
+  settings.
 - The helper can auto-repair stale workspace package versions in
   `codex-rs/Cargo.lock` before a locked release build.
 - The installer targets GitHub releases in `apohl79/codex`, resolves the
   current fork tag from a checked-out tag or `[workspace.package].version`, and
   verifies the uploaded asset SHA-256 before installing.
-- Release helper tests cover version detection, signing validation, Cargo job
-  limiting, target-dir behavior, and lockfile repair.
 
 Primary files:
 
@@ -145,40 +136,37 @@ OpenAI Codex release tags.
 
 - The skill documents the fork upgrade workflow.
 - The skill includes an `openai` subagent for upstream inspection.
-- The workflow preserves fork-only changes while rebasing or replaying onto a
-  requested upstream release.
+- The workflow preserves fork-only changes while rebasing or replaying
+  `main-fork` onto a requested upstream release.
 
 Primary files:
 
 - `.codex/skills/upgrade-apohl79-fork/SKILL.md`
 - `.codex/skills/upgrade-apohl79-fork/agents/openai.yaml`
 
-## Fork-Only Fixes and Maintenance
+### Repository Hygiene
 
-- Improved `@` mention popup scrolling and active-row visibility.
-- Improved selected-row contrast for the `@` picker with the dark gray active
-  background.
-- Kept directory `@` completion active after entering a directory with Tab.
-- Added snapshot coverage for the `@` mention popup selected-row rendering.
-- Fixed custom status-line context usage so it aligns with `/status` output.
-- Exposed status-line harness metadata for custom command payloads.
-- Added session-name and task-progress metadata to status surfaces.
-- Added a persistent active task list above the TUI user entry field.
-- Kept apohl79 release builds incremental instead of forcing disposable build
-  directories.
-- Added default Cargo job limiting for apohl79 release builds.
-- Added automatic apohl79 release version detection.
-- Added release lockfile repair for stale workspace package versions.
-- Synced generated files and TUI snapshots after the 0.142.4 fork rebase.
-- Added `.gitleaksignore` entries for upstream fixture secrets that can trip
+The fork carries small repository-maintenance changes that support local
+development and release hygiene.
+
+- `.gitleaksignore` includes entries for upstream fixture secrets that can trip
   local scans.
-- Pinned the fork workspace version to `0.142.4` for the fork release line.
+- Generated files and TUI snapshots are refreshed after release rebases when
+  upstream changes require it.
+- The workspace version is pinned to the current fork release line.
+
+Primary files:
+
+- `.gitleaksignore`
+- `codex-rs/Cargo.toml`
+- `codex-rs/tui/src/**/*.snap`
 
 ## Notes For Maintainers
 
 - Refresh this file after rebasing `main-fork` onto a newer upstream baseline.
-- Use behavior-level summaries rather than raw commit counts: the fork history
-  contains duplicated `@` completion commits from a feature branch that was
-  later merged back into `main-fork`.
+- Feature and fix branches are short-lived staging or review branches. Do not
+  maintain them as durable fork inventory once `main-fork` contains their
+  commits.
+- Use behavior-level summaries rather than raw commit counts.
 - Keep the selected `@` picker row visually distinct. The fork's expected
   selected-row background is `Color::Rgb(55, 60, 67)`.
