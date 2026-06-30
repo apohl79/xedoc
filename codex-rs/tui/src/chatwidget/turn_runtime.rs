@@ -459,6 +459,9 @@ impl ChatWidget {
 
     pub(super) fn on_plan_update(&mut self, update: UpdatePlanArgs) {
         self.transcript.saw_plan_update_this_turn = true;
+        if self.bottom_pane.is_task_running() {
+            self.bottom_pane.set_active_task_list(update.plan.clone());
+        }
         let total = update.plan.len();
         let completed = update
             .plan

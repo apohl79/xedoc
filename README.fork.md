@@ -77,6 +77,26 @@ Primary files:
 - `codex-rs/tui/src/chatwidget/status_surfaces.rs`
 - `codex-rs/tui/src/status_line_command.rs`
 
+### Persistent Active Task List
+
+The fork keeps the current `update_plan` checklist visible in the TUI while a
+task is running.
+
+- The active checklist is rendered directly above the user entry field.
+- Completed, in-progress, and pending steps use distinct markers and styling.
+- Empty plan steps are ignored.
+- Long task lists are capped in the bottom pane with an overflow row.
+- The list clears when a task starts fresh or completes.
+- Replayed plan updates are ignored unless a task is currently running.
+- Snapshot and layout tests cover the rendered list and task lifecycle.
+
+Primary files:
+
+- `codex-rs/tui/src/bottom_pane/active_task_list.rs`
+- `codex-rs/tui/src/bottom_pane/mod.rs`
+- `codex-rs/tui/src/chatwidget/turn_runtime.rs`
+- `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
+
 ### apohl79 Release Packaging
 
 The fork adds release helpers for building apohl79-branded packages from
@@ -143,6 +163,7 @@ Primary files:
 - Fixed custom status-line context usage so it aligns with `/status` output.
 - Exposed status-line harness metadata for custom command payloads.
 - Added session-name and task-progress metadata to status surfaces.
+- Added a persistent active task list above the TUI user entry field.
 - Kept apohl79 release builds incremental instead of forcing disposable build
   directories.
 - Added default Cargo job limiting for apohl79 release builds.

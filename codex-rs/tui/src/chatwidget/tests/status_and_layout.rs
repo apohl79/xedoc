@@ -2374,6 +2374,28 @@ async fn plan_update_refreshes_custom_status_line_task_indicator() {
 }
 
 #[tokio::test]
+async fn plan_update_shows_active_task_list_only_while_task_runs() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    let update = || UpdatePlanArgs {
+        explanation: None,
+        plan: vec![PlanItemArg {
+            step: "Patch bottom pane".to_string(),
+            status: StepStatus::InProgress,
+        }],
+    };
+
+    chat.on_plan_update(update());
+    assert_eq!(chat.bottom_pane.active_task_list_visible(), false);
+
+    handle_turn_started(&mut chat, "turn-1");
+    chat.on_plan_update(update());
+    assert_eq!(chat.bottom_pane.active_task_list_visible(), true);
+
+    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+    assert_eq!(chat.bottom_pane.active_task_list_visible(), false);
+}
+
+#[tokio::test]
 async fn thread_name_update_refreshes_custom_status_line_session_name() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
     let thread_id = ThreadId::new();
