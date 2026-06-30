@@ -290,6 +290,11 @@ impl CustomStatusLineCommand {
         }
 
         let command = self.command.trim();
+        if let Some(original) = self.original.clone()
+            && command == command_display_value(Some(&original)).trim()
+        {
+            return Some(original);
+        }
         (!command.is_empty()).then(|| StatusLineCommand::Command(command.to_string()))
     }
 }
