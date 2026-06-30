@@ -79,9 +79,9 @@ impl ActiveTaskList {
 
     fn task_line(item: &PlanItemArg) -> Line<'static> {
         let (marker, step_style) = match &item.status {
-            StepStatus::Completed => ("[x]".dim(), Style::default().crossed_out().dim()),
-            StepStatus::InProgress => ("[>]".cyan().bold(), Style::default().cyan().bold()),
-            StepStatus::Pending => ("[ ]".dim(), Style::default().dim()),
+            StepStatus::Completed => ("✔".dim(), Style::default().crossed_out().dim()),
+            StepStatus::InProgress => ("□".cyan().bold(), Style::default().cyan().bold()),
+            StepStatus::Pending => ("□".dim(), Style::default().dim()),
         };
         vec![
             "  ".into(),

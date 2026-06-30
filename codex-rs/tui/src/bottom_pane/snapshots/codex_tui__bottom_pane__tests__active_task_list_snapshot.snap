@@ -5,9 +5,9 @@ expression: "render_snapshot(&pane, area)"
 Working (0s • esc to interrupt)                                 
                                                                 
 Tasks 1/3                                                       
-  [x] Inspect current bottom-pane plan handling                 
-  [>] Render the active task list above the entry field         
-  [ ] Run targeted TUI tests                                    
+  ✔ Inspect current bottom-pane plan handling                   
+  □ Render the active task list above the entry field           
+  □ Run targeted TUI tests                                      
                                                                 
 › Ask Codex to do anything                                      
                                                                 
