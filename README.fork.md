@@ -119,6 +119,10 @@ The fork adds release helpers for building apohl79-branded packages from
 - The installer targets GitHub releases in `apohl79/codex`, resolves the
   current fork tag from a checked-out tag or `[workspace.package].version`, and
   verifies the uploaded asset SHA-256 before installing.
+- The release helper creates the matching GitHub release in `apohl79/codex` if
+  it does not already exist.
+- The release helper uploads generated archives to the release with clobbering
+  enabled so rebuilding the same version replaces the previous asset.
 
 Primary files:
 
