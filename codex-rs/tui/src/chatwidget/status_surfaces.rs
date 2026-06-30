@@ -256,7 +256,9 @@ impl ChatWidget {
 
         self.status_line_command_pending_request_id = None;
         self.status_line_command_last_payload = self.status_line_command_pending_payload.take();
-        self.status_line_command_output = line;
+        if line.is_some() {
+            self.status_line_command_output = line;
+        }
         self.refresh_status_surfaces();
         self.frame_requester.schedule_frame();
     }

@@ -1,0 +1,17 @@
+---
+source: tui/src/bottom_pane/mod.rs
+expression: "render_snapshot(&pane, area)"
+---
+• Tasks 7/8                                                     
+  └ ✔ Task 1                                                    
+    ✔ Task 2                                                    
+    ✔ Task 3                                                    
+    ✔ Task 4                                                    
+    ✔ Task 5                                                    
+    ✔ Task 6                                                    
+    ... 1 more                                                  
+    □ Task 8                                                    
+                                                                
+› Ask Codex to do anything                                      
+                                                                
+  ? for shortcuts                            100% context left

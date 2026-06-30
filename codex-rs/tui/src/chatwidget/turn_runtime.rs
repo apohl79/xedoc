@@ -473,7 +473,9 @@ impl ChatWidget {
             .count();
         self.transcript.last_plan_progress = (total > 0).then_some((completed, total));
         self.refresh_status_surfaces();
-        self.add_to_history(history_cell::new_plan_update(update));
+        if !self.bottom_pane.active_task_list_visible() {
+            self.add_to_history(history_cell::new_plan_update(update));
+        }
     }
 
     pub(super) fn interrupted_turn_message(&self, reason: TurnAbortReason) -> String {

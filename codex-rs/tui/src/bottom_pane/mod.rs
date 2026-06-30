@@ -972,7 +972,6 @@ impl BottomPane {
         self.status.is_some()
     }
 
-    #[cfg(test)]
     pub(crate) fn active_task_list_visible(&self) -> bool {
         !self.active_task_list.is_empty()
     }
@@ -2524,6 +2523,32 @@ mod tests {
         let rendered = render_snapshot(&pane, area);
         assert!(rendered.contains("... 1 more"));
         assert!(!rendered.contains("Task 8"));
+    }
+
+    #[test]
+    fn active_task_list_overflow_keeps_current_task_visible_snapshot() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = test_pane(tx);
+        let tasks = (1..=8)
+            .map(|index| {
+                let status = if index == 8 {
+                    StepStatus::InProgress
+                } else {
+                    StepStatus::Completed
+                };
+                plan_task(&format!("Task {index}"), status)
+            })
+            .collect();
+
+        pane.set_active_task_list(tasks);
+
+        let width = 64;
+        let area = Rect::new(0, 0, width, pane.desired_height(width));
+        assert_snapshot!(
+            "active_task_list_overflow_keeps_current_task_visible_snapshot",
+            render_snapshot(&pane, area)
+        );
     }
 
     #[test]

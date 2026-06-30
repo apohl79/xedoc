@@ -10,6 +10,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::WidgetRef;
 
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
+use crate::render::line_utils::prefix_lines;
 use crate::render::renderable::Renderable;
 
 const MAX_VISIBLE_TASKS: usize = 7;
@@ -59,17 +60,17 @@ impl ActiveTaskList {
         let completed = self.completed_count();
         let visible_tasks = total.min(MAX_VISIBLE_TASKS);
         let mut lines = Vec::with_capacity(1 + visible_tasks + usize::from(total > visible_tasks));
-        lines.push(vec!["Tasks ".bold(), format!("{completed}/{total}").dim()].into());
-        lines.extend(
-            self.tasks
-                .iter()
-                .take(MAX_VISIBLE_TASKS)
-                .map(Self::task_line),
+        lines.push(
+            vec![
+                "• ".dim(),
+                "Tasks ".bold(),
+                format!("{completed}/{total}").dim(),
+            ]
+            .into(),
         );
-        let hidden = total.saturating_sub(MAX_VISIBLE_TASKS);
-        if hidden > 0 {
-            lines.push(format!("... {hidden} more").dim().into());
-        }
+
+        let task_lines = self.visible_task_lines();
+        lines.extend(prefix_lines(task_lines, "  └ ".dim(), "    ".into()));
 
         lines
             .into_iter()
@@ -77,19 +78,60 @@ impl ActiveTaskList {
             .collect()
     }
 
+    fn visible_task_lines(&self) -> Vec<Line<'static>> {
+        let total = self.tasks.len();
+        let Some(current_index) = self
+            .tasks
+            .iter()
+            .position(|item| matches!(&item.status, StepStatus::InProgress))
+        else {
+            return self.leading_task_lines();
+        };
+
+        if current_index < MAX_VISIBLE_TASKS {
+            return self.leading_task_lines();
+        }
+
+        let leading_count = MAX_VISIBLE_TASKS.saturating_sub(1);
+        let hidden = total - leading_count - 1;
+
+        let mut lines: Vec<Line<'static>> = self
+            .tasks
+            .iter()
+            .take(leading_count)
+            .map(Self::task_line)
+            .collect();
+        if hidden > 0 {
+            lines.push(format!("... {hidden} more").dim().into());
+        }
+        if let Some(current) = self.tasks.get(current_index) {
+            lines.push(Self::task_line(current));
+        }
+        lines
+    }
+
+    fn leading_task_lines(&self) -> Vec<Line<'static>> {
+        let total = self.tasks.len();
+        let mut lines: Vec<Line<'static>> = self
+            .tasks
+            .iter()
+            .take(MAX_VISIBLE_TASKS)
+            .map(Self::task_line)
+            .collect();
+        let hidden = total.saturating_sub(MAX_VISIBLE_TASKS);
+        if hidden > 0 {
+            lines.push(format!("... {hidden} more").dim().into());
+        }
+        lines
+    }
+
     fn task_line(item: &PlanItemArg) -> Line<'static> {
         let (marker, step_style) = match &item.status {
-            StepStatus::Completed => ("✔".dim(), Style::default().crossed_out().dim()),
-            StepStatus::InProgress => ("□".cyan().bold(), Style::default().cyan().bold()),
-            StepStatus::Pending => ("□".dim(), Style::default().dim()),
+            StepStatus::Completed => ("✔ ".dim(), Style::default().crossed_out().dim()),
+            StepStatus::InProgress => ("□ ".cyan().bold(), Style::default().cyan().bold()),
+            StepStatus::Pending => ("□ ".dim(), Style::default().dim()),
         };
-        vec![
-            "  ".into(),
-            marker,
-            " ".into(),
-            Span::styled(item.step.clone(), step_style),
-        ]
-        .into()
+        vec![marker, Span::styled(item.step.clone(), step_style)].into()
     }
 }
 

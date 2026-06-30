@@ -2441,6 +2441,21 @@ async fn status_line_command_output_overrides_builtin_status_line_items() {
 }
 
 #[tokio::test]
+async fn status_line_command_empty_update_keeps_previous_output() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
+        "missing-statusline-command".to_string(),
+    ]));
+    chat.status_line_command_output = Some(Line::from("custom status"));
+    chat.status_line_command_pending_payload = Some("payload".to_string());
+    chat.status_line_command_pending_request_id = Some(7);
+
+    chat.set_status_line_command_output(7, None);
+
+    assert_eq!(status_line_text(&chat), Some("custom status".to_string()));
+}
+
+#[tokio::test]
 async fn status_line_context_used_renders_labeled_percent() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());

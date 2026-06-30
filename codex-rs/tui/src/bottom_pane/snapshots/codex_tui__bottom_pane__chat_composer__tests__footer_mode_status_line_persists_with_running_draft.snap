@@ -1,0 +1,13 @@
+---
+source: tui/src/bottom_pane/chat_composer.rs
+expression: terminal.backend()
+---
+"                                                                                                    "
+"› Improve documentation in @filename                                                                "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"  codex · main-fork · gpt-5.5 · 65% 172.1k/258.4k · Tasks 2/5                                       "
+"  tab to queue message                                                           100% context left  "

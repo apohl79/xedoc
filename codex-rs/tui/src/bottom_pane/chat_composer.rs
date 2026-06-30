@@ -182,6 +182,7 @@ use super::footer::render_footer_line;
 use super::footer::reset_mode_after_activity;
 use super::footer::side_conversation_context_line;
 use super::footer::single_line_footer_layout;
+use super::footer::status_line_context_line;
 use super::footer::status_line_right_indicator_line;
 use super::footer::toggle_shortcut_mode;
 use super::footer::uses_passive_footer_status_layout;
@@ -724,11 +725,7 @@ impl ChatComposer {
         textarea_right_reserve: u16,
     ) -> [Rect; 4] {
         let footer_props = self.footer_props();
-        let footer_hint_height = self
-            .custom_footer_height()
-            .unwrap_or_else(|| footer_height(&footer_props));
-        let footer_spacing = Self::footer_spacing(footer_hint_height);
-        let footer_total_height = footer_hint_height + footer_spacing;
+        let footer_total_height = self.footer_total_height(&footer_props);
         let popup_constraint = match &self.popups.active {
             ActivePopup::Command(popup) => {
                 Constraint::Max(popup.calculate_required_height(area.width))
@@ -776,6 +773,34 @@ impl ChatComposer {
         } else {
             FOOTER_SPACING_HEIGHT
         }
+    }
+
+    fn footer_hint_height(&self, footer_props: &FooterProps) -> u16 {
+        self.custom_footer_height()
+            .unwrap_or_else(|| footer_height(footer_props))
+    }
+
+    fn persistent_status_line(&self, footer_props: &FooterProps) -> Option<Line<'static>> {
+        if !footer_props.status_line_enabled {
+            return None;
+        }
+
+        let normal_footer_renders_status_line = self.custom_footer_height().is_none()
+            && self.history_search_footer_line().is_none()
+            && !self.footer.plan_mode_nudge_visible
+            && uses_passive_footer_status_layout(footer_props);
+        if normal_footer_renders_status_line {
+            return None;
+        }
+
+        status_line_context_line(footer_props)
+    }
+
+    fn footer_total_height(&self, footer_props: &FooterProps) -> u16 {
+        let footer_hint_height = self.footer_hint_height(footer_props);
+        let footer_content_height =
+            footer_hint_height + u16::from(self.persistent_status_line(footer_props).is_some());
+        footer_content_height + Self::footer_spacing(footer_content_height)
     }
 
     pub fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
@@ -4183,11 +4208,7 @@ impl ChatComposer {
         textarea_right_reserve: u16,
     ) -> u16 {
         let footer_props = self.footer_props();
-        let footer_hint_height = self
-            .custom_footer_height()
-            .unwrap_or_else(|| footer_height(&footer_props));
-        let footer_spacing = Self::footer_spacing(footer_hint_height);
-        let footer_total_height = footer_hint_height + footer_spacing;
+        let footer_total_height = self.footer_total_height(&footer_props);
         const COLS_WITH_MARGIN: u16 = LIVE_PREFIX_COLS + 1;
         let inner_width =
             width.saturating_sub(COLS_WITH_MARGIN.saturating_add(textarea_right_reserve));
@@ -4261,20 +4282,37 @@ impl ChatComposer {
                     | FooterMode::ShortcutOverlay
                     | FooterMode::EscHint => false,
                 };
-                let custom_height = self.custom_footer_height();
-                let footer_hint_height =
-                    custom_height.unwrap_or_else(|| footer_height(&footer_props));
-                let footer_spacing = Self::footer_spacing(footer_hint_height);
-                let hint_rect = if footer_spacing > 0 && footer_hint_height > 0 {
-                    let [_, hint_rect] = Layout::vertical([
+                let footer_hint_height = self.footer_hint_height(&footer_props);
+                let persistent_status_line = self.persistent_status_line(&footer_props);
+                let persistent_status_line_height = u16::from(persistent_status_line.is_some());
+                let footer_content_height = footer_hint_height + persistent_status_line_height;
+                let footer_spacing = Self::footer_spacing(footer_content_height);
+                let content_rect = if footer_spacing > 0 && footer_content_height > 0 {
+                    let [_, content_rect] = Layout::vertical([
                         Constraint::Length(footer_spacing),
-                        Constraint::Length(footer_hint_height),
+                        Constraint::Length(footer_content_height),
                     ])
                     .areas(popup_rect);
-                    hint_rect
+                    content_rect
                 } else {
                     popup_rect
                 };
+                let [persistent_status_line_rect, hint_rect] = Layout::vertical([
+                    Constraint::Length(persistent_status_line_height),
+                    Constraint::Length(footer_hint_height),
+                ])
+                .areas(content_rect);
+                if let Some(line) = persistent_status_line {
+                    let available_width = persistent_status_line_rect
+                        .width
+                        .saturating_sub(FOOTER_INDENT_COLS as u16)
+                        as usize;
+                    render_footer_line(
+                        persistent_status_line_rect,
+                        buf,
+                        truncate_line_with_ellipsis_if_overflow(line, available_width),
+                    );
+                }
                 if let Some(line) = self.history_search_footer_line() {
                     render_footer_line(hint_rect, buf, line);
                 } else if self.footer.plan_mode_nudge_visible {
@@ -4841,6 +4879,23 @@ mod tests {
             /*enhanced_keys_supported*/ true,
             |composer| {
                 type_chars_humanlike(composer, &['h']);
+            },
+        );
+
+        snapshot_composer_state(
+            "footer_mode_status_line_persists_with_running_draft",
+            /*enhanced_keys_supported*/ true,
+            |composer| {
+                composer.set_status_line_enabled(/*enabled*/ true);
+                composer.set_status_line(Some(Line::from(
+                    "codex · main-fork · gpt-5.5 · 65% 172.1k/258.4k · Tasks 2/5",
+                )));
+                composer.set_task_running(/*running*/ true);
+                composer.set_text_content(
+                    "Improve documentation in @filename".to_string(),
+                    Vec::new(),
+                    Vec::new(),
+                );
             },
         );
 
