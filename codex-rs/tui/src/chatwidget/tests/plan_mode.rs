@@ -1664,3 +1664,21 @@ async fn plan_update_renders_history_cell() {
     assert!(blob.contains("Implement feature"));
     assert!(blob.contains("Write tests"));
 }
+
+#[tokio::test]
+async fn plan_update_skips_history_cell_when_active_task_list_is_visible() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    chat.on_plan_update(UpdatePlanArgs {
+        explanation: Some("Adapting plan".to_string()),
+        plan: vec![PlanItemArg {
+            step: "Implement feature".into(),
+            status: StepStatus::InProgress,
+        }],
+    });
+
+    let cells = drain_insert_history(&mut rx);
+    assert!(cells.is_empty(), "expected pinned task list only");
+    assert!(chat.bottom_pane.active_task_list_visible());
+}

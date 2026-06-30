@@ -782,6 +782,11 @@ pub(crate) fn passive_footer_status_line(props: &FooterProps) -> Option<Line<'st
         return None;
     }
 
+    status_line_context_line(props)
+}
+
+/// Returns the configured status line combined with the active agent label.
+pub(crate) fn status_line_context_line(props: &FooterProps) -> Option<Line<'static>> {
     let mut line = if props.status_line_enabled {
         props.status_line_value.clone()
     } else {
