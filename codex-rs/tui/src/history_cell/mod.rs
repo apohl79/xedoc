@@ -75,9 +75,6 @@ use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::local_image_label_text;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::permissions::NetworkSandboxPolicy;
-use codex_protocol::plan_tool::PlanItemArg;
-use codex_protocol::plan_tool::StepStatus;
-use codex_protocol::plan_tool::UpdatePlanArgs;
 use codex_protocol::user_input::TextElement;
 use codex_utils_absolute_path::AbsolutePathBuf;
 #[cfg(test)]
