@@ -123,6 +123,8 @@ The fork adds release helpers for building apohl79-branded packages from
   it does not already exist.
 - The release helper uploads generated archives to the release with clobbering
   enabled so rebuilding the same version replaces the previous asset.
+- The release helper uses the stored `apohl79` `gh` token by default for release
+  publishing, while respecting an explicit `GH_TOKEN` or `GITHUB_TOKEN`.
 
 Primary files:
 

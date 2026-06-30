@@ -87,6 +87,45 @@ class Apohl79ReleaseTest(unittest.TestCase):
             "rust-v0.141.0-apohl79",
         )
 
+    def test_github_release_env_uses_configured_account_token(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch.object(
+                subprocess,
+                "check_output",
+                return_value="secret-token\n",
+            ) as check_output,
+        ):
+            env = apohl79_release.github_release_env(
+                gh="gh",
+                account="apohl79",
+            )
+
+        self.assertIsNotNone(env)
+        assert env is not None
+        self.assertEqual(env["GH_TOKEN"], "secret-token")
+        check_output.assert_called_once_with(
+            ["gh", "auth", "token", "-h", "github.com", "-u", "apohl79"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def test_github_release_env_respects_existing_token(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {"GH_TOKEN": "existing-token"}),
+            mock.patch.object(
+                subprocess,
+                "check_output",
+                side_effect=AssertionError("should not read gh auth token"),
+            ),
+        ):
+            self.assertIsNone(
+                apohl79_release.github_release_env(
+                    gh="gh",
+                    account="apohl79",
+                )
+            )
+
     def test_publish_github_release_creates_missing_release_and_uploads_archives(
         self,
     ) -> None:
@@ -295,6 +334,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 codesign_identity=None,
                 force=True,
                 gh="gh",
+                github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
                 output_dir=Path("dist/apohl79"),
@@ -440,6 +480,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 title: str,
                 target: str,
                 archive_outputs: list[Path],
+                env: dict[str, str] | None = None,
             ) -> None:
                 published.update(
                     {
@@ -449,6 +490,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "title": title,
                         "target": target,
                         "archive_outputs": archive_outputs,
+                        "env": env,
                     }
                 )
 
@@ -458,6 +500,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 codesign_identity=None,
                 force=True,
                 gh="custom-gh",
+                github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
                 output_dir=Path("dist/apohl79"),
@@ -486,6 +529,11 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 mock.patch.object(
                     apohl79_release, "git_commit", return_value="c" * 40
                 ),
+                mock.patch.object(
+                    apohl79_release,
+                    "github_release_env",
+                    return_value={"GH_TOKEN": "secret-token"},
+                ),
                 mock.patch.object(apohl79_release, "run", side_effect=fake_run),
                 mock.patch.object(
                     apohl79_release,
@@ -505,6 +553,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "title": "0.141.0-apohl79",
                     "target": "c" * 40,
                     "archive_outputs": [(repo_root / archive_output).resolve()],
+                    "env": {"GH_TOKEN": "secret-token"},
                 },
             )
 
@@ -592,6 +641,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 codesign_identity=None,
                 force=True,
                 gh="gh",
+                github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
                 output_dir=Path("dist/apohl79"),
@@ -821,6 +871,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 codesign_identity=None,
                 force=True,
                 gh="gh",
+                github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
                 output_dir=Path("dist/apohl79"),
@@ -1143,6 +1194,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
         self.assertNotIn("YOUR NAME", wrapper)
         self.assertIn("--target aarch64-apple-darwin", wrapper)
         self.assertIn("--github-repo apohl79/codex", wrapper)
+        self.assertIn("--github-account apohl79", wrapper)
         self.assertIn('"$@"', wrapper)
 
 

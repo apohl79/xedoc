@@ -4,5 +4,6 @@ python3 scripts/build_apohl79_release.py \
   --ref main-fork \
   --target aarch64-apple-darwin \
   --github-repo apohl79/codex \
+  --github-account apohl79 \
   --force \
   "$@"

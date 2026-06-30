@@ -17,6 +17,7 @@ REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_REF = "main-fork"
 DEFAULT_SUFFIX = "apohl79"
 DEFAULT_GITHUB_REPO = "apohl79/codex"
+DEFAULT_GITHUB_ACCOUNT = "apohl79"
 PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
 DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
 WORKSPACE_VERSION_SENTINEL = "0.0.0"
@@ -99,6 +100,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--github-repo",
         default=DEFAULT_GITHUB_REPO,
         help="GitHub repository that receives the release and uploaded archives.",
+    )
+    parser.add_argument(
+        "--github-account",
+        default=DEFAULT_GITHUB_ACCOUNT,
+        help=(
+            "Stored gh account whose token is used for publishing when GH_TOKEN "
+            "or GITHUB_TOKEN is not already set. Pass an empty value to use the "
+            "active gh account."
+        ),
     )
     parser.add_argument(
         "--gh",
@@ -246,6 +256,7 @@ def build_release(args: argparse.Namespace) -> None:
 
     release_tag = github_release_tag(fork_version)
     if not args.skip_github_release:
+        github_env = github_release_env(gh=args.gh, account=args.github_account)
         publish_github_release(
             gh=args.gh,
             repo=args.github_repo,
@@ -253,6 +264,7 @@ def build_release(args: argparse.Namespace) -> None:
             title=fork_version,
             target=git_commit("HEAD"),
             archive_outputs=archive_outputs,
+            env=github_env,
         )
 
     print(f"Built apohl79 Codex release {fork_version}")
@@ -604,8 +616,9 @@ def publish_github_release(
     title: str,
     target: str,
     archive_outputs: list[Path],
+    env: dict[str, str] | None = None,
 ) -> None:
-    if github_release_exists(gh=gh, repo=repo, tag=tag):
+    if github_release_exists(gh=gh, repo=repo, tag=tag, env=env):
         print(f"GitHub release {tag} already exists in {repo}.", flush=True)
     else:
         print(f"Creating GitHub release {tag} in {repo}.", flush=True)
@@ -625,6 +638,7 @@ def publish_github_release(
                 target,
             ],
             cwd=REPO_ROOT,
+            env=env,
         )
 
     for archive_output in archive_outputs:
@@ -640,17 +654,51 @@ def publish_github_release(
                 "--clobber",
             ],
             cwd=REPO_ROOT,
+            env=env,
         )
 
 
-def github_release_exists(*, gh: str, repo: str, tag: str) -> bool:
+def github_release_exists(
+    *,
+    gh: str,
+    repo: str,
+    tag: str,
+    env: dict[str, str] | None = None,
+) -> bool:
     result = run(
         [gh, "release", "view", tag, "--repo", repo],
         cwd=REPO_ROOT,
+        env=env,
         check=False,
         stdout=subprocess.DEVNULL,
     )
     return result.returncode == 0
+
+
+def github_release_env(*, gh: str, account: str | None) -> dict[str, str] | None:
+    if os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or not account:
+        return None
+
+    try:
+        token = subprocess.check_output(
+            [gh, "auth", "token", "-h", "github.com", "-u", account],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (FileNotFoundError, subprocess.CalledProcessError) as err:
+        raise RuntimeError(
+            f"Could not read gh auth token for GitHub account {account!r}. "
+            "Run `gh auth status -h github.com` or pass --github-account ''."
+        ) from err
+
+    if not token:
+        raise RuntimeError(
+            f"gh returned an empty token for GitHub account {account!r}."
+        )
+
+    env = os.environ.copy()
+    env["GH_TOKEN"] = token
+    return env
 
 
 def latest_release_version_from_ls_remote(stdout: str) -> str:
