@@ -141,6 +141,7 @@ impl FileSearchManager {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_disk_completion(
     state: Arc<Mutex<SearchState>>,
     app_tx: AppEventSender,
@@ -152,12 +153,21 @@ fn spawn_disk_completion(
     limit: usize,
 ) {
     thread::spawn(move || {
-        let matches =
-            collect_disk_completion_matches(&directory, &entry_prefix, &display_prefix, limit)
-                .unwrap_or_else(|err| {
-                    tracing::debug!("disk completion failed for {directory:?}: {err}");
-                    Vec::new()
-                });
+        let is_current = || disk_completion_is_current(&state, session_token, &original_query);
+        if !is_current() {
+            return;
+        }
+        let matches = collect_disk_completion_matches(
+            &directory,
+            &entry_prefix,
+            &display_prefix,
+            limit,
+            &is_current,
+        )
+        .unwrap_or_else(|err| {
+            tracing::debug!("disk completion failed for {directory:?}: {err}");
+            Vec::new()
+        });
         send_disk_completion_result_if_current(
             &state,
             &app_tx,
@@ -166,6 +176,17 @@ fn spawn_disk_completion(
             matches,
         );
     });
+}
+
+/// Returns whether a disk-completion request is still the active query.
+fn disk_completion_is_current(
+    state: &Arc<Mutex<SearchState>>,
+    session_token: usize,
+    query: &str,
+) -> bool {
+    #[expect(clippy::unwrap_used)]
+    let st = state.lock().unwrap();
+    st.session_token == session_token && st.latest_query == query && !st.latest_query.is_empty()
 }
 
 fn send_disk_completion_result_if_current(
@@ -217,13 +238,39 @@ fn resolve_tilde_query(query: &str, home_dir: Option<&Path>) -> Option<FileSearc
     let rest = query
         .strip_prefix("~/")
         .or_else(|| query.strip_prefix(r"~\"))?;
+    let rest = rest.trim_start_matches(is_path_separator);
     let (directory_prefix, entry_prefix) = split_path_query(rest);
-    Some(FileSearchRequest::DiskCompletion {
-        original_query: query.to_string(),
-        directory: lexically_normalize(&home_dir.join(directory_prefix)),
+    Some(disk_completion_from_parts(
+        query,
+        home_dir,
+        directory_prefix,
+        entry_prefix,
+        "~/",
+    ))
+}
+
+/// Builds a disk-completion request, folding a trailing `.`/`..` into the directory.
+fn disk_completion_from_parts(
+    original_query: &str,
+    base: &Path,
+    directory_prefix: &str,
+    entry_prefix: &str,
+    display_root: &str,
+) -> FileSearchRequest {
+    if entry_prefix == "." || entry_prefix == ".." {
+        return FileSearchRequest::DiskCompletion {
+            original_query: original_query.to_string(),
+            directory: lexically_normalize(&base.join(directory_prefix).join(entry_prefix)),
+            entry_prefix: String::new(),
+            display_prefix: format!("{display_root}{directory_prefix}{entry_prefix}/"),
+        };
+    }
+    FileSearchRequest::DiskCompletion {
+        original_query: original_query.to_string(),
+        directory: lexically_normalize(&base.join(directory_prefix)),
         entry_prefix: entry_prefix.to_string(),
-        display_prefix: format!("~/{directory_prefix}"),
-    })
+        display_prefix: format!("{display_root}{directory_prefix}"),
+    }
 }
 
 fn resolve_disk_query(query: &str, anchor: &Path, display_query: &str) -> FileSearchRequest {
@@ -245,12 +292,7 @@ fn resolve_disk_query(query: &str, anchor: &Path, display_query: &str) -> FileSe
     }
 
     let (directory_prefix, entry_prefix) = split_path_query(query);
-    FileSearchRequest::DiskCompletion {
-        original_query: display_query.to_string(),
-        directory: lexically_normalize(&anchor.join(directory_prefix)),
-        entry_prefix: entry_prefix.to_string(),
-        display_prefix: directory_prefix.to_string(),
-    }
+    disk_completion_from_parts(display_query, anchor, directory_prefix, entry_prefix, "")
 }
 
 fn split_path_query(query: &str) -> (&str, &str) {
@@ -275,14 +317,18 @@ fn is_explicit_relative_path_query(query: &str) -> bool {
         || query.starts_with(r"..\")
 }
 
-fn collect_disk_completion_matches(
+fn collect_disk_completion_matches<F: Fn() -> bool>(
     directory: &Path,
     entry_prefix: &str,
     display_prefix: &str,
     limit: usize,
+    is_current: &F,
 ) -> std::io::Result<Vec<file_search::FileMatch>> {
     let mut matches = Vec::new();
-    for entry in fs::read_dir(directory)? {
+    for (index, entry) in fs::read_dir(directory)?.enumerate() {
+        if index % 256 == 0 && !is_current() {
+            return Ok(Vec::new());
+        }
         let entry = entry?;
         let file_name = entry.file_name();
         let file_name = file_name.to_string_lossy();

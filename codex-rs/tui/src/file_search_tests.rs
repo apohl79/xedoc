@@ -99,6 +99,59 @@ fn disk_completion_for_relative_parent_directory_keeps_trailing_prefix() {
 }
 
 #[test]
+fn disk_completion_for_tilde_with_extra_separators_stays_in_home() {
+    let cwd = PathBuf::from("/workspace/project");
+    let home = PathBuf::from("/home/alice");
+
+    let request = resolve_file_search_request("~//foo", &cwd, Some(&home));
+
+    assert_eq!(
+        request,
+        FileSearchRequest::DiskCompletion {
+            original_query: "~//foo".to_string(),
+            directory: home,
+            entry_prefix: "foo".to_string(),
+            display_prefix: "~/".to_string(),
+        }
+    );
+}
+
+#[test]
+fn disk_completion_for_tilde_parent_navigates_above_home() {
+    let cwd = PathBuf::from("/workspace/project");
+    let home = PathBuf::from("/home/alice");
+
+    let request = resolve_file_search_request("~/..", &cwd, Some(&home));
+
+    assert_eq!(
+        request,
+        FileSearchRequest::DiskCompletion {
+            original_query: "~/..".to_string(),
+            directory: PathBuf::from("/home"),
+            entry_prefix: String::new(),
+            display_prefix: "~/../".to_string(),
+        }
+    );
+}
+
+#[test]
+fn disk_completion_for_relative_parent_suffix_navigates_to_grandparent() {
+    let cwd = PathBuf::from("/workspace/project/crate");
+
+    let request = resolve_file_search_request("../..", &cwd, None);
+
+    assert_eq!(
+        request,
+        FileSearchRequest::DiskCompletion {
+            original_query: "../..".to_string(),
+            directory: PathBuf::from("/workspace"),
+            entry_prefix: String::new(),
+            display_prefix: "../../".to_string(),
+        }
+    );
+}
+
+#[test]
 fn bare_query_uses_project_fuzzy_search() {
     let cwd = PathBuf::from("/workspace/project");
 
@@ -148,8 +201,9 @@ fn disk_completion_matches_direct_children_with_display_prefix() {
     fs::create_dir(temp.path().join("alpine")).expect("create alpine");
     fs::write(temp.path().join("beta.txt"), "").expect("write beta");
 
-    let matches = collect_disk_completion_matches(temp.path(), "al", "~/", /*limit*/ 20)
-        .expect("collect matches");
+    let matches =
+        collect_disk_completion_matches(temp.path(), "al", "~/", /*limit*/ 20, &|| true)
+            .expect("collect matches");
 
     assert_eq!(
         matches
@@ -172,10 +226,12 @@ fn disk_completion_hides_dotfiles_unless_prefix_starts_with_dot() {
     fs::write(temp.path().join(".hidden"), "").expect("write hidden");
     fs::write(temp.path().join("visible"), "").expect("write visible");
 
-    let visible_matches = collect_disk_completion_matches(temp.path(), "", "~/", /*limit*/ 20)
-        .expect("collect visible matches");
-    let hidden_matches = collect_disk_completion_matches(temp.path(), ".", "~/", /*limit*/ 20)
-        .expect("collect hidden matches");
+    let visible_matches =
+        collect_disk_completion_matches(temp.path(), "", "~/", /*limit*/ 20, &|| true)
+            .expect("collect visible matches");
+    let hidden_matches =
+        collect_disk_completion_matches(temp.path(), ".", "~/", /*limit*/ 20, &|| true)
+            .expect("collect hidden matches");
 
     assert_eq!(
         visible_matches
@@ -201,8 +257,9 @@ fn disk_completion_follows_symlinked_directories() {
     std::os::unix::fs::symlink(temp.path().join("target"), temp.path().join("linked"))
         .expect("create symlinked dir");
 
-    let matches = collect_disk_completion_matches(temp.path(), "li", "~/", /*limit*/ 20)
-        .expect("collect matches");
+    let matches =
+        collect_disk_completion_matches(temp.path(), "li", "~/", /*limit*/ 20, &|| true)
+            .expect("collect matches");
 
     assert_eq!(
         matches
