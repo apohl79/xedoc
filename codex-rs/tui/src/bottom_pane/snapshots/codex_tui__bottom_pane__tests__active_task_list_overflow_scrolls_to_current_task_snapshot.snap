@@ -2,15 +2,15 @@
 source: tui/src/bottom_pane/mod.rs
 expression: "render_snapshot(&pane, area)"
 ---
-• Tasks 7/8                                                     
-  └ ✔ Task 1                                                    
-    ✔ Task 2                                                    
-    ✔ Task 3                                                    
+• Tasks 14/15                                                   
+  └ ✔ Task 3                                                    
     ✔ Task 4                                                    
     ✔ Task 5                                                    
     ✔ Task 6                                                    
-    ... 1 more                                                  
-    □ Task 8                                                    
+    ✔ Task 7                                                    
+    ✔ Task 8                                                    
+    □ Task 9                                                    
+    ... 6 more                                                  
                                                                 
 › Ask Codex to do anything                                      
                                                                 

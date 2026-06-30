@@ -88,24 +88,22 @@ impl ActiveTaskList {
             return self.leading_task_lines();
         };
 
-        if current_index < MAX_VISIBLE_TASKS {
+        if total <= MAX_VISIBLE_TASKS || current_index < MAX_VISIBLE_TASKS {
             return self.leading_task_lines();
         }
 
-        let leading_count = MAX_VISIBLE_TASKS.saturating_sub(1);
-        let hidden = total - leading_count - 1;
-
+        let start = current_index + 1 - MAX_VISIBLE_TASKS;
+        let end = total.min(start + MAX_VISIBLE_TASKS);
+        let hidden = total.saturating_sub(end);
         let mut lines: Vec<Line<'static>> = self
             .tasks
             .iter()
-            .take(leading_count)
+            .skip(start)
+            .take(end - start)
             .map(Self::task_line)
             .collect();
         if hidden > 0 {
             lines.push(format!("... {hidden} more").dim().into());
-        }
-        if let Some(current) = self.tasks.get(current_index) {
-            lines.push(Self::task_line(current));
         }
         lines
     }
