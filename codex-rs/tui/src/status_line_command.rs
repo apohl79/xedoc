@@ -13,12 +13,14 @@ use codex_config::types::StatusLineCommand;
 use codex_shell_command::shell_detect::ShellType;
 use codex_shell_command::shell_detect::default_user_shell;
 use ratatui::text::Line;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
 const STATUS_LINE_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 const STATUS_LINE_COMMAND_STDERR_LOG_CAP: usize = 1_024;
+const STATUS_LINE_COMMAND_STDOUT_CAP: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CommandSpec {
@@ -61,9 +63,20 @@ pub(crate) async fn run_status_line_command(
         });
     }
 
-    let output = match timeout(STATUS_LINE_COMMAND_TIMEOUT, child.wait_with_output()).await {
-        Ok(Ok(output)) => output,
-        Ok(Err(err)) => {
+    let mut stdout = child.stdout.take();
+    let mut stderr = child.stderr.take();
+    let collected = timeout(STATUS_LINE_COMMAND_TIMEOUT, async {
+        let (stdout_bytes, stderr_bytes) = tokio::join!(
+            read_capped(stdout.as_mut(), STATUS_LINE_COMMAND_STDOUT_CAP),
+            read_capped(stderr.as_mut(), STATUS_LINE_COMMAND_STDERR_LOG_CAP as u64),
+        );
+        (child.wait().await, stdout_bytes, stderr_bytes)
+    })
+    .await;
+
+    let (status, stdout_bytes, stderr_bytes) = match collected {
+        Ok((Ok(status), stdout_bytes, stderr_bytes)) => (status, stdout_bytes, stderr_bytes),
+        Ok((Err(err), _, _)) => {
             tracing::debug!(error = %err, program = %spec.program, "status line command failed");
             return None;
         }
@@ -73,17 +86,30 @@ pub(crate) async fn run_status_line_command(
         }
     };
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr_bytes);
         tracing::debug!(
-            status = %output.status,
+            status = %status,
             stderr = %truncate_for_log(&stderr),
             "status line command exited unsuccessfully"
         );
         return None;
     }
 
-    line_from_stdout(&String::from_utf8_lossy(&output.stdout))
+    line_from_stdout(&String::from_utf8_lossy(&stdout_bytes))
+}
+
+/// Reads at most `cap` bytes from an optional async reader.
+async fn read_capped<R>(reader: Option<&mut R>, cap: u64) -> Vec<u8>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let mut buf = Vec::new();
+    if let Some(reader) = reader {
+        let mut limited = reader.take(cap);
+        let _ = limited.read_to_end(&mut buf).await;
+    }
+    buf
 }
 
 fn command_spec_for_config(config: &StatusLineCommand) -> Option<CommandSpec> {
@@ -110,7 +136,7 @@ fn command_spec_for_shell_command(command: &str) -> Option<CommandSpec> {
         ],
         ShellType::Cmd => vec!["/C".to_string(), command.to_string()],
         ShellType::Zsh | ShellType::Bash | ShellType::Sh => {
-            vec!["-lc".to_string(), command.to_string()]
+            vec!["-c".to_string(), command.to_string()]
         }
     };
     Some(CommandSpec { program, args })
@@ -200,5 +226,14 @@ mod tests {
         let line = line_from_stdout("\u{1b}[32mok\u{1b}[0m\nignored").expect("line");
 
         assert_eq!(line_text(&line), "ok");
+    }
+
+    #[tokio::test]
+    async fn read_capped_truncates_to_cap() {
+        let mut reader = std::io::Cursor::new(vec![b'x'; 10_000]);
+
+        let bytes = read_capped(Some(&mut reader), 1_000).await;
+
+        assert_eq!(bytes.len(), 1_000);
     }
 }
