@@ -2,6 +2,7 @@
 
 use super::HistoryCell;
 use super::MAX_AGENT_COPY_HISTORY;
+use codex_protocol::plan_tool::PlanItemArg;
 
 #[derive(Debug)]
 pub(super) struct AgentTurnMarkdown {
@@ -40,6 +41,8 @@ pub(super) struct TranscriptState {
     pub(super) saw_plan_item_this_turn: bool,
     /// Latest `update_plan` checklist task counts for terminal-title rendering.
     pub(super) last_plan_progress: Option<(usize, usize)>,
+    /// Latest `update_plan` checklist items for pinned bottom-pane rendering.
+    pub(super) latest_plan_tasks: Vec<PlanItemArg>,
     /// Incremental buffer for streamed plan content.
     pub(super) plan_delta_buffer: String,
     /// True while a plan item is streaming.
