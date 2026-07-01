@@ -2388,10 +2388,12 @@ async fn plan_update_shows_active_task_list_only_while_task_runs() {
     assert_eq!(chat.bottom_pane.active_task_list_visible(), false);
 
     handle_turn_started(&mut chat, "turn-1");
-    chat.on_plan_update(update());
     assert_eq!(chat.bottom_pane.active_task_list_visible(), true);
 
     handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+    assert_eq!(chat.bottom_pane.active_task_list_visible(), false);
+
+    handle_turn_started(&mut chat, "turn-2");
     assert_eq!(chat.bottom_pane.active_task_list_visible(), false);
 }
 

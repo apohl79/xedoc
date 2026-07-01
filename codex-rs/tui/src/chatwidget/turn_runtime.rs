@@ -11,9 +11,14 @@ impl ChatWidget {
     /// The bottom pane only has one running flag, but this module treats it as a derived state of
     /// both the agent turn lifecycle and MCP startup lifecycle.
     pub(super) fn update_task_running_state(&mut self) {
-        self.bottom_pane.set_task_running(
-            self.turn_lifecycle.agent_turn_running || self.mcp_startup_status.is_some(),
-        );
+        let task_running =
+            self.turn_lifecycle.agent_turn_running || self.mcp_startup_status.is_some();
+        let was_task_running = self.bottom_pane.is_task_running();
+        self.bottom_pane.set_task_running(task_running);
+        if task_running && !was_task_running && !self.transcript.latest_plan_tasks.is_empty() {
+            self.bottom_pane
+                .set_active_task_list(self.transcript.latest_plan_tasks.clone());
+        }
         self.refresh_plan_mode_nudge();
         self.refresh_status_surfaces();
     }
@@ -166,6 +171,7 @@ impl ChatWidget {
         self.input_queue.user_turn_pending_start = false;
         self.clear_active_hook_cell();
         self.turn_lifecycle.finish();
+        self.transcript.latest_plan_tasks.clear();
         self.update_task_running_state();
         self.running_commands.clear();
         self.suppressed_exec_calls.clear();
@@ -309,6 +315,7 @@ impl ChatWidget {
         // Reset running state and clear streaming buffers.
         self.input_queue.user_turn_pending_start = false;
         self.turn_lifecycle.finish();
+        self.transcript.latest_plan_tasks.clear();
         self.update_task_running_state();
         self.running_commands.clear();
         self.suppressed_exec_calls.clear();
@@ -458,13 +465,20 @@ impl ChatWidget {
     }
 
     pub(super) fn on_plan_update(&mut self, update: UpdatePlanArgs) {
+        let UpdatePlanArgs {
+            explanation: _,
+            plan,
+        } = update;
         self.transcript.saw_plan_update_this_turn = true;
+        self.transcript.latest_plan_tasks = plan;
         if self.bottom_pane.is_task_running() {
-            self.bottom_pane.set_active_task_list(update.plan.clone());
+            self.bottom_pane
+                .set_active_task_list(self.transcript.latest_plan_tasks.clone());
         }
-        let total = update.plan.len();
-        let completed = update
-            .plan
+        let total = self.transcript.latest_plan_tasks.len();
+        let completed = self
+            .transcript
+            .latest_plan_tasks
             .iter()
             .filter(|item| match &item.status {
                 StepStatus::Completed => true,
