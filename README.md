@@ -14,13 +14,13 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 ### Installing and running this fork
 
-Install the apohl79 fork release on Mac or Linux:
+Install the apohl79 fork release on macOS:
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install-apohl79.sh | sh
 ```
 
-Or clone and build from `main-fork`:
+Or clone and build from `main-fork` on macOS or Linux:
 
 ```shell
 git clone --branch main-fork https://github.com/apohl79/codex.git && cd codex/codex-rs && cargo install --locked --path cli
