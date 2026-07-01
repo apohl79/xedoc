@@ -1,4 +1,5 @@
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
+This `apohl79/codex` fork tracks upstream Codex on `main-fork` with small local TUI and release tweaks.
 <p align="center">
   <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
 </p>
@@ -11,49 +12,30 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 ## Quickstart
 
-### Installing and running Codex CLI
+### Installing and running this fork
 
-Run the following on Mac or Linux to install Codex CLI:
-
-```shell
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
-```
-
-Run the following on Windows to install Codex CLI:
-
-```
-powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
-```
-
-Codex CLI can also be installed via the following package managers:
+Install the apohl79 fork release on Mac or Linux:
 
 ```shell
-# Install using npm
-npm install -g @openai/codex
+curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install-apohl79.sh | sh
 ```
 
+Or clone and build from `main-fork`:
+
 ```shell
-# Install using Homebrew
-brew install --cask codex
+git clone --branch main-fork https://github.com/apohl79/codex.git && cd codex/codex-rs && cargo install --locked --path cli
 ```
 
 Then simply run `codex` to get started.
 
-<details>
-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+### Fork tweaks
 
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
+- Extended TUI `@` file-path completion.
+- Custom TUI status line support.
+- Persistent active task list above the user entry field while a turn is running.
+- apohl79 release packaging and installer scripts.
 
-- macOS
-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
-
-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
-
-</details>
+See [README.fork.md](./README.fork.md) for the full fork inventory.
 
 ### Using Codex with your ChatGPT plan
 
@@ -64,6 +46,7 @@ You can also use Codex with an API key, but this requires [additional setup](htt
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
+- [**Fork notes**](./README.fork.md)
 - [**Contributing**](./docs/contributing.md)
 - [**Installing & building**](./docs/install.md)
 - [**Open source fund**](./docs/open-source-fund.md)
