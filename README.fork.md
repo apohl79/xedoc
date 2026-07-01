@@ -68,6 +68,26 @@ Primary files:
 - `codex-rs/tui/src/chatwidget/status_surfaces.rs`
 - `codex-rs/tui/src/status_line_command.rs`
 
+### TUI Session Name Composer Label
+
+The fork shows the current session name in the composer when a name is set.
+
+- Named or renamed threads render the session name at the top-right of the user
+  entry box.
+- Empty or whitespace-only names are hidden.
+- Long names are truncated with an ellipsis to preserve composer layout.
+- Session-load and thread-name-update paths both keep the composer label in
+  sync.
+- Snapshot coverage verifies session-load rendering, rename rendering, and
+  truncation.
+
+Primary files:
+
+- `codex-rs/tui/src/bottom_pane/chat_composer.rs`
+- `codex-rs/tui/src/bottom_pane/mod.rs`
+- `codex-rs/tui/src/chatwidget/session_flow.rs`
+- `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
+
 ### Persistent Active Task List
 
 The fork keeps the current `update_plan` checklist visible in the TUI while a

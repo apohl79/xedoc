@@ -418,6 +418,12 @@ impl BottomPane {
         self.request_redraw();
     }
 
+    pub(crate) fn set_session_name(&mut self, session_name: Option<String>) {
+        if self.composer.set_session_name(session_name) {
+            self.request_redraw();
+        }
+    }
+
     pub fn set_personality_command_enabled(&mut self, enabled: bool) {
         self.composer.set_personality_command_enabled(enabled);
         self.request_redraw();

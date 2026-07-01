@@ -361,6 +361,7 @@ pub(crate) struct ChatComposer {
     frame_requester: Option<FrameRequester>,
     attachments: AttachmentState,
     placeholder_text: String,
+    session_name: Option<String>,
     is_task_running: bool,
     queue_submissions: bool,
     /// Slash-command draft staged for local recall after application-level dispatch.
@@ -529,6 +530,7 @@ impl ChatComposer {
             frame_requester: None,
             attachments: AttachmentState::default(),
             placeholder_text,
+            session_name: None,
             is_task_running: false,
             queue_submissions: false,
             pending_slash_command_history: None,
@@ -686,6 +688,18 @@ impl ChatComposer {
 
     pub fn set_ide_context_active(&mut self, active: bool) {
         self.footer.ide_context_active = active;
+    }
+
+    pub(crate) fn set_session_name(&mut self, session_name: Option<String>) -> bool {
+        let session_name = session_name.and_then(|name| {
+            let trimmed = name.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        });
+        if self.session_name == session_name {
+            return false;
+        }
+        self.session_name = session_name;
+        true
     }
 
     pub fn set_personality_command_enabled(&mut self, enabled: bool) {
@@ -4510,6 +4524,25 @@ impl ChatComposer {
         }
         let style = user_message_style();
         Block::default().style(style).render_ref(composer_rect, buf);
+        if let Some(session_name) = self.session_name.as_ref() {
+            let available_width = composer_rect.width.saturating_sub(4) as usize;
+            if available_width > 0 {
+                let line = truncate_line_with_ellipsis_if_overflow(
+                    Line::from(session_name.to_string().dim()),
+                    available_width,
+                );
+                render_context_right(
+                    Rect {
+                        x: composer_rect.x,
+                        y: composer_rect.y,
+                        width: composer_rect.width,
+                        height: 1,
+                    },
+                    buf,
+                    &line,
+                );
+            }
+        }
         if !remote_images_rect.is_empty() {
             Paragraph::new(self.attachments.remote_image_lines())
                 .style(style)

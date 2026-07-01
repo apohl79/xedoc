@@ -28,6 +28,7 @@ impl ChatWidget {
         self.refresh_plan_mode_nudge();
         self.turn_lifecycle.reset_thread();
         self.thread_name = session.thread_name.clone();
+        self.bottom_pane.set_session_name(self.thread_name.clone());
         self.current_goal_status_indicator = None;
         self.current_goal_status = None;
         self.update_collaboration_mode_indicator();
@@ -217,6 +218,7 @@ impl ChatWidget {
                 self.add_boxed_history(Box::new(cell));
             }
             self.thread_name = thread_name;
+            self.bottom_pane.set_session_name(self.thread_name.clone());
             self.refresh_status_surfaces();
             self.request_redraw();
             self.maybe_send_next_queued_input();
