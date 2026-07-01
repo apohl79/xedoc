@@ -4583,7 +4583,7 @@ impl ChatComposer {
             let available_width = composer_rect.width.saturating_sub(4) as usize;
             if available_width > 0 {
                 let line = truncate_line_with_ellipsis_if_overflow(
-                    Line::from(session_name.to_string().dim()),
+                    Line::from(session_name.to_string().magenta()),
                     available_width,
                 );
                 render_context_right(
@@ -5199,6 +5199,48 @@ mod tests {
 
         insta::assert_snapshot!(
             "plugin_at_mentions_render_with_plugin_accent",
+            format!("text:    {text}\nmagenta: {magenta}")
+        );
+    }
+
+    #[test]
+    fn session_name_renders_with_magenta_accent_snapshot() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ true,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        composer.set_session_name(Some("Roadmap cleanup".to_string()));
+
+        let area = Rect::new(0, 0, 40, 5);
+        let mut buf = Buffer::empty(area);
+        composer.render(area, &mut buf);
+
+        let title_row = 0;
+        let mut text = String::new();
+        let mut magenta = String::new();
+        for x in 0..area.width {
+            let cell = &buf[(x, title_row)];
+            text.push(cell.symbol().chars().next().unwrap_or(' '));
+            magenta.push(if cell.style().fg == Some(Color::Magenta) {
+                '^'
+            } else {
+                ' '
+            });
+        }
+        while text.ends_with(' ') {
+            text.pop();
+        }
+        while magenta.ends_with(' ') {
+            magenta.pop();
+        }
+
+        insta::assert_snapshot!(
+            "session_name_renders_with_magenta_accent",
             format!("text:    {text}\nmagenta: {magenta}")
         );
     }
