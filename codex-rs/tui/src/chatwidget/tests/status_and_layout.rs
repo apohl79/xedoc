@@ -3092,6 +3092,84 @@ async fn renamed_thread_footer_title_snapshot() {
 }
 
 #[tokio::test]
+async fn renamed_thread_composer_title_truncates_snapshot() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.show_welcome_banner = false;
+
+    let thread_id = ThreadId::new();
+    chat.thread_id = Some(thread_id);
+    chat.handle_server_notification(
+        ServerNotification::ThreadNameUpdated(
+            codex_app_server_protocol::ThreadNameUpdatedNotification {
+                thread_id: thread_id.to_string(),
+                thread_name: Some(
+                    "Roadmap cleanup across launch readiness and regional rollout".to_string(),
+                ),
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+
+    let width = 48;
+    let height = chat.desired_height(width);
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
+    terminal
+        .draw(|f| chat.render(f.area(), f.buffer_mut()))
+        .expect("draw renamed-thread composer title");
+    assert_chatwidget_snapshot!(
+        "renamed_thread_composer_title_truncated",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
+#[tokio::test]
+async fn session_configured_composer_title_snapshot() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
+    chat.show_welcome_banner = false;
+    let rollout_file = NamedTempFile::new().unwrap();
+
+    chat.handle_thread_session(crate::session_state::ThreadSessionState {
+        thread_id: ThreadId::new(),
+        forked_from_id: None,
+        fork_parent_title: None,
+        thread_name: Some("Roadmap cleanup".to_string()),
+        model: "gpt-5.3-codex".to_string(),
+        model_provider_id: "test-provider".to_string(),
+        service_tier: None,
+        approval_policy: AskForApproval::Never,
+        approvals_reviewer: ApprovalsReviewer::User,
+        permission_profile: PermissionProfile::read_only(),
+        active_permission_profile: None,
+        cwd: test_path_buf("/home/user/project").abs(),
+        runtime_workspace_roots: Vec::new(),
+        instruction_source_paths: Vec::new(),
+        reasoning_effort: Some(ReasoningEffortConfig::default()),
+        collaboration_mode: None,
+        personality: None,
+        message_history: None,
+        network_proxy: None,
+        rollout_path: Some(rollout_file.path().to_path_buf()),
+    });
+
+    let width = 80;
+    let height = chat.desired_height(width);
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
+    terminal
+        .draw(|f| chat.render(f.area(), f.buffer_mut()))
+        .expect("draw session-configured composer title");
+    assert_chatwidget_snapshot!(
+        "session_configured_composer_title",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
+#[tokio::test]
 async fn status_line_model_with_reasoning_fast_footer_snapshot() {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
