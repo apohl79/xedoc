@@ -12,8 +12,10 @@ use codex_rollout_trace::InferenceTraceContext;
 use futures::StreamExt;
 
 const MAX_SESSION_NAME_CHARS: usize = 32;
+const MIN_SESSION_NAME_WORDS: usize = 2;
+const MAX_SESSION_NAME_WORDS: usize = 7;
 const MAX_TRANSCRIPT_CHARS: usize = 6_000;
-const MAX_TRANSCRIPT_MESSAGES: usize = 24;
+const MAX_TRANSCRIPT_MESSAGES: usize = 48;
 const SENSITIVE_SESSION_NAME_FALLBACK: &str = "Sensitive Session";
 
 impl Session {
@@ -111,7 +113,7 @@ fn session_name_prompt(current_name: Option<&str>, transcript: &str) -> String {
         "Name this Codex session.\n\
          Return only one short session name.\n\
          Max {MAX_SESSION_NAME_CHARS} characters.\n\
-         Use 2-5 words. No quotes. No markdown.\n\
+         Use {MIN_SESSION_NAME_WORDS}-{MAX_SESSION_NAME_WORDS} words. No quotes. No markdown.\n\
          Do not include secrets, tokens, keys, passwords, emails, exact URLs, file paths, IDs, or other unique identifiers.\n\
          If the transcript contains sensitive data, use a generic topic name.\n\
          {current_name}Transcript:\n{transcript}"
@@ -209,6 +211,7 @@ fn append_message_text(output: &mut String, item: &ResponseItem) {
 
 fn normalize_generated_session_name(name: &str) -> Option<String> {
     let name = sanitize_generated_session_name(name.trim().trim_matches(&['"', '\'', '`'][..]));
+    let name = take_first_words(&name, MAX_SESSION_NAME_WORDS);
     let name = take_first_chars(&name, MAX_SESSION_NAME_CHARS);
     let name = crate::util::normalize_thread_name(&name)?;
     if generated_session_name_looks_sensitive(&name) {
@@ -331,6 +334,14 @@ fn looks_like_aws_access_key(value: &str) -> bool {
 
 fn take_first_chars(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
+}
+
+fn take_first_words(value: &str, max_words: usize) -> String {
+    value
+        .split_whitespace()
+        .take(max_words)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn take_last_chars(value: &str, max_chars: usize) -> String {

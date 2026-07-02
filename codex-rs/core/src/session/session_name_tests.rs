@@ -39,6 +39,13 @@ fn normalize_generated_session_name_keeps_non_secret_aws_prefix_words() {
 }
 
 #[test]
+fn normalize_generated_session_name_caps_words() {
+    let name = normalize_generated_session_name("aa bb cc dd ee ff gg hh").expect("generated name");
+
+    assert_eq!(name, "aa bb cc dd ee ff gg");
+}
+
+#[test]
 fn transcript_excerpt_uses_recent_user_and_assistant_text() {
     let items = vec![
         message("developer", "ignore this"),
@@ -50,6 +57,25 @@ fn transcript_excerpt_uses_recent_user_and_assistant_text() {
         transcript_excerpt_with_partial_response(&items, None),
         Some("User: set up config\nAssistant: updated the config path".to_string())
     );
+}
+
+#[test]
+fn transcript_excerpt_keeps_latest_forty_eight_messages() {
+    let items = (0..50)
+        .map(|index| message("user", &format!("m{index:02}")))
+        .collect::<Vec<_>>();
+
+    let transcript =
+        transcript_excerpt_with_partial_response(&items, None).expect("transcript excerpt");
+    let lines = transcript
+        .split('\n')
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let expected = (2..50)
+        .map(|index| format!("User: m{index:02}"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(lines, expected);
 }
 
 #[test]

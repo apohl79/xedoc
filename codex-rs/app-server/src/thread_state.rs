@@ -30,8 +30,7 @@ use tracing::error;
 
 type PendingInterruptQueue = Vec<ConnectionRequestId>;
 
-const MID_TURN_AUTO_SESSION_NAME_MIN_CHARS: usize = 160;
-const MID_TURN_AUTO_SESSION_NAME_MAX_CHARS: usize = 2_000;
+const MID_TURN_AUTO_SESSION_NAME_MAX_CHARS: usize = 6_000;
 
 pub(crate) struct PendingThreadResumeRequest {
     pub(crate) request_id: ConnectionRequestId,
@@ -90,6 +89,7 @@ struct MidTurnAutoSessionNameState {
     last_item_id: Option<String>,
     partial_response: String,
     requested: bool,
+    completed_turn_id_with_request: Option<String>,
 }
 
 #[derive(Default)]
@@ -168,11 +168,15 @@ impl ThreadState {
     pub(crate) fn track_current_turn_event(&mut self, event_turn_id: &str, event: &EventMsg) {
         if let EventMsg::TurnStarted(payload) = event {
             self.turn_summary.started_at = payload.started_at;
+            self.mid_turn_auto_session_name
+                .start_turn(payload.turn_id.clone());
         }
         if matches!(event, EventMsg::TurnComplete(_)) {
             self.completed_turn_count = self.completed_turn_count.saturating_add(1);
+            self.mid_turn_auto_session_name
+                .finish_turn(event_turn_id.to_string());
         }
-        if matches!(event, EventMsg::TurnAborted(_) | EventMsg::TurnComplete(_)) {
+        if matches!(event, EventMsg::TurnAborted(_)) {
             self.mid_turn_auto_session_name.reset();
         }
         self.current_turn_history.handle_event(event);
@@ -197,6 +201,16 @@ impl ThreadState {
         self.mid_turn_auto_session_name
             .note_delta(event, self.completed_turn_count)
     }
+
+    pub(crate) fn completed_turn_had_mid_turn_auto_session_name_request(
+        &self,
+        turn_id: &str,
+    ) -> bool {
+        self.mid_turn_auto_session_name
+            .completed_turn_id_with_request
+            .as_deref()
+            == Some(turn_id)
+    }
 }
 
 impl MidTurnAutoSessionNameState {
@@ -208,7 +222,7 @@ impl MidTurnAutoSessionNameState {
         if self.turn_id.as_deref() != Some(event.turn_id.as_str()) {
             self.start_turn(event.turn_id.clone());
         }
-        if event.delta.is_empty() {
+        if event.delta.trim().is_empty() || self.requested {
             return None;
         }
         if self.last_item_id.as_deref() != Some(event.item_id.as_str()) {
@@ -218,11 +232,6 @@ impl MidTurnAutoSessionNameState {
             self.last_item_id = Some(event.item_id.clone());
         }
         self.push_capped(&event.delta);
-        if self.requested
-            || self.partial_response.trim().chars().count() < MID_TURN_AUTO_SESSION_NAME_MIN_CHARS
-        {
-            return None;
-        }
         self.requested = true;
         Some(MidTurnAutoSessionNameRequest {
             turn_id: event.turn_id.clone(),
@@ -236,6 +245,15 @@ impl MidTurnAutoSessionNameState {
         self.last_item_id = None;
         self.partial_response.clear();
         self.requested = false;
+        self.completed_turn_id_with_request = None;
+    }
+
+    fn finish_turn(&mut self, turn_id: String) {
+        self.completed_turn_id_with_request = self.requested.then_some(turn_id);
+        self.turn_id = None;
+        self.last_item_id = None;
+        self.partial_response.clear();
+        self.requested = false;
     }
 
     fn reset(&mut self) {
@@ -243,6 +261,7 @@ impl MidTurnAutoSessionNameState {
         self.last_item_id = None;
         self.partial_response.clear();
         self.requested = false;
+        self.completed_turn_id_with_request = None;
     }
 
     fn push_capped(&mut self, value: &str) {
@@ -313,12 +332,11 @@ mod tests {
     }
 
     #[test]
-    fn mid_turn_auto_session_name_request_fires_once_after_threshold() {
+    fn mid_turn_auto_session_name_request_fires_once_after_first_non_empty_delta() {
         let mut state = ThreadState::default();
-        let below_threshold = "a".repeat(MID_TURN_AUTO_SESSION_NAME_MIN_CHARS - 1);
 
         let first_request = state.note_agent_message_delta_for_auto_session_name(
-            &agent_message_delta("turn-1", "msg-1", &below_threshold),
+            &agent_message_delta("turn-1", "msg-1", "   "),
         );
         assert!(first_request.is_none());
 
@@ -326,15 +344,31 @@ mod tests {
             .note_agent_message_delta_for_auto_session_name(&agent_message_delta(
                 "turn-1", "msg-1", "b",
             ))
-            .expect("threshold-crossing delta should request a generated session name");
+            .expect("first non-empty delta should request a generated session name");
         assert_eq!(request.turn_id, "turn-1");
         assert_eq!(request.completed_turn_count, 0);
-        assert_eq!(request.partial_response, format!("{below_threshold}b"));
+        assert_eq!(request.partial_response, "b");
 
         let next_request = state.note_agent_message_delta_for_auto_session_name(
             &agent_message_delta("turn-1", "msg-1", "ignored"),
         );
         assert!(next_request.is_none());
+    }
+
+    #[test]
+    fn mid_turn_auto_session_name_tracks_completed_turn_request() {
+        let mut state = ThreadState::default();
+
+        state.note_agent_message_delta_for_auto_session_name(&agent_message_delta(
+            "turn-1",
+            "msg-1",
+            "title seed",
+        ));
+        state
+            .mid_turn_auto_session_name
+            .finish_turn("turn-1".to_string());
+
+        assert!(state.completed_turn_had_mid_turn_auto_session_name_request("turn-1"));
     }
 
     #[test]
