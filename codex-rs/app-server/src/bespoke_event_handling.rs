@@ -189,6 +189,13 @@ pub(crate) async fn apply_bespoke_event_handling(
             thread_watch_manager
                 .note_turn_completed(&conversation_id.to_string(), turn_failed)
                 .await;
+            let (completed_turn_count, refresh_after_mid_turn_initial_name) = {
+                let state = thread_state.lock().await;
+                (
+                    state.completed_turn_count,
+                    state.completed_turn_had_mid_turn_auto_session_name_request(&event_turn_id),
+                )
+            };
             handle_turn_complete(
                 conversation_id,
                 event_turn_id,
@@ -197,7 +204,6 @@ pub(crate) async fn apply_bespoke_event_handling(
                 &thread_state,
             )
             .await;
-            let completed_turn_count = thread_state.lock().await.completed_turn_count;
             if !turn_failed {
                 maybe_spawn_auto_session_name_update(
                     conversation_id,
@@ -206,7 +212,10 @@ pub(crate) async fn apply_bespoke_event_handling(
                     outgoing,
                     thread_state,
                     thread_list_state_permit,
-                    AutoSessionNameUpdate::turn_completed(completed_turn_count),
+                    AutoSessionNameUpdate::turn_completed(
+                        completed_turn_count,
+                        refresh_after_mid_turn_initial_name,
+                    ),
                 );
             }
         }

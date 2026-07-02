@@ -18,14 +18,21 @@ use tracing::warn;
 const GENERATED_SESSION_NAME_REFRESH_TURN_INTERVAL: u64 = 4;
 
 pub(crate) enum AutoSessionNameUpdate {
-    TurnCompleted { completed_turn_count: u64 },
+    TurnCompleted {
+        completed_turn_count: u64,
+        refresh_after_mid_turn_initial_name: bool,
+    },
     MidTurn(MidTurnAutoSessionNameRequest),
 }
 
 impl AutoSessionNameUpdate {
-    pub(crate) fn turn_completed(completed_turn_count: u64) -> Self {
+    pub(crate) fn turn_completed(
+        completed_turn_count: u64,
+        refresh_after_mid_turn_initial_name: bool,
+    ) -> Self {
         Self::TurnCompleted {
             completed_turn_count,
+            refresh_after_mid_turn_initial_name,
         }
     }
 
@@ -37,6 +44,7 @@ impl AutoSessionNameUpdate {
         match self {
             Self::TurnCompleted {
                 completed_turn_count,
+                ..
             } => *completed_turn_count,
             Self::MidTurn(request) => request.completed_turn_count,
         }
@@ -53,8 +61,32 @@ impl AutoSessionNameUpdate {
         match self {
             Self::TurnCompleted {
                 completed_turn_count,
+                ..
             } => *completed_turn_count > 0,
             Self::MidTurn(_) => true,
+        }
+    }
+
+    fn should_update_session_name(&self, title_source: ThreadTitleSource) -> bool {
+        match (self, title_source) {
+            (_, ThreadTitleSource::Manual) => false,
+            (Self::MidTurn(_), ThreadTitleSource::Derived) => true,
+            (Self::MidTurn(_), ThreadTitleSource::Generated) => false,
+            (Self::TurnCompleted { .. }, ThreadTitleSource::Derived) => true,
+            (
+                Self::TurnCompleted {
+                    refresh_after_mid_turn_initial_name: true,
+                    ..
+                },
+                ThreadTitleSource::Generated,
+            ) => true,
+            (
+                Self::TurnCompleted {
+                    completed_turn_count,
+                    refresh_after_mid_turn_initial_name: false,
+                },
+                ThreadTitleSource::Generated,
+            ) => completed_turn_count.is_multiple_of(GENERATED_SESSION_NAME_REFRESH_TURN_INTERVAL),
         }
     }
 
@@ -62,6 +94,7 @@ impl AutoSessionNameUpdate {
         match self {
             Self::TurnCompleted {
                 completed_turn_count,
+                ..
             } => state.completed_turn_count == *completed_turn_count,
             Self::MidTurn(request) => {
                 state.completed_turn_count == request.completed_turn_count
@@ -122,7 +155,7 @@ async fn maybe_update_auto_session_name(
         return Ok(());
     };
     let completed_turn_count = update.completed_turn_count();
-    if !should_update_session_name(completed_turn_count, title_source) {
+    if !update.should_update_session_name(title_source) {
         return Ok(());
     }
 
@@ -203,16 +236,6 @@ async fn read_title_state(
     Ok(metadata.map(|metadata| (metadata.title, metadata.title_source)))
 }
 
-fn should_update_session_name(completed_turn_count: u64, title_source: ThreadTitleSource) -> bool {
-    match title_source {
-        ThreadTitleSource::Manual => false,
-        ThreadTitleSource::Derived => true,
-        ThreadTitleSource::Generated => {
-            completed_turn_count.is_multiple_of(GENERATED_SESSION_NAME_REFRESH_TURN_INTERVAL)
-        }
-    }
-}
-
 fn should_persist_generated_name(
     completed_turn_count: u64,
     latest_completed_turn_count: u64,
@@ -239,11 +262,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_update_session_name_respects_source_and_interval() {
-        assert!(should_update_session_name(1, ThreadTitleSource::Derived));
-        assert!(!should_update_session_name(1, ThreadTitleSource::Manual));
-        assert!(!should_update_session_name(3, ThreadTitleSource::Generated));
-        assert!(should_update_session_name(4, ThreadTitleSource::Generated));
+    fn update_trigger_respects_source_and_interval() {
+        let mid_turn = AutoSessionNameUpdate::mid_turn(MidTurnAutoSessionNameRequest {
+            turn_id: "turn-1".to_string(),
+            completed_turn_count: 0,
+            partial_response: "partial".to_string(),
+        });
+        let turn_completed = AutoSessionNameUpdate::turn_completed(
+            1, /*refresh_after_mid_turn_initial_name*/ false,
+        );
+        let interval_turn = AutoSessionNameUpdate::turn_completed(
+            4, /*refresh_after_mid_turn_initial_name*/ false,
+        );
+        let initial_final_turn = AutoSessionNameUpdate::turn_completed(
+            1, /*refresh_after_mid_turn_initial_name*/ true,
+        );
+
+        assert!(mid_turn.should_update_session_name(ThreadTitleSource::Derived));
+        assert!(!mid_turn.should_update_session_name(ThreadTitleSource::Generated));
+        assert!(!turn_completed.should_update_session_name(ThreadTitleSource::Manual));
+        assert!(!turn_completed.should_update_session_name(ThreadTitleSource::Generated));
+        assert!(interval_turn.should_update_session_name(ThreadTitleSource::Generated));
+        assert!(initial_final_turn.should_update_session_name(ThreadTitleSource::Generated));
     }
 
     #[test]

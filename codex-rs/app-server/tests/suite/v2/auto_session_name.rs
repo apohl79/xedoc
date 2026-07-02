@@ -2,7 +2,6 @@ use anyhow::Context;
 use anyhow::Result;
 use app_test_support::TestAppServer;
 use app_test_support::create_mock_responses_server_sequence;
-use app_test_support::create_mock_responses_server_sequence_unchecked;
 use app_test_support::to_response;
 use app_test_support::write_mock_responses_config_toml;
 use codex_app_server_protocol::JSONRPCNotification;
@@ -19,11 +18,14 @@ use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::UserInput;
 use codex_features::Feature;
 use core_test_support::responses;
+use core_test_support::streaming_sse::StreamingSseChunk;
+use core_test_support::streaming_sse::start_streaming_sse_server;
 use pretty_assertions::assert_eq;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
+use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(10);
@@ -106,20 +108,38 @@ async fn auto_session_name_generates_title_until_manual_rename() -> Result<()> {
 #[tokio::test]
 async fn auto_session_name_generates_title_mid_turn_from_streaming_response() -> Result<()> {
     let streamed_response =
-        "streamed automatic session naming detail before command follow up ".repeat(4);
-    let server = create_mock_responses_server_sequence_unchecked(vec![
-        streamed_shell_command_response(
-            "resp-turn-1",
-            "msg-turn-1",
-            &streamed_response,
-            "call-mid-turn",
-        ),
-        assistant_response("resp-name-1", "msg-name-1", "Mid Turn Session Name"),
-        assistant_response("resp-turn-2", "msg-turn-2", "Finished after command"),
+        "streamed automatic session naming detail before user input ".to_string();
+    let (finish_turn_tx, finish_turn_rx) = oneshot::channel();
+    let (server, _completions) = start_streaming_sse_server(vec![
+        vec![
+            StreamingSseChunk {
+                gate: None,
+                body: responses::sse(vec![
+                    responses::ev_response_created("resp-turn-1"),
+                    responses::ev_message_item_added("msg-turn-1", ""),
+                    responses::ev_output_text_delta(&streamed_response),
+                ]),
+            },
+            StreamingSseChunk {
+                gate: Some(finish_turn_rx),
+                body: responses::sse(vec![
+                    responses::ev_assistant_message("msg-turn-1", &streamed_response),
+                    responses::ev_completed("resp-turn-1"),
+                ]),
+            },
+        ],
+        vec![StreamingSseChunk {
+            gate: None,
+            body: assistant_response("resp-name-1", "msg-name-1", "Mid Turn Session Name"),
+        }],
+        vec![StreamingSseChunk {
+            gate: None,
+            body: assistant_response("resp-name-2", "msg-name-2", "Final Session Name"),
+        }],
     ])
     .await;
     let codex_home = TempDir::new()?;
-    create_config_toml(codex_home.path(), &server.uri())?;
+    create_config_toml(codex_home.path(), server.uri())?;
 
     let mut app_server =
         TestAppServer::new_with_args(codex_home.path(), &["-c", "auto_session_name=true"]).await?;
@@ -168,13 +188,36 @@ async fn auto_session_name_generates_title_mid_turn_from_streaming_response() ->
             .any(|method| method == "turn/completed"),
         "generated session name should be emitted before turn/completed"
     );
+    finish_turn_tx
+        .send(())
+        .expect("release main turn response stream");
 
     timeout(
         DEFAULT_READ_TIMEOUT,
         app_server.read_stream_until_notification_message("turn/completed"),
     )
     .await??;
-    assert_thread_name(&mut app_server, &thread_id, Some("Mid Turn Session Name")).await?;
+    let final_notification = timeout(
+        DEFAULT_READ_TIMEOUT,
+        app_server.read_stream_until_matching_notification(
+            "final generated thread/name/updated",
+            |notification| {
+                notification.method == "thread/name/updated"
+                    && thread_name_update_source(notification)
+                        == Some(ThreadNameUpdateSource::Generated)
+            },
+        ),
+    )
+    .await??;
+    assert_thread_name_updated(
+        final_notification,
+        &thread_id,
+        Some("Final Session Name"),
+        ThreadNameUpdateSource::Generated,
+    )?;
+    assert_thread_name(&mut app_server, &thread_id, Some("Final Session Name")).await?;
+
+    server.shutdown().await;
 
     Ok(())
 }
@@ -263,22 +306,6 @@ fn assistant_response(response_id: &str, message_id: &str, text: &str) -> String
     responses::sse(vec![
         responses::ev_response_created(response_id),
         responses::ev_assistant_message(message_id, text),
-        responses::ev_completed(response_id),
-    ])
-}
-
-fn streamed_shell_command_response(
-    response_id: &str,
-    message_id: &str,
-    text: &str,
-    call_id: &str,
-) -> String {
-    responses::sse(vec![
-        responses::ev_response_created(response_id),
-        responses::ev_message_item_added(message_id, ""),
-        responses::ev_output_text_delta(text),
-        responses::ev_assistant_message(message_id, text),
-        responses::ev_shell_command_call(call_id, "echo paused"),
         responses::ev_completed(response_id),
     ])
 }
