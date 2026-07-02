@@ -96,6 +96,20 @@ impl ChatWidget {
         self.refresh_status_surfaces();
     }
 
+    /// Seeds a replacement widget with the previous custom status-line output.
+    pub(crate) fn seed_status_line_command_output_from(&mut self, previous: &ChatWidget) {
+        if self.config.tui_status_line_command != previous.config.tui_status_line_command
+            || self.status_line_command_output.is_some()
+        {
+            return;
+        }
+
+        self.status_line_command_output = previous.status_line_command_output.clone();
+        if self.status_line_command_output.is_some() {
+            self.refresh_status_line();
+        }
+    }
+
     /// Records that status-line setup was canceled.
     ///
     /// Cancellation is intentionally side-effect free for config state; the existing configuration
