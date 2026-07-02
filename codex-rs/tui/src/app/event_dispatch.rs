@@ -1706,6 +1706,10 @@ impl App {
                 )
                 .await;
             }
+            AppEvent::UpdateAutoSessionNameSetting { enabled } => {
+                self.update_auto_session_name_setting_with_app_server(app_server, enabled)
+                    .await;
+            }
             AppEvent::ResetMemories => {
                 self.reset_memories_with_app_server(app_server).await;
             }

@@ -61,11 +61,13 @@ fn find_thread_id_by_name_prefers_latest_entry() -> std::io::Result<()> {
         SessionIndexEntry {
             id: id1,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id: id2,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-02T00:00:00Z".to_string(),
         },
     ];
@@ -93,11 +95,13 @@ async fn find_thread_meta_by_name_str_skips_newest_entry_without_rollout() -> st
         SessionIndexEntry {
             id: saved_id,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id: unsaved_id,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-02T00:00:00Z".to_string(),
         },
     ];
@@ -130,11 +134,13 @@ async fn find_thread_meta_by_name_str_skips_partial_rollout() -> std::io::Result
         SessionIndexEntry {
             id: saved_id,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id: partial_id,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-02T00:00:00Z".to_string(),
         },
     ];
@@ -163,16 +169,19 @@ async fn find_thread_meta_by_name_str_ignores_historical_name_after_rename() -> 
         SessionIndexEntry {
             id: renamed_id,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id: current_id,
             thread_name: "same".to_string(),
+            title_source: None,
             updated_at: "2024-01-02T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id: renamed_id,
             thread_name: "different".to_string(),
+            title_source: None,
             updated_at: "2024-01-03T00:00:00Z".to_string(),
         },
     ];
@@ -193,11 +202,13 @@ fn find_thread_name_by_id_prefers_latest_entry() -> std::io::Result<()> {
         SessionIndexEntry {
             id,
             thread_name: "first".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id,
             thread_name: "second".to_string(),
+            title_source: None,
             updated_at: "2024-01-02T00:00:00Z".to_string(),
         },
     ];
@@ -219,6 +230,7 @@ fn scan_index_returns_none_when_entry_missing() -> std::io::Result<()> {
     let lines = vec![SessionIndexEntry {
         id,
         thread_name: "present".to_string(),
+        title_source: None,
         updated_at: "2024-01-01T00:00:00Z".to_string(),
     }];
     write_index(&path, &lines)?;
@@ -241,16 +253,19 @@ async fn find_thread_names_by_ids_prefers_latest_entry() -> std::io::Result<()> 
         SessionIndexEntry {
             id: id1,
             thread_name: "first".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id: id2,
             thread_name: "other".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         SessionIndexEntry {
             id: id1,
             thread_name: "latest".to_string(),
+            title_source: None,
             updated_at: "2024-01-02T00:00:00Z".to_string(),
         },
     ];
@@ -269,6 +284,29 @@ async fn find_thread_names_by_ids_prefers_latest_entry() -> std::io::Result<()> 
     Ok(())
 }
 
+#[tokio::test]
+async fn find_thread_name_record_by_id_preserves_title_source() -> std::io::Result<()> {
+    let temp = TempDir::new()?;
+    let id = ThreadId::new();
+    append_thread_name_with_source(
+        temp.path(),
+        id,
+        "Generated name",
+        Some(codex_state::ThreadTitleSource::Generated),
+    )
+    .await?;
+
+    let found = find_thread_name_record_by_id(temp.path(), &id).await?;
+    assert_eq!(
+        found,
+        Some((
+            "Generated name".to_string(),
+            Some(codex_state::ThreadTitleSource::Generated)
+        ))
+    );
+    Ok(())
+}
+
 #[test]
 fn scan_index_finds_latest_match_among_mixed_entries() -> std::io::Result<()> {
     let temp = TempDir::new()?;
@@ -278,11 +316,13 @@ fn scan_index_finds_latest_match_among_mixed_entries() -> std::io::Result<()> {
     let expected = SessionIndexEntry {
         id: id_target,
         thread_name: "target".to_string(),
+        title_source: None,
         updated_at: "2024-01-03T00:00:00Z".to_string(),
     };
     let expected_other = SessionIndexEntry {
         id: id_other,
         thread_name: "target".to_string(),
+        title_source: None,
         updated_at: "2024-01-02T00:00:00Z".to_string(),
     };
     // Resolution is based on append order (scan from end), not updated_at.
@@ -290,6 +330,7 @@ fn scan_index_finds_latest_match_among_mixed_entries() -> std::io::Result<()> {
         SessionIndexEntry {
             id: id_target,
             thread_name: "target".to_string(),
+            title_source: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         },
         expected_other.clone(),
@@ -297,6 +338,7 @@ fn scan_index_finds_latest_match_among_mixed_entries() -> std::io::Result<()> {
         SessionIndexEntry {
             id: ThreadId::new(),
             thread_name: "another".to_string(),
+            title_source: None,
             updated_at: "2024-01-04T00:00:00Z".to_string(),
         },
     ];

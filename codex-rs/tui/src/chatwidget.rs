@@ -272,6 +272,7 @@ use crate::bottom_pane::BottomPaneParams;
 use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::CollaborationModeIndicator;
 use crate::bottom_pane::ColumnWidthMode;
+use crate::bottom_pane::ConfigSettingsView;
 use crate::bottom_pane::DOUBLE_PRESS_QUIT_SHORTCUT_ENABLED;
 use crate::bottom_pane::ExperimentalFeatureItem;
 use crate::bottom_pane::ExperimentalFeaturesView;
@@ -1091,6 +1092,15 @@ impl ChatWidget {
         self.bottom_pane.show_view(Box::new(view));
     }
 
+    pub(crate) fn open_config_popup(&mut self) {
+        let view = ConfigSettingsView::new(
+            self.config.auto_session_name,
+            self.app_event_tx.clone(),
+            self.bottom_pane.list_keymap(),
+        );
+        self.bottom_pane.show_view(Box::new(view));
+    }
+
     pub(crate) fn open_memories_enable_prompt(&mut self) {
         let items = vec![
             SelectionItem {
@@ -1130,6 +1140,10 @@ impl ChatWidget {
     pub(crate) fn set_memory_settings(&mut self, use_memories: bool, generate_memories: bool) {
         self.config.memories.use_memories = use_memories;
         self.config.memories.generate_memories = generate_memories;
+    }
+
+    pub(crate) fn set_auto_session_name(&mut self, enabled: bool) {
+        self.config.auto_session_name = enabled;
     }
 
     pub(crate) fn set_token_info(&mut self, info: Option<TokenUsageInfo>) {

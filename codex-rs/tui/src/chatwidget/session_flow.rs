@@ -211,9 +211,12 @@ impl ChatWidget {
         &mut self,
         thread_id: ThreadId,
         thread_name: Option<String>,
+        source: codex_app_server_protocol::ThreadNameUpdateSource,
     ) {
         if self.thread_id == Some(thread_id) {
-            if let Some(name) = thread_name.as_deref() {
+            if source == codex_app_server_protocol::ThreadNameUpdateSource::User
+                && let Some(name) = thread_name.as_deref()
+            {
                 let cell = Self::rename_confirmation_cell(name, self.thread_id);
                 self.add_boxed_history(Box::new(cell));
             }

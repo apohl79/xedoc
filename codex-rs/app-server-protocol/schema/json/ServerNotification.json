@@ -4598,8 +4598,23 @@
         }
       ]
     },
+    "ThreadNameUpdateSource": {
+      "enum": [
+        "user",
+        "generated"
+      ],
+      "type": "string"
+    },
     "ThreadNameUpdatedNotification": {
       "properties": {
+        "source": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ThreadNameUpdateSource"
+            }
+          ],
+          "default": "user"
+        },
         "threadId": {
           "type": "string"
         },

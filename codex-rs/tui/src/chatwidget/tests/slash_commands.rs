@@ -479,6 +479,7 @@ async fn queued_bare_rename_drains_next_input_after_name_update() {
             codex_app_server_protocol::ThreadNameUpdatedNotification {
                 thread_id: thread_id.to_string(),
                 thread_name: Some("Queued rename".to_string()),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::User,
             },
         ),
         /*replay_kind*/ None,
@@ -553,6 +554,7 @@ async fn queued_inline_rename_does_not_drain_again_before_turn_started() {
             codex_app_server_protocol::ThreadNameUpdatedNotification {
                 thread_id: thread_id.to_string(),
                 thread_name: Some("Queued rename".to_string()),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::User,
             },
         ),
         /*replay_kind*/ None,

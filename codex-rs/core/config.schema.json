@@ -4642,6 +4642,10 @@
       "default": null,
       "description": "Optional policy instructions for the guardian auto-reviewer."
     },
+    "auto_session_name": {
+      "description": "When `false`, disables model-generated session names. Defaults to `true`.",
+      "type": "boolean"
+    },
     "background_terminal_max_timeout": {
       "description": "Maximum poll window for background terminal output (`write_stdin`), in milliseconds. Default: `300000` (5 minutes).",
       "format": "uint64",

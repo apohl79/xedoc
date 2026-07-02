@@ -473,6 +473,7 @@ mod thread_processor_behavior_tests {
             parent_thread_id: None,
             preview: "preview".to_string(),
             name: None,
+            title_source: None,
             model_provider: "openai".to_string(),
             model: None,
             reasoning_effort: None,

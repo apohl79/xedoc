@@ -844,6 +844,11 @@ pub(crate) enum AppEvent {
         generate_memories: bool,
     },
 
+    /// Update generated session-name settings and persist them to config.toml.
+    UpdateAutoSessionNameSetting {
+        enabled: bool,
+    },
+
     /// Clear all persisted local memory artifacts via the app-server.
     ResetMemories,
 

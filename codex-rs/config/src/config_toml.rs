@@ -485,6 +485,10 @@ pub struct ConfigToml {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: Option<bool>,
 
+    /// When `false`, disables model-generated session names.
+    /// Defaults to `true`.
+    pub auto_session_name: Option<bool>,
+
     /// When `false`, disables analytics across Codex product surfaces in this machine.
     /// Defaults to `true`.
     pub analytics: Option<AnalyticsConfigToml>,

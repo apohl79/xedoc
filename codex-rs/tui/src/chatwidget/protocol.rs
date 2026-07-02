@@ -36,9 +36,11 @@ impl ChatWidget {
             }
             ServerNotification::ThreadNameUpdated(notification) => {
                 match ThreadId::from_string(&notification.thread_id) {
-                    Ok(thread_id) => {
-                        self.on_thread_name_updated(thread_id, notification.thread_name)
-                    }
+                    Ok(thread_id) => self.on_thread_name_updated(
+                        thread_id,
+                        notification.thread_name,
+                        notification.source,
+                    ),
                     Err(err) => {
                         tracing::warn!(
                             thread_id = notification.thread_id,

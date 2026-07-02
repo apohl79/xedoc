@@ -1,3 +1,4 @@
+use crate::auto_session_name::maybe_spawn_auto_session_name_update;
 use crate::error_code::internal_error;
 use crate::error_code::invalid_request;
 use crate::outgoing_message::ClientRequestResult;
@@ -198,6 +199,18 @@ pub(crate) async fn apply_bespoke_event_handling(
                 &thread_state,
             )
             .await;
+            let completed_turn_count = thread_state.lock().await.completed_turn_count;
+            if !turn_failed {
+                maybe_spawn_auto_session_name_update(
+                    conversation_id,
+                    conversation,
+                    thread_manager,
+                    outgoing,
+                    thread_state,
+                    thread_list_state_permit,
+                    completed_turn_count,
+                );
+            }
         }
         EventMsg::McpStartupUpdate(update) => {
             let (status, error) = match update.status {
@@ -2274,6 +2287,7 @@ mod tests {
             parent_thread_id: None,
             preview: "fallback preview".to_string(),
             name: Some("Rollback thread".to_string()),
+            title_source: None,
             model_provider: "openai".to_string(),
             model: None,
             reasoning_effort: None,

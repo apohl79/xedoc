@@ -18446,9 +18446,24 @@
         "title": "ThreadMetadataUpdateResponse",
         "type": "object"
       },
+      "ThreadNameUpdateSource": {
+        "enum": [
+          "user",
+          "generated"
+        ],
+        "type": "string"
+      },
       "ThreadNameUpdatedNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/v2/ThreadNameUpdateSource"
+              }
+            ],
+            "default": "user"
+          },
           "threadId": {
             "type": "string"
           },

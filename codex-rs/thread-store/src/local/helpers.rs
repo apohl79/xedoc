@@ -129,6 +129,7 @@ pub(super) fn stored_thread_from_rollout_item(
         parent_thread_id: item.parent_thread_id,
         preview,
         name: None,
+        title_source: None,
         model_provider: item
             .model_provider
             .filter(|provider| !provider.is_empty())
@@ -176,20 +177,31 @@ pub(super) fn permission_profile_to_metadata_value(
     }
 }
 
-pub(super) fn distinct_thread_metadata_title(metadata: &ThreadMetadata) -> Option<String> {
+pub(super) fn distinct_thread_metadata_title(
+    metadata: &ThreadMetadata,
+) -> Option<(String, codex_state::ThreadTitleSource)> {
     let title = metadata.title.trim();
-    if title.is_empty() || metadata.first_user_message.as_deref().map(str::trim) == Some(title) {
+    if title.is_empty() {
+        None
+    } else if metadata.title_source != codex_state::ThreadTitleSource::Derived {
+        Some((title.to_string(), metadata.title_source))
+    } else if metadata.first_user_message.as_deref().map(str::trim) == Some(title) {
         None
     } else {
-        Some(title.to_string())
+        Some((title.to_string(), metadata.title_source))
     }
 }
 
-pub(super) fn set_thread_name_from_title(thread: &mut StoredThread, title: String) {
+pub(super) fn set_thread_name_from_title(
+    thread: &mut StoredThread,
+    title: String,
+    title_source: Option<codex_state::ThreadTitleSource>,
+) {
     if title.trim().is_empty() || thread.preview.trim() == title.trim() {
         return;
     }
     thread.name = Some(title);
+    thread.title_source = title_source;
 }
 
 fn parse_rfc3339(value: Option<&str>) -> Option<DateTime<Utc>> {

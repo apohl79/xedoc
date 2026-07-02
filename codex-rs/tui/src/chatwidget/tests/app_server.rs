@@ -1003,6 +1003,7 @@ async fn live_app_server_invalid_thread_name_update_is_ignored() {
             codex_app_server_protocol::ThreadNameUpdatedNotification {
                 thread_id: "not-a-thread-id".to_string(),
                 thread_name: Some("bad update".to_string()),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::User,
             },
         ),
         /*replay_kind*/ None,
@@ -1024,6 +1025,7 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
             codex_app_server_protocol::ThreadNameUpdatedNotification {
                 thread_id: thread_id.to_string(),
                 thread_name: Some("review-fix".to_string()),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::User,
             },
         ),
         /*replay_kind*/ None,
@@ -1034,6 +1036,28 @@ async fn live_app_server_thread_name_update_shows_resume_hint() {
     assert_eq!(cells.len(), 1);
     let rendered = lines_to_single_string(&cells[0]);
     assert_chatwidget_snapshot!("thread_name_update_resume_hint", rendered);
+}
+
+#[tokio::test]
+async fn generated_thread_name_update_is_silent() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let thread_id =
+        ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000").expect("thread id");
+    chat.thread_id = Some(thread_id);
+
+    chat.handle_server_notification(
+        ServerNotification::ThreadNameUpdated(
+            codex_app_server_protocol::ThreadNameUpdatedNotification {
+                thread_id: thread_id.to_string(),
+                thread_name: Some("session names".to_string()),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::Generated,
+            },
+        ),
+        /*replay_kind*/ None,
+    );
+
+    assert_eq!(chat.thread_name, Some("session names".to_string()));
+    assert!(drain_insert_history(&mut rx).is_empty());
 }
 
 #[tokio::test]

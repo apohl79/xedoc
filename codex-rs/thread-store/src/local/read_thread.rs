@@ -6,7 +6,7 @@ use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::SessionSource;
 use codex_rollout::RolloutRecorder;
 use codex_rollout::find_archived_thread_path_by_id_str;
-use codex_rollout::find_thread_name_by_id;
+use codex_rollout::find_thread_name_record_by_id;
 use codex_rollout::find_thread_path_by_id_str;
 use codex_rollout::read_session_meta_line;
 use codex_rollout::read_thread_item_from_rollout;
@@ -272,10 +272,10 @@ async fn read_thread_from_rollout_path(
             thread.model_provider = model_provider;
         }
     }
-    if let Ok(Some(title)) =
-        find_thread_name_by_id(store.config.codex_home.as_path(), &thread.thread_id).await
+    if let Ok(Some((title, title_source))) =
+        find_thread_name_record_by_id(store.config.codex_home.as_path(), &thread.thread_id).await
     {
-        set_thread_name_from_title(&mut thread, title);
+        set_thread_name_from_title(&mut thread, title, title_source);
     }
     Ok(thread)
 }
@@ -303,13 +303,20 @@ async fn stored_thread_from_sqlite_metadata(
     store: &LocalThreadStore,
     metadata: ThreadMetadata,
 ) -> StoredThread {
-    let name = match distinct_thread_metadata_title(&metadata) {
-        Some(title) => Some(title),
-        None => find_thread_name_by_id(store.config.codex_home.as_path(), &metadata.id)
-            .await
-            .ok()
-            .flatten()
-            .filter(|title| !title.trim().is_empty()),
+    let (name, title_source) = match distinct_thread_metadata_title(&metadata) {
+        Some((title, title_source)) => (Some(title), Some(title_source)),
+        None => {
+            match find_thread_name_record_by_id(store.config.codex_home.as_path(), &metadata.id)
+                .await
+                .ok()
+                .flatten()
+            {
+                Some((title, title_source)) if !title.trim().is_empty() => {
+                    (Some(title), title_source)
+                }
+                Some(_) | None => (None, None),
+            }
+        }
     };
     let session_meta = read_session_meta_line(metadata.rollout_path.as_path())
         .await
@@ -333,6 +340,7 @@ async fn stored_thread_from_sqlite_metadata(
         parent_thread_id,
         preview,
         name,
+        title_source,
         model_provider: if metadata.model_provider.is_empty() {
             store.config.default_model_provider_id.clone()
         } else {
@@ -400,6 +408,7 @@ fn stored_thread_from_meta_line(
         parent_thread_id: meta_line.meta.parent_thread_id,
         preview: String::new(),
         name: None,
+        title_source: None,
         model_provider: meta_line
             .meta
             .model_provider

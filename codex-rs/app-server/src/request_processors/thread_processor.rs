@@ -1506,6 +1506,7 @@ impl ThreadRequestProcessor {
                 thread_id,
                 StoreThreadMetadataPatch {
                     name: Some(Some(name.clone())),
+                    title_source: Some(codex_state::ThreadTitleSource::Manual),
                     ..Default::default()
                 },
                 /*include_archived*/ false,
@@ -1518,6 +1519,7 @@ impl ThreadRequestProcessor {
             Some(ThreadNameUpdatedNotification {
                 thread_id: thread_id.to_string(),
                 thread_name: Some(name),
+                source: ThreadNameUpdateSource::User,
             }),
         ))
     }
@@ -3318,6 +3320,7 @@ impl ThreadRequestProcessor {
             .name
             .as_deref()
             .and_then(codex_core::util::normalize_thread_name);
+        let source_thread_title_source = source_thread.title_source;
         let history_items = source_thread
             .history
             .as_ref()
@@ -3418,6 +3421,7 @@ impl ThreadRequestProcessor {
                     thread_id,
                     StoreThreadMetadataPatch {
                         name: Some(Some(name)),
+                        title_source: source_thread_title_source,
                         ..Default::default()
                     },
                     /*include_archived*/ true,

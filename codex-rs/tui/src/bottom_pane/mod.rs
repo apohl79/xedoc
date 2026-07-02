@@ -96,6 +96,7 @@ pub(crate) struct MentionBinding {
 mod chat_composer;
 mod chat_composer_history;
 mod command_popup;
+mod config_settings_view;
 pub(crate) mod custom_prompt_view;
 mod experimental_features_view;
 mod file_search_popup;
@@ -107,6 +108,7 @@ pub(crate) mod prompt_args;
 mod skill_popup;
 mod skills_toggle_view;
 pub(crate) mod slash_commands;
+pub(crate) use config_settings_view::ConfigSettingsView;
 pub(crate) use footer::CollaborationModeIndicator;
 pub(crate) use footer::GoalStatusIndicator;
 #[cfg(test)]

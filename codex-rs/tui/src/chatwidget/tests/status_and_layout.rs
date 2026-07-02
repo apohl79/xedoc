@@ -2413,6 +2413,7 @@ async fn thread_name_update_refreshes_custom_status_line_session_name() {
             codex_app_server_protocol::ThreadNameUpdatedNotification {
                 thread_id: thread_id.to_string(),
                 thread_name: Some("Roadmap cleanup".to_string()),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::User,
             },
         ),
         /*replay_kind*/ None,
@@ -3009,6 +3010,7 @@ async fn renamed_thread_footer_title_snapshot() {
             codex_app_server_protocol::ThreadNameUpdatedNotification {
                 thread_id: thread_id.to_string(),
                 thread_name: Some("Roadmap cleanup".to_string()),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::User,
             },
         ),
         /*replay_kind*/ None,
@@ -3043,6 +3045,7 @@ async fn renamed_thread_composer_title_truncates_snapshot() {
                 thread_name: Some(
                     "Roadmap cleanup across launch readiness and regional rollout".to_string(),
                 ),
+                source: codex_app_server_protocol::ThreadNameUpdateSource::User,
             },
         ),
         /*replay_kind*/ None,

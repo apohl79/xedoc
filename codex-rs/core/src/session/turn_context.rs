@@ -144,7 +144,7 @@ pub struct TurnContext {
     pub(crate) model_verification_emitted: AtomicBool,
 }
 
-enum TurnMultiAgentRuntime {
+pub(super) enum TurnMultiAgentRuntime {
     ResolveAndStore,
     Preview,
 }
@@ -684,7 +684,7 @@ impl Session {
     }
 
     #[instrument(name = "turn_context.build", level = "trace", skip_all)]
-    async fn new_turn_context_from_configuration(
+    pub(super) async fn new_turn_context_from_configuration(
         &self,
         sub_id: String,
         session_configuration: SessionConfiguration,
