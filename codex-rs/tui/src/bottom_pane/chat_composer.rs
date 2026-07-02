@@ -278,6 +278,12 @@ use std::time::Instant;
 
 use ratatui::style::Color;
 
+const STATUSLINE_SESSION_NAME_COLOR_INDEX: u8 = 141;
+
+fn session_name_color() -> Color {
+    crate::terminal_palette::indexed_color(STATUSLINE_SESSION_NAME_COLOR_INDEX)
+}
+
 /// If the pasted content exceeds this number of characters, replace it with a
 /// placeholder in the UI.
 const LARGE_PASTE_CHAR_THRESHOLD: usize = 1000;
@@ -4583,7 +4589,10 @@ impl ChatComposer {
             let available_width = composer_rect.width.saturating_sub(4) as usize;
             if available_width > 0 {
                 let line = truncate_line_with_ellipsis_if_overflow(
-                    Line::from(session_name.to_string().magenta()),
+                    Line::from(Span::styled(
+                        session_name.to_string(),
+                        Style::default().fg(session_name_color()),
+                    )),
                     available_width,
                 );
                 render_context_right(
@@ -5204,7 +5213,7 @@ mod tests {
     }
 
     #[test]
-    fn session_name_renders_with_magenta_accent_snapshot() {
+    fn session_name_renders_with_statusline_accent_snapshot() {
         let (tx, _rx) = unbounded_channel::<AppEvent>();
         let sender = AppEventSender::new(tx);
         let mut composer = ChatComposer::new(
@@ -5222,11 +5231,11 @@ mod tests {
 
         let title_row = 0;
         let mut text = String::new();
-        let mut magenta = String::new();
+        let mut statusline = String::new();
         for x in 0..area.width {
             let cell = &buf[(x, title_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            magenta.push(if cell.style().fg == Some(Color::Magenta) {
+            statusline.push(if cell.style().fg == Some(session_name_color()) {
                 '^'
             } else {
                 ' '
@@ -5235,13 +5244,13 @@ mod tests {
         while text.ends_with(' ') {
             text.pop();
         }
-        while magenta.ends_with(' ') {
-            magenta.pop();
+        while statusline.ends_with(' ') {
+            statusline.pop();
         }
 
         insta::assert_snapshot!(
-            "session_name_renders_with_magenta_accent",
-            format!("text:    {text}\nmagenta: {magenta}")
+            "session_name_renders_with_statusline_accent",
+            format!("text:       {text}\nstatusline: {statusline}")
         );
     }
 
