@@ -47,8 +47,35 @@ fn transcript_excerpt_uses_recent_user_and_assistant_text() {
     ];
 
     assert_eq!(
-        transcript_excerpt(&items),
+        transcript_excerpt_with_partial_response(&items, None),
         Some("User: set up config\nAssistant: updated the config path".to_string())
+    );
+}
+
+#[test]
+fn transcript_excerpt_includes_partial_response_after_history() {
+    let items = vec![message("user", "set up automatic names")];
+
+    assert_eq!(
+        transcript_excerpt_with_partial_response(
+            &items,
+            Some("working through the mid turn title update")
+        ),
+        Some(
+            "User: set up automatic names\nAssistant: working through the mid turn title update"
+                .to_string()
+        )
+    );
+}
+
+#[test]
+fn transcript_excerpt_uses_partial_response_without_committed_history() {
+    assert_eq!(
+        transcript_excerpt_with_partial_response(
+            &[],
+            Some("streaming the first assistant response")
+        ),
+        Some("Assistant: streaming the first assistant response".to_string())
     );
 }
 

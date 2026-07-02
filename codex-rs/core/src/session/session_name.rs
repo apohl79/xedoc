@@ -22,8 +22,20 @@ impl Session {
         &self,
         current_name: Option<&str>,
     ) -> CodexResult<Option<String>> {
+        self.generate_session_name_with_partial_response(current_name, None)
+            .await
+    }
+
+    #[tracing::instrument(level = "trace", skip_all)]
+    pub(crate) async fn generate_session_name_with_partial_response(
+        &self,
+        current_name: Option<&str>,
+        partial_response: Option<&str>,
+    ) -> CodexResult<Option<String>> {
         let history = self.clone_history().await;
-        let Some(transcript) = transcript_excerpt(history.raw_items()) else {
+        let Some(transcript) =
+            transcript_excerpt_with_partial_response(history.raw_items(), partial_response)
+        else {
             return Ok(None);
         };
         let session_configuration = {
@@ -106,11 +118,24 @@ fn session_name_prompt(current_name: Option<&str>, transcript: &str) -> String {
     )
 }
 
-fn transcript_excerpt(items: &[ResponseItem]) -> Option<String> {
+fn transcript_excerpt_with_partial_response(
+    items: &[ResponseItem],
+    partial_response: Option<&str>,
+) -> Option<String> {
     let mut remaining = MAX_TRANSCRIPT_CHARS;
     let mut messages = Vec::new();
+    let partial_entry = partial_response
+        .and_then(|text| transcript_entry("assistant", text))
+        .map(|entry| take_last_chars(&entry, remaining));
+    let history_message_limit = if let Some(partial_entry) = &partial_entry {
+        remaining = remaining.saturating_sub(partial_entry.chars().count());
+        MAX_TRANSCRIPT_MESSAGES.saturating_sub(1)
+    } else {
+        MAX_TRANSCRIPT_MESSAGES
+    };
+
     for item in items.iter().rev() {
-        if messages.len() >= MAX_TRANSCRIPT_MESSAGES || remaining == 0 {
+        if messages.len() >= history_message_limit || remaining == 0 {
             break;
         }
         let ResponseItem::Message { role, content, .. } = item else {
@@ -120,27 +145,40 @@ fn transcript_excerpt(items: &[ResponseItem]) -> Option<String> {
             continue;
         }
         let text = message_text(content);
-        if text.trim().is_empty() {
+        let Some(entry) = transcript_entry(role, &text) else {
             continue;
-        }
-        let label = if role == "assistant" {
-            "Assistant"
-        } else {
-            "User"
         };
-        let mut entry = format!("{label}: {}", collapse_whitespace(text.trim()));
-        if entry.chars().count() > remaining {
-            entry = take_last_chars(&entry, remaining);
-        }
-        remaining = remaining.saturating_sub(entry.chars().count());
-        messages.push(entry);
+        push_transcript_entry(&mut messages, &mut remaining, entry);
+    }
+    messages.reverse();
+    if let Some(partial_entry) = partial_entry {
+        messages.push(partial_entry);
     }
     if messages.is_empty() {
         None
     } else {
-        messages.reverse();
         Some(messages.join("\n"))
     }
+}
+
+fn transcript_entry(role: &str, text: &str) -> Option<String> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    let label = if role == "assistant" {
+        "Assistant"
+    } else {
+        "User"
+    };
+    Some(format!("{label}: {}", collapse_whitespace(text.trim())))
+}
+
+fn push_transcript_entry(messages: &mut Vec<String>, remaining: &mut usize, mut entry: String) {
+    if entry.chars().count() > *remaining {
+        entry = take_last_chars(&entry, *remaining);
+    }
+    *remaining = remaining.saturating_sub(entry.chars().count());
+    messages.push(entry);
 }
 
 fn message_text(content: &[ContentItem]) -> String {

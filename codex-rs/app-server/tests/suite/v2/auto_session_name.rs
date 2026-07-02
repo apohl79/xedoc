@@ -2,6 +2,7 @@ use anyhow::Context;
 use anyhow::Result;
 use app_test_support::TestAppServer;
 use app_test_support::create_mock_responses_server_sequence;
+use app_test_support::create_mock_responses_server_sequence_unchecked;
 use app_test_support::to_response;
 use app_test_support::write_mock_responses_config_toml;
 use codex_app_server_protocol::JSONRPCNotification;
@@ -102,6 +103,82 @@ async fn auto_session_name_generates_title_until_manual_rename() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn auto_session_name_generates_title_mid_turn_from_streaming_response() -> Result<()> {
+    let streamed_response =
+        "streamed automatic session naming detail before command follow up ".repeat(4);
+    let server = create_mock_responses_server_sequence_unchecked(vec![
+        streamed_shell_command_response(
+            "resp-turn-1",
+            "msg-turn-1",
+            &streamed_response,
+            "call-mid-turn",
+        ),
+        assistant_response("resp-name-1", "msg-name-1", "Mid Turn Session Name"),
+        assistant_response("resp-turn-2", "msg-turn-2", "Finished after command"),
+    ])
+    .await;
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let mut app_server =
+        TestAppServer::new_with_args(codex_home.path(), &["-c", "auto_session_name=true"]).await?;
+    timeout(DEFAULT_READ_TIMEOUT, app_server.initialize()).await??;
+
+    let thread = start_thread(&mut app_server).await?;
+    let thread_id = thread.thread.id;
+    let request_id = app_server
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread_id.clone(),
+            input: vec![UserInput::Text {
+                text: "Start the mid-turn naming work".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        app_server.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+
+    let generated_notification = timeout(
+        DEFAULT_READ_TIMEOUT,
+        app_server.read_stream_until_matching_notification(
+            "mid-turn generated thread/name/updated",
+            |notification| {
+                notification.method == "thread/name/updated"
+                    && thread_name_update_source(notification)
+                        == Some(ThreadNameUpdateSource::Generated)
+            },
+        ),
+    )
+    .await??;
+    assert_thread_name_updated(
+        generated_notification,
+        &thread_id,
+        Some("Mid Turn Session Name"),
+        ThreadNameUpdateSource::Generated,
+    )?;
+    assert!(
+        !app_server
+            .pending_notification_methods()
+            .iter()
+            .any(|method| method == "turn/completed"),
+        "generated session name should be emitted before turn/completed"
+    );
+
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        app_server.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+    assert_thread_name(&mut app_server, &thread_id, Some("Mid Turn Session Name")).await?;
+
+    Ok(())
+}
+
 async fn start_thread(app_server: &mut TestAppServer) -> Result<ThreadStartResponse> {
     let request_id = app_server
         .send_thread_start_request(ThreadStartParams {
@@ -186,6 +263,22 @@ fn assistant_response(response_id: &str, message_id: &str, text: &str) -> String
     responses::sse(vec![
         responses::ev_response_created(response_id),
         responses::ev_assistant_message(message_id, text),
+        responses::ev_completed(response_id),
+    ])
+}
+
+fn streamed_shell_command_response(
+    response_id: &str,
+    message_id: &str,
+    text: &str,
+    call_id: &str,
+) -> String {
+    responses::sse(vec![
+        responses::ev_response_created(response_id),
+        responses::ev_message_item_added(message_id, ""),
+        responses::ev_output_text_delta(text),
+        responses::ev_assistant_message(message_id, text),
+        responses::ev_shell_command_call(call_id, "echo paused"),
         responses::ev_completed(response_id),
     ])
 }

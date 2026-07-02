@@ -1,4 +1,5 @@
 use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
+use crate::thread_state::MidTurnAutoSessionNameRequest;
 use crate::thread_state::ThreadState;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadNameUpdateSource;
@@ -16,6 +17,61 @@ use tracing::warn;
 
 const GENERATED_SESSION_NAME_REFRESH_TURN_INTERVAL: u64 = 4;
 
+pub(crate) enum AutoSessionNameUpdate {
+    TurnCompleted { completed_turn_count: u64 },
+    MidTurn(MidTurnAutoSessionNameRequest),
+}
+
+impl AutoSessionNameUpdate {
+    pub(crate) fn turn_completed(completed_turn_count: u64) -> Self {
+        Self::TurnCompleted {
+            completed_turn_count,
+        }
+    }
+
+    pub(crate) fn mid_turn(request: MidTurnAutoSessionNameRequest) -> Self {
+        Self::MidTurn(request)
+    }
+
+    fn completed_turn_count(&self) -> u64 {
+        match self {
+            Self::TurnCompleted {
+                completed_turn_count,
+            } => *completed_turn_count,
+            Self::MidTurn(request) => request.completed_turn_count,
+        }
+    }
+
+    fn partial_response(&self) -> Option<&str> {
+        match self {
+            Self::TurnCompleted { .. } => None,
+            Self::MidTurn(request) => Some(request.partial_response.as_str()),
+        }
+    }
+
+    fn has_required_turn_progress(&self) -> bool {
+        match self {
+            Self::TurnCompleted {
+                completed_turn_count,
+            } => *completed_turn_count > 0,
+            Self::MidTurn(_) => true,
+        }
+    }
+
+    fn still_applies_to(&self, state: &ThreadState) -> bool {
+        match self {
+            Self::TurnCompleted {
+                completed_turn_count,
+            } => state.completed_turn_count == *completed_turn_count,
+            Self::MidTurn(request) => {
+                state.completed_turn_count == request.completed_turn_count
+                    && state.active_turn_id_if_explicit().as_deref()
+                        == Some(request.turn_id.as_str())
+            }
+        }
+    }
+}
+
 pub(crate) fn maybe_spawn_auto_session_name_update(
     thread_id: ThreadId,
     thread: Arc<CodexThread>,
@@ -23,7 +79,7 @@ pub(crate) fn maybe_spawn_auto_session_name_update(
     outgoing: ThreadScopedOutgoingMessageSender,
     thread_state: Arc<Mutex<ThreadState>>,
     thread_list_state_permit: Arc<Semaphore>,
-    completed_turn_count: u64,
+    update: AutoSessionNameUpdate,
 ) {
     tokio::spawn(async move {
         if let Err(err) = maybe_update_auto_session_name(
@@ -33,7 +89,7 @@ pub(crate) fn maybe_spawn_auto_session_name_update(
             outgoing,
             thread_state,
             thread_list_state_permit,
-            completed_turn_count,
+            update,
         )
         .await
         {
@@ -49,9 +105,9 @@ async fn maybe_update_auto_session_name(
     outgoing: ThreadScopedOutgoingMessageSender,
     thread_state: Arc<Mutex<ThreadState>>,
     thread_list_state_permit: Arc<Semaphore>,
-    completed_turn_count: u64,
+    update: AutoSessionNameUpdate,
 ) -> anyhow::Result<()> {
-    if completed_turn_count == 0 {
+    if !update.has_required_turn_progress() {
         return Ok(());
     }
     let config = thread.config().await;
@@ -65,12 +121,16 @@ async fn maybe_update_auto_session_name(
     let Some((current_title, title_source)) = read_title_state(&thread, thread_id).await? else {
         return Ok(());
     };
+    let completed_turn_count = update.completed_turn_count();
     if !should_update_session_name(completed_turn_count, title_source) {
         return Ok(());
     }
 
     let current_name = (!current_title.trim().is_empty()).then_some(current_title.as_str());
-    let Some(generated_name) = thread.generate_session_name(current_name).await? else {
+    let Some(generated_name) = thread
+        .generate_session_name_with_partial_response(current_name, update.partial_response())
+        .await?
+    else {
         return Ok(());
     };
 
@@ -82,7 +142,13 @@ async fn maybe_update_auto_session_name(
     if !config.auto_session_name || thread.config_snapshot().await.ephemeral {
         return Ok(());
     }
-    let latest_completed_turn_count = thread_state.lock().await.completed_turn_count;
+    let latest_completed_turn_count = {
+        let state = thread_state.lock().await;
+        if !update.still_applies_to(&state) {
+            return Ok(());
+        }
+        state.completed_turn_count
+    };
     let Some((latest_title, latest_source)) = read_title_state(&thread, thread_id).await? else {
         return Ok(());
     };

@@ -605,6 +605,17 @@ impl CodexThread {
         self.codex.session.generate_session_name(current_name).await
     }
 
+    pub async fn generate_session_name_with_partial_response(
+        &self,
+        current_name: Option<&str>,
+        partial_response: Option<&str>,
+    ) -> CodexResult<Option<String>> {
+        self.codex
+            .session
+            .generate_session_name_with_partial_response(current_name, partial_response)
+            .await
+    }
+
     /// Resolves the MCP runtime configuration using this thread's extension data.
     pub async fn runtime_mcp_config(&self, config: &crate::config::Config) -> codex_mcp::McpConfig {
         self.codex.session.runtime_mcp_config(config).await
