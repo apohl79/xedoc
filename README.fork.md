@@ -88,6 +88,35 @@ Primary files:
 - `codex-rs/tui/src/chatwidget/session_flow.rs`
 - `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
 
+### Automatic Session Naming
+
+The fork can generate short session names automatically from the conversation
+without changing the visible model response.
+
+- Generated names are capped at 32 characters.
+- The side-band naming task runs after completed turns and can refresh a
+  generated name as the conversation changes.
+- Manual `/rename` names are treated as explicit user overrides and are not
+  overwritten by generated names.
+- Generated names persist through the same thread metadata path as manual
+  names, so session-name rendering, status-line payloads, history, and resume
+  views consume them uniformly.
+- The `auto_session_name` setting defaults to enabled and can be toggled from
+  `/config`.
+- Unsafe display characters are stripped from generated names, and
+  secret-shaped generated names fall back to a generic safe label.
+- Integration and snapshot coverage verify generated updates, manual override
+  behavior, fork behavior, `/config` persistence, and composer rendering.
+
+Primary files:
+
+- `codex-rs/core/src/session/session_name.rs`
+- `codex-rs/app-server/src/auto_session_name.rs`
+- `codex-rs/state/src/model/thread_metadata.rs`
+- `codex-rs/thread-store/src/local/update_thread_metadata.rs`
+- `codex-rs/tui/src/bottom_pane/config_settings_view.rs`
+- `codex-rs/tui/src/config_update.rs`
+
 ### Persistent Active Task List
 
 The fork keeps the current `update_plan` checklist visible in the TUI while a
