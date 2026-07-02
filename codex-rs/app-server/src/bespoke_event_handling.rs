@@ -1,3 +1,4 @@
+use crate::auto_session_name::AutoSessionNameUpdate;
 use crate::auto_session_name::maybe_spawn_auto_session_name_update;
 use crate::error_code::internal_error;
 use crate::error_code::invalid_request;
@@ -208,7 +209,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                     outgoing,
                     thread_state,
                     thread_list_state_permit,
-                    completed_turn_count,
+                    AutoSessionNameUpdate::turn_completed(completed_turn_count),
                 );
             }
         }
@@ -891,6 +892,22 @@ pub(crate) async fn apply_bespoke_event_handling(
         | EventMsg::ReasoningContentDelta(_)
         | EventMsg::ReasoningRawContentDelta(_)
         | EventMsg::AgentReasoningSectionBreak(_)) => {
+            if let EventMsg::AgentMessageContentDelta(event) = &msg
+                && let Some(request) = thread_state
+                    .lock()
+                    .await
+                    .note_agent_message_delta_for_auto_session_name(event)
+            {
+                maybe_spawn_auto_session_name_update(
+                    conversation_id,
+                    conversation.clone(),
+                    thread_manager.clone(),
+                    outgoing.clone(),
+                    thread_state.clone(),
+                    thread_list_state_permit.clone(),
+                    AutoSessionNameUpdate::mid_turn(request),
+                );
+            }
             let notification = item_event_to_server_notification(
                 msg,
                 &conversation_id.to_string(),
