@@ -333,6 +333,7 @@ impl App {
         if chat_widget.last_terminal_title.is_none() {
             chat_widget.last_terminal_title = previous_terminal_title;
         }
+        chat_widget.seed_status_line_command_output_from(&self.chat_widget);
         chat_widget.remote_connection = self.chat_widget.remote_connection.clone();
         for (thread_id, entry) in self.agent_navigation.ordered_threads() {
             chat_widget.set_collab_agent_metadata(
