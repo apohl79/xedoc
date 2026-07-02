@@ -272,7 +272,6 @@ use crate::bottom_pane::BottomPaneParams;
 use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::CollaborationModeIndicator;
 use crate::bottom_pane::ColumnWidthMode;
-use crate::bottom_pane::ConfigSettingsView;
 use crate::bottom_pane::DOUBLE_PRESS_QUIT_SHORTCUT_ENABLED;
 use crate::bottom_pane::ExperimentalFeatureItem;
 use crate::bottom_pane::ExperimentalFeaturesView;
@@ -1086,15 +1085,6 @@ impl ChatWidget {
         let view = MemoriesSettingsView::new(
             self.config.memories.use_memories,
             self.config.memories.generate_memories,
-            self.app_event_tx.clone(),
-            self.bottom_pane.list_keymap(),
-        );
-        self.bottom_pane.show_view(Box::new(view));
-    }
-
-    pub(crate) fn open_config_popup(&mut self) {
-        let view = ConfigSettingsView::new(
-            self.config.auto_session_name,
             self.app_event_tx.clone(),
             self.bottom_pane.list_keymap(),
         );

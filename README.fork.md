@@ -101,12 +101,12 @@ without changing the visible model response.
 - Generated names persist through the same thread metadata path as manual
   names, so session-name rendering, status-line payloads, history, and resume
   views consume them uniformly.
-- The `auto_session_name` setting defaults to enabled and can be toggled from
-  `/config`.
+- The `auto_session_name` setting defaults to enabled and can be toggled with
+  `/rename --auto on|off`.
 - Unsafe display characters are stripped from generated names, and
   secret-shaped generated names fall back to a generic safe label.
 - Integration and snapshot coverage verify generated updates, manual override
-  behavior, fork behavior, `/config` persistence, and composer rendering.
+  behavior, fork behavior, setting persistence, and composer rendering.
 
 Primary files:
 
@@ -114,7 +114,7 @@ Primary files:
 - `codex-rs/app-server/src/auto_session_name.rs`
 - `codex-rs/state/src/model/thread_metadata.rs`
 - `codex-rs/thread-store/src/local/update_thread_metadata.rs`
-- `codex-rs/tui/src/bottom_pane/config_settings_view.rs`
+- `codex-rs/tui/src/chatwidget/slash_dispatch.rs`
 - `codex-rs/tui/src/config_update.rs`
 
 ### Persistent Active Task List
