@@ -662,6 +662,55 @@ async fn inline_slash_command_is_available_from_local_recall_after_dispatch() {
 }
 
 #[tokio::test]
+async fn slash_rename_auto_updates_generated_session_name_setting() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    submit_composer_text(&mut chat, "/rename --auto off");
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UpdateAutoSessionNameSetting { enabled: false })
+    );
+    assert_eq!(
+        recall_latest_after_clearing(&mut chat),
+        "/rename --auto off"
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+
+    submit_composer_text(&mut chat, "/rename --auto on");
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UpdateAutoSessionNameSetting { enabled: true })
+    );
+    assert_eq!(recall_latest_after_clearing(&mut chat), "/rename --auto on");
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
+async fn slash_rename_auto_reports_usage_for_invalid_value() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    submit_composer_text(&mut chat, "/rename --auto maybe");
+
+    let cells = drain_insert_history(&mut rx);
+    let rendered = cells
+        .iter()
+        .map(|cell| lines_to_single_string(cell))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        rendered.contains("Usage: /rename --auto on|off"),
+        "expected usage message, got: {rendered:?}"
+    );
+    assert_eq!(
+        recall_latest_after_clearing(&mut chat),
+        "/rename --auto maybe"
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
 async fn goal_slash_command_with_extra_os_emits_set_goal_event() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.set_feature_enabled(Feature::Goals, /*enabled*/ true);

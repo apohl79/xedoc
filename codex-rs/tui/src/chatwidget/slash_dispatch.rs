@@ -36,6 +36,7 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
     "Press Ctrl+C to return to the main thread first.";
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
 const RAW_USAGE: &str = "Usage: /raw [on|off]";
+const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
 const USAGE_CHATGPT_LOGIN_REQUIRED: &str = "Sign in with ChatGPT to use /usage.";
 
 impl ChatWidget {
@@ -369,9 +370,6 @@ impl ChatWidget {
             }
             SlashCommand::Experimental => {
                 self.open_experimental_popup();
-            }
-            SlashCommand::Config => {
-                self.open_config_popup();
             }
             SlashCommand::AutoReview => {
                 self.open_auto_review_denials_popup();
@@ -713,6 +711,30 @@ impl ChatWidget {
                 _ => self.add_error_message(RAW_USAGE.to_string()),
             },
             SlashCommand::Rename if !trimmed.is_empty() => {
+                let mut rename_args = trimmed.split_whitespace();
+                if matches!(rename_args.next(), Some("--auto")) {
+                    let Some(value) = rename_args.next() else {
+                        self.add_error_message(RENAME_AUTO_USAGE.to_string());
+                        return;
+                    };
+                    if rename_args.next().is_some() {
+                        self.add_error_message(RENAME_AUTO_USAGE.to_string());
+                        return;
+                    }
+
+                    let enabled = match value.to_ascii_lowercase().as_str() {
+                        "on" | "true" | "enable" | "enabled" => true,
+                        "off" | "false" | "disable" | "disabled" => false,
+                        _ => {
+                            self.add_error_message(RENAME_AUTO_USAGE.to_string());
+                            return;
+                        }
+                    };
+                    self.app_event_tx
+                        .send(AppEvent::UpdateAutoSessionNameSetting { enabled });
+                    return;
+                }
+
                 if !self.ensure_thread_rename_allowed() {
                     return;
                 }
@@ -1084,7 +1106,6 @@ impl ChatWidget {
             | SlashCommand::Permissions
             | SlashCommand::ElevateSandbox
             | SlashCommand::SandboxReadRoot
-            | SlashCommand::Config
             | SlashCommand::Experimental
             | SlashCommand::AutoReview
             | SlashCommand::Memories
