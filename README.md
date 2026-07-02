@@ -33,6 +33,8 @@ Then simply run `codex` to get started.
 - Extended TUI `@` file-path completion.
 - Custom TUI status line support.
 - TUI session names shown at the top-right of the user entry box.
+- Automatic short session names with a `/config` toggle and `/rename`
+  override.
 - Persistent active task list above the user entry field while a turn is running.
 - apohl79 release packaging and installer scripts.
 
