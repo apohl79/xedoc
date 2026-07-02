@@ -700,6 +700,56 @@ impl App {
         }
     }
 
+    pub(super) async fn update_auto_session_name_setting_with_app_server(
+        &mut self,
+        app_server: &mut AppServerSession,
+        enabled: bool,
+    ) {
+        let edits = crate::config_update::build_auto_session_name_edits(enabled);
+        let write_response = match crate::config_update::write_config_batch(
+            app_server.request_handle(),
+            edits,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                tracing::error!(error = %err, "failed to persist generated session name setting");
+                self.chat_widget.add_error_message(format!(
+                    "Failed to save generated session name setting: {err}"
+                ));
+                return;
+            }
+        };
+        if write_response.status == WriteStatus::OkOverridden {
+            let message = overridden_write_message(&write_response);
+            tracing::warn!(
+                message,
+                "generated session name setting config write was overridden by effective config"
+            );
+            self.chat_widget.add_error_message(format!(
+                "Generated session name setting was saved but not applied: {message}"
+            ));
+            let Some(effective_config) = self
+                .read_effective_config_after_overridden_write(
+                    app_server,
+                    "Generated session name setting",
+                )
+                .await
+            else {
+                return;
+            };
+            let enabled =
+                auto_session_name_from_effective_config(&effective_config).unwrap_or(enabled);
+            self.config.auto_session_name = enabled;
+            self.chat_widget.set_auto_session_name(enabled);
+            return;
+        }
+
+        self.config.auto_session_name = enabled;
+        self.chat_widget.set_auto_session_name(enabled);
+    }
+
     pub(super) async fn reset_memories_with_app_server(
         &mut self,
         app_server: &mut AppServerSession,
@@ -1026,6 +1076,14 @@ fn sandbox_mode_from_effective_config(
     effective_config: &ConfigReadResponse,
 ) -> Option<AppServerSandboxMode> {
     effective_config.config.sandbox_mode
+}
+
+fn auto_session_name_from_effective_config(effective_config: &ConfigReadResponse) -> Option<bool> {
+    effective_config
+        .config
+        .additional
+        .get("auto_session_name")
+        .and_then(serde_json::Value::as_bool)
 }
 
 fn memories_from_effective_config(effective_config: &ConfigReadResponse) -> Option<MemoriesToml> {

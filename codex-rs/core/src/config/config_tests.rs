@@ -218,6 +218,21 @@ async fn load_config_normalizes_relative_cwd_override() -> std::io::Result<()> {
 }
 
 #[tokio::test]
+async fn load_config_resolves_auto_session_name_setting() -> std::io::Result<()> {
+    let cfg: ConfigToml =
+        toml::from_str("auto_session_name = false").expect("TOML deserialization should succeed");
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        tempdir()?.abs(),
+    )
+    .await?;
+
+    assert!(!config.auto_session_name);
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_toml_parsing() {
     let history_with_persistence = r#"
 [history]

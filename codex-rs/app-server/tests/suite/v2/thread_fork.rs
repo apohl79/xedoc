@@ -6,6 +6,8 @@ use app_test_support::create_fake_rollout_with_token_usage;
 use app_test_support::create_mock_responses_server_repeating_assistant;
 use app_test_support::to_response;
 use app_test_support::write_chatgpt_auth;
+use chrono::DateTime;
+use chrono::Utc;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCMessage;
 use codex_app_server_protocol::JSONRPCResponse;
@@ -33,9 +35,11 @@ use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::RolloutItem;
+use codex_protocol::protocol::SessionSource as CoreSessionSource;
 use codex_rollout::append_rollout_item_to_path;
 use codex_rollout::append_thread_name;
 use codex_rollout::read_session_meta_line;
+use codex_state::ThreadTitleSource;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -414,6 +418,80 @@ async fn thread_fork_inherits_explicit_source_name_from_session_index() -> Resul
         .find(|candidate| candidate.id == thread.id)
         .expect("thread/list should include the forked thread");
     assert_eq!(listed.name.as_deref(), Some(source_name));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_fork_preserves_generated_source_name_as_generated() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let conversation_id = create_fake_rollout(
+        codex_home.path(),
+        "2025-01-05T12-00-00",
+        "2025-01-05T12:00:00Z",
+        "Saved user message",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+    let source_thread_id = ThreadId::from_string(&conversation_id)?;
+    let source_name = "Generated parent thread";
+    let state_db =
+        codex_state::StateRuntime::init(codex_home.path().to_path_buf(), "mock_provider".into())
+            .await?;
+    let created_at = DateTime::parse_from_rfc3339("2025-01-05T12:00:00Z")?.with_timezone(&Utc);
+    let rollout_path = codex_home
+        .path()
+        .join("sessions")
+        .join("2025")
+        .join("01")
+        .join("05")
+        .join(format!(
+            "rollout-2025-01-05T12-00-00-{conversation_id}.jsonl"
+        ));
+    let mut builder = codex_state::ThreadMetadataBuilder::new(
+        source_thread_id,
+        rollout_path,
+        created_at,
+        CoreSessionSource::Cli,
+    );
+    builder.model_provider = Some("mock_provider".to_string());
+    builder.cwd = codex_home.path().to_path_buf();
+    builder.cli_version = Some("0.0.0".to_string());
+    let mut metadata = builder.build("mock_provider");
+    metadata.preview = Some("Saved user message".to_string());
+    metadata.first_user_message = metadata.preview.clone();
+    metadata.title = source_name.to_string();
+    metadata.title_source = ThreadTitleSource::Generated;
+    state_db.upsert_thread(&metadata).await?;
+
+    let mut mcp = TestAppServer::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
+    let fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: conversation_id,
+            ..Default::default()
+        })
+        .await?;
+    let fork_resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(fork_id)),
+    )
+    .await??;
+    let ThreadForkResponse { thread, .. } = to_response::<ThreadForkResponse>(fork_resp)?;
+    let fork_thread_id = ThreadId::from_string(&thread.id)?;
+    let fork_metadata = state_db
+        .get_thread(fork_thread_id)
+        .await?
+        .expect("fork metadata");
+
+    assert_eq!(
+        (fork_metadata.title.as_str(), fork_metadata.title_source),
+        (source_name, ThreadTitleSource::Generated)
+    );
 
     Ok(())
 }

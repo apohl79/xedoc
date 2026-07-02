@@ -61,6 +61,8 @@ pub(super) const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) type WsClient = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 type HmacSha256 = Hmac<Sha256>;
+const CONFIG_OVERRIDE_ARG: &str = "-c";
+const DISABLE_AUTO_SESSION_NAME_OVERRIDE: &str = "auto_session_name=false";
 
 #[tokio::test]
 async fn websocket_transport_routes_per_connection_handshake_and_responses() -> Result<()> {
@@ -489,6 +491,7 @@ pub(super) async fn spawn_websocket_server_with_args(
 ) -> Result<(Child, SocketAddr)> {
     let program = codex_utils_cargo_bin::cargo_bin("codex-app-server")
         .context("should find app-server binary")?;
+    let extra_args = args_with_auto_session_name_disabled_by_default(extra_args);
     let mut cmd = Command::new(program);
     cmd.arg("--listen")
         .arg(listen_url)
@@ -555,6 +558,30 @@ pub(super) async fn spawn_websocket_server_with_args(
     });
 
     Ok((process, bind_addr))
+}
+
+fn args_with_auto_session_name_disabled_by_default(extra_args: &[String]) -> Vec<String> {
+    let mut args = Vec::new();
+    if !has_auto_session_name_override(extra_args) {
+        args.push(CONFIG_OVERRIDE_ARG.to_string());
+        args.push(DISABLE_AUTO_SESSION_NAME_OVERRIDE.to_string());
+    }
+    args.extend(extra_args.iter().cloned());
+    args
+}
+
+fn has_auto_session_name_override(args: &[String]) -> bool {
+    args.windows(2).any(|window| {
+        matches!(window[0].as_str(), CONFIG_OVERRIDE_ARG | "--config")
+            && is_auto_session_name_override(&window[1])
+    }) || args.iter().any(|arg| {
+        arg.strip_prefix("--config=")
+            .is_some_and(is_auto_session_name_override)
+    })
+}
+
+fn is_auto_session_name_override(value: &str) -> bool {
+    value.trim_start().starts_with("auto_session_name=")
 }
 
 pub(super) async fn connect_websocket(bind_addr: SocketAddr) -> Result<WsClient> {

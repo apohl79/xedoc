@@ -370,6 +370,9 @@ impl ChatWidget {
             SlashCommand::Experimental => {
                 self.open_experimental_popup();
             }
+            SlashCommand::Config => {
+                self.open_config_popup();
+            }
             SlashCommand::AutoReview => {
                 self.open_auto_review_denials_popup();
             }
@@ -1081,6 +1084,7 @@ impl ChatWidget {
             | SlashCommand::Permissions
             | SlashCommand::ElevateSandbox
             | SlashCommand::SandboxReadRoot
+            | SlashCommand::Config
             | SlashCommand::Experimental
             | SlashCommand::AutoReview
             | SlashCommand::Memories

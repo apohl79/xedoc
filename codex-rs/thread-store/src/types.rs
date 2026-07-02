@@ -19,6 +19,7 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadMemoryMode as MemoryMode;
 use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TokenUsage;
+use codex_state::ThreadTitleSource;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -427,6 +428,9 @@ pub struct StoredThread {
     pub preview: String,
     /// Optional user-facing thread name/title.
     pub name: Option<String>,
+    /// Source of the user-facing thread name when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_source: Option<ThreadTitleSource>,
     /// Model provider id associated with the thread.
     pub model_provider: String,
     /// Latest observed model, if known.
@@ -532,6 +536,9 @@ pub struct ThreadMetadataPatch {
         with = "optional_option"
     )]
     pub name: ClearableField<String>,
+    /// Source of the replacement name/title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_source: Option<ThreadTitleSource>,
     /// Known local rollout path for stores that expose one.
     pub rollout_path: Option<PathBuf>,
     /// Best available preview text for discovery/listing.
@@ -608,6 +615,9 @@ impl ThreadMetadataPatch {
         if next.name.is_some() {
             self.name = next.name;
         }
+        if next.title_source.is_some() {
+            self.title_source = next.title_source;
+        }
         if next.rollout_path.is_some() {
             self.rollout_path = next.rollout_path;
         }
@@ -680,6 +690,7 @@ impl ThreadMetadataPatch {
 
     pub fn is_empty(&self) -> bool {
         self.name.is_none()
+            && self.title_source.is_none()
             && self.rollout_path.is_none()
             && self.preview.is_none()
             && self.title.is_none()

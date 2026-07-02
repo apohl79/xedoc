@@ -38,3 +38,15 @@ fn format_config_error_preserves_server_validation_message() {
          features.fast_mode=true violates managed requirements; allowed set [fast_mode=false]"
     );
 }
+
+#[test]
+fn build_auto_session_name_edits_targets_top_level_setting() {
+    assert_eq!(
+        build_auto_session_name_edits(false),
+        vec![ConfigEdit {
+            key_path: "auto_session_name".to_string(),
+            value: serde_json::json!(false),
+            merge_strategy: MergeStrategy::Replace,
+        }]
+    );
+}

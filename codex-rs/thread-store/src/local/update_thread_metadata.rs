@@ -10,11 +10,12 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_rollout::ARCHIVED_SESSIONS_SUBDIR;
 use codex_rollout::append_rollout_item_to_path;
-use codex_rollout::append_thread_name;
+use codex_rollout::append_thread_name_with_source;
 use codex_rollout::find_archived_thread_path_by_id_str;
 use codex_rollout::find_thread_path_by_id_str;
 use codex_rollout::read_session_meta_line;
 use codex_state::ThreadMetadataBuilder;
+use codex_state::ThreadTitleSource;
 use tracing::warn;
 
 use super::LocalThreadStore;
@@ -88,6 +89,7 @@ pub(super) async fn update_thread_metadata(
     let mut resolved_rollout_path =
         resolve_rollout_path(store, thread_id, params.include_archived).await?;
     let name = patch.name;
+    let title_source = patch.title_source;
     let git_info = patch.git_info;
     if let Some(memory_mode) = patch.memory_mode {
         apply_thread_memory_mode(resolved_rollout_path.path.as_path(), thread_id, memory_mode)
@@ -108,7 +110,13 @@ pub(super) async fn update_thread_metadata(
     .await;
 
     if let Some(name) = name {
-        apply_thread_name(store, thread_id, name.unwrap_or_default()).await?;
+        apply_thread_name(
+            store,
+            thread_id,
+            name.unwrap_or_default(),
+            title_source.unwrap_or(ThreadTitleSource::Manual),
+        )
+        .await?;
     }
 
     let resolved_git_info = match git_info {
@@ -255,9 +263,13 @@ async fn apply_metadata_update(
             }
             if let Some(name) = patch.name {
                 metadata.title = name.unwrap_or_default();
+                metadata.title_source = patch.title_source.unwrap_or(ThreadTitleSource::Manual);
             }
             if let Some(title) = patch.title {
                 metadata.title = title;
+                metadata.title_source = patch.title_source.unwrap_or(ThreadTitleSource::Derived);
+            } else if let Some(title_source) = patch.title_source {
+                metadata.title_source = title_source;
             }
             if let Some(model_provider) = patch.model_provider {
                 metadata.model_provider = model_provider;
@@ -480,6 +492,7 @@ fn sqlite_write_error_is_best_effort(err: &ThreadStoreError) -> bool {
 
 fn has_observed_metadata_facts(patch: &ThreadMetadataPatch) -> bool {
     patch.rollout_path.is_some()
+        || patch.title_source.is_some()
         || patch.preview.is_some()
         || patch.title.is_some()
         || patch.model_provider.is_some()
@@ -601,10 +614,11 @@ async fn apply_thread_name(
     store: &LocalThreadStore,
     thread_id: ThreadId,
     name: String,
+    title_source: ThreadTitleSource,
 ) -> ThreadStoreResult<()> {
     if let Some(state_db) = store.state_db().await {
         let updated = state_db
-            .update_thread_title(thread_id, &name)
+            .update_thread_title_with_source(thread_id, &name, title_source)
             .await
             .map_err(|err| ThreadStoreError::Internal {
                 message: format!("failed to set thread name: {err}"),
@@ -616,11 +630,16 @@ async fn apply_thread_name(
         }
     }
 
-    append_thread_name(store.config.codex_home.as_path(), thread_id, &name)
-        .await
-        .map_err(|err| ThreadStoreError::Internal {
-            message: format!("failed to index thread name: {err}"),
-        })
+    append_thread_name_with_source(
+        store.config.codex_home.as_path(),
+        thread_id,
+        &name,
+        Some(title_source),
+    )
+    .await
+    .map_err(|err| ThreadStoreError::Internal {
+        message: format!("failed to index thread name: {err}"),
+    })
 }
 
 async fn apply_thread_memory_mode(
@@ -1402,7 +1421,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn metadata_patch_applies_title_over_existing_name() {
+    async fn metadata_patch_preserves_existing_manual_name_over_derived_title() {
         let home = TempDir::new().expect("temp dir");
         let config = test_config(home.path());
         let runtime = codex_state::StateRuntime::init(
@@ -1411,7 +1430,7 @@ mod tests {
         )
         .await
         .expect("state db should initialize");
-        let store = LocalThreadStore::new(config, Some(runtime));
+        let store = LocalThreadStore::new(config, Some(runtime.clone()));
         let uuid = Uuid::from_u128(306);
         let thread_id = ThreadId::from_string(&uuid.to_string()).expect("valid thread id");
         write_session_file(home.path(), "2025-01-03T15-45-00", uuid).expect("session file");
@@ -1441,7 +1460,14 @@ mod tests {
             .await
             .expect("apply observed metadata");
 
-        assert_eq!(thread.name.as_deref(), Some("Derived first message"));
+        assert_eq!(thread.name.as_deref(), Some("User chosen name"));
+        let metadata = runtime
+            .get_thread(thread_id)
+            .await
+            .expect("read metadata")
+            .expect("thread metadata");
+        assert_eq!(metadata.title, "User chosen name");
+        assert_eq!(metadata.title_source, ThreadTitleSource::Manual);
     }
 
     #[tokio::test]

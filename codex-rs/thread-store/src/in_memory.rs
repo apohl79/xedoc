@@ -769,6 +769,7 @@ fn stored_thread_from_state(
             .and_then(|metadata| metadata.preview.clone())
             .unwrap_or_default(),
         name,
+        title_source: metadata.and_then(|metadata| metadata.title_source),
         model_provider: metadata
             .and_then(|metadata| metadata.model_provider.clone())
             .unwrap_or_else(|| "test".to_string()),

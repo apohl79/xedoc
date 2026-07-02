@@ -25,6 +25,8 @@ static SESSION_INDEX_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(())
 pub struct SessionIndexEntry {
     pub id: ThreadId,
     pub thread_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_source: Option<codex_state::ThreadTitleSource>,
     pub updated_at: String,
 }
 
@@ -35,6 +37,22 @@ pub async fn append_thread_name(
     thread_id: ThreadId,
     name: &str,
 ) -> std::io::Result<()> {
+    append_thread_name_with_source(
+        codex_home,
+        thread_id,
+        name,
+        Some(codex_state::ThreadTitleSource::Manual),
+    )
+    .await
+}
+
+/// Append a thread name update with known title provenance.
+pub async fn append_thread_name_with_source(
+    codex_home: &Path,
+    thread_id: ThreadId,
+    name: &str,
+    title_source: Option<codex_state::ThreadTitleSource>,
+) -> std::io::Result<()> {
     use time::OffsetDateTime;
     use time::format_description::well_known::Rfc3339;
 
@@ -44,6 +62,7 @@ pub async fn append_thread_name(
     let entry = SessionIndexEntry {
         id: thread_id,
         thread_name: name.to_string(),
+        title_source,
         updated_at,
     };
     append_session_index_entry(codex_home, &entry).await
@@ -109,6 +128,16 @@ pub async fn find_thread_name_by_id(
     codex_home: &Path,
     thread_id: &ThreadId,
 ) -> std::io::Result<Option<String>> {
+    Ok(find_thread_name_record_by_id(codex_home, thread_id)
+        .await?
+        .map(|record| record.0))
+}
+
+/// Find the latest thread name and source for a thread id, if any.
+pub async fn find_thread_name_record_by_id(
+    codex_home: &Path,
+    thread_id: &ThreadId,
+) -> std::io::Result<Option<(String, Option<codex_state::ThreadTitleSource>)>> {
     let path = session_index_path(codex_home);
     if !path.exists() {
         return Ok(None);
@@ -117,7 +146,7 @@ pub async fn find_thread_name_by_id(
     let entry = tokio::task::spawn_blocking(move || scan_index_from_end_by_id(&path, &id))
         .await
         .map_err(std::io::Error::other)??;
-    Ok(entry.map(|entry| entry.thread_name))
+    Ok(entry.map(|entry| (entry.thread_name, entry.title_source)))
 }
 
 /// Find the latest thread names for a batch of thread ids.
@@ -125,6 +154,18 @@ pub async fn find_thread_names_by_ids(
     codex_home: &Path,
     thread_ids: &HashSet<ThreadId>,
 ) -> std::io::Result<HashMap<ThreadId, String>> {
+    Ok(find_thread_name_records_by_ids(codex_home, thread_ids)
+        .await?
+        .into_iter()
+        .map(|(thread_id, (name, _source))| (thread_id, name))
+        .collect())
+}
+
+/// Find the latest thread names and sources for a batch of thread ids.
+pub async fn find_thread_name_records_by_ids(
+    codex_home: &Path,
+    thread_ids: &HashSet<ThreadId>,
+) -> std::io::Result<HashMap<ThreadId, (String, Option<codex_state::ThreadTitleSource>)>> {
     let path = session_index_path(codex_home);
     if thread_ids.is_empty() || !path.exists() {
         return Ok(HashMap::new());
@@ -145,7 +186,7 @@ pub async fn find_thread_names_by_ids(
         };
         let name = entry.thread_name.trim();
         if !name.is_empty() && thread_ids.contains(&entry.id) {
-            names.insert(entry.id, name.to_string());
+            names.insert(entry.id, (name.to_string(), entry.title_source));
         }
     }
 

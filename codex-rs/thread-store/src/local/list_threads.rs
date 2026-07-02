@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use codex_protocol::ThreadId;
 use codex_rollout::RolloutConfig;
 use codex_rollout::RolloutRecorder;
-use codex_rollout::find_thread_names_by_ids;
+use codex_rollout::find_thread_name_records_by_ids;
 use codex_rollout::parse_cursor;
 
 use super::LocalThreadStore;
@@ -81,28 +81,31 @@ pub(super) async fn list_threads(
         .iter()
         .map(|thread| thread.thread_id)
         .collect::<HashSet<_>>();
-    let mut names = HashMap::<ThreadId, String>::with_capacity(thread_ids.len());
+    let mut names =
+        HashMap::<ThreadId, (String, Option<codex_state::ThreadTitleSource>)>::with_capacity(
+            thread_ids.len(),
+        );
     if let Some(state_db_ctx) = store.state_db().await {
         for &thread_id in &thread_ids {
             let Ok(Some(metadata)) = state_db_ctx.get_thread(thread_id).await else {
                 continue;
             };
-            if let Some(title) = distinct_thread_metadata_title(&metadata) {
-                names.insert(thread_id, title);
+            if let Some((title, title_source)) = distinct_thread_metadata_title(&metadata) {
+                names.insert(thread_id, (title, Some(title_source)));
             }
         }
     }
     if names.len() < thread_ids.len()
         && let Ok(legacy_names) =
-            find_thread_names_by_ids(store.config.codex_home.as_path(), &thread_ids).await
+            find_thread_name_records_by_ids(store.config.codex_home.as_path(), &thread_ids).await
     {
-        for (thread_id, title) in legacy_names {
-            names.entry(thread_id).or_insert(title);
+        for (thread_id, (title, title_source)) in legacy_names {
+            names.entry(thread_id).or_insert((title, title_source));
         }
     }
     for thread in &mut items {
-        if let Some(title) = names.get(&thread.thread_id).cloned() {
-            set_thread_name_from_title(thread, title);
+        if let Some((title, title_source)) = names.get(&thread.thread_id).cloned() {
+            set_thread_name_from_title(thread, title, title_source);
         }
     }
 

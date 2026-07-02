@@ -3,6 +3,7 @@ mod analytics;
 mod app_list;
 mod attestation;
 mod auto_env;
+mod auto_session_name;
 mod client_metadata;
 mod collaboration_mode_list;
 #[cfg(unix)]

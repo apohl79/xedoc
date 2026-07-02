@@ -1,6 +1,23 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ThreadNameUpdateSource": {
+      "enum": [
+        "user",
+        "generated"
+      ],
+      "type": "string"
+    }
+  },
   "properties": {
+    "source": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/ThreadNameUpdateSource"
+        }
+      ],
+      "default": "user"
+    },
     "threadId": {
       "type": "string"
     },

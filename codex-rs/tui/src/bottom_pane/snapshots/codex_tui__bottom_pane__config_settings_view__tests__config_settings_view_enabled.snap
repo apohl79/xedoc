@@ -1,0 +1,29 @@
+---
+source: tui/src/bottom_pane/config_settings_view_tests.rs
+expression: "render_snapshot(&view(true), 76)"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 76, height: 7 },
+    content: [
+        "                                                                            ",
+        "  Config                                                                    ",
+        "  Choose Codex settings. Changes are saved to config.toml                   ",
+        "                                                                            ",
+        "› [x] Generate session names  Keep session names short automatically.       ",
+        "                                                                            ",
+        "  Press space to toggle; enter to save                                      ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 2, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 8, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 2, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 57, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 4, fg: Cyan, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 69, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 13, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 25, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 30, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

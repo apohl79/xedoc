@@ -155,6 +155,8 @@ pub const DEFAULT_CLIENT_NAME: &str = "codex-app-server-tests";
 pub const DISABLE_PLUGIN_STARTUP_TASKS_ARG: &str = "--disable-plugin-startup-tasks-for-tests";
 const DISABLE_MANAGED_CONFIG_ENV_VAR: &str = "CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG";
 const CODE_MODE_HOST_PATH_ENV_VAR: &str = "CODEX_CODE_MODE_HOST_PATH";
+const CONFIG_OVERRIDE_ARG: &str = "-c";
+const DISABLE_AUTO_SESSION_NAME_OVERRIDE: &str = "auto_session_name=false";
 
 impl TestAppServer {
     /// Starts building a server with a temporary CODEX_HOME and the standard
@@ -242,6 +244,7 @@ impl TestAppServer {
             codex_home.join("managed_config.toml"),
         );
         cmd.env_remove(CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR);
+        let args = args_with_auto_session_name_disabled_by_default(args);
         cmd.args(args);
 
         for (k, v) in env_overrides {
@@ -1907,6 +1910,30 @@ impl TestAppServerBuilder {
         app_server._delayed_exec_server = delayed_exec_server;
         Ok(app_server)
     }
+}
+
+fn args_with_auto_session_name_disabled_by_default<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    let mut args_with_default = Vec::new();
+    if !has_auto_session_name_override(args) {
+        args_with_default.push(CONFIG_OVERRIDE_ARG);
+        args_with_default.push(DISABLE_AUTO_SESSION_NAME_OVERRIDE);
+    }
+    args_with_default.extend_from_slice(args);
+    args_with_default
+}
+
+fn has_auto_session_name_override(args: &[&str]) -> bool {
+    args.windows(2).any(|window| {
+        matches!(window[0], CONFIG_OVERRIDE_ARG | "--config")
+            && is_auto_session_name_override(window[1])
+    }) || args.iter().any(|arg| {
+        arg.strip_prefix("--config=")
+            .is_some_and(is_auto_session_name_override)
+    })
+}
+
+fn is_auto_session_name_override(value: &str) -> bool {
+    value.trim_start().starts_with("auto_session_name=")
 }
 
 impl Drop for TestAppServer {

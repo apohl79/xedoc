@@ -36,6 +36,7 @@ fn stored_thread(cwd: &str, title: &str, first_user_message: &str) -> StoredThre
         parent_thread_id: None,
         preview: first_user_message.to_string(),
         name: (!title.is_empty()).then(|| title.to_string()),
+        title_source: None,
         model_provider: "test-provider".to_string(),
         model: Some("gpt-5.2".to_string()),
         reasoning_effort: None,

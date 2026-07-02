@@ -84,6 +84,7 @@ mod app_info;
 mod app_server_tracing;
 mod attestation;
 mod auth_mode;
+mod auto_session_name;
 mod bespoke_event_handling;
 mod command_exec;
 mod config;

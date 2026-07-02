@@ -26,6 +26,7 @@ SELECT
     threads.cwd,
     threads.cli_version,
     threads.title,
+    threads.title_source,
     threads.preview,
     threads.sandbox_policy,
     threads.approval_mode,
@@ -556,6 +557,7 @@ INSERT INTO threads (
     cwd,
     cli_version,
     title,
+    title_source,
     preview,
     sandbox_policy,
     approval_mode,
@@ -601,6 +603,7 @@ ON CONFLICT(id) DO NOTHING
         .bind(metadata.cwd.display().to_string())
         .bind(metadata.cli_version.as_str())
         .bind(metadata.title.as_str())
+        .bind(metadata.title_source.as_str())
         .bind(preview)
         .bind(metadata.sandbox_policy.as_str())
         .bind(metadata.approval_mode.as_str())
@@ -637,8 +640,19 @@ ON CONFLICT(id) DO NOTHING
         thread_id: ThreadId,
         title: &str,
     ) -> anyhow::Result<bool> {
-        let result = sqlx::query("UPDATE threads SET title = ? WHERE id = ?")
+        self.update_thread_title_with_source(thread_id, title, crate::ThreadTitleSource::Manual)
+            .await
+    }
+
+    pub async fn update_thread_title_with_source(
+        &self,
+        thread_id: ThreadId,
+        title: &str,
+        title_source: crate::ThreadTitleSource,
+    ) -> anyhow::Result<bool> {
+        let result = sqlx::query("UPDATE threads SET title = ?, title_source = ? WHERE id = ?")
             .bind(title)
+            .bind(title_source.as_str())
             .bind(thread_id.to_string())
             .execute(self.pool.as_ref())
             .await?;
@@ -810,6 +824,7 @@ INSERT INTO threads (
     cwd,
     cli_version,
     title,
+    title_source,
     preview,
     sandbox_policy,
     approval_mode,
@@ -841,7 +856,14 @@ ON CONFLICT(id) DO UPDATE SET
     reasoning_effort = excluded.reasoning_effort,
     cwd = excluded.cwd,
     cli_version = excluded.cli_version,
-    title = excluded.title,
+    title = CASE
+        WHEN threads.title_source IN ('manual', 'generated') AND excluded.title_source = 'derived' THEN threads.title
+        ELSE excluded.title
+    END,
+    title_source = CASE
+        WHEN threads.title_source IN ('manual', 'generated') AND excluded.title_source = 'derived' THEN threads.title_source
+        ELSE excluded.title_source
+    END,
     preview = COALESCE(NULLIF(excluded.preview, ''), threads.preview),
     sandbox_policy = excluded.sandbox_policy,
     approval_mode = excluded.approval_mode,
@@ -884,6 +906,7 @@ ON CONFLICT(id) DO UPDATE SET
         .bind(metadata.cwd.display().to_string())
         .bind(metadata.cli_version.as_str())
         .bind(metadata.title.as_str())
+        .bind(metadata.title_source.as_str())
         .bind(preview)
         .bind(metadata.sandbox_policy.as_str())
         .bind(metadata.approval_mode.as_str())
@@ -923,6 +946,7 @@ ON CONFLICT(id) DO UPDATE SET
         }
         if let Some(existing_metadata) = existing_metadata.as_ref() {
             metadata.prefer_existing_git_info(existing_metadata);
+            metadata.prefer_existing_explicit_title(existing_metadata);
         }
         let updated_at = match updated_at_override {
             Some(updated_at) => Some(updated_at),
@@ -1223,6 +1247,7 @@ SELECT
     threads.cwd,
     threads.cli_version,
     threads.title,
+    threads.title_source,
     threads.preview,
     threads.sandbox_policy,
     threads.approval_mode,
