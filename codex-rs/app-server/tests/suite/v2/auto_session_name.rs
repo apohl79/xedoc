@@ -34,7 +34,7 @@ const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(10);
 async fn auto_session_name_generates_title_until_manual_rename() -> Result<()> {
     let server = create_mock_responses_server_sequence(vec![
         assistant_response("resp-turn-1", "msg-turn-1", "First done"),
-        assistant_response("resp-name-1", "msg-name-1", "Generated Session Name"),
+        assistant_response_delta_only("resp-name-1", &["Generated ", "Session Name"]),
         assistant_response("resp-turn-2", "msg-turn-2", "Second done"),
     ])
     .await;
@@ -308,6 +308,18 @@ fn assistant_response(response_id: &str, message_id: &str, text: &str) -> String
         responses::ev_assistant_message(message_id, text),
         responses::ev_completed(response_id),
     ])
+}
+
+fn assistant_response_delta_only(response_id: &str, deltas: &[&str]) -> String {
+    let mut events = Vec::with_capacity(deltas.len() + 2);
+    events.push(responses::ev_response_created(response_id));
+    events.extend(
+        deltas
+            .iter()
+            .map(|delta| responses::ev_output_text_delta(delta)),
+    );
+    events.push(responses::ev_completed(response_id));
+    responses::sse(events)
 }
 
 fn create_config_toml(codex_home: &Path, server_uri: &str) -> std::io::Result<()> {
