@@ -14,6 +14,14 @@ fn normalize_generated_session_name_trims_quotes_and_caps_length() {
 }
 
 #[test]
+fn normalize_generated_session_name_caps_length_at_word_boundary() {
+    let name = normalize_generated_session_name("Run reviewer team on main-fork diff")
+        .expect("generated name");
+
+    assert_eq!(name, "Run reviewer team on main-fork");
+}
+
+#[test]
 fn normalize_generated_session_name_strips_unsafe_display_characters() {
     let name = normalize_generated_session_name(
         "  Project\tNames\x1b\x07\u{009D}\u{202E} \u{200B}Refresh  ",
