@@ -12,6 +12,7 @@ use codex_thread_store::ThreadMetadataPatch;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
+use tracing::debug;
 use tracing::error;
 use tracing::warn;
 
@@ -47,6 +48,13 @@ impl AutoSessionNameUpdate {
                 ..
             } => *completed_turn_count,
             Self::MidTurn(request) => request.completed_turn_count,
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::TurnCompleted { .. } => "turn_completed",
+            Self::MidTurn(_) => "mid_turn",
         }
     }
 
@@ -140,22 +148,54 @@ async fn maybe_update_auto_session_name(
     thread_list_state_permit: Arc<Semaphore>,
     update: AutoSessionNameUpdate,
 ) -> anyhow::Result<()> {
+    let update_kind = update.kind();
+    let completed_turn_count = update.completed_turn_count();
     if !update.has_required_turn_progress() {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            "skipping generated session name: no completed turn progress"
+        );
         return Ok(());
     }
     let config = thread.config().await;
     if !config.auto_session_name {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            "skipping generated session name: auto_session_name disabled"
+        );
         return Ok(());
     }
     if thread.config_snapshot().await.ephemeral {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            "skipping generated session name: ephemeral thread"
+        );
         return Ok(());
     }
 
     let Some((current_title, title_source)) = read_title_state(&thread, thread_id).await? else {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            "skipping generated session name: missing thread title metadata"
+        );
         return Ok(());
     };
-    let completed_turn_count = update.completed_turn_count();
     if !update.should_update_session_name(title_source) {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            ?title_source,
+            "skipping generated session name: title source is not eligible"
+        );
         return Ok(());
     }
 
@@ -164,6 +204,12 @@ async fn maybe_update_auto_session_name(
         .generate_session_name_with_partial_response(current_name, update.partial_response())
         .await?
     else {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            "skipping generated session name: model returned no usable name"
+        );
         return Ok(());
     };
 
@@ -173,16 +219,35 @@ async fn maybe_update_auto_session_name(
         .map_err(|err| anyhow::anyhow!("thread list state permit closed: {err}"))?;
     let config = thread.config().await;
     if !config.auto_session_name || thread.config_snapshot().await.ephemeral {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            "skipping generated session name: settings changed before persist"
+        );
         return Ok(());
     }
     let latest_completed_turn_count = {
         let state = thread_state.lock().await;
         if !update.still_applies_to(&state) {
+            debug!(
+                thread_id = %thread_id,
+                update_kind = update_kind,
+                completed_turn_count = completed_turn_count,
+                latest_completed_turn_count = state.completed_turn_count,
+                "skipping generated session name: update no longer applies"
+            );
             return Ok(());
         }
         state.completed_turn_count
     };
     let Some((latest_title, latest_source)) = read_title_state(&thread, thread_id).await? else {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            "skipping generated session name: missing latest thread title metadata"
+        );
         return Ok(());
     };
     if !should_persist_generated_name(
@@ -194,9 +259,25 @@ async fn maybe_update_auto_session_name(
         latest_source,
         generated_name.as_str(),
     ) {
+        debug!(
+            thread_id = %thread_id,
+            update_kind = update_kind,
+            completed_turn_count = completed_turn_count,
+            latest_completed_turn_count = latest_completed_turn_count,
+            ?title_source,
+            ?latest_source,
+            "skipping generated session name: title state changed before persist"
+        );
         return Ok(());
     }
 
+    debug!(
+        thread_id = %thread_id,
+        update_kind = update_kind,
+        completed_turn_count = completed_turn_count,
+        generated_name_chars = generated_name.chars().count(),
+        "persisting generated session name"
+    );
     thread_manager
         .update_thread_metadata(
             thread_id,

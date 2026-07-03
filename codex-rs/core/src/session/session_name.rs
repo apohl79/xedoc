@@ -10,6 +10,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_rollout_trace::InferenceTraceContext;
 use futures::StreamExt;
+use tracing::debug;
 
 const MAX_SESSION_NAME_CHARS: usize = 32;
 const MIN_SESSION_NAME_WORDS: usize = 2;
@@ -38,6 +39,10 @@ impl Session {
         let Some(transcript) =
             transcript_excerpt_with_partial_response(history.raw_items(), partial_response)
         else {
+            debug!(
+                partial_response_present = partial_response.is_some(),
+                "skipping generated session name: no transcript text available"
+            );
             return Ok(None);
         };
         let session_configuration = {
@@ -52,6 +57,14 @@ impl Session {
                 TurnMultiAgentRuntime::Preview,
             )
             .await;
+        let provider_name = turn_context.provider.info().name.clone();
+        let model = turn_context.model_info.slug.clone();
+        debug!(
+            provider = %provider_name,
+            model = %model,
+            partial_response_present = partial_response.is_some(),
+            "starting generated session name request"
+        );
         let prompt = Prompt {
             input: vec![ResponseItem::Message {
                 id: None,
@@ -90,13 +103,31 @@ impl Session {
                 Ok(ResponseEvent::OutputItemDone(item)) => {
                     append_message_text(&mut generated, &item);
                 }
+                Ok(ResponseEvent::OutputTextDelta(delta)) => {
+                    generated.push_str(&delta);
+                }
                 Ok(ResponseEvent::Completed { .. }) => {
-                    return Ok(normalize_generated_session_name(&generated));
+                    let normalized = normalize_generated_session_name(&generated);
+                    debug!(
+                        provider = %provider_name,
+                        model = %model,
+                        generated_chars = generated.chars().count(),
+                        normalized_chars = normalized.as_ref().map_or(0, |name| name.chars().count()),
+                        generated_name_accepted = normalized.is_some(),
+                        "completed generated session name request"
+                    );
+                    return Ok(normalized);
                 }
                 Ok(_) => {}
                 Err(err) => return Err(err),
             }
         }
+        debug!(
+            provider = %provider_name,
+            model = %model,
+            generated_chars = generated.chars().count(),
+            "generated session name stream closed before completion"
+        );
         Err(CodexErr::Stream(
             "stream closed before response.completed".into(),
             None,
