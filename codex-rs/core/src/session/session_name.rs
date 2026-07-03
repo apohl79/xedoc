@@ -242,8 +242,20 @@ fn append_message_text(output: &mut String, item: &ResponseItem) {
 
 fn normalize_generated_session_name(name: &str) -> Option<String> {
     let name = sanitize_generated_session_name(name.trim().trim_matches(&['"', '\'', '`'][..]));
-    let name = take_first_words(&name, MAX_SESSION_NAME_WORDS);
-    let name = take_first_chars(&name, MAX_SESSION_NAME_CHARS);
+    let mut name_within_limits = String::new();
+    for word in name.split_whitespace().take(MAX_SESSION_NAME_WORDS) {
+        let separator_chars = usize::from(!name_within_limits.is_empty());
+        let next_chars =
+            name_within_limits.chars().count() + separator_chars + word.chars().count();
+        if next_chars > MAX_SESSION_NAME_CHARS {
+            break;
+        }
+        if !name_within_limits.is_empty() {
+            name_within_limits.push(' ');
+        }
+        name_within_limits.push_str(word);
+    }
+    let name = name_within_limits;
     let name = crate::util::normalize_thread_name(&name)?;
     if generated_session_name_looks_sensitive(&name) {
         Some(SENSITIVE_SESSION_NAME_FALLBACK.to_string())
@@ -361,18 +373,6 @@ fn looks_like_aws_access_key(value: &str) -> bool {
         (upper.starts_with("AKIA") || upper.starts_with("ASIA"))
             && segment.chars().all(|ch| ch.is_ascii_alphanumeric())
     })
-}
-
-fn take_first_chars(value: &str, max_chars: usize) -> String {
-    value.chars().take(max_chars).collect()
-}
-
-fn take_first_words(value: &str, max_words: usize) -> String {
-    value
-        .split_whitespace()
-        .take(max_words)
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn take_last_chars(value: &str, max_chars: usize) -> String {
