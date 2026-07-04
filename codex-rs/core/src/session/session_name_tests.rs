@@ -1,6 +1,8 @@
 use super::*;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::ModelPreset;
+use codex_protocol::openai_models::ReasoningEffort;
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -113,6 +115,111 @@ fn transcript_excerpt_uses_partial_response_without_committed_history() {
     );
 }
 
+#[test]
+fn select_session_name_model_uses_openai_mini_when_available() {
+    let models = vec![
+        model_preset("gpt-5.5", "GPT-5.5", /*show_in_picker*/ true),
+        model_preset("gpt-5.4-mini", "GPT-5.4 Mini", /*show_in_picker*/ true),
+    ];
+
+    let selection = select_session_name_model("openai", "OpenAI", "gpt-5.5", &models);
+
+    assert_eq!(
+        (selection.model, selection.reason),
+        ("gpt-5.4-mini", SessionNameModelSelectionReason::OpenAiMini)
+    );
+}
+
+#[test]
+fn select_session_name_model_uses_anthropic_haiku_when_available() {
+    let models = vec![
+        model_preset(
+            "claude-opus-4-1",
+            "Claude Opus",
+            /*show_in_picker*/ true,
+        ),
+        model_preset(
+            "claude-3-5-haiku-latest",
+            "Claude 3.5 Haiku",
+            /*show_in_picker*/ true,
+        ),
+    ];
+
+    let selection = select_session_name_model("anthropic", "Claude", "claude-opus-4-1", &models);
+
+    assert_eq!(
+        (selection.model, selection.reason),
+        (
+            "claude-3-5-haiku-latest",
+            SessionNameModelSelectionReason::AnthropicHaiku
+        )
+    );
+}
+
+#[test]
+fn select_session_name_model_matches_anthropic_provider_name() {
+    let models = vec![
+        model_preset(
+            "claude-sonnet-4",
+            "Claude Sonnet",
+            /*show_in_picker*/ true,
+        ),
+        model_preset(
+            "claude-haiku-4",
+            "Claude Haiku",
+            /*show_in_picker*/ true,
+        ),
+    ];
+
+    let selection = select_session_name_model(
+        "custom-claude",
+        "Anthropic Claude",
+        "claude-sonnet-4",
+        &models,
+    );
+
+    assert_eq!(
+        (selection.model, selection.reason),
+        (
+            "claude-haiku-4",
+            SessionNameModelSelectionReason::AnthropicHaiku
+        )
+    );
+}
+
+#[test]
+fn select_session_name_model_uses_default_when_preferred_model_is_missing() {
+    let models = vec![model_preset(
+        "gpt-5.5", "GPT-5.5", /*show_in_picker*/ true,
+    )];
+
+    let selection = select_session_name_model("openai", "OpenAI", "gpt-5.5", &models);
+
+    assert_eq!(
+        (selection.model, selection.reason),
+        ("gpt-5.5", SessionNameModelSelectionReason::DefaultModel)
+    );
+}
+
+#[test]
+fn select_session_name_model_ignores_hidden_preferred_models() {
+    let models = vec![
+        model_preset(
+            "gpt-5.4-mini",
+            "GPT-5.4 Mini",
+            /*show_in_picker*/ false,
+        ),
+        model_preset("gpt-5.5", "GPT-5.5", /*show_in_picker*/ true),
+    ];
+
+    let selection = select_session_name_model("openai", "OpenAI", "gpt-5.5", &models);
+
+    assert_eq!(
+        (selection.model, selection.reason),
+        ("gpt-5.5", SessionNameModelSelectionReason::DefaultModel)
+    );
+}
+
 fn message(role: &str, text: &str) -> ResponseItem {
     let content = match role {
         "assistant" => vec![ContentItem::OutputText {
@@ -128,5 +235,26 @@ fn message(role: &str, text: &str) -> ResponseItem {
         content,
         phase: None,
         internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn model_preset(model: &str, display_name: &str, show_in_picker: bool) -> ModelPreset {
+    ModelPreset {
+        id: model.to_string(),
+        model: model.to_string(),
+        display_name: display_name.to_string(),
+        description: String::new(),
+        default_reasoning_effort: ReasoningEffort::None,
+        supported_reasoning_efforts: Vec::new(),
+        supports_personality: false,
+        additional_speed_tiers: Vec::new(),
+        service_tiers: Vec::new(),
+        default_service_tier: None,
+        is_default: false,
+        upgrade: None,
+        show_in_picker,
+        availability_nux: None,
+        supported_in_api: true,
+        input_modalities: Vec::new(),
     }
 }
