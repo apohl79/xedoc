@@ -3,13 +3,16 @@ use crate::client_common::ResponseEvent;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnMultiAgentRuntime;
+use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::ModelPreset;
 use codex_rollout_trace::InferenceTraceContext;
 use futures::StreamExt;
+use std::sync::Arc;
 use tracing::debug;
 
 const MAX_SESSION_NAME_CHARS: usize = 32;
@@ -18,6 +21,9 @@ const MAX_SESSION_NAME_WORDS: usize = 7;
 const MAX_TRANSCRIPT_CHARS: usize = 6_000;
 const MAX_TRANSCRIPT_MESSAGES: usize = 48;
 const SENSITIVE_SESSION_NAME_FALLBACK: &str = "Sensitive Session";
+const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
+const OPENAI_SESSION_NAME_MODEL_KEYWORD: &str = "mini";
+const ANTHROPIC_SESSION_NAME_MODEL_KEYWORD: &str = "haiku";
 
 impl Session {
     #[tracing::instrument(level = "trace", skip_all)]
@@ -57,11 +63,31 @@ impl Session {
                 TurnMultiAgentRuntime::Preview,
             )
             .await;
+        let default_model = turn_context.model_info.slug.clone();
+        let model_selection = select_session_name_model(
+            turn_context.config.model_provider_id.as_str(),
+            turn_context.provider.info().name.as_str(),
+            default_model.as_str(),
+            &turn_context.available_models,
+        );
+        let selected_model = model_selection.model.to_string();
+        let selection_reason = model_selection.reason.as_str();
+        let turn_context = if selected_model != default_model {
+            Arc::new(
+                turn_context
+                    .with_model(selected_model, &self.services.models_manager)
+                    .await,
+            )
+        } else {
+            turn_context
+        };
         let provider_name = turn_context.provider.info().name.clone();
         let model = turn_context.model_info.slug.clone();
         debug!(
             provider = %provider_name,
+            default_model = %default_model,
             model = %model,
+            selection_reason = selection_reason,
             partial_response_present = partial_response.is_some(),
             "starting generated session name request"
         );
@@ -133,6 +159,84 @@ impl Session {
             None,
         ))
     }
+}
+
+struct SessionNameModelSelection<'a> {
+    model: &'a str,
+    reason: SessionNameModelSelectionReason,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionNameModelSelectionReason {
+    OpenAiMini,
+    AnthropicHaiku,
+    DefaultModel,
+}
+
+impl SessionNameModelSelectionReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAiMini => "openai_mini",
+            Self::AnthropicHaiku => "anthropic_haiku",
+            Self::DefaultModel => "default_model",
+        }
+    }
+}
+
+fn select_session_name_model<'a>(
+    provider_id: &str,
+    provider_name: &str,
+    default_model: &'a str,
+    available_models: &'a [ModelPreset],
+) -> SessionNameModelSelection<'a> {
+    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID)
+        && let Some(model) =
+            first_available_model_matching(available_models, OPENAI_SESSION_NAME_MODEL_KEYWORD)
+    {
+        return SessionNameModelSelection {
+            model,
+            reason: SessionNameModelSelectionReason::OpenAiMini,
+        };
+    }
+
+    if is_anthropic_provider(provider_id, provider_name)
+        && let Some(model) =
+            first_available_model_matching(available_models, ANTHROPIC_SESSION_NAME_MODEL_KEYWORD)
+    {
+        return SessionNameModelSelection {
+            model,
+            reason: SessionNameModelSelectionReason::AnthropicHaiku,
+        };
+    }
+
+    SessionNameModelSelection {
+        model: default_model,
+        reason: SessionNameModelSelectionReason::DefaultModel,
+    }
+}
+
+fn first_available_model_matching<'a>(
+    available_models: &'a [ModelPreset],
+    keyword: &str,
+) -> Option<&'a str> {
+    available_models
+        .iter()
+        .filter(|preset| preset.show_in_picker)
+        .find(|preset| {
+            contains_ascii_case(&preset.model, keyword)
+                || contains_ascii_case(&preset.display_name, keyword)
+        })
+        .map(|preset| preset.model.as_str())
+}
+
+fn is_anthropic_provider(provider_id: &str, provider_name: &str) -> bool {
+    provider_id.eq_ignore_ascii_case(ANTHROPIC_PROVIDER_ID)
+        || contains_ascii_case(provider_name, ANTHROPIC_PROVIDER_ID)
+        || contains_ascii_case(provider_name, "claude")
+}
+
+fn contains_ascii_case(value: &str, needle: &str) -> bool {
+    value.to_ascii_lowercase().contains(needle)
 }
 
 fn session_name_prompt(current_name: Option<&str>, transcript: &str) -> String {
