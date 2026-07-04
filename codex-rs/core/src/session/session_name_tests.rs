@@ -40,6 +40,29 @@ fn normalize_generated_session_name_removes_partial_repeated_title_prefix() {
 }
 
 #[test]
+fn normalize_generated_session_name_uses_explicit_label_from_agent_response() {
+    let name = normalize_generated_session_name(
+        "I'll do both: name the session and write the report.\n\
+         <function_calls>\n\
+         <invoke name=\"bash\"></invoke>\n\
+         </function_calls>\n\
+         **Session name:** Reconciliation code review\n\
+         **Report written to:** `review-codex.md`",
+    )
+    .expect("generated name");
+
+    assert_eq!(name, "Reconciliation code review");
+}
+
+#[test]
+fn normalize_generated_session_name_rejects_agent_action_without_label() {
+    let name =
+        normalize_generated_session_name("I'll do both: name the session and write the report.");
+
+    assert_eq!(name, None);
+}
+
+#[test]
 fn normalize_generated_session_name_strips_unsafe_display_characters() {
     let name = normalize_generated_session_name(
         "  Project\tNames\x1b\x07\u{009D}\u{202E} \u{200B}Refresh  ",

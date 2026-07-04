@@ -345,7 +345,12 @@ fn append_message_text(output: &mut String, item: &ResponseItem) {
 }
 
 fn normalize_generated_session_name(name: &str) -> Option<String> {
-    let name = sanitize_generated_session_name(name.trim().trim_matches(&['"', '\'', '`'][..]));
+    let explicit_candidate = explicit_session_name_candidate(name);
+    let candidate = explicit_candidate.unwrap_or_else(|| name.trim());
+    let name = sanitize_generated_session_name(candidate.trim_matches(&['"', '\'', '`'][..]));
+    if explicit_candidate.is_none() && generated_session_name_looks_like_agent_response(&name) {
+        return None;
+    }
     let words = name.split_whitespace().collect::<Vec<_>>();
     let repeat_start = (1..words.len()).find(|index| {
         let repeated_words = &words[*index..];
@@ -373,6 +378,45 @@ fn normalize_generated_session_name(name: &str) -> Option<String> {
     } else {
         Some(name)
     }
+}
+
+fn explicit_session_name_candidate(generated: &str) -> Option<&str> {
+    const SESSION_NAME_LABEL: &str = "session name:";
+
+    generated.lines().find_map(|line| {
+        let line = line
+            .trim()
+            .trim_start_matches(&['*', '_', '`', '-', ' '][..]);
+        if line.to_ascii_lowercase().starts_with(SESSION_NAME_LABEL) {
+            let candidate = line[SESSION_NAME_LABEL.len()..]
+                .trim()
+                .trim_start_matches(&['*', '_', '`', '-', ' ', ':'][..])
+                .trim();
+            if !candidate.is_empty() {
+                return Some(candidate);
+            }
+        }
+        None
+    })
+}
+
+fn generated_session_name_looks_like_agent_response(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase().replace('\u{2019}', "'");
+    let first_line = lower
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default()
+        .trim();
+    first_line.starts_with("i'll ")
+        || first_line.starts_with("i will ")
+        || first_line.starts_with("i can ")
+        || first_line.starts_with("i cannot ")
+        || first_line.starts_with("i can't ")
+        || first_line.starts_with("let me ")
+        || lower.contains("name the session")
+        || lower.contains("<function_calls")
+        || lower.contains("<invoke ")
+        || lower.contains("</invoke>")
 }
 
 fn collapse_whitespace(value: &str) -> String {
