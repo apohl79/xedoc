@@ -24,6 +24,22 @@ fn normalize_generated_session_name_caps_length_at_word_boundary() {
 }
 
 #[test]
+fn normalize_generated_session_name_removes_repeated_title_phrase() {
+    let name = normalize_generated_session_name("Merge and Push Changes Merge and Push Changes")
+        .expect("generated name");
+
+    assert_eq!(name, "Merge and Push Changes");
+}
+
+#[test]
+fn normalize_generated_session_name_removes_partial_repeated_title_prefix() {
+    let name = normalize_generated_session_name("Merge and Push Changes Merge and")
+        .expect("generated name");
+
+    assert_eq!(name, "Merge and Push Changes");
+}
+
+#[test]
 fn normalize_generated_session_name_strips_unsafe_display_characters() {
     let name = normalize_generated_session_name(
         "  Project\tNames\x1b\x07\u{009D}\u{202E} \u{200B}Refresh  ",

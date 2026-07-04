@@ -346,6 +346,13 @@ fn append_message_text(output: &mut String, item: &ResponseItem) {
 
 fn normalize_generated_session_name(name: &str) -> Option<String> {
     let name = sanitize_generated_session_name(name.trim().trim_matches(&['"', '\'', '`'][..]));
+    let words = name.split_whitespace().collect::<Vec<_>>();
+    let repeat_start = (1..words.len()).find(|index| {
+        let repeated_words = &words[*index..];
+        repeated_words.len() >= 2 && words.starts_with(repeated_words)
+    });
+    let name_without_repeat = repeat_start.map(|index| words[..index].join(" "));
+    let name = name_without_repeat.as_deref().unwrap_or(name.as_str());
     let mut name_within_limits = String::new();
     for word in name.split_whitespace().take(MAX_SESSION_NAME_WORDS) {
         let separator_chars = usize::from(!name_within_limits.is_empty());
