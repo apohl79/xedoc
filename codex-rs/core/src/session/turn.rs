@@ -1537,6 +1537,30 @@ fn agent_message_text(item: &codex_protocol::items::AgentMessageItem) -> String 
         .collect()
 }
 
+fn backfill_empty_assistant_message_content(item: &mut ResponseItem, streamed_text: Option<&str>) {
+    let Some(streamed_text) = streamed_text.filter(|text| !text.is_empty()) else {
+        return;
+    };
+    if let ResponseItem::Message {
+        id, role, content, ..
+    } = item
+        && role == "assistant"
+        && (content.is_empty()
+            || content
+                .iter()
+                .all(|entry| matches!(entry, ContentItem::OutputText { text } if text.is_empty())))
+    {
+        tracing::debug!(
+            item_id = id.as_deref().unwrap_or("<missing>"),
+            streamed_text_chars = streamed_text.chars().count(),
+            "backfilling empty completed assistant message from streamed deltas"
+        );
+        *content = vec![ContentItem::OutputText {
+            text: streamed_text.to_string(),
+        }];
+    }
+}
+
 pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<MessagePhase>)> {
     match msg {
         EventMsg::AgentMessage(event) => Some((event.message.clone(), event.phase.clone())),
@@ -1988,6 +2012,7 @@ async fn try_run_sampling_request(
     let reasoning_effort = turn_context.effective_reasoning_effort_for_tracing();
     let plan_mode = turn_context.collaboration_mode.mode == ModeKind::Plan;
     let mut assistant_message_stream_parsers = AssistantMessageStreamParsers::new(plan_mode);
+    let mut streamed_assistant_text_by_item: HashMap<String, String> = HashMap::new();
     let mut plan_mode_state = plan_mode.then(|| PlanModeStreamState::new(&turn_context.sub_id));
     let defer_streamed_turn_items_for_contributors =
         !sess.services.extensions.turn_item_contributors().is_empty();
@@ -2036,13 +2061,23 @@ async fn try_run_sampling_request(
 
         match event {
             ResponseEvent::Created => {}
-            ResponseEvent::OutputItemDone(item) => {
+            ResponseEvent::OutputItemDone(mut item) => {
                 if let Some((_, mut consumer)) = active_tool_argument_diff_consumer.take()
                     && let Ok(Some(event)) = consumer.finish()
                 {
                     sess.send_event(&turn_context, event).await;
                 }
                 let previously_active_item = active_item.take();
+                let previously_active_item_id = previously_active_item.as_ref().map(TurnItem::id);
+                let mut streamed_text = item
+                    .id()
+                    .and_then(|item_id| streamed_assistant_text_by_item.remove(item_id));
+                if streamed_text.is_none()
+                    && let Some(item_id) = previously_active_item_id.as_deref()
+                {
+                    streamed_text = streamed_assistant_text_by_item.remove(item_id);
+                }
+                backfill_empty_assistant_message_content(&mut item, streamed_text.as_deref());
                 let previously_streamed_item = if active_item_is_streaming_to_client {
                     previously_active_item
                 } else {
@@ -2151,25 +2186,27 @@ async fn try_run_sampling_request(
                     let stream_item_to_client = !defer_streamed_turn_items_for_contributors;
                     let mut seeded_parsed: Option<ParsedAssistantTextDelta> = None;
                     let mut seeded_item_id: Option<String> = None;
-                    if stream_item_to_client
-                        && matches!(turn_item, TurnItem::AgentMessage(_))
+                    if matches!(turn_item, TurnItem::AgentMessage(_))
                         && let Some(raw_text) = raw_assistant_output_text_from_item(&item)
                     {
                         let item_id = turn_item.id();
-                        let mut seeded =
-                            assistant_message_stream_parsers.seed_item_text(&item_id, &raw_text);
-                        if let TurnItem::AgentMessage(agent_message) = &mut turn_item {
-                            agent_message.content =
-                                vec![codex_protocol::items::AgentMessageContent::Text {
-                                    text: if plan_mode {
-                                        String::new()
-                                    } else {
-                                        std::mem::take(&mut seeded.visible_text)
-                                    },
-                                }];
+                        streamed_assistant_text_by_item.insert(item_id.clone(), raw_text.clone());
+                        if stream_item_to_client {
+                            let mut seeded = assistant_message_stream_parsers
+                                .seed_item_text(&item_id, &raw_text);
+                            if let TurnItem::AgentMessage(agent_message) = &mut turn_item {
+                                agent_message.content =
+                                    vec![codex_protocol::items::AgentMessageContent::Text {
+                                        text: if plan_mode {
+                                            String::new()
+                                        } else {
+                                            std::mem::take(&mut seeded.visible_text)
+                                        },
+                                    }];
+                            }
+                            seeded_parsed = plan_mode.then_some(seeded);
+                            seeded_item_id = Some(item_id);
                         }
-                        seeded_parsed = plan_mode.then_some(seeded);
-                        seeded_item_id = Some(item_id);
                     }
                     if stream_item_to_client {
                         if let Some(state) = plan_mode_state.as_mut()
@@ -2285,11 +2322,18 @@ async fn try_run_sampling_request(
                 // In review child threads, suppress assistant text deltas; the
                 // UI will show a selection popup from the final ReviewOutput.
                 if let Some(active) = active_item.as_ref() {
+                    let item_id = active.id();
+                    let active_is_agent_message = matches!(active, TurnItem::AgentMessage(_));
+                    if active_is_agent_message {
+                        streamed_assistant_text_by_item
+                            .entry(item_id.clone())
+                            .or_default()
+                            .push_str(&delta);
+                    }
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
-                    let item_id = active.id();
-                    if matches!(active, TurnItem::AgentMessage(_)) {
+                    if active_is_agent_message {
                         let parsed = assistant_message_stream_parsers.parse_delta(&item_id, &delta);
                         emit_streamed_assistant_text_delta(
                             &sess,

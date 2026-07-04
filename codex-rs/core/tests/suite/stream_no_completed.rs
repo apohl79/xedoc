@@ -13,11 +13,59 @@ use core_test_support::streaming_sse::start_streaming_sse_server;
 use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_event;
+use core_test_support::wait_for_event_match;
 
 fn sse_incomplete() -> String {
     responses::sse(vec![serde_json::json!({
         "type": "response.output_item.done",
     })])
+}
+
+fn sse_empty_completed_message_with_streamed_text() -> String {
+    responses::sse(vec![
+        responses::ev_response_created("resp-delta"),
+        serde_json::json!({
+            "type": "response.output_item.added",
+            "item": {
+                "id": "msg-delta",
+                "type": "message",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": []
+            }
+        }),
+        responses::ev_output_text_delta("4"),
+        serde_json::json!({
+            "type": "response.output_text.done",
+            "item_id": "msg-delta",
+            "output_index": 0,
+            "content_index": 0,
+            "text": "4"
+        }),
+        serde_json::json!({
+            "type": "response.content_part.done",
+            "item_id": "msg-delta",
+            "output_index": 0,
+            "content_index": 0,
+            "part": {
+                "type": "output_text",
+                "text": "4",
+                "annotations": []
+            }
+        }),
+        serde_json::json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+                "id": "msg-delta",
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "content": []
+            }
+        }),
+        responses::ev_completed("resp-delta"),
+    ])
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -99,4 +147,35 @@ async fn retries_on_early_close() {
     );
 
     server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn preserves_streamed_text_when_completed_message_content_is_empty() {
+    skip_if_no_network!();
+
+    let server = responses::start_mock_server().await;
+    responses::mount_sse_once(&server, sse_empty_completed_message_with_streamed_text()).await;
+    let TestCodex { codex, .. } = test_codex().build(&server).await.unwrap();
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "whats 2+2".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await
+        .unwrap();
+
+    let last_agent_message = wait_for_event_match(&codex, |event| match event {
+        EventMsg::TurnComplete(event) => event.last_agent_message.clone(),
+        _ => None,
+    })
+    .await;
+
+    assert_eq!(last_agent_message, "4");
 }
