@@ -154,6 +154,8 @@ pub struct OrchestratorFeatureToml {
 pub struct ConfigToml {
     /// Optional override of model selection.
     pub model: Option<String>,
+    /// Optional fast model used for side-band tasks on custom providers.
+    pub model_fast: Option<String>,
     /// Review model override used by the `/review` feature.
     pub review_model: Option<String>,
 

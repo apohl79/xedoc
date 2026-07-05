@@ -21,9 +21,7 @@ const MAX_SESSION_NAME_WORDS: usize = 7;
 const MAX_TRANSCRIPT_CHARS: usize = 6_000;
 const MAX_TRANSCRIPT_MESSAGES: usize = 48;
 const SENSITIVE_SESSION_NAME_FALLBACK: &str = "Sensitive Session";
-const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
 const OPENAI_SESSION_NAME_MODEL_KEYWORD: &str = "mini";
-const ANTHROPIC_SESSION_NAME_MODEL_KEYWORD: &str = "haiku";
 
 impl Session {
     #[tracing::instrument(level = "trace", skip_all)]
@@ -66,7 +64,7 @@ impl Session {
         let default_model = turn_context.model_info.slug.clone();
         let model_selection = select_session_name_model(
             turn_context.config.model_provider_id.as_str(),
-            turn_context.provider.info().name.as_str(),
+            turn_context.config.model_fast.as_deref(),
             default_model.as_str(),
             &turn_context.available_models,
         );
@@ -169,7 +167,7 @@ struct SessionNameModelSelection<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionNameModelSelectionReason {
     OpenAiMini,
-    AnthropicHaiku,
+    ConfiguredFastModel,
     DefaultModel,
 }
 
@@ -177,7 +175,7 @@ impl SessionNameModelSelectionReason {
     fn as_str(self) -> &'static str {
         match self {
             Self::OpenAiMini => "openai_mini",
-            Self::AnthropicHaiku => "anthropic_haiku",
+            Self::ConfiguredFastModel => "configured_fast_model",
             Self::DefaultModel => "default_model",
         }
     }
@@ -185,27 +183,29 @@ impl SessionNameModelSelectionReason {
 
 fn select_session_name_model<'a>(
     provider_id: &str,
-    provider_name: &str,
+    model_fast: Option<&'a str>,
     default_model: &'a str,
     available_models: &'a [ModelPreset],
 ) -> SessionNameModelSelection<'a> {
-    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID)
-        && let Some(model) =
+    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID) {
+        let Some(model) =
             first_available_model_matching(available_models, OPENAI_SESSION_NAME_MODEL_KEYWORD)
-    {
+        else {
+            return SessionNameModelSelection {
+                model: default_model,
+                reason: SessionNameModelSelectionReason::DefaultModel,
+            };
+        };
         return SessionNameModelSelection {
             model,
             reason: SessionNameModelSelectionReason::OpenAiMini,
         };
     }
 
-    if is_anthropic_provider(provider_id, provider_name)
-        && let Some(model) =
-            first_available_model_matching(available_models, ANTHROPIC_SESSION_NAME_MODEL_KEYWORD)
-    {
+    if let Some(model) = model_fast.map(str::trim).filter(|model| !model.is_empty()) {
         return SessionNameModelSelection {
             model,
-            reason: SessionNameModelSelectionReason::AnthropicHaiku,
+            reason: SessionNameModelSelectionReason::ConfiguredFastModel,
         };
     }
 
@@ -227,12 +227,6 @@ fn first_available_model_matching<'a>(
                 || contains_ascii_case(&preset.display_name, keyword)
         })
         .map(|preset| preset.model.as_str())
-}
-
-fn is_anthropic_provider(provider_id: &str, provider_name: &str) -> bool {
-    provider_id.eq_ignore_ascii_case(ANTHROPIC_PROVIDER_ID)
-        || contains_ascii_case(provider_name, ANTHROPIC_PROVIDER_ID)
-        || contains_ascii_case(provider_name, "claude")
 }
 
 fn contains_ascii_case(value: &str, needle: &str) -> bool {

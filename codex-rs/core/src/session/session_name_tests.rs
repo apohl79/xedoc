@@ -161,7 +161,7 @@ fn select_session_name_model_uses_openai_mini_when_available() {
         model_preset("gpt-5.4-mini", "GPT-5.4 Mini", /*show_in_picker*/ true),
     ];
 
-    let selection = select_session_name_model("openai", "OpenAI", "gpt-5.5", &models);
+    let selection = select_session_name_model("openai", Some("gpt-fast"), "gpt-5.5", &models);
 
     assert_eq!(
         (selection.model, selection.reason),
@@ -170,7 +170,7 @@ fn select_session_name_model_uses_openai_mini_when_available() {
 }
 
 #[test]
-fn select_session_name_model_uses_anthropic_haiku_when_available() {
+fn select_session_name_model_uses_configured_fast_model_for_custom_provider() {
     let models = vec![
         model_preset(
             "claude-opus-4-1",
@@ -184,19 +184,24 @@ fn select_session_name_model_uses_anthropic_haiku_when_available() {
         ),
     ];
 
-    let selection = select_session_name_model("anthropic", "Claude", "claude-opus-4-1", &models);
+    let selection = select_session_name_model(
+        "custom-claude",
+        Some("claude-3-5-haiku-latest"),
+        "claude-opus-4-1",
+        &models,
+    );
 
     assert_eq!(
         (selection.model, selection.reason),
         (
             "claude-3-5-haiku-latest",
-            SessionNameModelSelectionReason::AnthropicHaiku
+            SessionNameModelSelectionReason::ConfiguredFastModel
         )
     );
 }
 
 #[test]
-fn select_session_name_model_matches_anthropic_provider_name() {
+fn select_session_name_model_uses_default_for_custom_provider_without_fast_model() {
     let models = vec![
         model_preset(
             "claude-sonnet-4",
@@ -210,29 +215,24 @@ fn select_session_name_model_matches_anthropic_provider_name() {
         ),
     ];
 
-    let selection = select_session_name_model(
-        "custom-claude",
-        "Anthropic Claude",
-        "claude-sonnet-4",
-        &models,
-    );
+    let selection = select_session_name_model("custom-claude", None, "claude-sonnet-4", &models);
 
     assert_eq!(
         (selection.model, selection.reason),
         (
-            "claude-haiku-4",
-            SessionNameModelSelectionReason::AnthropicHaiku
+            "claude-sonnet-4",
+            SessionNameModelSelectionReason::DefaultModel
         )
     );
 }
 
 #[test]
-fn select_session_name_model_uses_default_when_preferred_model_is_missing() {
+fn select_session_name_model_uses_default_when_openai_mini_is_missing() {
     let models = vec![model_preset(
         "gpt-5.5", "GPT-5.5", /*show_in_picker*/ true,
     )];
 
-    let selection = select_session_name_model("openai", "OpenAI", "gpt-5.5", &models);
+    let selection = select_session_name_model("openai", Some("gpt-fast"), "gpt-5.5", &models);
 
     assert_eq!(
         (selection.model, selection.reason),
@@ -251,11 +251,24 @@ fn select_session_name_model_ignores_hidden_preferred_models() {
         model_preset("gpt-5.5", "GPT-5.5", /*show_in_picker*/ true),
     ];
 
-    let selection = select_session_name_model("openai", "OpenAI", "gpt-5.5", &models);
+    let selection = select_session_name_model("openai", None, "gpt-5.5", &models);
 
     assert_eq!(
         (selection.model, selection.reason),
         ("gpt-5.5", SessionNameModelSelectionReason::DefaultModel)
+    );
+}
+
+#[test]
+fn select_session_name_model_uses_default_for_blank_fast_model() {
+    let selection = select_session_name_model("custom-claude", Some("  "), "claude-opus-4-1", &[]);
+
+    assert_eq!(
+        (selection.model, selection.reason),
+        (
+            "claude-opus-4-1",
+            SessionNameModelSelectionReason::DefaultModel
+        )
     );
 }
 
