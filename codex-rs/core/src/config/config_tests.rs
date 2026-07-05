@@ -233,6 +233,21 @@ async fn load_config_resolves_auto_session_name_setting() -> std::io::Result<()>
 }
 
 #[tokio::test]
+async fn load_config_resolves_model_fast_setting() -> std::io::Result<()> {
+    let cfg: ConfigToml = toml::from_str(r#"model_fast = "claude-haiku""#)
+        .expect("TOML deserialization should succeed");
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        tempdir()?.abs(),
+    )
+    .await?;
+
+    assert_eq!(config.model_fast, Some("claude-haiku".to_string()));
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_toml_parsing() {
     let history_with_persistence = r#"
 [history]

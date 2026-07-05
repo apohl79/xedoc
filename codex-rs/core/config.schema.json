@@ -748,6 +748,10 @@
           ],
           "description": "Optional path to a JSON model catalog (applied on startup only)."
         },
+        "model_fast": {
+          "description": "Optional fast model used for side-band tasks on custom providers.",
+          "type": "string"
+        },
         "model_instructions_file": {
           "allOf": [
             {
@@ -5292,6 +5296,10 @@
       "description": "Size of the context window for the model, in tokens.",
       "format": "int64",
       "type": "integer"
+    },
+    "model_fast": {
+      "description": "Optional fast model used for side-band tasks on custom providers.",
+      "type": "string"
     },
     "model_instructions_file": {
       "allOf": [
