@@ -4,6 +4,7 @@ use crate::common::ResponseStream;
 use crate::common::ResponsesWsRequest;
 use crate::common::SafetyBufferingTreatment;
 use crate::error::ApiError;
+use crate::inter_agent_trace;
 use crate::provider::Provider;
 use crate::rate_limits::parse_rate_limit_event;
 use crate::safety_buffering::treatment_from_headers;
@@ -228,6 +229,7 @@ impl ResponsesWebsocketConnection {
         let server_model = self.server_model.clone();
         let telemetry = self.telemetry.clone();
         let request_text = serialize_websocket_request(&request)?;
+        inter_agent_trace::log_websocket_request_text(&request_text);
 
         let current_span = Span::current();
         tokio::spawn(
@@ -671,6 +673,7 @@ async fn run_websocket_response_stream(
 
         match message {
             Message::Text(text) => {
+                inter_agent_trace::log_stream_event("responses_websocket", &text);
                 if let Some(wrapped_error) = parse_wrapped_websocket_error_event(&text)
                     && let Some(error) =
                         map_wrapped_websocket_error_event(wrapped_error, text.to_string())

@@ -3,6 +3,7 @@ use crate::common::ResponseStream;
 use crate::common::SafetyBuffering;
 use crate::common::SafetyBufferingTreatment;
 use crate::error::ApiError;
+use crate::inter_agent_trace;
 use crate::rate_limits::parse_all_rate_limits;
 use crate::safety_buffering::treatment_from_headers;
 use crate::telemetry::SseTelemetry;
@@ -505,6 +506,7 @@ async fn process_sse_with_treatment(
         };
 
         trace!("SSE event: {}", &sse.data);
+        inter_agent_trace::log_stream_event("responses_sse", &sse.data);
 
         let event: ResponsesStreamEvent = match serde_json::from_str(&sse.data) {
             Ok(event) => event,
