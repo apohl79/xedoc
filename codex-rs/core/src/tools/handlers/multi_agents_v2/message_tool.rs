@@ -6,7 +6,6 @@
 use super::*;
 use crate::tools::context::FunctionToolOutput;
 use crate::turn_timing::now_unix_timestamp_ms;
-use codex_protocol::protocol::InterAgentCommunication;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MessageDeliveryMode {
@@ -15,17 +14,10 @@ pub(crate) enum MessageDeliveryMode {
 }
 
 impl MessageDeliveryMode {
-    /// Returns whether the produced communication should start a turn immediately.
-    fn apply(self, communication: InterAgentCommunication) -> InterAgentCommunication {
+    fn tool_message_kind(self) -> ToolMessageKind {
         match self {
-            Self::QueueOnly => InterAgentCommunication {
-                trigger_turn: false,
-                ..communication
-            },
-            Self::TriggerTurn => InterAgentCommunication {
-                trigger_turn: true,
-                ..communication
-            },
+            Self::QueueOnly => ToolMessageKind::Message,
+            Self::TriggerTurn => ToolMessageKind::NewTask,
         }
     }
 }
@@ -99,12 +91,17 @@ pub(crate) async fn handle_message_string_tool(
         .session_source
         .get_agent_path()
         .unwrap_or_else(AgentPath::root);
-    let communication =
-        communication_from_tool_message(author, receiver_agent_path.clone(), message);
+    let communication = communication_from_tool_message(
+        author,
+        receiver_agent_path.clone(),
+        message,
+        ToolMessageFormat::from_parent_provider(turn.provider.info()),
+        mode.tool_message_kind(),
+    );
     let result = session
         .services
         .agent_control
-        .send_inter_agent_communication(receiver_thread_id, mode.apply(communication))
+        .send_inter_agent_communication(receiver_thread_id, communication)
         .await
         .map_err(|err| collab_agent_error(receiver_thread_id, err));
     result?;

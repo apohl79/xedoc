@@ -1228,6 +1228,79 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
 }
 
 #[tokio::test]
+async fn multi_agent_v2_non_openai_parent_send_message_uses_plaintext_message_envelope() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let mut provider = turn.provider.info().clone();
+    provider.name = "Claude".to_string();
+    turn.provider = create_model_provider(provider.clone(), None);
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.thread_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    config.model_provider = provider;
+    config.model_provider_id = "anthropic".to_string();
+    set_turn_config(&mut turn, config);
+    let child_path = AgentPath::try_from("/root/worker").expect("agent path");
+    let child_thread_id = session
+        .services
+        .agent_control
+        .spawn_agent_with_metadata(
+            (*turn.config).clone(),
+            vec![UserInput::Text {
+                text: "boot worker".to_string(),
+                text_elements: Vec::new(),
+            }]
+            .into(),
+            Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id: root.thread_id,
+                depth: 1,
+                agent_path: Some(child_path.clone()),
+                agent_nickname: None,
+                agent_role: None,
+            })),
+            crate::agent::control::SpawnAgentOptions::default(),
+        )
+        .await
+        .expect("worker spawn should succeed")
+        .thread_id;
+
+    SendMessageHandlerV2
+        .handle(invocation(
+            Arc::new(session),
+            Arc::new(turn),
+            "send_message",
+            function_payload(json!({
+                "target": "worker",
+                "message": "plain update"
+            })),
+        ))
+        .await
+        .expect("send_message should succeed");
+
+    assert!(manager.captured_ops().iter().any(|(id, op)| {
+        *id == child_thread_id
+            && matches!(
+                op,
+                Op::InterAgentCommunication { communication }
+                    if communication.author == AgentPath::root()
+                        && communication.recipient == child_path
+                        && communication.other_recipients.is_empty()
+                        && communication.content == "Message Type: MESSAGE\nTask name: /root/worker\nSender: /root\nPayload:\nplain update"
+                        && communication.encrypted_content.is_none()
+                        && !communication.trigger_turn
+            )
+    }));
+}
+
+#[tokio::test]
 async fn multi_agent_v2_spawn_rejects_legacy_fork_context() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();

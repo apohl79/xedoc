@@ -728,7 +728,13 @@ fn last_task_message_from_communication(communication: &InterAgentCommunication)
     if communication.encrypted_content.is_some() {
         return None;
     }
-    non_empty_task_message(communication.content.clone())
+    non_empty_task_message(
+        communication
+            .content
+            .split_once("\nPayload:\n")
+            .map_or(communication.content.as_str(), |(_, payload)| payload)
+            .to_string(),
+    )
 }
 
 fn non_empty_task_message(message: String) -> Option<String> {

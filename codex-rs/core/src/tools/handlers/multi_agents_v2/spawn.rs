@@ -117,8 +117,13 @@ async fn handle_spawn_agent(
                         .session_source
                         .get_agent_path()
                         .unwrap_or_else(AgentPath::root);
-                    let communication =
-                        communication_from_tool_message(author, new_agent_path.clone(), message);
+                    let communication = communication_from_tool_message(
+                        author,
+                        new_agent_path.clone(),
+                        message,
+                        ToolMessageFormat::from_parent_provider(turn.provider.info()),
+                        ToolMessageKind::NewTask,
+                    );
                     Op::InterAgentCommunication { communication }
                 }
                 initial_operation => initial_operation,
