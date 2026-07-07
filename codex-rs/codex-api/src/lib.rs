@@ -5,6 +5,7 @@ pub(crate) mod endpoint;
 pub(crate) mod error;
 pub(crate) mod files;
 pub(crate) mod images;
+pub(crate) mod inter_agent_trace;
 pub(crate) mod provider;
 pub(crate) mod rate_limits;
 pub(crate) mod requests;

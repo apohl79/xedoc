@@ -1,5 +1,6 @@
 use crate::auth::SharedAuthProvider;
 use crate::error::ApiError;
+use crate::inter_agent_trace;
 use crate::provider::Provider;
 use crate::telemetry::run_with_request_telemetry;
 use codex_client::EncodedJsonBody;
@@ -89,6 +90,7 @@ impl<T: HttpTransport> EndpointSession<T> {
         C: Fn(&mut Request),
     {
         let body = body.map(RequestBody::Json);
+        inter_agent_trace::log_request(&method, path, body.as_ref());
         let make_request = || {
             let mut req = self.make_request(&method, path, &extra_headers, body.as_ref());
             configure(&mut req);
@@ -133,6 +135,7 @@ impl<T: HttpTransport> EndpointSession<T> {
         let body = body.map(RequestBody::EncodedJson);
         let mut request = self.make_request(&method, path, &extra_headers, body.as_ref());
         configure(&mut request);
+        inter_agent_trace::log_request(&request.method, path, request.body.as_ref());
         let request = request.into_prepared().map_err(TransportError::Build)?;
         let make_request = || request.clone();
 
