@@ -176,7 +176,7 @@ impl ChatWidget {
 
     fn refresh_status_line_from_selections(&mut self, selections: &StatusSurfaceSelections) {
         if self.config.tui_status_line_command.is_some() {
-            self.refresh_status_line_from_command(selections);
+            self.refresh_status_line_from_command();
             return;
         }
 
@@ -194,16 +194,14 @@ impl ChatWidget {
         self.set_status_line_hyperlink(hyperlink);
     }
 
-    fn refresh_status_line_from_command(&mut self, selections: &StatusSurfaceSelections) {
+    fn refresh_status_line_from_command(&mut self) {
         self.bottom_pane.set_status_line_enabled(true);
         if let Some(line) = self.status_line_command_output.clone() {
             self.set_status_line(Some(line));
             self.set_status_line_hyperlink(/*url*/ None);
         } else {
-            let status_line = self.built_in_status_line(&selections.status_line_items);
-            let hyperlink = self.built_in_status_line_hyperlink(&selections.status_line_items);
-            self.set_status_line(status_line);
-            self.set_status_line_hyperlink(hyperlink);
+            self.set_status_line(/*status_line*/ None);
+            self.set_status_line_hyperlink(/*url*/ None);
         }
         self.request_status_line_command_refresh();
     }
