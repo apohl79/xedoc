@@ -1038,6 +1038,7 @@ impl App {
             notification.thread.agent_role.clone(),
             /*is_closed*/ false,
         );
+        self.set_agent_model_metadata_from_session(&session);
         Some(session)
     }
 

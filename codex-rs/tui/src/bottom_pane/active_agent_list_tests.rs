@@ -21,6 +21,7 @@ fn display_lines_renders_elapsed_agent() {
     list.set_agents(vec![ActiveAgentEntry {
         name: " reviewer ".to_string(),
         started_at: now - Duration::from_secs(326),
+        provider_model: None,
     }]);
 
     let rendered = list
@@ -29,7 +30,29 @@ fn display_lines_renders_elapsed_agent() {
         .map(|line| line.spans.into_iter().map(|span| span.content).collect())
         .collect::<Vec<String>>();
 
-    assert_eq!(rendered, vec!["• Agents 1", "  └ □ reviewer (5m 26s)"]);
+    assert_eq!(rendered, vec!["• Agents", "  └ □ reviewer (5m 26s)"]);
+}
+
+#[test]
+fn display_lines_renders_provider_model() {
+    let now = Instant::now();
+    let mut list = ActiveAgentList::new(FrameRequester::test_dummy());
+    list.set_agents(vec![ActiveAgentEntry {
+        name: " reviewer ".to_string(),
+        started_at: now - Duration::from_secs(326),
+        provider_model: Some(" openai/gpt-5.5 ".to_string()),
+    }]);
+
+    let rendered = list
+        .display_lines_at(/*width*/ 80, now)
+        .into_iter()
+        .map(|line| line.spans.into_iter().map(|span| span.content).collect())
+        .collect::<Vec<String>>();
+
+    assert_eq!(
+        rendered,
+        vec!["• Agents", "  └ □ reviewer (5m 26s, openai/gpt-5.5)"]
+    );
 }
 
 #[test]
@@ -41,6 +64,7 @@ fn display_lines_caps_visible_agents() {
             .map(|index| ActiveAgentEntry {
                 name: format!("agent-{index}"),
                 started_at: now,
+                provider_model: None,
             })
             .collect(),
     );
@@ -54,7 +78,7 @@ fn display_lines_caps_visible_agents() {
     assert_eq!(
         rendered,
         vec![
-            "• Agents 8",
+            "• Agents",
             "  └ □ agent-1 (0s)",
             "    □ agent-2 (0s)",
             "    □ agent-3 (0s)",

@@ -4,9 +4,9 @@ expression: "render_snapshot(&pane, area)"
 ---
 Working (0s • esc to interrupt)                                 
                                                                 
-• Agents 2                                                      
-  └ □ reviewer (0s)                                             
-    □ integration [worker] (0s)                                 
+• Agents                                                        
+  └ □ reviewer (0s, openai/gpt-5.5)                             
+    □ integration [worker] (0s, openai/gpt-5.5)                 
 • Tasks 0/2                                                     
   └ □ Build prompts and launch reviewer team                    
     □ Collect outputs and triage findings                       

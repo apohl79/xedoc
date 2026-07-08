@@ -87,17 +87,26 @@ impl AgentNavigationState {
         if !self.threads.contains_key(&thread_id) {
             self.order.push(thread_id);
         }
-        let (previous_agent_path, previous_is_running) = self
-            .threads
-            .get(&thread_id)
-            .map(|entry| (entry.agent_path.clone(), entry.is_running))
-            .unwrap_or((None, false));
+        let (previous_agent_path, previous_model_provider_id, previous_model, previous_is_running) =
+            self.threads
+                .get(&thread_id)
+                .map(|entry| {
+                    (
+                        entry.agent_path.clone(),
+                        entry.model_provider_id.clone(),
+                        entry.model.clone(),
+                        entry.is_running,
+                    )
+                })
+                .unwrap_or((None, None, None, false));
         self.threads.insert(
             thread_id,
             AgentPickerThreadEntry {
                 agent_nickname,
                 agent_role,
                 agent_path: previous_agent_path,
+                model_provider_id: previous_model_provider_id,
+                model: previous_model,
                 is_running: previous_is_running && !is_closed,
                 is_closed,
             },
@@ -115,6 +124,8 @@ impl AgentNavigationState {
                     agent_nickname: None,
                     agent_role: None,
                     agent_path: None,
+                    model_provider_id: None,
+                    model: None,
                     is_running: false,
                     is_closed: false,
                 });
@@ -134,6 +145,18 @@ impl AgentNavigationState {
             && let Some(entry) = self.threads.get_mut(&thread_id)
         {
             entry.agent_path = Some(agent_path);
+        }
+    }
+
+    pub(crate) fn set_model_metadata(
+        &mut self,
+        thread_id: ThreadId,
+        model_provider_id: Option<String>,
+        model: Option<String>,
+    ) {
+        if let Some(entry) = self.threads.get_mut(&thread_id) {
+            entry.model_provider_id = normalized_agent_metadata(model_provider_id);
+            entry.model = normalized_agent_metadata(model);
         }
     }
 
@@ -321,6 +344,12 @@ impl AgentNavigationState {
             .map(|(thread_id, _)| thread_id)
             .collect()
     }
+}
+
+fn normalized_agent_metadata(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ const ELAPSED_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 pub(crate) struct ActiveAgentEntry {
     pub(crate) name: String,
     pub(crate) started_at: Instant,
+    pub(crate) provider_model: Option<String>,
 }
 
 pub(crate) struct ActiveAgentList {
@@ -43,6 +44,10 @@ impl ActiveAgentList {
             .into_iter()
             .filter_map(|mut entry| {
                 entry.name = entry.name.trim().to_string();
+                entry.provider_model = entry
+                    .provider_model
+                    .map(|provider_model| provider_model.trim().to_string())
+                    .filter(|provider_model| !provider_model.is_empty());
                 (!entry.name.is_empty()).then_some(entry)
             })
             .collect();
@@ -62,7 +67,7 @@ impl ActiveAgentList {
         let visible_agents = total.min(MAX_VISIBLE_AGENTS);
         let mut lines =
             Vec::with_capacity(1 + visible_agents + usize::from(total > visible_agents));
-        lines.push(vec!["• ".dim(), "Agents ".bold(), format!("{total}").dim()].into());
+        lines.push(vec!["• ".dim(), "Agents".bold()].into());
 
         let agent_lines = self.visible_agent_lines(now);
         lines.extend(prefix_lines(agent_lines, "  └ ".dim(), "    ".into()));
@@ -90,14 +95,18 @@ impl ActiveAgentList {
     fn agent_line(agent: &ActiveAgentEntry, now: Instant) -> Line<'static> {
         let elapsed =
             fmt_elapsed_compact(now.saturating_duration_since(agent.started_at).as_secs());
-        vec![
+        let mut spans = vec![
             "□ ".cyan().bold(),
             Span::styled(agent.name.clone(), Style::default().cyan().bold()),
             Span::from(" (").dim(),
             Span::from(elapsed).dim(),
-            Span::from(")").dim(),
-        ]
-        .into()
+        ];
+        if let Some(provider_model) = agent.provider_model.as_ref() {
+            spans.push(Span::from(", ").dim());
+            spans.push(Span::from(provider_model.clone()).dim());
+        }
+        spans.push(Span::from(")").dim());
+        spans.into()
     }
 }
 

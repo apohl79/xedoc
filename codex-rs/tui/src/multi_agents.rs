@@ -38,6 +38,10 @@ pub(crate) struct AgentPickerThreadEntry {
     pub(crate) agent_role: Option<String>,
     /// Canonical v2 agent path, when the thread was observed through v2 activity.
     pub(crate) agent_path: Option<String>,
+    /// Provider id used by the agent thread, for example `openai`.
+    pub(crate) model_provider_id: Option<String>,
+    /// Model id used by the agent thread, for example `gpt-5.5`.
+    pub(crate) model: Option<String>,
     /// Whether the latest liveness refresh says the agent thread is actively working.
     pub(crate) is_running: bool,
     /// Whether the thread has emitted a close event and should render dimmed.

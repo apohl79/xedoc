@@ -1177,6 +1177,8 @@ async fn collab_receiver_notification_caches_thread_without_app_server_read() {
             agent_nickname: None,
             agent_role: None,
             agent_path: None,
+            model_provider_id: None,
+            model: None,
             is_running: true,
             is_closed: false,
         })
@@ -1417,6 +1419,8 @@ async fn open_agent_picker_keeps_missing_threads_for_replay() -> Result<()> {
             agent_nickname: None,
             agent_role: None,
             agent_path: None,
+            model_provider_id: None,
+            model: None,
             is_running: false,
             is_closed: true,
         })
@@ -1452,6 +1456,8 @@ async fn open_agent_picker_preserves_cached_metadata_for_replay_threads() -> Res
             agent_nickname: Some("Robie".to_string()),
             agent_role: Some("explorer".to_string()),
             agent_path: None,
+            model_provider_id: None,
+            model: None,
             is_running: false,
             is_closed: true,
         })
@@ -1494,6 +1500,8 @@ async fn open_agent_picker_clears_completed_path_backed_agent_running_state() ->
             agent_nickname: None,
             agent_role: None,
             agent_path: Some("/root/child".to_string()),
+            model_provider_id: None,
+            model: None,
             is_running: false,
             is_closed: false,
         })
@@ -1532,6 +1540,8 @@ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Resul
             agent_nickname: None,
             agent_role: None,
             agent_path: Some("/root/child".to_string()),
+            model_provider_id: None,
+            model: None,
             is_running: false,
             is_closed: true,
         })
@@ -1588,6 +1598,8 @@ async fn open_agent_picker_marks_terminal_read_errors_closed() -> Result<()> {
             agent_nickname: Some("Robie".to_string()),
             agent_role: Some("explorer".to_string()),
             agent_path: None,
+            model_provider_id: None,
+            model: None,
             is_running: false,
             is_closed: true,
         })
@@ -1628,6 +1640,8 @@ fn open_agent_picker_marks_loaded_threads_open() -> Result<()> {
                 agent_nickname: None,
                 agent_role: None,
                 agent_path: None,
+                model_provider_id: Some("openai".to_string()),
+                model: None,
                 is_running: false,
                 is_closed: false,
             })
@@ -3110,6 +3124,8 @@ async fn inactive_thread_started_notification_initializes_replay_session() -> Re
             agent_nickname: Some("Robie".to_string()),
             agent_role: Some("explorer".to_string()),
             agent_path: None,
+            model_provider_id: Some("agent-provider".to_string()),
+            model: Some("gpt-agent".to_string()),
             is_running: false,
             is_closed: false,
         })

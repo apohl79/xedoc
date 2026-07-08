@@ -2571,10 +2571,12 @@ mod tests {
             ActiveAgentEntry {
                 name: "reviewer".to_string(),
                 started_at: just_started,
+                provider_model: Some("openai/gpt-5.5".to_string()),
             },
             ActiveAgentEntry {
                 name: "integration [worker]".to_string(),
                 started_at: just_started,
+                provider_model: Some("openai/gpt-5.5".to_string()),
             },
         ]);
         pane.set_active_task_list(vec![
@@ -2604,6 +2606,7 @@ mod tests {
         pane.set_active_agents(vec![ActiveAgentEntry {
             name: "reviewer".to_string(),
             started_at: Instant::now(),
+            provider_model: None,
         }]);
         pane.set_active_task_list(vec![plan_task("Patch", StepStatus::InProgress)]);
         assert!(pane.active_agent_list_visible());
