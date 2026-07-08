@@ -391,12 +391,14 @@ impl App {
         self.thread_event_channels.remove(&thread_id);
         self.side_threads.remove(&thread_id);
         self.agent_navigation.remove(thread_id);
+        self.active_agent_started_at.remove(&thread_id);
         if self.active_thread_id == Some(thread_id) {
             self.clear_active_thread().await;
         } else {
             self.refresh_pending_thread_approvals().await;
         }
         self.sync_active_agent_label();
+        self.sync_active_agent_display();
     }
 
     async fn interrupt_side_thread(

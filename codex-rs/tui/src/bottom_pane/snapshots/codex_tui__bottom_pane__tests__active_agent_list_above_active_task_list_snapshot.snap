@@ -1,0 +1,16 @@
+---
+source: tui/src/bottom_pane/mod.rs
+expression: "render_snapshot(&pane, area)"
+---
+Working (0s • esc to interrupt)                                 
+                                                                
+• Agents 2                                                      
+  └ □ reviewer (0s)                                             
+    □ integration [worker] (0s)                                 
+• Tasks 0/2                                                     
+  └ □ Build prompts and launch reviewer team                    
+    □ Collect outputs and triage findings                       
+                                                                
+› Ask Codex to do anything                                      
+                                                                
+  ? for shortcuts                            100% context left

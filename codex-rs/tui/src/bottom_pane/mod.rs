@@ -20,6 +20,7 @@ use crate::app::app_server_requests::ResolvedAppServerRequest;
 use crate::app_event::AppEvent;
 use crate::app_event::ConnectorsSnapshot;
 use crate::app_event_sender::AppEventSender;
+use crate::bottom_pane::active_agent_list::ActiveAgentList;
 use crate::bottom_pane::active_task_list::ActiveTaskList;
 use crate::bottom_pane::pending_input_preview::PendingInputPreview;
 use crate::bottom_pane::pending_thread_approvals::PendingThreadApprovals;
@@ -53,6 +54,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 mod action_required_title;
+mod active_agent_list;
 mod active_task_list;
 mod app_link_view;
 mod approval_overlay;
@@ -65,6 +67,7 @@ mod status_surface_preview;
 mod title_setup;
 pub(crate) use action_required_title::ACTION_REQUIRED_PREVIEW_PREFIX;
 pub(crate) use action_required_title::build_action_required_title_text;
+pub(crate) use active_agent_list::ActiveAgentEntry;
 pub(crate) use app_link_view::AppLinkElicitationTarget;
 pub(crate) use app_link_view::AppLinkSuggestionType;
 pub(crate) use app_link_view::AppLinkView;
@@ -238,6 +241,8 @@ pub(crate) struct BottomPane {
     pending_input_preview: PendingInputPreview,
     /// Current update_plan checklist shown directly above the composer while a task runs.
     active_task_list: ActiveTaskList,
+    /// Running subagents shown above the active task list.
+    active_agent_list: ActiveAgentList,
     /// Inactive threads with pending approval requests.
     pending_thread_approvals: PendingThreadApprovals,
     context_window_percent: Option<i64>,
@@ -285,7 +290,7 @@ impl BottomPane {
             delayed_approval_requests: VecDeque::new(),
             last_composer_activity_at: None,
             app_event_tx,
-            frame_requester,
+            frame_requester: frame_requester.clone(),
             thread_id: None,
             has_input_focus,
             enhanced_keys_supported,
@@ -295,6 +300,7 @@ impl BottomPane {
             unified_exec_footer: UnifiedExecFooter::new(),
             pending_input_preview: PendingInputPreview::new(),
             active_task_list: ActiveTaskList::new(),
+            active_agent_list: ActiveAgentList::new(frame_requester),
             pending_thread_approvals: PendingThreadApprovals::new(),
             esc_backtrack_hint: false,
             animations_enabled,
@@ -984,6 +990,11 @@ impl BottomPane {
     }
 
     #[cfg(test)]
+    pub(crate) fn active_agent_list_visible(&self) -> bool {
+        !self.active_agent_list.is_empty()
+    }
+
+    #[cfg(test)]
     pub(crate) fn status_line_text(&self) -> Option<String> {
         self.composer.status_line_text()
     }
@@ -1068,6 +1079,11 @@ impl BottomPane {
 
     pub(crate) fn set_active_task_list(&mut self, tasks: Vec<PlanItemArg>) {
         self.active_task_list.set_tasks(tasks);
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_active_agents(&mut self, agents: Vec<ActiveAgentEntry>) {
+        self.active_agent_list.set_agents(agents);
         self.request_redraw();
     }
 
@@ -1733,8 +1749,21 @@ impl BottomPane {
                 /*flex*/ 1,
                 RenderableItem::Borrowed(&self.pending_input_preview),
             );
+            let has_active_agent_list = !self.active_agent_list.is_empty();
             let has_active_task_list = !self.active_task_list.is_empty();
-            if has_active_task_list && (has_inline_previews || has_status_or_footer) {
+            if has_active_agent_list && (has_inline_previews || has_status_or_footer) {
+                flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
+            }
+            if has_active_agent_list {
+                flex.push(
+                    /*flex*/ 0,
+                    RenderableItem::Borrowed(&self.active_agent_list),
+                );
+            }
+            if has_active_task_list
+                && !has_active_agent_list
+                && (has_inline_previews || has_status_or_footer)
+            {
                 flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
             }
             if has_active_task_list {
@@ -1743,7 +1772,11 @@ impl BottomPane {
                     RenderableItem::Borrowed(&self.active_task_list),
                 );
             }
-            if !has_active_task_list && !has_inline_previews && has_status_or_footer {
+            if !has_active_agent_list
+                && !has_active_task_list
+                && !has_inline_previews
+                && has_status_or_footer
+            {
                 flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
             }
             let mut flex2 = FlexRenderable::new();
@@ -1901,6 +1934,7 @@ mod tests {
     use ratatui::layout::Rect;
     use std::cell::Cell;
     use std::rc::Rc;
+    use std::time::Duration;
     use std::time::Instant;
     use tokio::sync::mpsc::unbounded_channel;
 
@@ -2512,6 +2546,71 @@ mod tests {
         let height = pane.desired_height(width);
         let area = Rect::new(0, 0, width, height);
         assert_snapshot!("active_task_list_snapshot", render_snapshot(&pane, area));
+    }
+
+    #[test]
+    fn active_agent_list_above_active_task_list_snapshot() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = BottomPane::new(BottomPaneParams {
+            app_event_tx: tx,
+            frame_requester: FrameRequester::test_dummy(),
+            has_input_focus: true,
+            enhanced_keys_supported: false,
+            placeholder_text: "Ask Codex to do anything".to_string(),
+            disable_paste_burst: false,
+            animations_enabled: false,
+            skills: Some(Vec::new()),
+        });
+
+        pane.set_task_running(/*running*/ true);
+        let just_started = Instant::now() + Duration::from_secs(60);
+        pane.set_active_agents(vec![
+            ActiveAgentEntry {
+                name: "reviewer".to_string(),
+                started_at: just_started,
+            },
+            ActiveAgentEntry {
+                name: "integration [worker]".to_string(),
+                started_at: just_started,
+            },
+        ]);
+        pane.set_active_task_list(vec![
+            plan_task(
+                "Build prompts and launch reviewer team",
+                StepStatus::InProgress,
+            ),
+            plan_task("Collect outputs and triage findings", StepStatus::Pending),
+        ]);
+
+        let width = 64;
+        let height = pane.desired_height(width);
+        let area = Rect::new(0, 0, width, height);
+        assert_snapshot!(
+            "active_agent_list_above_active_task_list_snapshot",
+            render_snapshot(&pane, area)
+        );
+    }
+
+    #[test]
+    fn active_agent_list_persists_when_task_completes() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut pane = test_pane(tx);
+
+        pane.set_task_running(/*running*/ true);
+        pane.set_active_agents(vec![ActiveAgentEntry {
+            name: "reviewer".to_string(),
+            started_at: Instant::now(),
+        }]);
+        pane.set_active_task_list(vec![plan_task("Patch", StepStatus::InProgress)]);
+        assert!(pane.active_agent_list_visible());
+        assert!(pane.active_task_list_visible());
+
+        pane.set_task_running(/*running*/ false);
+
+        assert!(pane.active_agent_list_visible());
+        assert!(!pane.active_task_list_visible());
     }
 
     #[test]

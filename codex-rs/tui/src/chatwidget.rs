@@ -266,6 +266,7 @@ use crate::app_event::WindowsSandboxEnableMode;
 use crate::app_event_sender::AppEventSender;
 use crate::auto_review_denials;
 use crate::auto_review_denials::RecentAutoReviewDenials;
+use crate::bottom_pane::ActiveAgentEntry;
 use crate::bottom_pane::ApprovalRequest;
 use crate::bottom_pane::BottomPane;
 use crate::bottom_pane::BottomPaneParams;
@@ -1438,6 +1439,15 @@ impl ChatWidget {
 
     pub(crate) fn set_pending_thread_approvals(&mut self, threads: Vec<String>) {
         self.bottom_pane.set_pending_thread_approvals(threads);
+    }
+
+    pub(crate) fn set_active_agents(&mut self, agents: Vec<ActiveAgentEntry>) {
+        self.bottom_pane.set_active_agents(agents);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn active_agent_list_visible(&self) -> bool {
+        self.bottom_pane.active_agent_list_visible()
     }
 
     pub(crate) fn clear_thread_rename_block(&mut self) {
