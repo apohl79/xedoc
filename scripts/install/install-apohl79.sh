@@ -33,7 +33,7 @@ Usage: install-apohl79.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--c
 Downloads and installs the apohl79 Codex fork binary release for the current fork tag.
 
 Options:
-  --tag TAG        Fork release tag to install. Defaults to the current rust-v*-apohl79 tag.
+  --tag TAG        Fork release tag to install. Defaults to the current rust-v*-apohl79-N tag.
   --target TARGET  Release target triple. Defaults to the current platform.
   --repo OWNER/REPO
                    GitHub repository to read releases from. Defaults to apohl79/codex.
@@ -156,7 +156,7 @@ validate_repo() {
 
 validate_tag() {
   printf '%s\n' "$1" |
-    grep -Eq '^rust-v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?-apohl79$' ||
+    grep -Eq '^rust-v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?-apohl79-[1-9][0-9]*$' ||
     die "Invalid apohl79 fork tag: $1"
 }
 
@@ -192,6 +192,15 @@ read_workspace_version() {
   ' "$cargo_toml"
 }
 
+read_fork_build_number() {
+  build_number_file="$repo_root/scripts/apohl79_build_number.txt"
+  [ -f "$build_number_file" ] || return 1
+
+  build_number="$(awk 'NR == 1 { print $1; exit }' "$build_number_file")"
+  printf '%s\n' "$build_number" | grep -Eq '^[1-9][0-9]*$' || return 1
+  printf '%s\n' "$build_number"
+}
+
 current_fork_tag() {
   if [ -n "$APOHL79_TAG" ]; then
     validate_tag "$APOHL79_TAG"
@@ -203,15 +212,17 @@ current_fork_tag() {
   if command -v git >/dev/null 2>&1 && [ -d "$repo_root/.git" ]; then
     tag="$(
       git -C "$repo_root" tag --points-at HEAD 2>/dev/null |
-        grep -E '^rust-v[0-9].*-apohl79$' |
+        grep -E '^rust-v[0-9].*-apohl79-[1-9][0-9]*$' |
         tail -n 1 || true
     )"
   fi
 
   if [ -z "$tag" ]; then
     version="$(read_workspace_version || true)"
-    [ -n "$version" ] || die "Could not resolve the current fork tag. Pass --tag rust-v<version>-apohl79."
-    tag="rust-v$version-apohl79"
+    build_number="$(read_fork_build_number || true)"
+    [ -n "$version" ] && [ -n "$build_number" ] ||
+      die "Could not resolve the current fork tag. Pass --tag rust-v<version>-apohl79-<build-number>."
+    tag="rust-v$version-apohl79-$build_number"
   fi
 
   validate_tag "$tag"

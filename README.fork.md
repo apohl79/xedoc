@@ -166,9 +166,14 @@ The fork adds release helpers for building apohl79-branded packages from
   native `CARGO_BUILD_JOBS`.
 - The helper can auto-repair stale workspace package versions in
   `codex-rs/Cargo.lock` before a locked release build.
+- `scripts/apohl79_build_number.txt` stores the monotonically increasing fork
+  build number. Fork release versions use
+  `[codex-version]-apohl79-[build-number]` and GitHub release tags use
+  `rust-v[codex-version]-apohl79-[build-number]`.
 - The installer targets GitHub releases in `apohl79/codex`, resolves the
-  current fork tag from a checked-out tag or `[workspace.package].version`, and
-  verifies the uploaded asset SHA-256 before installing.
+  current fork tag from a checked-out tag or `[workspace.package].version` plus
+  the tracked build number, and verifies the uploaded asset SHA-256 before
+  installing.
 - The release helper creates the matching GitHub release in `apohl79/codex` if
   it does not already exist.
 - The release helper uploads generated archives to the release with clobbering
@@ -179,6 +184,7 @@ The fork adds release helpers for building apohl79-branded packages from
 Primary files:
 
 - `scripts/apohl79_release.py`
+- `scripts/apohl79_build_number.txt`
 - `scripts/build_apohl79_release.py`
 - `scripts/build_apohl79_release.sh`
 - `scripts/install/install-apohl79.sh`

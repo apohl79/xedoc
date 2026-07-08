@@ -38,6 +38,10 @@ In the codex-rs folder where the rust code lives:
   repo root to refresh `MODULE.bazel.lock`, and include that lockfile update in the same change.
 - After dependency changes, run `just bazel-lock-check` from the repo root so lockfile drift is caught
   locally before CI.
+- Every feature or fix merge to `main-fork` must increment `scripts/apohl79_build_number.txt`.
+  This fork build number is monotonically increasing across upstream Codex
+  release upgrades, and fork release versions must use
+  `[codex-version]-apohl79-[build-number]`.
 - Bazel does not automatically make source-tree files available to compile-time Rust file access. If
   you add `include_str!`, `include_bytes!`, `sqlx::migrate!`, or similar build-time file or
   directory reads, update the crate's `BUILD.bazel` (`compile_data`, `build_script_data`, or test
