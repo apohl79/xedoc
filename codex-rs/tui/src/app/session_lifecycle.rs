@@ -240,13 +240,17 @@ impl App {
                 }
             }
             let provider_model = active_agent_provider_model(
-                entry.model_provider_id.as_deref(),
-                entry.model.as_deref(),
+                entry
+                    .model_provider_id
+                    .as_deref()
+                    .or(Some(self.config.model_provider_id.as_str())),
+                entry.model.as_deref().or(self.config.model.as_deref()),
             );
             agents.push(ActiveAgentEntry {
                 name,
                 started_at,
                 provider_model,
+                total_tokens: entry.total_tokens,
             });
         }
         self.active_agent_started_at

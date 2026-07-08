@@ -87,18 +87,25 @@ impl AgentNavigationState {
         if !self.threads.contains_key(&thread_id) {
             self.order.push(thread_id);
         }
-        let (previous_agent_path, previous_model_provider_id, previous_model, previous_is_running) =
-            self.threads
-                .get(&thread_id)
-                .map(|entry| {
-                    (
-                        entry.agent_path.clone(),
-                        entry.model_provider_id.clone(),
-                        entry.model.clone(),
-                        entry.is_running,
-                    )
-                })
-                .unwrap_or((None, None, None, false));
+        let (
+            previous_agent_path,
+            previous_model_provider_id,
+            previous_model,
+            previous_total_tokens,
+            previous_is_running,
+        ) = self
+            .threads
+            .get(&thread_id)
+            .map(|entry| {
+                (
+                    entry.agent_path.clone(),
+                    entry.model_provider_id.clone(),
+                    entry.model.clone(),
+                    entry.total_tokens,
+                    entry.is_running,
+                )
+            })
+            .unwrap_or((None, None, None, None, false));
         self.threads.insert(
             thread_id,
             AgentPickerThreadEntry {
@@ -107,6 +114,7 @@ impl AgentNavigationState {
                 agent_path: previous_agent_path,
                 model_provider_id: previous_model_provider_id,
                 model: previous_model,
+                total_tokens: previous_total_tokens,
                 is_running: previous_is_running && !is_closed,
                 is_closed,
             },
@@ -126,6 +134,7 @@ impl AgentNavigationState {
                     agent_path: None,
                     model_provider_id: None,
                     model: None,
+                    total_tokens: None,
                     is_running: false,
                     is_closed: false,
                 });
@@ -157,6 +166,12 @@ impl AgentNavigationState {
         if let Some(entry) = self.threads.get_mut(&thread_id) {
             entry.model_provider_id = normalized_agent_metadata(model_provider_id);
             entry.model = normalized_agent_metadata(model);
+        }
+    }
+
+    pub(crate) fn set_total_tokens(&mut self, thread_id: ThreadId, total_tokens: Option<i64>) {
+        if let Some(entry) = self.threads.get_mut(&thread_id) {
+            entry.total_tokens = total_tokens.filter(|tokens| *tokens > 0);
         }
     }
 

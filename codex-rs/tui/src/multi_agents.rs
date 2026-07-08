@@ -42,6 +42,8 @@ pub(crate) struct AgentPickerThreadEntry {
     pub(crate) model_provider_id: Option<String>,
     /// Model id used by the agent thread, for example `gpt-5.5`.
     pub(crate) model: Option<String>,
+    /// Total tokens reported for the agent thread, when available.
+    pub(crate) total_tokens: Option<i64>,
     /// Whether the latest liveness refresh says the agent thread is actively working.
     pub(crate) is_running: bool,
     /// Whether the thread has emitted a close event and should render dimmed.
