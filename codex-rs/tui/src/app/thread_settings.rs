@@ -151,6 +151,12 @@ impl App {
                 apply_thread_settings_to_session(session, settings);
             }
         }
+        self.agent_navigation.set_model_metadata(
+            thread_id,
+            Some(settings.model_provider.clone()),
+            Some(settings.model.clone()),
+        );
+        self.sync_active_agent_display();
     }
 
     async fn send_thread_settings_update(

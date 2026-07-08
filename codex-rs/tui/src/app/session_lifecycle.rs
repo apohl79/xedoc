@@ -194,6 +194,15 @@ impl App {
         self.sync_active_agent_display();
     }
 
+    pub(super) fn set_agent_model_metadata_from_session(&mut self, session: &ThreadSessionState) {
+        self.agent_navigation.set_model_metadata(
+            session.thread_id,
+            Some(session.model_provider_id.clone()),
+            Some(session.model.clone()),
+        );
+        self.sync_active_agent_display();
+    }
+
     pub(super) fn sync_active_agent_display(&mut self) {
         let now = Instant::now();
         let mut active_thread_ids = Vec::new();
@@ -230,7 +239,15 @@ impl App {
                     name = format!("Agent ({short_id})");
                 }
             }
-            agents.push(ActiveAgentEntry { name, started_at });
+            let provider_model = active_agent_provider_model(
+                entry.model_provider_id.as_deref(),
+                entry.model.as_deref(),
+            );
+            agents.push(ActiveAgentEntry {
+                name,
+                started_at,
+                provider_model,
+            });
         }
         self.active_agent_started_at
             .retain(|thread_id, _| active_thread_ids.contains(thread_id));
@@ -260,6 +277,7 @@ impl App {
             .await
         {
             Ok(thread) => {
+                let session = self.session_state_for_thread_read(thread_id, &thread).await;
                 let is_running = matches!(
                     thread.status,
                     codex_app_server_protocol::ThreadStatus::Active { .. }
@@ -282,6 +300,7 @@ impl App {
                     }),
                     is_closed,
                 );
+                self.set_agent_model_metadata_from_session(&session);
                 self.set_active_agent_running(thread_id, is_running);
                 true
             }
@@ -904,6 +923,19 @@ impl App {
         }
 
         Ok(AppRunControl::Continue)
+    }
+}
+
+fn active_agent_provider_model(provider: Option<&str>, model: Option<&str>) -> Option<String> {
+    let provider = provider
+        .map(str::trim)
+        .filter(|provider| !provider.is_empty());
+    let model = model.map(str::trim).filter(|model| !model.is_empty());
+    match (provider, model) {
+        (Some(provider), Some(model)) => Some(format!("{provider}/{model}")),
+        (Some(provider), None) => Some(provider.to_string()),
+        (None, Some(model)) => Some(model.to_string()),
+        (None, None) => None,
     }
 }
 
