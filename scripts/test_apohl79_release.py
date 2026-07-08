@@ -1104,6 +1104,46 @@ class Apohl79ReleaseTest(unittest.TestCase):
         ):
             self.assertEqual(apohl79_release.default_cargo_build_jobs(), 1)
 
+    def test_parse_args_accepts_cargo_build_jobs_lower_bound(self) -> None:
+        args = apohl79_release.parse_args(["--cargo-build-jobs", "1"])
+
+        self.assertEqual(args.cargo_build_jobs, 1)
+
+    def test_parse_args_rejects_non_positive_cargo_build_jobs(self) -> None:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as raised:
+                apohl79_release.parse_args(["--cargo-build-jobs", "0"])
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("must be a positive integer", stderr.getvalue())
+
+    def test_resolve_cargo_build_jobs_prefers_cli_over_fork_env(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR: "3"},
+        ):
+            self.assertEqual(apohl79_release.resolve_cargo_build_jobs(2), "2")
+
+    def test_resolve_cargo_build_jobs_uses_fork_env(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR: "3"},
+        ):
+            self.assertEqual(apohl79_release.resolve_cargo_build_jobs(None), "3")
+
+    def test_resolve_cargo_build_jobs_rejects_invalid_fork_env(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR: "0"},
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                f"{apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR} must be a "
+                "positive integer.",
+            ):
+                apohl79_release.resolve_cargo_build_jobs(None)
+
     def test_sysctl_int_parses_positive_integer(self) -> None:
         with mock.patch.object(
             subprocess,

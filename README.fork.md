@@ -162,7 +162,8 @@ The fork adds release helpers for building apohl79-branded packages from
 - Release builds preserve incremental Cargo artifacts by using the current
   checkout and `codex-rs/target` as the default target directory.
 - The helper limits default Cargo parallelism while respecting explicit caller
-  settings.
+  settings through `--cargo-build-jobs`, `APOHL79_CARGO_BUILD_JOBS`, or Cargo's
+  native `CARGO_BUILD_JOBS`.
 - The helper can auto-repair stale workspace package versions in
   `codex-rs/Cargo.lock` before a locked release build.
 - The installer targets GitHub releases in `apohl79/codex`, resolves the

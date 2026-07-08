@@ -18,6 +18,7 @@ DEFAULT_REF = "main-fork"
 DEFAULT_SUFFIX = "apohl79"
 DEFAULT_GITHUB_REPO = "apohl79/codex"
 DEFAULT_GITHUB_ACCOUNT = "apohl79"
+FORK_CARGO_BUILD_JOBS_ENV_VAR = "APOHL79_CARGO_BUILD_JOBS"
 PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
 DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
 WORKSPACE_VERSION_SENTINEL = "0.0.0"
@@ -90,6 +91,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--cargo",
         default="cargo",
         help="Cargo executable to use for the release build.",
+    )
+    parser.add_argument(
+        "--cargo-build-jobs",
+        type=positive_int_arg,
+        help=(
+            "Maximum parallel Cargo jobs for the release compile. Can also be "
+            f"set with {FORK_CARGO_BUILD_JOBS_ENV_VAR}; existing "
+            "CARGO_BUILD_JOBS is still respected."
+        ),
     )
     parser.add_argument(
         "--force",
@@ -177,7 +187,11 @@ def build_release(args: argparse.Namespace) -> None:
     env = os.environ.copy()
     env["CARGO_TARGET_DIR"] = str(target_dir)
     env["CODEX_RELEASE_VERSION"] = fork_version
-    env.setdefault("CARGO_BUILD_JOBS", str(default_cargo_build_jobs()))
+    cargo_build_jobs = resolve_cargo_build_jobs(getattr(args, "cargo_build_jobs", None))
+    if cargo_build_jobs is not None:
+        env["CARGO_BUILD_JOBS"] = cargo_build_jobs
+    else:
+        env.setdefault("CARGO_BUILD_JOBS", str(default_cargo_build_jobs()))
     env.setdefault("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed")
     env.setdefault("CARGO_NET_GIT_FETCH_WITH_CLI", "true")
 
@@ -530,6 +544,36 @@ def default_cargo_build_jobs() -> int:
         sysctl_int("hw.logicalcpu"),
         os.cpu_count(),
     )
+
+
+def resolve_cargo_build_jobs(explicit_jobs: int | None) -> str | None:
+    if explicit_jobs is not None:
+        return str(explicit_jobs)
+
+    env_jobs = os.environ.get(FORK_CARGO_BUILD_JOBS_ENV_VAR)
+    if env_jobs is None:
+        return None
+
+    return str(positive_int_env(FORK_CARGO_BUILD_JOBS_ENV_VAR, env_jobs))
+
+
+def positive_int_arg(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError("must be a positive integer") from err
+
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+
+    return parsed
+
+
+def positive_int_env(name: str, value: str) -> int:
+    try:
+        return positive_int_arg(value)
+    except argparse.ArgumentTypeError as err:
+        raise RuntimeError(f"{name} must be a positive integer.") from err
 
 
 def first_positive_int(*values: int | None) -> int:
