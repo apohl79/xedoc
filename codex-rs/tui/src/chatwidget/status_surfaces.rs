@@ -87,12 +87,7 @@ pub(super) struct CachedProjectRootName {
 
 impl ChatWidget {
     fn status_surface_selections(&self) -> StatusSurfaceSelections {
-        let (status_line_items, invalid_status_line_items) =
-            if self.config.tui_status_line_command.is_some() {
-                (Vec::new(), Vec::new())
-            } else {
-                self.status_line_items_with_invalids()
-            };
+        let (status_line_items, invalid_status_line_items) = self.status_line_items_with_invalids();
         let (terminal_title_items, invalid_terminal_title_items) =
             self.terminal_title_items_with_invalids();
         StatusSurfaceSelections {
@@ -182,7 +177,7 @@ impl ChatWidget {
 
     fn refresh_status_line_from_selections(&mut self, selections: &StatusSurfaceSelections) {
         if self.config.tui_status_line_command.is_some() {
-            self.refresh_status_line_from_command();
+            self.refresh_status_line_from_command(selections);
             return;
         }
 
@@ -194,30 +189,42 @@ impl ChatWidget {
             return;
         }
 
+        let status_line = self.built_in_status_line(&selections.status_line_items);
+        let hyperlink = self.built_in_status_line_hyperlink(&selections.status_line_items);
+        self.set_status_line(status_line);
+        self.set_status_line_hyperlink(hyperlink);
+    }
+
+    fn refresh_status_line_from_command(&mut self, selections: &StatusSurfaceSelections) {
+        self.bottom_pane.set_status_line_enabled(true);
+        if let Some(line) = self.status_line_command_output.clone() {
+            self.set_status_line(Some(line));
+            self.set_status_line_hyperlink(/*url*/ None);
+        } else {
+            let status_line = self.built_in_status_line(&selections.status_line_items);
+            let hyperlink = self.built_in_status_line_hyperlink(&selections.status_line_items);
+            self.set_status_line(status_line);
+            self.set_status_line_hyperlink(hyperlink);
+        }
+        self.request_status_line_command_refresh();
+    }
+
+    fn built_in_status_line(&mut self, items: &[StatusLineItem]) -> Option<Line<'static>> {
         let mut segments = Vec::new();
-        for item in &selections.status_line_items {
+        for item in items {
             if let Some(value) = self.status_line_value_for_item(*item) {
                 segments.push((*item, value));
             }
         }
 
-        self.set_status_line(status_line_from_segments(
-            segments,
-            self.config.tui_status_line_use_colors,
-        ));
-        let hyperlink_url = selections
-            .status_line_items
-            .contains(&StatusLineItem::PullRequestNumber)
-            .then(|| self.status_line_pull_request_url())
-            .flatten();
-        self.set_status_line_hyperlink(hyperlink_url);
+        status_line_from_segments(segments, self.config.tui_status_line_use_colors)
     }
 
-    fn refresh_status_line_from_command(&mut self) {
-        self.bottom_pane.set_status_line_enabled(true);
-        self.set_status_line(self.status_line_command_output.clone());
-        self.set_status_line_hyperlink(/*url*/ None);
-        self.request_status_line_command_refresh();
+    fn built_in_status_line_hyperlink(&self, items: &[StatusLineItem]) -> Option<String> {
+        items
+            .contains(&StatusLineItem::PullRequestNumber)
+            .then(|| self.status_line_pull_request_url())
+            .flatten()
     }
 
     fn request_status_line_command_refresh(&mut self) {
