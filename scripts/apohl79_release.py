@@ -179,17 +179,31 @@ def build_release(args: argparse.Namespace) -> None:
     ensure_git_path_clean(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
     base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
     build_number = read_fork_build_number(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
+    fork_version = fork_version_from_base(
+        base_version,
+        args.version_suffix,
+        build_number,
+    )
+    release_tag = github_release_tag(fork_version)
+    release_target = None
+    github_env = None
+    if not args.skip_github_release:
+        release_target = git_commit("HEAD")
+        github_env = github_release_env(gh=args.gh, account=args.github_account)
+        ensure_github_release_target_exists(
+            gh=args.gh,
+            repo=args.github_repo,
+            target=release_target,
+            ref=args.ref,
+            env=github_env,
+        )
+
     repair_stale_release_lockfiles(
         cargo=args.cargo,
         source_root=source_root,
         cargo_toml=cargo_toml,
         cargo_lock=cargo_lock,
         target=args.target,
-    )
-    fork_version = fork_version_from_base(
-        base_version,
-        args.version_suffix,
-        build_number,
     )
 
     env = os.environ.copy()
@@ -276,15 +290,13 @@ def build_release(args: argparse.Namespace) -> None:
 
     run(package_args, cwd=source_root)
 
-    release_tag = github_release_tag(fork_version)
     if not args.skip_github_release:
-        github_env = github_release_env(gh=args.gh, account=args.github_account)
         publish_github_release(
             gh=args.gh,
             repo=args.github_repo,
             tag=release_tag,
             title=fork_version,
-            target=git_commit("HEAD"),
+            target=release_target,
             archive_outputs=archive_outputs,
             env=github_env,
         )
@@ -680,6 +692,32 @@ def fork_version_from_base(base_version: str, suffix: str, build_number: int) ->
 
 def github_release_tag(fork_version: str) -> str:
     return f"rust-v{fork_version}"
+
+
+def ensure_github_release_target_exists(
+    *,
+    gh: str,
+    repo: str,
+    target: str,
+    ref: str,
+    env: dict[str, str] | None = None,
+) -> None:
+    result = run(
+        [gh, "api", f"repos/{repo}/commits/{target}"],
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+        stdout=subprocess.DEVNULL,
+    )
+    if result.returncode == 0:
+        return
+
+    raise RuntimeError(
+        f"Release target commit {target[:12]} for --ref {ref} is not available "
+        f"in GitHub repository {repo}. Push {ref} to {repo} before publishing, "
+        "verify `gh` can access that repository, or rerun with "
+        "--skip-github-release to build the package locally."
+    )
 
 
 def publish_github_release(

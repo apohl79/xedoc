@@ -153,6 +153,62 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 )
             )
 
+    def test_github_release_target_preflight_uses_github_api(self) -> None:
+        commands = []
+        github_env = {"GH_TOKEN": "secret-token"}
+
+        def fake_run(
+            command: list[str],
+            *,
+            cwd: Path | None = None,
+            env: dict[str, str] | None = None,
+            check: bool = True,
+            stdout: int | None = None,
+        ) -> subprocess.CompletedProcess:
+            commands.append((command, cwd, env, check, stdout))
+            return subprocess.CompletedProcess(command, 0)
+
+        with mock.patch.object(apohl79_release, "run", side_effect=fake_run):
+            apohl79_release.ensure_github_release_target_exists(
+                gh="gh",
+                repo="apohl79/codex",
+                target="abc123",
+                ref="main-fork",
+                env=github_env,
+            )
+
+        self.assertEqual(
+            commands,
+            [
+                (
+                    ["gh", "api", "repos/apohl79/codex/commits/abc123"],
+                    apohl79_release.REPO_ROOT,
+                    github_env,
+                    False,
+                    subprocess.DEVNULL,
+                )
+            ],
+        )
+
+    def test_github_release_target_preflight_reports_missing_target(self) -> None:
+        with (
+            mock.patch.object(
+                apohl79_release,
+                "run",
+                return_value=subprocess.CompletedProcess(["gh"], 1),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "Release target commit abc123 for --ref main-fork is not available",
+            ),
+        ):
+            apohl79_release.ensure_github_release_target_exists(
+                gh="gh",
+                repo="apohl79/codex",
+                target="abc123",
+                ref="main-fork",
+            )
+
     def test_publish_github_release_creates_missing_release_and_uploads_archives(
         self,
     ) -> None:
@@ -588,6 +644,99 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "archive_outputs": [(repo_root / archive_output).resolve()],
                     "env": {"GH_TOKEN": "secret-token"},
                 },
+            )
+
+    def test_build_release_preflights_github_target_before_build(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml.parent.mkdir(parents=True)
+            cargo_toml.write_text(
+                '[workspace.package]\nversion = "0.141.0"\n',
+                encoding="utf-8",
+            )
+            cargo_lock.write_text("version = 4\n", encoding="utf-8")
+            (repo_root / "scripts").mkdir()
+            (repo_root / "scripts/apohl79_build_number.txt").write_text(
+                "10\n",
+                encoding="utf-8",
+            )
+            commands = []
+
+            def fake_run(
+                command: list[str],
+                *,
+                cwd: Path | None = None,
+                env: dict[str, str] | None = None,
+                check: bool = True,
+                stdout: int | None = None,
+            ) -> subprocess.CompletedProcess:
+                _ = cwd
+                _ = env
+                _ = check
+                _ = stdout
+                commands.append(command)
+                if command[:2] == ["cargo", "build"]:
+                    raise AssertionError("release build should not start")
+                returncode = 1 if command[:2] == ["custom-gh", "api"] else 0
+                return subprocess.CompletedProcess(command, returncode)
+
+            args = argparse.Namespace(
+                archive_output=[],
+                cargo="cargo",
+                codesign_identity=None,
+                force=True,
+                gh="custom-gh",
+                github_account="apohl79",
+                github_repo="apohl79/codex",
+                keep_worktree=False,
+                output_dir=Path("dist/apohl79"),
+                package_dir=None,
+                ref="main-fork",
+                skip_github_release=False,
+                target="aarch64-apple-darwin",
+                version_suffix="apohl79",
+            )
+
+            with (
+                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(
+                    apohl79_release,
+                    "ensure_current_checkout_matches_ref",
+                    return_value=None,
+                ),
+                mock.patch.object(
+                    apohl79_release, "ensure_git_path_clean", return_value=None
+                ),
+                mock.patch.object(
+                    apohl79_release,
+                    "resolve_codesign_identity",
+                    return_value="Developer ID Application: Example",
+                ),
+                mock.patch.object(apohl79_release, "git_commit", return_value="c" * 40),
+                mock.patch.object(
+                    apohl79_release,
+                    "github_release_env",
+                    return_value={"GH_TOKEN": "secret-token"},
+                ),
+                mock.patch.object(apohl79_release, "run", side_effect=fake_run),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "Release target commit cccccccccccc for --ref main-fork",
+                ):
+                    apohl79_release.build_release(args)
+
+            self.assertEqual(
+                commands,
+                [
+                    [
+                        "custom-gh",
+                        "api",
+                        f"repos/apohl79/codex/commits/{'c' * 40}",
+                    ]
+                ],
             )
 
     def test_build_release_repairs_stale_cargo_lock_before_locked_build(
