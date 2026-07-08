@@ -1623,6 +1623,7 @@ pub(super) async fn assert_hook_events_snapshot(
     snapshot_name: &str,
 ) {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
 
     handle_hook_started(
         &mut chat,

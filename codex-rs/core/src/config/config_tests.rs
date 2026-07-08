@@ -1032,6 +1032,36 @@ async fn runtime_config_uses_tui_raw_output_mode() {
     assert!(cfg.tui_raw_output_mode);
 }
 
+#[tokio::test]
+async fn runtime_config_show_hook_output_defaults_to_false() {
+    let cfg = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config");
+
+    assert!(!cfg.show_hook_output);
+}
+
+#[tokio::test]
+async fn runtime_config_uses_show_hook_output() {
+    let toml = r#"
+        show_hook_output = true
+    "#;
+    let cfg_toml: ConfigToml = toml::from_str(toml).expect("deserialize show_hook_output=true");
+    let cfg = Config::load_from_base_config_with_overrides(
+        cfg_toml,
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config");
+
+    assert!(cfg.show_hook_output);
+}
+
 #[test]
 fn config_toml_deserializes_permission_profiles() {
     let toml = r#"

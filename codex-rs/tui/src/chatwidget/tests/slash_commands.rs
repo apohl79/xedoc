@@ -1537,6 +1537,7 @@ async fn completed_token_activity_refresh_waits_for_active_history_cell() {
 #[tokio::test]
 async fn completed_token_activity_refresh_waits_for_active_hook() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
     set_chatgpt_auth(&mut chat);
     handle_hook_started(
         &mut chat,

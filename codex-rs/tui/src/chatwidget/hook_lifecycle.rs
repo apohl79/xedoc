@@ -27,6 +27,7 @@ impl ChatWidget {
                 self.active_hook_cell = Some(history_cell::new_active_hook_cell(
                     run,
                     self.config.animations,
+                    self.config.show_hook_output,
                 ));
                 self.bump_active_cell_revision();
             }
@@ -52,8 +53,11 @@ impl ChatWidget {
                     self.bump_active_cell_revision();
                 }
                 None => {
-                    let cell =
-                        history_cell::new_completed_hook_cell(completed, self.config.animations);
+                    let cell = history_cell::new_completed_hook_cell(
+                        completed,
+                        self.config.animations,
+                        self.config.show_hook_output,
+                    );
                     if !cell.is_empty() {
                         self.active_hook_cell = Some(cell);
                         self.bump_active_cell_revision();

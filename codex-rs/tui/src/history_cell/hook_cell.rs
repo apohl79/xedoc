@@ -40,6 +40,8 @@ pub(crate) struct HookCell {
     runs: Vec<HookRunCell>,
     /// Mirrors the global animation setting so transcript rendering and viewport rendering agree.
     animations_enabled: bool,
+    /// Whether completed hook output entries should be rendered.
+    show_output: bool,
 }
 
 /// Minimum runtime before a hook is allowed to draw.
@@ -122,20 +124,22 @@ struct RunningHookGroup {
 
 impl HookCell {
     /// Creates a cell around a hook that has just started.
-    fn new_active(run: HookRunSummary, animations_enabled: bool) -> Self {
+    fn new_active(run: HookRunSummary, animations_enabled: bool, show_output: bool) -> Self {
         let mut cell = Self {
             runs: Vec::new(),
             animations_enabled,
+            show_output,
         };
         cell.start_run(run);
         cell
     }
 
     /// Creates a cell around an already-completed hook from transcript/history data.
-    fn new_completed(run: HookRunSummary, animations_enabled: bool) -> Self {
+    fn new_completed(run: HookRunSummary, animations_enabled: bool, show_output: bool) -> Self {
         let mut cell = Self {
             runs: Vec::new(),
             animations_enabled,
+            show_output,
         };
         cell.add_completed_run(run);
         cell
@@ -168,7 +172,7 @@ impl HookCell {
         let mut completed = Vec::new();
         let mut remaining = Vec::new();
         for run in self.runs.drain(..) {
-            if run.state.has_persistent_output() {
+            if run.state.has_persistent_output(self.show_output) {
                 completed.push(run);
             } else {
                 remaining.push(run);
@@ -178,6 +182,7 @@ impl HookCell {
         (!completed.is_empty()).then_some(Self {
             runs: completed,
             animations_enabled: self.animations_enabled,
+            show_output: self.show_output,
         })
     }
 
@@ -225,7 +230,7 @@ impl HookCell {
         let Some(index) = self.runs.iter().position(|existing| existing.id == run.id) else {
             return false;
         };
-        if hook_run_is_quiet_success(&run) {
+        if hook_run_is_quiet_success(&run, self.show_output) {
             if !self.runs[index]
                 .state
                 .complete_quiet_success(Instant::now())
@@ -252,7 +257,7 @@ impl HookCell {
     ///
     /// This is used for replay/restoration paths where the final run summary is already known.
     pub(crate) fn add_completed_run(&mut self, run: HookRunSummary) {
-        if hook_run_is_quiet_success(&run) {
+        if hook_run_is_quiet_success(&run, self.show_output) {
             return;
         }
         let HookRunSummary {
@@ -322,6 +327,7 @@ impl HookCell {
                     self.animations_enabled,
                     width,
                     render_full_context,
+                    self.show_output,
                 );
                 continue;
             };
@@ -442,6 +448,7 @@ impl HookRunCell {
         animations_enabled: bool,
         width: u16,
         render_full_context: bool,
+        show_output: bool,
     ) {
         let label = hook_event_label(self.event_name);
         match &self.state {
@@ -457,6 +464,7 @@ impl HookRunCell {
                 );
             }
             HookRunState::Completed { status, entries } => {
+                let entries = if show_output { entries.as_slice() } else { &[] };
                 let status_text = format!("{status:?}").to_lowercase();
                 let bullet = hook_completed_bullet(*status, entries);
                 lines.push(
@@ -589,10 +597,10 @@ impl HookRunState {
     }
 
     /// Returns true for completed runs that should survive outside the active cell.
-    fn has_persistent_output(&self) -> bool {
+    fn has_persistent_output(&self, show_output: bool) -> bool {
         match self {
             HookRunState::Completed { status, entries } => {
-                *status != HookRunStatus::Completed || !entries.is_empty()
+                *status != HookRunStatus::Completed || (show_output && !entries.is_empty())
             }
             HookRunState::PendingReveal { .. }
             | HookRunState::VisibleRunning { .. }
@@ -771,17 +779,25 @@ fn earliest_instant(left: Option<Instant>, right: Option<Instant>) -> Option<Ins
     }
 }
 
-pub(crate) fn new_active_hook_cell(run: HookRunSummary, animations_enabled: bool) -> HookCell {
-    HookCell::new_active(run, animations_enabled)
+pub(crate) fn new_active_hook_cell(
+    run: HookRunSummary,
+    animations_enabled: bool,
+    show_output: bool,
+) -> HookCell {
+    HookCell::new_active(run, animations_enabled, show_output)
 }
 
-pub(crate) fn new_completed_hook_cell(run: HookRunSummary, animations_enabled: bool) -> HookCell {
-    HookCell::new_completed(run, animations_enabled)
+pub(crate) fn new_completed_hook_cell(
+    run: HookRunSummary,
+    animations_enabled: bool,
+    show_output: bool,
+) -> HookCell {
+    HookCell::new_completed(run, animations_enabled, show_output)
 }
 
 /// Returns true for hook completions that should be invisible in history.
-fn hook_run_is_quiet_success(run: &HookRunSummary) -> bool {
-    run.status == HookRunStatus::Completed && run.entries.is_empty()
+fn hook_run_is_quiet_success(run: &HookRunSummary, show_output: bool) -> bool {
+    run.status == HookRunStatus::Completed && (!show_output || run.entries.is_empty())
 }
 
 fn hook_completed_bullet(status: HookRunStatus, entries: &[HookOutputEntry]) -> Span<'static> {
@@ -966,17 +982,59 @@ mod tests {
     }
 
     #[test]
+    fn completed_success_with_output_is_quiet_when_output_hidden() {
+        let cell = completed_hook_cell_with_output(
+            HookEventName::SessionStart,
+            HookRunStatus::Completed,
+            vec![HookOutputEntry {
+                kind: HookOutputEntryKind::Context,
+                text: "session context".to_string(),
+            }],
+            /*show_output*/ false,
+        );
+
+        assert_eq!(
+            line_texts(&cell.display_lines(/*width*/ 80)),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn failed_hook_hides_entries_but_keeps_status_when_output_hidden() {
+        let cell = completed_hook_cell_with_output(
+            HookEventName::PostToolUse,
+            HookRunStatus::Failed,
+            vec![HookOutputEntry {
+                kind: HookOutputEntryKind::Error,
+                text: "hook exited with code 7".to_string(),
+            }],
+            /*show_output*/ false,
+        );
+
+        assert_eq!(
+            line_texts(&cell.display_lines(/*width*/ 80)),
+            vec!["• PostToolUse hook (failed)".to_string()]
+        );
+    }
+
+    #[test]
     fn pending_hook_does_not_animate_transcript() {
-        let cell =
-            HookCell::new_active(hook_run_summary("hook-1"), /*animations_enabled*/ true);
+        let cell = HookCell::new_active(
+            hook_run_summary("hook-1"),
+            /*animations_enabled*/ true,
+            /*show_output*/ true,
+        );
 
         assert_eq!(cell.transcript_animation_tick(), None);
     }
 
     #[test]
     fn visible_hook_animates_transcript_when_animations_enabled() {
-        let mut cell =
-            HookCell::new_active(hook_run_summary("hook-1"), /*animations_enabled*/ true);
+        let mut cell = HookCell::new_active(
+            hook_run_summary("hook-1"),
+            /*animations_enabled*/ true,
+            /*show_output*/ true,
+        );
         cell.reveal_running_runs_now_for_test();
         cell.advance_time(Instant::now());
 
@@ -988,6 +1046,7 @@ mod tests {
         let mut cell = HookCell::new_active(
             hook_run_summary("hook-1"),
             /*animations_enabled*/ false,
+            /*show_output*/ true,
         );
         cell.reveal_running_runs_now_for_test();
         cell.advance_time(Instant::now());
@@ -1000,6 +1059,7 @@ mod tests {
         let mut cell = HookCell::new_active(
             hook_run_summary("hook-1"),
             /*animations_enabled*/ false,
+            /*show_output*/ true,
         );
         cell.reveal_running_runs_now_for_test();
         cell.advance_time(Instant::now());
@@ -1021,6 +1081,15 @@ mod tests {
         status: HookRunStatus,
         entries: Vec<HookOutputEntry>,
     ) -> HookCell {
+        completed_hook_cell_with_output(event_name, status, entries, /*show_output*/ true)
+    }
+
+    fn completed_hook_cell_with_output(
+        event_name: HookEventName,
+        status: HookRunStatus,
+        entries: Vec<HookOutputEntry>,
+        show_output: bool,
+    ) -> HookCell {
         let mut run = hook_run_summary("hook-1");
         run.event_name = event_name;
         run.status = status;
@@ -1028,7 +1097,7 @@ mod tests {
         run.completed_at = Some(2);
         run.duration_ms = Some(1);
         run.entries = entries;
-        HookCell::new_completed(run, /*animations_enabled*/ false)
+        HookCell::new_completed(run, /*animations_enabled*/ false, show_output)
     }
 
     fn line_texts(lines: &[Line<'_>]) -> Vec<String> {
