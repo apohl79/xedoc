@@ -947,7 +947,10 @@ impl App {
         if let Some(activity) =
             sub_agent_activity_item(notification).and_then(sub_agent_activity_display)
         {
+            let thread_id = activity.thread_id;
+            let is_running = activity.is_running_hint;
             self.agent_navigation.record_sub_agent_activity(activity);
+            self.set_active_agent_running(thread_id, is_running);
             self.sync_active_agent_label();
             return;
         }
@@ -958,6 +961,9 @@ impl App {
 
         for receiver_thread_id in receiver_thread_ids {
             if collab_receiver_is_not_found(notification, receiver_thread_id) {
+                if let Ok(thread_id) = ThreadId::from_string(receiver_thread_id) {
+                    self.set_active_agent_running(thread_id, /*is_running*/ false);
+                }
                 continue;
             }
 
@@ -969,14 +975,18 @@ impl App {
                 continue;
             };
 
-            if self.agent_navigation.get(&thread_id).is_some() {
-                continue;
+            if self.agent_navigation.get(&thread_id).is_none() {
+                self.upsert_agent_picker_thread(
+                    thread_id, /*agent_nickname*/ None, /*agent_role*/ None,
+                    /*is_closed*/ false,
+                );
             }
 
-            self.upsert_agent_picker_thread(
-                thread_id, /*agent_nickname*/ None, /*agent_role*/ None,
-                /*is_closed*/ false,
-            );
+            if let Some(is_running) =
+                collab_receiver_running_state(notification, receiver_thread_id)
+            {
+                self.set_active_agent_running(thread_id, is_running);
+            }
         }
     }
 

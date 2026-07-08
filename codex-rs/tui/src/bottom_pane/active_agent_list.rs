@@ -1,0 +1,123 @@
+use std::time::Duration;
+use std::time::Instant;
+
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::Style;
+use ratatui::style::Stylize;
+use ratatui::text::Line;
+use ratatui::text::Span;
+use ratatui::widgets::Paragraph;
+use ratatui::widgets::WidgetRef;
+
+use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
+use crate::render::line_utils::prefix_lines;
+use crate::render::renderable::Renderable;
+use crate::status_indicator_widget::fmt_elapsed_compact;
+use crate::tui::FrameRequester;
+
+const MAX_VISIBLE_AGENTS: usize = 7;
+const ELAPSED_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+
+#[derive(Clone, Debug)]
+pub(crate) struct ActiveAgentEntry {
+    pub(crate) name: String,
+    pub(crate) started_at: Instant,
+}
+
+pub(crate) struct ActiveAgentList {
+    agents: Vec<ActiveAgentEntry>,
+    frame_requester: FrameRequester,
+}
+
+impl ActiveAgentList {
+    pub(crate) fn new(frame_requester: FrameRequester) -> Self {
+        Self {
+            agents: Vec::new(),
+            frame_requester,
+        }
+    }
+
+    pub(crate) fn set_agents(&mut self, agents: Vec<ActiveAgentEntry>) {
+        self.agents = agents
+            .into_iter()
+            .filter_map(|mut entry| {
+                entry.name = entry.name.trim().to_string();
+                (!entry.name.is_empty()).then_some(entry)
+            })
+            .collect();
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.agents.is_empty()
+    }
+
+    fn display_lines_at(&self, width: u16, now: Instant) -> Vec<Line<'static>> {
+        if self.agents.is_empty() || width == 0 {
+            return Vec::new();
+        }
+
+        let max_width = usize::from(width);
+        let total = self.agents.len();
+        let visible_agents = total.min(MAX_VISIBLE_AGENTS);
+        let mut lines =
+            Vec::with_capacity(1 + visible_agents + usize::from(total > visible_agents));
+        lines.push(vec!["• ".dim(), "Agents ".bold(), format!("{total}").dim()].into());
+
+        let agent_lines = self.visible_agent_lines(now);
+        lines.extend(prefix_lines(agent_lines, "  └ ".dim(), "    ".into()));
+
+        lines
+            .into_iter()
+            .map(|line| truncate_line_with_ellipsis_if_overflow(line, max_width))
+            .collect()
+    }
+
+    fn visible_agent_lines(&self, now: Instant) -> Vec<Line<'static>> {
+        let mut lines: Vec<Line<'static>> = self
+            .agents
+            .iter()
+            .take(MAX_VISIBLE_AGENTS)
+            .map(|agent| Self::agent_line(agent, now))
+            .collect();
+        let hidden = self.agents.len().saturating_sub(MAX_VISIBLE_AGENTS);
+        if hidden > 0 {
+            lines.push(format!("... {hidden} more").dim().into());
+        }
+        lines
+    }
+
+    fn agent_line(agent: &ActiveAgentEntry, now: Instant) -> Line<'static> {
+        let elapsed =
+            fmt_elapsed_compact(now.saturating_duration_since(agent.started_at).as_secs());
+        vec![
+            "□ ".cyan().bold(),
+            Span::styled(agent.name.clone(), Style::default().cyan().bold()),
+            Span::from(" (").dim(),
+            Span::from(elapsed).dim(),
+            Span::from(")").dim(),
+        ]
+        .into()
+    }
+}
+
+impl Renderable for ActiveAgentList {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        if area.is_empty() {
+            return;
+        }
+        if !self.agents.is_empty() {
+            self.frame_requester
+                .schedule_frame_in(ELAPSED_REFRESH_INTERVAL);
+        }
+        Paragraph::new(self.display_lines_at(area.width, Instant::now())).render_ref(area, buf);
+    }
+
+    fn desired_height(&self, width: u16) -> u16 {
+        self.display_lines_at(width, Instant::now()).len() as u16
+    }
+}
+
+#[cfg(test)]
+#[path = "active_agent_list_tests.rs"]
+mod tests;

@@ -1175,10 +1175,15 @@ async fn collab_receiver_notification_caches_thread_without_app_server_read() {
             agent_nickname: None,
             agent_role: None,
             agent_path: None,
-            is_running: false,
+            is_running: true,
             is_closed: false,
         })
     );
+    assert!(
+        app.active_agent_started_at
+            .contains_key(&receiver_thread_id)
+    );
+    assert!(app.chat_widget.active_agent_list_visible());
 }
 
 #[tokio::test]
@@ -1213,6 +1218,69 @@ async fn collab_receiver_notification_does_not_cache_not_found_thread() {
     ));
 
     assert_eq!(app.agent_navigation.get(&receiver_thread_id), None);
+}
+
+#[tokio::test]
+async fn collab_receiver_completion_clears_active_agent_display() {
+    let mut app = make_test_app().await;
+    let receiver_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000125").expect("valid thread id");
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: ThreadId::new().to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: ThreadItem::CollabAgentToolCall {
+                id: "wait-1".to_string(),
+                tool: codex_app_server_protocol::CollabAgentTool::Wait,
+                status: codex_app_server_protocol::CollabAgentToolCallStatus::InProgress,
+                sender_thread_id: ThreadId::new().to_string(),
+                receiver_thread_ids: vec![receiver_thread_id.to_string()],
+                prompt: None,
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::new(),
+            },
+        }),
+    ));
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ItemCompleted(codex_app_server_protocol::ItemCompletedNotification {
+            thread_id: ThreadId::new().to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: ThreadItem::CollabAgentToolCall {
+                id: "wait-1".to_string(),
+                tool: codex_app_server_protocol::CollabAgentTool::Wait,
+                status: codex_app_server_protocol::CollabAgentToolCallStatus::Completed,
+                sender_thread_id: ThreadId::new().to_string(),
+                receiver_thread_ids: vec![receiver_thread_id.to_string()],
+                prompt: None,
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::from([(
+                    receiver_thread_id.to_string(),
+                    codex_app_server_protocol::CollabAgentState {
+                        status: codex_app_server_protocol::CollabAgentStatus::Completed,
+                        message: Some("done".to_string()),
+                    },
+                )]),
+            },
+        }),
+    ));
+
+    assert_eq!(
+        (
+            app.agent_navigation
+                .get(&receiver_thread_id)
+                .map(|entry| entry.is_running),
+            app.active_agent_started_at
+                .contains_key(&receiver_thread_id),
+            app.chat_widget.active_agent_list_visible(),
+        ),
+        (Some(false), false, false)
+    );
 }
 
 #[tokio::test]
@@ -4093,6 +4161,7 @@ async fn make_test_app() -> App {
         thread_event_channels: HashMap::new(),
         thread_event_listener_tasks: HashMap::new(),
         agent_navigation: AgentNavigationState::default(),
+        active_agent_started_at: HashMap::new(),
         side_threads: HashMap::new(),
         active_thread_id: None,
         active_thread_rx: None,
@@ -4158,6 +4227,7 @@ async fn make_test_app_with_channels() -> (
             thread_event_channels: HashMap::new(),
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
+            active_agent_started_at: HashMap::new(),
             side_threads: HashMap::new(),
             active_thread_id: None,
             active_thread_rx: None,

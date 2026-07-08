@@ -23,7 +23,7 @@ impl App {
                 && channel.attachment() == ThreadEventAttachment::Live
             {
                 let is_running = channel.store.lock().await.active_turn_id().is_some();
-                self.agent_navigation.set_running(thread_id, is_running);
+                self.set_active_agent_running(thread_id, is_running);
             } else {
                 self.refresh_agent_picker_thread_liveness(app_server, thread_id)
                     .await;
@@ -175,7 +175,66 @@ impl App {
         );
         self.agent_navigation
             .upsert(thread_id, agent_nickname, agent_role, is_closed);
+        if is_closed {
+            self.active_agent_started_at.remove(&thread_id);
+        }
         self.sync_active_agent_label();
+        self.sync_active_agent_display();
+    }
+
+    pub(super) fn set_active_agent_running(&mut self, thread_id: ThreadId, is_running: bool) {
+        self.agent_navigation.set_running(thread_id, is_running);
+        if is_running {
+            self.active_agent_started_at
+                .entry(thread_id)
+                .or_insert_with(Instant::now);
+        } else {
+            self.active_agent_started_at.remove(&thread_id);
+        }
+        self.sync_active_agent_display();
+    }
+
+    pub(super) fn sync_active_agent_display(&mut self) {
+        let now = Instant::now();
+        let mut active_thread_ids = Vec::new();
+        let mut agents = Vec::new();
+        for (thread_id, entry) in self.agent_navigation.ordered_threads() {
+            if Some(thread_id) == self.primary_thread_id || !entry.is_running || entry.is_closed {
+                continue;
+            }
+
+            active_thread_ids.push(thread_id);
+            let started_at = *self.active_agent_started_at.entry(thread_id).or_insert(now);
+            let mut name = format_agent_picker_item_name(
+                entry.agent_nickname.as_deref(),
+                entry.agent_role.as_deref(),
+                /*is_primary*/ false,
+            );
+            if name == "Agent" {
+                if let Some(path_name) = entry
+                    .agent_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|agent_path| !agent_path.is_empty())
+                    .and_then(|agent_path| {
+                        agent_path
+                            .rsplit('/')
+                            .find(|segment| !segment.trim().is_empty())
+                            .map(str::to_string)
+                    })
+                {
+                    name = path_name;
+                } else {
+                    let thread_id = thread_id.to_string();
+                    let short_id: String = thread_id.chars().take(8).collect();
+                    name = format!("Agent ({short_id})");
+                }
+            }
+            agents.push(ActiveAgentEntry { name, started_at });
+        }
+        self.active_agent_started_at
+            .retain(|thread_id, _| active_thread_ids.contains(thread_id));
+        self.chat_widget.set_active_agents(agents);
     }
 
     /// Marks a cached picker thread closed and recomputes the contextual footer label.
@@ -184,7 +243,9 @@ impl App {
     /// transcripts, and the stable next/previous traversal order should not collapse around them.
     pub(super) fn mark_agent_picker_thread_closed(&mut self, thread_id: ThreadId) {
         self.agent_navigation.mark_closed(thread_id);
+        self.active_agent_started_at.remove(&thread_id);
         self.sync_active_agent_label();
+        self.sync_active_agent_display();
     }
 
     pub(super) async fn refresh_agent_picker_thread_liveness(
@@ -221,12 +282,14 @@ impl App {
                     }),
                     is_closed,
                 );
-                self.agent_navigation.set_running(thread_id, is_running);
+                self.set_active_agent_running(thread_id, is_running);
                 true
             }
             Err(err) => {
                 if Self::is_terminal_thread_read_error(&err) && !has_replay_channel {
                     self.agent_navigation.remove(thread_id);
+                    self.active_agent_started_at.remove(&thread_id);
+                    self.sync_active_agent_display();
                     return false;
                 }
                 let is_closed = Self::closed_state_for_thread_read_error(
@@ -246,8 +309,7 @@ impl App {
                         is_closed,
                     );
                 }
-                self.agent_navigation
-                    .set_running(thread_id, /*is_running*/ false);
+                self.set_active_agent_running(thread_id, /*is_running*/ false);
                 true
             }
         }
@@ -344,6 +406,7 @@ impl App {
         }
         self.chat_widget = chat_widget;
         self.sync_active_agent_label();
+        self.sync_active_agent_display();
     }
 
     pub(super) async fn select_agent_thread(
@@ -483,11 +546,13 @@ impl App {
         self.primary_thread_id = None;
         self.last_subagent_backfill_attempt = None;
         self.primary_session_configured = None;
+        self.active_agent_started_at.clear();
         self.pending_primary_events.clear();
         self.pending_app_server_requests.clear();
         self.pending_startup_thread_start = false;
         self.chat_widget.set_pending_thread_approvals(Vec::new());
         self.sync_active_agent_label();
+        self.sync_active_agent_display();
     }
 
     pub(super) async fn handle_startup_thread_started(
@@ -693,6 +758,7 @@ impl App {
                 .set_agent_path(thread.thread_id, agent_path);
         }
         self.sync_active_agent_label();
+        self.sync_active_agent_display();
 
         !had_read_error
     }
