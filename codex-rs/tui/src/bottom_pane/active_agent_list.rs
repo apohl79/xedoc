@@ -13,6 +13,7 @@ use ratatui::widgets::WidgetRef;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::render::line_utils::prefix_lines;
 use crate::render::renderable::Renderable;
+use crate::status::format_tokens_compact;
 use crate::status_indicator_widget::fmt_elapsed_compact;
 use crate::tui::FrameRequester;
 
@@ -24,6 +25,7 @@ pub(crate) struct ActiveAgentEntry {
     pub(crate) name: String,
     pub(crate) started_at: Instant,
     pub(crate) provider_model: Option<String>,
+    pub(crate) total_tokens: Option<i64>,
 }
 
 pub(crate) struct ActiveAgentList {
@@ -48,6 +50,7 @@ impl ActiveAgentList {
                     .provider_model
                     .map(|provider_model| provider_model.trim().to_string())
                     .filter(|provider_model| !provider_model.is_empty());
+                entry.total_tokens = entry.total_tokens.filter(|tokens| *tokens > 0);
                 (!entry.name.is_empty()).then_some(entry)
             })
             .collect();
@@ -104,6 +107,10 @@ impl ActiveAgentList {
         if let Some(provider_model) = agent.provider_model.as_ref() {
             spans.push(Span::from(", ").dim());
             spans.push(Span::from(provider_model.clone()).dim());
+        }
+        if let Some(total_tokens) = agent.total_tokens {
+            spans.push(Span::from(", ").dim());
+            spans.push(Span::from(format_tokens_compact(total_tokens).to_lowercase()).dim());
         }
         spans.push(Span::from(")").dim());
         spans.into()

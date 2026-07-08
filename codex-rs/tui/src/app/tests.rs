@@ -1179,6 +1179,7 @@ async fn collab_receiver_notification_caches_thread_without_app_server_read() {
             agent_path: None,
             model_provider_id: None,
             model: None,
+            total_tokens: None,
             is_running: true,
             is_closed: false,
         })
@@ -1319,6 +1320,34 @@ async fn inactive_agent_turn_started_sets_active_agent_display() -> Result<()> {
 }
 
 #[tokio::test]
+async fn inactive_agent_token_usage_updates_active_agent_display_metadata() -> Result<()> {
+    let mut app = make_test_app().await;
+    let agent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-00000000012a").expect("valid thread id");
+    app.upsert_agent_picker_thread(
+        agent_thread_id,
+        Some("reviewer".to_string()),
+        Some("worker".to_string()),
+        /*is_closed*/ false,
+    );
+    app.set_active_agent_running(agent_thread_id, /*is_running*/ true);
+
+    app.enqueue_thread_notification(
+        agent_thread_id,
+        token_usage_notification(agent_thread_id, "turn-1", Some(100_000)),
+    )
+    .await?;
+
+    assert_eq!(
+        app.agent_navigation
+            .get(&agent_thread_id)
+            .and_then(|entry| entry.total_tokens),
+        Some(10)
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn inactive_agent_turn_completed_clears_active_agent_display() -> Result<()> {
     let mut app = make_test_app().await;
     let parent_thread_id =
@@ -1421,6 +1450,7 @@ async fn open_agent_picker_keeps_missing_threads_for_replay() -> Result<()> {
             agent_path: None,
             model_provider_id: None,
             model: None,
+            total_tokens: None,
             is_running: false,
             is_closed: true,
         })
@@ -1458,6 +1488,7 @@ async fn open_agent_picker_preserves_cached_metadata_for_replay_threads() -> Res
             agent_path: None,
             model_provider_id: None,
             model: None,
+            total_tokens: None,
             is_running: false,
             is_closed: true,
         })
@@ -1502,6 +1533,7 @@ async fn open_agent_picker_clears_completed_path_backed_agent_running_state() ->
             agent_path: Some("/root/child".to_string()),
             model_provider_id: None,
             model: None,
+            total_tokens: None,
             is_running: false,
             is_closed: false,
         })
@@ -1542,6 +1574,7 @@ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Resul
             agent_path: Some("/root/child".to_string()),
             model_provider_id: None,
             model: None,
+            total_tokens: None,
             is_running: false,
             is_closed: true,
         })
@@ -1600,6 +1633,7 @@ async fn open_agent_picker_marks_terminal_read_errors_closed() -> Result<()> {
             agent_path: None,
             model_provider_id: None,
             model: None,
+            total_tokens: None,
             is_running: false,
             is_closed: true,
         })
@@ -1642,6 +1676,7 @@ fn open_agent_picker_marks_loaded_threads_open() -> Result<()> {
                 agent_path: None,
                 model_provider_id: Some("openai".to_string()),
                 model: None,
+                total_tokens: None,
                 is_running: false,
                 is_closed: false,
             })
@@ -3126,6 +3161,7 @@ async fn inactive_thread_started_notification_initializes_replay_session() -> Re
             agent_path: None,
             model_provider_id: Some("agent-provider".to_string()),
             model: Some("gpt-agent".to_string()),
+            total_tokens: None,
             is_running: false,
             is_closed: false,
         })

@@ -12,6 +12,7 @@ use codex_ansi_escape::ansi_escape_line;
 use codex_config::types::StatusLineCommand;
 use codex_shell_command::shell_detect::ShellType;
 use codex_shell_command::shell_detect::default_user_shell;
+use ratatui::style::Stylize;
 use ratatui::text::Line;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -20,6 +21,7 @@ use tokio::time::timeout;
 
 const STATUS_LINE_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 const STATUS_LINE_COMMAND_STDERR_LOG_CAP: usize = 1_024;
+const STATUS_LINE_COMMAND_ERROR_CAP: usize = 160;
 const STATUS_LINE_COMMAND_STDOUT_CAP: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,7 +53,10 @@ pub(crate) async fn run_status_line_command(
         Ok(child) => child,
         Err(err) => {
             tracing::debug!(error = %err, program = %spec.program, "failed to spawn status line command");
-            return None;
+            return Some(error_line(format!(
+                "failed to start {}: {err}",
+                spec.program
+            )));
         }
     };
 
@@ -78,11 +83,17 @@ pub(crate) async fn run_status_line_command(
         Ok((Ok(status), stdout_bytes, stderr_bytes)) => (status, stdout_bytes, stderr_bytes),
         Ok((Err(err), _, _)) => {
             tracing::debug!(error = %err, program = %spec.program, "status line command failed");
-            return None;
+            return Some(error_line(format!(
+                "failed to wait for {}: {err}",
+                spec.program
+            )));
         }
         Err(_) => {
             tracing::debug!(program = %spec.program, "status line command timed out");
-            return None;
+            return Some(error_line(format!(
+                "timed out after {}s",
+                STATUS_LINE_COMMAND_TIMEOUT.as_secs()
+            )));
         }
     };
 
@@ -93,7 +104,10 @@ pub(crate) async fn run_status_line_command(
             stderr = %truncate_for_log(&stderr),
             "status line command exited unsuccessfully"
         );
-        return None;
+        let message = stderr_message(&stderr)
+            .map(|stderr| format!("{status}: {stderr}"))
+            .unwrap_or_else(|| status.to_string());
+        return Some(error_line(message));
     }
 
     line_from_stdout(&String::from_utf8_lossy(&stdout_bytes))
@@ -177,6 +191,36 @@ fn line_from_stdout(stdout: &str) -> Option<Line<'static>> {
     }
 }
 
+fn error_line(message: String) -> Line<'static> {
+    vec![
+        "statusline error: ".red().bold(),
+        truncate_for_display(&message).dim(),
+    ]
+    .into()
+}
+
+fn stderr_message(stderr: &str) -> Option<String> {
+    stderr
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(truncate_for_display)
+}
+
+fn truncate_for_display(value: &str) -> String {
+    let value = value.trim();
+    if value.len() <= STATUS_LINE_COMMAND_ERROR_CAP {
+        return value.to_string();
+    }
+
+    let mut truncated = value
+        .chars()
+        .take(STATUS_LINE_COMMAND_ERROR_CAP)
+        .collect::<String>();
+    truncated.push_str("...");
+    truncated
+}
+
 fn truncate_for_log(value: &str) -> String {
     let value = value.trim();
     if value.len() <= STATUS_LINE_COMMAND_STDERR_LOG_CAP {
@@ -231,6 +275,43 @@ mod tests {
         let line = line_from_stdout("\u{1b}[32mok\u{1b}[0m\nignored").expect("line");
 
         assert_eq!(line_text(&line), "ok");
+    }
+
+    #[test]
+    fn error_line_renders_statusline_failure_message() {
+        let line = error_line("exit status: 1: missing jq".to_string());
+
+        assert_eq!(
+            line_text(&line),
+            "statusline error: exit status: 1: missing jq"
+        );
+    }
+
+    #[test]
+    fn stderr_message_uses_first_non_empty_line() {
+        let message = stderr_message("\n  first error  \nsecond error");
+
+        assert_eq!(message, Some("first error".to_string()));
+    }
+
+    #[tokio::test]
+    async fn missing_command_returns_visible_error_line() {
+        let line = run_status_line_command(
+            StatusLineCommand::Args(vec![
+                "definitely-missing-statusline-command-for-test".to_string(),
+            ]),
+            "{}".to_string(),
+            std::env::current_dir().expect("current dir"),
+        )
+        .await
+        .expect("error line");
+
+        assert_eq!(
+            line_text(&line).starts_with(
+                "statusline error: failed to start definitely-missing-statusline-command-for-test"
+            ),
+            true
+        );
     }
 
     #[tokio::test]

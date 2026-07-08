@@ -22,6 +22,7 @@ fn display_lines_renders_elapsed_agent() {
         name: " reviewer ".to_string(),
         started_at: now - Duration::from_secs(326),
         provider_model: None,
+        total_tokens: None,
     }]);
 
     let rendered = list
@@ -41,6 +42,7 @@ fn display_lines_renders_provider_model() {
         name: " reviewer ".to_string(),
         started_at: now - Duration::from_secs(326),
         provider_model: Some(" openai/gpt-5.5 ".to_string()),
+        total_tokens: None,
     }]);
 
     let rendered = list
@@ -56,6 +58,29 @@ fn display_lines_renders_provider_model() {
 }
 
 #[test]
+fn display_lines_renders_provider_model_and_tokens() {
+    let now = Instant::now();
+    let mut list = ActiveAgentList::new(FrameRequester::test_dummy());
+    list.set_agents(vec![ActiveAgentEntry {
+        name: " reviewer ".to_string(),
+        started_at: now - Duration::from_secs(1931),
+        provider_model: Some(" openai/gpt-5.5 ".to_string()),
+        total_tokens: Some(42_000),
+    }]);
+
+    let rendered = list
+        .display_lines_at(/*width*/ 80, now)
+        .into_iter()
+        .map(|line| line.spans.into_iter().map(|span| span.content).collect())
+        .collect::<Vec<String>>();
+
+    assert_eq!(
+        rendered,
+        vec!["• Agents", "  └ □ reviewer (32m 11s, openai/gpt-5.5, 42k)"]
+    );
+}
+
+#[test]
 fn display_lines_caps_visible_agents() {
     let now = Instant::now();
     let mut list = ActiveAgentList::new(FrameRequester::test_dummy());
@@ -65,6 +90,7 @@ fn display_lines_caps_visible_agents() {
                 name: format!("agent-{index}"),
                 started_at: now,
                 provider_model: None,
+                total_tokens: None,
             })
             .collect(),
     );

@@ -910,6 +910,7 @@ impl App {
         };
         let notification_status_change = SideParentStatusChange::for_notification(&notification);
         self.sync_active_agent_running_state_for_notification(&notification);
+        self.sync_active_agent_token_usage_for_notification(&notification);
 
         if should_send {
             match sender.try_send(ThreadBufferedEvent::Notification(notification)) {
@@ -946,6 +947,7 @@ impl App {
         notification: &ServerNotification,
     ) {
         self.sync_active_agent_running_state_for_notification(notification);
+        self.sync_active_agent_token_usage_for_notification(notification);
 
         if let Some(activity) =
             sub_agent_activity_item(notification).and_then(sub_agent_activity_display)
@@ -1006,6 +1008,30 @@ impl App {
             return;
         }
         self.set_active_agent_running(thread_id, is_running);
+    }
+
+    fn sync_active_agent_token_usage_for_notification(
+        &mut self,
+        notification: &ServerNotification,
+    ) {
+        let ServerNotification::ThreadTokenUsageUpdated(notification) = notification else {
+            return;
+        };
+        let Ok(thread_id) = ThreadId::from_string(&notification.thread_id) else {
+            tracing::warn!(
+                thread_id = notification.thread_id,
+                "ignoring app-server ThreadTokenUsageUpdated with invalid thread_id during local agent caching"
+            );
+            return;
+        };
+        if self.primary_thread_id == Some(thread_id)
+            || self.agent_navigation.get(&thread_id).is_none()
+        {
+            return;
+        }
+        self.agent_navigation
+            .set_total_tokens(thread_id, Some(notification.token_usage.total.total_tokens));
+        self.sync_active_agent_display();
     }
 
     pub(super) async fn infer_session_for_thread_notification(
