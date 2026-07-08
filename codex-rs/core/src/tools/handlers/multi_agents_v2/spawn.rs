@@ -121,7 +121,6 @@ async fn handle_spawn_agent(
                         author,
                         new_agent_path.clone(),
                         message,
-                        ToolMessageFormat::from_parent_provider(turn.provider.info()),
                         ToolMessageKind::NewTask,
                     );
                     Op::InterAgentCommunication { communication }

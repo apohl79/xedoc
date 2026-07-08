@@ -41,24 +41,6 @@ mod spawn;
 pub(crate) mod wait;
 
 #[derive(Clone, Copy)]
-pub(super) enum ToolMessageFormat {
-    EncryptedContent,
-    PlaintextEnvelope,
-}
-
-impl ToolMessageFormat {
-    pub(super) fn from_parent_provider(
-        provider: &codex_model_provider_info::ModelProviderInfo,
-    ) -> Self {
-        if provider.is_openai() {
-            Self::EncryptedContent
-        } else {
-            Self::PlaintextEnvelope
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
 pub(super) enum ToolMessageKind {
     NewTask,
     Message,
@@ -81,36 +63,24 @@ pub(super) fn communication_from_tool_message(
     author: AgentPath,
     recipient: AgentPath,
     message: String,
-    message_format: ToolMessageFormat,
     message_kind: ToolMessageKind,
 ) -> InterAgentCommunication {
-    match message_format {
-        ToolMessageFormat::EncryptedContent => InterAgentCommunication::new_encrypted(
-            author,
-            recipient,
-            Vec::new(),
-            message,
-            message_kind.trigger_turn(),
-        ),
-        ToolMessageFormat::PlaintextEnvelope => {
-            let message_type = message_kind.label();
-            // `message` is model-controlled and may contain lines that look like
-            // envelope headers (e.g. `Sender:`). It is deliberately not escaped:
-            // the recipient is a model, not a parser, so no escaping is robust
-            // against reframing, and mangling the payload would corrupt legitimate
-            // messages. Sender/recipient identity is authoritative via the
-            // structured `AgentMessage.author`/`.recipient` fields set in
-            // `to_model_input_item`, not this advisory text header.
-            let content = format!(
-                "Message Type: {message_type}\nTask name: {recipient}\nSender: {author}\nPayload:\n{message}"
-            );
-            InterAgentCommunication::new(
-                author,
-                recipient,
-                Vec::new(),
-                content,
-                message_kind.trigger_turn(),
-            )
-        }
-    }
+    let message_type = message_kind.label();
+    // `message` is model-controlled and may contain lines that look like
+    // envelope headers (e.g. `Sender:`). It is deliberately not escaped:
+    // the recipient is a model, not a parser, so no escaping is robust
+    // against reframing, and mangling the payload would corrupt legitimate
+    // messages. Sender/recipient identity is authoritative via the
+    // structured `AgentMessage.author`/`.recipient` fields set in
+    // `to_model_input_item`, not this advisory text header.
+    let content = format!(
+        "Message Type: {message_type}\nTask name: {recipient}\nSender: {author}\nPayload:\n{message}"
+    );
+    InterAgentCommunication::new(
+        author,
+        recipient,
+        Vec::new(),
+        content,
+        message_kind.trigger_turn(),
+    )
 }
