@@ -2520,7 +2520,7 @@ async fn status_line_command_output_overrides_builtin_status_line_items() {
 }
 
 #[tokio::test]
-async fn pending_status_line_command_falls_back_to_builtin_status_line_items() {
+async fn pending_status_line_command_hides_builtin_status_line_items() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
     chat.config.tui_status_line = Some(vec!["model".to_string()]);
     chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
@@ -2530,11 +2530,11 @@ async fn pending_status_line_command_falls_back_to_builtin_status_line_items() {
 
     chat.refresh_status_line();
 
-    assert_eq!(status_line_text(&chat), Some("gpt-test".to_string()));
+    assert_eq!(status_line_text(&chat), None);
 }
 
 #[tokio::test]
-async fn pending_status_line_command_fallback_footer_snapshot() {
+async fn pending_status_line_command_hidden_footer_snapshot() {
     use ratatui::Terminal;
 
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
@@ -2551,9 +2551,9 @@ async fn pending_status_line_command_fallback_footer_snapshot() {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
     terminal
         .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw statusline fallback footer");
+        .expect("draw pending statusline command footer");
     assert_chatwidget_snapshot!(
-        "pending_status_line_command_fallback_footer",
+        "pending_status_line_command_hidden_footer",
         normalized_backend_snapshot(terminal.backend())
     );
 }
