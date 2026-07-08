@@ -96,7 +96,6 @@ pub(crate) async fn handle_message_string_tool(
         author,
         receiver_agent_path.clone(),
         message,
-        ToolMessageFormat::from_parent_provider(turn.provider.info()),
         mode.tool_message_kind(),
     );
     let kind = match mode {

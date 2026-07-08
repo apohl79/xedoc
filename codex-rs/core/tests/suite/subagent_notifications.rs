@@ -1070,8 +1070,8 @@ async fn spawned_multi_agent_v2_child_inherits_parent_developer_context() -> Res
     Ok(())
 }
 
-#[tokio::test]
-async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result<()> {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn openai_multi_agent_v2_spawn_sends_plaintext_agent_message_to_child() -> Result<()> {
     let output: &'static Mutex<Vec<u8>> = Box::leak(Box::new(Mutex::new(Vec::new())));
     let subscriber = tracing_subscriber::fmt()
         .with_ansi(false)
@@ -1081,9 +1081,9 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
     let _guard = tracing::subscriber::set_default(subscriber);
 
     let server = start_mock_server().await;
-    let encrypted_message = "opaque-encrypted-message";
+    let message = "plain child task from openai parent";
     let spawn_args = serde_json::to_string(&json!({
-        "message": encrypted_message,
+        "message": message,
         "task_name": "worker",
     }))?;
     mount_sse_once_match(
@@ -1103,9 +1103,7 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
     .await;
     let child_request_log = mount_sse_once_match(
         &server,
-        |req: &wiremock::Request| {
-            has_agent_message_input_containing(req, "opaque-encrypted-message")
-        },
+        |req: &wiremock::Request| has_agent_message_input_containing(req, message),
         sse(vec![
             ev_response_created("resp-child-1"),
             ev_completed("resp-child-1"),
@@ -1162,16 +1160,10 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
             "type": "agent_message",
             "author": "/root",
             "recipient": "/root/worker",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\n",
-                },
-                {
-                    "type": "encrypted_content",
-                    "encrypted_content": encrypted_message,
-                },
-            ],
+            "content": [{
+                "type": "input_text",
+                "text": "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nplain child task from openai parent",
+            }],
         })])
     );
 
@@ -1200,7 +1192,8 @@ async fn encrypted_multi_agent_v2_spawn_sends_agent_message_to_child() -> Result
         .expect("spawn send event");
     assert!(send.contains(&format!("sender_thread_id={root_thread_id}")));
     assert!(send.contains(&format!("receiver_thread_id={child_thread_id}")));
-    assert!(send.contains(&format!("content=\"{encrypted_message}\"")));
+    assert!(send.contains("Message Type: NEW_TASK"));
+    assert!(send.contains(message));
 
     let communication_id = log_field(send, "communication_id").expect("communication ID");
     logs.lines()
@@ -1303,7 +1296,7 @@ async fn plaintext_multi_agent_v2_completion_sends_agent_message(
 ) -> Result<()> {
     let server = start_mock_server().await;
     let spawn_args = serde_json::to_string(&json!({
-        "message": "opaque-encrypted-message",
+        "message": "completion seed task",
         "task_name": "worker",
     }))?;
     mount_sse_once_match(

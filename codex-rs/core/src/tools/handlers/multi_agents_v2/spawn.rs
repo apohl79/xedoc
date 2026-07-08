@@ -112,7 +112,6 @@ async fn handle_spawn_agent(
         author,
         new_agent_path.clone(),
         message,
-        ToolMessageFormat::from_parent_provider(turn.provider.info()),
         ToolMessageKind::NewTask,
     );
     let context = AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
