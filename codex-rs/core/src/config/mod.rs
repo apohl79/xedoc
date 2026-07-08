@@ -676,6 +676,10 @@ pub struct Config {
     /// Defaults to `false`.
     pub show_raw_agent_reasoning: bool,
 
+    /// When set to `true`, hook output entries will be shown in the UI/output.
+    /// Defaults to `false`.
+    pub show_hook_output: bool,
+
     /// Base instructions override.
     pub base_instructions: Option<String>,
 
@@ -3871,6 +3875,7 @@ impl Config {
                 .show_raw_agent_reasoning
                 .or(show_raw_agent_reasoning)
                 .unwrap_or(false),
+            show_hook_output: cfg.show_hook_output.unwrap_or(false),
             guardian_policy_config,
             model_reasoning_effort: cfg.model_reasoning_effort,
             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,

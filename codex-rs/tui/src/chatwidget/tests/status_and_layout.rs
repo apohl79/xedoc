@@ -3617,6 +3617,7 @@ async fn deltas_then_same_final_message_are_rendered_snapshot() {
 #[tokio::test]
 async fn user_prompt_submit_app_server_hook_notifications_render_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
 
     chat.handle_server_notification(
         ServerNotification::HookStarted(AppServerHookStartedNotification {
@@ -3782,6 +3783,7 @@ async fn quiet_hook_linger_starts_when_delayed_redraw_reveals_hook() {
 #[tokio::test]
 async fn blocked_and_failed_hooks_render_feedback_and_errors() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
 
     handle_hook_completed(
         &mut chat,
@@ -3828,6 +3830,7 @@ async fn blocked_and_failed_hooks_render_feedback_and_errors() {
 #[tokio::test]
 async fn completed_hook_with_output_flushes_immediately() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
 
     handle_hook_started(
         &mut chat,
@@ -3867,6 +3870,7 @@ async fn completed_hook_with_output_flushes_immediately() {
 #[tokio::test]
 async fn completed_hook_output_precedes_following_assistant_message() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
 
     handle_hook_started(
         &mut chat,
@@ -3924,6 +3928,7 @@ async fn completed_hook_output_precedes_following_assistant_message() {
 #[tokio::test]
 async fn completed_same_id_hook_output_survives_restart() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
     let hook_id = "stop:0:/tmp/hooks.json";
 
     handle_hook_started(
@@ -4165,6 +4170,7 @@ async fn hidden_active_hook_does_not_add_transcript_separator() {
 #[tokio::test]
 async fn hook_completed_before_reveal_renders_completed_without_running_flash() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.show_hook_output = true;
 
     handle_hook_started(
         &mut chat,
@@ -4196,6 +4202,37 @@ async fn hook_completed_before_reveal_renders_completed_without_running_flash() 
     assert_chatwidget_snapshot!(
         "hook_completed_before_reveal_renders_completed_without_running_flash_snapshot",
         format!("started hidden:\n{started_hidden_snapshot}\nhistory:\n{history}")
+    );
+}
+
+#[tokio::test]
+async fn completed_success_hook_output_is_hidden_by_default() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    handle_hook_completed(
+        &mut chat,
+        hook_completed_run(
+            "session-start:0:/tmp/hooks.json",
+            codex_app_server_protocol::HookEventName::SessionStart,
+            codex_app_server_protocol::HookRunStatus::Completed,
+            vec![codex_app_server_protocol::HookOutputEntry {
+                kind: codex_app_server_protocol::HookOutputEntryKind::Context,
+                text: "session context\nsecond line".to_string(),
+            }],
+        ),
+    );
+
+    assert_eq!(
+        (
+            drain_insert_history(&mut rx),
+            active_hook_blob(&chat),
+            chat.config.show_hook_output,
+        ),
+        (
+            Vec::<Vec<Line<'static>>>::new(),
+            "<empty>\n".to_string(),
+            false
+        )
     );
 }
 
