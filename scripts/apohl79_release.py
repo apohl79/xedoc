@@ -18,6 +18,8 @@ DEFAULT_REF = "main-fork"
 DEFAULT_SUFFIX = "apohl79"
 DEFAULT_GITHUB_REPO = "apohl79/codex"
 DEFAULT_GITHUB_ACCOUNT = "apohl79"
+FORK_BUILD_NUMBER_RELATIVE_PATH = Path("scripts/apohl79_build_number.txt")
+FORK_BUILD_NUMBER_PATH = REPO_ROOT / FORK_BUILD_NUMBER_RELATIVE_PATH
 FORK_CARGO_BUILD_JOBS_ENV_VAR = "APOHL79_CARGO_BUILD_JOBS"
 PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
 DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
@@ -174,7 +176,9 @@ def build_release(args: argparse.Namespace) -> None:
     ensure_current_checkout_matches_ref(args.ref)
     ensure_git_path_clean(cargo_toml)
     ensure_git_path_clean(cargo_lock)
+    ensure_git_path_clean(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
     base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
+    build_number = read_fork_build_number(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
     repair_stale_release_lockfiles(
         cargo=args.cargo,
         source_root=source_root,
@@ -182,7 +186,11 @@ def build_release(args: argparse.Namespace) -> None:
         cargo_lock=cargo_lock,
         target=args.target,
     )
-    fork_version = fork_version_from_base(base_version, args.version_suffix)
+    fork_version = fork_version_from_base(
+        base_version,
+        args.version_suffix,
+        build_number,
+    )
 
     env = os.environ.copy()
     env["CARGO_TARGET_DIR"] = str(target_dir)
@@ -632,20 +640,42 @@ def derive_fork_version(
     describe_tag: str | None = None,
     ls_remote_stdout: str,
     suffix: str = DEFAULT_SUFFIX,
+    build_number: int,
 ) -> str:
     _ = describe_tag
     if cargo_version != WORKSPACE_VERSION_SENTINEL:
         base_version = validate_release_version(cargo_version)
     else:
         base_version = latest_release_version_from_ls_remote(ls_remote_stdout)
-    return fork_version_from_base(base_version, suffix)
+    return fork_version_from_base(base_version, suffix, build_number)
 
 
-def fork_version_from_base(base_version: str, suffix: str) -> str:
+def read_fork_build_number(path: Path = FORK_BUILD_NUMBER_PATH) -> int:
+    try:
+        raw_value = path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError as err:
+        raise RuntimeError(f"Fork build number file not found: {path}") from err
+
+    if not raw_value:
+        raise RuntimeError(f"Fork build number file is empty: {path}")
+    try:
+        build_number = int(raw_value)
+    except ValueError as err:
+        raise RuntimeError(
+            f"Fork build number must be a positive integer in {path}: {raw_value!r}"
+        ) from err
+    if build_number <= 0:
+        raise RuntimeError(f"Fork build number must be at least 1 in {path}.")
+    return build_number
+
+
+def fork_version_from_base(base_version: str, suffix: str, build_number: int) -> str:
     validate_release_version(base_version)
     if not suffix:
         raise RuntimeError("Version suffix must not be empty.")
-    return f"{base_version}-{suffix}"
+    if build_number <= 0:
+        raise RuntimeError("Fork build number must be at least 1.")
+    return f"{base_version}-{suffix}-{build_number}"
 
 
 def github_release_tag(fork_version: str) -> str:

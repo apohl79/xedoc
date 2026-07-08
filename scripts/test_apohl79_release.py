@@ -30,8 +30,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "abc\trefs/tags/rust-v0.140.0-alpha.19\n"
                     "def\trefs/tags/rust-v0.140.0-alpha.19^{}\n"
                 ),
+                build_number=1,
             ),
-            "0.141.0-apohl79",
+            "0.141.0-apohl79-1",
         )
 
     def test_release_version_falls_back_to_latest_valid_upstream_tag(self) -> None:
@@ -46,8 +47,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "ddd\trefs/tags/rust-v0.139.0\n"
                     "eee\trefs/tags/rust-v0.140.0-alpha.10\n"
                 ),
+                build_number=12,
             ),
-            "0.140.0-alpha.10-apohl79",
+            "0.140.0-alpha.10-apohl79-12",
         )
 
     def test_release_version_uses_latest_upstream_tag_instead_of_reachable_tag(
@@ -58,22 +60,47 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 "0.0.0",
                 describe_tag="rust-v0.139.0",
                 ls_remote_stdout="aaa\trefs/tags/rust-v0.140.0-alpha.10\n",
+                build_number=7,
             ),
-            "0.140.0-alpha.10-apohl79",
+            "0.140.0-alpha.10-apohl79-7",
         )
 
     def test_release_version_ignores_reachable_fork_tag(self) -> None:
         self.assertEqual(
             derive_fork_version(
                 "0.0.0",
-                describe_tag="rust-v0.140.0-alpha.10-apohl79",
+                describe_tag="rust-v0.140.0-alpha.10-apohl79-41",
                 ls_remote_stdout=(
                     "aaa\trefs/tags/rust-v0.140.0-alpha.20\n"
                     "bbb\trefs/tags/rust-v0.140.0-alpha.21\n"
                 ),
+                build_number=42,
             ),
-            "0.140.0-alpha.21-apohl79",
+            "0.140.0-alpha.21-apohl79-42",
         )
+
+    def test_read_fork_build_number_accepts_minimum(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "apohl79_build_number.txt"
+            path.write_text("1\n", encoding="utf-8")
+
+            self.assertEqual(apohl79_release.read_fork_build_number(path), 1)
+
+    def test_read_fork_build_number_rejects_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "apohl79_build_number.txt"
+            path.write_text("0\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "must be at least 1"):
+                apohl79_release.read_fork_build_number(path)
+
+    def test_read_fork_build_number_rejects_non_integer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "apohl79_build_number.txt"
+            path.write_text("build-1\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "must be a positive integer"):
+                apohl79_release.read_fork_build_number(path)
 
     def test_latest_release_version_rejects_missing_valid_tags(self) -> None:
         with self.assertRaisesRegex(
@@ -83,8 +110,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
     def test_github_release_tag_uses_rust_prefix(self) -> None:
         self.assertEqual(
-            apohl79_release.github_release_tag("0.141.0-apohl79"),
-            "rust-v0.141.0-apohl79",
+            apohl79_release.github_release_tag("0.141.0-apohl79-1"),
+            "rust-v0.141.0-apohl79-1",
         )
 
     def test_github_release_env_uses_configured_account_token(self) -> None:
@@ -148,8 +175,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
             apohl79_release.publish_github_release(
                 gh="gh",
                 repo="apohl79/codex",
-                tag="rust-v0.141.0-apohl79",
-                title="0.141.0-apohl79",
+                tag="rust-v0.141.0-apohl79-1",
+                title="0.141.0-apohl79-1",
                 target="abc123",
                 archive_outputs=[Path("/tmp/codex.zip")],
             )
@@ -162,7 +189,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "gh",
                         "release",
                         "view",
-                        "rust-v0.141.0-apohl79",
+                        "rust-v0.141.0-apohl79-1",
                         "--repo",
                         "apohl79/codex",
                     ],
@@ -175,13 +202,13 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "gh",
                         "release",
                         "create",
-                        "rust-v0.141.0-apohl79",
+                        "rust-v0.141.0-apohl79-1",
                         "--repo",
                         "apohl79/codex",
                         "--title",
-                        "0.141.0-apohl79",
+                        "0.141.0-apohl79-1",
                         "--notes",
-                        "apohl79 Codex 0.141.0-apohl79",
+                        "apohl79 Codex 0.141.0-apohl79-1",
                         "--target",
                         "abc123",
                     ],
@@ -194,7 +221,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "gh",
                         "release",
                         "upload",
-                        "rust-v0.141.0-apohl79",
+                        "rust-v0.141.0-apohl79-1",
                         "/tmp/codex.zip",
                         "--repo",
                         "apohl79/codex",
@@ -226,8 +253,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
             apohl79_release.publish_github_release(
                 gh="gh",
                 repo="apohl79/codex",
-                tag="rust-v0.141.0-apohl79",
-                title="0.141.0-apohl79",
+                tag="rust-v0.141.0-apohl79-1",
+                title="0.141.0-apohl79-1",
                 target="abc123",
                 archive_outputs=[Path("/tmp/codex-a.zip"), Path("/tmp/codex-b.zip")],
             )
@@ -294,6 +321,10 @@ class Apohl79ReleaseTest(unittest.TestCase):
             cargo_toml.write_text(original_cargo_toml, encoding="utf-8")
             cargo_lock.write_text(original_cargo_lock, encoding="utf-8")
             (repo_root / "scripts").mkdir()
+            (repo_root / "scripts/apohl79_build_number.txt").write_text(
+                "9\n",
+                encoding="utf-8",
+            )
             (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
             target_dir = repo_root / "target"
             commands = []
@@ -405,7 +436,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             self.assertIsNotNone(cargo_env)
             assert cargo_env is not None
             self.assertEqual(cargo_env["CARGO_TARGET_DIR"], str(target_dir.resolve()))
-            self.assertEqual(cargo_env["CODEX_RELEASE_VERSION"], "0.141.0-apohl79")
+            self.assertEqual(cargo_env["CODEX_RELEASE_VERSION"], "0.141.0-apohl79-9")
             self.assertEqual(cargo_env["CARGO_BUILD_JOBS"], "4")
             package_commands = [
                 command
@@ -417,7 +448,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             version_arg_index = package_command.index("--version")
             self.assertEqual(
                 package_command[version_arg_index + 1],
-                "0.141.0-apohl79",
+                "0.141.0-apohl79-9",
             )
             signing_commands = [
                 command
@@ -446,6 +477,10 @@ class Apohl79ReleaseTest(unittest.TestCase):
             )
             cargo_lock.write_text("version = 4\n", encoding="utf-8")
             (repo_root / "scripts").mkdir()
+            (repo_root / "scripts/apohl79_build_number.txt").write_text(
+                "10\n",
+                encoding="utf-8",
+            )
             (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
             target_dir = repo_root / "target"
             archive_output = Path("dist/apohl79/custom.zip")
@@ -547,8 +582,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 {
                     "gh": "custom-gh",
                     "repo": "apohl79/codex",
-                    "tag": "rust-v0.141.0-apohl79",
-                    "title": "0.141.0-apohl79",
+                    "tag": "rust-v0.141.0-apohl79-10",
+                    "title": "0.141.0-apohl79-10",
                     "target": "c" * 40,
                     "archive_outputs": [(repo_root / archive_output).resolve()],
                     "env": {"GH_TOKEN": "secret-token"},
@@ -600,6 +635,10 @@ class Apohl79ReleaseTest(unittest.TestCase):
             cargo_toml.write_text(original_cargo_toml, encoding="utf-8")
             cargo_lock.write_text(stale_cargo_lock, encoding="utf-8")
             (repo_root / "scripts").mkdir()
+            (repo_root / "scripts/apohl79_build_number.txt").write_text(
+                "11\n",
+                encoding="utf-8",
+            )
             (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
             target_dir = repo_root / "target"
             commands = []
@@ -839,6 +878,11 @@ class Apohl79ReleaseTest(unittest.TestCase):
             original_cargo_lock = "version = 4\n"
             cargo_toml.write_text(original_cargo_toml, encoding="utf-8")
             cargo_lock.write_text(original_cargo_lock, encoding="utf-8")
+            (repo_root / "scripts").mkdir()
+            (repo_root / "scripts/apohl79_build_number.txt").write_text(
+                "12\n",
+                encoding="utf-8",
+            )
             target_dir = repo_root / "target"
 
             def failing_run(
