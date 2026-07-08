@@ -67,6 +67,8 @@ use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadSettings;
 use codex_app_server_protocol::ThreadSettingsUpdatedNotification;
 use codex_app_server_protocol::ThreadStartedNotification;
+use codex_app_server_protocol::ThreadStatus;
+use codex_app_server_protocol::ThreadStatusChangedNotification;
 use codex_app_server_protocol::ThreadTokenUsage;
 use codex_app_server_protocol::ThreadTokenUsageUpdatedNotification;
 use codex_app_server_protocol::TokenUsageBreakdown;
@@ -1281,6 +1283,117 @@ async fn collab_receiver_completion_clears_active_agent_display() {
         ),
         (Some(false), false, false)
     );
+}
+
+#[tokio::test]
+async fn inactive_agent_turn_started_sets_active_agent_display() -> Result<()> {
+    let mut app = make_test_app().await;
+    let agent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000126").expect("valid thread id");
+    app.upsert_agent_picker_thread(
+        agent_thread_id,
+        Some("reviewer".to_string()),
+        Some("worker".to_string()),
+        /*is_closed*/ false,
+    );
+
+    app.enqueue_thread_notification(
+        agent_thread_id,
+        turn_started_notification(agent_thread_id, "turn-1"),
+    )
+    .await?;
+
+    assert_eq!(
+        (
+            app.agent_navigation
+                .get(&agent_thread_id)
+                .map(|entry| entry.is_running),
+            app.active_agent_started_at.contains_key(&agent_thread_id),
+            app.chat_widget.active_agent_list_visible(),
+        ),
+        (Some(true), true, true)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn inactive_agent_turn_completed_clears_active_agent_display() -> Result<()> {
+    let mut app = make_test_app().await;
+    let parent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000127").expect("valid thread id");
+    let agent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000128").expect("valid thread id");
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ItemCompleted(codex_app_server_protocol::ItemCompletedNotification {
+            thread_id: parent_thread_id.to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: ThreadItem::SubAgentActivity {
+                id: "activity-1".to_string(),
+                kind: codex_app_server_protocol::SubAgentActivityKind::Started,
+                agent_thread_id: agent_thread_id.to_string(),
+                agent_path: "/root/reviewer".to_string(),
+            },
+        }),
+    ));
+
+    app.enqueue_thread_notification(
+        agent_thread_id,
+        turn_completed_notification(agent_thread_id, "agent-turn", TurnStatus::Completed),
+    )
+    .await?;
+
+    assert_eq!(
+        (
+            app.agent_navigation
+                .get(&agent_thread_id)
+                .map(|entry| entry.is_running),
+            app.active_agent_started_at.contains_key(&agent_thread_id),
+            app.chat_widget.active_agent_list_visible(),
+        ),
+        (Some(false), false, false)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn inactive_agent_idle_status_clears_active_agent_display() -> Result<()> {
+    let mut app = make_test_app().await;
+    let agent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000129").expect("valid thread id");
+    app.upsert_agent_picker_thread(
+        agent_thread_id,
+        Some("reviewer".to_string()),
+        Some("worker".to_string()),
+        /*is_closed*/ false,
+    );
+    app.enqueue_thread_notification(
+        agent_thread_id,
+        turn_started_notification(agent_thread_id, "turn-1"),
+    )
+    .await?;
+
+    app.enqueue_thread_notification(
+        agent_thread_id,
+        ServerNotification::ThreadStatusChanged(ThreadStatusChangedNotification {
+            thread_id: agent_thread_id.to_string(),
+            status: ThreadStatus::Idle,
+        }),
+    )
+    .await?;
+
+    assert_eq!(
+        (
+            app.agent_navigation
+                .get(&agent_thread_id)
+                .map(|entry| entry.is_running),
+            app.active_agent_started_at.contains_key(&agent_thread_id),
+            app.chat_widget.active_agent_list_visible(),
+        ),
+        (Some(false), false, false)
+    );
+    Ok(())
 }
 
 #[tokio::test]
