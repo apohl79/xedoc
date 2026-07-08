@@ -897,6 +897,7 @@ impl App {
             (guard.active, guard.side_parent_pending_status())
         };
         let notification_status_change = SideParentStatusChange::for_notification(&notification);
+        self.sync_active_agent_running_state_for_notification(&notification);
 
         if should_send {
             match sender.try_send(ThreadBufferedEvent::Notification(notification)) {
@@ -932,6 +933,8 @@ impl App {
         &mut self,
         notification: &ServerNotification,
     ) {
+        self.sync_active_agent_running_state_for_notification(notification);
+
         if let Some(activity) =
             sub_agent_activity_item(notification).and_then(sub_agent_activity_display)
         {
@@ -976,6 +979,21 @@ impl App {
                 self.set_active_agent_running(thread_id, is_running);
             }
         }
+    }
+
+    fn sync_active_agent_running_state_for_notification(
+        &mut self,
+        notification: &ServerNotification,
+    ) {
+        let Some((thread_id, is_running)) = thread_notification_running_state(notification) else {
+            return;
+        };
+        if self.primary_thread_id == Some(thread_id)
+            || self.agent_navigation.get(&thread_id).is_none()
+        {
+            return;
+        }
+        self.set_active_agent_running(thread_id, is_running);
     }
 
     pub(super) async fn infer_session_for_thread_notification(

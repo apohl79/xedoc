@@ -328,6 +328,40 @@ fn collab_receiver_running_state(
     }
 }
 
+fn thread_notification_running_state(
+    notification: &ServerNotification,
+) -> Option<(ThreadId, bool)> {
+    let (thread_id, is_running) = match notification {
+        ServerNotification::ThreadStarted(notification) => (
+            notification.thread.id.as_str(),
+            matches!(
+                &notification.thread.status,
+                codex_app_server_protocol::ThreadStatus::Active { .. }
+            ),
+        ),
+        ServerNotification::ThreadStatusChanged(notification) => (
+            notification.thread_id.as_str(),
+            matches!(
+                &notification.status,
+                codex_app_server_protocol::ThreadStatus::Active { .. }
+            ),
+        ),
+        ServerNotification::TurnStarted(notification) => (notification.thread_id.as_str(), true),
+        ServerNotification::TurnCompleted(notification) => (
+            notification.thread_id.as_str(),
+            matches!(
+                &notification.turn.status,
+                codex_app_server_protocol::TurnStatus::InProgress
+            ),
+        ),
+        ServerNotification::ThreadClosed(notification) => (notification.thread_id.as_str(), false),
+        _ => return None,
+    };
+    ThreadId::from_string(thread_id)
+        .ok()
+        .map(|thread_id| (thread_id, is_running))
+}
+
 fn default_exec_approval_decisions(
     network_approval_context: Option<&codex_app_server_protocol::NetworkApprovalContext>,
     proposed_execpolicy_amendment: Option<&codex_app_server_protocol::ExecPolicyAmendment>,
