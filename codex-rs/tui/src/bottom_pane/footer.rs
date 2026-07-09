@@ -791,7 +791,8 @@ pub(crate) fn configured_status_line(props: &FooterProps) -> Option<Line<'static
 
 /// Returns the active thread label for right-side footer context.
 pub(crate) fn active_agent_context_line(active_agent_label: Option<&str>) -> Option<Line<'static>> {
-    active_agent_label.map(|active_agent_label| Line::from(active_agent_label.to_string()).dim())
+    active_agent_label
+        .map(|active_agent_label| Line::from(active_agent_label.to_string()).dark_gray())
 }
 
 /// Whether the current footer mode allows contextual information to replace instructional hints.
@@ -1998,6 +1999,14 @@ mod tests {
         };
 
         snapshot_footer("footer_status_line_with_active_agent_label", props);
+    }
+
+    #[test]
+    fn active_agent_context_line_uses_dark_gray() {
+        assert_eq!(
+            active_agent_context_line(Some("Robie [explorer]")),
+            Some(Line::from("Robie [explorer]").dark_gray())
+        );
     }
 
     #[test]
