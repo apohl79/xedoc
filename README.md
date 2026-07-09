@@ -32,11 +32,17 @@ Then simply run `codex` to get started.
 
 - Extended TUI `@` file-path completion.
 - Custom TUI status line support.
+- Active agent and active thread context in the bottom pane.
 - TUI session names shown at the top-right of the user entry box.
 - Automatic short session names with a `/rename --auto on|off` toggle and
   `/rename` override.
 - Persistent active task list above the user entry field while a turn is running.
+- Optional hook output rendering with quieter default hook history.
+- Multi-provider agent message handling and inter-agent trace diagnostics.
+- Responses-provider and Claude context-window error handling fixes.
+- Queued-input recall cleanup for TUI prompt history.
 - apohl79 release packaging and installer scripts.
+- Fork upgrade and upstream-change report skills.
 
 See [README.fork.md](./README.fork.md) for the full fork inventory.
 
