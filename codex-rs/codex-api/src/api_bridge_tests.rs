@@ -131,6 +131,34 @@ fn map_api_error_uses_cyber_policy_fallback_for_missing_message() {
 }
 
 #[test]
+fn map_api_error_maps_prompt_too_long_from_400_body() {
+    let body = serde_json::json!({
+        "error": {
+            "message": "prompt is too long: 1513154 tokens > 1000000 maximum",
+            "type": "invalid_request_error"
+        }
+    })
+    .to_string();
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::BAD_REQUEST,
+        url: Some("http://example.com/v1/responses".to_string()),
+        headers: None,
+        body: Some(body),
+    }));
+
+    assert!(matches!(err, CodexErr::ContextWindowExceeded));
+}
+
+#[test]
+fn map_api_error_maps_prompt_too_long_from_invalid_request() {
+    let err = map_api_error(ApiError::InvalidRequest {
+        message: "prompt is too long: 1513154 tokens > 1000000 maximum".to_string(),
+    });
+
+    assert!(matches!(err, CodexErr::ContextWindowExceeded));
+}
+
+#[test]
 fn map_api_error_keeps_unknown_400_errors_generic() {
     let body = serde_json::json!({
         "error": {

@@ -36,6 +36,9 @@ pub fn map_api_error(err: ApiError) -> CodexErr {
                 identity_error_code: None,
             })
         }
+        ApiError::InvalidRequest { message } if is_prompt_too_long_error(&message) => {
+            CodexErr::ContextWindowExceeded
+        }
         ApiError::InvalidRequest { message } => CodexErr::InvalidRequest(message),
         ApiError::CyberPolicy { message } => CodexErr::CyberPolicy { message },
         ApiError::Transport(transport) => match transport {
@@ -73,6 +76,8 @@ pub fn map_api_error(err: ApiError) -> CodexErr {
                             .map(str::to_string)
                             .unwrap_or_else(|| CYBER_POLICY_FALLBACK_MESSAGE.to_string());
                         CodexErr::CyberPolicy { message }
+                    } else if is_prompt_too_long_error(&body_text) {
+                        CodexErr::ContextWindowExceeded
                     } else if body_text
                         .contains("The image data you provided does not represent a valid image")
                     {
@@ -139,6 +144,23 @@ pub fn map_api_error(err: ApiError) -> CodexErr {
         },
         ApiError::RateLimit(msg) => CodexErr::Stream(msg, None),
     }
+}
+
+fn is_prompt_too_long_error(message_or_body: &str) -> bool {
+    let message = serde_json::from_str::<Value>(message_or_body)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .get("error")
+                .and_then(|error| error.get("message"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| message_or_body.to_string());
+    let message = message.trim().to_ascii_lowercase();
+    message.starts_with("prompt is too long:")
+        && message.contains(" tokens > ")
+        && message.contains(" maximum")
 }
 
 const ACTIVE_LIMIT_HEADER: &str = "x-codex-active-limit";
