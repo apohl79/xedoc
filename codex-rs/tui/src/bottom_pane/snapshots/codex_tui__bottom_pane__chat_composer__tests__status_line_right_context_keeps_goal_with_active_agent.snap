@@ -1,0 +1,7 @@
+---
+source: tui/src/bottom_pane/chat_composer.rs
+expression: "format!(\"text:      {text}\\nmagenta:   {magenta}\\ndark_gray: {dark_gray}\")"
+---
+text:        codex · main-fork · opus-4-8                 Pursuing goal (4K / 10K) · /root/berlin_weather
+magenta:                                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+dark_gray:                                                                           ^^^^^^^^^^^^^^^^^^^^
