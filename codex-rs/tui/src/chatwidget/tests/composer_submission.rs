@@ -1115,6 +1115,29 @@ async fn alt_up_edits_most_recent_queued_message() {
 }
 
 #[tokio::test]
+async fn history_recall_removes_matching_pending_steer() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5")).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.on_task_started();
+    chat.bottom_pane.set_composer_text(
+        "adjust this queued steer".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let _ = next_submit_op(&mut op_rx);
+
+    assert!(chat.bottom_pane.composer_text().is_empty());
+    assert_eq!(chat.input_queue.pending_steers.len(), 1);
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+
+    assert_eq!(chat.bottom_pane.composer_text(), "adjust this queued steer");
+    assert!(chat.input_queue.pending_steers.is_empty());
+}
+
+#[tokio::test]
 async fn unbound_queued_message_edit_does_not_fall_back_to_alt_up() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.chat_keymap.edit_queued_message = Vec::new();
@@ -1235,9 +1258,8 @@ fn queued_message_edit_binding_mapping_covers_special_terminals_and_tmux() {
     );
 }
 
-/// Pressing Up to recall the most recent history entry and immediately queuing
-/// it while a task is running should always enqueue the same text, even when it
-/// is queued repeatedly.
+/// Pressing Up to recall a queued history entry removes the queued copy so it
+/// can be edited and requeued without accumulating stale duplicates.
 #[tokio::test]
 async fn enqueueing_history_prompt_multiple_times_is_stable() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -1260,7 +1282,7 @@ async fn enqueueing_history_prompt_multiple_times_is_stable() {
         chat.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
     }
 
-    assert_eq!(chat.input_queue.queued_user_messages.len(), 3);
+    assert_eq!(chat.input_queue.queued_user_messages.len(), 1);
     for message in chat.input_queue.queued_user_messages.iter() {
         assert_eq!(message.text, "repeat me");
     }
