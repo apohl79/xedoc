@@ -199,7 +199,6 @@ use toml::Value as TomlValue;
 use uuid::Uuid;
 mod agent_message_consolidation;
 mod agent_navigation;
-mod agent_status_feed;
 mod app_server_event_targets;
 mod app_server_events;
 pub(crate) mod app_server_requests;

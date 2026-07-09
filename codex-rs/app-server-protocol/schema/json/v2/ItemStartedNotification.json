@@ -1048,6 +1048,18 @@
             "kind": {
               "$ref": "#/definitions/SubAgentActivityKind"
             },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "modelProvider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "type": {
               "enum": [
                 "subAgentActivity"

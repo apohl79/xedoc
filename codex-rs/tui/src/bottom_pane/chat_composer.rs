@@ -166,7 +166,9 @@ use super::footer::FooterMode;
 use super::footer::FooterProps;
 use super::footer::GoalStatusIndicator;
 use super::footer::SummaryLeft;
+use super::footer::active_agent_context_line;
 use super::footer::can_show_left_with_context;
+use super::footer::configured_status_line;
 use super::footer::context_window_line;
 use super::footer::esc_hint_mode;
 use super::footer::footer_height;
@@ -182,7 +184,6 @@ use super::footer::render_footer_line;
 use super::footer::reset_mode_after_activity;
 use super::footer::side_conversation_context_line;
 use super::footer::single_line_footer_layout;
-use super::footer::status_line_context_line;
 use super::footer::status_line_right_indicator_line;
 use super::footer::toggle_shortcut_mode;
 use super::footer::uses_passive_footer_status_layout;
@@ -813,7 +814,7 @@ impl ChatComposer {
             return None;
         }
 
-        status_line_context_line(footer_props)
+        configured_status_line(footer_props)
     }
 
     fn footer_total_height(&self, footer_props: &FooterProps) -> u16 {
@@ -1148,6 +1149,10 @@ impl ChatComposer {
     }
 
     fn right_footer_line_with_context(&self) -> Line<'static> {
+        if let Some(line) = active_agent_context_line(self.footer.active_agent_label.as_deref()) {
+            return line;
+        }
+
         let mut line = context_window_line(
             self.footer.context_window_percent,
             self.footer.context_window_used_tokens,
@@ -4390,12 +4395,18 @@ impl ChatComposer {
                             show_queue_hint,
                         )
                     };
-                    let right_line =
-                        if let Some(label) = self.footer.side_conversation_context_label.as_ref() {
-                            Some(side_conversation_context_line(label))
-                        } else if let Some(line) = self.shell_mode_footer_line() {
+                    let right_line = if let Some(label) =
+                        self.footer.side_conversation_context_label.as_ref()
+                    {
+                        Some(side_conversation_context_line(label))
+                    } else if let Some(line) = self.shell_mode_footer_line() {
+                        Some(line)
+                    } else if status_line_active {
+                        if let Some(line) =
+                            active_agent_context_line(footer_props.active_agent_label.as_deref())
+                        {
                             Some(line)
-                        } else if status_line_active {
+                        } else {
                             let full = self.mode_indicator_line(show_cycle_hint);
                             let compact = self.mode_indicator_line(/*show_cycle_hint*/ false);
                             let full_width = full.as_ref().map(|l| l.width() as u16).unwrap_or(0);
@@ -4404,9 +4415,10 @@ impl ChatComposer {
                             } else {
                                 compact
                             }
-                        } else {
-                            Some(self.right_footer_line_with_context())
-                        };
+                        }
+                    } else {
+                        Some(self.right_footer_line_with_context())
+                    };
                     let right_width = right_line.as_ref().map(|l| l.width() as u16).unwrap_or(0);
                     if status_line_active
                         && let Some(max_left) = max_left_width_for_right(hint_rect, right_width)

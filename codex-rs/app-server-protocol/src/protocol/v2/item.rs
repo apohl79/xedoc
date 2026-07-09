@@ -346,6 +346,8 @@ pub enum ThreadItem {
         kind: SubAgentActivityKind,
         agent_thread_id: String,
         agent_path: String,
+        model_provider: Option<String>,
+        model: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]

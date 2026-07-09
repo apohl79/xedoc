@@ -4111,6 +4111,10 @@ pub struct SubAgentActivityEvent {
     pub agent_thread_id: ThreadId,
     /// Canonical v2 path of the affected sub-agent.
     pub agent_path: AgentPath,
+    #[serde(default)]
+    pub model_provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
     pub kind: SubAgentActivityKind,
 }
 

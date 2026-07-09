@@ -139,6 +139,12 @@ impl AgentNavigationState {
                     is_closed: false,
                 });
         entry.agent_path = Some(activity.agent_path);
+        if let Some(model_provider_id) = normalized_agent_metadata(activity.model_provider_id) {
+            entry.model_provider_id = Some(model_provider_id);
+        }
+        if let Some(model) = normalized_agent_metadata(activity.model) {
+            entry.model = Some(model);
+        }
         entry.is_running = activity.is_running_hint;
         entry.is_closed = false;
     }

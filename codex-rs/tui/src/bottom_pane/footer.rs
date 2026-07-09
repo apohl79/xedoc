@@ -78,11 +78,8 @@ pub(crate) struct FooterProps {
     pub(crate) status_line_value: Option<Line<'static>>,
     pub(crate) status_line_enabled: bool,
     pub(crate) key_hints: FooterKeyHints,
-    /// Active thread label shown when the footer is rendering contextual information instead of an
-    /// instructional hint.
-    ///
-    /// When both this label and the configured status line are available, they are rendered on the
-    /// same row separated by ` · `.
+    /// Active thread label shown as right-side context when the footer is rendering contextual
+    /// information instead of an instructional hint.
     pub(crate) active_agent_label: Option<String>,
 }
 
@@ -714,8 +711,7 @@ fn footer_from_props_lines(
     show_queue_hint: bool,
 ) -> Vec<Line<'static>> {
     let key_hints = props.key_hints;
-    // Passive footer context can come from the configurable status line, the
-    // active agent label, or both combined.
+    // Passive footer context can come from the configurable status line.
     if let Some(status_line) = passive_footer_status_line(props) {
         return vec![status_line];
     }
@@ -772,37 +768,30 @@ fn footer_from_props_lines(
     }
 }
 
-/// Returns the contextual footer row when the footer is not busy showing an instructional hint.
+/// Returns the configured status-line row when the footer is not busy showing an instructional hint.
 ///
-/// The returned line may contain the configured status line, the currently viewed agent label, or
-/// both combined. Active instructional states such as quit reminders, shortcut overlays, and queue
-/// prompts deliberately return `None` so those call-to-action hints stay visible.
+/// Active instructional states such as quit reminders and shortcut overlays deliberately return
+/// `None` so those call-to-action hints stay visible.
 pub(crate) fn passive_footer_status_line(props: &FooterProps) -> Option<Line<'static>> {
     if !shows_passive_footer_line(props) {
         return None;
     }
 
-    status_line_context_line(props)
+    configured_status_line(props)
 }
 
-/// Returns the configured status line combined with the active agent label.
-pub(crate) fn status_line_context_line(props: &FooterProps) -> Option<Line<'static>> {
-    let mut line = if props.status_line_enabled {
+/// Returns the configured status line, independent of whether the footer mode can render it inline.
+pub(crate) fn configured_status_line(props: &FooterProps) -> Option<Line<'static>> {
+    if props.status_line_enabled {
         props.status_line_value.clone()
     } else {
         None
-    };
-
-    if let Some(active_agent_label) = props.active_agent_label.as_ref() {
-        if let Some(existing) = line.as_mut() {
-            existing.spans.push(" · ".dim());
-            existing.spans.push(active_agent_label.clone().dim());
-        } else {
-            line = Some(Line::from(active_agent_label.clone()).dim());
-        }
     }
+}
 
-    line
+/// Returns the active thread label for right-side footer context.
+pub(crate) fn active_agent_context_line(active_agent_label: Option<&str>) -> Option<Line<'static>> {
+    active_agent_label.map(|active_agent_label| Line::from(active_agent_label.to_string()).dim())
 }
 
 /// Whether the current footer mode allows contextual information to replace instructional hints.
@@ -1378,26 +1367,33 @@ mod tests {
                     )
                 };
                 let right_line = if status_line_active {
-                    let full = status_line_right_indicator_line(
-                        collaboration_mode_indicator,
-                        /*goal_status_indicator*/ None,
-                        ide_context_active,
-                        show_cycle_hint,
-                    );
-                    let compact = status_line_right_indicator_line(
-                        collaboration_mode_indicator,
-                        /*goal_status_indicator*/ None,
-                        ide_context_active,
-                        /*show_cycle_hint*/ false,
-                    );
-                    let full_width = full.as_ref().map(|line| line.width() as u16).unwrap_or(0);
-                    if can_show_left_with_context(area, left_width, full_width) {
-                        full
+                    if let Some(line) =
+                        active_agent_context_line(props.active_agent_label.as_deref())
+                    {
+                        Some(line)
                     } else {
-                        compact
+                        let full = status_line_right_indicator_line(
+                            collaboration_mode_indicator,
+                            /*goal_status_indicator*/ None,
+                            ide_context_active,
+                            show_cycle_hint,
+                        );
+                        let compact = status_line_right_indicator_line(
+                            collaboration_mode_indicator,
+                            /*goal_status_indicator*/ None,
+                            ide_context_active,
+                            /*show_cycle_hint*/ false,
+                        );
+                        let full_width = full.as_ref().map(|line| line.width() as u16).unwrap_or(0);
+                        if can_show_left_with_context(area, left_width, full_width) {
+                            full
+                        } else {
+                            compact
+                        }
                     }
                 } else {
-                    Some(context_line.clone())
+                    active_agent_context_line(props.active_agent_label.as_deref())
+                        .or_else(|| Some(context_line.clone()))
                 };
                 let right_width = right_line
                     .as_ref()

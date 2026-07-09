@@ -79,6 +79,8 @@ async fn handle_interrupt_agent(
                 occurred_at_ms: now_unix_timestamp_ms(),
                 agent_thread_id: agent_id,
                 agent_path: receiver_agent_path,
+                model_provider: None,
+                model: None,
                 kind: SubAgentActivityKind::Interrupted,
             }
             .into(),

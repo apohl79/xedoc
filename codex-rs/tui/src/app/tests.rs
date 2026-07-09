@@ -1320,6 +1320,54 @@ async fn inactive_agent_turn_started_sets_active_agent_display() -> Result<()> {
 }
 
 #[tokio::test]
+async fn sub_agent_activity_caches_active_agent_display_metadata() -> Result<()> {
+    let mut app = make_test_app().await;
+    let parent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-00000000012b").expect("valid thread id");
+    let agent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-00000000012c").expect("valid thread id");
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ItemCompleted(codex_app_server_protocol::ItemCompletedNotification {
+            thread_id: parent_thread_id.to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: ThreadItem::SubAgentActivity {
+                id: "activity-1".to_string(),
+                kind: codex_app_server_protocol::SubAgentActivityKind::Started,
+                agent_thread_id: agent_thread_id.to_string(),
+                agent_path: "/root/reviewer".to_string(),
+                model_provider: Some("anthropic".to_string()),
+                model: Some("claude-opus-4-8".to_string()),
+            },
+        }),
+    ));
+
+    assert_eq!(
+        (
+            app.agent_navigation.get(&agent_thread_id),
+            app.active_agent_started_at.contains_key(&agent_thread_id),
+            app.chat_widget.active_agent_list_visible(),
+        ),
+        (
+            Some(&AgentPickerThreadEntry {
+                agent_nickname: None,
+                agent_role: None,
+                agent_path: Some("/root/reviewer".to_string()),
+                model_provider_id: Some("anthropic".to_string()),
+                model: Some("claude-opus-4-8".to_string()),
+                total_tokens: None,
+                is_running: true,
+                is_closed: false,
+            }),
+            true,
+            true,
+        )
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn inactive_agent_token_usage_updates_active_agent_display_metadata() -> Result<()> {
     let mut app = make_test_app().await;
     let agent_thread_id =
@@ -1365,6 +1413,8 @@ async fn inactive_agent_turn_completed_clears_active_agent_display() -> Result<(
                 kind: codex_app_server_protocol::SubAgentActivityKind::Started,
                 agent_thread_id: agent_thread_id.to_string(),
                 agent_path: "/root/reviewer".to_string(),
+                model_provider: None,
+                model: None,
             },
         }),
     ));
@@ -1520,6 +1570,8 @@ async fn open_agent_picker_clears_completed_path_backed_agent_running_state() ->
         .record_sub_agent_activity(SubAgentActivityDisplay {
             thread_id,
             agent_path: "/root/child".to_string(),
+            model_provider_id: None,
+            model: None,
             is_running_hint: true,
         });
 
@@ -1561,6 +1613,8 @@ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Resul
         .record_sub_agent_activity(SubAgentActivityDisplay {
             thread_id,
             agent_path: "/root/child".to_string(),
+            model_provider_id: None,
+            model: None,
             is_running_hint: true,
         });
 
@@ -2399,6 +2453,41 @@ async fn open_agent_picker_allows_existing_agent_threads_when_feature_is_disable
     let thread_id = ThreadId::new();
     app.thread_event_channels
         .insert(thread_id, ThreadEventChannel::new(/*capacity*/ 1));
+
+    Box::pin(app.open_agent_picker(&mut app_server)).await;
+    app.chat_widget
+        .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_matches!(
+        app_event_rx.try_recv(),
+        Ok(AppEvent::SelectAgentThread(selected_thread_id)) if selected_thread_id == thread_id
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn open_agent_picker_allows_running_path_backed_threads() -> Result<()> {
+    let (mut app, mut app_event_rx, _op_rx) = Box::pin(make_test_app_with_channels()).await;
+    let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(
+        app.chat_widget.config_ref(),
+    ))
+    .await
+    .expect("embedded app server");
+    let thread_id = ThreadId::new();
+    let channel = ThreadEventChannel::new(/*capacity*/ 4);
+    {
+        let mut store = channel.store.lock().await;
+        store.push_notification(turn_started_notification(thread_id, "turn-1"));
+    }
+    app.thread_event_channels.insert(thread_id, channel);
+    app.agent_navigation
+        .record_sub_agent_activity(SubAgentActivityDisplay {
+            thread_id,
+            agent_path: "/root/child".to_string(),
+            model_provider_id: None,
+            model: None,
+            is_running_hint: true,
+        });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
     app.chat_widget

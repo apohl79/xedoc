@@ -156,6 +156,12 @@ async fn handle_spawn_agent(
                 occurred_at_ms: now_unix_timestamp_ms(),
                 agent_thread_id: new_thread_id,
                 agent_path: new_agent_path.clone(),
+                model_provider: agent_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.model_provider_id.clone()),
+                model: agent_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.model.clone()),
                 kind: SubAgentActivityKind::Started,
             }
             .into(),
