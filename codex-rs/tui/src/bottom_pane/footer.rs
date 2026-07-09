@@ -791,8 +791,27 @@ pub(crate) fn configured_status_line(props: &FooterProps) -> Option<Line<'static
 
 /// Returns the active thread label for right-side footer context.
 pub(crate) fn active_agent_context_line(active_agent_label: Option<&str>) -> Option<Line<'static>> {
-    active_agent_label
-        .map(|active_agent_label| Line::from(active_agent_label.to_string()).dark_gray())
+    active_agent_label.map(|active_agent_label| {
+        Line::from(vec![Span::from(active_agent_label.to_string()).dark_gray()])
+    })
+}
+
+/// Appends the active thread label to another right-side context indicator.
+pub(crate) fn with_active_agent_context_line(
+    indicator_line: Option<Line<'static>>,
+    active_agent_label: Option<&str>,
+) -> Option<Line<'static>> {
+    let active_agent_line = active_agent_context_line(active_agent_label);
+    match (indicator_line, active_agent_line) {
+        (Some(mut indicator_line), Some(active_agent_line)) => {
+            indicator_line.push_span(" · ".dim());
+            indicator_line.spans.extend(active_agent_line.spans);
+            Some(indicator_line)
+        }
+        (Some(indicator_line), None) => Some(indicator_line),
+        (None, Some(active_agent_line)) => Some(active_agent_line),
+        (None, None) => None,
+    }
 }
 
 /// Whether the current footer mode allows contextual information to replace instructional hints.
@@ -1368,29 +1387,29 @@ mod tests {
                     )
                 };
                 let right_line = if status_line_active {
-                    if let Some(line) =
-                        active_agent_context_line(props.active_agent_label.as_deref())
-                    {
-                        Some(line)
-                    } else {
-                        let full = status_line_right_indicator_line(
+                    let full = with_active_agent_context_line(
+                        status_line_right_indicator_line(
                             collaboration_mode_indicator,
                             /*goal_status_indicator*/ None,
                             ide_context_active,
                             show_cycle_hint,
-                        );
-                        let compact = status_line_right_indicator_line(
+                        ),
+                        props.active_agent_label.as_deref(),
+                    );
+                    let compact = with_active_agent_context_line(
+                        status_line_right_indicator_line(
                             collaboration_mode_indicator,
                             /*goal_status_indicator*/ None,
                             ide_context_active,
                             /*show_cycle_hint*/ false,
-                        );
-                        let full_width = full.as_ref().map(|line| line.width() as u16).unwrap_or(0);
-                        if can_show_left_with_context(area, left_width, full_width) {
-                            full
-                        } else {
-                            compact
-                        }
+                        ),
+                        props.active_agent_label.as_deref(),
+                    );
+                    let full_width = full.as_ref().map(|line| line.width() as u16).unwrap_or(0);
+                    if can_show_left_with_context(area, left_width, full_width) {
+                        full
+                    } else {
+                        compact
                     }
                 } else {
                     active_agent_context_line(props.active_agent_label.as_deref())
@@ -2005,7 +2024,22 @@ mod tests {
     fn active_agent_context_line_uses_dark_gray() {
         assert_eq!(
             active_agent_context_line(Some("Robie [explorer]")),
-            Some(Line::from("Robie [explorer]").dark_gray())
+            Some(Line::from(vec!["Robie [explorer]".dark_gray()]))
+        );
+    }
+
+    #[test]
+    fn with_active_agent_context_line_appends_thread_label() {
+        assert_eq!(
+            with_active_agent_context_line(
+                Some(Line::from(vec!["Pursuing goal".magenta()])),
+                Some("Robie [explorer]")
+            ),
+            Some(Line::from(vec![
+                "Pursuing goal".magenta(),
+                " · ".dim(),
+                "Robie [explorer]".dark_gray(),
+            ]))
         );
     }
 

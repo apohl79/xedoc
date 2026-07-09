@@ -181,7 +181,6 @@ use super::footer::FooterMode;
 use super::footer::FooterProps;
 use super::footer::GoalStatusIndicator;
 use super::footer::SummaryLeft;
-use super::footer::active_agent_context_line;
 use super::footer::can_show_left_with_context;
 use super::footer::configured_status_line;
 use super::footer::context_window_line;
@@ -202,6 +201,7 @@ use super::footer::single_line_footer_layout;
 use super::footer::status_line_right_indicator_line;
 use super::footer::toggle_shortcut_mode;
 use super::footer::uses_passive_footer_status_layout;
+use super::footer::with_active_agent_context_line;
 use super::mentions_v2::MentionV2Popup;
 use super::mentions_v2::MentionV2Selection;
 use super::paste_burst::CharDecision;
@@ -1161,7 +1161,16 @@ impl ChatComposer {
     }
 
     fn right_footer_line_with_context(&self) -> Line<'static> {
-        if let Some(line) = active_agent_context_line(self.footer.active_agent_label.as_deref()) {
+        let indicator_line = status_line_right_indicator_line(
+            /*collaboration_mode_indicator*/ None,
+            self.footer.goal_status_indicator.as_ref(),
+            self.footer.ide_context_active,
+            /*show_cycle_hint*/ false,
+        );
+        if let Some(line) = with_active_agent_context_line(
+            indicator_line,
+            self.footer.active_agent_label.as_deref(),
+        ) {
             return line;
         }
 
@@ -4444,30 +4453,29 @@ impl ChatComposer {
                             show_queue_hint,
                         )
                     };
-                    let right_line = if let Some(label) =
-                        self.footer.side_conversation_context_label.as_ref()
-                    {
-                        Some(side_conversation_context_line(label))
-                    } else if let Some(line) = self.shell_mode_footer_line() {
-                        Some(line)
-                    } else if status_line_active {
-                        if let Some(line) =
-                            active_agent_context_line(footer_props.active_agent_label.as_deref())
-                        {
+                    let right_line =
+                        if let Some(label) = self.footer.side_conversation_context_label.as_ref() {
+                            Some(side_conversation_context_line(label))
+                        } else if let Some(line) = self.shell_mode_footer_line() {
                             Some(line)
-                        } else {
-                            let full = self.mode_indicator_line(show_cycle_hint);
-                            let compact = self.mode_indicator_line(/*show_cycle_hint*/ false);
+                        } else if status_line_active {
+                            let full = with_active_agent_context_line(
+                                self.mode_indicator_line(show_cycle_hint),
+                                footer_props.active_agent_label.as_deref(),
+                            );
+                            let compact = with_active_agent_context_line(
+                                self.mode_indicator_line(/*show_cycle_hint*/ false),
+                                footer_props.active_agent_label.as_deref(),
+                            );
                             let full_width = full.as_ref().map(|l| l.width() as u16).unwrap_or(0);
                             if can_show_left_with_context(hint_rect, left_width, full_width) {
                                 full
                             } else {
                                 compact
                             }
-                        }
-                    } else {
-                        Some(self.right_footer_line_with_context())
-                    };
+                        } else {
+                            Some(self.right_footer_line_with_context())
+                        };
                     let right_width = right_line.as_ref().map(|l| l.width() as u16).unwrap_or(0);
                     if status_line_active
                         && let Some(max_left) = max_left_width_for_right(hint_rect, right_width)
@@ -5257,6 +5265,62 @@ mod tests {
         insta::assert_snapshot!(
             "session_name_renders_with_dark_gray",
             format!("text:      {text}\ndark_gray: {dark_gray}")
+        );
+    }
+
+    #[test]
+    fn status_line_right_context_keeps_goal_with_active_agent_snapshot() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ true,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        composer.set_status_line_enabled(/*enabled*/ true);
+        composer.set_status_line(Some(Line::from("codex · main-fork · opus-4-8")));
+        composer.set_goal_status_indicator(Some(GoalStatusIndicator::Active {
+            usage: Some("4K / 10K".to_string()),
+        }));
+        composer.set_active_agent_label(Some("/root/berlin_weather".to_string()));
+
+        let area = Rect::new(0, 0, 96, 5);
+        let mut buf = Buffer::empty(area);
+        composer.render(area, &mut buf);
+
+        let footer_y = area.height - 1;
+        let mut text = String::new();
+        let mut magenta = String::new();
+        let mut dark_gray = String::new();
+        for x in 0..area.width {
+            let cell = &buf[(x, footer_y)];
+            text.push(cell.symbol().chars().next().unwrap_or(' '));
+            magenta.push(if cell.style().fg == Some(Color::Magenta) {
+                '^'
+            } else {
+                ' '
+            });
+            dark_gray.push(if cell.style().fg == Some(Color::DarkGray) {
+                '^'
+            } else {
+                ' '
+            });
+        }
+        while text.ends_with(' ') {
+            text.pop();
+        }
+        while magenta.ends_with(' ') {
+            magenta.pop();
+        }
+        while dark_gray.ends_with(' ') {
+            dark_gray.pop();
+        }
+
+        insta::assert_snapshot!(
+            "status_line_right_context_keeps_goal_with_active_agent",
+            format!("text:      {text}\nmagenta:   {magenta}\ndark_gray: {dark_gray}")
         );
     }
 
