@@ -561,6 +561,7 @@ impl App {
             }
             AppCommand::UserTurn {
                 items,
+                pending_steer_id: _,
                 cwd,
                 approval_policy,
                 approvals_reviewer,

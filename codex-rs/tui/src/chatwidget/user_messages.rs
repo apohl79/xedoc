@@ -163,6 +163,7 @@ impl From<&str> for UserMessage {
 
 #[derive(Debug)]
 pub(super) struct PendingSteer {
+    pub(super) id: Option<u64>,
     pub(super) user_message: UserMessage,
     pub(super) history_record: UserMessageHistoryRecord,
     pub(super) compare_key: PendingSteerCompareKey,

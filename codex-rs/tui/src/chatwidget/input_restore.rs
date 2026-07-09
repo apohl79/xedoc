@@ -188,6 +188,17 @@ impl ChatWidget {
         false
     }
 
+    pub(crate) fn is_stale_pending_steer_op(&self, op: &AppCommand) -> bool {
+        let Some(id) = op.pending_steer_id() else {
+            return false;
+        };
+        !self
+            .input_queue
+            .pending_steers
+            .iter()
+            .any(|pending| pending.id == Some(id))
+    }
+
     pub(crate) fn enqueue_rejected_steer(&mut self) -> bool {
         let Some(pending_steer) = self.input_queue.pending_steers.pop_front() else {
             tracing::warn!(
@@ -469,6 +480,7 @@ impl ChatWidget {
                 .into_iter()
                 .zip(pending_steer_history_records)
                 .map(|(user_message, history_record)| PendingSteer {
+                    id: None,
                     compare_key: pending_steer_compare_keys.pop_front().unwrap_or_else(|| {
                         PendingSteerCompareKey {
                             message: user_message.text.clone(),

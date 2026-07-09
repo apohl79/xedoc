@@ -920,6 +920,7 @@ pub(super) fn complete_assistant_message(
 
 pub(super) fn pending_steer(text: &str) -> PendingSteer {
     PendingSteer {
+        id: None,
         user_message: UserMessage::from(text),
         history_record: UserMessageHistoryRecord::UserMessageText,
         compare_key: PendingSteerCompareKey {

@@ -38,6 +38,7 @@ pub(super) struct InputQueueState {
     pub(super) rejected_steer_history_records: VecDeque<UserMessageHistoryRecord>,
     /// Steers already submitted to core but not yet committed into history.
     pub(super) pending_steers: VecDeque<PendingSteer>,
+    pub(super) next_pending_steer_id: u64,
     /// When set, the next interrupt should resubmit all pending steers as one
     /// fresh user turn instead of restoring them into the composer.
     pub(super) submit_pending_steers_after_interrupt: bool,
@@ -57,6 +58,12 @@ impl InputQueueState {
         self.rejected_steer_history_records.clear();
         self.pending_steers.clear();
         self.submit_pending_steers_after_interrupt = false;
+    }
+
+    pub(super) fn next_pending_steer_id(&mut self) -> u64 {
+        let id = self.next_pending_steer_id;
+        self.next_pending_steer_id = self.next_pending_steer_id.wrapping_add(1);
+        id
     }
 
     pub(super) fn preview(&self) -> PendingInputPreview {
@@ -111,6 +118,7 @@ mod tests {
             .rejected_steers_queue
             .push_back(UserMessage::from("rejected"));
         state.pending_steers.push_back(PendingSteer {
+            id: None,
             user_message: UserMessage::from("pending"),
             history_record: UserMessageHistoryRecord::UserMessageText,
             compare_key: crate::chatwidget::user_messages::PendingSteerCompareKey {
