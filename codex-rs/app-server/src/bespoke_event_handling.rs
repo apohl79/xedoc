@@ -2096,7 +2096,6 @@ mod tests {
     use codex_protocol::AgentPath;
     use codex_protocol::items::DynamicToolCallItem;
     use codex_protocol::items::DynamicToolCallStatus as CoreDynamicToolCallStatus;
-    use codex_protocol::items::SubAgentActivityItem;
     use codex_protocol::items::TurnItem as CoreTurnItem;
     use codex_protocol::models::FileSystemPermissions as CoreFileSystemPermissions;
     use codex_protocol::models::NetworkPermissions as CoreNetworkPermissions;
@@ -3342,17 +3341,15 @@ mod tests {
         apply_bespoke_event_handling(
             Event {
                 id: "turn-1".to_string(),
-                msg: EventMsg::ItemCompleted(ItemCompletedEvent {
-                    thread_id: conversation_id,
-                    turn_id: "turn-1".to_string(),
-                    item: CoreTurnItem::SubAgentActivity(SubAgentActivityItem {
-                        id: "activity-1".to_string(),
-                        kind: SubAgentActivityKind::Interrupted,
-                        agent_thread_id: child_thread_id,
-                        agent_path: AgentPath::try_from("/root/worker")
-                            .expect("agent path should parse"),
-                    }),
-                    completed_at_ms: 42,
+                msg: EventMsg::SubAgentActivity(SubAgentActivityEvent {
+                    event_id: "activity-1".to_string(),
+                    occurred_at_ms: 42,
+                    agent_thread_id: child_thread_id,
+                    agent_path: AgentPath::try_from("/root/worker")
+                        .expect("agent path should parse"),
+                    model_provider: None,
+                    model: None,
+                    kind: SubAgentActivityKind::Interrupted,
                 }),
             },
             conversation_id,
@@ -3387,6 +3384,8 @@ mod tests {
                     kind: codex_app_server_protocol::SubAgentActivityKind::Interrupted,
                     agent_thread_id: child_thread_id_string,
                     agent_path: "/root/worker".to_string(),
+                    model_provider: None,
+                    model: None,
                 },
                 thread_id: conversation_id.to_string(),
                 turn_id: "turn-1".to_string(),

@@ -1762,6 +1762,9 @@ impl BottomPane {
                     RenderableItem::Borrowed(&self.active_agent_list),
                 );
             }
+            if has_active_agent_list && has_active_task_list {
+                flex.push(/*flex*/ 0, RenderableItem::Owned("".into()));
+            }
             if has_active_task_list
                 && !has_active_agent_list
                 && (has_inline_previews || has_status_or_footer)

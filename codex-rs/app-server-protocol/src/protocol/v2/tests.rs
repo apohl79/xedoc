@@ -2767,6 +2767,8 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             kind: SubAgentActivityKind::Interrupted,
             agent_thread_id: receiver_thread_id.to_string(),
             agent_path: "/root/worker".to_string(),
+            model_provider: None,
+            model: None,
         }
     );
 
