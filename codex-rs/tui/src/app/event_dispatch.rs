@@ -334,8 +334,10 @@ impl App {
                 return Ok(AppRunControl::Exit(ExitReason::Fatal(message)));
             }
             AppEvent::CodexOp(op) => {
-                self.chat_widget.prepare_local_op_submission(&op);
-                self.submit_active_thread_op(app_server, op).await?;
+                if !self.chat_widget.is_stale_pending_steer_op(&op) {
+                    self.chat_widget.prepare_local_op_submission(&op);
+                    self.submit_active_thread_op(app_server, op).await?;
+                }
             }
             AppEvent::RestoreCancelledTurn(prompt) => {
                 self.apply_cancelled_turn_edit(prompt);

@@ -319,7 +319,10 @@ impl ChatWidget {
         } else {
             None
         };
-        let pending_steer = (!render_in_history).then(|| PendingSteer {
+        let pending_steer_id =
+            (!render_in_history).then(|| self.input_queue.next_pending_steer_id());
+        let pending_steer = pending_steer_id.map(|id| PendingSteer {
+            id: Some(id),
             user_message: UserMessage {
                 text: text.clone(),
                 local_images: local_images.clone(),
@@ -337,7 +340,7 @@ impl ChatWidget {
             .filter(|_| self.current_model_supports_personality());
         let service_tier = self.service_tier_update_for_core();
         let active_permission_profile = self.config.permissions.active_permission_profile();
-        let op = AppCommand::user_turn(
+        let mut op = AppCommand::user_turn(
             items,
             self.config.cwd.to_path_buf(),
             AskForApproval::from(self.config.permissions.approval_policy.value()),
@@ -350,6 +353,9 @@ impl ChatWidget {
             collaboration_mode,
             personality,
         );
+        if let Some(id) = pending_steer_id {
+            op = op.with_pending_steer_id(id);
+        }
 
         if !self.submit_op(op.clone()) {
             return (false, None);

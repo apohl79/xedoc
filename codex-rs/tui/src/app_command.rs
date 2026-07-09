@@ -33,6 +33,7 @@ pub(crate) enum AppCommand {
     },
     UserTurn {
         items: Vec<UserInput>,
+        pending_steer_id: Option<u64>,
         cwd: PathBuf,
         approval_policy: AskForApproval,
         approvals_reviewer: Option<ApprovalsReviewer>,
@@ -147,6 +148,7 @@ impl AppCommand {
     ) -> Self {
         Self::UserTurn {
             items,
+            pending_steer_id: None,
             cwd,
             approval_policy,
             approvals_reviewer: None,
@@ -158,6 +160,41 @@ impl AppCommand {
             final_output_json_schema,
             collaboration_mode,
             personality,
+        }
+    }
+
+    pub(crate) fn with_pending_steer_id(mut self, id: u64) -> Self {
+        if let Self::UserTurn {
+            pending_steer_id, ..
+        } = &mut self
+        {
+            *pending_steer_id = Some(id);
+        }
+        self
+    }
+
+    pub(crate) fn pending_steer_id(&self) -> Option<u64> {
+        match self {
+            Self::UserTurn {
+                pending_steer_id, ..
+            } => *pending_steer_id,
+            Self::Interrupt { .. }
+            | Self::CleanBackgroundTerminals
+            | Self::RunUserShellCommand { .. }
+            | Self::OverrideTurnContext { .. }
+            | Self::ExecApproval { .. }
+            | Self::PatchApproval { .. }
+            | Self::ResolveElicitation { .. }
+            | Self::UserInputAnswer { .. }
+            | Self::RequestPermissionsResponse { .. }
+            | Self::ReloadUserConfig
+            | Self::ListSkills { .. }
+            | Self::Compact
+            | Self::SetThreadName { .. }
+            | Self::Shutdown
+            | Self::ThreadRollback { .. }
+            | Self::Review { .. }
+            | Self::ApproveGuardianDeniedAction { .. } => None,
         }
     }
 

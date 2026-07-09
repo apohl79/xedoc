@@ -1126,15 +1126,17 @@ async fn history_recall_removes_matching_pending_steer() {
     );
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    let _ = next_submit_op(&mut op_rx);
+    let op = next_submit_op(&mut op_rx);
 
     assert!(chat.bottom_pane.composer_text().is_empty());
     assert_eq!(chat.input_queue.pending_steers.len(), 1);
+    assert!(!chat.is_stale_pending_steer_op(&op));
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
 
     assert_eq!(chat.bottom_pane.composer_text(), "adjust this queued steer");
     assert!(chat.input_queue.pending_steers.is_empty());
+    assert!(chat.is_stale_pending_steer_op(&op));
 }
 
 #[tokio::test]
