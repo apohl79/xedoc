@@ -325,7 +325,7 @@ impl AgentNavigationState {
                             .as_deref()
                             .filter(|agent_path| !agent_path.trim().is_empty())
                     {
-                        return format!("`{agent_path}`");
+                        return agent_path.to_string();
                     }
                     format_agent_picker_item_name(
                         entry.agent_nickname.as_deref(),
@@ -465,6 +465,17 @@ mod tests {
         assert_eq!(
             state.active_agent_label(Some(main_thread_id), Some(main_thread_id)),
             Some("Main [default]".to_string())
+        );
+    }
+
+    #[test]
+    fn active_agent_label_uses_agent_path_without_backticks() {
+        let (mut state, main_thread_id, first_agent_id, _) = populated_state();
+        state.set_agent_path(first_agent_id, Some("/root/robie".to_string()));
+
+        assert_eq!(
+            state.active_agent_label(Some(first_agent_id), Some(main_thread_id)),
+            Some("/root/robie".to_string())
         );
     }
 }
