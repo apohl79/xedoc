@@ -279,12 +279,6 @@ use std::time::Instant;
 
 use ratatui::style::Color;
 
-const STATUSLINE_SESSION_NAME_COLOR_INDEX: u8 = 141;
-
-fn session_name_color() -> Color {
-    crate::terminal_palette::indexed_color(STATUSLINE_SESSION_NAME_COLOR_INDEX)
-}
-
 /// If the pasted content exceeds this number of characters, replace it with a
 /// placeholder in the UI.
 const LARGE_PASTE_CHAR_THRESHOLD: usize = 1000;
@@ -4603,7 +4597,7 @@ impl ChatComposer {
                 let line = truncate_line_with_ellipsis_if_overflow(
                     Line::from(Span::styled(
                         session_name.to_string(),
-                        Style::default().fg(session_name_color()),
+                        Style::default().dark_gray(),
                     )),
                     available_width,
                 );
@@ -5225,7 +5219,7 @@ mod tests {
     }
 
     #[test]
-    fn session_name_renders_with_statusline_accent_snapshot() {
+    fn session_name_renders_with_dark_gray_snapshot() {
         let (tx, _rx) = unbounded_channel::<AppEvent>();
         let sender = AppEventSender::new(tx);
         let mut composer = ChatComposer::new(
@@ -5243,11 +5237,11 @@ mod tests {
 
         let title_row = 0;
         let mut text = String::new();
-        let mut statusline = String::new();
+        let mut dark_gray = String::new();
         for x in 0..area.width {
             let cell = &buf[(x, title_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            statusline.push(if cell.style().fg == Some(session_name_color()) {
+            dark_gray.push(if cell.style().fg == Some(Color::DarkGray) {
                 '^'
             } else {
                 ' '
@@ -5256,13 +5250,13 @@ mod tests {
         while text.ends_with(' ') {
             text.pop();
         }
-        while statusline.ends_with(' ') {
-            statusline.pop();
+        while dark_gray.ends_with(' ') {
+            dark_gray.pop();
         }
 
         insta::assert_snapshot!(
-            "session_name_renders_with_statusline_accent",
-            format!("text:       {text}\nstatusline: {statusline}")
+            "session_name_renders_with_dark_gray",
+            format!("text:      {text}\ndark_gray: {dark_gray}")
         );
     }
 
