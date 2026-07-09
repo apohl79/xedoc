@@ -241,6 +241,7 @@ use crate::clipboard_paste::normalize_pasted_path;
 use crate::clipboard_paste::pasted_image_format;
 use crate::history_cell;
 use crate::skills_helpers::skill_display_name;
+use crate::terminal_palette::indexed_color;
 use crate::tui::FrameRequester;
 use crate::ui_consts::LIVE_PREFIX_COLS;
 use codex_app_server_protocol::AppInfo;
@@ -265,6 +266,11 @@ use ratatui::style::Color;
 /// If the pasted content exceeds this number of characters, replace it with a
 /// placeholder in the UI.
 const LARGE_PASTE_CHAR_THRESHOLD: usize = 1000;
+const STATUSLINE_SESSION_NAME_COLOR_INDEX: u8 = 141;
+
+fn session_name_color() -> Color {
+    indexed_color(STATUSLINE_SESSION_NAME_COLOR_INDEX)
+}
 
 fn user_input_too_large_message(actual_chars: usize) -> String {
     format!(
@@ -4550,7 +4556,7 @@ impl ChatComposer {
                 let line = truncate_line_with_ellipsis_if_overflow(
                     Line::from(Span::styled(
                         session_name.to_string(),
-                        Style::default().dark_gray(),
+                        Style::default().fg(session_name_color()),
                     )),
                     available_width,
                 );
@@ -5156,7 +5162,7 @@ mod tests {
     }
 
     #[test]
-    fn session_name_renders_with_dark_gray_snapshot() {
+    fn session_name_renders_with_session_name_color_snapshot() {
         let (tx, _rx) = unbounded_channel::<AppEvent>();
         let sender = AppEventSender::new(tx);
         let mut composer = ChatComposer::new(
@@ -5174,11 +5180,11 @@ mod tests {
 
         let title_row = 0;
         let mut text = String::new();
-        let mut dark_gray = String::new();
+        let mut session_name_color_cells = String::new();
         for x in 0..area.width {
             let cell = &buf[(x, title_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            dark_gray.push(if cell.style().fg == Some(Color::DarkGray) {
+            session_name_color_cells.push(if cell.style().fg == Some(session_name_color()) {
                 '^'
             } else {
                 ' '
@@ -5187,13 +5193,13 @@ mod tests {
         while text.ends_with(' ') {
             text.pop();
         }
-        while dark_gray.ends_with(' ') {
-            dark_gray.pop();
+        while session_name_color_cells.ends_with(' ') {
+            session_name_color_cells.pop();
         }
 
         insta::assert_snapshot!(
-            "session_name_renders_with_dark_gray",
-            format!("text:      {text}\ndark_gray: {dark_gray}")
+            "session_name_renders_with_session_name_color",
+            format!("text:               {text}\nsession_name_color: {session_name_color_cells}")
         );
     }
 

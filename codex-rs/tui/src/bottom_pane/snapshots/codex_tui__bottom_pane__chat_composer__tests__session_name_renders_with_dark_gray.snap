@@ -1,6 +1,0 @@
----
-source: tui/src/bottom_pane/chat_composer.rs
-expression: "format!(\"text:      {text}\\ndark_gray: {dark_gray}\")"
----
-text:                             Roadmap cleanup
-dark_gray:                        ^^^^^^^^^^^^^^^
