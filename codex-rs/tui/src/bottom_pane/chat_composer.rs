@@ -321,6 +321,7 @@ pub enum InputResult {
     /// command-history entry still represents the original command invocation that should be
     /// committed only if dispatch accepts it.
     CommandWithArgs(SlashCommand, String, Vec<TextElement>),
+    HistoryRecalled(HistoryEntry),
     None,
 }
 
@@ -3333,8 +3334,8 @@ impl ChatComposer {
                     self.history.navigate_down(&self.app_event_tx)
                 };
                 if let Some(entry) = replace_entry {
-                    self.apply_history_entry(entry);
-                    return (InputResult::None, true);
+                    self.apply_history_entry(entry.clone());
+                    return (InputResult::HistoryRecalled(entry), true);
                 }
             }
             return self.handle_input_basic(key_event);
@@ -8601,7 +8602,9 @@ mod tests {
             InputResult::Queued { .. } => {
                 panic!("expected command dispatch, but composer queued literal text")
             }
-            InputResult::None => panic!("expected Command result for '/init'"),
+            InputResult::HistoryRecalled(_) | InputResult::None => {
+                panic!("expected Command result for '/init'")
+            }
         }
         assert!(
             composer.draft.textarea.is_empty(),
@@ -9108,7 +9111,9 @@ mod tests {
             InputResult::Queued { .. } => {
                 panic!("expected command dispatch after Tab completion, got literal queue")
             }
-            InputResult::None => panic!("expected Command result for '/diff'"),
+            InputResult::HistoryRecalled(_) | InputResult::None => {
+                panic!("expected Command result for '/diff'")
+            }
         }
         assert!(composer.draft.textarea.is_empty());
     }
@@ -9305,7 +9310,9 @@ mod tests {
             InputResult::Queued { .. } => {
                 panic!("expected command dispatch, but composer queued literal text")
             }
-            InputResult::None => panic!("expected Command result for '/mention'"),
+            InputResult::HistoryRecalled(_) | InputResult::None => {
+                panic!("expected Command result for '/mention'")
+            }
         }
         assert!(
             composer.draft.textarea.is_empty(),
@@ -11285,7 +11292,10 @@ mod tests {
 
         let (result, _needs_redraw) =
             composer.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        assert_eq!(result, InputResult::None);
+        assert!(matches!(
+            result,
+            InputResult::HistoryRecalled(HistoryEntry { ref text, .. }) if text == "/diff"
+        ));
         assert_eq!(composer.current_text(), "/diff");
     }
 
@@ -11310,7 +11320,10 @@ mod tests {
 
         let (result, _needs_redraw) =
             composer.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        assert_eq!(result, InputResult::None);
+        assert!(matches!(
+            result,
+            InputResult::HistoryRecalled(HistoryEntry { ref text, .. }) if text == "/diff"
+        ));
         assert_eq!(composer.current_text(), "/diff");
     }
 

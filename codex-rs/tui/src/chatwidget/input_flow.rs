@@ -62,6 +62,11 @@ impl ChatWidget {
             InputResult::CommandWithArgs(cmd, args, text_elements) => {
                 self.handle_slash_command_with_args_dispatch(cmd, args, text_elements);
             }
+            InputResult::HistoryRecalled(entry) => {
+                if self.remove_recalled_queued_input(&entry) {
+                    self.refresh_pending_input_preview();
+                }
+            }
             InputResult::None => {}
         }
         if had_modal_or_popup && self.bottom_pane.no_modal_or_popup_active() {

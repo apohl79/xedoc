@@ -125,6 +125,69 @@ impl ChatWidget {
         }
     }
 
+    pub(super) fn remove_recalled_queued_input(&mut self, entry: &HistoryEntry) -> bool {
+        if let Some(index) = self.input_queue.pending_steers.iter().rposition(|pending| {
+            history_entry_matches_user_message(
+                entry,
+                &pending.user_message,
+                &pending.history_record,
+                &[],
+            )
+        }) {
+            self.input_queue.pending_steers.remove(index);
+            return true;
+        }
+
+        if let Some(index) = self
+            .input_queue
+            .queued_user_messages
+            .iter()
+            .enumerate()
+            .rposition(|(index, message)| {
+                let history_record = self
+                    .input_queue
+                    .queued_user_message_history_records
+                    .get(index)
+                    .unwrap_or(&UserMessageHistoryRecord::UserMessageText);
+                history_entry_matches_user_message(
+                    entry,
+                    &message.user_message,
+                    history_record,
+                    &message.pending_pastes,
+                )
+            })
+        {
+            self.input_queue.queued_user_messages.remove(index);
+            self.input_queue
+                .queued_user_message_history_records
+                .remove(index);
+            return true;
+        }
+
+        if let Some(index) = self
+            .input_queue
+            .rejected_steers_queue
+            .iter()
+            .enumerate()
+            .rposition(|(index, message)| {
+                let history_record = self
+                    .input_queue
+                    .rejected_steer_history_records
+                    .get(index)
+                    .unwrap_or(&UserMessageHistoryRecord::UserMessageText);
+                history_entry_matches_user_message(entry, message, history_record, &[])
+            })
+        {
+            self.input_queue.rejected_steers_queue.remove(index);
+            self.input_queue
+                .rejected_steer_history_records
+                .remove(index);
+            return true;
+        }
+
+        false
+    }
+
     pub(crate) fn enqueue_rejected_steer(&mut self) -> bool {
         let Some(pending_steer) = self.input_queue.pending_steers.pop_front() else {
             tracing::warn!(
@@ -451,4 +514,22 @@ impl ChatWidget {
     pub(crate) fn set_queue_autosend_suppressed(&mut self, suppressed: bool) {
         self.input_queue.suppress_queue_autosend = suppressed;
     }
+}
+
+fn history_entry_matches_user_message(
+    entry: &HistoryEntry,
+    message: &UserMessage,
+    history_record: &UserMessageHistoryRecord,
+    pending_pastes: &[(String, String)],
+) -> bool {
+    let message = user_message_for_restore(message.clone(), history_record);
+    entry.text == message.text
+        && entry.text_elements == message.text_elements
+        && entry
+            .local_image_paths
+            .iter()
+            .eq(message.local_images.iter().map(|image| &image.path))
+        && entry.remote_image_urls == message.remote_image_urls
+        && entry.mention_bindings == message.mention_bindings
+        && entry.pending_pastes == pending_pastes
 }
