@@ -1368,6 +1368,96 @@ async fn sub_agent_activity_caches_active_agent_display_metadata() -> Result<()>
 }
 
 #[tokio::test]
+async fn inactive_sub_agent_activity_caches_active_agent_display_metadata() -> Result<()> {
+    let mut app = make_test_app().await;
+    let parent_thread_id = ThreadId::new();
+    let agent_thread_id = ThreadId::new();
+
+    app.enqueue_thread_notification(
+        parent_thread_id,
+        sub_agent_activity_notification(
+            parent_thread_id,
+            agent_thread_id,
+            codex_app_server_protocol::SubAgentActivityKind::Started,
+            Some("anthropic"),
+            Some("claude-opus-4-8"),
+        ),
+    )
+    .await?;
+
+    assert_eq!(
+        (
+            app.agent_navigation.get(&agent_thread_id),
+            app.active_agent_started_at.contains_key(&agent_thread_id),
+            app.chat_widget.active_agent_list_visible(),
+        ),
+        (
+            Some(&AgentPickerThreadEntry {
+                agent_nickname: None,
+                agent_role: None,
+                agent_path: Some("/root/reviewer".to_string()),
+                model_provider_id: Some("anthropic".to_string()),
+                model: Some("claude-opus-4-8".to_string()),
+                total_tokens: None,
+                is_running: true,
+                is_closed: false,
+            }),
+            true,
+            true,
+        )
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn inactive_sub_agent_interaction_preserves_completed_state() -> Result<()> {
+    let mut app = make_test_app().await;
+    let parent_thread_id = ThreadId::new();
+    let agent_thread_id = ThreadId::new();
+    app.upsert_agent_picker_thread(
+        agent_thread_id,
+        Some("reviewer".to_string()),
+        Some("worker".to_string()),
+        /*is_closed*/ false,
+    );
+
+    app.enqueue_thread_notification(
+        parent_thread_id,
+        sub_agent_activity_notification(
+            parent_thread_id,
+            agent_thread_id,
+            codex_app_server_protocol::SubAgentActivityKind::Interacted,
+            /*model_provider*/ None,
+            /*model*/ None,
+        ),
+    )
+    .await?;
+
+    assert_eq!(
+        (
+            app.agent_navigation.get(&agent_thread_id),
+            app.active_agent_started_at.contains_key(&agent_thread_id),
+            app.chat_widget.active_agent_list_visible(),
+        ),
+        (
+            Some(&AgentPickerThreadEntry {
+                agent_nickname: Some("reviewer".to_string()),
+                agent_role: Some("worker".to_string()),
+                agent_path: Some("/root/reviewer".to_string()),
+                model_provider_id: None,
+                model: None,
+                total_tokens: None,
+                is_running: false,
+                is_closed: false,
+            }),
+            false,
+            false,
+        )
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn inactive_agent_token_usage_updates_active_agent_display_metadata() -> Result<()> {
     let mut app = make_test_app().await;
     let agent_thread_id =
@@ -1572,7 +1662,7 @@ async fn open_agent_picker_clears_completed_path_backed_agent_running_state() ->
             agent_path: "/root/child".to_string(),
             model_provider_id: None,
             model: None,
-            is_running_hint: true,
+            running_state_update: AgentRunningStateUpdate::SetRunning,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -1615,7 +1705,7 @@ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Resul
             agent_path: "/root/child".to_string(),
             model_provider_id: None,
             model: None,
-            is_running_hint: true,
+            running_state_update: AgentRunningStateUpdate::SetRunning,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -2486,7 +2576,7 @@ async fn open_agent_picker_allows_running_path_backed_threads() -> Result<()> {
             agent_path: "/root/child".to_string(),
             model_provider_id: None,
             model: None,
-            is_running_hint: true,
+            running_state_update: AgentRunningStateUpdate::SetRunning,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -4947,6 +5037,28 @@ fn turn_started_notification(thread_id: ThreadId, turn_id: &str) -> ServerNotifi
         turn: Turn {
             started_at: Some(0),
             ..test_turn(turn_id, TurnStatus::InProgress, Vec::new())
+        },
+    })
+}
+
+fn sub_agent_activity_notification(
+    parent_thread_id: ThreadId,
+    agent_thread_id: ThreadId,
+    kind: codex_app_server_protocol::SubAgentActivityKind,
+    model_provider: Option<&str>,
+    model: Option<&str>,
+) -> ServerNotification {
+    ServerNotification::ItemCompleted(codex_app_server_protocol::ItemCompletedNotification {
+        thread_id: parent_thread_id.to_string(),
+        turn_id: "turn-1".to_string(),
+        completed_at_ms: 0,
+        item: ThreadItem::SubAgentActivity {
+            id: "activity-1".to_string(),
+            kind,
+            agent_thread_id: agent_thread_id.to_string(),
+            agent_path: "/root/reviewer".to_string(),
+            model_provider: model_provider.map(str::to_string),
+            model: model.map(str::to_string),
         },
     })
 }

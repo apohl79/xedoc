@@ -56,7 +56,14 @@ pub(crate) struct SubAgentActivityDisplay {
     pub(crate) agent_path: String,
     pub(crate) model_provider_id: Option<String>,
     pub(crate) model: Option<String>,
-    pub(crate) is_running_hint: bool,
+    pub(crate) running_state_update: AgentRunningStateUpdate,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AgentRunningStateUpdate {
+    SetRunning,
+    SetIdle,
+    Preserve,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -303,7 +310,11 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
         agent_path: agent_path.clone(),
         model_provider_id: model_provider.clone(),
         model: model.clone(),
-        is_running_hint: !matches!(kind, SubAgentActivityKind::Interrupted),
+        running_state_update: match kind {
+            SubAgentActivityKind::Started => AgentRunningStateUpdate::SetRunning,
+            SubAgentActivityKind::Interacted => AgentRunningStateUpdate::Preserve,
+            SubAgentActivityKind::Interrupted => AgentRunningStateUpdate::SetIdle,
+        },
     })
 }
 

@@ -910,8 +910,12 @@ impl App {
             (guard.active, guard.side_parent_pending_status())
         };
         let notification_status_change = SideParentStatusChange::for_notification(&notification);
-        self.sync_active_agent_running_state_for_notification(&notification);
-        self.sync_active_agent_token_usage_for_notification(&notification);
+        if should_send {
+            self.sync_active_agent_running_state_for_notification(&notification);
+            self.sync_active_agent_token_usage_for_notification(&notification);
+        } else {
+            self.cache_collab_receiver_threads_for_notification(&notification);
+        }
 
         if should_send {
             match sender.try_send(ThreadBufferedEvent::Notification(notification)) {
@@ -939,10 +943,8 @@ impl App {
 
     /// Locally remembers receiver threads referenced by a collab notification.
     ///
-    /// This intentionally avoids app-server reads on the active-thread rendering path. During large
-    /// fan-outs the app-server can be saturated with spawn work, and blocking here would freeze the
-    /// TUI event loop. Metadata from `ThreadStarted` or explicit picker refreshes still fills in
-    /// names and roles later; until then, rendering falls back to the thread id.
+    /// This intentionally avoids app-server reads. Inactive parent threads also pass through this
+    /// path so nested agents become visible before their own lifecycle notifications arrive.
     pub(super) fn cache_collab_receiver_threads_for_notification(
         &mut self,
         notification: &ServerNotification,
@@ -954,9 +956,17 @@ impl App {
             sub_agent_activity_item(notification).and_then(sub_agent_activity_display)
         {
             let thread_id = activity.thread_id;
-            let is_running = activity.is_running_hint;
+            let running_state_update = activity.running_state_update;
             self.agent_navigation.record_sub_agent_activity(activity);
-            self.set_active_agent_running(thread_id, is_running);
+            match running_state_update {
+                AgentRunningStateUpdate::SetRunning => {
+                    self.set_active_agent_running(thread_id, /*is_running*/ true);
+                }
+                AgentRunningStateUpdate::SetIdle => {
+                    self.set_active_agent_running(thread_id, /*is_running*/ false);
+                }
+                AgentRunningStateUpdate::Preserve => self.sync_active_agent_display(),
+            }
             self.sync_active_agent_label();
             return;
         }

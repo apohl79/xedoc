@@ -19,6 +19,7 @@
 //! updated or marked closed.
 
 use crate::multi_agents::AgentPickerThreadEntry;
+use crate::multi_agents::AgentRunningStateUpdate;
 use crate::multi_agents::SubAgentActivityDisplay;
 use crate::multi_agents::format_agent_picker_item_name;
 use crate::multi_agents::next_agent_shortcut;
@@ -145,7 +146,11 @@ impl AgentNavigationState {
         if let Some(model) = normalized_agent_metadata(activity.model) {
             entry.model = Some(model);
         }
-        entry.is_running = activity.is_running_hint;
+        match activity.running_state_update {
+            AgentRunningStateUpdate::SetRunning => entry.is_running = true,
+            AgentRunningStateUpdate::SetIdle => entry.is_running = false,
+            AgentRunningStateUpdate::Preserve => {}
+        }
         entry.is_closed = false;
     }
 
