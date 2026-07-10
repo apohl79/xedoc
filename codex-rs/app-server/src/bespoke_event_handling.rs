@@ -854,7 +854,6 @@ pub(crate) async fn apply_bespoke_event_handling(
         | EventMsg::CollabCloseEnd(_)
         | EventMsg::CollabResumeBegin(_)
         | EventMsg::CollabResumeEnd(_)
-        | EventMsg::SubAgentActivity(_)
         | EventMsg::ExecCommandBegin(_)
         | EventMsg::ExecCommandEnd(_)
         | EventMsg::EnteredReviewMode(_)
@@ -868,6 +867,22 @@ pub(crate) async fn apply_bespoke_event_handling(
             // Deprecated MCP tool-call events are still fanned out for raw-event and rollout
             // compatibility consumers.
             // App-server v2 receives the canonical TurnItem::McpToolCall lifecycle instead.
+        }
+        EventMsg::SubAgentActivity(activity) => {
+            if activity.kind == SubAgentActivityKind::Interrupted {
+                remove_missing_thread_watch(
+                    &thread_manager,
+                    &thread_watch_manager,
+                    activity.agent_thread_id,
+                )
+                .await;
+            }
+            let notification = item_event_to_server_notification(
+                EventMsg::SubAgentActivity(activity),
+                &conversation_id.to_string(),
+                &event_turn_id,
+            );
+            outgoing.send_server_notification(notification).await;
         }
         msg @ (EventMsg::AgentMessageContentDelta(_)
         | EventMsg::PlanDelta(_)
@@ -2112,12 +2127,12 @@ mod tests {
     use codex_protocol::protocol::EventMsg;
     use codex_protocol::protocol::GuardianAssessmentEvent;
     use codex_protocol::protocol::GuardianAssessmentStatus;
-    use codex_protocol::protocol::ItemCompletedEvent;
     use codex_protocol::protocol::ItemStartedEvent;
     use codex_protocol::protocol::RateLimitSnapshot;
     use codex_protocol::protocol::RateLimitWindow;
     use codex_protocol::protocol::RolloutItem;
     use codex_protocol::protocol::SessionSource;
+    use codex_protocol::protocol::SubAgentActivityEvent;
     use codex_protocol::protocol::TokenUsage;
     use codex_protocol::protocol::TokenUsageInfo;
     use codex_protocol::protocol::UserMessageEvent;

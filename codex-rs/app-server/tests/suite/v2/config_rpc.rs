@@ -1205,13 +1205,8 @@ fn assert_layers_user_then_optional_system(
     layers: &[codex_app_server_protocol::ConfigLayer],
     user_file: AbsolutePathBuf,
 ) -> Result<()> {
-    let mut first_index = 0;
-    if matches!(
-        layers.first().map(|layer| &layer.name),
-        Some(ConfigLayerSource::LegacyManagedConfigTomlFromMdm)
-    ) {
-        first_index = 1;
-    }
+    let mut first_index = first_non_mdm_layer_index(layers);
+    skip_optional_session_flags_layer(layers, &mut first_index);
     assert_eq!(layers.len(), first_index + 2);
     assert_eq!(
         layers[first_index].name,
@@ -1232,28 +1227,47 @@ fn assert_layers_managed_user_then_optional_system(
     managed_file: AbsolutePathBuf,
     user_file: AbsolutePathBuf,
 ) -> Result<()> {
-    let mut first_index = 0;
-    if matches!(
-        layers.first().map(|layer| &layer.name),
-        Some(ConfigLayerSource::LegacyManagedConfigTomlFromMdm)
-    ) {
-        first_index = 1;
-    }
-    assert_eq!(layers.len(), first_index + 3);
+    let mut first_index = first_non_mdm_layer_index(layers);
     assert_eq!(
         layers[first_index].name,
         ConfigLayerSource::LegacyManagedConfigTomlFromFile { file: managed_file }
     );
+    first_index += 1;
+    skip_optional_session_flags_layer(layers, &mut first_index);
+    assert_eq!(layers.len(), first_index + 2);
     assert_eq!(
-        layers[first_index + 1].name,
+        layers[first_index].name,
         ConfigLayerSource::User {
             file: user_file,
             profile: None
         }
     );
     assert!(matches!(
-        layers[first_index + 2].name,
+        layers[first_index + 1].name,
         ConfigLayerSource::System { .. }
     ));
     Ok(())
+}
+
+fn first_non_mdm_layer_index(layers: &[codex_app_server_protocol::ConfigLayer]) -> usize {
+    if matches!(
+        layers.first().map(|layer| &layer.name),
+        Some(ConfigLayerSource::LegacyManagedConfigTomlFromMdm)
+    ) {
+        1
+    } else {
+        0
+    }
+}
+
+fn skip_optional_session_flags_layer(
+    layers: &[codex_app_server_protocol::ConfigLayer],
+    first_index: &mut usize,
+) {
+    if matches!(
+        layers.get(*first_index).map(|layer| &layer.name),
+        Some(ConfigLayerSource::SessionFlags)
+    ) {
+        *first_index += 1;
+    }
 }

@@ -467,7 +467,10 @@ async fn thread_fork_preserves_generated_source_name_as_generated() -> Result<()
     metadata.title_source = ThreadTitleSource::Generated;
     state_db.upsert_thread(&metadata).await?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build()
+        .await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
     let fork_id = mcp

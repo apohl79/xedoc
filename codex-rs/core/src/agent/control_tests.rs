@@ -866,7 +866,11 @@ async fn plaintext_inter_agent_envelope_records_payload_as_last_task_message() {
 
     harness
         .control
-        .send_inter_agent_communication(spawned_agent.thread_id, communication)
+        .send_inter_agent_communication(
+            spawned_agent.thread_id,
+            communication,
+            AgentCommunicationContext::new(AgentCommunicationKind::Followup, ThreadId::new()),
+        )
         .await
         .expect("send_inter_agent_communication should succeed");
 
@@ -915,7 +919,11 @@ async fn final_answer_completion_envelope_records_payload_as_last_task_message()
 
     harness
         .control
-        .send_inter_agent_communication(spawned_agent.thread_id, communication)
+        .send_inter_agent_communication(
+            spawned_agent.thread_id,
+            communication,
+            AgentCommunicationContext::new(AgentCommunicationKind::Result, ThreadId::new()),
+        )
         .await
         .expect("send_inter_agent_communication should succeed");
 

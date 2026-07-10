@@ -7,6 +7,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 
 use super::STATE_MIGRATOR;
 use super::repair_legacy_recency_migration_version;
+use super::repair_legacy_state_migration_versions;
 
 fn migrator_through(version: i64) -> Migrator {
     Migrator {
@@ -192,6 +193,73 @@ async fn repairs_recency_migration_that_was_applied_as_version_38() {
         .migrations
         .iter()
         .filter(|migration| migration.version >= 38)
+        .map(|migration| (migration.version, migration.checksum.to_vec()))
+        .collect::<Vec<_>>();
+    assert_eq!(applied, expected);
+}
+
+#[tokio::test]
+async fn repairs_title_source_migration_that_was_applied_as_version_40() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory database should open");
+    migrator_through(/*version*/ 39)
+        .run(&pool)
+        .await
+        .expect("pre-title-source migrations should apply");
+
+    let title_source_migration = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .find(|migration| migration.version == 41)
+        .expect("title source migration should exist");
+    let mut legacy_migrations = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .filter(|migration| migration.version <= 39)
+        .cloned()
+        .collect::<Vec<_>>();
+    legacy_migrations.push(Migration::new(
+        40,
+        title_source_migration.description.clone(),
+        title_source_migration.migration_type,
+        title_source_migration.sql.clone(),
+        title_source_migration.no_tx,
+    ));
+    let legacy_title_source_migrator = Migrator::with_migrations(legacy_migrations);
+    legacy_title_source_migrator
+        .run(&pool)
+        .await
+        .expect("legacy title source migration should apply as version 40");
+
+    repair_legacy_state_migration_versions(&pool, &STATE_MIGRATOR)
+        .await
+        .expect("legacy migration history should be repaired");
+    STATE_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("current migrations should apply after repair");
+
+    let applied = sqlx::query(
+        "SELECT version, checksum FROM _sqlx_migrations WHERE version >= 40 ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("applied migrations should load")
+    .into_iter()
+    .map(|row| {
+        (
+            row.get::<i64, _>("version"),
+            row.get::<Vec<u8>, _>("checksum"),
+        )
+    })
+    .collect::<Vec<_>>();
+    let expected = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .filter(|migration| migration.version >= 40)
         .map(|migration| (migration.version, migration.checksum.to_vec()))
         .collect::<Vec<_>>();
     assert_eq!(applied, expected);

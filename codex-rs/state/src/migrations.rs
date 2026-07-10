@@ -41,7 +41,16 @@ pub(crate) fn runtime_memories_migrator() -> Migrator {
     runtime_migrator(&MEMORIES_MIGRATOR)
 }
 
-pub(crate) async fn repair_legacy_recency_migration_version(
+pub(crate) async fn repair_legacy_state_migration_versions(
+    pool: &SqlitePool,
+    migrator: &Migrator,
+) -> anyhow::Result<()> {
+    repair_legacy_recency_migration_version(pool, migrator).await?;
+    repair_legacy_title_source_migration_version(pool, migrator).await?;
+    Ok(())
+}
+
+async fn repair_legacy_recency_migration_version(
     pool: &SqlitePool,
     migrator: &Migrator,
 ) -> anyhow::Result<()> {
@@ -52,13 +61,7 @@ pub(crate) async fn repair_legacy_recency_migration_version(
     else {
         return Ok(());
     };
-    let migrations_table_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
-    )
-    .fetch_optional(pool)
-    .await?
-    .is_some();
-    if !migrations_table_exists {
+    if !migrations_table_exists(pool).await? {
         return Ok(());
     }
 
@@ -81,6 +84,52 @@ WHERE version = ?
     .execute(pool)
     .await?;
     Ok(())
+}
+
+async fn repair_legacy_title_source_migration_version(
+    pool: &SqlitePool,
+    migrator: &Migrator,
+) -> anyhow::Result<()> {
+    let Some(title_source_migration) = migrator
+        .migrations
+        .iter()
+        .find(|migration| migration.version == 41)
+    else {
+        return Ok(());
+    };
+    if !migrations_table_exists(pool).await? {
+        return Ok(());
+    }
+
+    sqlx::query(
+        r#"
+UPDATE _sqlx_migrations
+SET version = ?, description = ?
+WHERE version = ?
+  AND checksum = ?
+  AND NOT EXISTS (
+      SELECT 1 FROM _sqlx_migrations WHERE version = ?
+  )
+        "#,
+    )
+    .bind(title_source_migration.version)
+    .bind(title_source_migration.description.as_ref())
+    .bind(40_i64)
+    .bind(title_source_migration.checksum.as_ref())
+    .bind(title_source_migration.version)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn migrations_table_exists(pool: &SqlitePool) -> anyhow::Result<bool> {
+    let exists = sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_optional(pool)
+    .await?
+    .is_some();
+    Ok(exists)
 }
 
 #[cfg(test)]

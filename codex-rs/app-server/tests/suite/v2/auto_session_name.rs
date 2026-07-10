@@ -41,8 +41,11 @@ async fn auto_session_name_generates_title_until_manual_rename() -> Result<()> {
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &server.uri())?;
 
-    let mut app_server =
-        TestAppServer::new_with_args(codex_home.path(), &["-c", "auto_session_name=true"]).await?;
+    let mut app_server = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .with_args(&["-c", "auto_session_name=true"])
+        .build()
+        .await?;
     timeout(DEFAULT_READ_TIMEOUT, app_server.initialize()).await??;
 
     let thread = start_thread(&mut app_server).await?;
@@ -141,8 +144,11 @@ async fn auto_session_name_generates_title_mid_turn_from_streaming_response() ->
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), server.uri())?;
 
-    let mut app_server =
-        TestAppServer::new_with_args(codex_home.path(), &["-c", "auto_session_name=true"]).await?;
+    let mut app_server = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .with_args(&["-c", "auto_session_name=true"])
+        .build()
+        .await?;
     timeout(DEFAULT_READ_TIMEOUT, app_server.initialize()).await??;
 
     let thread = start_thread(&mut app_server).await?;
