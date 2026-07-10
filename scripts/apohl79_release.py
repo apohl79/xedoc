@@ -226,8 +226,9 @@ def build_release(args: argparse.Namespace) -> None:
             str(source_root / "codex-rs" / "Cargo.toml"),
             "--package",
             "codex-cli",
-            "--bin",
-            "codex",
+            "--package",
+            "codex-code-mode-host",
+            "--bins",
             "--profile",
             "release",
             "--target",
@@ -242,6 +243,11 @@ def build_release(args: argparse.Namespace) -> None:
     ).resolve()
     if not entrypoint.is_file():
         raise RuntimeError(f"Built entrypoint not found: {entrypoint}")
+    code_mode_host = (
+        target_dir / spec.target / "release" / f"codex-code-mode-host{spec.exe_suffix}"
+    ).resolve()
+    if not code_mode_host.is_file():
+        raise RuntimeError(f"Built code-mode host not found: {code_mode_host}")
 
     signing_script = source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
     entitlements = (
@@ -257,6 +263,16 @@ def build_release(args: argparse.Namespace) -> None:
         cwd=source_root,
     )
     run(["codesign", "--verify", "--strict", "--verbose=2", str(entrypoint)])
+    run(
+        build_codesign_command(
+            target=code_mode_host,
+            identity=codesign_identity,
+            entitlements=entitlements,
+            signing_script=signing_script,
+        ),
+        cwd=source_root,
+    )
+    run(["codesign", "--verify", "--strict", "--verbose=2", str(code_mode_host)])
 
     package_dir = (
         resolve_repo_path(args.package_dir)
@@ -278,6 +294,8 @@ def build_release(args: argparse.Namespace) -> None:
         fork_version,
         "--entrypoint-bin",
         str(entrypoint),
+        "--code-mode-host-bin",
+        str(code_mode_host),
         "--cargo-profile",
         "release",
         "--package-dir",

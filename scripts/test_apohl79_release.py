@@ -408,6 +408,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     entrypoint.parent.mkdir(parents=True)
                     entrypoint.write_text("codex", encoding="utf-8")
                     entrypoint.chmod(0o755)
+                    code_mode_host = entrypoint.with_name("codex-code-mode-host")
+                    code_mode_host.write_text("codex-code-mode-host", encoding="utf-8")
+                    code_mode_host.chmod(0o755)
                 if command[:1] == [sys.executable]:
                     manifest_snapshots["package"] = cargo_toml.read_text(
                         encoding="utf-8"
@@ -489,6 +492,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
             self.assertEqual(cargo_cwd, repo_root / "codex-rs")
             self.assertIn("--locked", cargo_command)
             self.assertIn(str(cargo_toml), cargo_command)
+            self.assertIn("--bins", cargo_command)
+            self.assertIn("codex-cli", cargo_command)
+            self.assertIn("codex-code-mode-host", cargo_command)
             self.assertIsNotNone(cargo_env)
             assert cargo_env is not None
             self.assertEqual(cargo_env["CARGO_TARGET_DIR"], str(target_dir.resolve()))
@@ -506,13 +512,47 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 package_command[version_arg_index + 1],
                 "0.141.0-apohl79-9",
             )
+            code_mode_host_arg_index = package_command.index("--code-mode-host-bin")
+            self.assertEqual(
+                package_command[code_mode_host_arg_index + 1],
+                str(
+                    (
+                        target_dir
+                        / "aarch64-apple-darwin"
+                        / "release"
+                        / "codex-code-mode-host"
+                    ).resolve()
+                ),
+            )
             signing_commands = [
                 command
                 for command, _cwd, _env, _check in commands
                 if command and command[0].endswith("sign_macos_code.sh")
             ]
-            self.assertEqual(len(signing_commands), 1)
-            self.assertIn("Developer ID Application: Example", signing_commands[0])
+            self.assertEqual(len(signing_commands), 2)
+            for signing_command in signing_commands:
+                self.assertIn("Developer ID Application: Example", signing_command)
+            signed_targets = [
+                command[command.index("--target") + 1] for command in signing_commands
+            ]
+            self.assertEqual(
+                signed_targets,
+                [
+                    str(
+                        (
+                            target_dir / "aarch64-apple-darwin" / "release" / "codex"
+                        ).resolve()
+                    ),
+                    str(
+                        (
+                            target_dir
+                            / "aarch64-apple-darwin"
+                            / "release"
+                            / "codex-code-mode-host"
+                        ).resolve()
+                    ),
+                ],
+            )
 
     def test_build_release_publishes_github_release_after_packaging(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -561,6 +601,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     entrypoint.parent.mkdir(parents=True)
                     entrypoint.write_text("codex", encoding="utf-8")
                     entrypoint.chmod(0o755)
+                    code_mode_host = entrypoint.with_name("codex-code-mode-host")
+                    code_mode_host.write_text("codex-code-mode-host", encoding="utf-8")
+                    code_mode_host.chmod(0o755)
                 return subprocess.CompletedProcess(command, 0)
 
             def fake_publish_github_release(
@@ -817,6 +860,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     entrypoint.parent.mkdir(parents=True)
                     entrypoint.write_text("codex", encoding="utf-8")
                     entrypoint.chmod(0o755)
+                    code_mode_host = entrypoint.with_name("codex-code-mode-host")
+                    code_mode_host.write_text("codex-code-mode-host", encoding="utf-8")
+                    code_mode_host.chmod(0o755)
                 if command[:1] == [sys.executable]:
                     lock_snapshots["package"] = cargo_lock.read_text(encoding="utf-8")
                 return subprocess.CompletedProcess(command, 0)

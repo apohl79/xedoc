@@ -7,6 +7,7 @@ APOHL79_TAG="${CODEX_APOHL79_TAG:-}"
 APOHL79_TARGET="${CODEX_APOHL79_TARGET:-}"
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/codex"
+HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
@@ -44,7 +45,7 @@ Environment:
   CODEX_APOHL79_TAG     Same as --tag.
   CODEX_APOHL79_TARGET  Same as --target.
   CODEX_APOHL79_REPO    Same as --repo.
-  CODEX_INSTALL_DIR     Directory for the visible codex symlink. Defaults to ~/.local/bin.
+  CODEX_INSTALL_DIR     Directory for the visible codex symlinks. Defaults to ~/.local/bin.
   CODEX_HOME            Codex home directory. Defaults to ~/.codex.
   GH_TOKEN/GITHUB_TOKEN Optional GitHub token for API requests.
 EOF
@@ -397,6 +398,7 @@ release_dir_is_complete() {
     [ "$(basename "$release_dir")" = "$expected_name" ] &&
     [ -f "$release_dir/codex-package.json" ] &&
     [ -x "$release_dir/bin/codex" ] &&
+    [ -x "$release_dir/bin/codex-code-mode-host" ] &&
     [ -x "$release_dir/codex" ] &&
     [ -x "$release_dir/codex-path/rg" ]
 }
@@ -412,8 +414,12 @@ install_zip_release() {
   unzip -q "$archive_path" -d "$stage_release"
 
   [ -f "$stage_release/bin/codex" ] || die "Archive is missing bin/codex."
+  [ -f "$stage_release/bin/codex-code-mode-host" ] || die "Archive is missing bin/codex-code-mode-host."
   [ -f "$stage_release/codex-path/rg" ] || die "Archive is missing codex-path/rg."
-  chmod 0755 "$stage_release/bin/codex" "$stage_release/codex-path/rg"
+  chmod 0755 \
+    "$stage_release/bin/codex" \
+    "$stage_release/bin/codex-code-mode-host" \
+    "$stage_release/codex-path/rg"
   if [ -f "$stage_release/codex-resources/zsh/bin/zsh" ]; then
     chmod 0755 "$stage_release/codex-resources/zsh/bin/zsh"
   fi
@@ -436,8 +442,13 @@ update_current_link() {
 update_visible_command() {
   mkdir -p "$BIN_DIR"
   tmp_link="$BIN_DIR/.codex.$$"
+  tmp_host_link="$BIN_DIR/.codex-code-mode-host.$$"
 
   replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/bin/codex" "$tmp_link"
+  replace_path_with_symlink \
+    "$HOST_BIN_PATH" \
+    "$CURRENT_LINK/bin/codex-code-mode-host" \
+    "$tmp_host_link"
 }
 
 cleanup() {
