@@ -3117,6 +3117,11 @@ impl Session {
             return multi_agent_version;
         }
 
+        // When the user explicitly enables V2 in config, trust that over model metadata.
+        if config.features.enabled(Feature::MultiAgentV2) {
+            return self.set_multi_agent_version_if_unset(MultiAgentVersion::V2);
+        }
+
         let selected = model_info
             .multi_agent_version
             .unwrap_or_else(|| config.multi_agent_version_from_features());
