@@ -81,6 +81,7 @@ async fn handle_interrupt_agent(
                 model_provider: None,
                 model: None,
                 kind: SubAgentActivityKind::Interrupted,
+                current_activity: None,
             }
             .into(),
         )

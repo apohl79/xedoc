@@ -2758,6 +2758,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         agent_path: codex_protocol::AgentPath::root()
             .join("worker")
             .expect("worker path"),
+        current_activity: None,
     });
 
     assert_eq!(
@@ -2769,6 +2770,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             agent_path: "/root/worker".to_string(),
             model_provider: None,
             model: None,
+            current_activity: None,
         }
     );
 

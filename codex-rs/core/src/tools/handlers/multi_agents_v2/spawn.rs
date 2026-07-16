@@ -159,6 +159,7 @@ async fn handle_spawn_agent(
                     .as_ref()
                     .map(|snapshot| snapshot.model.clone()),
                 kind: SubAgentActivityKind::Started,
+                current_activity: None,
             }
             .into(),
         )

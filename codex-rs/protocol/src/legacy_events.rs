@@ -403,6 +403,7 @@ impl SubAgentActivityItem {
             model_provider: None,
             model: None,
             kind: self.kind,
+            current_activity: self.current_activity.clone(),
         })
     }
 }

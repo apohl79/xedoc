@@ -1182,6 +1182,7 @@ async fn collab_receiver_notification_caches_thread_without_app_server_read() {
             total_tokens: None,
             is_running: true,
             is_closed: false,
+            current_activity: None,
         })
     );
     assert!(
@@ -1339,6 +1340,7 @@ async fn sub_agent_activity_caches_active_agent_display_metadata() -> Result<()>
                 agent_path: "/root/reviewer".to_string(),
                 model_provider: Some("anthropic".to_string()),
                 model: Some("claude-opus-4-8".to_string()),
+                current_activity: None,
             },
         }),
     ));
@@ -1359,6 +1361,7 @@ async fn sub_agent_activity_caches_active_agent_display_metadata() -> Result<()>
                 total_tokens: None,
                 is_running: true,
                 is_closed: false,
+                current_activity: None,
             }),
             true,
             true,
@@ -1401,6 +1404,7 @@ async fn inactive_sub_agent_activity_caches_active_agent_display_metadata() -> R
                 total_tokens: None,
                 is_running: true,
                 is_closed: false,
+                current_activity: None,
             }),
             true,
             true,
@@ -1449,6 +1453,7 @@ async fn inactive_sub_agent_interaction_preserves_completed_state() -> Result<()
                 total_tokens: None,
                 is_running: false,
                 is_closed: false,
+                current_activity: None,
             }),
             false,
             false,
@@ -1505,6 +1510,7 @@ async fn inactive_agent_turn_completed_clears_active_agent_display() -> Result<(
                 agent_path: "/root/reviewer".to_string(),
                 model_provider: None,
                 model: None,
+                current_activity: None,
             },
         }),
     ));
@@ -1593,6 +1599,7 @@ async fn open_agent_picker_keeps_missing_threads_for_replay() -> Result<()> {
             total_tokens: None,
             is_running: false,
             is_closed: true,
+            current_activity: None,
         })
     );
     assert_eq!(app.agent_navigation.ordered_thread_ids(), vec![thread_id]);
@@ -1631,6 +1638,7 @@ async fn open_agent_picker_preserves_cached_metadata_for_replay_threads() -> Res
             total_tokens: None,
             is_running: false,
             is_closed: true,
+            current_activity: None,
         })
     );
     Ok(())
@@ -1663,6 +1671,7 @@ async fn open_agent_picker_clears_completed_path_backed_agent_running_state() ->
             model_provider_id: None,
             model: None,
             running_state_update: AgentRunningStateUpdate::SetRunning,
+            current_activity: None,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -1678,6 +1687,7 @@ async fn open_agent_picker_clears_completed_path_backed_agent_running_state() ->
             total_tokens: None,
             is_running: false,
             is_closed: false,
+            current_activity: None,
         })
     );
     Ok(())
@@ -1706,6 +1716,7 @@ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Resul
             model_provider_id: None,
             model: None,
             running_state_update: AgentRunningStateUpdate::SetRunning,
+            current_activity: None,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -1721,6 +1732,7 @@ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Resul
             total_tokens: None,
             is_running: false,
             is_closed: true,
+            current_activity: None,
         })
     );
     Ok(())
@@ -1780,6 +1792,7 @@ async fn open_agent_picker_marks_terminal_read_errors_closed() -> Result<()> {
             total_tokens: None,
             is_running: false,
             is_closed: true,
+            current_activity: None,
         })
     );
     Ok(())
@@ -1823,6 +1836,7 @@ fn open_agent_picker_marks_loaded_threads_open() -> Result<()> {
                 total_tokens: None,
                 is_running: false,
                 is_closed: false,
+                current_activity: None,
             })
         );
         Ok(())
@@ -2577,6 +2591,7 @@ async fn open_agent_picker_allows_running_path_backed_threads() -> Result<()> {
             model_provider_id: None,
             model: None,
             running_state_update: AgentRunningStateUpdate::SetRunning,
+            current_activity: None,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -3343,6 +3358,7 @@ async fn inactive_thread_started_notification_initializes_replay_session() -> Re
             total_tokens: None,
             is_running: false,
             is_closed: false,
+            current_activity: None,
         })
     );
 
@@ -5059,6 +5075,7 @@ fn sub_agent_activity_notification(
             agent_path: "/root/reviewer".to_string(),
             model_provider: model_provider.map(str::to_string),
             model: model.map(str::to_string),
+            current_activity: None,
         },
     })
 }

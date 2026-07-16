@@ -80,6 +80,7 @@ use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputEnvironment;
 use codex_features::Feature;
 use codex_git_utils::get_git_repo_root_with_fs;
+use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::ServiceTier;
@@ -93,6 +94,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::protocol::AgentMessageContentDeltaEvent;
 use codex_protocol::protocol::AgentReasoningSectionBreakEvent;
 use codex_protocol::protocol::CodexErrorInfo;
@@ -105,6 +107,7 @@ use codex_protocol::protocol::SafetyBufferingEvent;
 use codex_protocol::protocol::TurnDiffEvent;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
+use codex_rollout_trace::InferenceTraceContext;
 use codex_tools::ToolName;
 use codex_tools::filter_request_plugin_install_discoverable_tools_for_client;
 use codex_utils_stream_parser::AssistantTextChunk;
@@ -2026,6 +2029,7 @@ async fn try_run_sampling_request(
         !sess.services.extensions.turn_item_contributors().is_empty();
     let mut active_item_is_streaming_to_client = false;
     let receiving_span = trace_span!("receiving_stream");
+    let mut activity_item_count: u32 = 0;
     let outcome: CodexResult<SamplingRequestResult> = loop {
         let handle_responses = trace_span!(
             parent: &receiving_span,
@@ -2168,6 +2172,43 @@ async fn try_run_sampling_request(
                     last_agent_message = Some(agent_message);
                 }
                 needs_follow_up |= output_result.needs_follow_up;
+                // Periodically generate an activity summary for sub-agent threads.
+                activity_item_count += 1;
+                if activity_item_count % 5 == 0 && turn_context.parent_thread_id.is_some() {
+                    let sess = Arc::clone(&sess);
+                    let turn_context = Arc::clone(&turn_context);
+                    let last_msg = last_agent_message.clone();
+                    let count = activity_item_count;
+                    tokio::spawn(async move {
+                        if let Ok(Some(summary)) = generate_sub_agent_activity_summary(
+                            sess.as_ref(),
+                            turn_context.as_ref(),
+                            last_msg.as_deref(),
+                        )
+                        .await
+                        {
+                            sess.send_event(
+                                turn_context.as_ref(),
+                                codex_protocol::protocol::SubAgentActivityEvent {
+                                    event_id: format!("activity-{count}"),
+                                    occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
+                                    agent_thread_id: sess.thread_id,
+                                    agent_path: turn_context
+                                        .session_source
+                                        .get_agent_path()
+                                        .unwrap_or_else(codex_protocol::AgentPath::root),
+                                    model_provider: None,
+                                    model: None,
+                                    kind:
+                                        codex_protocol::protocol::SubAgentActivityKind::Interacted,
+                                    current_activity: Some(summary),
+                                }
+                                .into(),
+                            )
+                            .await;
+                        }
+                    });
+                }
                 // todo: remove before stabilizing multi-agent v2
                 if preempt_for_mailbox_mail && sess.input_queue.has_pending_mailbox_items().await {
                     break Ok(SamplingRequestResult {
@@ -2548,6 +2589,147 @@ pub(crate) fn get_last_assistant_message_from_turn(responses: &[ResponseItem]) -
         }
     }
     None
+}
+
+/// Maximum length of a sub-agent activity summary.
+const MAX_ACTIVITY_SUMMARY_CHARS: usize = 64;
+/// Keywords used to find a fast model on OpenAI providers.
+const FAST_MODEL_KEYWORD: &str = "mini";
+
+/// Generates a short human-readable summary of what the sub-agent is currently doing.
+///
+/// Uses the configured `model_fast` when available; falls back to the default model.
+/// The result is clamped to `MAX_ACTIVITY_SUMMARY_CHARS` characters.
+async fn generate_sub_agent_activity_summary(
+    sess: &Session,
+    turn_context: &TurnContext,
+    last_agent_message: Option<&str>,
+) -> CodexResult<Option<String>> {
+    let prompt_text = activity_summary_prompt(last_agent_message);
+    let prompt = Prompt {
+        input: vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText { text: prompt_text }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }],
+        base_instructions: BaseInstructions::default(),
+        ..Default::default()
+    };
+    let selected_model = select_activity_summary_model(
+        turn_context.config.model_provider_id.as_str(),
+        turn_context.config.model_fast.as_deref(),
+        turn_context.model_info.slug.as_str(),
+        &turn_context.available_models,
+    );
+    let owned_turn_context: TurnContext = if selected_model != turn_context.model_info.slug {
+        turn_context
+            .with_model(selected_model, &sess.services.models_manager)
+            .await
+    } else {
+        // TurnContext doesn't implement Clone, so create a new one with the same model.
+        turn_context
+            .with_model(
+                turn_context.model_info.slug.clone(),
+                &sess.services.models_manager,
+            )
+            .await
+    };
+    let turn_context = Arc::new(owned_turn_context);
+    let responses_metadata = turn_context.turn_metadata_state.to_responses_metadata(
+        sess.installation_id.clone(),
+        sess.current_window_id().await,
+        CodexResponsesRequestKind::SessionName,
+    );
+    let mut client_session = sess.services.model_client.new_session();
+    let mut stream = client_session
+        .stream(
+            &prompt,
+            &turn_context.model_info,
+            &turn_context.session_telemetry,
+            turn_context.reasoning_effort.clone(),
+            turn_context.reasoning_summary,
+            turn_context.config.service_tier.clone(),
+            &responses_metadata,
+            &InferenceTraceContext::disabled(),
+        )
+        .await?;
+    let mut generated = String::new();
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(ResponseEvent::OutputTextDelta(delta)) => {
+                generated.push_str(&delta);
+                if generated.chars().count() > MAX_ACTIVITY_SUMMARY_CHARS * 2 {
+                    break;
+                }
+            }
+            Ok(ResponseEvent::Completed { .. }) => {
+                let summary = normalize_activity_summary(&generated);
+                return Ok(summary);
+            }
+            Ok(_) => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(normalize_activity_summary(&generated))
+}
+
+fn select_activity_summary_model<'a>(
+    provider_id: &str,
+    model_fast: Option<&'a str>,
+    default_model: &'a str,
+    available_models: &'a [ModelPreset],
+) -> String {
+    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID) {
+        if let Some(preset) = available_models
+            .iter()
+            .filter(|p| p.show_in_picker)
+            .find(|p| {
+                p.model.to_ascii_lowercase().contains(FAST_MODEL_KEYWORD)
+                    || p.display_name
+                        .to_ascii_lowercase()
+                        .contains(FAST_MODEL_KEYWORD)
+            })
+        {
+            return preset.model.clone();
+        }
+    }
+    if let Some(model) = model_fast.map(str::trim).filter(|m| !m.is_empty()) {
+        return model.to_string();
+    }
+    default_model.to_string()
+}
+
+fn activity_summary_prompt(last_agent_message: Option<&str>) -> String {
+    let context = last_agent_message
+        .map(|msg| {
+            let trimmed: String = msg
+                .split_whitespace()
+                .take(50)
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("Latest agent output: {trimmed}")
+        })
+        .unwrap_or_default();
+    format!(
+        "Summarize what this coding agent is currently working on in one very short phrase.\n         Max {max_chars} characters. No quotes. No markdown. No full sentences.\n         Examples: Writing integration tests, Fixing type errors, Reviewing PR feedback\n         {context}",
+        max_chars = MAX_ACTIVITY_SUMMARY_CHARS,
+    )
+}
+fn normalize_activity_summary(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .chars()
+        .filter(|c| !c.is_control() && *c != '"' && *c != '\'' && *c != '`')
+        .collect();
+    let trimmed: String = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let truncated: String = trimmed.chars().take(MAX_ACTIVITY_SUMMARY_CHARS).collect();
+    let result = truncated.trim().to_string();
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 #[cfg(test)]

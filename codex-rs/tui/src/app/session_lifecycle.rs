@@ -220,6 +220,7 @@ impl App {
                 started_at,
                 provider_model,
                 total_tokens: entry.total_tokens,
+                current_activity: entry.current_activity.clone(),
             });
         }
         self.active_agent_started_at

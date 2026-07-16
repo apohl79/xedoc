@@ -121,6 +121,7 @@ pub(crate) async fn handle_message_string_tool(
                 model_provider: None,
                 model: None,
                 kind: SubAgentActivityKind::Interacted,
+                current_activity: None,
             }
             .into(),
         )

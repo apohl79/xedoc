@@ -16094,6 +16094,12 @@
             "agentThreadId": {
               "type": "string"
             },
+            "currentActivity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "id": {
               "type": "string"
             },

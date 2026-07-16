@@ -4253,6 +4253,11 @@ pub struct SubAgentActivityEvent {
     #[serde(default)]
     pub model: Option<String>,
     pub kind: SubAgentActivityKind,
+    /// Human-readable summary of what the sub-agent is currently doing.
+    /// Generated periodically by the sub-agent using the fast model.
+    /// Max 64 characters.
+    #[serde(default)]
+    pub current_activity: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]

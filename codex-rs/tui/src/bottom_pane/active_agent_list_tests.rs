@@ -23,6 +23,7 @@ fn display_lines_renders_elapsed_agent() {
         started_at: now - Duration::from_secs(326),
         provider_model: None,
         total_tokens: None,
+        current_activity: None,
     }]);
 
     let rendered = list
@@ -43,6 +44,7 @@ fn display_lines_renders_provider_model() {
         started_at: now - Duration::from_secs(326),
         provider_model: Some(" openai/gpt-5.5 ".to_string()),
         total_tokens: None,
+        current_activity: None,
     }]);
 
     let rendered = list
@@ -66,6 +68,7 @@ fn display_lines_renders_provider_model_and_tokens() {
         started_at: now - Duration::from_secs(1931),
         provider_model: Some(" openai/gpt-5.5 ".to_string()),
         total_tokens: Some(42_000),
+        current_activity: None,
     }]);
 
     let rendered = list
@@ -91,6 +94,7 @@ fn display_lines_caps_visible_agents() {
                 started_at: now,
                 provider_model: None,
                 total_tokens: None,
+                current_activity: None,
             })
             .collect(),
     );

@@ -291,6 +291,10 @@ pub struct SubAgentActivityItem {
     pub kind: SubAgentActivityKind,
     pub agent_thread_id: ThreadId,
     pub agent_path: AgentPath,
+    /// Human-readable summary of what the sub-agent is currently doing.
+    /// Max 64 characters.
+    #[serde(default)]
+    pub current_activity: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]

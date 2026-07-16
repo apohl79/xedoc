@@ -2576,12 +2576,14 @@ mod tests {
                 started_at: just_started,
                 provider_model: Some("openai/gpt-5.5".to_string()),
                 total_tokens: Some(42_000),
+                current_activity: None,
             },
             ActiveAgentEntry {
                 name: "integration [worker]".to_string(),
                 started_at: just_started,
                 provider_model: Some("openai/gpt-5.5".to_string()),
                 total_tokens: None,
+                current_activity: None,
             },
         ]);
         pane.set_active_task_list(vec![
@@ -2613,6 +2615,7 @@ mod tests {
             started_at: Instant::now(),
             provider_model: None,
             total_tokens: None,
+            current_activity: None,
         }]);
         pane.set_active_task_list(vec![plan_task("Patch", StepStatus::InProgress)]);
         assert!(pane.active_agent_list_visible());

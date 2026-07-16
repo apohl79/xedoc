@@ -186,6 +186,7 @@ pub fn item_event_to_server_notification(
                 agent_path: String::from(activity.agent_path),
                 model_provider: activity.model_provider,
                 model: activity.model,
+                current_activity: activity.current_activity,
             };
             ServerNotification::ItemCompleted(ItemCompletedNotification {
                 thread_id,

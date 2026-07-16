@@ -118,6 +118,7 @@ impl AgentNavigationState {
                 total_tokens: previous_total_tokens,
                 is_running: previous_is_running && !is_closed,
                 is_closed,
+                current_activity: None,
             },
         );
     }
@@ -138,6 +139,7 @@ impl AgentNavigationState {
                     total_tokens: None,
                     is_running: false,
                     is_closed: false,
+                    current_activity: None,
                 });
         entry.agent_path = Some(activity.agent_path);
         if let Some(model_provider_id) = normalized_agent_metadata(activity.model_provider_id) {
@@ -150,6 +152,9 @@ impl AgentNavigationState {
             AgentRunningStateUpdate::SetRunning => entry.is_running = true,
             AgentRunningStateUpdate::SetIdle => entry.is_running = false,
             AgentRunningStateUpdate::Preserve => {}
+        }
+        if activity.current_activity.is_some() {
+            entry.current_activity = activity.current_activity;
         }
         entry.is_closed = false;
     }

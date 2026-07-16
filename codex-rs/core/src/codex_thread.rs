@@ -258,6 +258,25 @@ impl CodexThread {
         self.codex.submit_with_trace(op, trace).await
     }
 
+    /// Emit a protocol event on this thread's event stream.
+    ///
+    /// The event will be processed by the thread's event loop and
+    /// forwarded to connected clients (e.g., TUI, app-server).
+    pub async fn emit_event(&self, msg: codex_protocol::protocol::EventMsg) {
+        self.codex
+            .session
+            .send_event_raw(codex_protocol::protocol::Event {
+                id: String::new(),
+                msg,
+            })
+            .await;
+    }
+
+    /// Returns the session source for this thread.
+    pub fn session_source(&self) -> &codex_protocol::protocol::SessionSource {
+        &self.session_source
+    }
+
     pub async fn submit_user_input_with_client_user_message_id(
         &self,
         op: Op,

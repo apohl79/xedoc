@@ -362,6 +362,7 @@ pub enum ThreadItem {
         agent_path: String,
         model_provider: Option<String>,
         model: Option<String>,
+        current_activity: Option<String>,
     },
     WebSearch(WebSearchItem),
     #[serde(rename_all = "camelCase")]
@@ -901,6 +902,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 agent_path: String::from(activity.agent_path),
                 model_provider: None,
                 model: None,
+                current_activity: activity.current_activity,
             },
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {
                 id: search.id,

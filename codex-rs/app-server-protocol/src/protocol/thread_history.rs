@@ -971,6 +971,7 @@ impl ThreadHistoryBuilder {
             agent_path: String::from(payload.agent_path.clone()),
             model_provider: payload.model_provider.clone(),
             model: payload.model.clone(),
+            current_activity: payload.current_activity.clone(),
         });
     }
 
