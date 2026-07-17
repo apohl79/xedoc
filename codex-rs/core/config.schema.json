@@ -1673,6 +1673,11 @@
           "description": "Friendly display name.",
           "type": "string"
         },
+        "namespace_tools": {
+          "default": true,
+          "description": "Whether this provider supports namespace tools (e.g. multi_agent_v2). Defaults to true. Set to false for providers that only understand flat tool lists.",
+          "type": "boolean"
+        },
         "query_params": {
           "additionalProperties": {
             "type": "string"
