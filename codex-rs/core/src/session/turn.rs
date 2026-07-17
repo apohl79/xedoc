@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -2029,7 +2030,66 @@ async fn try_run_sampling_request(
         !sess.services.extensions.turn_item_contributors().is_empty();
     let mut active_item_is_streaming_to_client = false;
     let receiving_span = trace_span!("receiving_stream");
-    let mut activity_item_count: u32 = 0;
+    // Periodically generate activity summaries for sub-agents via timer.
+    let activity_cancel = CancellationToken::new();
+    let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
+        let sess = Arc::clone(&sess);
+        let turn = Arc::clone(&turn_context);
+        let cancel = activity_cancel.clone();
+        Some(tokio::spawn(async move {
+            let mut tick: u32 = 0;
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = tokio::time::sleep(Duration::from_secs(12)) => {}
+                }
+                if cancel.is_cancelled() {
+                    break;
+                }
+                tick += 1;
+                match generate_sub_agent_activity_summary(
+                    sess.as_ref(),
+                    turn.as_ref(),
+                    None,
+                )
+                .await
+                {
+                    Ok(Some(summary)) => {
+                        sess.send_event(
+                            turn.as_ref(),
+                            codex_protocol::protocol::SubAgentActivityEvent {
+                                event_id: format!("activity-timer-{tick}"),
+                                occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
+                                agent_thread_id: sess.thread_id,
+                                agent_path: turn
+                                    .session_source
+                                    .get_agent_path()
+                                    .unwrap_or_else(codex_protocol::AgentPath::root),
+                                model_provider: None,
+                                model: None,
+                                kind: codex_protocol::protocol::SubAgentActivityKind::Interacted,
+                                current_activity: Some(summary),
+                            }
+                            .into(),
+                        )
+                        .await;
+                    }
+                    Ok(None) => {
+                        tracing::debug!("Timer activity summary returned empty");
+                    }
+                    Err(err) => {
+                        tracing::debug!(
+                            error = %err,
+                            "Timer activity summary generation failed"
+                        );
+                    }
+                }
+            }
+        }))
+    } else {
+        None
+    };
+
     let outcome: CodexResult<SamplingRequestResult> = loop {
         let handle_responses = trace_span!(
             parent: &receiving_span,
@@ -2172,58 +2232,6 @@ async fn try_run_sampling_request(
                     last_agent_message = Some(agent_message);
                 }
                 needs_follow_up |= output_result.needs_follow_up;
-                // Periodically generate an activity summary for sub-agent threads.
-                activity_item_count += 1;
-                eprintln!("DEBUG activity_tick: item_count={activity_item_count}, parent_thread_id={:?}, multi_agent_version={:?}",
-                    turn_context.parent_thread_id, turn_context.multi_agent_version);
-                if activity_item_count % 5 == 0 && turn_context.parent_thread_id.is_some() {
-                    eprintln!("DEBUG activity_summary: triggering generation, item_count={activity_item_count}, parent_thread_id={:?}",
-                        turn_context.parent_thread_id);
-                    let sess = Arc::clone(&sess);
-                    let turn_context = Arc::clone(&turn_context);
-                    let last_msg = last_agent_message.clone();
-                    let count = activity_item_count;
-                    tokio::spawn(async move {
-                        match generate_sub_agent_activity_summary(
-                            sess.as_ref(),
-                            turn_context.as_ref(),
-                            last_msg.as_deref(),
-                        )
-                        .await
-                        {
-                            Ok(Some(summary)) => {
-                                let _ = sess.send_event(
-                                turn_context.as_ref(),
-                                codex_protocol::protocol::SubAgentActivityEvent {
-                                    event_id: format!("activity-{count}"),
-                                    occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
-                                    agent_thread_id: sess.thread_id,
-                                    agent_path: turn_context
-                                        .session_source
-                                        .get_agent_path()
-                                        .unwrap_or_else(codex_protocol::AgentPath::root),
-                                    model_provider: None,
-                                    model: None,
-                                    kind:
-                                        codex_protocol::protocol::SubAgentActivityKind::Interacted,
-                                    current_activity: Some(summary),
-                                }
-                                .into(),
-                            )
-                            .await;
-                            }
-                            Ok(None) => {
-                                tracing::warn!("Activity summary generation returned empty result");
-                            }
-                            Err(err) => {
-                                tracing::warn!(
-                                    error = %err,
-                                    "Activity summary generation failed"
-                                );
-                            }
-                        }
-                    });
-                }
                 // todo: remove before stabilizing multi-agent v2
                 if preempt_for_mailbox_mail && sess.input_queue.has_pending_mailbox_items().await {
                     break Ok(SamplingRequestResult {
@@ -2594,6 +2602,7 @@ async fn try_run_sampling_request(
         }
     }
 
+    activity_cancel.cancel();
     outcome
 }
 
