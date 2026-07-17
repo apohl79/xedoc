@@ -2180,14 +2180,15 @@ async fn try_run_sampling_request(
                     let last_msg = last_agent_message.clone();
                     let count = activity_item_count;
                     tokio::spawn(async move {
-                        if let Ok(Some(summary)) = generate_sub_agent_activity_summary(
+                        match generate_sub_agent_activity_summary(
                             sess.as_ref(),
                             turn_context.as_ref(),
                             last_msg.as_deref(),
                         )
                         .await
                         {
-                            sess.send_event(
+                            Ok(Some(summary)) => {
+                            let _ = sess.send_event(
                                 turn_context.as_ref(),
                                 codex_protocol::protocol::SubAgentActivityEvent {
                                     event_id: format!("activity-{count}"),
@@ -2206,6 +2207,18 @@ async fn try_run_sampling_request(
                                 .into(),
                             )
                             .await;
+                            }
+                            Ok(None) => {
+                                tracing::warn!(
+                                    "Activity summary generation returned empty result"
+                                );
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    error = %err,
+                                    "Activity summary generation failed"
+                                );
+                            }
                         }
                     });
                 }
@@ -2622,6 +2635,12 @@ async fn generate_sub_agent_activity_summary(
         turn_context.config.model_fast.as_deref(),
         turn_context.model_info.slug.as_str(),
         &turn_context.available_models,
+    );
+    tracing::debug!(
+        provider_id = %turn_context.config.model_provider_id,
+        model_fast = ?turn_context.config.model_fast,
+        selected_model = %selected_model,
+        "Generating activity summary"
     );
     let owned_turn_context: TurnContext = if selected_model != turn_context.model_info.slug {
         turn_context
