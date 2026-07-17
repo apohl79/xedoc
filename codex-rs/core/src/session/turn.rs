@@ -2188,7 +2188,7 @@ async fn try_run_sampling_request(
                         .await
                         {
                             Ok(Some(summary)) => {
-                            let _ = sess.send_event(
+                                let _ = sess.send_event(
                                 turn_context.as_ref(),
                                 codex_protocol::protocol::SubAgentActivityEvent {
                                     event_id: format!("activity-{count}"),
@@ -2209,9 +2209,7 @@ async fn try_run_sampling_request(
                             .await;
                             }
                             Ok(None) => {
-                                tracing::warn!(
-                                    "Activity summary generation returned empty result"
-                                );
+                                tracing::warn!("Activity summary generation returned empty result");
                             }
                             Err(err) => {
                                 tracing::warn!(

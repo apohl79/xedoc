@@ -59,6 +59,12 @@ async fn handle_spawn_agent(
     let message = message_content(args.message)?;
     let session_source = turn.session_source.clone();
     let child_depth = next_thread_spawn_depth(&session_source);
+    let max_depth = turn.config.agent_max_depth;
+    if child_depth > max_depth {
+        return Err(FunctionCallError::RespondToModel(format!(
+            "Cannot spawn agent: maximum nesting depth of {max_depth} exceeded (would be {child_depth})"
+        )));
+    }
     let mut config =
         build_agent_spawn_config(&session.get_base_instructions().await, turn.as_ref())?;
     if let Some(service_tier) = args.service_tier.as_ref() {

@@ -149,7 +149,11 @@ impl AgentControl {
         let Ok(thread) = state.get_thread(agent_id).await else {
             return;
         };
-        thread.emit_event(codex_protocol::protocol::EventMsg::SubAgentActivity(activity)).await;
+        thread
+            .emit_event(codex_protocol::protocol::EventMsg::SubAgentActivity(
+                activity,
+            ))
+            .await;
     }
 
     /// Send rich user input items to an existing agent thread.

@@ -164,6 +164,8 @@ pub enum Feature {
     ToolSearchAlwaysDeferMcpTools,
     /// Expose MCP model-visible namespaces without the legacy `mcp__` prefix.
     NonPrefixedMcpToolNames,
+    /// Enable OpenAI developer docs MCP server.
+    OpenaiDeveloperDocs,
     /// Enable discoverable tool suggestions for apps.
     ToolSuggest,
     /// Enable plugins.
@@ -1060,7 +1062,7 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::Apps,
         key: "apps",
         stage: Stage::Stable,
-        default_enabled: true,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::EnableMcpApps,
@@ -1090,6 +1092,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         id: Feature::NonPrefixedMcpToolNames,
         key: "non_prefixed_mcp_tool_names",
         stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::OpenaiDeveloperDocs,
+        key: "openai_developer_docs",
+        stage: Stage::Stable,
         default_enabled: false,
     },
     FeatureSpec {

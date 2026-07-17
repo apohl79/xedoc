@@ -541,7 +541,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
-            namespace_tools: false,
+        namespace_tools: false,
     }
 }
 
