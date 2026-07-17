@@ -137,6 +137,21 @@ impl AgentControl {
         self.rollout_budget.as_ref()
     }
 
+    /// Forward a sub-agent activity event to the target thread.
+    pub(crate) async fn forward_sub_agent_activity_event(
+        &self,
+        agent_id: ThreadId,
+        activity: codex_protocol::protocol::SubAgentActivityEvent,
+    ) {
+        let Ok(state) = self.upgrade() else {
+            return;
+        };
+        let Ok(thread) = state.get_thread(agent_id).await else {
+            return;
+        };
+        thread.emit_event(codex_protocol::protocol::EventMsg::SubAgentActivity(activity)).await;
+    }
+
     /// Send rich user input items to an existing agent thread.
     pub(crate) async fn send_input(
         &self,

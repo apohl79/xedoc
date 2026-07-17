@@ -1821,6 +1821,17 @@ impl Session {
             return;
         }
 
+        // Forward SubAgentActivity events to parent for live activity display.
+        if let EventMsg::SubAgentActivity(activity) = msg {
+            if let Some(parent_thread_id) = turn_context.parent_thread_id {
+                self.services
+                    .agent_control
+                    .forward_sub_agent_activity_event(parent_thread_id, activity.clone())
+                    .await;
+            }
+            return;
+        }
+
         if !matches!(msg, EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_)) {
             return;
         }
