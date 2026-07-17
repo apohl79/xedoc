@@ -6075,6 +6075,7 @@ async fn to_mcp_config_preserves_apps_feature_from_config() -> std::io::Result<(
     config.apps_mcp_product_sku = Some("tpp".to_string());
     let mcp_config = config.to_mcp_config(&plugins_manager).await;
     assert!(mcp_config.apps_enabled);
+    assert!(!mcp_config.openai_developer_docs_enabled);
     assert_eq!(mcp_config.apps_mcp_product_sku.as_deref(), Some("tpp"));
 
     let _ = config.features.disable(Feature::Apps);
@@ -6084,6 +6085,7 @@ async fn to_mcp_config_preserves_apps_feature_from_config() -> std::io::Result<(
     let _ = config.features.enable(Feature::Apps);
     let mcp_config = config.to_mcp_config(&plugins_manager).await;
     assert!(mcp_config.apps_enabled);
+    assert!(!mcp_config.openai_developer_docs_enabled);
 
     Ok(())
 }

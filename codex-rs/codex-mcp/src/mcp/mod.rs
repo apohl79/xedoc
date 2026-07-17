@@ -51,6 +51,7 @@ use crate::runtime::McpRuntimeContext;
 use crate::server::EffectiveMcpServer;
 
 pub const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps";
+pub const OPENAI_DEVELOPER_DOCS_MCP_SERVER_NAME: &str = "openaiDeveloperDocs";
 const MCP_TOOL_NAME_PREFIX: &str = "mcp";
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
 const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
@@ -140,6 +141,8 @@ pub struct McpConfig {
     /// ChatGPT auth is checked separately before a materialized host-owned Apps
     /// server can be used.
     pub apps_enabled: bool,
+    /// Whether the OpenAI developer docs MCP server is enabled by config.
+    pub openai_developer_docs_enabled: bool,
     /// Whether model-visible MCP tool namespaces should keep the legacy
     /// `mcp__` prefix.
     pub prefix_mcp_tool_names: bool,
@@ -290,6 +293,9 @@ pub fn effective_mcp_servers_from_configured(
         .collect::<HashMap<_, _>>();
     if !host_owned_codex_apps_enabled(config, auth) {
         servers.remove(CODEX_APPS_MCP_SERVER_NAME);
+    }
+    if !config.openai_developer_docs_enabled {
+        servers.remove(OPENAI_DEVELOPER_DOCS_MCP_SERVER_NAME);
     }
     servers
 }

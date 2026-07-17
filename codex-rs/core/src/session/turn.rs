@@ -2174,7 +2174,11 @@ async fn try_run_sampling_request(
                 needs_follow_up |= output_result.needs_follow_up;
                 // Periodically generate an activity summary for sub-agent threads.
                 activity_item_count += 1;
+                eprintln!("DEBUG activity_tick: item_count={activity_item_count}, parent_thread_id={:?}, multi_agent_version={:?}",
+                    turn_context.parent_thread_id, turn_context.multi_agent_version);
                 if activity_item_count % 5 == 0 && turn_context.parent_thread_id.is_some() {
+                    eprintln!("DEBUG activity_summary: triggering generation, item_count={activity_item_count}, parent_thread_id={:?}",
+                        turn_context.parent_thread_id);
                     let sess = Arc::clone(&sess);
                     let turn_context = Arc::clone(&turn_context);
                     let last_msg = last_agent_message.clone();
