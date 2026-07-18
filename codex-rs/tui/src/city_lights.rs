@@ -5,8 +5,6 @@
 //! color names. Import `CityLightsStylize` and replace `.cyan()` / `.green()` /
 //! `.red()` / `.magenta()` with `.cl_cyan()` / `.cl_green()` / `.cl_red()` /
 //! `.cl_magenta()`.
-#![allow(dead_code)]
-
 
 use ratatui::style::Color;
 use ratatui::style::Style;
@@ -17,22 +15,14 @@ use ratatui::text::Span;
 
 /// Background / base.
 pub const CL_BG: (u8, u8, u8) = (0x1D, 0x25, 0x2C);
-/// Foreground / primary text.
-pub const CL_FG: (u8, u8, u8) = (0xA8, 0xB7, 0xC5);
 /// Comments / dim text.
 pub const CL_COMMENT: (u8, u8, u8) = (0x41, 0x50, 0x5E);
 /// Strings / success.
 pub const CL_GREEN: (u8, u8, u8) = (0x5C, 0xD6, 0xB6);
-/// Keywords / blue.
-pub const CL_BLUE: (u8, u8, u8) = (0x70, 0xA5, 0xE0);
-/// Functions / bright blue.
-pub const CL_BRIGHT_BLUE: (u8, u8, u8) = (0x53, 0x9A, 0xFC);
 /// Types / magenta-purple.
 pub const CL_PURPLE: (u8, u8, u8) = (0xA0, 0x6B, 0xEA);
 /// Constants / teal-cyan.
 pub const CL_TEAL: (u8, u8, u8) = (0x00, 0x8B, 0x94);
-/// Warnings / warm orange.
-pub const CL_WARNING: (u8, u8, u8) = (0xD9, 0x8E, 0x48);
 /// Errors.
 pub const CL_RED: (u8, u8, u8) = (0xD9, 0x54, 0x68);
 
