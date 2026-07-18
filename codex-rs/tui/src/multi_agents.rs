@@ -315,7 +315,7 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
         running_state_update: match kind {
             SubAgentActivityKind::Started => AgentRunningStateUpdate::SetRunning,
             SubAgentActivityKind::Interacted => AgentRunningStateUpdate::Preserve,
-            SubAgentActivityKind::Interrupted => AgentRunningStateUpdate::SetIdle,
+            SubAgentActivityKind::Interrupted | SubAgentActivityKind::Completed => AgentRunningStateUpdate::SetIdle,
         },
         current_activity: current_activity.clone(),
     })
@@ -338,6 +338,7 @@ pub(crate) fn sub_agent_activity_summary(kind: SubAgentActivityKind, agent_path:
         SubAgentActivityKind::Started => format!("Started `{agent_path}`"),
         SubAgentActivityKind::Interacted => format!("Interacted with `{agent_path}`"),
         SubAgentActivityKind::Interrupted => format!("Interrupted `{agent_path}`"),
+        SubAgentActivityKind::Completed => format!("Completed `{agent_path}`"),
     }
 }
 
@@ -346,6 +347,7 @@ fn sub_agent_activity_title(kind: SubAgentActivityKind, agent_path: &str) -> Lin
         SubAgentActivityKind::Started => ("Started ", agent_path),
         SubAgentActivityKind::Interacted => ("Interacted with ", agent_path),
         SubAgentActivityKind::Interrupted => ("Interrupted ", agent_path),
+        SubAgentActivityKind::Completed => ("Completed ", agent_path),
     };
     title_spans_line(vec![
         Span::from(prefix).bold(),

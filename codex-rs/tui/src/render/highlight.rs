@@ -1,7 +1,7 @@
 //! Syntax highlighting engine for the TUI.
 //!
 //! Wraps [syntect] with the [two_face] grammar and theme bundles to provide
-//! ~250-language syntax highlighting and 32 bundled color themes.  The module
+//! ~250-language syntax highlighting and 33 bundled color themes.  The module
 //! owns four process-global singletons:
 //!
 //! | Singleton | Type | Purpose |
@@ -26,6 +26,7 @@ use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
+use std::io::Cursor;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -49,6 +50,21 @@ static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static THEME: OnceLock<RwLock<Theme>> = OnceLock::new();
 static THEME_OVERRIDE: OnceLock<Option<String>> = OnceLock::new();
 static CODEX_HOME: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+// -- Embedded non-two-face themes --------------------------------------------
+
+/// Embedded theme names that are bundled in the binary but not part of two_face.
+const EMBEDDED_THEME_NAMES: &[&str] = &["city-lights"];
+
+/// Try to load an embedded theme by kebab-case name.  Embedded themes ship as
+/// `.tmTheme` resources inside the binary and do not require filesystem access.
+fn load_embedded_theme(name: &str) -> Option<Theme> {
+    let data = match name {
+        "city-lights" => include_bytes!("themes/city-lights.tmTheme"),
+        _ => return None,
+    };
+    ThemeSet::load_from_reader(&mut Cursor::new(data)).ok()
+}
 
 // Syntect/bat encode ANSI palette semantics in alpha:
 // `a=0` => indexed ANSI palette via RGB payload, `a=1` => terminal default.
@@ -107,8 +123,8 @@ pub(crate) fn validate_theme_name(name: Option<&str>, codex_home: Option<&Path>)
     let custom_theme_path_display = codex_home
         .map(|home| custom_theme_path(name, home).display().to_string())
         .unwrap_or_else(|| format!("$CODEX_HOME/themes/{name}.tmTheme"));
-    // Bundled themes always resolve.
-    if parse_theme_name(name).is_some() {
+    // Bundled (two_face) and embedded themes always resolve.
+    if parse_theme_name(name).is_some() || load_embedded_theme(name).is_some() {
         return None;
     }
     // Custom themes must parse successfully; an unreadable/invalid file should
@@ -207,11 +223,15 @@ fn resolve_theme_with_override(name: Option<&str>, codex_home: Option<&Path>) ->
 
     // Honor user-configured theme if valid.
     if let Some(name) = name {
-        // 1. Try bundled theme by kebab-case name.
+        // 1. Try two_face bundled theme by kebab-case name.
         if let Some(theme_name) = parse_theme_name(name) {
             return ts.get(theme_name).clone();
         }
-        // 2. Try loading {CODEX_HOME}/themes/{name}.tmTheme from disk.
+        // 2. Try embedded (non-two-face) theme shipped in the binary.
+        if let Some(theme) = load_embedded_theme(name) {
+            return theme;
+        }
+        // 3. Try loading {CODEX_HOME}/themes/{name}.tmTheme from disk.
         if let Some(home) = codex_home
             && let Some(theme) = load_custom_theme(name, home)
         {
@@ -322,7 +342,7 @@ fn foreground_style_for_scopes_with_theme(theme: &Theme, scope_names: &[&str]) -
 pub(crate) fn configured_theme_name() -> String {
     // Explicit user override?
     if let Some(Some(name)) = THEME_OVERRIDE.get() {
-        if parse_theme_name(name).is_some() {
+        if parse_theme_name(name).is_some() || load_embedded_theme(name).is_some() {
             return name.clone();
         }
         if let Some(Some(home)) = CODEX_HOME.get()
@@ -338,9 +358,13 @@ pub(crate) fn configured_theme_name() -> String {
 /// when the name is unknown and no matching `.tmTheme` file exists.
 pub(crate) fn resolve_theme_by_name(name: &str, codex_home: Option<&Path>) -> Option<Theme> {
     let ts = two_face::theme::extra();
-    // Bundled theme?
+    // Two_face bundled theme?
     if let Some(embedded) = parse_theme_name(name) {
         return Some(ts.get(embedded).clone());
+    }
+    // Embedded (non-two-face) theme?
+    if let Some(theme) = load_embedded_theme(name) {
+        return Some(theme);
     }
     // Custom .tmTheme file?
     if let Some(home) = codex_home
@@ -370,6 +394,10 @@ pub(crate) fn list_available_themes(codex_home: Option<&Path>) -> Vec<ThemeEntry
             name: name.to_string(),
             is_custom: false,
         })
+        .chain(EMBEDDED_THEME_NAMES.iter().map(|name| ThemeEntry {
+            name: name.to_string(),
+            is_custom: false,
+        }))
         .collect();
 
     // Discover custom themes on disk, deduplicating against builtins.

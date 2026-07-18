@@ -1924,6 +1924,24 @@ impl Session {
             debug!("failed to notify parent thread {parent_thread_id}: {err}");
             return;
         }
+        // Notify the parent that this child has completed so the TUI can
+        // remove it from the active agent list.
+        self.services
+            .agent_control
+            .forward_sub_agent_activity_event(
+                parent_thread_id,
+                codex_protocol::protocol::SubAgentActivityEvent {
+                    event_id: format!("completed-{}", self.thread_id),
+                    occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
+                    agent_thread_id: self.thread_id,
+                    agent_path: child_agent_path.clone(),
+                    model_provider: None,
+                    model: None,
+                    kind: codex_protocol::protocol::SubAgentActivityKind::Completed,
+                    current_activity: None,
+                },
+            )
+            .await;
         if let Some(message) = trace_message {
             self.services
                 .rollout_thread_trace
