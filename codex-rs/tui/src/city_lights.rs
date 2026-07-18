@@ -5,6 +5,7 @@
 //! color names. Import `CityLightsStylize` and replace `.cyan()` / `.green()` /
 //! `.red()` / `.magenta()` with `.cl_cyan()` / `.cl_green()` / `.cl_red()` /
 //! `.cl_magenta()`.
+#[allow(dead_code)]
 
 use ratatui::style::Color;
 use ratatui::style::Style;

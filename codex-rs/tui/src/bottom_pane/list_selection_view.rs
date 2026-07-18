@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::city_lights::CityLightsStylize;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;

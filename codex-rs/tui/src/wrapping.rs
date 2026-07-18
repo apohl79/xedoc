@@ -25,6 +25,7 @@
 //! negatives let a URL get split. The heuristic is intentionally
 //! conservative: file paths like `src/main.rs` are not matched.
 
+#[cfg(test)]
 use crate::city_lights::CityLightsStylize;
 use ratatui::text::Line;
 use ratatui::text::Span;

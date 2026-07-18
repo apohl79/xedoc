@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::app_command::AppCommand as Op;
 use crate::city_lights::CityLightsStylize;
 use codex_app_server_protocol::McpServerElicitationAction;
