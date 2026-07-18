@@ -2032,12 +2032,12 @@ async fn try_run_sampling_request(
     let receiving_span = trace_span!("receiving_stream");
     // Periodically generate activity summaries for sub-agents via timer.
     let activity_cancel = CancellationToken::new();
-    let activity_last_msgs = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let activity_state = Arc::new(std::sync::Mutex::new((Vec::<String>::new(), false))); // (messages, dirty)
     let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
         let sess = Arc::clone(&sess);
         let turn = Arc::clone(&turn_context);
         let cancel = activity_cancel.clone();
-        let last_msgs_ref = Arc::clone(&activity_last_msgs);
+        let state_ref = Arc::clone(&activity_state);
         Some(tokio::spawn(async move {
             let mut tick: u32 = 0;
             loop {
@@ -2049,7 +2049,15 @@ async fn try_run_sampling_request(
                     break;
                 }
                 tick += 1;
-                let recent_msgs: Vec<String> = last_msgs_ref.lock().unwrap().clone();
+                let (recent_msgs, was_dirty) = {
+                    let mut state = state_ref.lock().unwrap();
+                    let dirty = state.1;
+                    state.1 = false;
+                    (state.0.clone(), dirty)
+                };
+                if !was_dirty {
+                    continue;
+                }
                 let combined = if recent_msgs.is_empty() {
                     None
                 } else {
@@ -2239,11 +2247,12 @@ async fn try_run_sampling_request(
                 }
                 if let Some(agent_message) = output_result.last_agent_message {
                     {
-                        let mut msgs = activity_last_msgs.lock().unwrap();
-                        msgs.push(agent_message.clone());
-                        if msgs.len() > 3 {
-                            msgs.remove(0);
+                        let mut state = activity_state.lock().unwrap();
+                        state.0.push(agent_message.clone());
+                        if state.0.len() > 3 {
+                            state.0.remove(0);
                         }
+                        state.1 = true;
                     }
                     last_agent_message = Some(agent_message);
                 }
