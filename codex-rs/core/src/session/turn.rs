@@ -1543,7 +1543,7 @@ fn backfill_empty_assistant_message_content(item: &mut ResponseItem, streamed_te
                 .iter()
                 .all(|entry| matches!(entry, ContentItem::OutputText { text } if text.is_empty())))
     {
-        tracing::debug!(
+        tracing::info!(
             item_id = id.as_deref().unwrap_or("<missing>"),
             streamed_text_chars = streamed_text.chars().count(),
             "backfilling empty completed assistant message from streamed deltas"
@@ -2049,6 +2049,7 @@ async fn try_run_sampling_request(
                     break;
                 }
                 tick += 1;
+                tracing::info!("Activity summary timer tick {tick}");
                 let (recent_msgs, was_dirty) = {
                     let mut state = state_ref.lock().unwrap();
                     let dirty = state.1;
@@ -2056,6 +2057,7 @@ async fn try_run_sampling_request(
                     (state.0.clone(), dirty)
                 };
                 if !was_dirty {
+                    tracing::info!("Activity summary: skipping, no new messages");
                     continue;
                 }
                 let combined = if recent_msgs.is_empty() {
@@ -2092,10 +2094,10 @@ async fn try_run_sampling_request(
                         .await;
                     }
                     Ok(None) => {
-                        tracing::debug!("Timer activity summary returned empty");
+                        tracing::info!("Timer activity summary returned empty");
                     }
                     Err(err) => {
-                        tracing::debug!(
+                        tracing::info!(
                             error = %err,
                             "Timer activity summary generation failed"
                         );
@@ -2655,6 +2657,10 @@ async fn generate_sub_agent_activity_summary(
     last_agent_message: Option<&str>,
 ) -> CodexResult<Option<String>> {
     let prompt_text = activity_summary_prompt(last_agent_message);
+    tracing::info!(
+        prompt = %prompt_text,
+        "Generating activity summary"
+    );
     let prompt = Prompt {
         input: vec![ResponseItem::Message {
             id: None,
@@ -2672,7 +2678,7 @@ async fn generate_sub_agent_activity_summary(
         turn_context.model_info.slug.as_str(),
         &turn_context.available_models,
     );
-    tracing::debug!(
+    tracing::info!(
         provider_id = %turn_context.config.model_provider_id,
         model_fast = ?turn_context.config.model_fast,
         selected_model = %selected_model,
