@@ -2032,10 +2032,12 @@ async fn try_run_sampling_request(
     let receiving_span = trace_span!("receiving_stream");
     // Periodically generate activity summaries for sub-agents via timer.
     let activity_cancel = CancellationToken::new();
+    let activity_last_msgs = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
         let sess = Arc::clone(&sess);
         let turn = Arc::clone(&turn_context);
         let cancel = activity_cancel.clone();
+        let last_msgs_ref = Arc::clone(&activity_last_msgs);
         Some(tokio::spawn(async move {
             let mut tick: u32 = 0;
             loop {
@@ -2047,10 +2049,17 @@ async fn try_run_sampling_request(
                     break;
                 }
                 tick += 1;
+                let recent_msgs: Vec<String> = last_msgs_ref.lock().unwrap().clone();
+                let combined = if recent_msgs.is_empty() {
+                    None
+                } else {
+                    Some(recent_msgs.join("
+"))
+                };
                 match generate_sub_agent_activity_summary(
                     sess.as_ref(),
                     turn.as_ref(),
-                    None,
+                    combined.as_deref(),
                 )
                 .await
                 {
@@ -2229,6 +2238,13 @@ async fn try_run_sampling_request(
                     in_flight.push_back(tool_future);
                 }
                 if let Some(agent_message) = output_result.last_agent_message {
+                    {
+                        let mut msgs = activity_last_msgs.lock().unwrap();
+                        msgs.push(agent_message.clone());
+                        if msgs.len() > 3 {
+                            msgs.remove(0);
+                        }
+                    }
                     last_agent_message = Some(agent_message);
                 }
                 needs_follow_up |= output_result.needs_follow_up;
@@ -2736,10 +2752,11 @@ fn activity_summary_prompt(last_agent_message: Option<&str>) -> String {
         .map(|msg| {
             let trimmed: String = msg
                 .split_whitespace()
-                .take(50)
+                .take(100)
                 .collect::<Vec<_>>()
                 .join(" ");
-            format!("Latest agent output: {trimmed}")
+            format!("Recent agent outputs:
+{trimmed}")
         })
         .unwrap_or_default();
     format!(
