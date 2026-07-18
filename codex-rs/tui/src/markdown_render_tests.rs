@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use pretty_assertions::assert_eq;
 use ratatui::style::Modifier;
 use ratatui::style::Stylize;
@@ -169,7 +170,7 @@ fn headings() {
 #[test]
 fn blockquote_single() {
     let text = render_markdown_text("> Blockquote");
-    let expected = Text::from(Line::from_iter(["> ", "Blockquote"]).green());
+    let expected = Text::from(Line::from_iter(["> ", "Blockquote"]).cl_green());
     assert_eq!(text, expected);
 }
 
@@ -200,9 +201,9 @@ fn blockquote_soft_break() {
 fn blockquote_multiple_with_break() {
     let text = render_markdown_text("> Blockquote 1\n\n> Blockquote 2\n");
     let expected = Text::from_iter([
-        Line::from_iter(["> ", "Blockquote 1"]).green(),
+        Line::from_iter(["> ", "Blockquote 1"]).cl_green(),
         Line::default(),
-        Line::from_iter(["> ", "Blockquote 2"]).green(),
+        Line::from_iter(["> ", "Blockquote 2"]).cl_green(),
     ]);
     assert_eq!(text, expected);
 }
@@ -212,11 +213,11 @@ fn blockquote_three_paragraphs_short_lines() {
     let md = "> one\n>\n> two\n>\n> three\n";
     let text = render_markdown_text(md);
     let expected = Text::from_iter([
-        Line::from_iter(["> ", "one"]).green(),
-        Line::from_iter(["> "]).green(),
-        Line::from_iter(["> ", "two"]).green(),
-        Line::from_iter(["> "]).green(),
-        Line::from_iter(["> ", "three"]).green(),
+        Line::from_iter(["> ", "one"]).cl_green(),
+        Line::from_iter(["> "]).cl_green(),
+        Line::from_iter(["> ", "two"]).cl_green(),
+        Line::from_iter(["> "]).cl_green(),
+        Line::from_iter(["> ", "three"]).cl_green(),
     ]);
     assert_eq!(text, expected);
 }
@@ -226,9 +227,9 @@ fn blockquote_nested_two_levels() {
     let md = "> Level 1\n>> Level 2\n";
     let text = render_markdown_text(md);
     let expected = Text::from_iter([
-        Line::from_iter(["> ", "Level 1"]).green(),
-        Line::from_iter(["> "]).green(),
-        Line::from_iter(["> ", "> ", "Level 2"]).green(),
+        Line::from_iter(["> ", "Level 1"]).cl_green(),
+        Line::from_iter(["> "]).cl_green(),
+        Line::from_iter(["> ", "> ", "Level 2"]).cl_green(),
     ]);
     assert_eq!(text, expected);
 }
@@ -238,8 +239,8 @@ fn blockquote_with_list_items() {
     let md = "> - item 1\n> - item 2\n";
     let text = render_markdown_text(md);
     let expected = Text::from_iter([
-        Line::from_iter(["> ", "- ", "item 1"]).green(),
-        Line::from_iter(["> ", "- ", "item 2"]).green(),
+        Line::from_iter(["> ", "- ", "item 1"]).cl_green(),
+        Line::from_iter(["> ", "- ", "item 2"]).cl_green(),
     ]);
     assert_eq!(text, expected);
 }
@@ -254,13 +255,13 @@ fn blockquote_with_ordered_list() {
             "1. ".light_blue(),
             Span::from("first"),
         ])
-        .green(),
+        .cl_green(),
         Line::from_iter(vec![
             Span::from("> "),
             "2. ".light_blue(),
             Span::from("second"),
         ])
-        .green(),
+        .cl_green(),
     ]);
     assert_eq!(text, expected);
 }
@@ -270,8 +271,8 @@ fn blockquote_list_then_nested_blockquote() {
     let md = "> - parent\n>   > child\n";
     let text = render_markdown_text(md);
     let expected = Text::from_iter([
-        Line::from_iter(["> ", "- ", "parent"]).green(),
-        Line::from_iter(["> ", "  ", "> ", "child"]).green(),
+        Line::from_iter(["> ", "- ", "parent"]).cl_green(),
+        Line::from_iter(["> ", "  ", "> ", "child"]).cl_green(),
     ]);
     assert_eq!(text, expected);
 }
@@ -481,9 +482,9 @@ fn blockquote_heading_inherits_heading_style() {
                 "# ".bold().underlined(),
                 "test header".bold().underlined(),
             ])
-            .green(),
-            Line::from_iter(["> "]).green(),
-            Line::from_iter(["> ", "in blockquote"]).green(),
+            .cl_green(),
+            Line::from_iter(["> "]).cl_green(),
+            Line::from_iter(["> ", "in blockquote"]).cl_green(),
         ]
     );
 }
@@ -715,7 +716,7 @@ fn ordered_item_with_indented_continuation_is_tight() {
 #[test]
 fn inline_code() {
     let text = render_markdown_text("Example of `Inline code`");
-    let expected = Line::from_iter(["Example of ".into(), "Inline code".cyan()]).into();
+    let expected = Line::from_iter(["Example of ".into(), "Inline code".cl_cyan()]).into();
     assert_eq!(text, expected);
 }
 
@@ -759,7 +760,7 @@ fn link() {
     let expected = Text::from(Line::from_iter([
         "Link".into(),
         " (".into(),
-        "https://example.com".cyan().underlined(),
+        "https://example.com".cl_cyan().underlined(),
         ")".into(),
     ]));
     assert_eq!(text, expected);
@@ -778,7 +779,7 @@ fn file_link_hides_destination() {
         Path::new("/Users/example/code/codex"),
     );
     let expected =
-        Text::from(Line::from_iter(["codex-rs/tui/src/markdown_render.rs".cyan()]));
+        Text::from(Line::from_iter(["codex-rs/tui/src/markdown_render.rs".cl_cyan()]));
     assert_eq!(text, expected);
 }
 
@@ -789,7 +790,7 @@ fn file_link_decodes_percent_encoded_bare_path_destination() {
         Path::new("/Users/example/code/codex"),
     );
     let expected = Text::from(Line::from_iter([
-        "Example Folder/Résumé/report.md".cyan(),
+        "Example Folder/Résumé/report.md".cl_cyan(),
     ]));
     assert_eq!(text, expected);
 }
@@ -801,7 +802,7 @@ fn file_link_appends_line_number_when_label_lacks_it() {
         Path::new("/Users/example/code/codex"),
     );
     let expected = Text::from(Line::from_iter([
-        "codex-rs/tui/src/markdown_render.rs:74".cyan(),
+        "codex-rs/tui/src/markdown_render.rs:74".cl_cyan(),
     ]));
     assert_eq!(text, expected);
 }
@@ -812,7 +813,7 @@ fn file_link_keeps_absolute_paths_outside_cwd() {
         "[README.md:74](/Users/example/code/codex/README.md:74)",
         Path::new("/Users/example/code/codex/codex-rs/tui"),
     );
-    let expected = Text::from(Line::from_iter(["/Users/example/code/codex/README.md:74".cyan()]));
+    let expected = Text::from(Line::from_iter(["/Users/example/code/codex/README.md:74".cl_cyan()]));
     assert_eq!(text, expected);
 }
 
@@ -824,7 +825,7 @@ fn file_link_appends_hash_anchor_when_label_lacks_it() {
     );
     let expected =
         Text::from(Line::from_iter([
-            "codex-rs/tui/src/markdown_render.rs:74:3".cyan(),
+            "codex-rs/tui/src/markdown_render.rs:74:3".cl_cyan(),
         ]));
     assert_eq!(text, expected);
 }
@@ -837,7 +838,7 @@ fn file_link_uses_target_path_for_hash_anchor() {
     );
     let expected =
         Text::from(Line::from_iter([
-            "codex-rs/tui/src/markdown_render.rs:74:3".cyan(),
+            "codex-rs/tui/src/markdown_render.rs:74:3".cl_cyan(),
         ]));
     assert_eq!(text, expected);
 }
@@ -850,7 +851,7 @@ fn file_link_appends_range_when_label_lacks_it() {
     );
     let expected =
         Text::from(Line::from_iter([
-            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cyan(),
+            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cl_cyan(),
         ]));
     assert_eq!(text, expected);
 }
@@ -863,7 +864,7 @@ fn file_link_uses_target_path_for_range() {
     );
     let expected =
         Text::from(Line::from_iter([
-            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cyan(),
+            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cl_cyan(),
         ]));
     assert_eq!(text, expected);
 }
@@ -876,7 +877,7 @@ fn file_link_appends_hash_range_when_label_lacks_it() {
     );
     let expected =
         Text::from(Line::from_iter([
-            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cyan(),
+            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cl_cyan(),
         ]));
     assert_eq!(text, expected);
 }
@@ -890,7 +891,7 @@ fn multiline_file_link_label_after_styled_prefix_does_not_panic() {
     let expected = Text::from(Line::from_iter([
         "bold".bold(),
         " plain ".into(),
-        "codex-rs/tui/src/markdown_render.rs:74:3".cyan(),
+        "codex-rs/tui/src/markdown_render.rs:74:3".cl_cyan(),
     ]));
     assert_eq!(text, expected);
 }
@@ -903,7 +904,7 @@ fn file_link_uses_target_path_for_hash_range() {
     );
     let expected =
         Text::from(Line::from_iter([
-            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cyan(),
+            "codex-rs/tui/src/markdown_render.rs:74:3-76:9".cl_cyan(),
         ]));
     assert_eq!(text, expected);
 }
@@ -914,7 +915,7 @@ fn url_link_shows_destination() {
     let expected = Text::from(Line::from_iter([
         "docs".into(),
         " (".into(),
-        "https://example.com/docs".cyan().underlined(),
+        "https://example.com/docs".cl_cyan().underlined(),
         ")".into(),
     ]));
     assert_eq!(text, expected);

@@ -5,6 +5,7 @@
 //! cache used for multi-agent navigation.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 impl App {
     pub(super) async fn open_agent_picker(&mut self, app_server: &mut AppServerSession) {
@@ -643,7 +644,8 @@ impl App {
                         lines.push(usage_line.into());
                     }
                     if let Some(command) = summary.resume_hint {
-                        let spans = vec!["To continue this session, run ".into(), command.cyan()];
+                        let spans =
+                            vec!["To continue this session, run ".into(), command.cl_cyan()];
                         lines.push(spans.into());
                     }
                     self.chat_widget.add_plain_history_lines(lines);
@@ -875,8 +877,10 @@ impl App {
                                 lines.push(usage_line.into());
                             }
                             if let Some(command) = summary.resume_hint {
-                                let spans =
-                                    vec!["To continue this session, run ".into(), command.cyan()];
+                                let spans = vec![
+                                    "To continue this session, run ".into(),
+                                    command.cl_cyan(),
+                                ];
                                 lines.push(spans.into());
                             }
                             self.chat_widget.add_plain_history_lines(lines);

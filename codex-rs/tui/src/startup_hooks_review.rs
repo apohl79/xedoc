@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEventKind;
 use ratatui::buffer::Buffer;
@@ -217,7 +218,9 @@ fn selection_view_params(
         "Hooks can run outside the sandbox after you trust them.".dim(),
     ));
     if let Some(error) = trust_all_error {
-        header.push(Paragraph::new(Line::from(error.to_string()).red()).wrap(Wrap { trim: false }));
+        header.push(
+            Paragraph::new(Line::from(error.to_string()).cl_red()).wrap(Wrap { trim: false }),
+        );
     } else if trusting_all {
         header.push(Line::from("Trusting hooks...".dim()));
     }

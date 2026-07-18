@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -105,8 +106,8 @@ impl ActiveAgentList {
         let elapsed =
             fmt_elapsed_compact(now.saturating_duration_since(agent.started_at).as_secs());
         let mut spans = vec![
-            "□ ".cyan().bold(),
-            Span::styled(agent.name.clone(), Style::default().cyan().bold()),
+            "□ ".cl_cyan().bold(),
+            Span::styled(agent.name.clone(), Style::default().cl_cyan().bold()),
         ];
         if let Some(activity) = agent.current_activity.as_ref() {
             spans.push(Span::from(format!(" {activity}")));

@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::plan_tool::StepStatus;
 use ratatui::buffer::Buffer;
@@ -126,7 +127,7 @@ impl ActiveTaskList {
     fn task_line(item: &PlanItemArg) -> Line<'static> {
         let (marker, step_style) = match &item.status {
             StepStatus::Completed => ("✔ ".dim(), Style::default().crossed_out().dim()),
-            StepStatus::InProgress => ("□ ".cyan().bold(), Style::default().cyan().bold()),
+            StepStatus::InProgress => ("□ ".cl_cyan().bold(), Style::default().cl_cyan().bold()),
             StepStatus::Pending => ("□ ".dim(), Style::default().dim()),
         };
         vec![marker, Span::styled(item.step.clone(), step_style)].into()

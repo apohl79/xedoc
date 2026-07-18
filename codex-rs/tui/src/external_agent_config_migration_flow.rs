@@ -1,5 +1,6 @@
 use crate::app_server_session::AppServerSession;
 use crate::app_server_session::EXTERNAL_AGENT_CONFIG_IMPORT_IN_PROGRESS_MESSAGE;
+use crate::city_lights::CityLightsStylize;
 use crate::external_agent_config_migration::ExternalAgentConfigMigrationOutcome;
 use crate::external_agent_config_migration::run_external_agent_config_migration_prompt;
 use crate::external_agent_config_migration_model::external_agent_config_migration_item_count;
@@ -89,12 +90,12 @@ fn external_agent_config_migration_started_lines(
     let mut lines = vec![
         vec![
             "• ".dim(),
-            "Claude Code import started.".cyan(),
+            "Claude Code import started.".cl_cyan(),
             " You can keep working while it finishes.".into(),
         ]
         .into(),
         vec!["  ".into(), "Imported setup will apply to new chats.".dim()].into(),
-        vec!["  ".into(), "Importing:".cyan().bold()].into(),
+        vec!["  ".into(), "Importing:".cl_cyan().bold()].into(),
     ];
     lines.extend(
         import_summaries
@@ -102,9 +103,9 @@ fn external_agent_config_migration_started_lines(
             .map(|(item_type, count, names)| {
                 let mut line = vec![
                     "    ".into(),
-                    external_agent_config_migration_type_label(item_type).cyan(),
+                    external_agent_config_migration_type_label(item_type).cl_cyan(),
                     ": ".into(),
-                    count.to_string().green(),
+                    count.to_string().cl_green(),
                 ];
                 if !names.is_empty() {
                     let shown_names = names.iter().take(3).copied().collect::<Vec<_>>();
@@ -138,15 +139,15 @@ pub(crate) fn external_agent_config_migration_finished_lines(
         .map(|type_result| type_result.failures.len())
         .sum::<usize>();
     let failed_count = if failed_count == 0 {
-        format!("{failed_count} failed").green()
+        format!("{failed_count} failed").cl_green()
     } else {
-        format!("{failed_count} failed").red()
+        format!("{failed_count} failed").cl_red()
     };
     let mut lines = vec![
         vec![
             "• ".dim(),
             "Claude Code import finished: ".into(),
-            format!("{imported_count} imported").green(),
+            format!("{imported_count} imported").cl_green(),
             ", ".into(),
             failed_count,
             ".".into(),
@@ -154,19 +155,19 @@ pub(crate) fn external_agent_config_migration_finished_lines(
         .into(),
     ];
     if !notification.item_type_results.is_empty() {
-        lines.push(vec!["  ".into(), "Results by type:".cyan().bold()].into());
+        lines.push(vec!["  ".into(), "Results by type:".cl_cyan().bold()].into());
         lines.extend(notification.item_type_results.iter().map(|type_result| {
             let failed_count = format!("{} failed", type_result.failures.len());
             let failed_count = if type_result.failures.is_empty() {
-                failed_count.green()
+                failed_count.cl_green()
             } else {
-                failed_count.red()
+                failed_count.cl_red()
             };
             vec![
                 "    ".into(),
-                external_agent_config_migration_type_label(type_result.item_type).cyan(),
+                external_agent_config_migration_type_label(type_result.item_type).cl_cyan(),
                 ": ".into(),
-                format!("{} imported", type_result.successes.len()).green(),
+                format!("{} imported", type_result.successes.len()).cl_green(),
                 ", ".into(),
                 failed_count,
             ]

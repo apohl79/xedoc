@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use crate::history_cell::PlainHistoryCell;
 use crate::legacy_core::config::Config;
 use crate::legacy_core::config::Permissions;
@@ -84,7 +85,7 @@ fn render_debug_config_lines(
     stack: &ConfigLayerStack,
     sandbox_mode_is_effectively_allowed: impl Fn(SandboxModeRequirement) -> bool,
 ) -> Vec<Line<'static>> {
-    let mut lines = vec!["/debug-config".magenta().into(), "".into()];
+    let mut lines = vec!["/debug-config".cl_magenta().into(), "".into()];
 
     lines.push(
         "Config layer stack (lowest precedence first):"

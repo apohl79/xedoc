@@ -1,4 +1,5 @@
 use super::*;
+use crate::city_lights::CityLightsStylize;
 use crate::key_hint;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::render::Insets;
@@ -48,7 +49,7 @@ impl ExternalAgentConfigMigrationScreen {
                     cursor.content = "› ".into();
                 }
                 line.spans.iter_mut().for_each(|span| {
-                    span.style = span.style.cyan().bold();
+                    span.style = span.style.cl_cyan().bold();
                 });
             } else if entry.kind != RenderLineKind::Item && !line.spans.is_empty() {
                 line.spans.iter_mut().for_each(|span| {
@@ -130,7 +131,7 @@ impl WidgetRef for &ExternalAgentConfigMigrationScreen {
             .render(intro_area, buf);
 
         if let Some(error) = &self.error {
-            Paragraph::new(error.clone().red().to_string())
+            Paragraph::new(error.clone().cl_red().to_string())
                 .wrap(Wrap { trim: false })
                 .render(error_area, buf);
         }
@@ -175,7 +176,7 @@ impl WidgetRef for &ExternalAgentConfigMigrationScreen {
                 " to move, ".dim(),
                 key_hint::plain(KeyCode::Enter).into(),
                 " to select, ".dim(),
-                "c".cyan(),
+                "c".cl_cyan(),
                 " to customize".dim(),
             ]),
             MigrationView::Customize if self.focus == FocusArea::Actions => Line::from(vec![
@@ -186,7 +187,7 @@ impl WidgetRef for &ExternalAgentConfigMigrationScreen {
                 "/".dim(),
                 key_hint::plain(KeyCode::Down).into(),
                 " to move, ".dim(),
-                "b".cyan(),
+                "b".cl_cyan(),
                 " to go back".dim(),
             ]),
             MigrationView::Customize => Line::from(vec![
@@ -197,7 +198,7 @@ impl WidgetRef for &ExternalAgentConfigMigrationScreen {
                 " to move, ".dim(),
                 key_hint::plain(KeyCode::Char(' ')).into(),
                 " to toggle, ".dim(),
-                "b".cyan(),
+                "b".cl_cyan(),
                 " to go back".dim(),
             ]),
         };

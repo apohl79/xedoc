@@ -4,6 +4,7 @@
 //! entries, and the fast-switch keyboard shortcuts. Higher-level coordination, such as deciding
 //! which thread becomes active or when a thread closes, stays in [`crate::app::App`].
 
+use crate::city_lights::CityLightsStylize;
 use crate::history_cell::PlainHistoryCell;
 use crate::render::line_utils::prefix_lines;
 use crate::text_formatting::truncate_text;
@@ -92,7 +93,7 @@ pub(crate) fn agent_picker_status_dot_spans(is_closed: bool) -> Vec<Span<'static
     let dot = if is_closed {
         "•".into()
     } else {
-        "•".green()
+        "•".cl_green()
     };
     vec![dot, " ".into()]
 }
@@ -315,7 +316,9 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
         running_state_update: match kind {
             SubAgentActivityKind::Started => AgentRunningStateUpdate::SetRunning,
             SubAgentActivityKind::Interacted => AgentRunningStateUpdate::Preserve,
-            SubAgentActivityKind::Interrupted | SubAgentActivityKind::Completed => AgentRunningStateUpdate::SetIdle,
+            SubAgentActivityKind::Interrupted | SubAgentActivityKind::Completed => {
+                AgentRunningStateUpdate::SetIdle
+            }
         },
         current_activity: current_activity.clone(),
     })
@@ -351,7 +354,7 @@ fn sub_agent_activity_title(kind: SubAgentActivityKind, agent_path: &str) -> Lin
     };
     title_spans_line(vec![
         Span::from(prefix).bold(),
-        Span::from(format!("`{path}`")).cyan(),
+        Span::from(format!("`{path}`")).cl_cyan(),
     ])
 }
 
@@ -535,11 +538,11 @@ fn agent_label_spans(agent: AgentLabel<'_>) -> Vec<Span<'static>> {
     let role = agent.role.map(str::trim).filter(|role| !role.is_empty());
 
     if let Some(nickname) = nickname {
-        spans.push(Span::from(nickname.to_string()).cyan().bold());
+        spans.push(Span::from(nickname.to_string()).cl_cyan().bold());
     } else if let Some(thread_id) = agent.thread_id {
-        spans.push(Span::from(thread_id.to_string()).cyan());
+        spans.push(Span::from(thread_id.to_string()).cl_cyan());
     } else {
-        spans.push(Span::from("agent").cyan());
+        spans.push(Span::from("agent").cl_cyan());
     }
 
     if let Some(role) = role {
@@ -566,7 +569,7 @@ fn spawn_request_spans(spawn_request: Option<&SpawnRequestSummary>) -> Vec<Span<
         format!("({model} {})", spawn_request.reasoning_effort)
     };
 
-    vec![Span::from(" ").dim(), Span::from(details).magenta()]
+    vec![Span::from(" ").dim(), Span::from(details).cl_magenta()]
 }
 
 fn prompt_line(prompt: &str) -> Option<Line<'static>> {
@@ -647,13 +650,13 @@ fn status_summary_line(status: Option<&CollabAgentState>, fallback_error: &str) 
 
 fn status_summary_spans(status: &CollabAgentState) -> Vec<Span<'static>> {
     match status.status {
-        CollabAgentStatus::PendingInit => vec![Span::from("Pending init").cyan()],
-        CollabAgentStatus::Running => vec![Span::from("Running").cyan().bold()],
+        CollabAgentStatus::PendingInit => vec![Span::from("Pending init").cl_cyan()],
+        CollabAgentStatus::Running => vec![Span::from("Running").cl_cyan().bold()],
         // Allow `.yellow()`
         #[allow(clippy::disallowed_methods)]
         CollabAgentStatus::Interrupted => vec![Span::from("Interrupted").yellow()],
         CollabAgentStatus::Completed => {
-            let mut spans = vec![Span::from("Completed").green()];
+            let mut spans = vec![Span::from("Completed").cl_green()];
             if let Some(message) = status.message.as_ref() {
                 let message_preview = truncate_text(
                     &message.split_whitespace().collect::<Vec<_>>().join(" "),
@@ -670,12 +673,12 @@ fn status_summary_spans(status: &CollabAgentState) -> Vec<Span<'static>> {
             error_summary_spans(status.message.as_deref().unwrap_or("Agent errored"))
         }
         CollabAgentStatus::Shutdown => vec![Span::from("Shutdown")],
-        CollabAgentStatus::NotFound => vec![Span::from("Not found").red()],
+        CollabAgentStatus::NotFound => vec![Span::from("Not found").cl_red()],
     }
 }
 
 fn error_summary_spans(error: &str) -> Vec<Span<'static>> {
-    let mut spans = vec![Span::from("Error").red()];
+    let mut spans = vec![Span::from("Error").cl_red()];
     let error_preview = truncate_text(
         &error.split_whitespace().collect::<Vec<_>>().join(" "),
         COLLAB_AGENT_ERROR_PREVIEW_GRAPHEMES,
@@ -900,13 +903,13 @@ mod tests {
         let lines = cell.display_lines(/*width*/ 200);
         let title = &lines[0];
         assert_eq!(title.spans[2].content.as_ref(), "Robie");
-        assert_eq!(title.spans[2].style.fg, Some(Color::Cyan));
+        assert_eq!(title.spans[2].style.fg, Some(Color::Rgb(0, 139, 148)));
         assert!(title.spans[2].style.add_modifier.contains(Modifier::BOLD));
         assert_eq!(title.spans[4].content.as_ref(), "[explorer]");
         assert_eq!(title.spans[4].style.fg, None);
         assert!(!title.spans[4].style.add_modifier.contains(Modifier::DIM));
         assert_eq!(title.spans[6].content.as_ref(), "(gpt-5 high)");
-        assert_eq!(title.spans[6].style.fg, Some(Color::Magenta));
+        assert_eq!(title.spans[6].style.fg, Some(Color::Rgb(160, 107, 234)));
     }
 
     #[test]

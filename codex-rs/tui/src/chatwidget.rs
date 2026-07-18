@@ -30,6 +30,7 @@
 //! Slash-command parsing lives in the bottom-pane composer, but slash-command acceptance lives
 //! here. That split lets the composer stage a recall entry before clearing input while this module
 //! records the attempted slash command after dispatch just like ordinary submitted text.
+use crate::city_lights::CityLightsStylize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -1123,7 +1124,7 @@ impl ChatWidget {
             subtitle: Some("Memories are currently disabled in your config.".to_string()),
             footer_note: Some(Line::from(vec![
                 "Learn more: ".dim(),
-                MEMORIES_DOC_URL.cyan().underlined(),
+                MEMORIES_DOC_URL.cl_cyan().underlined(),
             ])),
             footer_hint: Some(standard_popup_hint_line()),
             items,
@@ -1590,10 +1591,10 @@ impl ChatWidget {
         let mut line = vec![
             "• ".into(),
             "Session renamed to ".into(),
-            name.to_string().cyan(),
+            name.to_string().cl_cyan(),
         ];
         if let Some(hint) = resume_hint(Some(name), thread_id) {
-            line.extend([". To resume this session run ".into(), hint.cyan()]);
+            line.extend([". To resume this session run ".into(), hint.cl_cyan()]);
         }
         PlainHistoryCell::new(vec![line.into()])
     }

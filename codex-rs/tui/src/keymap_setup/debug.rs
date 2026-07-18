@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use codex_config::types::TuiKeymap;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -76,20 +77,20 @@ impl KeymapDebugView {
 
         let Some(report) = &self.last_report else {
             lines.push(Line::from(""));
-            lines.push(Line::from("Waiting for a keypress...".cyan()));
+            lines.push(Line::from("Waiting for a keypress...".cl_cyan()));
             return lines;
         };
 
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
             "Detected: ".dim(),
-            report.detected.display_label().cyan(),
+            report.detected.display_label().cl_cyan(),
         ]));
         match &report.config_key {
             Ok(config_key) => {
                 lines.push(Line::from(vec![
                     "Config key: ".dim(),
-                    config_key.clone().cyan(),
+                    config_key.clone().cl_cyan(),
                 ]));
             }
             Err(error) => {

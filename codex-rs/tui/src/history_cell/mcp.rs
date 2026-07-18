@@ -1,6 +1,7 @@
 //! MCP tool-call, inventory, and output history cells.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 #[derive(Debug)]
 struct CompletedMcpToolCallWithImageOutput {
@@ -121,8 +122,8 @@ impl HistoryCell for McpToolCallCell {
         let mut lines: Vec<Line<'static>> = Vec::new();
         let status = self.success();
         let bullet = match status {
-            Some(true) => "•".green().bold(),
-            Some(false) => "•".red().bold(),
+            Some(true) => "•".cl_green().bold(),
+            Some(false) => "•".cl_red().bold(),
             None => activity_indicator(
                 Some(self.start_time),
                 MotionMode::from_animations_enabled(self.animations_enabled),
@@ -318,7 +319,7 @@ fn decode_mcp_image(block: &serde_json::Value) -> Option<DynamicImage> {
 /// Render a summary of configured MCP servers from the current `Config`.
 pub(crate) fn empty_mcp_output() -> PlainHistoryCell {
     let lines: Vec<Line<'static>> = vec![
-        "/mcp".magenta().into(),
+        "/mcp".cl_magenta().into(),
         "".into(),
         vec!["🔌  ".into(), "MCP Tools".bold()].into(),
         "".into(),
@@ -348,7 +349,7 @@ pub(crate) fn new_mcp_tools_output(
     auth_statuses: &HashMap<String, McpAuthStatus>,
 ) -> PlainHistoryCell {
     let mut lines: Vec<Line<'static>> = vec![
-        "/mcp".magenta().into(),
+        "/mcp".cl_magenta().into(),
         "".into(),
         vec!["🔌  ".into(), "MCP Tools".bold()].into(),
         "".into(),
@@ -379,7 +380,7 @@ pub(crate) fn new_mcp_tools_output(
         let mut header: Vec<Span<'static>> = vec!["  • ".into(), server.clone().into()];
         if !cfg.enabled {
             header.push(" ".into());
-            header.push("(disabled)".red());
+            header.push("(disabled)".cl_red());
             lines.push(header.into());
             if let Some(reason) = cfg.disabled_reason.as_ref().map(ToString::to_string) {
                 lines.push(vec!["    • Reason: ".into(), reason.dim()].into());
@@ -388,7 +389,7 @@ pub(crate) fn new_mcp_tools_output(
             continue;
         }
         lines.push(header.into());
-        lines.push(vec!["    • Status: ".into(), "enabled".green()].into());
+        lines.push(vec!["    • Status: ".into(), "enabled".cl_green()].into());
         lines.push(
             vec![
                 "    • Auth: ".into(),
@@ -526,7 +527,7 @@ pub(crate) fn new_mcp_tools_output_from_statuses(
     detail: McpServerStatusDetail,
 ) -> PlainHistoryCell {
     let mut lines: Vec<Line<'static>> = vec![
-        "/mcp".magenta().into(),
+        "/mcp".cl_magenta().into(),
         "".into(),
         vec!["🔌  ".into(), "MCP Tools".bold()].into(),
         "".into(),
@@ -681,9 +682,9 @@ fn format_mcp_invocation<'a>(invocation: McpInvocation) -> Line<'a> {
         .unwrap_or_default();
 
     let invocation_spans = vec![
-        invocation.server.clone().cyan(),
+        invocation.server.clone().cl_cyan(),
         ".".into(),
-        invocation.tool.cyan(),
+        invocation.tool.cl_cyan(),
         "(".into(),
         args_str.dim(),
         ")".into(),

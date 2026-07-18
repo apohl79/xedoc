@@ -1893,14 +1893,14 @@ mod tests {
         for offset in 0..countdown.width() {
             assert_eq!(
                 buf[((countdown_x + offset) as u16, 1)].style().fg,
-                Some(Color::Red)
+                Some(Color::Rgb(217, 84, 104))
             );
         }
         let prefix_byte_idx = progress_line
             .find("Question")
             .expect("expected question prefix in progress line");
         let prefix_x = progress_line[..prefix_byte_idx].width();
-        assert_ne!(buf[(prefix_x as u16, 1)].style().fg, Some(Color::Red));
+        assert_ne!(buf[(prefix_x as u16, 1)].style().fg, Some(Color::Rgb(217, 84, 104)));
     }
 
     #[test]

@@ -264,7 +264,7 @@ impl WidgetRef for &OssSelectionWidget<'_> {
             .enumerate()
             .map(|(idx, opt)| {
                 let style = if idx == self.selected_option {
-                    Style::new().bg(Color::Cyan).fg(Color::Black)
+                    Style::new().bg(Color::Rgb(0, 139, 148)).fg(Color::Black)
                 } else {
                     Style::new().bg(Color::DarkGray)
                 };
@@ -302,8 +302,8 @@ impl WidgetRef for &OssSelectionWidget<'_> {
 
 fn get_status_symbol_and_color(status: &ProviderStatus) -> (&'static str, Color) {
     match status {
-        ProviderStatus::Running => ("●", Color::Green),
-        ProviderStatus::NotRunning => ("○", Color::Red),
+        ProviderStatus::Running => ("●", Color::Rgb(92, 214, 182)),
+        ProviderStatus::NotRunning => ("○", Color::Rgb(217, 84, 104)),
         ProviderStatus::Unknown => ("?", Color::Yellow),
     }
 }

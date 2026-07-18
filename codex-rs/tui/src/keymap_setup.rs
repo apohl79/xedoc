@@ -31,6 +31,7 @@ pub(crate) use picker::build_keymap_picker_params_for_selected_action;
 pub(crate) use picker::build_keymap_picker_params_for_selected_action_with_filter;
 pub(crate) use picker::build_keymap_picker_params_with_filter;
 
+use crate::city_lights::CityLightsStylize;
 use codex_config::types::KeybindingSpec;
 use codex_config::types::KeybindingsSpec;
 use codex_config::types::MAX_FUNCTION_KEY;
@@ -86,15 +87,15 @@ fn key_binding_span(binding: &str) -> ratatui::text::Span<'static> {
     if binding == "unbound" {
         binding.to_string().dim()
     } else {
-        binding.to_string().cyan()
+        binding.to_string().cl_cyan()
     }
 }
 
 fn keymap_action_menu_hint_line() -> Line<'static> {
     Line::from(vec![
-        "enter".cyan(),
+        "enter".cl_cyan(),
         " select · ".dim(),
-        "esc".cyan(),
+        "esc".cl_cyan(),
         " back".dim(),
     ])
 }
@@ -173,7 +174,7 @@ pub(crate) fn build_keymap_action_menu_params(
     let remove_action = action.clone();
     let config_path = format!("tui.keymap.{context}.{action}");
     let source = if custom_binding {
-        "Custom root override".cyan()
+        "Custom root override".cl_cyan()
     } else {
         "Default keymap".dim()
     };
@@ -192,7 +193,7 @@ pub(crate) fn build_keymap_action_menu_params(
     ]));
     header.push(Line::from(vec![
         "Config ".dim(),
-        format!("`{config_path}`").cyan(),
+        format!("`{config_path}`").cl_cyan(),
     ]));
     header.push(Line::from(description.to_string().dim()));
 
@@ -292,7 +293,7 @@ pub(crate) fn build_keymap_action_menu_params(
         header: Box::new(header),
         footer_note: Some(Line::from(vec![
             "Changes write the root ".dim(),
-            "`tui.keymap.*`".cyan(),
+            "`tui.keymap.*`".cl_cyan(),
             " override.".dim(),
         ])),
         footer_hint: Some(keymap_action_menu_hint_line()),
@@ -630,7 +631,10 @@ impl KeymapCaptureView {
                 "  ".into(),
                 format!("{}.{}", self.context, self.action).dim(),
             ]),
-            Line::from(vec!["Current: ".dim(), self.current_binding.clone().cyan()]),
+            Line::from(vec![
+                "Current: ".dim(),
+                self.current_binding.clone().cl_cyan(),
+            ]),
             Line::from("Press the new key now. Esc cancels.".dim()),
         ];
 
@@ -642,7 +646,7 @@ impl KeymapCaptureView {
             lines.extend(
                 textwrap::wrap(error, options)
                     .into_iter()
-                    .map(|line| Line::from(line.into_owned().red())),
+                    .map(|line| Line::from(line.into_owned().cl_red())),
             );
         }
 

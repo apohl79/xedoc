@@ -1,5 +1,5 @@
-#[cfg(test)]
 use crate::app_command::AppCommand as Op;
+use crate::city_lights::CityLightsStylize;
 use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_protocol::ThreadId;
@@ -629,7 +629,7 @@ impl AppLinkView {
             }
             .dim(),
         ]));
-        let url_line = Line::from(vec![self.url.clone().cyan().underlined()]);
+        let url_line = Line::from(vec![self.url.clone().cl_cyan().underlined()]);
         lines.extend(adaptive_wrap_lines(
             vec![url_line],
             RtOptions::new(usable_width),
@@ -852,6 +852,7 @@ mod tests {
     use super::*;
     use crate::app::app_server_requests::ResolvedAppServerRequest;
     use crate::app_event::AppEvent;
+    use crate::city_lights::CityLightsStylize;
     use crate::render::renderable::Renderable;
     use insta::assert_snapshot;
     use pretty_assertions::assert_eq;

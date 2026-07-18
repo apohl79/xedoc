@@ -12,6 +12,7 @@
 //! 4. Completed runs only persist when they have output or a non-success status.
 use super::HistoryCell;
 use super::plain_lines;
+use crate::city_lights::CityLightsStylize;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::motion::MotionMode;
 use crate::motion::ReducedMotionIndicator;
@@ -809,10 +810,12 @@ fn hook_completed_bullet(status: HookRunStatus, entries: &[HookOutputEntry]) -> 
             {
                 "•".bold()
             } else {
-                "•".green().bold()
+                "•".cl_green().bold()
             }
         }
-        HookRunStatus::Blocked | HookRunStatus::Failed | HookRunStatus::Stopped => "•".red().bold(),
+        HookRunStatus::Blocked | HookRunStatus::Failed | HookRunStatus::Stopped => {
+            "•".cl_red().bold()
+        }
         HookRunStatus::Running => "•".into(),
     }
 }

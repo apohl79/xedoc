@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use codex_app_server_protocol::HookEventName;
 use codex_app_server_protocol::HookMetadata;
 use codex_app_server_protocol::HookSource;
@@ -402,7 +403,7 @@ impl HooksBrowserView {
         );
         lines.extend(self.entry.errors.iter().map(|error| {
             format!("■ {}: {}", error.path.display(), error.message)
-                .red()
+                .cl_red()
                 .into()
         }));
         lines
@@ -1042,7 +1043,7 @@ mod tests {
         );
         assert_eq!(
             view.event_table_lines()[1].spans[3].style.fg,
-            Some(Color::Cyan)
+            Some(Color::Rgb(0, 139, 148))
         );
         assert!(
             view.event_table_lines()[1].spans[3]

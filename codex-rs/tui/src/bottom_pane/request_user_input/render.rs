@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
@@ -267,7 +268,7 @@ impl RequestUserInputOverlay {
             Line::from(vec![
                 self.progress_prefix_text().dim(),
                 " · ".dim(),
-                countdown.red(),
+                countdown.cl_red(),
             ])
         } else {
             Line::from(self.progress_prefix_text().dim())
@@ -287,7 +288,7 @@ impl RequestUserInputOverlay {
             let question_line = if answered {
                 Line::from(line.clone())
             } else {
-                Line::from(line.clone()).cyan()
+                Line::from(line.clone()).cl_cyan()
             };
             Paragraph::new(question_line).render(
                 Rect {
@@ -362,7 +363,7 @@ impl RequestUserInputOverlay {
                     spans.push(TIP_SEPARATOR.into());
                 }
                 if tip.highlight {
-                    spans.push(tip.text.cyan().bold().not_dim());
+                    spans.push(tip.text.cl_cyan().bold().not_dim());
                 } else {
                     spans.push(tip.text.into());
                 }

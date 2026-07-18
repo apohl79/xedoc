@@ -1,6 +1,7 @@
 //! Attachment bookkeeping for the chat composer, including local image placeholders,
 //! remote-image rows, and keyboard selection over those rows.
 
+use crate::city_lights::CityLightsStylize;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -144,9 +145,9 @@ impl AttachmentState {
             .map(|(index, _)| {
                 let label = local_image_label_text(index + 1);
                 if self.selected_remote_image_index == Some(index) {
-                    label.cyan().reversed().into()
+                    label.cl_cyan().reversed().into()
                 } else {
-                    label.cyan().into()
+                    label.cl_cyan().into()
                 }
             })
             .collect()

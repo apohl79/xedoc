@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -1295,7 +1296,7 @@ impl McpServerElicitationOverlay {
             let line = if answered {
                 Line::from(line.clone())
             } else {
-                Line::from(line.clone()).cyan()
+                Line::from(line.clone()).cl_cyan()
             };
             Paragraph::new(line).render(
                 Rect {
@@ -1366,7 +1367,7 @@ impl McpServerElicitationOverlay {
                     spans.push(FOOTER_SEPARATOR.into());
                 }
                 if tip.highlight {
-                    spans.push(tip.text.cyan().bold().not_dim());
+                    spans.push(tip.text.cl_cyan().bold().not_dim());
                 } else {
                     spans.push(tip.text.into());
                 }

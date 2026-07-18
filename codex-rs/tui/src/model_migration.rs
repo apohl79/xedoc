@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use crate::key_hint;
 use crate::markdown_render::render_markdown_text_with_width;
 use crate::render::Insets;
@@ -110,7 +111,7 @@ pub(crate) fn migration_copy_for_models(
     if let Some(model_link) = model_link {
         content.push(Line::from(vec![
             format!("{description_line} Learn more about {target_display_name} at ").into(),
-            model_link.cyan().underlined(),
+            model_link.cl_cyan().underlined(),
         ]));
         content.push(Line::from(""));
     } else {

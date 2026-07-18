@@ -1,6 +1,7 @@
 //! Completed request-user-input transcript rendering.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 /// Renders a completed (or interrupted) request_user_input exchange in history.
 #[derive(Debug)]
@@ -28,7 +29,7 @@ impl HistoryCell for RequestUserInputResultCell {
         let mut header = vec!["•".dim(), " ".into(), "Questions".bold()];
         header.push(format!(" {answered}/{total} answered").dim());
         if self.interrupted {
-            header.push(" (interrupted)".cyan());
+            header.push(" (interrupted)".cl_cyan());
         }
 
         let mut lines: Vec<Line<'static>> = vec![header.into()];
@@ -60,7 +61,7 @@ impl HistoryCell for RequestUserInputResultCell {
                     width,
                     "    answer: ".dim(),
                     "            ".dim(),
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(Color::Rgb(0, 139, 148)),
                 ));
                 continue;
             }
@@ -73,7 +74,7 @@ impl HistoryCell for RequestUserInputResultCell {
                     width,
                     "    answer: ".dim(),
                     "            ".dim(),
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(Color::Rgb(0, 139, 148)),
                 ));
             }
             if let Some(note) = note {
@@ -81,13 +82,13 @@ impl HistoryCell for RequestUserInputResultCell {
                     (
                         "    note: ".dim(),
                         "          ".dim(),
-                        Style::default().fg(Color::Cyan),
+                        Style::default().fg(Color::Rgb(0, 139, 148)),
                     )
                 } else {
                     (
                         "    answer: ".dim(),
                         "            ".dim(),
-                        Style::default().fg(Color::Cyan),
+                        Style::default().fg(Color::Rgb(0, 139, 148)),
                     )
                 };
                 lines.extend(wrap_with_prefix(&note, width, label, continuation, style));
@@ -99,9 +100,9 @@ impl HistoryCell for RequestUserInputResultCell {
             lines.extend(wrap_with_prefix(
                 &summary,
                 width,
-                "  ↳ ".cyan().dim(),
+                "  ↳ ".cl_cyan().dim(),
                 "    ".dim(),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
+                Style::default().fg(Color::Rgb(0, 139, 148)).add_modifier(Modifier::DIM),
             ));
         }
 

@@ -15,6 +15,7 @@
 
 mod chart;
 
+use crate::city_lights::CityLightsStylize;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -107,7 +108,7 @@ pub(super) fn new_token_activity_output(
 ) -> (CompositeHistoryCell, TokenActivityHandle) {
     let command = PlainHistoryCell::new(vec![
         format!("/usage {}", view.label().to_lowercase())
-            .magenta()
+            .cl_magenta()
             .into(),
     ]);
     let state = Arc::new(RwLock::new(TokenActivityState::Loading));

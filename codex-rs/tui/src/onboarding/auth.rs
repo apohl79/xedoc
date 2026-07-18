@@ -7,6 +7,7 @@
 
 #![allow(clippy::unwrap_used)]
 
+use crate::city_lights::CityLightsStylize;
 use codex_app_server_client::AppServerRequestHandle;
 use codex_app_server_protocol::AccountLoginCompletedNotification;
 use codex_app_server_protocol::AccountUpdatedNotification;
@@ -409,8 +410,10 @@ impl AuthModeWidget {
 
             let line1 = if is_selected {
                 Line::from(vec![
-                    format!("{caret} {index}. ", index = idx + 1).cyan().dim(),
-                    text.to_string().cyan(),
+                    format!("{caret} {index}. ", index = idx + 1)
+                        .cl_cyan()
+                        .dim(),
+                    text.to_string().cl_cyan(),
                 ])
             } else {
                 format!("  {index}. {text}", index = idx + 1).into()
@@ -418,7 +421,7 @@ impl AuthModeWidget {
 
             let line2 = if is_selected {
                 Line::from(format!("     {description}"))
-                    .fg(Color::Cyan)
+                    .fg(Color::Rgb(0, 139, 148))
                     .add_modifier(Modifier::DIM)
             } else {
                 Line::from(format!("     {description}"))
@@ -480,7 +483,7 @@ impl AuthModeWidget {
         ]));
         if let Some(err) = self.error_message() {
             lines.push("".into());
-            lines.push(err.red().into());
+            lines.push(err.cl_red().into());
         }
 
         Paragraph::new(lines)
@@ -511,14 +514,14 @@ impl AuthModeWidget {
             lines.push("".into());
             lines.push(Line::from(vec![
                 "  ".into(),
-                state.auth_url.as_str().cyan().underlined(),
+                state.auth_url.as_str().cl_cyan().underlined(),
             ]));
             lines.push("".into());
             lines.push(Line::from(vec![
                 "  On a remote or headless machine? Press ".into(),
                 self.cancel_binding().into(),
                 " and choose ".into(),
-                "Sign in with Device Code".cyan(),
+                "Sign in with Device Code".cl_cyan(),
                 ".".into(),
             ]));
             lines.push("".into());
@@ -546,7 +549,7 @@ impl AuthModeWidget {
     fn render_chatgpt_success_message(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
             "✓ Signed in with your ChatGPT account"
-                .fg(Color::Green)
+                .fg(Color::Rgb(92, 214, 182))
                 .into(),
             "".into(),
             "  Before you start:".into(),
@@ -579,9 +582,9 @@ impl AuthModeWidget {
             .dim(),
             "".into(),
             Line::from(vec![
-                "  Press ".fg(Color::Cyan),
+                "  Press ".fg(Color::Rgb(0, 139, 148)),
                 self.confirm_binding().into(),
-                " to continue".fg(Color::Cyan),
+                " to continue".fg(Color::Rgb(0, 139, 148)),
             ]),
         ];
 
@@ -593,7 +596,7 @@ impl AuthModeWidget {
     fn render_chatgpt_success(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
             "✓ Signed in with your ChatGPT account"
-                .fg(Color::Green)
+                .fg(Color::Rgb(92, 214, 182))
                 .into(),
         ];
 
@@ -604,7 +607,7 @@ impl AuthModeWidget {
 
     fn render_api_key_configured(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
-            "✓ API key configured".fg(Color::Green).into(),
+            "✓ API key configured".fg(Color::Rgb(92, 214, 182)).into(),
             "".into(),
             "  Codex will use usage-based billing with your API key.".into(),
         ];
@@ -656,7 +659,7 @@ impl AuthModeWidget {
                     .title("API key")
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(Style::default().fg(Color::Rgb(0, 139, 148))),
             )
             .render(input_area, buf);
 
@@ -674,7 +677,7 @@ impl AuthModeWidget {
         ];
         if let Some(error) = self.error_message() {
             footer_lines.push("".into());
-            footer_lines.push(error.red().into());
+            footer_lines.push(error.cl_red().into());
         }
         Paragraph::new(footer_lines)
             .wrap(Wrap { trim: false })
@@ -1276,7 +1279,7 @@ mod tests {
         for (i, ch) in "example".chars().enumerate() {
             let cell = &mut buf[(i as u16, 0)];
             cell.set_symbol(&ch.to_string());
-            cell.fg = Color::Cyan;
+            cell.fg = Color::Rgb(0, 139, 148);
             cell.modifier = Modifier::UNDERLINED;
         }
         // Leave a plain cell that should NOT be marked.
@@ -1300,7 +1303,7 @@ mod tests {
         // One cyan+underlined cell to mark.
         let cell = &mut buf[(0, 0)];
         cell.set_symbol("a");
-        cell.fg = Color::Cyan;
+        cell.fg = Color::Rgb(0, 139, 148);
         cell.modifier = Modifier::UNDERLINED;
 
         // URL contains ESC and BEL that could break the OSC 8 sequence.

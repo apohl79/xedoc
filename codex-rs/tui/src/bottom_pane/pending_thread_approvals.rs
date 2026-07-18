@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
@@ -47,7 +48,11 @@ impl PendingThreadApprovals {
             let wrapped = adaptive_wrap_lines(
                 std::iter::once(Line::from(format!("Approval needed in {thread}"))),
                 RtOptions::new(width as usize)
-                    .initial_indent(Line::from(vec!["  ".into(), "!".red().bold(), " ".into()]))
+                    .initial_indent(Line::from(vec![
+                        "  ".into(),
+                        "!".cl_red().bold(),
+                        " ".into(),
+                    ]))
                     .subsequent_indent(Line::from("    ")),
             );
             lines.extend(wrapped);
@@ -60,7 +65,7 @@ impl PendingThreadApprovals {
         lines.push(
             Line::from(vec![
                 "    ".into(),
-                "/agent".cyan().bold(),
+                "/agent".cl_cyan().bold(),
                 " to switch threads".dim(),
             ])
             .dim(),

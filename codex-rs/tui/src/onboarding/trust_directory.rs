@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use std::path::PathBuf;
 
 use crossterm::event::KeyEvent;
@@ -97,7 +98,7 @@ impl WidgetRef for &TrustDirectoryWidget {
         if let Some(error) = &self.error {
             column.push(
                 Paragraph::new(error.to_string())
-                    .red()
+                    .cl_red()
                     .wrap(Wrap { trim: true })
                     .inset(Insets::tlbr(
                         /*top*/ 0, /*left*/ 2, /*bottom*/ 0, /*right*/ 0,

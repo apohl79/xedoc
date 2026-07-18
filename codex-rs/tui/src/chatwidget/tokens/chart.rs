@@ -6,6 +6,7 @@
 
 mod palette;
 
+use crate::city_lights::CityLightsStylize;
 use std::collections::BTreeMap;
 
 use chrono::Datelike;
@@ -255,7 +256,7 @@ fn format_optional_duration(value: Option<i64>) -> String {
 
 fn numeric_style() -> Style {
     foreground_style_for_scopes(&["constant.numeric", "constant"])
-        .unwrap_or_else(|| Style::default().green())
+        .unwrap_or_else(|| Style::default().cl_green())
 }
 
 fn label_style() -> Style {

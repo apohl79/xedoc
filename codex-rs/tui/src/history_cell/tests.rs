@@ -1,6 +1,7 @@
 //! Coverage for history-cell rendering, wrapping, and transcript behavior.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 use crate::exec_cell::CommandOutput;
 use crate::exec_cell::ExecCall;
 use crate::exec_cell::ExecCell;
@@ -984,7 +985,7 @@ fn prefixed_wrapped_history_cell_indents_wrapped_lines() {
         "echo something really long to ensure wrapping happens".dim(),
         " this time".bold(),
     ]);
-    let cell = PrefixedWrappedHistoryCell::new(summary, "✔ ".green(), "  ");
+    let cell = PrefixedWrappedHistoryCell::new(summary, "✔ ".cl_green(), "  ");
     let rendered = render_lines(&cell.display_lines(/*width*/ 24));
     assert_eq!(
         rendered,
@@ -1001,7 +1002,7 @@ fn prefixed_wrapped_history_cell_indents_wrapped_lines() {
 #[test]
 fn prefixed_wrapped_history_cell_does_not_split_url_like_token() {
     let url_like = "example.test/api/v1/projects/alpha-team/releases/2026-02-17/builds/1234567890";
-    let cell = PrefixedWrappedHistoryCell::new(Line::from(url_like), "✔ ".green(), "  ");
+    let cell = PrefixedWrappedHistoryCell::new(Line::from(url_like), "✔ ".cl_green(), "  ");
     let rendered = render_lines(&cell.display_lines(/*width*/ 24));
 
     assert_eq!(
@@ -1035,7 +1036,7 @@ fn prefixed_wrapped_history_cell_height_matches_wrapped_rendering() {
     let url_like = "example.test/api/v1/projects/alpha-team/releases/2026-02-17/builds/1234567890/artifacts/reports/performance/summary/detail/with/a/very/long/path";
     let cell: Box<dyn HistoryCell> = Box::new(PrefixedWrappedHistoryCell::new(
         Line::from(url_like),
-        "✔ ".green(),
+        "✔ ".cl_green(),
         "  ",
     ));
 

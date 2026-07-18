@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -1019,7 +1020,7 @@ impl ChatWidget {
                     " and ".into(),
                     "privacy policy".bold(),
                     ". ".into(),
-                    "Learn more".cyan().underlined(),
+                    "Learn more".cl_cyan().underlined(),
                     ".".into(),
                 ]),
             });

@@ -4,6 +4,7 @@
 //! into another, especially while Plan mode is active.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 const ULTRA_REASONING_CONCURRENCY_WARNING_THRESHOLD: usize = 8;
 
@@ -49,7 +50,7 @@ impl ChatWidget {
         let warning = format!(
             "Warning: OpenAI base URL is overridden to {base_url}. Selecting models may not be supported or work properly."
         );
-        Some(Line::from(warning.red()))
+        Some(Line::from(warning.cl_red()))
     }
 
     fn custom_openai_base_url(&self) -> Option<String> {

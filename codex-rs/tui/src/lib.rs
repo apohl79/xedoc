@@ -98,6 +98,7 @@ mod ascii_animation;
 mod bottom_pane;
 mod branch_summary;
 mod chatwidget;
+mod city_lights;
 mod cli;
 mod clipboard_copy;
 mod clipboard_paste;

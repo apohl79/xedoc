@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
@@ -1670,7 +1671,7 @@ mod tests {
         }];
         let footer_note = Line::from(vec![
             "Note: ".dim(),
-            "Use /setup-default-sandbox".cyan(),
+            "Use /setup-default-sandbox".cl_cyan(),
             " to allow network access.".dim(),
         ]);
         let view = new_view(
@@ -2767,7 +2768,7 @@ mod tests {
             for x in 0..width {
                 buf[(x, y)]
                     .set_symbol("X")
-                    .set_style(Style::default().bg(Color::Red));
+                    .set_style(Style::default().bg(Color::Rgb(217, 84, 104)));
             }
         }
         view.render(area, &mut buf);
@@ -2826,7 +2827,7 @@ mod tests {
             for x in area.x..area.x + width {
                 buf[(x, y)]
                     .set_symbol("X")
-                    .set_style(Style::default().bg(Color::Red));
+                    .set_style(Style::default().bg(Color::Rgb(217, 84, 104)));
             }
         }
         view.render(area, &mut buf);

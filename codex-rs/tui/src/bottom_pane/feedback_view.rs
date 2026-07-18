@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use codex_feedback::DOCTOR_REPORT_ATTACHMENT_FILENAME;
 use codex_feedback::FEEDBACK_DIAGNOSTICS_ATTACHMENT_FILENAME;
 use codex_feedback::FeedbackDiagnostics;
@@ -270,7 +271,7 @@ pub(crate) fn should_show_feedback_connectivity_details(
 }
 
 fn gutter() -> Span<'static> {
-    "▌ ".cyan()
+    "▌ ".cl_cyan()
 }
 
 fn feedback_title_and_placeholder(category: FeedbackCategory) -> (String, String) {
@@ -331,7 +332,7 @@ pub(crate) fn feedback_success_cell(
         Some(url) if feedback_audience == FeedbackAudience::OpenAiEmployee => {
             lines.extend([
                 "".into(),
-                Line::from(vec!["  ".into(), url.cyan().underlined()]),
+                Line::from(vec!["  ".into(), url.cl_cyan().underlined()]),
                 "".into(),
                 Line::from("  Share this and add some info about your problem:"),
                 Line::from(vec![
@@ -343,7 +344,7 @@ pub(crate) fn feedback_success_cell(
         Some(url) => {
             lines.extend([
                 "".into(),
-                Line::from(vec!["  ".into(), url.cyan().underlined()]),
+                Line::from(vec!["  ".into(), url.cl_cyan().underlined()]),
                 "".into(),
                 Line::from(vec![
                     "  Or mention your thread ID ".into(),

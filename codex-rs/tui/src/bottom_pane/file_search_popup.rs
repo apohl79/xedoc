@@ -128,7 +128,7 @@ impl WidgetRef for &FileSearchPopup {
                 .iter()
                 .map(|m| GenericDisplayRow {
                     name: m.path.to_string_lossy().to_string(),
-                    name_style: Some(Style::default().fg(Color::Cyan)),
+                    name_style: Some(Style::default().fg(Color::Rgb(0, 139, 148))),
                     name_prefix_spans: Vec::new(),
                     match_indices: m
                         .indices
@@ -212,6 +212,6 @@ mod tests {
 
         (&popup).render_ref(area, &mut buf);
 
-        assert_eq!(buf[(2, 1)].style().fg, Some(Color::Cyan));
+        assert_eq!(buf[(2, 1)].style().fg, Some(Color::Rgb(0, 139, 148)));
     }
 }

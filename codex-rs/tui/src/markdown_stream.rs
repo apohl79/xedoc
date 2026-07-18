@@ -248,7 +248,7 @@ mod tests {
         let l = &out[0];
         assert_eq!(
             l.style.fg,
-            Some(Color::Green),
+            Some(Color::Rgb(92, 214, 182)),
             "expected blockquote line fg green, got {:?}",
             l.style.fg
         );
@@ -276,8 +276,8 @@ mod tests {
             })
             .collect();
         assert_eq!(non_blank.len(), 2);
-        assert_eq!(non_blank[0].style.fg, Some(Color::Green));
-        assert_eq!(non_blank[1].style.fg, Some(Color::Green));
+        assert_eq!(non_blank[0].style.fg, Some(Color::Rgb(92, 214, 182)));
+        assert_eq!(non_blank[1].style.fg, Some(Color::Rgb(92, 214, 182)));
     }
 
     #[tokio::test]
@@ -287,8 +287,8 @@ mod tests {
             /*finalize*/ true,
         );
         assert_eq!(out.len(), 2);
-        assert_eq!(out[0].style.fg, Some(Color::Green));
-        assert_eq!(out[1].style.fg, Some(Color::Green));
+        assert_eq!(out[0].style.fg, Some(Color::Rgb(92, 214, 182)));
+        assert_eq!(out[1].style.fg, Some(Color::Rgb(92, 214, 182)));
     }
 
     #[tokio::test]
@@ -351,7 +351,7 @@ mod tests {
         for (i, l) in non_blank.iter().enumerate() {
             assert_eq!(
                 l.spans[0].style.fg,
-                Some(Color::Green),
+                Some(Color::Rgb(92, 214, 182)),
                 "wrapped line {} should preserve green style, got {:?}",
                 i,
                 l.spans[0].style.fg

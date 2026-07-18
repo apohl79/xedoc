@@ -3,6 +3,7 @@
 //! The TUI renders the built-in status line synchronously, but custom commands
 //! run off the draw path and return a single ANSI-capable line when complete.
 
+use crate::city_lights::CityLightsStylize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -193,7 +194,7 @@ fn line_from_stdout(stdout: &str) -> Option<Line<'static>> {
 
 fn error_line(message: String) -> Line<'static> {
     vec![
-        "statusline error: ".red().bold(),
+        "statusline error: ".cl_red().bold(),
         truncate_for_display(&message).dim(),
     ]
     .into()

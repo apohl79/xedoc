@@ -485,7 +485,7 @@ pub(crate) fn mark_buffer_hyperlinks(
 
 pub(crate) fn mark_url_hyperlink(buf: &mut Buffer, area: Rect, destination: &str) {
     mark_matching_cells(buf, area, destination, |cell| {
-        cell.fg == Color::Cyan && cell.modifier.contains(Modifier::UNDERLINED)
+        cell.fg == Color::Rgb(0, 139, 148) && cell.modifier.contains(Modifier::UNDERLINED)
     });
 }
 

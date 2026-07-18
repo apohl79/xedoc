@@ -1,5 +1,6 @@
 //! Theme-derived styling for the configurable footer statusline.
 
+use crate::city_lights::CityLightsStylize;
 use ratatui::prelude::Stylize;
 use ratatui::style::Color;
 use ratatui::style::Style;
@@ -71,9 +72,9 @@ impl StatusLineAccent {
 
     fn fallback_style(self) -> Style {
         match self {
-            Self::Model | Self::State | Self::Metadata | Self::Mode => Style::default().cyan(),
-            Self::Path | Self::Usage | Self::Progress => Style::default().green(),
-            Self::Branch | Self::Limit | Self::Thread => Style::default().magenta(),
+            Self::Model | Self::State | Self::Metadata | Self::Mode => Style::default().cl_cyan(),
+            Self::Path | Self::Usage | Self::Progress => Style::default().cl_green(),
+            Self::Branch | Self::Limit | Self::Thread => Style::default().cl_magenta(),
         }
     }
 }
@@ -203,11 +204,11 @@ mod tests {
         .expect("status line");
 
         assert_eq!(line_text(&line), "gpt-5 · /repo · main");
-        assert_eq!(line.spans[0].style.fg, Some(Color::Cyan));
+        assert_eq!(line.spans[0].style.fg, Some(Color::Rgb(15, 133, 141)));
         assert!(!line.spans[0].style.add_modifier.contains(Modifier::DIM));
-        assert_eq!(line.spans[2].style.fg, Some(Color::Green));
+        assert_eq!(line.spans[2].style.fg, Some(Color::Rgb(104, 208, 181)));
         assert!(!line.spans[2].style.add_modifier.contains(Modifier::DIM));
-        assert_eq!(line.spans[4].style.fg, Some(Color::Magenta));
+        assert_eq!(line.spans[4].style.fg, Some(Color::Rgb(157, 112, 219)));
         assert!(!line.spans[4].style.add_modifier.contains(Modifier::DIM));
     }
 
@@ -220,16 +221,16 @@ mod tests {
             ],
             /*use_theme_colors*/ true,
             |accent| match accent {
-                StatusLineAccent::Model => Some(Style::default().red()),
+                StatusLineAccent::Model => Some(Style::default().cl_red()),
                 _ => None,
             },
         )
         .expect("status line");
 
-        assert_eq!(line.spans[0].style.fg, Some(Color::Red));
+        assert_eq!(line.spans[0].style.fg, Some(Color::Rgb(203, 90, 107)));
         assert!(!line.spans[0].style.add_modifier.contains(Modifier::DIM));
         assert!(line.spans[1].style.add_modifier.contains(Modifier::DIM));
-        assert_eq!(line.spans[2].style.fg, Some(Color::Green));
+        assert_eq!(line.spans[2].style.fg, Some(Color::Rgb(104, 208, 181)));
         assert!(!line.spans[2].style.add_modifier.contains(Modifier::DIM));
     }
 
@@ -255,7 +256,7 @@ mod tests {
                 (StatusLineItem::ContextUsed, "Context 12% used".to_string()),
             ],
             /*use_theme_colors*/ false,
-            |_| Some(Style::default().red()),
+            |_| Some(Style::default().cl_red()),
         )
         .expect("status line");
 

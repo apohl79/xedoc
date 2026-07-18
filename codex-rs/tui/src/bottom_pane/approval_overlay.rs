@@ -11,6 +11,7 @@
 //! This module does not evaluate whether an action is safe to run; it only
 //! presents choices and routes user decisions.
 
+use crate::city_lights::CityLightsStylize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -707,7 +708,7 @@ fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
             {
                 header.push(Line::from(vec![
                     "Permission rule: ".into(),
-                    rule_line.cyan(),
+                    rule_line.cl_cyan(),
                 ]));
                 header.push(Line::from(""));
             }
@@ -750,7 +751,7 @@ fn build_header(request: &ApprovalRequest) -> Box<dyn Renderable> {
             if let Some(rule_line) = format_requested_permissions_rule(permissions) {
                 header.push(Line::from(vec![
                     "Permission rule: ".into(),
-                    rule_line.cyan(),
+                    rule_line.cl_cyan(),
                 ]));
             }
             Box::new(Paragraph::new(header).wrap(Wrap { trim: false }))

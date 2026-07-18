@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
@@ -100,7 +101,7 @@ impl MemoriesSettingsView {
             app_event_tx,
             docs_link: Line::from(vec![
                 "Learn more: ".dim(),
-                MEMORIES_DOC_URL.cyan().underlined(),
+                MEMORIES_DOC_URL.cl_cyan().underlined(),
             ]),
             keymap,
         };

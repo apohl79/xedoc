@@ -5,6 +5,7 @@
 //! `windows_sandbox_prompts`.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 impl ChatWidget {
     /// Open the permissions popup.
@@ -143,7 +144,7 @@ impl ChatWidget {
         let footer_note = show_elevate_sandbox_hint.then(|| {
             vec![
                 "The non-admin sandbox protects your files and prevents network access under most circumstances. However, it carries greater risk if prompt injected. To upgrade to the default sandbox, run ".dim(),
-                "/setup-default-sandbox".cyan(),
+                "/setup-default-sandbox".cl_cyan(),
                 ".".dim(),
             ]
             .into()
@@ -418,7 +419,7 @@ impl ChatWidget {
             "When Codex runs with full access, it can edit any file on your computer and run commands with network, without your approval. "
                 .into(),
             "Exercise caution when enabling full access. This significantly increases the risk of data loss, leaks, or unexpected behavior."
-                .fg(Color::Red),
+                .fg(Color::Rgb(217, 84, 104)),
         ]);
         header_children.push(Box::new(title_line));
         header_children.push(Box::new(

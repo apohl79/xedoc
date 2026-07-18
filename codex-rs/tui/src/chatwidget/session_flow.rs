@@ -1,6 +1,7 @@
 //! Session configuration and thread-header orchestration for `ChatWidget`.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 impl ChatWidget {
     fn on_session_configured_with_display_and_fork_parent_title(
@@ -189,9 +190,9 @@ impl ChatWidget {
             vec![
                 "• ".dim(),
                 "Thread forked from ".into(),
-                name.cyan(),
+                name.cl_cyan(),
                 " (".into(),
-                forked_from_id_text.cyan(),
+                forked_from_id_text.cl_cyan(),
                 ")".into(),
             ]
             .into()
@@ -199,7 +200,7 @@ impl ChatWidget {
             vec![
                 "• ".dim(),
                 "Thread forked from ".into(),
-                forked_from_id_text.cyan(),
+                forked_from_id_text.cl_cyan(),
             ]
             .into()
         };

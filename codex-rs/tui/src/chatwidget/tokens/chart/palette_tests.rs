@@ -61,7 +61,7 @@ fn truecolor_palette_blends_empty_cell_for_light_background() {
 fn ansi16_palette_uses_theme_accent_without_green_fallback() {
     let default_fg = Some((240, 240, 240));
     let default_bg = Some((0, 0, 0));
-    let active_style = Style::default().fg(Color::Magenta).bold();
+    let active_style = Style::default().fg(Color::Rgb(160, 107, 234)).bold();
     let palette = TokenActivityPalette::from_parts(
         default_fg,
         default_bg,
@@ -76,10 +76,10 @@ fn ansi16_palette_uses_theme_accent_without_green_fallback() {
 }
 
 #[test]
-fn non_rgb_theme_accent_remains_active_fallback() {
+fn rgb_theme_accent_uses_blended_color_palette() {
     let default_fg = Some((240, 240, 240));
     let default_bg = Some((0, 0, 0));
-    let active_style = Style::default().fg(Color::Cyan).bold();
+    let active_style = Style::default().fg(Color::Rgb(0, 139, 148)).bold();
     let palette = TokenActivityPalette::from_parts(
         default_fg,
         default_bg,
@@ -87,14 +87,12 @@ fn non_rgb_theme_accent_remains_active_fallback() {
         active_style,
     );
 
-    assert_eq!(palette.for_level(/*level*/ 1), active_style);
-    assert!(
-        palette
-            .for_level(/*level*/ 1)
-            .add_modifier
-            .contains(Modifier::BOLD)
-    );
-    assert!(!palette.uses_color);
+    // With an RGB accent, the palette uses blended colors, not the raw active_style.
+    assert_ne!(palette.for_level(/*level*/ 1), active_style);
+    assert!(palette.uses_color);
+    // Blended palette styles have a foreground color set.
+    assert!(palette.for_level(/*level*/ 1).fg.is_some());
+    assert!(palette.for_level(/*level*/ 4).fg.is_some());
 }
 
 #[test]

@@ -166,6 +166,7 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
+use ratatui::widgets::Borders;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::StatefulWidgetRef;
 use ratatui::widgets::WidgetRef;
@@ -213,6 +214,8 @@ use super::slash_commands::BuiltinCommandFlags;
 use super::slash_commands::ServiceTierCommand;
 use super::slash_commands::SlashCommandItem;
 use crate::bottom_pane::paste_burst::FlushResult;
+use crate::city_lights::CityLightsStylize;
+use crate::city_lights::{self};
 use crate::history_cell::sanitize_user_text;
 use crate::key_hint::KeyBindingListExt;
 use crate::keymap::EditorKeymap;
@@ -445,7 +448,7 @@ const FOOTER_SPACING_HEIGHT: u16 = 0;
 /// Builds the one-line nudge that replaces the ambient footer without adding layout height.
 fn plan_mode_nudge_line() -> Line<'static> {
     Line::from(vec![
-        "Create a plan?".magenta(),
+        "Create a plan?".cl_magenta(),
         "  ".into(),
         key_hint::shift(KeyCode::Tab).into(),
         " use Plan mode".into(),
@@ -1138,8 +1141,8 @@ impl ChatComposer {
             .textarea
             .vim_mode_label()
             .map(|label| match label {
-                "Normal" => "Vim: Normal".magenta(),
-                "Insert" => "Vim: Insert".green(),
+                "Normal" => "Vim: Normal".cl_magenta(),
+                "Insert" => "Vim: Insert".cl_green(),
                 _ => unreachable!(),
             })
     }
@@ -2796,7 +2799,7 @@ impl ChatComposer {
                 if !binding.path.starts_with("plugin://") || !snapshot.text.starts_with('@') {
                     return None;
                 }
-                Some((snapshot.range, Style::default().fg(Color::Magenta)))
+                Some((snapshot.range, Style::default().fg(Color::Rgb(160, 107, 234))))
             })
             .collect()
     }
@@ -4605,7 +4608,11 @@ impl ChatComposer {
             }
         }
         let style = user_message_style();
-        Block::default().style(style).render_ref(composer_rect, buf);
+        Block::default()
+            .style(style)
+            .borders(Borders::TOP)
+            .border_style(city_lights::composer_border_style())
+            .render_ref(composer_rect, buf);
         if let Some(session_name) = self.session_name.as_ref() {
             let available_width = composer_rect.width.saturating_sub(4) as usize;
             if available_width > 0 {
@@ -4638,10 +4645,10 @@ impl ChatComposer {
                 if self.draft.is_bash_mode {
                     Span::from("!").light_red().bold()
                 } else {
-                    "›".bold()
+                    "❯".cl_magenta()
                 }
             } else {
-                "›".dim()
+                "❯".dim()
             };
             buf.set_span(
                 textarea_rect.x - LIVE_PREFIX_COLS,
@@ -5178,7 +5185,7 @@ mod tests {
 
         assert_eq!(
             plugin_mention_foreground_color(&composer),
-            Some(Color::Magenta)
+            Some(Color::Rgb(160, 107, 234))
         );
     }
 
@@ -5214,7 +5221,7 @@ mod tests {
         for x in 0..area.width {
             let cell = &buf[(x, textarea_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            magenta.push(if cell.style().fg == Some(Color::Magenta) {
+            magenta.push(if cell.style().fg == Some(Color::Rgb(160, 107, 234)) {
                 '^'
             } else {
                 ' '
@@ -5304,7 +5311,7 @@ mod tests {
         for x in 0..area.width {
             let cell = &buf[(x, footer_y)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            magenta.push(if cell.style().fg == Some(Color::Magenta) {
+            magenta.push(if cell.style().fg == Some(Color::Rgb(160, 107, 234)) {
                 '^'
             } else {
                 ' '
@@ -5363,7 +5370,7 @@ mod tests {
 
         assert_eq!(
             plugin_mention_foreground_color(&composer),
-            Some(Color::Magenta)
+            Some(Color::Rgb(160, 107, 234))
         );
     }
 
@@ -5382,7 +5389,7 @@ mod tests {
         composer.set_status_line_enabled(/*enabled*/ true);
         composer.set_status_line(Some(Line::from(Span::styled(
             "PR #20252",
-            Style::default().cyan().underlined(),
+            Style::default().cl_cyan().underlined(),
         ))));
         composer.set_status_line_hyperlink(Some(url.to_string()));
 
@@ -5748,7 +5755,7 @@ mod tests {
         assert!(composer.is_empty());
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Insert".green())
+            Some("Vim: Insert".cl_green())
         );
 
         let (result, needs_redraw) =
@@ -5759,7 +5766,7 @@ mod tests {
         assert!(composer.is_empty());
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
         assert_eq!(composer.footer.mode, FooterMode::ComposerEmpty);
         assert!(!composer.footer.esc_backtrack_hint);
@@ -5792,7 +5799,7 @@ mod tests {
         assert!(matches!(composer.popups.active, ActivePopup::Command(_)));
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Insert".green())
+            Some("Vim: Insert".cl_green())
         );
     }
 
@@ -5826,7 +5833,7 @@ mod tests {
         assert!(composer.is_empty());
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
         assert!(matches!(result, InputResult::Command(SlashCommand::Diff)));
     }
@@ -5858,7 +5865,7 @@ mod tests {
         assert!(needs_redraw);
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
         match result {
             InputResult::CommandWithArgs(cmd, args, text_elements) => {
@@ -5897,7 +5904,7 @@ mod tests {
         assert_eq!(composer.draft.textarea.text(), "");
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Insert".green())
+            Some("Vim: Insert".cl_green())
         );
     }
 
@@ -6098,7 +6105,7 @@ mod tests {
         assert!(composer.draft.textarea.is_vim_enabled());
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
 
         composer.handle_key_event(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
@@ -6109,7 +6116,7 @@ mod tests {
         assert!(composer.draft.textarea.is_vim_enabled());
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
         assert!(composer.is_empty());
         match result {
@@ -6143,7 +6150,7 @@ mod tests {
 
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
         assert!(composer.is_empty());
         match result {
@@ -6179,7 +6186,7 @@ mod tests {
         assert_eq!(composer.draft.textarea.text(), "/not-a-command");
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Insert".green())
+            Some("Vim: Insert".cl_green())
         );
     }
 
@@ -6208,14 +6215,14 @@ mod tests {
             .set_cursor(composer.draft.textarea.text().len());
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Insert".green())
+            Some("Vim: Insert".cl_green())
         );
         assert_eq!(composer.draft.textarea.cursor(), "hey".len());
 
         composer.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
         assert_eq!(composer.draft.textarea.cursor(), "he".len());
     }
@@ -10343,7 +10350,7 @@ mod tests {
         assert_eq!(composer.draft.textarea.text(), "hello");
         assert_eq!(
             composer.vim_mode_indicator_span(),
-            Some("Vim: Normal".magenta())
+            Some("Vim: Normal".cl_magenta())
         );
         assert!(!composer.draft.textarea.is_vim_operator_pending());
     }

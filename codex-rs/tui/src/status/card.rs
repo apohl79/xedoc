@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use crate::history_cell::CompositeHistoryCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
@@ -217,7 +218,7 @@ pub(crate) fn new_status_output_with_rate_limits_handle(
     agents_summary: String,
     refreshing_rate_limits: bool,
 ) -> (CompositeHistoryCell, StatusHistoryHandle) {
-    let command = PlainHistoryCell::new(vec!["/status".magenta().into()]);
+    let command = PlainHistoryCell::new(vec!["/status".cl_magenta().into()]);
     let (card, handle) = StatusHistoryCell::new(
         config,
         runtime_model_provider_base_url,
@@ -779,12 +780,12 @@ impl HistoryCell for StatusHistoryCell {
         let value_width = formatter.value_width(available_inner_width);
 
         let note_first_line = Line::from(vec![
-            Span::from("Visit ").cyan(),
-            CHATGPT_USAGE_URL.cyan().underlined(),
-            Span::from(" for up-to-date").cyan(),
+            Span::from("Visit ").cl_cyan(),
+            CHATGPT_USAGE_URL.cl_cyan().underlined(),
+            Span::from(" for up-to-date").cl_cyan(),
         ]);
         let note_second_line = Line::from(vec![
-            Span::from("information on rate limits and credits").cyan(),
+            Span::from("information on rate limits and credits").cl_cyan(),
         ]);
         let note_lines = adaptive_wrap_lines(
             [note_first_line, note_second_line],

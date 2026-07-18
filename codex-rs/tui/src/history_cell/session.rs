@@ -1,6 +1,7 @@
 //! Session headers, onboarding guidance, and transcript cards.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 pub(crate) const SESSION_HEADER_MAX_INNER_WIDTH: usize = 56; // Just an eyeballed value
 
@@ -205,7 +206,7 @@ pub(crate) fn new_session_info(
         }
         if requested_model != session.model.as_str() {
             let lines = vec![
-                "model changed:".magenta().bold().into(),
+                "model changed:".cl_magenta().bold().into(),
                 format!("requested: {requested_model}").into(),
                 format!("used: {}", session.model).into(),
             ];
@@ -367,10 +368,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
             }
             if self.show_fast_status {
                 spans.push("   ".into());
-                spans.push(Span::styled("fast", self.model_style.magenta()));
+                spans.push(Span::styled("fast", self.model_style.cl_magenta()));
             }
             spans.push("   ".dim());
-            spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
+            spans.push(CHANGE_MODEL_HINT_COMMAND.cl_cyan());
             spans.push(CHANGE_MODEL_HINT_EXPLANATION.dim());
             spans
         };
@@ -393,7 +394,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
             let permissions_label = format!("{PERMISSIONS_LABEL:<label_width$}");
             lines.push(make_row(vec![
                 Span::from(format!("{permissions_label} ")).dim(),
-                "YOLO mode".magenta().bold(),
+                "YOLO mode".cl_magenta().bold(),
             ]));
         }
 

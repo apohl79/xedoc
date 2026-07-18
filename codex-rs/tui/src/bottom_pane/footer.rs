@@ -41,6 +41,7 @@
 //! In short: `single_line_footer_layout` chooses *what* best fits, and the two
 //! render helpers choose whether to draw the chosen line or the default
 //! `FooterProps` mapping.
+use crate::city_lights::CityLightsStylize;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::render::line_utils::prefix_lines;
@@ -154,8 +155,8 @@ impl CollaborationModeIndicator {
     fn styled_span(self, show_cycle_hint: bool) -> Span<'static> {
         let label = self.label(show_cycle_hint);
         match self {
-            CollaborationModeIndicator::Plan => Span::from(label).magenta(),
-            CollaborationModeIndicator::PairProgramming => Span::from(label).cyan(),
+            CollaborationModeIndicator::Plan => Span::from(label).cl_magenta(),
+            CollaborationModeIndicator::PairProgramming => Span::from(label).cl_cyan(),
             CollaborationModeIndicator::Execute => Span::from(label).dim(),
         }
     }
@@ -565,7 +566,7 @@ pub(crate) fn goal_status_indicator_line(
         }
     };
 
-    Some(Line::from(vec![Span::from(label).magenta()]))
+    Some(Line::from(vec![Span::from(label).cl_magenta()]))
 }
 
 pub(crate) fn status_line_right_indicator_line(
@@ -576,7 +577,8 @@ pub(crate) fn status_line_right_indicator_line(
 ) -> Option<Line<'static>> {
     let primary_indicator = mode_indicator_line(collaboration_mode_indicator, show_cycle_hint)
         .or_else(|| goal_status_indicator_line(goal_status_indicator));
-    let ide_context_indicator = ide_context_active.then(|| Line::from(vec!["IDE context".cyan()]));
+    let ide_context_indicator =
+        ide_context_active.then(|| Line::from(vec!["IDE context".cl_cyan()]));
     let mut line: Option<Line<'static>> = None;
 
     for indicator in [primary_indicator, ide_context_indicator]
@@ -598,9 +600,12 @@ pub(crate) fn status_line_right_indicator_line(
 
 pub(crate) fn side_conversation_context_line(label: &str) -> Line<'static> {
     if let Some(rest) = label.strip_prefix("Side ") {
-        Line::from(vec!["Side".magenta().bold(), format!(" {rest}").magenta()])
+        Line::from(vec![
+            "Side".cl_magenta().bold(),
+            format!(" {rest}").cl_magenta(),
+        ])
     } else {
-        Line::from(label.to_string()).magenta()
+        Line::from(label.to_string()).cl_magenta()
     }
 }
 
@@ -967,7 +972,7 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
         "customize shortcuts with ".into(),
-        "/keymap".cyan(),
+        "/keymap".cl_cyan(),
     ]));
     lines
 }
@@ -2032,11 +2037,11 @@ mod tests {
     fn with_active_agent_context_line_appends_thread_label() {
         assert_eq!(
             with_active_agent_context_line(
-                Some(Line::from(vec!["Pursuing goal".magenta()])),
+                Some(Line::from(vec!["Pursuing goal".cl_magenta()])),
                 Some("Robie [explorer]")
             ),
             Some(Line::from(vec![
-                "Pursuing goal".magenta(),
+                "Pursuing goal".cl_magenta(),
                 " · ".dim(),
                 "Robie [explorer]".dark_gray(),
             ]))

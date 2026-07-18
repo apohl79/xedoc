@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use crossterm::event::KeyCode;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -68,8 +69,8 @@ fn search_mode_indicator_line(active_search_mode: SearchMode) -> Line<'static> {
         if search_mode == active_search_mode {
             let label = format!("[{}]", search_mode.label());
             let span = match search_mode {
-                SearchMode::Results | SearchMode::FilesystemOnly => label.cyan().bold(),
-                SearchMode::Tools => label.magenta().bold(),
+                SearchMode::Results | SearchMode::FilesystemOnly => label.cl_cyan().bold(),
+                SearchMode::Tools => label.cl_magenta().bold(),
             };
             spans.push(span);
         } else {

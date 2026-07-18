@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use std::path::PathBuf;
 
 use ratatui::style::Style;
@@ -31,9 +32,9 @@ impl MentionType {
 
     pub(super) fn span(self, base_style: Style) -> Span<'static> {
         let style = match self {
-            Self::Plugin => base_style.magenta(),
+            Self::Plugin => base_style.cl_magenta(),
             Self::Skill => base_style.dim(),
-            Self::File => base_style.cyan(),
+            Self::File => base_style.cl_cyan(),
             Self::Directory => base_style,
         };
         format!("{:<width$}", self.label(), width = TAG_WIDTH).set_style(style)

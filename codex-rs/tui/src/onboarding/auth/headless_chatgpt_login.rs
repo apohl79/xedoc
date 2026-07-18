@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::LoginAccountParams;
 use codex_app_server_protocol::LoginAccountResponse;
@@ -113,7 +114,7 @@ pub(super) fn render_device_code_login(
         lines.push("".into());
         lines.push(Line::from(vec![
             "  ".into(),
-            verification_url.as_str().cyan().underlined(),
+            verification_url.as_str().cl_cyan().underlined(),
         ]));
         lines.push("".into());
         lines.push(
@@ -122,7 +123,7 @@ pub(super) fn render_device_code_login(
         lines.push("".into());
         lines.push(Line::from(vec![
             "  ".into(),
-            user_code.as_str().cyan().bold(),
+            user_code.as_str().cl_cyan().bold(),
         ]));
         lines.push("".into());
         lines.push(

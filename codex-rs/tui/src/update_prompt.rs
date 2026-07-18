@@ -1,5 +1,6 @@
 #![cfg(not(debug_assertions))]
 
+use crate::city_lights::CityLightsStylize;
 use crate::history_cell::padded_emoji;
 use crate::key_hint;
 use crate::legacy_core::config::Config;
@@ -193,7 +194,7 @@ impl WidgetRef for &UpdatePromptScreen {
 
         column.push("");
         column.push(Line::from(vec![
-            padded_emoji("  ✨").bold().cyan(),
+            padded_emoji("  ✨").bold().cl_cyan(),
             "Update available!".bold(),
             " ".into(),
             format!(

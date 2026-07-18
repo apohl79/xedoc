@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
@@ -1868,7 +1869,7 @@ fn draw_picker(tui: &mut Tui, state: &PickerState) -> std::io::Result<()> {
         let header_title = if default_bg().is_some_and(is_light) {
             state.action.title().bold().fg(best_color((0, 100, 0)))
         } else {
-            state.action.title().bold().cyan()
+            state.action.title().bold().cl_cyan()
         };
         let header_line: Line = vec![header_title].into();
         frame.render_widget_ref(header_line, chrome(header));
@@ -1898,7 +1899,7 @@ fn list_viewport_width(width: u16) -> u16 {
 
 fn search_line(state: &PickerState, width: u16) -> Line<'_> {
     if let Some(error) = state.inline_error.as_deref() {
-        return Line::from(error.red());
+        return Line::from(error.cl_red());
     }
     let search = if state.query.is_empty() {
         "Type to search".dim()
@@ -1999,7 +2000,7 @@ fn toolbar_value(label: &'static str, active: bool, focused: bool) -> Span<'stat
     if active {
         let value = format!("[{label}]");
         if focused {
-            value.magenta()
+            value.cl_magenta()
         } else {
             value.into()
         }
@@ -2722,7 +2723,7 @@ fn selection_marker(is_selected: bool, is_expanded: bool) -> Span<'static> {
 
 fn selected_session_style() -> Style {
     if default_bg().is_some_and(is_light) {
-        Style::default().fg(Color::Magenta)
+        Style::default().fg(Color::Rgb(160, 107, 234))
     } else {
         Style::default().fg(Color::Yellow)
     }
@@ -2926,7 +2927,7 @@ fn render_transcript_preview_lines(
         Some(TranscriptPreviewState::Failed) => vec![
             vec![
                 "  │ ".dim(),
-                "Could not load transcript preview".italic().red(),
+                "Could not load transcript preview".italic().cl_red(),
             ]
             .into(),
         ],

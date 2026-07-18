@@ -39,6 +39,7 @@
 //! body rows, or even 3-char-wide columns cannot fit, body rows render as
 //! key/value records.
 
+use crate::city_lights::CityLightsStylize;
 use crate::markdown_text_merge::DecodedTextMerge;
 use crate::render::highlight::foreground_style_for_scopes;
 use crate::render::highlight::highlight_code_to_lines;
@@ -110,14 +111,14 @@ impl Default for MarkdownStyles {
             h4: Style::new().italic(),
             h5: Style::new().italic(),
             h6: Style::new().italic(),
-            code: Style::new().cyan(),
+            code: Style::new().cl_cyan(),
             emphasis: Style::new().italic(),
             strong: Style::new().bold(),
             strikethrough: Style::new().crossed_out(),
             ordered_list_marker: Style::new().light_blue(),
             unordered_list_marker: Style::new(),
-            link: Style::new().cyan().underlined(),
-            blockquote: Style::new().green(),
+            link: Style::new().cl_cyan().underlined(),
+            blockquote: Style::new().cl_green(),
         }
     }
 }

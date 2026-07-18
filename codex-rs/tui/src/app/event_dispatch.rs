@@ -5,6 +5,7 @@
 
 use super::resize_reflow::trailing_run_start;
 use super::*;
+use crate::city_lights::CityLightsStylize;
 use crate::config_update::format_config_error;
 use crate::external_agent_config_migration_flow::ExternalAgentConfigMigrationFlowOutcome;
 #[cfg(target_os = "windows")]
@@ -169,7 +170,7 @@ impl App {
                     self.chat_widget.rollout_path().as_deref(),
                 );
                 self.chat_widget
-                    .add_plain_history_lines(vec!["/fork".magenta().into()]);
+                    .add_plain_history_lines(vec!["/fork".cl_magenta().into()]);
                 if let Some(thread_id) = self.chat_widget.thread_id() {
                     self.refresh_in_memory_config_from_disk_best_effort("forking the thread")
                         .await;
@@ -191,7 +192,7 @@ impl App {
                                         if let Some(command) = summary.resume_hint {
                                             let spans = vec![
                                                 "To continue this session, run ".into(),
-                                                command.cyan(),
+                                                command.cl_cyan(),
                                             ];
                                             lines.push(spans.into());
                                         }
@@ -2084,7 +2085,7 @@ impl App {
                     {
                         lines.push(Line::from(vec![
                             "Permission rule: ".into(),
-                            rule_line.cyan(),
+                            rule_line.cl_cyan(),
                         ]));
                     }
                     self.overlay = Some(Overlay::new_static_with_renderables(

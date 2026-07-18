@@ -1,6 +1,7 @@
 //! Informational, warning, update, and policy notice history cells.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 #[cfg_attr(debug_assertions, allow(dead_code))]
 #[derive(Debug)]
@@ -24,19 +25,19 @@ impl HistoryCell for UpdateAvailableHistoryCell {
         use ratatui_macros::line;
         use ratatui_macros::text;
         let update_instruction = if let Some(update_action) = self.update_action {
-            line!["Run ", update_action.command_str().cyan(), " to update."]
+            line!["Run ", update_action.command_str().cl_cyan(), " to update."]
         } else {
             line![
                 "See ",
-                "https://github.com/openai/codex".cyan().underlined(),
+                "https://github.com/openai/codex".cl_cyan().underlined(),
                 " for installation options."
             ]
         };
 
         let content = text![
             line![
-                padded_emoji("✨").bold().cyan(),
-                "Update available!".bold().cyan(),
+                padded_emoji("✨").bold().cl_cyan(),
+                "Update available!".bold().cl_cyan(),
                 " ",
                 format!("{CODEX_CLI_VERSION} -> {}", self.latest_version).bold(),
             ],
@@ -44,7 +45,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
             "",
             "See full release notes:",
             "https://github.com/openai/codex/releases/latest"
-                .cyan()
+                .cl_cyan()
                 .underlined(),
         ];
 
@@ -115,7 +116,7 @@ impl HistoryCell for SafetyAccessBlockCell {
 
     fn display_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
         let mut lines = vec![HyperlinkLine::new(
-            vec!["ⓘ ".cyan(), SAFETY_ACCESS_BLOCK_TITLE.bold()].into(),
+            vec!["ⓘ ".cl_cyan(), SAFETY_ACCESS_BLOCK_TITLE.bold()].into(),
         )];
         let body = Line::from(vec!["  ".into(), self.body.dim()]);
         let wrap_width = width.saturating_sub(2).max(1) as usize;
@@ -132,7 +133,7 @@ impl HistoryCell for SafetyAccessBlockCell {
             ("Learn more", SAFETY_ACCESS_BLOCK_LEARN_MORE_URL),
         ] {
             let source = crate::terminal_hyperlinks::annotate_web_urls_in_line(
-                vec![format!("  {label}: ").dim(), url.cyan().underlined()].into(),
+                vec![format!("  {label}: ").dim(), url.cl_cyan().underlined()].into(),
             );
             let wrapped = crate::wrapping::word_wrap_line(
                 &source.line,
@@ -179,7 +180,7 @@ pub(crate) fn new_deprecation_notice(
 impl HistoryCell for DeprecationNoticeCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines: Vec<Line<'static>> = Vec::new();
-        lines.push(vec!["⚠ ".red().bold(), self.summary.clone().red()].into());
+        lines.push(vec!["⚠ ".cl_red().bold(), self.summary.clone().cl_red()].into());
 
         let wrap_width = width.saturating_sub(4).max(1) as usize;
 
@@ -214,6 +215,6 @@ pub(crate) fn new_error_event(message: String) -> PlainHistoryCell {
     // Use a hair space (U+200A) to create a subtle, near-invisible separation
     // before the text. VS16 is intentionally omitted to keep spacing tighter
     // in terminals like Ghostty.
-    let lines: Vec<Line<'static>> = vec![vec![format!("■ {message}").red()].into()];
+    let lines: Vec<Line<'static>> = vec![vec![format!("■ {message}").cl_red()].into()];
     PlainHistoryCell { lines }
 }

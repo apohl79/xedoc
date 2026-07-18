@@ -18,6 +18,7 @@
 //! preview as an editable draft, and `Esc` or Ctrl+C restores the exact draft that existed before
 //! search started.
 
+use crate::city_lights::CityLightsStylize;
 use std::ops::Range;
 
 use crossterm::event::KeyCode;
@@ -351,7 +352,7 @@ impl ChatComposer {
         let search = self.history_search.as_ref()?;
         let mut line = Line::from(vec![
             "reverse-i-search: ".dim(),
-            search.query.clone().cyan(),
+            search.query.clone().cl_cyan(),
         ]);
         match search.status {
             HistorySearchStatus::Idle => {}
@@ -364,13 +365,13 @@ impl ChatComposer {
                 line.push_span(Self::history_search_action_key_span(KeyCode::Esc));
                 line.push_span(" cancel".dim());
             }
-            HistorySearchStatus::NoMatch => line.push_span("  no match".red()),
+            HistorySearchStatus::NoMatch => line.push_span("  no match".cl_red()),
         }
         Some(line)
     }
 
     fn history_search_action_key_span(key: KeyCode) -> Span<'static> {
-        Span::from(key_hint::plain(key)).cyan().bold().not_dim()
+        Span::from(key_hint::plain(key)).cl_cyan().bold().not_dim()
     }
 
     /// Returns byte ranges that should be highlighted in the current composer preview.
@@ -695,10 +696,10 @@ mod tests {
         );
 
         let query_style = line.spans[1].style;
-        assert_eq!(query_style.fg, Some(ratatui::style::Color::Cyan));
+        assert_eq!(query_style.fg, Some(ratatui::style::Color::Rgb(0, 139, 148)));
 
         let enter_style = line.spans[3].style;
-        assert_eq!(enter_style.fg, Some(ratatui::style::Color::Cyan));
+        assert_eq!(enter_style.fg, Some(ratatui::style::Color::Rgb(0, 139, 148)));
         assert!(enter_style.add_modifier.contains(Modifier::BOLD));
         assert!(enter_style.sub_modifier.contains(Modifier::DIM));
 
@@ -709,7 +710,7 @@ mod tests {
         assert!(separator_style.add_modifier.contains(Modifier::DIM));
 
         let esc_style = line.spans[6].style;
-        assert_eq!(esc_style.fg, Some(ratatui::style::Color::Cyan));
+        assert_eq!(esc_style.fg, Some(ratatui::style::Color::Rgb(0, 139, 148)));
         assert!(esc_style.add_modifier.contains(Modifier::BOLD));
         assert!(esc_style.sub_modifier.contains(Modifier::DIM));
 

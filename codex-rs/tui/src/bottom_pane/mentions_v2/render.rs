@@ -1,3 +1,4 @@
+use crate::city_lights::CityLightsStylize;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -181,7 +182,7 @@ fn content_line(
 fn primary_spans(row: &SearchResult, base_style: Style) -> Vec<Span<'static>> {
     if let Some(file_name) = file_name(row) {
         let style = if row.mention_type.is_filesystem() {
-            base_style.fg(Color::Cyan)
+            base_style.fg(Color::Rgb(0, 139, 148))
         } else {
             base_style
         };
@@ -190,9 +191,9 @@ fn primary_spans(row: &SearchResult, base_style: Style) -> Vec<Span<'static>> {
 
     let mut spans = Vec::with_capacity(row.display_name.len());
     let name_style = match row.mention_type {
-        MentionType::Plugin => base_style.magenta(),
+        MentionType::Plugin => base_style.cl_magenta(),
         MentionType::Skill => base_style.dim(),
-        MentionType::File | MentionType::Directory => base_style.fg(Color::Cyan),
+        MentionType::File | MentionType::Directory => base_style.fg(Color::Rgb(0, 139, 148)),
     };
     if let Some(indices) = row.match_indices.as_ref() {
         let mut idx_iter = indices.iter().peekable();
@@ -330,7 +331,7 @@ mod tests {
             primary_text_width(&row),
         );
 
-        assert_eq!(line.spans[1].style.fg, Some(Color::Cyan));
+        assert_eq!(line.spans[1].style.fg, Some(Color::Rgb(0, 139, 148)));
     }
 
     #[test]
@@ -352,7 +353,7 @@ mod tests {
         );
 
         assert_eq!(line.spans[0].content.as_ref(), "> ");
-        assert_eq!(line.spans[1].style.fg, Some(Color::Cyan));
+        assert_eq!(line.spans[1].style.fg, Some(Color::Rgb(0, 139, 148)));
         assert!(line.spans.iter().any(|span| {
             span.style.add_modifier.contains(Modifier::DIM) && span.style.fg.is_none()
         }));

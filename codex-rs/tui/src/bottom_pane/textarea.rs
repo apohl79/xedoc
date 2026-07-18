@@ -1955,7 +1955,7 @@ impl TextArea {
                 }
                 let styled = &self.text[overlap_start..overlap_end];
                 let x_off = self.text[line_range.start..overlap_start].width() as u16;
-                let style = base_style.fg(Color::Cyan);
+                let style = base_style.fg(Color::Rgb(0, 139, 148));
                 buf.set_string(area.x + x_off, y, styled, style);
             }
 

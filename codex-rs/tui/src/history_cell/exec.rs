@@ -1,6 +1,7 @@
 //! Background terminal interaction and process-summary history cells.
 
 use super::*;
+use crate::city_lights::CityLightsStylize;
 
 #[derive(Debug)]
 pub(crate) struct UnifiedExecInteractionCell {
@@ -175,10 +176,10 @@ impl HistoryCell for UnifiedExecProcessesCell {
             if needs_suffix && budget > truncation_suffix_width {
                 let available = budget.saturating_sub(truncation_suffix_width);
                 let (truncated, _, _) = take_prefix_by_width(&snippet, available);
-                out.push(vec![prefix.dim(), truncated.cyan(), truncation_suffix.dim()].into());
+                out.push(vec![prefix.dim(), truncated.cl_cyan(), truncation_suffix.dim()].into());
             } else {
                 let (truncated, _, _) = take_prefix_by_width(&snippet, budget);
-                out.push(vec![prefix.dim(), truncated.cyan()].into());
+                out.push(vec![prefix.dim(), truncated.cl_cyan()].into());
             }
 
             let chunk_prefix_first = "    ↳ ";
@@ -236,7 +237,7 @@ impl HistoryCell for UnifiedExecProcessesCell {
 pub(crate) fn new_unified_exec_processes_output(
     processes: Vec<UnifiedExecProcessDetails>,
 ) -> CompositeHistoryCell {
-    let command = PlainHistoryCell::new(vec!["/ps".magenta().into()]);
+    let command = PlainHistoryCell::new(vec!["/ps".cl_magenta().into()]);
     let summary = UnifiedExecProcessesCell::new(processes);
     CompositeHistoryCell::new(vec![Box::new(command), Box::new(summary)])
 }
