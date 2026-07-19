@@ -36,6 +36,7 @@ use codex_config::sandbox_mode_requirement_for_permission_profile;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_config::types::AuthKeyringBackendKind;
+use codex_config::types::ComposerBorderStyle;
 use codex_config::types::History;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerDisabledReason;
@@ -800,6 +801,11 @@ pub struct Config {
 
     /// Preferred layout for resume/fork session picker results.
     pub tui_session_picker_view: SessionPickerViewMode,
+
+    /// Border style of the TUI composer (prompt entry field).
+    /// `rounded` (default): Full rounded-corner box (`╭╮╰╯` corners).
+    /// `classic`: Original single-line top border.
+    pub tui_composer_border_style: ComposerBorderStyle,
 
     /// Terminal resize-reflow tuning knobs.
     pub terminal_resize_reflow: TerminalResizeReflowConfig,
@@ -4033,6 +4039,11 @@ impl Config {
                 .tui
                 .as_ref()
                 .and_then(|t| t.session_picker_view)
+                .unwrap_or_default(),
+            tui_composer_border_style: cfg
+                .tui
+                .as_ref()
+                .and_then(|t| t.composer_border_style)
                 .unwrap_or_default(),
             terminal_resize_reflow,
             tui_keymap: cfg

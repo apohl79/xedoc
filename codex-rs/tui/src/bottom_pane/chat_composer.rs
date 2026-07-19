@@ -159,6 +159,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::layout::Margin;
+use ratatui::layout::Alignment;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
@@ -166,6 +167,8 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
+use ratatui::widgets::BorderType;
+use ratatui::widgets::block::Title;
 use ratatui::widgets::Borders;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::StatefulWidgetRef;
@@ -216,6 +219,7 @@ use super::slash_commands::SlashCommandItem;
 use crate::bottom_pane::paste_burst::FlushResult;
 use crate::city_lights::CityLightsStylize;
 use crate::city_lights::{self};
+use codex_config::types::ComposerBorderStyle;
 use crate::history_cell::sanitize_user_text;
 use crate::key_hint::KeyBindingListExt;
 use crate::keymap::EditorKeymap;
@@ -390,6 +394,7 @@ pub(crate) struct ChatComposer {
     attachments: AttachmentState,
     placeholder_text: String,
     session_name: Option<String>,
+    composer_border_style: ComposerBorderStyle,
     is_task_running: bool,
     queue_submissions: bool,
     /// Slash-command draft staged for local recall after application-level dispatch.
@@ -559,6 +564,7 @@ impl ChatComposer {
             attachments: AttachmentState::default(),
             placeholder_text,
             session_name: None,
+            composer_border_style: ComposerBorderStyle::default(),
             is_task_running: false,
             queue_submissions: false,
             pending_slash_command_history: None,
@@ -730,6 +736,10 @@ impl ChatComposer {
         true
     }
 
+    pub(crate) fn set_composer_border_style(&mut self, style: ComposerBorderStyle) {
+        self.composer_border_style = style;
+    }
+
     pub fn set_personality_command_enabled(&mut self, enabled: bool) {
         self.personality_command_enabled = enabled;
     }
@@ -783,9 +793,13 @@ impl ChatComposer {
         };
         let [composer_rect, popup_rect] =
             Layout::vertical([Constraint::Min(3), popup_constraint]).areas(area);
+        let left_inset = match self.composer_border_style {
+            ComposerBorderStyle::Rounded => LIVE_PREFIX_COLS + 1,
+            ComposerBorderStyle::Classic => LIVE_PREFIX_COLS,
+        };
         let mut textarea_rect = composer_rect.inset(Insets::tlbr(
             /*top*/ 1,
-            LIVE_PREFIX_COLS,
+            left_inset,
             /*bottom*/ 1,
             /*right*/ 1u16.saturating_add(textarea_right_reserve),
         ));
@@ -4302,9 +4316,12 @@ impl ChatComposer {
     ) -> u16 {
         let footer_props = self.footer_props();
         let footer_total_height = self.footer_total_height(&footer_props);
-        const COLS_WITH_MARGIN: u16 = LIVE_PREFIX_COLS + 1;
+        let cols_with_margin = match self.composer_border_style {
+            ComposerBorderStyle::Rounded => LIVE_PREFIX_COLS + 2,
+            ComposerBorderStyle::Classic => LIVE_PREFIX_COLS + 1,
+        };
         let inner_width =
-            width.saturating_sub(COLS_WITH_MARGIN.saturating_add(textarea_right_reserve));
+            width.saturating_sub(cols_with_margin.saturating_add(textarea_right_reserve));
         let remote_images_height: u16 = self
             .attachments
             .remote_image_lines()
@@ -4608,31 +4625,60 @@ impl ChatComposer {
             }
         }
         let style = user_message_style();
-        Block::default()
-            .style(style)
-            .borders(Borders::TOP)
-            .border_style(city_lights::composer_border_style())
-            .render_ref(composer_rect, buf);
-        if let Some(session_name) = self.session_name.as_ref() {
-            let available_width = composer_rect.width.saturating_sub(4) as usize;
-            if available_width > 0 {
-                let line = truncate_line_with_ellipsis_if_overflow(
-                    Line::from(Span::styled(
-                        session_name.to_string(),
-                        Style::default().fg(session_name_color()),
-                    )),
-                    available_width,
-                );
-                render_context_right(
-                    Rect {
-                        x: composer_rect.x,
-                        y: composer_rect.y,
-                        width: composer_rect.width,
-                        height: 1,
-                    },
-                    buf,
-                    &line,
-                );
+        match self.composer_border_style {
+            ComposerBorderStyle::Rounded => {
+                let mut block = Block::default()
+                    .style(style)
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(city_lights::composer_border_style());
+                if let Some(session_name) = self.session_name.as_ref() {
+                    let available_width = composer_rect.width.saturating_sub(4) as usize;
+                    if available_width > 0 {
+                        let title_text = truncate_line_with_ellipsis_if_overflow(
+                            Line::from(format!("[{}]", session_name)),
+                            available_width.saturating_sub(2),
+                        );
+                        block = block.title(
+                            Title {
+                                content: title_text,
+                                alignment: Some(Alignment::Right),
+                                position: None,
+                            },
+                        );
+                    }
+                    block = block.title_style(Style::default().fg(session_name_color()));
+                }
+                block.render_ref(composer_rect, buf);
+            }
+            ComposerBorderStyle::Classic => {
+                Block::default()
+                    .style(style)
+                    .borders(Borders::TOP)
+                    .border_style(city_lights::composer_border_style())
+                    .render_ref(composer_rect, buf);
+                if let Some(session_name) = self.session_name.as_ref() {
+                    let available_width = composer_rect.width.saturating_sub(4) as usize;
+                    if available_width > 0 {
+                        let line = truncate_line_with_ellipsis_if_overflow(
+                            Line::from(Span::styled(
+                                session_name.to_string(),
+                                Style::default().fg(session_name_color()),
+                            )),
+                            available_width,
+                        );
+                        render_context_right(
+                            Rect {
+                                x: composer_rect.x,
+                                y: composer_rect.y,
+                                width: composer_rect.width,
+                                height: 1,
+                            },
+                            buf,
+                            &line,
+                        );
+                    }
+                }
             }
         }
         if !remote_images_rect.is_empty() {

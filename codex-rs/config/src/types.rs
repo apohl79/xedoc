@@ -766,6 +766,13 @@ pub struct Tui {
     #[serde(default)]
     pub session_picker_view: Option<SessionPickerViewMode>,
 
+    /// Border style of the TUI composer (prompt entry field).
+    ///
+    /// `rounded` (default): Full rounded-corner box (`╭╮╰╯` corners) with session name as title.
+    /// `classic`: Original single-line top border.
+    #[serde(default)]
+    pub composer_border_style: Option<ComposerBorderStyle>,
+
     /// Keybinding overrides for the TUI.
     ///
     /// This supports rebinding selected actions globally and by context.
@@ -986,6 +993,36 @@ impl From<ShellEnvironmentPolicyToml> for ShellEnvironmentPolicy {
             r#set,
             include_only,
             use_profile,
+        }
+    }
+}
+
+/// Controls the border style of the TUI composer (prompt entry field).
+///
+/// - `rounded`: Full rounded-corner box (`╭╮╰╯` corners) with the session name embedded as a title.
+///   This is the default style.
+/// - `classic`: Original single-line top border with session name on the right.
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ComposerBorderStyle {
+    /// Full rounded-corner box (default).
+    #[default]
+    Rounded,
+    /// Original single-line top border.
+    Classic,
+}
+
+impl fmt::Display for ComposerBorderStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl ComposerBorderStyle {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rounded => "rounded",
+            Self::Classic => "classic",
         }
     }
 }

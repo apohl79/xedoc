@@ -376,6 +376,25 @@
       },
       "type": "object"
     },
+    "ComposerBorderStyle": {
+      "description": "Controls the border style of the TUI composer (prompt entry field).\n\n- `rounded`: Full rounded-corner box (`╭╮╰╯` corners) with the session name embedded as a title. This is the default style. - `classic`: Original single-line top border with session name on the right.",
+      "oneOf": [
+        {
+          "description": "Full rounded-corner box (default).",
+          "enum": [
+            "rounded"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Original single-line top border.",
+          "enum": [
+            "classic"
+          ],
+          "type": "string"
+        }
+      ]
+    },
     "ConfigProfile": {
       "additionalProperties": false,
       "description": "Collection of common configuration options that a user can define as a unit in `config.toml`.",
@@ -570,6 +589,9 @@
               "$ref": "#/definitions/FeatureToml_for_NetworkProxyConfigToml"
             },
             "non_prefixed_mcp_tool_names": {
+              "type": "boolean"
+            },
+            "openai_developer_docs": {
               "type": "boolean"
             },
             "personality": {
@@ -3064,6 +3086,15 @@
           "description": "Enable animations (welcome screen, shimmer effects, spinners). Defaults to `true`.",
           "type": "boolean"
         },
+        "composer_border_style": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ComposerBorderStyle"
+            }
+          ],
+          "default": null,
+          "description": "Border style of the TUI composer (prompt entry field).\n\n`rounded` (default): Full rounded-corner box (`╭╮╰╯` corners) with session name as title. `classic`: Original single-line top border."
+        },
         "keymap": {
           "allOf": [
             {
@@ -4978,6 +5009,9 @@
           "$ref": "#/definitions/FeatureToml_for_NetworkProxyConfigToml"
         },
         "non_prefixed_mcp_tool_names": {
+          "type": "boolean"
+        },
+        "openai_developer_docs": {
           "type": "boolean"
         },
         "personality": {
