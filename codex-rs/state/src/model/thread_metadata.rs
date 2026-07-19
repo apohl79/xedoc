@@ -111,7 +111,7 @@ impl TryFrom<&str> for ThreadTitleSource {
     }
 }
 
-/// Canonical thread metadata derived from rollout files.
+/// Canonical persisted thread metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadMetadata {
     /// The thread identifier.
@@ -150,6 +150,8 @@ pub struct ThreadMetadata {
     pub title: String,
     /// Source for the persisted title.
     pub title_source: ThreadTitleSource,
+    /// Explicit user-facing thread name, if one was set.
+    pub name: Option<String>,
     /// Best available user-facing preview for discovery and list display.
     pub preview: Option<String>,
     /// The sandbox policy (stringified enum).
@@ -286,6 +288,7 @@ impl ThreadMetadataBuilder {
             cli_version: self.cli_version.clone().unwrap_or_default(),
             title: String::new(),
             title_source: ThreadTitleSource::Derived,
+            name: None,
             preview: None,
             sandbox_policy,
             approval_mode,
@@ -384,6 +387,8 @@ impl ThreadMetadata {
         }
         if self.title_source != other.title_source {
             diffs.push("title_source");
+        if self.name != other.name {
+            diffs.push("name");
         }
         if self.preview != other.preview {
             diffs.push("preview");
@@ -440,6 +445,7 @@ pub(crate) struct ThreadRow {
     cli_version: String,
     title: String,
     title_source: String,
+    name: Option<String>,
     preview: String,
     sandbox_policy: String,
     approval_mode: String,
@@ -472,6 +478,7 @@ impl ThreadRow {
             cli_version: row.try_get("cli_version")?,
             title: row.try_get("title")?,
             title_source: row.try_get("title_source")?,
+            name: row.try_get("name")?,
             preview: row.try_get("preview")?,
             sandbox_policy: row.try_get("sandbox_policy")?,
             approval_mode: row.try_get("approval_mode")?,
@@ -508,6 +515,7 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
             cli_version,
             title,
             title_source,
+            name,
             preview,
             sandbox_policy,
             approval_mode,
@@ -543,6 +551,7 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
             cli_version,
             title,
             title_source: ThreadTitleSource::try_from(title_source.as_str())?,
+            name,
             preview: (!preview.is_empty()).then_some(preview),
             sandbox_policy,
             approval_mode,
@@ -641,6 +650,7 @@ mod tests {
             cli_version: "0.0.0".to_string(),
             title: String::new(),
             title_source: super::ThreadTitleSource::Derived.as_str().to_string(),
+            name: None,
             preview: String::new(),
             sandbox_policy: "read-only".to_string(),
             approval_mode: "on-request".to_string(),
@@ -674,6 +684,7 @@ mod tests {
             cli_version: "0.0.0".to_string(),
             title: String::new(),
             title_source: super::ThreadTitleSource::Derived,
+            name: None,
             preview: None,
             sandbox_policy: "read-only".to_string(),
             approval_mode: "on-request".to_string(),

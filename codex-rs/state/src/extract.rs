@@ -667,6 +667,7 @@ mod tests {
             cli_version: "0.0.0".to_string(),
             title: String::new(),
             title_source: crate::ThreadTitleSource::Derived,
+            name: None,
             preview: None,
             sandbox_policy: "read-only".to_string(),
             approval_mode: "on-request".to_string(),

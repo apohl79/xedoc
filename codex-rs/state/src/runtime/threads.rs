@@ -27,6 +27,7 @@ SELECT
     threads.cli_version,
     threads.title,
     threads.title_source,
+    threads.name,
     threads.preview,
     threads.sandbox_policy,
     threads.approval_mode,
@@ -558,6 +559,7 @@ INSERT INTO threads (
     cli_version,
     title,
     title_source,
+    name,
     preview,
     sandbox_policy,
     approval_mode,
@@ -604,6 +606,7 @@ ON CONFLICT(id) DO NOTHING
         .bind(metadata.cli_version.as_str())
         .bind(metadata.title.as_str())
         .bind(metadata.title_source.as_str())
+        .bind(metadata.name.as_deref())
         .bind(preview)
         .bind(metadata.sandbox_policy.as_str())
         .bind(metadata.approval_mode.as_str())
@@ -653,6 +656,19 @@ ON CONFLICT(id) DO NOTHING
         let result = sqlx::query("UPDATE threads SET title = ?, title_source = ? WHERE id = ?")
             .bind(title)
             .bind(title_source.as_str())
+            .bind(thread_id.to_string())
+            .execute(self.pool.as_ref())
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn update_thread_name(
+        &self,
+        thread_id: ThreadId,
+        name: Option<&str>,
+    ) -> anyhow::Result<bool> {
+        let result = sqlx::query("UPDATE threads SET name = ? WHERE id = ?")
+            .bind(name)
             .bind(thread_id.to_string())
             .execute(self.pool.as_ref())
             .await?;
@@ -825,6 +841,7 @@ INSERT INTO threads (
     cli_version,
     title,
     title_source,
+    name,
     preview,
     sandbox_policy,
     approval_mode,
@@ -907,6 +924,7 @@ ON CONFLICT(id) DO UPDATE SET
         .bind(metadata.cli_version.as_str())
         .bind(metadata.title.as_str())
         .bind(metadata.title_source.as_str())
+        .bind(metadata.name.as_deref())
         .bind(preview)
         .bind(metadata.sandbox_policy.as_str())
         .bind(metadata.approval_mode.as_str())
@@ -1248,6 +1266,7 @@ SELECT
     threads.cli_version,
     threads.title,
     threads.title_source,
+    threads.name,
     threads.preview,
     threads.sandbox_policy,
     threads.approval_mode,
@@ -1347,7 +1366,9 @@ pub(super) fn push_thread_filters<'a>(
         None => {}
     }
     if let Some(search_term) = search_term {
-        builder.push(" AND (instr(threads.title, ");
+        builder.push(" AND (instr(COALESCE(threads.name, ''), ");
+        builder.push_bind(search_term);
+        builder.push(") > 0 OR instr(threads.title, ");
         builder.push_bind(search_term);
         builder.push(") > 0 OR instr(threads.preview, ");
         builder.push_bind(search_term);
