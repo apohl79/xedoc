@@ -387,6 +387,7 @@ impl ThreadMetadata {
         }
         if self.title_source != other.title_source {
             diffs.push("title_source");
+        }
         if self.name != other.name {
             diffs.push("name");
         }
