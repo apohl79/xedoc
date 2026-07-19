@@ -523,6 +523,10 @@ ignored = [
 # Keep line tables/backtraces while avoiding expensive full variable debug info
 # across local dev builds.
 debug = "limited"
+incremental = true
+
+[profile.test]
+incremental = true
 
 [profile.dev-small]
 inherits = "dev"
@@ -534,12 +538,16 @@ strip = "symbols"
 lto = "thin"
 debug = "line-tables-only"
 split-debuginfo = "off"
+incremental = true
 # Keep release binaries symbolicateable until packaging has archived the
 # sidecar symbols and stripped the binaries.
 strip = false
 
 # Balance parallel release code generation against binary size.
 codegen-units = 4
+
+[profile.bench]
+incremental = true
 
 [profile.profiling]
 inherits = "release"
