@@ -4623,7 +4623,7 @@ impl ChatComposer {
                 let name_color = session_name_color();
                 let title_line = Line::from(vec![
                     Span::styled("[", Style::default().fg(border_color)),
-                    Span::styled(session_name.as_str(), Style::default().fg(name_color)),
+                    Span::styled(session_name.clone(), Style::default().fg(name_color)),
                     Span::styled("]", Style::default().fg(border_color)),
                 ]);
                 let title_text = truncate_line_with_ellipsis_if_overflow(
