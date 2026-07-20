@@ -77,16 +77,16 @@ Primary files:
 
 ### TUI Session Name Composer Label
 
-The fork shows the current session name in the composer when a name is set.
+The fork shows the current session name as a `[Name]` title on the composer
+border when a name is set.
 
-- Named or renamed threads render the session name at the top-right of the user
-  entry box.
+- Named or renamed threads render the session name as a bracket-enclosed title
+  on the rounded composer border. Brackets use the border color; the name text
+  uses the session-name accent color.
 - Empty or whitespace-only names are hidden.
 - Long names are truncated with an ellipsis to preserve composer layout.
 - Session-load and thread-name-update paths both keep the composer label in
   sync.
-- The composer label keeps the dedicated session-name color and does not inherit
-  the dim active-thread footer color.
 - Snapshot coverage verifies session-load rendering, rename rendering, and
   truncation.
 
@@ -98,6 +98,35 @@ Primary files:
 - `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
 
 ### Automatic Session Naming
+
+### City Lights (Doom Emacs) Color Theme
+
+The fork ships a bundled City Lights syntax highlighting theme and remaps all
+TUI chrome colors to the City Lights palette.
+
+- `[tui] theme = "city-lights"` selects the bundled syntax theme.
+- The embedded `city-lights.tmTheme` ships in the binary and is listed in the
+  `/theme` picker.
+- A `CityLightsStylize` extension trait replaces ratatui ANSI color chaining:
+  `.cl_cyan()` → `#008B94`, `.cl_green()` → `#5CD6B6`,
+  `.cl_red()` → `#D95468`, `.cl_magenta()` → `#A06BEA`.
+- The composer uses a full rounded-corner border with the session name
+  rendered as a `[Name]` title. Brackets use the border color and the text
+  uses the session-name accent color.
+- The composer prompt uses `❯` in City Lights magenta (`.cl_magenta()`).
+- Chat history user messages use `❯` as the prefix in City Lights magenta.
+- Diff backgrounds, accents, and status-line theme styles all derive from the
+  City Lights palette constants.
+
+Primary files:
+
+- `codex-rs/tui/src/city_lights.rs`
+- `codex-rs/tui/src/style.rs`
+- `codex-rs/tui/src/render/highlight.rs`
+- `codex-rs/tui/src/render/themes/city-lights.tmTheme`
+- `codex-rs/tui/src/bottom_pane/chat_composer.rs`
+- `codex-rs/tui/src/history_cell/messages.rs`
+
 
 The fork can generate short session names automatically from the conversation
 without changing the visible model response.

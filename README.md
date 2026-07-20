@@ -43,6 +43,7 @@ Then simply run `codex` to get started.
 - Queued-input recall cleanup for TUI prompt history.
 - apohl79 release packaging and installer scripts.
 - Fork upgrade and upstream-change report skills.
+- City Lights (Doom Emacs) color theme for the TUI.
 
 See [README.fork.md](./README.fork.md) for the full fork inventory.
 
