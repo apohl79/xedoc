@@ -1,5 +1,7 @@
 //! User, assistant, reasoning, and streaming message history cells.
 
+use crate::city_lights::CityLightsStylize;
+
 use super::*;
 
 #[derive(Debug)]
@@ -187,7 +189,7 @@ impl HistoryCell for UserHistoryCell {
         if let Some(wrapped_message) = wrapped_message {
             lines.extend(prefix_lines(
                 wrapped_message,
-                "› ".bold().dim(),
+                "❯ ".cl_magenta(),
                 "  ".into(),
             ));
         }
