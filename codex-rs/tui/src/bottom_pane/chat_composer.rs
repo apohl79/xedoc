@@ -4644,6 +4644,21 @@ impl ChatComposer {
                 .render_ref(remote_images_rect, buf);
         }
         if !textarea_rect.is_empty() {
+            let prompt = if self.draft.input_enabled {
+                if self.draft.is_bash_mode {
+                    Span::from("!").cl_red().bold()
+                } else {
+                    "❯".cl_magenta()
+                }
+            } else {
+                "❯".dim()
+            };
+            buf.set_span(
+                textarea_rect.x - LIVE_PREFIX_COLS,
+                textarea_rect.y,
+                &prompt,
+                textarea_rect.width,
+            );
         }
 
         let mut state = self.draft.textarea_state.borrow_mut();
