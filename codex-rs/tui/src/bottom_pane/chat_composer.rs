@@ -219,7 +219,6 @@ use super::slash_commands::SlashCommandItem;
 use crate::bottom_pane::paste_burst::FlushResult;
 use crate::city_lights::CityLightsStylize;
 use crate::city_lights::{self};
-use codex_config::types::ComposerBorderStyle;
 use crate::history_cell::sanitize_user_text;
 use crate::key_hint::KeyBindingListExt;
 use crate::keymap::EditorKeymap;
@@ -231,7 +230,6 @@ use crate::render::Insets;
 use crate::render::RectExt;
 use crate::render::renderable::Renderable;
 use crate::slash_command::SlashCommand;
-use crate::style::user_message_style;
 use codex_protocol::ThreadId;
 use codex_protocol::user_input::ByteRange;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
@@ -394,7 +392,6 @@ pub(crate) struct ChatComposer {
     attachments: AttachmentState,
     placeholder_text: String,
     session_name: Option<String>,
-    composer_border_style: ComposerBorderStyle,
     is_task_running: bool,
     queue_submissions: bool,
     /// Slash-command draft staged for local recall after application-level dispatch.
@@ -564,7 +561,6 @@ impl ChatComposer {
             attachments: AttachmentState::default(),
             placeholder_text,
             session_name: None,
-            composer_border_style: ComposerBorderStyle::default(),
             is_task_running: false,
             queue_submissions: false,
             pending_slash_command_history: None,
@@ -736,10 +732,6 @@ impl ChatComposer {
         true
     }
 
-    pub(crate) fn set_composer_border_style(&mut self, style: ComposerBorderStyle) {
-        self.composer_border_style = style;
-    }
-
     pub fn set_personality_command_enabled(&mut self, enabled: bool) {
         self.personality_command_enabled = enabled;
     }
@@ -793,10 +785,7 @@ impl ChatComposer {
         };
         let [composer_rect, popup_rect] =
             Layout::vertical([Constraint::Min(3), popup_constraint]).areas(area);
-        let left_inset = match self.composer_border_style {
-            ComposerBorderStyle::Rounded => LIVE_PREFIX_COLS + 1,
-            ComposerBorderStyle::Classic => LIVE_PREFIX_COLS,
-        };
+        let left_inset = LIVE_PREFIX_COLS + 1;
         let mut textarea_rect = composer_rect.inset(Insets::tlbr(
             /*top*/ 1,
             left_inset,
@@ -4316,10 +4305,7 @@ impl ChatComposer {
     ) -> u16 {
         let footer_props = self.footer_props();
         let footer_total_height = self.footer_total_height(&footer_props);
-        let cols_with_margin = match self.composer_border_style {
-            ComposerBorderStyle::Rounded => LIVE_PREFIX_COLS + 2,
-            ComposerBorderStyle::Classic => LIVE_PREFIX_COLS + 1,
-        };
+        let cols_with_margin = LIVE_PREFIX_COLS + 2;
         let inner_width =
             width.saturating_sub(cols_with_margin.saturating_add(textarea_right_reserve));
         let remote_images_height: u16 = self
@@ -4624,84 +4610,40 @@ impl ChatComposer {
                 }
             }
         }
-        let style = user_message_style();
-        match self.composer_border_style {
-            ComposerBorderStyle::Rounded => {
-                let mut block = Block::default()
-                    .style(style)
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(city_lights::composer_border_style());
-                if let Some(session_name) = self.session_name.as_ref() {
-                    let available_width = composer_rect.width.saturating_sub(4) as usize;
-                    if available_width > 0 {
-                        let title_text = truncate_line_with_ellipsis_if_overflow(
-                            Line::from(format!("[{}]", session_name)),
-                            available_width.saturating_sub(2),
-                        );
-                        block = block.title(
-                            Title {
-                                content: title_text,
-                                alignment: Some(Alignment::Right),
-                                position: None,
-                            },
-                        );
-                    }
-                    block = block.title_style(Style::default().fg(session_name_color()));
-                }
-                block.render_ref(composer_rect, buf);
-            }
-            ComposerBorderStyle::Classic => {
-                Block::default()
-                    .style(style)
-                    .borders(Borders::TOP)
-                    .border_style(city_lights::composer_border_style())
-                    .render_ref(composer_rect, buf);
-                if let Some(session_name) = self.session_name.as_ref() {
-                    let available_width = composer_rect.width.saturating_sub(4) as usize;
-                    if available_width > 0 {
-                        let line = truncate_line_with_ellipsis_if_overflow(
-                            Line::from(Span::styled(
-                                session_name.to_string(),
-                                Style::default().fg(session_name_color()),
-                            )),
-                            available_width,
-                        );
-                        render_context_right(
-                            Rect {
-                                x: composer_rect.x,
-                                y: composer_rect.y,
-                                width: composer_rect.width,
-                                height: 1,
-                            },
-                            buf,
-                            &line,
-                        );
-                    }
-                }
+        let style = Style::default();
+        let mut block = Block::default()
+            .style(style)
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(city_lights::composer_border_style());
+        if let Some(session_name) = self.session_name.as_ref() {
+            let available_width = composer_rect.width.saturating_sub(4) as usize;
+            if available_width > 0 {
+                let border_color = city_lights::composer_border_style().fg.unwrap_or(Color::Reset);
+                let name_color = session_name_color();
+                let title_line = Line::from(vec![
+                    Span::styled("[", Style::default().fg(border_color)),
+                    Span::styled(session_name.as_str(), Style::default().fg(name_color)),
+                    Span::styled("]", Style::default().fg(border_color)),
+                ]);
+                let title_text = truncate_line_with_ellipsis_if_overflow(
+                    title_line,
+                    available_width.saturating_sub(2),
+                );
+                block = block.title(Title {
+                    content: title_text,
+                    alignment: Some(Alignment::Right),
+                    position: None,
+                });
             }
         }
+        block.render_ref(composer_rect, buf);
         if !remote_images_rect.is_empty() {
             Paragraph::new(self.attachments.remote_image_lines())
                 .style(style)
                 .render_ref(remote_images_rect, buf);
         }
         if !textarea_rect.is_empty() {
-            let prompt = if self.draft.input_enabled {
-                if self.draft.is_bash_mode {
-                    Span::from("!").light_red().bold()
-                } else {
-                    "❯".cl_magenta()
-                }
-            } else {
-                "❯".dim()
-            };
-            buf.set_span(
-                textarea_rect.x - LIVE_PREFIX_COLS,
-                textarea_rect.y,
-                &prompt,
-                textarea_rect.width,
-            );
         }
 
         let mut state = self.draft.textarea_state.borrow_mut();

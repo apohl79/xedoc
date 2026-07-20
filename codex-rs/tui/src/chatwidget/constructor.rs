@@ -257,9 +257,6 @@ impl ChatWidget {
             .set_vim_enabled(widget.config.tui_vim_mode_default);
         widget
             .bottom_pane
-            .set_composer_border_style(widget.config.tui_composer_border_style);
-        widget
-            .bottom_pane
             .set_status_line_enabled(widget.status_line_is_configured());
         widget
             .bottom_pane

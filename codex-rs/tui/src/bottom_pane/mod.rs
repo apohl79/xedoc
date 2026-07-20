@@ -47,7 +47,6 @@ use codex_protocol::user_input::TextElement;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
-use codex_config::types::ComposerBorderStyle;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Line;
@@ -431,11 +430,6 @@ impl BottomPane {
         if self.composer.set_session_name(session_name) {
             self.request_redraw();
         }
-    }
-
-    pub(crate) fn set_composer_border_style(&mut self, style: ComposerBorderStyle) {
-        self.composer.set_composer_border_style(style);
-        self.request_redraw();
     }
 
     pub fn set_personality_command_enabled(&mut self, enabled: bool) {
