@@ -28,7 +28,7 @@ git clone --branch main-fork https://github.com/apohl79/codex.git && cd codex/co
 
 Then simply run `codex` to get started.
 
-### Fork tweaks
+### Fork features
 
 - Extended TUI `@` file-path completion.
 - Custom TUI status line support.
