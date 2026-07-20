@@ -1259,6 +1259,7 @@ approval_policy = "never"
                                 timeout_sec: Some(10),
                                 r#async: false,
                                 status_message: Some("checking".to_string()),
+                                additional_context_limit: None,
                             }],
                         }],
                         ..Default::default()
