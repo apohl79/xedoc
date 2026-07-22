@@ -46,7 +46,7 @@ Then simply run `codex` to get started.
 - City Lights (Doom Emacs) color theme for the TUI.
 
 - **Multi-model harness via auth2api** — use Codex with DeepSeek or Claude models
-  through the [auth2api](../auth2api/) OAuth-to-API proxy. The fork includes
+  through the [auth2api](https://github.com/apohl79/auth2api) OAuth-to-API proxy. The fork includes
   per-model prompt adjustments for non-OpenAI reasoning budgets, the
   `codex-manager` profile wizard for zero-config Claude and DeepSeek setup, and
   cross-provider sub-agent support (e.g., Claude parent agent spawning GPT or
