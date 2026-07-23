@@ -1,3 +1,17 @@
+## Active reminders
+
+<!--
+  Phase-tagged checklist items. The model reads this at session start and
+  re-checks it when reaching each tagged phase. Format:
+
+    - [phase] description of the required action
+
+  Supported phases: pre-commit, pre-push, pre-test, post-build.
+  Multiple phases on one item: [pre-commit, pre-push].
+-->
+
+- [pre-commit] Bump `scripts/apohl79_build_number.txt`.
+
 # Rust/codex-rs
 
 In the codex-rs folder where the rust code lives:

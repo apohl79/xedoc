@@ -417,6 +417,32 @@ Primary files:
 - `codex-rs/tui/src/**/*.snap`
 - `scripts/apohl79_build_number.txt`
 
+### AGENTS.md Active Reminders
+
+The fork's `AGENTS.md` includes a phase-tagged checklist section at the top
+of the file for model discipline. The format is:
+
+```markdown
+## Active reminders
+
+- [phase] description of the required action
+```
+
+Supported phases:
+
+| Phase | When the model checks it |
+|-------|--------------------------|
+| `pre-commit` | Before running `git commit` |
+| `pre-push` | Before running `git push` |
+| `pre-test` | Before running the full test suite |
+| `post-build` | After a successful `cargo build` |
+
+Multiple phases per item: `[pre-commit, pre-push]`.
+
+The model reads this section at session start and re-checks it at each phase
+boundary. Placing it at the top of `AGENTS.md` ensures it cannot be scrolled
+past during pre-commit workflows.
+
 ## Notes For Maintainers
 
 - Refresh this file after rebasing `main-fork` onto a newer upstream baseline.

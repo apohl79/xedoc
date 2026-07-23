@@ -52,6 +52,32 @@ Then simply run `codex` to get started.
   cross-provider sub-agent support (e.g., Claude parent agent spawning GPT or
   DeepSeek child agents in the same session).
 
+### AGENTS.md Active Reminders
+
+The fork uses phase-tagged checklist items in `AGENTS.md` to keep the model
+aware of mandatory steps at key workflow boundaries. The format is:
+
+```markdown
+## Active reminders
+
+- [phase] description of the required action
+```
+
+Supported phases:
+
+| Phase | When the model checks it |
+|-------|--------------------------|
+| `pre-commit` | Before running `git commit` |
+| `pre-push` | Before running `git push` |
+| `pre-test` | Before running the full test suite |
+| `post-build` | After a successful `cargo build` |
+
+Multiple phases on one item: `[pre-commit, pre-push]`.
+
+The model reads this section at session start and re-checks it when reaching
+each tagged phase. The section lives at the top of `AGENTS.md` so it cannot
+be scrolled past during pre-commit workflows.
+
 See [README.fork.md](./README.fork.md) for the full fork inventory.
 
 ### Using Codex with your ChatGPT plan
