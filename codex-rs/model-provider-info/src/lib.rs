@@ -569,6 +569,19 @@ pub fn merge_configured_model_providers(
                     built_in_aws.region = Some(region);
                 }
             }
+        } else if key == OPENAI_PROVIDER_ID {
+            let model_prices = provider.model_prices.take();
+            if provider != ModelProviderInfo::default() {
+                return Err(format!(
+                    "model_providers.{OPENAI_PROVIDER_ID} only supports changing `model_prices`; \
+other non-default provider fields are not supported"
+                ));
+            }
+            if let Some(model_prices) = model_prices
+                && let Some(built_in_provider) = model_providers.get_mut(OPENAI_PROVIDER_ID)
+            {
+                built_in_provider.model_prices = Some(model_prices);
+            }
         } else {
             model_providers.entry(key).or_insert(provider);
         }

@@ -511,3 +511,71 @@ refresh_interval_ms = 0
     assert_eq!(auth.refresh_interval_ms, 0);
     assert_eq!(auth.refresh_interval(), None);
 }
+
+#[test]
+fn merge_openai_model_prices() {
+    use std::collections::HashMap;
+    let built_in = built_in_model_providers(None);
+    let mut configured = HashMap::new();
+    let mut prices = HashMap::new();
+    prices.insert(
+        "gpt-5.6-luna".to_string(),
+        ModelTokenPrices {
+            input_price_per_1m_tokens: 1.25,
+            cached_input_price_per_1m_tokens: None,
+            long_context_input_price_per_1m_tokens: None,
+            long_context_cached_input_price_per_1m_tokens: None,
+            long_context_output_price_per_1m_tokens: None,
+            output_price_per_1m_tokens: 10.0,
+        },
+    );
+    configured.insert(
+        OPENAI_PROVIDER_ID.to_string(),
+        ModelProviderInfo {
+            model_prices: Some(prices),
+            ..ModelProviderInfo::default()
+        },
+    );
+
+    let merged =
+        merge_configured_model_providers(built_in, configured).expect("merge should succeed");
+    let openai = merged
+        .get(OPENAI_PROVIDER_ID)
+        .expect("openai provider should exist");
+    let merged_prices = openai
+        .model_prices
+        .as_ref()
+        .expect("model_prices should be set");
+    assert_eq!(
+        merged_prices
+            .get("gpt-5.6-luna")
+            .unwrap()
+            .input_price_per_1m_tokens,
+        1.25
+    );
+    assert_eq!(
+        merged_prices
+            .get("gpt-5.6-luna")
+            .unwrap()
+            .output_price_per_1m_tokens,
+        10.0
+    );
+}
+
+#[test]
+fn merge_openai_rejects_non_model_prices_fields() {
+    use std::collections::HashMap;
+    let built_in = built_in_model_providers(None);
+    let mut configured = HashMap::new();
+    configured.insert(
+        OPENAI_PROVIDER_ID.to_string(),
+        ModelProviderInfo {
+            name: "Custom OpenAI".to_string(),
+            ..ModelProviderInfo::default()
+        },
+    );
+
+    let err = merge_configured_model_providers(built_in, configured)
+        .expect_err("merge should reject non-model_prices fields");
+    assert!(err.contains("only supports changing `model_prices`"));
+}

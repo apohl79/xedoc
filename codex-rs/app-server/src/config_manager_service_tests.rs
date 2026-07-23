@@ -672,7 +672,7 @@ async fn invalid_user_value_rejected_even_if_overridden_by_managed() {
 }
 
 #[tokio::test]
-async fn reserved_builtin_provider_override_rejected() {
+async fn openai_builtin_provider_rejects_non_model_prices_overrides() {
     let tmp = tempdir().expect("tempdir");
     std::fs::write(tmp.path().join(CONFIG_TOML_FILE), "model = \"user\"\n").unwrap();
 
@@ -692,8 +692,11 @@ async fn reserved_builtin_provider_override_rejected() {
         error.write_error_code(),
         Some(ConfigWriteErrorCode::ConfigValidationError)
     );
-    assert!(error.to_string().contains("reserved built-in provider IDs"));
-    assert!(error.to_string().contains("`openai`"));
+    assert!(
+        error
+            .to_string()
+            .contains("only supports changing `model_prices`")
+    );
 
     let contents = std::fs::read_to_string(tmp.path().join(CONFIG_TOML_FILE)).expect("read config");
     assert_eq!(contents, "model = \"user\"\n");
