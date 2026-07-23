@@ -6,16 +6,16 @@
 
     - [phase] description of the required action
 
-  Supported phases: pre-commit, pre-push, pre-test, post-build.
-  Phases are intentionally sparse — only add a phase when there is a
-  documented checklist item that needs it. Overlapping phases
+  Supported phases: pre-edit, pre-commit, post-turn.
+  Phases are intentionally sparse — only add a phase when a documented
+  checklist item needs it. Overlapping phases
   (e.g. post-turn vs pre-commit) create noise without benefit.
-  Multiple phases on one item: [pre-commit, pre-push].
 -->
 
 - [pre-commit] Bump `scripts/apohl79_build_number.txt`.
 - [pre-edit] Re-read the repository evidence gate in AGENTS.md before touching source files.
 - [pre-edit] Create a worktree if the task involves implementation (don't edit main without asking).
+- [post-turn] Review what you learned. If anything about the project structure, conventions, or constraints changed, update the project context file.
 
 # Rust/codex-rs
 

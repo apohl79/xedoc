@@ -69,6 +69,7 @@ Supported phases:
 |-------|--------------------------|
 | `pre-edit` | Before modifying any source file |
 | `pre-commit` | Before running `git commit` |
+| `post-turn` | After completing a task or subtask, before reporting to the user |
 
 Phases are intentionally sparse — only add a phase when a documented
 checklist item needs it. Multiple phases per item: `[pre-commit, pre-push]`.
