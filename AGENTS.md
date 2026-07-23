@@ -12,9 +12,8 @@
   (e.g. post-turn vs pre-commit) create noise without benefit.
 -->
 
-- [pre-commit] Bump `scripts/apohl79_build_number.txt`.
+- [pre-commit] Bump `scripts/apohl79_build_number.txt` if you update the main-fork branch.
 - [pre-edit] Re-read the repository evidence gate in AGENTS.md before touching source files.
-- [pre-edit] Create a worktree if the task involves implementation (don't edit main without asking).
 
 # Rust/codex-rs
 
