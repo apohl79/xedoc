@@ -44,6 +44,9 @@ Then simply run `codex` to get started.
 - apohl79 release packaging and installer scripts.
 - Fork upgrade and upstream-change report skills.
 - City Lights (Doom Emacs) color theme for the TUI.
+- Phase-tagged model reminders in AGENTS.md for commit, edit, and task
+  discipline, with plugin and skill extension support (see
+  [AGENTS.md Active Reminders](#agentsmd-active-reminders) below).
 
 - **Multi-model harness via auth2api** — use Codex with DeepSeek or Claude models
   through the [auth2api](https://github.com/apohl79/auth2api) OAuth-to-API proxy. The fork includes
