@@ -452,12 +452,15 @@ overhead.
 | `contextual_user` | User message | Same slot as AGENTS.md; diffed and persisted |
 | `separate_developer` | Separate developer message | Isolated from other developer sections |
 
-**Position** relative to AGENTS.md:
+**Position** only applies to `contextual_user` slot entries. For
+`developer_policy`, `developer_capabilities`, and `separate_developer`, the
+position field is ignored — those slots map to system/developer messages where
+there is no AGENTS.md ordering concept.
 
-| Position | Effect |
-|----------|--------|
-| `preamble` | Before the world-state user message |
-| `supplement` | After the world-state user message |
+| Position | Slot | Effect |
+|----------|------|--------|
+| `preamble` | `contextual_user` only | Before AGENTS.md |
+| `supplement` | `contextual_user` only | After AGENTS.md |
 
 Plugin context is thread-scoped — subagents automatically inherit it.
 Content is static (no templates) and read once at plugin load time.
