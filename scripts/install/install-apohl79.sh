@@ -511,5 +511,16 @@ fi
 update_current_link "$release_dir"
 update_visible_command
 "$BIN_PATH" --version >/dev/null
+
+# Deploy statusline script
+STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
+STATUSLINE_DST="$CODEX_HOME_DIR/statusline.sh"
+if [ -f "$STATUSLINE_SRC" ]; then
+    step "Deploying statusline script to $STATUSLINE_DST"
+    mkdir -p "$CODEX_HOME_DIR"
+    cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
+    chmod +x "$STATUSLINE_DST"
+fi
+
 print_path_note
 printf 'apohl79 Codex CLI %s installed successfully.\n' "$fork_version"

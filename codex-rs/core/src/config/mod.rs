@@ -4019,7 +4019,8 @@ impl Config {
             tui_status_line_command: cfg
                 .tui
                 .as_ref()
-                .and_then(|t| t.status_line_command.clone()),
+                .and_then(|t| t.status_line_command.clone())
+                .or_else(default_codex_statusline),
             tui_terminal_title: cfg.tui.as_ref().and_then(|t| t.terminal_title.clone()),
             tui_theme: cfg.tui.as_ref().and_then(|t| t.theme.clone()),
             tui_pet: cfg.tui.as_ref().and_then(|t| t.pet.clone()),
@@ -4368,6 +4369,14 @@ fn normalize_guardian_policy_config(value: Option<&str>) -> Option<String> {
 ///   directory exists.
 pub fn find_codex_home() -> std::io::Result<AbsolutePathBuf> {
     codex_utils_home_dir::find_codex_home()
+}
+
+/// Returns a default statusline command pointing at `~/.codex/statusline.sh`
+/// when that file exists and the user has not configured an explicit command.
+fn default_codex_statusline() -> Option<StatusLineCommand> {
+    let path = dirs::home_dir()?.join(".codex/statusline.sh");
+    path.is_file()
+        .then(|| StatusLineCommand::Args(vec![path.to_string_lossy().to_string()]))
 }
 
 /// Returns the path to the folder where Codex logs are stored. Does not verify
