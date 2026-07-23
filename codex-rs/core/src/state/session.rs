@@ -65,6 +65,8 @@ impl SessionCostTracker {
             return;
         };
 
+        let is_long_context = usage.total_tokens > 272_000;
+
         let entry = self
             .per_model_costs
             .entry(model_id.to_string())
@@ -74,13 +76,36 @@ impl SessionCostTracker {
         let cached_tokens = usage.cached_input().max(0) as f64;
         let output_tokens = usage.output_tokens.max(0) as f64;
 
+        let input_price = if is_long_context {
+            model_prices
+                .long_context_input_price_per_1m_tokens
+                .unwrap_or(model_prices.input_price_per_1m_tokens)
+        } else {
+            model_prices.input_price_per_1m_tokens
+        };
+
         let cached_price_per_1m = model_prices
             .cached_input_price_per_1m_tokens
             .unwrap_or(model_prices.input_price_per_1m_tokens);
+        let cached_price_per_1m = if is_long_context {
+            model_prices
+                .long_context_cached_input_price_per_1m_tokens
+                .unwrap_or(cached_price_per_1m)
+        } else {
+            cached_price_per_1m
+        };
 
-        let cost_delta = (input_tokens / 1_000_000.0) * model_prices.input_price_per_1m_tokens
+        let output_price = if is_long_context {
+            model_prices
+                .long_context_output_price_per_1m_tokens
+                .unwrap_or(model_prices.output_price_per_1m_tokens)
+        } else {
+            model_prices.output_price_per_1m_tokens
+        };
+
+        let cost_delta = (input_tokens / 1_000_000.0) * input_price
             + (cached_tokens / 1_000_000.0) * cached_price_per_1m
-            + (output_tokens / 1_000_000.0) * model_prices.output_price_per_1m_tokens;
+            + (output_tokens / 1_000_000.0) * output_price;
 
         entry.input_tokens += usage.non_cached_input().max(0);
         entry.cached_input_tokens += usage.cached_input().max(0);

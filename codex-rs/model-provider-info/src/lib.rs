@@ -171,6 +171,25 @@ pub struct ModelTokenPrices {
     /// `input_price_per_1m_tokens` rate (no caching discount assumed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_input_price_per_1m_tokens: Option<f64>,
+    /// Long-context (>272K tokens) price per 1M input tokens in USD.
+    ///
+    /// When `None`, long-context requests use the standard
+    /// `input_price_per_1m_tokens` rate (no tiered pricing).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_context_input_price_per_1m_tokens: Option<f64>,
+    /// Long-context (>272K tokens) price per 1M cached input tokens in USD.
+    ///
+    /// When `None`, long-context cached input tokens use the standard
+    /// `cached_input_price_per_1m_tokens` rate (falling back to
+    /// `input_price_per_1m_tokens` if that is also unset).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_context_cached_input_price_per_1m_tokens: Option<f64>,
+    /// Long-context (>272K tokens) price per 1M output tokens in USD.
+    ///
+    /// When `None`, long-context output tokens use the standard
+    /// `output_price_per_1m_tokens` rate (no tiered pricing).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_context_output_price_per_1m_tokens: Option<f64>,
     /// Price per 1M output tokens in USD.
     pub output_price_per_1m_tokens: f64,
 }
