@@ -3786,7 +3786,7 @@ mod tests {
             TokenCountEvent {
                 info: Some(info),
                 rate_limits: Some(rate_limits),
-            session_cost_usd: None,
+                session_cost_usd: None,
             },
             &outgoing,
         )

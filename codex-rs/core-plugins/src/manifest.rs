@@ -191,7 +191,11 @@ pub(crate) fn parse_plugin_manifest_uri(
         .filter(|_| raw_name.trim().is_empty())
         .unwrap_or(raw_name);
     let context = context.map(|c| codex_plugin::manifest::PluginManifestContext {
-        thread: c.thread.into_iter().filter_map(convert_thread_context_entry).collect(),
+        thread: c
+            .thread
+            .into_iter()
+            .filter_map(convert_thread_context_entry)
+            .collect(),
     });
     let manifest_path_for_warning = manifest_path.to_string();
     let version = version.and_then(|version| {
@@ -294,7 +298,9 @@ fn convert_thread_context_entry(
 ) -> Option<codex_plugin::manifest::PluginThreadContextEntry> {
     let slot = match raw.slot.as_str() {
         "developer_policy" => codex_plugin::manifest::PluginContextSlot::DeveloperPolicy,
-        "developer_capabilities" => codex_plugin::manifest::PluginContextSlot::DeveloperCapabilities,
+        "developer_capabilities" => {
+            codex_plugin::manifest::PluginContextSlot::DeveloperCapabilities
+        }
         "contextual_user" => codex_plugin::manifest::PluginContextSlot::ContextualUser,
         "separate_developer" => codex_plugin::manifest::PluginContextSlot::SeparateDeveloper,
         _ => {
