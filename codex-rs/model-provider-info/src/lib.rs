@@ -142,10 +142,37 @@ pub struct ModelProviderInfo {
     /// Defaults to true. Set to false for providers that only understand flat tool lists.
     #[serde(default = "default_namespace_tools")]
     pub namespace_tools: bool,
+
+    /// Per-model token pricing in USD per 1M tokens.
+    ///
+    /// When set, Codex tracks session cost in USD using the token usage
+    /// reported by the API. If a model used at runtime has no entry here,
+    /// its usage is not priced. Cached input tokens use
+    /// `cached_input_price_per_1m_tokens` when provided; otherwise cached
+    /// input is priced at the standard input rate (no caching assumed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<HashMap<String, ModelTokenPrices>>")]
+    pub model_prices: Option<HashMap<String, ModelTokenPrices>>,
 }
 
 fn default_namespace_tools() -> bool {
     true
+}
+
+/// Token pricing for a specific model in USD per 1M tokens.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct ModelTokenPrices {
+    /// Price per 1M input (non-cached) tokens in USD.
+    pub input_price_per_1m_tokens: f64,
+    /// Price per 1M cached input tokens in USD.
+    ///
+    /// When `None`, cached input tokens are priced at the standard
+    /// `input_price_per_1m_tokens` rate (no caching discount assumed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_input_price_per_1m_tokens: Option<f64>,
+    /// Price per 1M output tokens in USD.
+    pub output_price_per_1m_tokens: f64,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
@@ -369,6 +396,7 @@ impl ModelProviderInfo {
             requires_openai_auth: true,
             supports_websockets: true,
             namespace_tools: true,
+            model_prices: None,
         }
     }
 
@@ -400,6 +428,7 @@ impl ModelProviderInfo {
             requires_openai_auth: false,
             supports_websockets: false,
             namespace_tools: false,
+            model_prices: None,
         }
     }
 
@@ -542,6 +571,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         requires_openai_auth: false,
         supports_websockets: false,
         namespace_tools: false,
+        model_prices: None,
     }
 }
 

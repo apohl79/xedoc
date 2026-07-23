@@ -156,10 +156,10 @@ use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Alignment;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::layout::Margin;
-use ratatui::layout::Alignment;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
@@ -168,11 +168,11 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
 use ratatui::widgets::BorderType;
-use ratatui::widgets::block::Title;
 use ratatui::widgets::Borders;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::StatefulWidgetRef;
 use ratatui::widgets::WidgetRef;
+use ratatui::widgets::block::Title;
 
 use super::chat_composer_history::ChatComposerHistory;
 use super::chat_composer_history::HistoryEntry;
@@ -2802,7 +2802,10 @@ impl ChatComposer {
                 if !binding.path.starts_with("plugin://") || !snapshot.text.starts_with('@') {
                     return None;
                 }
-                Some((snapshot.range, Style::default().fg(Color::Rgb(160, 107, 234))))
+                Some((
+                    snapshot.range,
+                    Style::default().fg(Color::Rgb(160, 107, 234)),
+                ))
             })
             .collect()
     }
@@ -4619,7 +4622,9 @@ impl ChatComposer {
         if let Some(session_name) = self.session_name.as_ref() {
             let available_width = composer_rect.width.saturating_sub(4) as usize;
             if available_width > 0 {
-                let border_color = city_lights::composer_border_style().fg.unwrap_or(Color::Reset);
+                let border_color = city_lights::composer_border_style()
+                    .fg
+                    .unwrap_or(Color::Reset);
                 let name_color = session_name_color();
                 let title_line = Line::from(vec![
                     Span::styled("[", Style::default().fg(border_color)),

@@ -22,6 +22,78 @@ use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TurnContextItem;
 use codex_utils_output_truncation::TruncationPolicy;
 
+use codex_model_provider_info::ModelTokenPrices;
+
+/// Accumulated session cost tracking across turns and subagents.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct SessionCostTracker {
+    /// Per-model breakdown: model_id → accumulated token counts and cost.
+    pub(crate) per_model_costs: HashMap<String, PerModelCost>,
+    /// Total cost from subagent sessions that completed and reported back.
+    pub(crate) subagent_cost_usd: f64,
+}
+
+/// Token counts and cost for a single model used during this session.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct PerModelCost {
+    pub(crate) input_tokens: i64,
+    pub(crate) cached_input_tokens: i64,
+    pub(crate) output_tokens: i64,
+    pub(crate) cost_usd: f64,
+}
+
+impl SessionCostTracker {
+    pub(crate) fn total_cost_usd(&self) -> f64 {
+        let direct_total: f64 = self.per_model_costs.values().map(|c| c.cost_usd).sum();
+        direct_total + self.subagent_cost_usd
+    }
+
+    /// Record token usage for a model using the provider's pricing table.
+    ///
+    /// If `prices` is `None` or the `model_id` has no entry in the table,
+    /// this call is a no-op — no cost is tracked.
+    pub(crate) fn record_usage(
+        &mut self,
+        model_id: &str,
+        usage: &TokenUsage,
+        prices: Option<&HashMap<String, ModelTokenPrices>>,
+    ) {
+        let Some(prices) = prices else {
+            return;
+        };
+        let Some(model_prices) = prices.get(model_id) else {
+            return;
+        };
+
+        let entry = self
+            .per_model_costs
+            .entry(model_id.to_string())
+            .or_default();
+
+        let input_tokens = usage.non_cached_input().max(0) as f64;
+        let cached_tokens = usage.cached_input().max(0) as f64;
+        let output_tokens = usage.output_tokens.max(0) as f64;
+
+        let cached_price_per_1m = model_prices
+            .cached_input_price_per_1m_tokens
+            .unwrap_or(model_prices.input_price_per_1m_tokens);
+
+        let cost_delta = (input_tokens / 1_000_000.0) * model_prices.input_price_per_1m_tokens
+            + (cached_tokens / 1_000_000.0) * cached_price_per_1m
+            + (output_tokens / 1_000_000.0) * model_prices.output_price_per_1m_tokens;
+
+        entry.input_tokens += usage.non_cached_input().max(0);
+        entry.cached_input_tokens += usage.cached_input().max(0);
+        entry.output_tokens += usage.output_tokens.max(0);
+        entry.cost_usd += cost_delta;
+    }
+
+    /// Add cost reported by a completed subagent.
+    pub(crate) fn add_subagent_cost(&mut self, cost_usd: f64) {
+        self.subagent_cost_usd += cost_usd;
+    }
+}
+
 /// Persistent, session-scoped state previously stored directly on `Session`.
 pub(crate) struct SessionState {
     pub(crate) session_configuration: SessionConfiguration,
@@ -43,6 +115,7 @@ pub(crate) struct SessionState {
     pub(crate) pending_session_start_sources: VecDeque<codex_hooks::SessionStartSource>,
     granted_permissions_by_environment_id: HashMap<String, AdditionalPermissionProfile>,
     next_turn_is_first: bool,
+    pub(crate) cost_tracker: SessionCostTracker,
 }
 
 impl SessionState {
@@ -75,6 +148,7 @@ impl SessionState {
             pending_session_start_sources: VecDeque::new(),
             granted_permissions_by_environment_id: HashMap::new(),
             next_turn_is_first: true,
+            cost_tracker: SessionCostTracker::default(),
         }
     }
 

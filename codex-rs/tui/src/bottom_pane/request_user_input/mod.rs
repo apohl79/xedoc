@@ -1900,7 +1900,10 @@ mod tests {
             .find("Question")
             .expect("expected question prefix in progress line");
         let prefix_x = progress_line[..prefix_byte_idx].width();
-        assert_ne!(buf[(prefix_x as u16, 1)].style().fg, Some(Color::Rgb(217, 84, 104)));
+        assert_ne!(
+            buf[(prefix_x as u16, 1)].style().fg,
+            Some(Color::Rgb(217, 84, 104))
+        );
     }
 
     #[test]

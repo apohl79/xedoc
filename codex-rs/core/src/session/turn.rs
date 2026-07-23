@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::time::Duration;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use crate::SkillInjections;
 use crate::build_skill_injections;
@@ -2063,8 +2063,10 @@ async fn try_run_sampling_request(
                 let combined = if recent_msgs.is_empty() {
                     None
                 } else {
-                    Some(recent_msgs.join("
-"))
+                    Some(recent_msgs.join(
+                        "
+",
+                    ))
                 };
                 match generate_sub_agent_activity_summary(
                     sess.as_ref(),
@@ -2770,8 +2772,10 @@ fn activity_summary_prompt(last_agent_message: Option<&str>) -> String {
                 .take(100)
                 .collect::<Vec<_>>()
                 .join(" ");
-            format!("Recent agent outputs:
-{trimmed}")
+            format!(
+                "Recent agent outputs:
+{trimmed}"
+            )
         })
         .unwrap_or_default();
     format!(

@@ -102,7 +102,9 @@ impl HistoryCell for RequestUserInputResultCell {
                 width,
                 "  ↳ ".cl_cyan().dim(),
                 "    ".dim(),
-                Style::default().fg(Color::Rgb(0, 139, 148)).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(Color::Rgb(0, 139, 148))
+                    .add_modifier(Modifier::DIM),
             ));
         }
 

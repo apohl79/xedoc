@@ -732,7 +732,7 @@ impl From<Vec<UserInput>> for Op {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, TS)]
 pub struct InterAgentCommunication {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -748,6 +748,12 @@ pub struct InterAgentCommunication {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
+    /// Accumulated session cost in USD at the time this communication
+    /// was sent. Only populated on subagent completion messages so the
+    /// parent can aggregate descendant costs into its own tracker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub session_cost_usd: Option<f64>,
     pub trigger_turn: bool,
 }
 
@@ -767,6 +773,7 @@ impl InterAgentCommunication {
             content,
             encrypted_content: None,
             internal_chat_message_metadata_passthrough: None,
+            session_cost_usd: None,
             trigger_turn,
         }
     }
@@ -786,6 +793,7 @@ impl InterAgentCommunication {
             content: String::new(),
             encrypted_content: Some(encrypted_content),
             internal_chat_message_metadata_passthrough: None,
+            session_cost_usd: None,
             trigger_turn,
         }
     }
@@ -2098,6 +2106,11 @@ impl TokenUsageInfo {
 pub struct TokenCountEvent {
     pub info: Option<TokenUsageInfo>,
     pub rate_limits: Option<RateLimitSnapshot>,
+    /// Accumulated session cost in USD from the session's cost tracker.
+    /// `None` when no pricing is configured for any model used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub session_cost_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, TS)]

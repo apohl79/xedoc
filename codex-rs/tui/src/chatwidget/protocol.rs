@@ -30,9 +30,11 @@ impl ChatWidget {
         }
         match notification {
             ServerNotification::ThreadTokenUsageUpdated(notification) => {
+                self.session_cost_usd = notification.token_usage.session_cost_usd;
                 self.set_token_info(Some(token_usage_info_from_app_server(
                     notification.token_usage,
                 )));
+                self.refresh_status_surfaces();
             }
             ServerNotification::ThreadNameUpdated(notification) => {
                 match ThreadId::from_string(&notification.thread_id) {

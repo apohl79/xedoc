@@ -1823,8 +1823,10 @@ impl Session {
 
         // Forward SubAgentActivity events to parent for live activity display.
         if let EventMsg::SubAgentActivity(activity) = msg {
-            eprintln!("DEBUG forward_activity: kind={:?}, current_activity={:?}, parent_thread_id={:?}",
-                activity.kind, activity.current_activity, turn_context.parent_thread_id);
+            eprintln!(
+                "DEBUG forward_activity: kind={:?}, current_activity={:?}, parent_thread_id={:?}",
+                activity.kind, activity.current_activity, turn_context.parent_thread_id
+            );
             if let Some(parent_thread_id) = turn_context.parent_thread_id {
                 self.services
                     .agent_control
@@ -1906,13 +1908,22 @@ impl Session {
             .rollout_thread_trace
             .is_enabled()
             .then(|| message.clone());
-        let communication = InterAgentCommunication::new(
-            child_agent_path.clone(),
-            parent_agent_path,
-            Vec::new(),
-            message,
-            /*trigger_turn*/ false,
-        );
+        let child_cost = {
+            let state = self.state.lock().await;
+            let total = state.cost_tracker.total_cost_usd();
+            if total > 0.0 { Some(total) } else { None }
+        };
+        let communication = InterAgentCommunication {
+            id: None,
+            author: child_agent_path.clone(),
+            recipient: parent_agent_path,
+            other_recipients: Vec::new(),
+            content: message,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+            session_cost_usd: child_cost,
+            trigger_turn: false,
+        };
         let context =
             AgentCommunicationContext::new(AgentCommunicationKind::Result, self.thread_id);
         if let Err(err) = self
@@ -2982,6 +2993,9 @@ impl Session {
                 items.iter(),
                 turn_context.model_info.truncation_policy.into(),
             );
+            if let Some(cost) = communication.session_cost_usd {
+                state.cost_tracker.add_subagent_cost(cost);
+            }
         }
         self.persist_rollout_items(&[
             RolloutItem::InterAgentCommunicationMetadata {
@@ -3742,6 +3756,15 @@ impl Session {
                 ) {
                     state.ensure_auto_compact_window_server_prefill_from_usage(token_usage);
                 }
+                let model_slug = turn_context.model_info.slug.clone();
+                let model_prices = turn_context
+                    .config
+                    .model_providers
+                    .get(&turn_context.config.model_provider_id)
+                    .and_then(|provider| provider.model_prices.as_ref());
+                state
+                    .cost_tracker
+                    .record_usage(&model_slug, token_usage, model_prices);
                 state.token_info()
             };
             let budget_result = self.record_rollout_budget_usage(token_usage);
@@ -3835,11 +3858,17 @@ impl Session {
     }
 
     pub(crate) async fn send_token_count_event(&self, turn_context: &TurnContext) {
-        let (info, rate_limits) = {
+        let (info, rate_limits, session_cost_usd) = {
             let state = self.state.lock().await;
-            state.token_info_and_rate_limits()
+            let (info, rate_limits) = state.token_info_and_rate_limits();
+            let cost = state.cost_tracker.total_cost_usd();
+            (info, rate_limits, Some(cost))
         };
-        let event = EventMsg::TokenCount(TokenCountEvent { info, rate_limits });
+        let event = EventMsg::TokenCount(TokenCountEvent {
+            info,
+            rate_limits,
+            session_cost_usd,
+        });
         self.send_event(turn_context, event).await;
     }
 

@@ -191,6 +191,7 @@ fn model_provider_from_proto(
         requires_openai_auth: provider.requires_openai_auth,
         supports_websockets: provider.supports_websockets,
         namespace_tools: true,
+        model_prices: None,
     };
     Ok((id, info))
 }

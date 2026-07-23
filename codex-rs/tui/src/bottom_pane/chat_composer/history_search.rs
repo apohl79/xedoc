@@ -696,10 +696,16 @@ mod tests {
         );
 
         let query_style = line.spans[1].style;
-        assert_eq!(query_style.fg, Some(ratatui::style::Color::Rgb(0, 139, 148)));
+        assert_eq!(
+            query_style.fg,
+            Some(ratatui::style::Color::Rgb(0, 139, 148))
+        );
 
         let enter_style = line.spans[3].style;
-        assert_eq!(enter_style.fg, Some(ratatui::style::Color::Rgb(0, 139, 148)));
+        assert_eq!(
+            enter_style.fg,
+            Some(ratatui::style::Color::Rgb(0, 139, 148))
+        );
         assert!(enter_style.add_modifier.contains(Modifier::BOLD));
         assert!(enter_style.sub_modifier.contains(Modifier::DIM));
 

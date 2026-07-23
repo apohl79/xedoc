@@ -175,6 +175,7 @@ fn token_count_item(last_model_visible_tokens: i64) -> RolloutItem {
             model_context_window: None,
         }),
         rate_limits: None,
+        session_cost_usd: None,
     }))
 }
 
