@@ -15,7 +15,6 @@
 - [pre-commit] Bump `scripts/apohl79_build_number.txt`.
 - [pre-edit] Re-read the repository evidence gate in AGENTS.md before touching source files.
 - [pre-edit] Create a worktree if the task involves implementation (don't edit main without asking).
-- [post-turn] Review what you learned. If anything about the project structure, conventions, or constraints changed, update the project context file.
 
 # Rust/codex-rs
 

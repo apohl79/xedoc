@@ -69,10 +69,11 @@ Supported phases:
 |-------|--------------------------|
 | `pre-edit` | Before modifying any source file |
 | `pre-commit` | Before running `git commit` |
-| `post-turn` | After completing a task or subtask, before reporting to the user |
 
 Phases are intentionally sparse — only add a phase when a documented
-checklist item needs it. Multiple phases per item: `[pre-commit, pre-push]`.
+checklist item needs it. Plugins and skills may also register their own
+reminders for any supported phase. Multiple phases per item:
+`[pre-commit, pre-push]`.
 
 The model reads this section at session start and re-checks it when reaching
 each tagged phase. The section lives at the top of `AGENTS.md` so it cannot
