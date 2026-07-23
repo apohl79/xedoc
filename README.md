@@ -67,12 +67,11 @@ Supported phases:
 
 | Phase | When the model checks it |
 |-------|--------------------------|
+| `pre-edit` | Before modifying any source file |
 | `pre-commit` | Before running `git commit` |
-| `pre-push` | Before running `git push` |
-| `pre-test` | Before running the full test suite |
-| `post-build` | After a successful `cargo build` |
 
-Multiple phases on one item: `[pre-commit, pre-push]`.
+Phases are intentionally sparse — only add a phase when a documented
+checklist item needs it. Multiple phases per item: `[pre-commit, pre-push]`.
 
 The model reads this section at session start and re-checks it when reaching
 each tagged phase. The section lives at the top of `AGENTS.md` so it cannot
