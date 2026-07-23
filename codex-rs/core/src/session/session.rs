@@ -1137,6 +1137,7 @@ impl Session {
                 )),
                 tool_search_handler_cache: Default::default(),
                 turn_environments: Arc::clone(&turn_environments),
+                plugin_context_cache: PluginContextCache::default(),
             };
             let sess = Arc::new(Session {
                 thread_id,

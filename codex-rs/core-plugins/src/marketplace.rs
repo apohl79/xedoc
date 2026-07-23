@@ -100,6 +100,7 @@ impl MarketplacePluginManifestFallback {
             mcp_servers: None,
             apps: None,
             hooks: None,
+            context: None,
         };
         if let Some(interface) = manifest.interface.as_mut() {
             interface.composer_icon = None;

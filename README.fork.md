@@ -417,32 +417,50 @@ Primary files:
 - `codex-rs/tui/src/**/*.snap`
 - `scripts/apohl79_build_number.txt`
 
-### AGENTS.md Active Reminders
+### Plugin Context
 
-The fork's `AGENTS.md` includes a phase-tagged checklist section at the top
-of the file for model discipline. The format is:
+Plugins can declare static, position-aware instruction blocks in `plugin.json`
+that Codex injects into every model API call via the `ContextContributor`
+pipeline. This replaces hook-based periodic reminders with zero per-turn
+overhead.
 
-```markdown
-## Active reminders
-
-- [phase] description of the required action
+```json
+{
+  "context": {
+    "thread": [
+      {
+        "slot": "contextual_user",
+        "position": "preamble",
+        "text": "Repository-wide rules: never commit secrets."
+      },
+      {
+        "slot": "contextual_user",
+        "position": "supplement",
+        "text": "[post-turn] Check whether project context needs updating."
+      }
+    ]
+  }
+}
 ```
 
-Supported phases:
+**Slots** route to API message roles:
 
-| Phase | When the model checks it |
-|-------|--------------------------|
-| `pre-edit` | Before modifying any source file |
-| `pre-commit` | Before running `git commit` |
-| `post-turn` | After completing a task or subtask, before reporting to the user |
+| Slot | API role | Behavior |
+|------|----------|----------|
+| `developer_policy` | Developer (system) | Aggregated with other developer instructions |
+| `developer_capabilities` | Developer (system) | Same bucket as `developer_policy` |
+| `contextual_user` | User message | Same slot as AGENTS.md; diffed and persisted |
+| `separate_developer` | Separate developer message | Isolated from other developer sections |
 
-Phases are intentionally sparse — only add a phase when a documented
-checklist item needs it. Plugins and skills may also register their own
-reminders for any supported phase.
+**Position** relative to AGENTS.md:
 
-The model reads this section at session start and re-checks it at each phase
-boundary. Placing it at the top of `AGENTS.md` ensures it cannot be scrolled
-past during pre-commit workflows.
+| Position | Effect |
+|----------|--------|
+| `preamble` | Before the world-state user message |
+| `supplement` | After the world-state user message |
+
+Plugin context is thread-scoped — subagents automatically inherit it.
+Content is static (no templates) and read once at plugin load time.
 
 ## Notes For Maintainers
 

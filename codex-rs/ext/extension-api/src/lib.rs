@@ -41,6 +41,7 @@ pub use contributors::McpServerContributor;
 pub use contributors::PreviousWorldStateSection;
 pub use contributors::PromptFragment;
 pub use contributors::PromptSlot;
+pub use contributors::PluginContextPosition;
 pub use contributors::RenderedWorldStateFragment;
 pub use contributors::ThreadIdleInput;
 pub use contributors::ThreadLifecycleContributor;

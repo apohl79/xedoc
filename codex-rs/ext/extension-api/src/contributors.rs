@@ -25,6 +25,7 @@ pub use mcp::McpServerContribution;
 pub use mcp::McpServerContributionContext;
 pub use prompt::PromptFragment;
 pub use prompt::PromptSlot;
+pub use prompt::PluginContextPosition;
 pub use thread_lifecycle::ThreadIdleInput;
 pub use thread_lifecycle::ThreadResumeInput;
 pub use thread_lifecycle::ThreadStartInput;

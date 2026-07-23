@@ -41,7 +41,24 @@ struct RawPluginManifest {
     #[serde(default)]
     hooks: Option<RawPluginManifestHooks>,
     #[serde(default)]
+    context: Option<RawPluginManifestContext>,
+    #[serde(default)]
     interface: Option<RawPluginManifestInterface>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawPluginManifestContext {
+    #[serde(default)]
+    thread: Vec<RawPluginThreadContextEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawPluginThreadContextEntry {
+    slot: String,
+    position: String,
+    text: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -166,12 +183,16 @@ pub(crate) fn parse_plugin_manifest_uri(
         mcp_servers,
         apps,
         hooks,
+        context,
         interface,
     } = serde_json::from_str::<RawPluginManifest>(contents)?;
     let name = plugin_root
         .basename()
         .filter(|_| raw_name.trim().is_empty())
         .unwrap_or(raw_name);
+    let context = context.map(|c| codex_plugin::manifest::PluginManifestContext {
+        thread: c.thread.into_iter().filter_map(convert_thread_context_entry).collect(),
+    });
     let manifest_path_for_warning = manifest_path.to_string();
     let version = version.and_then(|version| {
         let version = version.trim();
@@ -262,8 +283,41 @@ pub(crate) fn parse_plugin_manifest_uri(
             mcp_servers: resolve_manifest_mcp_servers(plugin_root, mcp_servers),
             apps: resolve_manifest_path(plugin_root, "apps", apps.as_deref()),
             hooks: resolve_manifest_hooks(plugin_root, hooks),
+            context,
         },
         interface,
+    })
+}
+
+fn convert_thread_context_entry(
+    raw: RawPluginThreadContextEntry,
+) -> Option<codex_plugin::manifest::PluginThreadContextEntry> {
+    let slot = match raw.slot.as_str() {
+        "developer_policy" => codex_plugin::manifest::PluginContextSlot::DeveloperPolicy,
+        "developer_capabilities" => codex_plugin::manifest::PluginContextSlot::DeveloperCapabilities,
+        "contextual_user" => codex_plugin::manifest::PluginContextSlot::ContextualUser,
+        "separate_developer" => codex_plugin::manifest::PluginContextSlot::SeparateDeveloper,
+        _ => {
+            tracing::warn!(slot = %raw.slot, "unknown plugin context slot; skipping entry");
+            return None;
+        }
+    };
+    let position = match raw.position.as_str() {
+        "preamble" => codex_plugin::manifest::PluginContextPosition::Preamble,
+        "supplement" => codex_plugin::manifest::PluginContextPosition::Supplement,
+        _ => {
+            tracing::warn!(position = %raw.position, "unknown plugin context position; skipping entry");
+            return None;
+        }
+    };
+    let text = raw.text.trim().to_string();
+    if text.is_empty() {
+        return None;
+    }
+    Some(codex_plugin::manifest::PluginThreadContextEntry {
+        slot,
+        position,
+        text,
     })
 }
 
@@ -862,6 +916,7 @@ mod tests {
                     hooks: Some(PluginManifestHooks::Paths(vec![
                         plugin_root.join("hooks.json").expect("hooks URI"),
                     ])),
+                    context: None,
                 },
                 interface: Some(PluginManifestInterface {
                     display_name: Some("Demo Plugin".to_string()),

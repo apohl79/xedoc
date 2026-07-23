@@ -993,7 +993,9 @@ async fn thread_title_from_thread_store(
 fn push_prompt_fragment(
     fragment: PromptFragment,
     developer_sections: &mut Vec<String>,
+    preamble_sections: &mut Vec<String>,
     contextual_user_sections: &mut Vec<String>,
+    supplement_sections: &mut Vec<String>,
     separate_developer_sections: &mut Vec<String>,
 ) {
     match fragment.slot() {
@@ -1001,7 +1003,18 @@ fn push_prompt_fragment(
             developer_sections.push(fragment.text().to_string());
         }
         PromptSlot::ContextualUser => {
-            contextual_user_sections.push(fragment.text().to_string());
+            let text = fragment.text().to_string();
+            match fragment.position {
+                Some(codex_extension_api::PluginContextPosition::Preamble) => {
+                    preamble_sections.push(text);
+                }
+                Some(codex_extension_api::PluginContextPosition::Supplement) => {
+                    supplement_sections.push(text);
+                }
+                None => {
+                    contextual_user_sections.push(text);
+                }
+            }
         }
         PromptSlot::SeparateDeveloper => {
             separate_developer_sections.push(fragment.text().to_string());
@@ -3193,7 +3206,9 @@ impl Session {
         turn_context: &TurnContext,
     ) -> Vec<ResponseItem> {
         let mut developer_sections = Vec::new();
+        let mut preamble_sections = Vec::new();
         let mut contextual_user_sections = Vec::new();
+        let mut supplement_sections = Vec::new();
         let mut separate_developer_sections = Vec::new();
         let context_contributors = self.services.extensions.context_contributors().to_vec();
 
@@ -3212,13 +3227,15 @@ impl Session {
                 push_prompt_fragment(
                     fragment,
                     &mut developer_sections,
+                    &mut preamble_sections,
                     &mut contextual_user_sections,
+                    &mut supplement_sections,
                     &mut separate_developer_sections,
                 );
             }
         }
 
-        let mut items = Vec::with_capacity(3);
+        let mut items = Vec::with_capacity(4);
         if let Some(developer_message) =
             crate::context_manager::updates::build_developer_update_item(developer_sections)
         {
@@ -3231,10 +3248,20 @@ impl Session {
                 items.push(developer_message);
             }
         }
+        if let Some(msg) =
+            crate::context_manager::updates::build_contextual_user_message(preamble_sections)
+        {
+            items.push(msg);
+        }
         if let Some(contextual_user_message) =
             crate::context_manager::updates::build_contextual_user_message(contextual_user_sections)
         {
             items.push(contextual_user_message);
+        }
+        if let Some(msg) =
+            crate::context_manager::updates::build_contextual_user_message(supplement_sections)
+        {
+            items.push(msg);
         }
         items
     }
@@ -3256,7 +3283,9 @@ impl Session {
         mcp: &McpRuntimeSnapshot,
     ) -> Vec<ResponseItem> {
         let mut developer_sections = Vec::<String>::with_capacity(8);
+        let mut preamble_sections = Vec::<String>::new();
         let mut contextual_user_sections = Vec::<String>::with_capacity(2);
+        let mut supplement_sections = Vec::<String>::new();
         let mut separate_developer_sections = Vec::<String>::new();
         let (
             reference_context_item,
@@ -3405,7 +3434,7 @@ impl Session {
             .as_deref()
             .and_then(RecommendedPluginsInstructions::from_plugins)
         {
-            contextual_user_sections.push(recommended_plugins.render());
+            preamble_sections.push(recommended_plugins.render());
         }
         let context_contributors = self.services.extensions.context_contributors().to_vec();
         for contributor in &context_contributors {
@@ -3419,7 +3448,9 @@ impl Session {
                 push_prompt_fragment(
                     fragment,
                     &mut developer_sections,
+                    &mut preamble_sections,
                     &mut contextual_user_sections,
+                    &mut supplement_sections,
                     &mut separate_developer_sections,
                 );
             }
@@ -3439,7 +3470,9 @@ impl Session {
                 push_prompt_fragment(
                     fragment,
                     &mut developer_sections,
+                    &mut preamble_sections,
                     &mut contextual_user_sections,
+                    &mut supplement_sections,
                     &mut separate_developer_sections,
                 );
             }
@@ -3530,10 +3563,20 @@ impl Session {
                 MultiAgentModeInstructions::new(multi_agent_mode),
             ));
         }
+        if let Some(msg) =
+            crate::context_manager::updates::build_contextual_user_message(preamble_sections)
+        {
+            items.push(msg);
+        }
         if let Some(contextual_user_message) =
             crate::context_manager::updates::build_contextual_user_message(contextual_user_sections)
         {
             items.push(contextual_user_message);
+        }
+        if let Some(msg) =
+            crate::context_manager::updates::build_contextual_user_message(supplement_sections)
+        {
+            items.push(msg);
         }
         // Emit the guardian policy prompt as a separate developer item so the guardian
         // subagent sees a distinct, easy-to-audit instruction block.

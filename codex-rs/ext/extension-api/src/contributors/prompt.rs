@@ -12,6 +12,10 @@ pub enum PromptSlot {
 pub struct PromptFragment {
     slot: PromptSlot,
     text: String,
+    /// Optional position relative to the world-state (AGENTS.md) user message
+    /// within its slot. `None` means default ordering (appended after preamble
+    /// entries and before supplement entries).
+    pub position: Option<PluginContextPosition>,
 }
 
 impl PromptFragment {
@@ -20,7 +24,14 @@ impl PromptFragment {
         Self {
             slot,
             text: text.into(),
+            position: None,
         }
+    }
+
+    /// Sets the position of this fragment relative to AGENTS.md.
+    pub fn with_position(mut self, position: PluginContextPosition) -> Self {
+        self.position = Some(position);
+        self
     }
 
     /// Creates a developer-policy prompt fragment.
@@ -47,4 +58,13 @@ impl PromptFragment {
     pub fn text(&self) -> &str {
         &self.text
     }
+}
+
+/// Position of a plugin context entry relative to AGENTS.md.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PluginContextPosition {
+    /// Inserted before AGENTS.md — foundational instructions.
+    Preamble,
+    /// Inserted after AGENTS.md — supplementary instructions.
+    Supplement,
 }

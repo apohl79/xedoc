@@ -1916,6 +1916,7 @@ async fn load_plugin_skills_dedupes_overlapping_manifest_roots() {
             mcp_servers: None,
             apps: None,
             hooks: None,
+            context: None,
         },
         interface: None,
     };

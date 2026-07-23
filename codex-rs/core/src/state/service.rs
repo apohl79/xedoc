@@ -22,6 +22,7 @@ use crate::tools::handlers::ToolSearchHandlerCache;
 use crate::tools::network_approval::NetworkApprovalService;
 use crate::tools::sandboxing::ApprovalStore;
 use crate::unified_exec::UnifiedExecProcessManager;
+use crate::plugin_context::PluginContextCache;
 use anyhow::Result;
 use arc_swap::ArcSwap;
 use arc_swap::ArcSwapOption;
@@ -101,6 +102,8 @@ pub(crate) struct SessionServices {
     pub(crate) code_mode_service: CodeModeService,
     pub(crate) tool_search_handler_cache: ToolSearchHandlerCache,
     pub(crate) turn_environments: Arc<ThreadEnvironments>,
+    /// Plugin context declarations loaded from plugin manifests at startup.
+    pub(crate) plugin_context_cache: PluginContextCache,
 }
 
 impl SessionServices {

@@ -1,5 +1,46 @@
 use codex_config::HooksFile;
 
+/// Static context declarations that Codex injects into every API inference request.
+///
+/// Declared in `plugin.json` under the `context` key. These are read once at
+/// plugin load time and become permanent, position-aware instruction blocks
+/// in the model context — no process overhead, no per-turn re-evaluation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginManifestContext {
+    /// Thread-scoped context entries injected by the built-in
+    /// `PluginManifestContextContributor` on every turn.
+    pub thread: Vec<PluginThreadContextEntry>,
+}
+
+/// One static context entry from a plugin manifest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginThreadContextEntry {
+    /// Target prompt slot — same semantics as `PromptSlot`.
+    pub slot: PluginContextSlot,
+    /// Position relative to the world-state user message (AGENTS.md).
+    pub position: PluginContextPosition,
+    /// Literal instruction text injected verbatim.
+    pub text: String,
+}
+
+/// Prompt slot for plugin context injection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginContextSlot {
+    DeveloperPolicy,
+    DeveloperCapabilities,
+    ContextualUser,
+    SeparateDeveloper,
+}
+
+/// Position relative to the world-state (AGENTS.md) user message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginContextPosition {
+    /// Inserted before the world-state user message — foundational.
+    Preamble,
+    /// Inserted after the world-state user message — supplementary.
+    Supplement,
+}
+
 /// Parsed plugin metadata parameterized by its resource locator representation.
 ///
 /// Host loading uses absolute paths, while resolved packages replace them with
@@ -21,6 +62,7 @@ pub struct PluginManifestPaths<Resource> {
     pub mcp_servers: Option<PluginManifestMcpServers<Resource>>,
     pub apps: Option<Resource>,
     pub hooks: Option<PluginManifestHooks<Resource>>,
+    pub context: Option<PluginManifestContext>,
 }
 
 /// MCP server declarations embedded in or referenced by a plugin manifest.
@@ -108,6 +150,7 @@ impl<Resource> PluginManifest<Resource> {
             mcp_servers,
             apps,
             hooks,
+            context,
         } = paths;
         let hooks = match hooks {
             Some(PluginManifestHooks::Paths(paths)) => Some(PluginManifestHooks::Paths(
@@ -184,6 +227,7 @@ impl<Resource> PluginManifest<Resource> {
                 mcp_servers,
                 apps: apps.map(&mut map).transpose()?,
                 hooks,
+                context,
             },
             interface,
         })

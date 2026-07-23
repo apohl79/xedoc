@@ -30,9 +30,10 @@ Then simply run `codex` to get started.
 
 ### Fork features
 
-- Phase-tagged model reminders in AGENTS.md for commit, edit, and task
-  discipline, with plugin and skill extension support (see
-  [AGENTS.md Active Reminders](#agentsmd-active-reminders) below).
+- Plugin context declarations in `plugin.json` for permanent, position-aware
+  model instructions injected via `ContextContributor` — zero-overhead replacement
+  for hook-based periodic reminders (preamble/supplement slots relative to AGENTS.md,
+  see [Plugin Context](#plugin-context) below).
 - Extended TUI `@` file-path completion.
 - Custom TUI status line support.
 - Active agent and active thread context in the bottom pane.
@@ -55,35 +56,52 @@ Then simply run `codex` to get started.
   cross-provider sub-agent support (e.g., Claude parent agent spawning GPT or
   DeepSeek child agents in the same session).
 
-### AGENTS.md Active Reminders
+### Plugin Context
 
-The fork uses phase-tagged checklist items in `AGENTS.md` to keep the model
-aware of mandatory steps at key workflow boundaries. The format is:
+Plugins can declare static, position-aware instruction blocks in `plugin.json`
+that Codex injects into every model API call — permanently, with zero per-turn
+overhead. This replaces hook-based periodic reminders that pollute context over
+long sessions.
 
-```markdown
-## Active reminders
-
-- [phase] description of the required action
+```json
+{
+  "context": {
+    "thread": [
+      {
+        "slot": "contextual_user",
+        "position": "preamble",
+        "text": "Repository-wide rules: never commit secrets."
+      },
+      {
+        "slot": "contextual_user",
+        "position": "supplement",
+        "text": "[post-turn] Check whether project context needs updating."
+      }
+    ]
+  }
+}
 ```
 
-Supported phases:
+**Slots** route content to specific API message roles:
 
-| Phase | When the model checks it |
-|-------|--------------------------|
-| `pre-edit` | Before modifying any source file |
-| `pre-commit` | Before running `git commit` |
-| `post-turn` | After completing a task or subtask, before reporting to the user |
+| Slot | API role | Behavior |
+|------|----------|----------|
+| `developer_policy` | Developer (system) | Aggregated with other developer instructions |
+| `developer_capabilities` | Developer (system) | Same bucket as `developer_policy` |
+| `contextual_user` | User message | Same slot as AGENTS.md; diffed and persisted |
+| `separate_developer` | Separate developer message | Isolated from other developer sections |
 
-Phases are intentionally sparse — only add a phase when a documented
-checklist item needs it. Plugins and skills may also register their own
-reminders for any supported phase. Multiple phases per item:
-`[pre-commit, pre-push]`.
+**Position** controls ordering relative to AGENTS.md:
 
-The model reads this section at session start and re-checks it when reaching
-each tagged phase. The section lives at the top of `AGENTS.md` so it cannot
-be scrolled past during pre-commit workflows.
+| Position | Effect |
+|----------|--------|
+| `preamble` | Inserted **before** the world-state user message (AGENTS.md) |
+| `supplement` | Inserted **after** the world-state user message |
 
-See [README.fork.md](./README.fork.md) for the full fork inventory.
+Plugin context is thread-scoped — subagents automatically inherit it.
+Content is static (no templates) and read once at plugin load time.
+
+
 
 ### Using Codex with your ChatGPT plan
 

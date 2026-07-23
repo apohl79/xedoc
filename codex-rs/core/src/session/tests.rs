@@ -5544,6 +5544,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         )),
         tool_search_handler_cache: Default::default(),
         turn_environments: Arc::clone(&turn_environments),
+        plugin_context_cache: PluginContextCache::default(),
     };
 
     let plugins_input = per_turn_config.plugins_config_input();
@@ -7675,6 +7676,7 @@ where
         )),
         tool_search_handler_cache: Default::default(),
         turn_environments: Arc::clone(&turn_environments),
+        plugin_context_cache: PluginContextCache::default(),
     };
 
     let plugins_input = per_turn_config.plugins_config_input();
