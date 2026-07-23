@@ -27,6 +27,16 @@ pub(crate) async fn context_window_token_status(
 ) -> ContextWindowTokenStatus {
     let active_context_tokens = sess.get_total_token_usage().await;
 
+    // Providers such as DeepSeek may report per-request token usage rather
+    // than cumulative session context. Fall back to the estimated token count
+    // when it is higher so auto-compaction thresholds are evaluated against a
+    // realistic context size.
+    let estimated = sess
+        .get_estimated_token_count(turn_context)
+        .await
+        .unwrap_or(0);
+    let active_context_tokens = active_context_tokens.max(estimated);
+
     let (auto_compact_scope_tokens, auto_compact_scope_limit, body_window) =
         match turn_context.config.model_auto_compact_token_limit_scope {
             AutoCompactTokenLimitScope::Total => (
