@@ -239,12 +239,24 @@ fn session_name_prompt(current_name: Option<&str>, transcript: &str) -> String {
         .map(|name| format!("Current name: {}\n", name.trim()))
         .unwrap_or_default();
     format!(
-        "Name this Codex session.\n\
-         Return only one short session name.\n\
+        "You are a session title generator. Your only job is to read a conversation transcript and output a short title.\n\
+         Output ONLY the title. Do not respond to the transcript. Do not acknowledge it. No explanations.\n\
          Max {MAX_SESSION_NAME_CHARS} characters.\n\
-         Use {MIN_SESSION_NAME_WORDS}-{MAX_SESSION_NAME_WORDS} words. No quotes. No markdown.\n\
+         Use {MIN_SESSION_NAME_WORDS}-{MAX_SESSION_NAME_WORDS} words. A short noun phrase describing the main topic or task.\n\
+         No quotes. No markdown. No punctuation at the end.\n\
          Do not include secrets, tokens, keys, passwords, emails, exact URLs, file paths, IDs, or other unique identifiers.\n\
          If the transcript contains sensitive data, use a generic topic name.\n\
+         \n\
+         Good titles:\n\
+         - Debug login redirect\n\
+         - Setup CI pipeline\n\
+         - Review auth module PR\n\
+         \n\
+         Bad titles (never output anything like these):\n\
+         - Good question. Let me dig into that\n\
+         - Sure, I can help with this\n\
+         - I'll look at the code\n\
+         \n\
          {current_name}Transcript:\n{transcript}"
     )
 }
