@@ -515,12 +515,16 @@ update_visible_command
 # Deploy statusline script
 STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
 STATUSLINE_DST="$CODEX_HOME_DIR/statusline.sh"
-if [ -f "$STATUSLINE_SRC" ]; then
-    step "Deploying statusline script to $STATUSLINE_DST"
-    mkdir -p "$CODEX_HOME_DIR"
-    cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
-    chmod +x "$STATUSLINE_DST"
+if [ ! -f "$STATUSLINE_SRC" ]; then
+  STATUSLINE_SRC="$tmp_dir/statusline.sh"
+  STATUSLINE_URL="https://raw.githubusercontent.com/$APOHL79_REPO/$tag/scripts/statusline.sh"
+  step "Downloading statusline script"
+  download_file "$STATUSLINE_URL" "$STATUSLINE_SRC"
 fi
+step "Deploying statusline script to $STATUSLINE_DST"
+mkdir -p "$CODEX_HOME_DIR"
+cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
+chmod +x "$STATUSLINE_DST"
 
 print_path_note
 printf 'apohl79 Codex CLI %s installed successfully.\n' "$fork_version"

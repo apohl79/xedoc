@@ -16,7 +16,6 @@ use crate::exec_policy::ExecPolicyManager;
 use crate::guardian::GuardianRejection;
 use crate::guardian::GuardianRejectionCircuitBreaker;
 use crate::mcp::McpManager;
-use crate::plugin_context::PluginContextCache;
 use crate::session::McpRuntimeSnapshot;
 use crate::tools::code_mode::CodeModeService;
 use crate::tools::handlers::ToolSearchHandlerCache;
@@ -102,8 +101,6 @@ pub(crate) struct SessionServices {
     pub(crate) code_mode_service: CodeModeService,
     pub(crate) tool_search_handler_cache: ToolSearchHandlerCache,
     pub(crate) turn_environments: Arc<ThreadEnvironments>,
-    /// Plugin context declarations loaded from plugin manifests at startup.
-    pub(crate) plugin_context_cache: PluginContextCache,
 }
 
 impl SessionServices {

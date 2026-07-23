@@ -1290,6 +1290,11 @@ impl Session {
         state.token_info()
     }
 
+    pub(crate) async fn session_cost_usd(&self) -> Option<f64> {
+        let state = self.state.lock().await;
+        state.cost_tracker.available_cost_usd()
+    }
+
     pub(crate) async fn get_estimated_token_count(
         &self,
         turn_context: &TurnContext,
@@ -1380,9 +1385,14 @@ impl Session {
 
                 // Seed usage info from the recorded rollout so UIs can show token counts
                 // immediately on resume/fork.
-                if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
+                let (token_info, session_cost_usd) =
+                    Self::last_token_count_from_rollout(&rollout_items);
+                if token_info.is_some() || session_cost_usd.is_some() {
                     let mut state = self.state.lock().await;
-                    state.set_token_info(Some(info));
+                    if let Some(token_info) = token_info {
+                        state.set_token_info(Some(token_info.clone()));
+                    }
+                    state.cost_tracker.restore_total_cost_usd(session_cost_usd);
                 }
 
                 // Defer seeding the session's initial context until the first turn starts so
@@ -1405,9 +1415,14 @@ impl Session {
 
                 // Seed usage info from the recorded rollout so UIs can show token counts
                 // immediately on resume/fork.
-                if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
+                let (token_info, session_cost_usd) =
+                    Self::last_token_count_from_rollout(&rollout_items);
+                if token_info.is_some() || session_cost_usd.is_some() {
                     let mut state = self.state.lock().await;
-                    state.set_token_info(Some(info));
+                    if let Some(token_info) = token_info {
+                        state.set_token_info(Some(token_info.clone()));
+                    }
+                    state.cost_tracker.restore_total_cost_usd(session_cost_usd);
                 }
 
                 // If persisting, persist all rollout items as-is (the store filters).
@@ -1507,11 +1522,26 @@ impl Session {
         state.set_auto_compact_window_estimated_prefill(tokens);
     }
 
-    fn last_token_info_from_rollout(rollout_items: &[RolloutItem]) -> Option<TokenUsageInfo> {
-        rollout_items.iter().rev().find_map(|item| match item {
-            RolloutItem::EventMsg(EventMsg::TokenCount(ev)) => ev.info.clone(),
-            _ => None,
-        })
+    fn last_token_count_from_rollout(
+        rollout_items: &[RolloutItem],
+    ) -> (Option<&TokenUsageInfo>, Option<f64>) {
+        let mut token_info = None;
+        let mut session_cost_usd = None;
+        for item in rollout_items.iter().rev() {
+            let RolloutItem::EventMsg(EventMsg::TokenCount(event)) = item else {
+                continue;
+            };
+            if token_info.is_none() {
+                token_info = event.info.as_ref();
+            }
+            if session_cost_usd.is_none() {
+                session_cost_usd = event.session_cost_usd;
+            }
+            if token_info.is_some() && session_cost_usd.is_some() {
+                break;
+            }
+        }
+        (token_info, session_cost_usd)
     }
 
     async fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {
@@ -1923,8 +1953,7 @@ impl Session {
             .then(|| message.clone());
         let child_cost = {
             let state = self.state.lock().await;
-            let total = state.cost_tracker.total_cost_usd();
-            if total > 0.0 { Some(total) } else { None }
+            state.cost_tracker.available_cost_usd()
         };
         let communication = InterAgentCommunication {
             id: None,
@@ -3904,8 +3933,8 @@ impl Session {
         let (info, rate_limits, session_cost_usd) = {
             let state = self.state.lock().await;
             let (info, rate_limits) = state.token_info_and_rate_limits();
-            let cost = state.cost_tracker.total_cost_usd();
-            (info, rate_limits, Some(cost))
+            let cost = state.cost_tracker.available_cost_usd();
+            (info, rate_limits, cost)
         };
         let event = EventMsg::TokenCount(TokenCountEvent {
             info,

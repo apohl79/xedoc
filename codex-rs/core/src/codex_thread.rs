@@ -469,6 +469,11 @@ impl CodexThread {
         self.codex.session.token_usage_info().await
     }
 
+    /// Returns the accumulated session cost when pricing is available.
+    pub async fn session_cost_usd(&self) -> Option<f64> {
+        self.codex.session.session_cost_usd().await
+    }
+
     /// Records a user-role session-prefix message without creating a new user turn boundary.
     pub(crate) async fn inject_user_message_without_turn(&self, message: String) {
         let item = ResponseItem::Message {

@@ -288,6 +288,7 @@ mod tests {
                     wire_api = "responses"
                     requires_openai_auth = false
                     supports_websockets = true
+                    namespace_tools = true
 
                     [features]
                     plugins = false
@@ -316,6 +317,8 @@ mod tests {
             websocket_connect_timeout_ms: None,
             requires_openai_auth: false,
             supports_websockets: true,
+            namespace_tools: true,
+            model_prices: None,
         }
     }
 }

@@ -14701,7 +14701,8 @@
       "enum": [
         "started",
         "interacted",
-        "interrupted"
+        "interrupted",
+        "completed"
       ],
       "type": "string"
     },
@@ -17637,6 +17638,14 @@
           "format": "int64",
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "sessionCostUsd": {
+          "description": "Accumulated session cost in USD. `None` when no pricing is configured.",
+          "format": "double",
+          "type": [
+            "number",
             "null"
           ]
         },

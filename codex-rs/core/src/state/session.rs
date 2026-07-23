@@ -31,6 +31,10 @@ pub(crate) struct SessionCostTracker {
     pub(crate) per_model_costs: HashMap<String, PerModelCost>,
     /// Total cost from subagent sessions that completed and reported back.
     pub(crate) subagent_cost_usd: f64,
+    /// Cost accumulated before this session was resumed.
+    pub(crate) restored_cost_usd: Option<f64>,
+    /// Whether any configured pricing has contributed to the total.
+    pub(crate) has_priced_usage: bool,
 }
 
 /// Token counts and cost for a single model used during this session.
@@ -44,8 +48,22 @@ pub(crate) struct PerModelCost {
 
 impl SessionCostTracker {
     pub(crate) fn total_cost_usd(&self) -> f64 {
-        let direct_total: f64 = self.per_model_costs.values().map(|c| c.cost_usd).sum();
-        direct_total + self.subagent_cost_usd
+        self.restored_cost_usd.unwrap_or_default()
+            + self
+                .per_model_costs
+                .values()
+                .map(|c| c.cost_usd)
+                .sum::<f64>()
+            + self.subagent_cost_usd
+    }
+
+    pub(crate) fn available_cost_usd(&self) -> Option<f64> {
+        self.has_priced_usage.then(|| self.total_cost_usd())
+    }
+
+    pub(crate) fn restore_total_cost_usd(&mut self, cost_usd: Option<f64>) {
+        self.restored_cost_usd = cost_usd;
+        self.has_priced_usage = cost_usd.is_some();
     }
 
     /// Record token usage for a model using the provider's pricing table.
@@ -64,6 +82,7 @@ impl SessionCostTracker {
         let Some(model_prices) = prices.get(model_id) else {
             return;
         };
+        self.has_priced_usage = true;
 
         let is_long_context = usage.total_tokens > 272_000;
 
@@ -116,6 +135,7 @@ impl SessionCostTracker {
     /// Add cost reported by a completed subagent.
     pub(crate) fn add_subagent_cost(&mut self, cost_usd: f64) {
         self.subagent_cost_usd += cost_usd;
+        self.has_priced_usage = true;
     }
 }
 

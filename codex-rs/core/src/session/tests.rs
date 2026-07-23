@@ -2262,7 +2262,7 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
         TokenCountEvent {
             info: Some(info2.clone()),
             rate_limits: None,
-            session_cost_usd: None,
+            session_cost_usd: Some(1.25),
         },
     )));
     rollout_items.push(RolloutItem::EventMsg(EventMsg::TokenCount(
@@ -2283,6 +2283,7 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
 
     let actual = session.state.lock().await.token_info();
     assert_eq!(actual, Some(info2));
+    assert_eq!(session.session_cost_usd().await, Some(1.25));
 }
 
 #[tokio::test]
@@ -5544,7 +5545,6 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         )),
         tool_search_handler_cache: Default::default(),
         turn_environments: Arc::clone(&turn_environments),
-        plugin_context_cache: PluginContextCache::default(),
     };
 
     let plugins_input = per_turn_config.plugins_config_input();
@@ -7676,7 +7676,6 @@ where
         )),
         tool_search_handler_cache: Default::default(),
         turn_environments: Arc::clone(&turn_environments),
-        plugin_context_cache: PluginContextCache::default(),
     };
 
     let plugins_input = per_turn_config.plugins_config_input();

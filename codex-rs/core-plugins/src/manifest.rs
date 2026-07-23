@@ -9,6 +9,9 @@ use std::fs;
 use std::path::Path;
 const MAX_DEFAULT_PROMPT_COUNT: usize = 3;
 const MAX_DEFAULT_PROMPT_LEN: usize = 128;
+const MAX_THREAD_CONTEXT_ENTRIES: usize = 32;
+const MAX_THREAD_CONTEXT_ENTRY_LEN: usize = 8_000;
+const MAX_THREAD_CONTEXT_TOTAL_LEN: usize = 32_000;
 
 pub type PluginManifest = codex_plugin::manifest::PluginManifest<AbsolutePathBuf>;
 pub type PluginManifestHooks = codex_plugin::manifest::PluginManifestHooks<AbsolutePathBuf>;
@@ -190,12 +193,24 @@ pub(crate) fn parse_plugin_manifest_uri(
         .basename()
         .filter(|_| raw_name.trim().is_empty())
         .unwrap_or(raw_name);
-    let context = context.map(|c| codex_plugin::manifest::PluginManifestContext {
-        thread: c
-            .thread
-            .into_iter()
-            .filter_map(convert_thread_context_entry)
-            .collect(),
+    let context = context.map(|c| {
+        let mut total_len = 0;
+        let mut thread = Vec::new();
+        for raw in c.thread.into_iter().take(MAX_THREAD_CONTEXT_ENTRIES) {
+            let Some(entry) = convert_thread_context_entry(raw) else {
+                continue;
+            };
+            let entry_len = entry.text.chars().count();
+            if total_len + entry_len > MAX_THREAD_CONTEXT_TOTAL_LEN {
+                tracing::warn!(
+                    "plugin thread context exceeds the maximum aggregate length; skipping remaining entries"
+                );
+                break;
+            }
+            total_len += entry_len;
+            thread.push(entry);
+        }
+        codex_plugin::manifest::PluginManifestContext { thread }
     });
     let manifest_path_for_warning = manifest_path.to_string();
     let version = version.and_then(|version| {
@@ -318,6 +333,14 @@ fn convert_thread_context_entry(
     };
     let text = raw.text.trim().to_string();
     if text.is_empty() {
+        return None;
+    }
+    if text.chars().count() > MAX_THREAD_CONTEXT_ENTRY_LEN {
+        tracing::warn!(
+            length = text.chars().count(),
+            max_length = MAX_THREAD_CONTEXT_ENTRY_LEN,
+            "plugin thread context entry is too long; skipping entry"
+        );
         return None;
     }
     Some(codex_plugin::manifest::PluginThreadContextEntry {

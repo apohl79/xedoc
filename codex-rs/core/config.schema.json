@@ -1671,6 +1671,13 @@
           "description": "Additional HTTP headers to include in requests to this provider where the (key, value) pairs are the header name and value.",
           "type": "object"
         },
+        "model_prices": {
+          "additionalProperties": {
+            "$ref": "#/definitions/ModelTokenPrices"
+          },
+          "description": "Per-model token pricing in USD per 1M tokens.\n\nWhen set, Codex tracks session cost in USD using the token usage reported by the API. If a model used at runtime has no entry here, its usage is not priced. Cached input tokens use `cached_input_price_per_1m_tokens` when provided; otherwise cached input is priced at the standard input rate (no caching assumed).",
+          "type": "object"
+        },
         "name": {
           "default": "",
           "description": "Friendly display name.",
@@ -1732,6 +1739,47 @@
           "description": "Which wire protocol this provider expects."
         }
       },
+      "type": "object"
+    },
+    "ModelTokenPrices": {
+      "additionalProperties": false,
+      "description": "Token pricing for a specific model in USD per 1M tokens.",
+      "properties": {
+        "cached_input_price_per_1m_tokens": {
+          "description": "Price per 1M cached input tokens in USD.\n\nWhen `None`, cached input tokens are priced at the standard `input_price_per_1m_tokens` rate (no caching discount assumed).",
+          "format": "double",
+          "type": "number"
+        },
+        "input_price_per_1m_tokens": {
+          "description": "Price per 1M input (non-cached) tokens in USD.",
+          "format": "double",
+          "type": "number"
+        },
+        "long_context_cached_input_price_per_1m_tokens": {
+          "description": "Long-context (>272K tokens) price per 1M cached input tokens in USD.\n\nWhen `None`, long-context cached input tokens use the standard `cached_input_price_per_1m_tokens` rate (falling back to `input_price_per_1m_tokens` if that is also unset).",
+          "format": "double",
+          "type": "number"
+        },
+        "long_context_input_price_per_1m_tokens": {
+          "description": "Long-context (>272K tokens) price per 1M input tokens in USD.\n\nWhen `None`, long-context requests use the standard `input_price_per_1m_tokens` rate (no tiered pricing).",
+          "format": "double",
+          "type": "number"
+        },
+        "long_context_output_price_per_1m_tokens": {
+          "description": "Long-context (>272K tokens) price per 1M output tokens in USD.\n\nWhen `None`, long-context output tokens use the standard `output_price_per_1m_tokens` rate (no tiered pricing).",
+          "format": "double",
+          "type": "number"
+        },
+        "output_price_per_1m_tokens": {
+          "description": "Price per 1M output tokens in USD.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "input_price_per_1m_tokens",
+        "output_price_per_1m_tokens"
+      ],
       "type": "object"
     },
     "MultiAgentV2ConfigToml": {

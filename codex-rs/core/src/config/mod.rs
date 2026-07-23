@@ -3878,7 +3878,7 @@ impl Config {
             memories: memories_config,
             agent_job_max_runtime_seconds,
             agent_interrupt_message_enabled,
-            codex_home,
+            codex_home: codex_home.clone(),
             sqlite_home,
             log_dir,
             config_lock_export_dir: cfg
@@ -4020,7 +4020,7 @@ impl Config {
                 .tui
                 .as_ref()
                 .and_then(|t| t.status_line_command.clone())
-                .or_else(default_codex_statusline),
+                .or_else(|| default_codex_statusline(codex_home.as_path())),
             tui_terminal_title: cfg.tui.as_ref().and_then(|t| t.terminal_title.clone()),
             tui_theme: cfg.tui.as_ref().and_then(|t| t.theme.clone()),
             tui_pet: cfg.tui.as_ref().and_then(|t| t.pet.clone()),
@@ -4371,10 +4371,10 @@ pub fn find_codex_home() -> std::io::Result<AbsolutePathBuf> {
     codex_utils_home_dir::find_codex_home()
 }
 
-/// Returns a default statusline command pointing at `~/.codex/statusline.sh`
+/// Returns a default statusline command pointing at `$CODEX_HOME/statusline.sh`
 /// when that file exists and the user has not configured an explicit command.
-fn default_codex_statusline() -> Option<StatusLineCommand> {
-    let path = dirs::home_dir()?.join(".codex/statusline.sh");
+fn default_codex_statusline(codex_home: &Path) -> Option<StatusLineCommand> {
+    let path = codex_home.join("statusline.sh");
     path.is_file()
         .then(|| StatusLineCommand::Args(vec![path.to_string_lossy().to_string()]))
 }

@@ -84,7 +84,7 @@ impl<'de> Deserialize<'de> for WireApi {
 }
 
 /// Serializable representation of a provider definition.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ModelProviderInfo {
     /// Friendly display name.
@@ -153,6 +153,32 @@ pub struct ModelProviderInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<HashMap<String, ModelTokenPrices>>")]
     pub model_prices: Option<HashMap<String, ModelTokenPrices>>,
+}
+
+impl Default for ModelProviderInfo {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            base_url: None,
+            env_key: None,
+            env_key_instructions: None,
+            experimental_bearer_token: None,
+            auth: None,
+            aws: None,
+            wire_api: WireApi::default(),
+            query_params: None,
+            http_headers: None,
+            env_http_headers: None,
+            request_max_retries: None,
+            stream_max_retries: None,
+            stream_idle_timeout_ms: None,
+            websocket_connect_timeout_ms: None,
+            requires_openai_auth: false,
+            supports_websockets: false,
+            namespace_tools: default_namespace_tools(),
+            model_prices: None,
+        }
+    }
 }
 
 fn default_namespace_tools() -> bool {

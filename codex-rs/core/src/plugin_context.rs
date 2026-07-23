@@ -3,6 +3,8 @@
 //! (regenerated every turn at zero overhead) and position-aware relative to
 //! the world-state (AGENTS.md) user message.
 
+use codex_core_plugins::PluginLoadOutcome;
+use codex_core_plugins::manifest::load_plugin_manifest;
 use codex_extension_api::ContextContributor;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionFuture;
@@ -14,6 +16,10 @@ use codex_plugin::manifest::PluginManifestContext;
 use codex_plugin::manifest::PluginThreadContextEntry;
 use std::sync::Arc;
 
+const MAX_CONTEXT_ENTRIES: usize = 128;
+const MAX_CONTEXT_ENTRY_CHARS: usize = 8_000;
+const MAX_CONTEXT_TEXT_CHARS: usize = 32_000;
+
 /// A cache of plugin context declarations, keyed by plugin name, built once
 /// during plugin loading and shared across all threads.
 #[derive(Clone, Debug, Default)]
@@ -23,9 +29,53 @@ pub struct PluginContextCache {
 
 impl PluginContextCache {
     pub fn new(entries: Vec<(String, PluginManifestContext)>) -> Self {
-        Self {
-            entries: Arc::new(entries),
+        let mut bounded_entries = Vec::new();
+        let mut total_entries = 0;
+        let mut total_text_chars = 0;
+        for (plugin_name, context) in entries {
+            let mut thread = Vec::new();
+            for entry in context.thread {
+                if total_entries >= MAX_CONTEXT_ENTRIES {
+                    break;
+                }
+                let text_chars = entry.text.chars().count();
+                if text_chars > MAX_CONTEXT_ENTRY_CHARS {
+                    continue;
+                }
+                if total_text_chars + text_chars > MAX_CONTEXT_TEXT_CHARS {
+                    break;
+                }
+                total_text_chars += text_chars;
+                total_entries += 1;
+                thread.push(entry);
+            }
+            if !thread.is_empty() {
+                bounded_entries.push((plugin_name, PluginManifestContext { thread }));
+            }
+            if total_text_chars >= MAX_CONTEXT_TEXT_CHARS {
+                break;
+            }
         }
+        Self {
+            entries: Arc::new(bounded_entries),
+        }
+    }
+
+    pub(crate) fn from_plugin_outcome(outcome: &PluginLoadOutcome) -> Self {
+        let entries = outcome
+            .plugins()
+            .iter()
+            .filter(|plugin| plugin.is_active())
+            .filter_map(|plugin| {
+                load_plugin_manifest(plugin.root.as_path()).and_then(|manifest| {
+                    manifest
+                        .paths
+                        .context
+                        .map(|context| (plugin.config_name.clone(), context))
+                })
+            })
+            .collect();
+        Self::new(entries)
     }
 
     fn fragments(&self) -> Vec<PluginThreadContextEntry> {

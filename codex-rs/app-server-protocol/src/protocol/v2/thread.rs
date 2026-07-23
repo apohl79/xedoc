@@ -1392,10 +1392,16 @@ pub struct ThreadTokenUsage {
 
 impl From<CoreTokenUsageInfo> for ThreadTokenUsage {
     fn from(value: CoreTokenUsageInfo) -> Self {
+        Self::from_core_token_usage(value, None)
+    }
+}
+
+impl ThreadTokenUsage {
+    pub fn from_core_token_usage(value: CoreTokenUsageInfo, session_cost_usd: Option<f64>) -> Self {
         Self {
             total: value.total_token_usage.into(),
             last: value.last_token_usage.into(),
-            session_cost_usd: None,
+            session_cost_usd,
             model_context_window: value.model_context_window,
         }
     }

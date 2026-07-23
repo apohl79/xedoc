@@ -81,6 +81,8 @@ async fn continue_after_stream_error() {
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        namespace_tools: true,
+        model_prices: None,
     };
 
     let TestCodex { codex, .. } = test_codex()

@@ -4,10 +4,12 @@ use crate::agents_md_manager::AgentsMdManager;
 use crate::config::ConstraintError;
 use crate::environment_selection::ThreadEnvironments;
 use crate::environment_selection::TurnEnvironmentSnapshot;
+use crate::plugin_context::PluginContextCache;
 use crate::shell_snapshot::ShellSnapshot;
 use crate::skills::SkillError;
 use crate::state::ActiveTurn;
 use codex_extension_api::ExtensionDataInit;
+use codex_extension_api::ExtensionRegistryBuilder;
 use codex_login::auth::AgentIdentityAuthPolicy;
 use codex_protocol::SessionId;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
@@ -443,7 +445,7 @@ async fn warm_plugins_and_skills_for_session_init(
     plugins_manager: Arc<PluginsManager>,
     skills_service: Arc<SkillsService>,
     turn_environments: &TurnEnvironmentSnapshot,
-) -> Vec<SkillError> {
+) -> (Vec<SkillError>, PluginContextCache) {
     let fs = turn_environments.primary_filesystem();
     let plugins_input = config.plugins_config_input();
     let plugin_outcome = plugins_manager.plugins_for_config(&plugins_input).await;
@@ -451,12 +453,16 @@ async fn warm_plugins_and_skills_for_session_init(
     let plugin_skill_snapshots = plugins_manager.plugin_skill_snapshots_for_config(&plugins_input);
     let skills_input = skills_load_input_from_config(config.as_ref(), effective_skill_roots)
         .with_plugin_skill_snapshots(plugin_skill_snapshots);
-    skills_service
+    let errors = skills_service
         .snapshot_for_config(&skills_input, fs)
         .await
         .outcome()
         .errors
-        .clone()
+        .clone();
+    (
+        errors,
+        PluginContextCache::from_plugin_outcome(&plugin_outcome),
+    )
 }
 
 impl Session {
@@ -908,17 +914,18 @@ impl Session {
             agents_md_manager
                 .refresh(config.as_ref(), &resolved_environments)
                 .await;
-            let plugin_skill_errors = warm_plugins_and_skills_for_session_init(
+            let (plugin_skill_errors, plugin_context_cache) =
+                warm_plugins_and_skills_for_session_init(
                 Arc::clone(&config),
                 Arc::clone(&plugins_manager),
                 Arc::clone(&skills_service),
                 &resolved_environments,
-            )
-            .instrument(info_span!(
-                "session_init.plugin_skill_warmup",
-                otel.name = "session_init.plugin_skill_warmup",
-            ))
-            .await;
+                )
+                .instrument(info_span!(
+                    "session_init.plugin_skill_warmup",
+                    otel.name = "session_init.plugin_skill_warmup",
+                ))
+                .await;
             for err in &plugin_skill_errors {
                 error!(
                     "failed to load skill {}: {}",
@@ -1035,6 +1042,14 @@ impl Session {
             session_extension_data.insert(McpResourceClient::new(Arc::clone(
                 &mcp_connection_manager,
             )));
+            let extensions = Arc::new({
+                let mut builder = ExtensionRegistryBuilder::from_registry(&extensions);
+                crate::plugin_context::register_plugin_context_contributor(
+                    &mut builder,
+                    plugin_context_cache.clone(),
+                );
+                builder.build()
+            });
             for contributor in extensions.thread_lifecycle_contributors() {
                 contributor.on_thread_start(codex_extension_api::ThreadStartInput {
                     config: config.as_ref(),
@@ -1137,7 +1152,6 @@ impl Session {
                 )),
                 tool_search_handler_cache: Default::default(),
                 turn_environments: Arc::clone(&turn_environments),
-                plugin_context_cache: PluginContextCache::default(),
             };
             let sess = Arc::new(Session {
                 thread_id,

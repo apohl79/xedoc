@@ -33,6 +33,29 @@ pub struct ExtensionRegistryBuilder<C: Sync> {
     approval_review_contributors: Vec<Arc<dyn ApprovalReviewContributor>>,
 }
 
+impl<C: Sync> ExtensionRegistryBuilder<C> {
+    /// Creates a builder containing all contributors from an existing registry.
+    ///
+    /// Hosts can use this to add a scoped contributor while preserving the process-wide
+    /// extensions installed by the host.
+    pub fn from_registry(registry: &ExtensionRegistry<C>) -> Self {
+        Self {
+            event_sink: registry.event_sink(),
+            thread_lifecycle_contributors: registry.thread_lifecycle_contributors.clone(),
+            turn_lifecycle_contributors: registry.turn_lifecycle_contributors.clone(),
+            config_contributors: registry.config_contributors.clone(),
+            token_usage_contributors: registry.token_usage_contributors.clone(),
+            approval_review_contributors: registry.approval_review_contributors.clone(),
+            context_contributors: registry.context_contributors.clone(),
+            mcp_server_contributors: registry.mcp_server_contributors.clone(),
+            turn_input_contributors: registry.turn_input_contributors.clone(),
+            tool_contributors: registry.tool_contributors.clone(),
+            tool_lifecycle_contributors: registry.tool_lifecycle_contributors.clone(),
+            turn_item_contributors: registry.turn_item_contributors.clone(),
+        }
+    }
+}
+
 impl<C: Sync> Default for ExtensionRegistryBuilder<C> {
     fn default() -> Self {
         Self {
