@@ -8,7 +8,7 @@ Working (0s • esc to interrupt)
   └ ✔ Inspect current bottom-pane plan handling                 
     □ Render the active task list above the entry field         
     □ Run targeted TUI tests                                    
-────────────────────────────────────────────────────────────────
-❯ Ask Codex to do anything                                      
-                                                                
+╭──────────────────────────────────────────────────────────────╮
+│❯ Ask Codex to do anything                                    │
+╰──────────────────────────────────────────────────────────────╯
   ? for shortcuts                            100% context left
