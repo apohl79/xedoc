@@ -155,13 +155,15 @@ async fn thread_title_falls_back_to_thread_id_when_unnamed() {
     let thread_id = ThreadId::new();
     chat.thread_id = Some(thread_id);
 
+    // Status line ThreadTitle still falls back to thread ID.
     assert_eq!(
         status_preview_line(&mut chat, &[StatusLineItem::ThreadTitle]),
         thread_id.to_string()
     );
+    // Terminal title Thread falls back to project (cwd dir) name.
     assert_eq!(
         title_preview_line(&mut chat, &[TerminalTitleItem::Thread]),
-        thread_id.to_string()
+        "project".to_string()
     );
 }
 

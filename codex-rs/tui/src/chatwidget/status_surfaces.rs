@@ -995,9 +995,26 @@ impl ChatWidget {
             )),
             TerminalTitleItem::Spinner => self.terminal_title_spinner_text_at(now),
             TerminalTitleItem::Status => Some(self.run_state_status_text()),
-            TerminalTitleItem::Thread => self
-                .status_line_value_for_item(StatusLineItem::ThreadTitle)
-                .map(|value| Self::truncate_terminal_title_part(value, /*max_chars*/ 48)),
+            TerminalTitleItem::Thread => {
+                let thread_name = self
+                    .thread_name
+                    .as_ref()
+                    .map(|n| n.trim().to_string())
+                    .filter(|n| !n.is_empty());
+                thread_name
+                    .or_else(|| self.status_line_project_root_name())
+                    .or_else(|| {
+                        let cwd = self.status_line_cwd();
+                        Some(
+                            cwd.file_name()
+                                .map(|name| name.to_string_lossy().to_string())
+                                .unwrap_or_else(|| {
+                                    format_directory_display(cwd, /*max_width*/ None)
+                                }),
+                        )
+                    })
+                    .map(|value| Self::truncate_terminal_title_part(value, /*max_chars*/ 48))
+            }
             TerminalTitleItem::GitBranch => self.status_line_branch.as_ref().map(|branch| {
                 Self::truncate_terminal_title_part(branch.clone(), /*max_chars*/ 32)
             }),
