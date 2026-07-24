@@ -775,11 +775,15 @@ def generate_release_notes(tag: str, fork_version: str) -> str:
 def find_previous_fork_tag(tag: str) -> str | None:
     """Return the most recent apohl79 release tag before *tag*, or None."""
     try:
-        all_tags = subprocess.check_output(
-            ["git", "tag", "--sort=creatordate"],
-            cwd=REPO_ROOT,
-            text=True,
-        ).strip().split("\n")
+        all_tags = (
+            subprocess.check_output(
+                ["git", "tag", "--sort=creatordate"],
+                cwd=REPO_ROOT,
+                text=True,
+            )
+            .strip()
+            .split("\n")
+        )
     except subprocess.CalledProcessError:
         return None
 
@@ -817,17 +821,56 @@ def _is_git_repo() -> bool:
 
 
 _FORK_KEYWORDS = [
-    "apohl79", "vc-0", "fork", "city lights", "statusline", "status_line",
-    "session name", "at-path", "at-complet", "at mention", "file_search",
-    "task list", "active agent", "plugin context", "composer border",
-    "hook output", "activity summar", "sub-agent activit", "namespace_tools",
-    "cost track", "pricing", "❯", "build number", "multi-agent v2 delivery",
-    "spawn_agent", "inter-agent", "queued input", "recall", "prompt-too-long",
-    "streamed assistant", "auto session", "composerborder", "citylights",
-    "unified exec zsh", "context usage", "model_prices", "ratatui rendering",
-    "phase-tagged", "post-turn", "pre-edit", "zsh fork", "composer thread",
-    "composer label", "composer session", "goal label", "goal status",
-    "auth2api", "fork upgrade", "fork features", "fork inventory",
+    "apohl79",
+    "vc-0",
+    "fork",
+    "city lights",
+    "statusline",
+    "status_line",
+    "session name",
+    "at-path",
+    "at-complet",
+    "at mention",
+    "file_search",
+    "task list",
+    "active agent",
+    "plugin context",
+    "composer border",
+    "hook output",
+    "activity summar",
+    "sub-agent activit",
+    "namespace_tools",
+    "cost track",
+    "pricing",
+    "❯",
+    "build number",
+    "multi-agent v2 delivery",
+    "spawn_agent",
+    "inter-agent",
+    "queued input",
+    "recall",
+    "prompt-too-long",
+    "streamed assistant",
+    "auto session",
+    "composerborder",
+    "citylights",
+    "unified exec zsh",
+    "context usage",
+    "model_prices",
+    "ratatui rendering",
+    "phase-tagged",
+    "post-turn",
+    "pre-edit",
+    "zsh fork",
+    "composer thread",
+    "composer label",
+    "composer session",
+    "goal label",
+    "goal status",
+    "auth2api",
+    "fork upgrade",
+    "fork features",
+    "fork inventory",
     "upstream change",
 ]
 
@@ -857,9 +900,7 @@ def _bullet_list(items: list[str], indent: str = "") -> str:
     return "\n".join(f"{indent}- {item}" for item in items)
 
 
-def initial_release_notes(
-    upstream_base: str, date: str, fork_version: str
-) -> str:
+def initial_release_notes(upstream_base: str, date: str, fork_version: str) -> str:
     return textwrap.dedent(f"""\
         ## apohl79 Codex {fork_version}
 
