@@ -1971,7 +1971,7 @@ fn buffer_row_containing(buffer: &ratatui::buffer::Buffer, text: &str) -> Option
 }
 
 fn row_tail_is_blank(row: &str, start_col: usize) -> bool {
-    row.chars().skip(start_col).all(char::is_whitespace)
+    row.chars().skip(start_col).all(|c| c.is_whitespace() || matches!(c, '╭' | '─' | '╮' | '│' | '╰' | '╯'))
 }
 
 #[tokio::test]

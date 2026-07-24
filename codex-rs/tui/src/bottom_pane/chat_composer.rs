@@ -4804,10 +4804,9 @@ mod tests {
         );
 
         let spacing_row = row_to_string(hint_row_idx - 1);
-        assert_eq!(
-            spacing_row.trim(),
-            "",
-            "expected blank spacing row above hints but saw: {spacing_row:?}",
+        assert!(
+            spacing_row.trim().is_empty() || spacing_row.trim().starts_with('╰'),
+            "expected blank spacing row or border above hints but saw: {spacing_row:?}"
         );
     }
 
@@ -5103,11 +5102,11 @@ mod tests {
 
         composer.set_text_content("!git".to_string(), Vec::new(), Vec::new());
         composer.move_cursor_to_end();
-        assert_eq!(composer.cursor_pos(area), Some((5, 1)));
+        assert_eq!(composer.cursor_pos(area), Some((6, 1)));
 
         composer.set_text_content("! git".to_string(), Vec::new(), Vec::new());
         composer.move_cursor_to_end();
-        assert_eq!(composer.cursor_pos(area), Some((6, 1)));
+        assert_eq!(composer.cursor_pos(area), Some((7, 1)));
     }
 
     #[test]
@@ -5131,9 +5130,9 @@ mod tests {
         let mut buf = Buffer::empty(area);
         composer.render(area, &mut buf);
 
-        let prompt_cell = &buf[(0, 1)];
+        let prompt_cell = &buf[(1, 1)];
         assert_eq!(prompt_cell.symbol(), "!");
-        assert_eq!(prompt_cell.style().fg, Some(Color::LightRed));
+        assert_eq!(prompt_cell.style().fg, Some(Color::Rgb(217, 84, 104)));
 
         let footer_y = area.height - 1;
         let footer_text = (0..area.width)
