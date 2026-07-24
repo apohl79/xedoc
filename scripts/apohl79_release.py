@@ -7,6 +7,7 @@ import re
 import shlex
 import subprocess
 import sys
+import textwrap
 
 from codex_package.targets import TARGET_SPECS
 from codex_package.targets import default_target
@@ -317,6 +318,7 @@ def build_release(args: argparse.Namespace) -> None:
             target=release_target,
             archive_outputs=archive_outputs,
             env=github_env,
+            notes=generate_release_notes(release_tag, fork_version),
         )
 
     print(f"Built apohl79 Codex release {fork_version}")
@@ -738,6 +740,204 @@ def ensure_github_release_target_exists(
     )
 
 
+def generate_release_notes(tag: str, fork_version: str) -> str:
+    """Generate a changelog body for the GitHub release from git history."""
+    if not _is_git_repo():
+        return f"apohl79 Codex {fork_version}"
+
+    prev_tag = find_previous_fork_tag(tag)
+    upstream_base = upstream_base_from_fork_version(fork_version)
+    date = subprocess.check_output(
+        ["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d", "HEAD"],
+        cwd=REPO_ROOT,
+        text=True,
+    ).strip()
+
+    if prev_tag is None:
+        return initial_release_notes(upstream_base, date, fork_version)
+
+    fork_commits = fork_commits_between(prev_tag, "HEAD")
+    prev_upstream = (
+        upstream_base_from_fork_version(prev_tag.replace("rust-v", ""))
+        if prev_tag
+        else None
+    )
+
+    return incremental_release_notes(
+        fork_version=fork_version,
+        upstream_base=upstream_base,
+        date=date,
+        fork_commits=fork_commits,
+        prev_upstream=prev_upstream,
+    )
+
+
+def find_previous_fork_tag(tag: str) -> str | None:
+    """Return the most recent apohl79 release tag before *tag*, or None."""
+    try:
+        all_tags = subprocess.check_output(
+            ["git", "tag", "--sort=creatordate"],
+            cwd=REPO_ROOT,
+            text=True,
+        ).strip().split("\n")
+    except subprocess.CalledProcessError:
+        return None
+
+    fork_tags = [t for t in all_tags if "apohl79" in t and t.startswith("rust-v")]
+    try:
+        idx = fork_tags.index(tag)
+    except ValueError:
+        return fork_tags[-1] if fork_tags else None
+    return fork_tags[idx - 1] if idx > 0 else None
+
+
+def upstream_base_from_fork_version(fork_version: str) -> str:
+    """Extract the upstream base version from a fork version string.
+
+    "0.144.0-apohl79-30" -> "0.144.0"
+    """
+    match = re.match(r"^([0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?)", fork_version)
+    if match is None:
+        return fork_version.rsplit("-", maxsplit=1)[0]
+    return match.group(1)
+
+
+def _is_git_repo() -> bool:
+    """Return True if REPO_ROOT is inside a git working tree."""
+    try:
+        subprocess.check_output(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=REPO_ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+_FORK_KEYWORDS = [
+    "apohl79", "vc-0", "fork", "city lights", "statusline", "status_line",
+    "session name", "at-path", "at-complet", "at mention", "file_search",
+    "task list", "active agent", "plugin context", "composer border",
+    "hook output", "activity summar", "sub-agent activit", "namespace_tools",
+    "cost track", "pricing", "❯", "build number", "multi-agent v2 delivery",
+    "spawn_agent", "inter-agent", "queued input", "recall", "prompt-too-long",
+    "streamed assistant", "auto session", "composerborder", "citylights",
+    "unified exec zsh", "context usage", "model_prices", "ratatui rendering",
+    "phase-tagged", "post-turn", "pre-edit", "zsh fork", "composer thread",
+    "composer label", "composer session", "goal label", "goal status",
+    "auth2api", "fork upgrade", "fork features", "fork inventory",
+    "upstream change",
+]
+
+
+def is_fork_commit(message: str) -> bool:
+    lower = message.lower()
+    return any(kw in lower for kw in _FORK_KEYWORDS)
+
+
+def fork_commits_between(prev_tag: str, ref: str) -> list[str]:
+    """Return fork-specific commit messages between *prev_tag* and *ref*."""
+    try:
+        raw = subprocess.check_output(
+            ["git", "log", "--oneline", "--no-merges", f"{prev_tag}..{ref}"],
+            cwd=REPO_ROOT,
+            text=True,
+        )
+    except subprocess.CalledProcessError:
+        return []
+    lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
+    return [ln[9:].strip() for ln in lines if is_fork_commit(ln[9:])]
+
+
+def _bullet_list(items: list[str], indent: str = "") -> str:
+    if not items:
+        return ""
+    return "\n".join(f"{indent}- {item}" for item in items)
+
+
+def initial_release_notes(
+    upstream_base: str, date: str, fork_version: str
+) -> str:
+    return textwrap.dedent(f"""\
+        ## apohl79 Codex {fork_version}
+
+        **Upstream base:** OpenAI Codex {upstream_base}
+        **Release date:** {date}
+
+        ### Initial Fork Release
+
+        This is the initial apohl79 fork release, tracking OpenAI Codex \
+{upstream_base}.""")
+
+
+def incremental_release_notes(
+    *,
+    fork_version: str,
+    upstream_base: str,
+    date: str,
+    fork_commits: list[str],
+    prev_upstream: str | None = None,
+) -> str:
+    header = textwrap.dedent(f"""\
+        ## apohl79 Codex {fork_version}
+
+        **Upstream base:** OpenAI Codex {upstream_base}
+        **Release date:** {date}""")
+
+    if not fork_commits:
+        return header
+
+    sections: list[str] = [header]
+
+    is_rebase = prev_upstream is not None and prev_upstream != upstream_base
+
+    if is_rebase and prev_upstream is not None:
+        sections.append("")
+        sections.append(f"### Rebase to {upstream_base}")
+        sections.append("")
+        sections.append(f"Rebased fork onto OpenAI Codex {upstream_base}.")
+
+    # Categorize commits
+    features: list[str] = []
+    fixes: list[str] = []
+    other: list[str] = []
+
+    for msg in fork_commits:
+        lower = msg.lower()
+        if lower.startswith("fix") or lower.startswith("hotfix"):
+            fixes.append(msg)
+        elif lower.startswith("feat") or any(
+            kw in lower for kw in ["add ", "support ", "introduce", "implement"]
+        ):
+            features.append(msg)
+        elif lower.startswith("chore: bump build number"):
+            continue
+        else:
+            other.append(msg)
+
+    if features:
+        sections.append("")
+        sections.append("### Fork Changes")
+        sections.append("")
+        sections.append(_bullet_list(features))
+
+    if fixes:
+        sections.append("")
+        sections.append("### Fixes")
+        sections.append("")
+        sections.append(_bullet_list(fixes))
+
+    if other and not features and not fixes:
+        sections.append("")
+        sections.append("### Changes")
+        sections.append("")
+        sections.append(_bullet_list(other))
+
+    return "\n".join(sections)
+
+
 def publish_github_release(
     *,
     gh: str,
@@ -747,11 +947,14 @@ def publish_github_release(
     target: str,
     archive_outputs: list[Path],
     env: dict[str, str] | None = None,
+    notes: str | None = None,
 ) -> None:
     if github_release_exists(gh=gh, repo=repo, tag=tag, env=env):
         print(f"GitHub release {tag} already exists in {repo}.", flush=True)
     else:
         print(f"Creating GitHub release {tag} in {repo}.", flush=True)
+        if notes is None:
+            notes = f"apohl79 Codex {title}"
         run(
             [
                 gh,
@@ -763,7 +966,7 @@ def publish_github_release(
                 "--title",
                 title,
                 "--notes",
-                f"apohl79 Codex {title}",
+                notes,
                 "--target",
                 target,
             ],

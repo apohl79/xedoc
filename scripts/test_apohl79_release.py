@@ -615,6 +615,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 target: str,
                 archive_outputs: list[Path],
                 env: dict[str, str] | None = None,
+                notes: str | None = None,
             ) -> None:
                 published.update(
                     {
