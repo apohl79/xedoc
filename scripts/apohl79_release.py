@@ -820,78 +820,50 @@ def _is_git_repo() -> bool:
         return False
 
 
-_FORK_KEYWORDS = [
-    "apohl79",
-    "vc-0",
-    "fork",
-    "city lights",
-    "statusline",
-    "status_line",
-    "session name",
-    "at-path",
-    "at-complet",
-    "at mention",
-    "file_search",
-    "task list",
-    "active agent",
-    "plugin context",
-    "composer border",
-    "hook output",
-    "activity summar",
-    "sub-agent activit",
-    "namespace_tools",
-    "cost track",
-    "pricing",
-    "❯",
-    "build number",
-    "multi-agent v2 delivery",
-    "spawn_agent",
-    "inter-agent",
-    "queued input",
-    "recall",
-    "prompt-too-long",
-    "streamed assistant",
-    "auto session",
-    "composerborder",
-    "citylights",
-    "unified exec zsh",
-    "context usage",
-    "model_prices",
-    "ratatui rendering",
-    "phase-tagged",
-    "post-turn",
-    "pre-edit",
-    "zsh fork",
-    "composer thread",
-    "composer label",
-    "composer session",
-    "goal label",
-    "goal status",
-    "auth2api",
-    "fork upgrade",
-    "fork features",
-    "fork inventory",
-    "upstream change",
-]
+FORK_AUTHOR_ENV_VAR = "FORK_AUTHOR"
 
 
-def is_fork_commit(message: str) -> bool:
-    lower = message.lower()
-    return any(kw in lower for kw in _FORK_KEYWORDS)
+def fork_author(prev_tag: str) -> str:
+    """Return the author pattern used to identify fork commits.
+
+    Prefers the FORK_AUTHOR environment variable, then auto-detects from the
+    author of the previous fork release tag's tip commit, and falls back to a
+    hard-coded default when neither is available.
+    """
+    env_author = os.environ.get(FORK_AUTHOR_ENV_VAR)
+    if env_author:
+        return env_author
+    try:
+        return subprocess.check_output(
+            ["git", "log", "-1", "--format=%an", prev_tag],
+            cwd=REPO_ROOT,
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        return "Andreas Pohl"
 
 
 def fork_commits_between(prev_tag: str, ref: str) -> list[str]:
-    """Return fork-specific commit messages between *prev_tag* and *ref*."""
+    """Return fork-specific commit messages between *prev_tag* and *ref*.
+
+    Filters by commit author so upstream commits are excluded without a
+    manually maintained keyword list.
+    """
+    author = fork_author(prev_tag)
     try:
         raw = subprocess.check_output(
-            ["git", "log", "--oneline", "--no-merges", f"{prev_tag}..{ref}"],
+            [
+                "git", "log", "--oneline", "--no-merges",
+                "--author", author,
+                f"{prev_tag}..{ref}",
+            ],
             cwd=REPO_ROOT,
             text=True,
         )
     except subprocess.CalledProcessError:
         return []
     lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
-    return [ln[9:].strip() for ln in lines if is_fork_commit(ln[9:])]
+    return [ln[9:].strip() for ln in lines]
 
 
 def _bullet_list(items: list[str], indent: str = "") -> str:
