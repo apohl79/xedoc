@@ -14,7 +14,7 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 ### Installing and running this fork
 
-Install the latest apohl79 fork release on macOS or Linux:
+Install the latest apohl79 fork release on macOS:
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install-apohl79.sh | bash
