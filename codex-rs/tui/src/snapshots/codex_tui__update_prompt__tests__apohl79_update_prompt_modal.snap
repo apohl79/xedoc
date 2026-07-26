@@ -1,0 +1,16 @@
+---
+source: tui/src/update_prompt.rs
+expression: terminal.backend()
+---
+
+  ✨ Update available! 0.144.0 -> 0.144.0-apohl79-32
+
+  Release notes: https://github.com/apohl79/codex/releases/latest
+
+› 1. Update now (runs `sh -c 'curl -fsSL                                        
+     https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/i
+     nstall-apohl79.sh | sh'`)                                                  
+  2. Skip
+  3. Skip until next version
+
+  Press enter to continue

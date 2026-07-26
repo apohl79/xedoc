@@ -29,7 +29,9 @@ use ratatui::widgets::Clear;
 use ratatui::widgets::WidgetRef;
 use tokio_stream::StreamExt;
 
-const RELEASE_NOTES_URL: &str = "https://github.com/openai/codex/releases/latest";
+const OPENAI_RELEASE_NOTES_URL: &str = "https://github.com/openai/codex/releases/latest";
+#[cfg(target_os = "macos")]
+const APOHL79_RELEASE_NOTES_URL: &str = "https://github.com/apohl79/codex/releases/latest";
 
 pub(crate) enum UpdatePromptOutcome {
     Continue,
@@ -40,7 +42,7 @@ pub(crate) async fn run_update_prompt_if_needed(
     tui: &mut Tui,
     config: &Config,
 ) -> Result<UpdatePromptOutcome> {
-    let Some(latest_version) = updates::get_upgrade_version_for_popup(config) else {
+    let Some(latest_version) = updates::get_upgrade_version_for_popup(config).await else {
         return Ok(UpdatePromptOutcome::Continue);
     };
     let Some(update_action) = crate::update_action::get_update_action() else {
@@ -191,6 +193,11 @@ impl WidgetRef for &UpdatePromptScreen {
         let mut column = ColumnRenderable::new();
 
         let update_command = self.update_action.command_str();
+        let release_notes_url = match self.update_action {
+            #[cfg(target_os = "macos")]
+            UpdateAction::Apohl79StandaloneMacos => APOHL79_RELEASE_NOTES_URL,
+            _ => OPENAI_RELEASE_NOTES_URL,
+        };
 
         column.push("");
         column.push(Line::from(vec![
@@ -208,7 +215,7 @@ impl WidgetRef for &UpdatePromptScreen {
         column.push(
             Line::from(vec![
                 "Release notes: ".dim(),
-                RELEASE_NOTES_URL.dim().underlined(),
+                release_notes_url.dim().underlined(),
             ])
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
@@ -238,7 +245,11 @@ impl WidgetRef for &UpdatePromptScreen {
             .inset(Insets::tlbr(0, 2, 0, 0)),
         );
         column.render(area, buf);
-        crate::terminal_hyperlinks::mark_underlined_hyperlink(buf, area, RELEASE_NOTES_URL);
+        #[cfg(target_os = "macos")]
+        if matches!(self.update_action, UpdateAction::Apohl79StandaloneMacos) {
+            return;
+        }
+        crate::terminal_hyperlinks::mark_underlined_hyperlink(buf, area, release_notes_url);
     }
 }
 
@@ -268,6 +279,21 @@ mod tests {
             .draw(|frame| frame.render_widget_ref(&screen, frame.area()))
             .expect("render update prompt");
         insta::assert_snapshot!("update_prompt_modal", terminal.backend());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn apohl79_update_prompt_snapshot() {
+        let screen = UpdatePromptScreen::new(
+            FrameRequester::test_dummy(),
+            "0.144.0-apohl79-32".into(),
+            UpdateAction::Apohl79StandaloneMacos,
+        );
+        let mut terminal = Terminal::new(VT100Backend::new(80, 12)).expect("terminal");
+        terminal
+            .draw(|frame| frame.render_widget_ref(&screen, frame.area()))
+            .expect("render update prompt");
+        insta::assert_snapshot!("apohl79_update_prompt_modal", terminal.backend());
     }
 
     #[test]

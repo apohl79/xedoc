@@ -1,7 +1,6 @@
 use super::*;
 use crate::terminal_palette::rgb_color;
 use pretty_assertions::assert_eq;
-use ratatui::style::Modifier;
 
 #[test]
 fn truecolor_palette_blends_theme_accent_against_dark_background() {

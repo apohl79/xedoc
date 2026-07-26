@@ -1078,7 +1078,6 @@ mod tests {
     use itertools::Itertools as _;
     use pretty_assertions::assert_eq;
     use ratatui::style::Color;
-    use ratatui::style::Stylize;
     use std::string::ToString;
 
     fn concat_line(line: &Line) -> String {
@@ -1217,7 +1216,6 @@ mod tests {
 
     #[test]
     fn styled_split_within_span_preserves_style() {
-        use ratatui::style::Stylize;
         let line = Line::from(vec!["abcd".cl_red()]);
         let out = word_wrap_line(&line, /*width_or_options*/ 2);
         assert_eq!(out.len(), 2);

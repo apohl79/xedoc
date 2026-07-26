@@ -853,7 +853,6 @@ mod tests {
     use super::*;
     use crate::app::app_server_requests::ResolvedAppServerRequest;
     use crate::app_event::AppEvent;
-    use crate::city_lights::CityLightsStylize;
     use crate::render::renderable::Renderable;
     use insta::assert_snapshot;
     use pretty_assertions::assert_eq;

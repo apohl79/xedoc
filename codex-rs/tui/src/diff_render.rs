@@ -2447,16 +2447,6 @@ mod tests {
             "expected many output lines from large diff, got {}",
             lines.len(),
         );
-
-        // Large diffs skip syntax highlighting; the diff colors
-        // themselves may use RGB (City Lights palette).
-        for line in &lines {
-            for span in &line.spans {
-                // Syntax-highlighted spans carry extra modifiers;
-                // plain diff spans are fg-only. Neither should
-                // cause a panic here.
-            }
-        }
     }
 
     #[test]

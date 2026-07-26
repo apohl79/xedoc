@@ -20,6 +20,9 @@ pub enum UpdateAction {
     StandaloneUnix,
     /// Update via `$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex`.
     StandaloneWindows,
+    /// Update the apohl79 fork with its SHA-256-verified macOS package installer.
+    #[cfg(target_os = "macos")]
+    Apohl79StandaloneMacos,
 }
 
 impl UpdateAction {
@@ -61,6 +64,14 @@ impl UpdateAction {
                     "$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex",
                 ],
             ),
+            #[cfg(target_os = "macos")]
+            UpdateAction::Apohl79StandaloneMacos => (
+                "sh",
+                &[
+                    "-c",
+                    "curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install-apohl79.sh | sh",
+                ],
+            ),
         }
     }
 
@@ -70,10 +81,26 @@ impl UpdateAction {
         shlex::try_join(std::iter::once(command).chain(args.iter().copied()))
             .unwrap_or_else(|_| format!("{command} {}", args.join(" ")))
     }
+
+    /// Returns whether Codex must relaunch after this update completes.
+    pub const fn relaunches_after_update(self) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            matches!(self, UpdateAction::Apohl79StandaloneMacos)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
+    }
 }
 
 #[cfg(not(debug_assertions))]
 pub fn get_update_action() -> Option<UpdateAction> {
+    #[cfg(target_os = "macos")]
+    if crate::update_versions::is_apohl79_fork_release(crate::version::CODEX_CLI_VERSION) {
+        return Some(UpdateAction::Apohl79StandaloneMacos);
+    }
     UpdateAction::from_install_context(InstallContext::current())
 }
 
@@ -169,6 +196,21 @@ mod tests {
                     "Bypass",
                     "-c",
                     "$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex"
+                ][..],
+            )
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn apohl79_update_command_runs_fork_installer() {
+        assert_eq!(
+            UpdateAction::Apohl79StandaloneMacos.command_args(),
+            (
+                "sh",
+                &[
+                    "-c",
+                    "curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install-apohl79.sh | sh"
                 ][..],
             )
         );

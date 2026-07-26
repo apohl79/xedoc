@@ -335,7 +335,9 @@ The fork adds release helpers for building apohl79-branded packages from
 - The release helper verifies that the current checkout matches the requested
   ref.
 - The helper requires `codex-rs/Cargo.toml` and `codex-rs/Cargo.lock` to be
-  clean before packaging.
+  clean before packaging by default. Pass `--allow-dirty --skip-github-release`
+  to build a local package from uncommitted manifest or build-number changes;
+  dirty builds cannot create or upload a GitHub release.
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
 - The helper builds `codex-cli` with Cargo `--locked`, signs the binary, verifies
@@ -362,6 +364,27 @@ The fork adds release helpers for building apohl79-branded packages from
   enabled so rebuilding the same version replaces the previous asset.
 - The release helper uses the stored `apohl79` `gh` token by default for release
   publishing, while respecting an explicit `GH_TOKEN` or `GITHUB_TOKEN`.
+
+### macOS Binary Auto-Updates
+
+The macOS apohl79 standalone binary checks `apohl79/codex` for the latest
+release when an interactive TUI session starts. When a newer fork build is
+available, Codex offers the existing update prompt. Confirming the update runs
+the fork installer, which verifies the release archive SHA-256, switches the
+standalone package symlink, and launches the new `codex` binary with the
+original arguments.
+
+- This behavior is limited to macOS apohl79 release builds.
+- Other installation methods and all non-macOS targets retain the upstream
+  update behavior.
+
+Primary files:
+
+- `codex-rs/tui/src/update_action.rs`
+- `codex-rs/tui/src/update_prompt.rs`
+- `codex-rs/tui/src/updates.rs`
+- `codex-rs/tui/src/update_versions.rs`
+- `codex-rs/cli/src/main.rs`
 
 Primary files:
 

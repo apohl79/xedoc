@@ -134,6 +134,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Build the package without creating or uploading a GitHub release.",
     )
     parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help=(
+            "Allow local manifest and build-number changes. Requires "
+            "--skip-github-release because a GitHub release must match its "
+            "committed target."
+        ),
+    )
+    parser.add_argument(
         "--keep-worktree",
         action="store_true",
         help=(
@@ -161,6 +170,11 @@ def build_release(args: argparse.Namespace) -> None:
             "apohl79 release signing uses Apple codesign and supports only "
             "macOS targets. Pass an *-apple-darwin target."
         )
+    if getattr(args, "allow_dirty", False) and not args.skip_github_release:
+        raise RuntimeError(
+            "--allow-dirty requires --skip-github-release because a GitHub "
+            "release must match its committed target."
+        )
 
     codesign_identity = resolve_codesign_identity(args.codesign_identity)
 
@@ -175,9 +189,10 @@ def build_release(args: argparse.Namespace) -> None:
     cargo_toml = source_root / "codex-rs" / "Cargo.toml"
     cargo_lock = source_root / "codex-rs" / "Cargo.lock"
     ensure_current_checkout_matches_ref(args.ref)
-    ensure_git_path_clean(cargo_toml)
-    ensure_git_path_clean(cargo_lock)
-    ensure_git_path_clean(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
+    if not getattr(args, "allow_dirty", False):
+        ensure_git_path_clean(cargo_toml)
+        ensure_git_path_clean(cargo_lock)
+        ensure_git_path_clean(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
     base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
     build_number = read_fork_build_number(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
     fork_version = fork_version_from_base(

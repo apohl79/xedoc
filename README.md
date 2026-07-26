@@ -46,6 +46,7 @@ Then simply run `codex` to get started.
 - Responses-provider and Claude context-window error handling fixes.
 - Queued-input recall cleanup for TUI prompt history.
 - apohl79 release packaging and installer scripts.
+- macOS binary-release update checks, installation, and relaunch.
 - Fork upgrade and upstream-change report skills.
 - City Lights (Doom Emacs) color theme for the TUI.
 

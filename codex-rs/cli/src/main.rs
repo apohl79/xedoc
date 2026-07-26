@@ -750,6 +750,10 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
     }
     if let Some(action) = update_action {
         run_update_action(action)?;
+        #[cfg(target_os = "macos")]
+        if action.relaunches_after_update() {
+            return relaunch_apohl79_codex();
+        }
     }
     Ok(())
 }
@@ -793,8 +797,27 @@ fn run_update_action(action: UpdateAction) -> anyhow::Result<()> {
     if !status.success() {
         anyhow::bail!("`{cmd_str}` failed with status {status}");
     }
-    println!("\n🎉 Update ran successfully! Please restart Codex.");
+    if action.relaunches_after_update() {
+        println!("\n🎉 Update ran successfully! Launching the updated Codex binary.");
+    } else {
+        println!("\n🎉 Update ran successfully! Please restart Codex.");
+    }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn relaunch_apohl79_codex() -> anyhow::Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    let install_dir = std::env::var_os("CODEX_INSTALL_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/bin")))
+        .ok_or_else(|| anyhow::anyhow!("cannot locate the apohl79 Codex install directory"))?;
+    let binary = install_dir.join("codex");
+    Err(std::process::Command::new(binary)
+        .args(std::env::args_os().skip(1))
+        .exec()
+        .into())
 }
 
 fn run_update_command() -> anyhow::Result<()> {

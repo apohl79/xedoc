@@ -1057,7 +1057,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
             run_mock.assert_not_called()
 
-    def test_build_release_leaves_manifests_unchanged_after_failure(self) -> None:
+    def test_dirty_build_leaves_manifests_unchanged_after_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
@@ -1104,6 +1104,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0)
 
             args = argparse.Namespace(
+                allow_dirty=True,
                 archive_output=[],
                 cargo="cargo",
                 codesign_identity=None,
@@ -1129,7 +1130,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 ),
                 mock.patch.object(
                     apohl79_release, "ensure_git_path_clean", return_value=None
-                ),
+                ) as ensure_git_path_clean,
                 mock.patch.object(
                     apohl79_release,
                     "resolve_codesign_identity",
@@ -1141,6 +1142,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "cargo failed"):
                     apohl79_release.build_release(args)
 
+            ensure_git_path_clean.assert_not_called()
             self.assertEqual(
                 cargo_toml.read_text(encoding="utf-8"),
                 original_cargo_toml,
@@ -1357,6 +1359,22 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, 2)
         self.assertIn("must be a positive integer", stderr.getvalue())
+
+    def test_parse_args_accepts_allow_dirty(self) -> None:
+        args = apohl79_release.parse_args(["--allow-dirty"])
+
+        self.assertTrue(args.allow_dirty)
+
+    def test_allow_dirty_requires_local_only_build(self) -> None:
+        args = apohl79_release.parse_args(
+            ["--allow-dirty", "--target", "aarch64-apple-darwin"]
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "--allow-dirty requires --skip-github-release",
+        ):
+            apohl79_release.build_release(args)
 
     def test_resolve_cargo_build_jobs_prefers_cli_over_fork_env(self) -> None:
         with mock.patch.dict(
