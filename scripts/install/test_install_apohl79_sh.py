@@ -84,6 +84,67 @@ class InstallApohl79ShTest(unittest.TestCase):
                 },
             )
 
+    def test_streamed_installer_uses_the_latest_fork_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            request_log = root / "requests.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CODEX_APOHL79_REPO": "apohl79/codex",
+                    "CODEX_APOHL79_TARGET": TARGET,
+                    "CODEX_HOME": str(root / "codex-home"),
+                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
+                    "CODEX_TEST_ARCHIVE": str(archive_path),
+                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "CODEX_TEST_REQUEST_LOG": str(request_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh"],
+                capture_output=True,
+                check=False,
+                cwd=root,
+                env=env,
+                input=INSTALL_SCRIPT.read_text(encoding="utf-8"),
+                text=True,
+            )
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
+                    "codex_link": os.readlink(root / "install-bin/codex"),
+                    "statusline": (root / "codex-home/statusline.sh").read_text(
+                        encoding="utf-8"
+                    ),
+                },
+                {
+                    "returncode": 0,
+                    "requests": [
+                        "https://api.github.com/repos/apohl79/codex/releases/latest",
+                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
+                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
+                        f"https://raw.githubusercontent.com/apohl79/codex/{TAG}/scripts/statusline.sh",
+                    ],
+                    "codex_link": str(
+                        root / "codex-home/packages/standalone/current/bin/codex"
+                    ),
+                    "statusline": "#!/bin/sh\n",
+                },
+            )
+
 
 def write_package_archive(archive_path: Path) -> None:
     with zipfile.ZipFile(archive_path, "w") as archive:
@@ -135,12 +196,19 @@ def write_fake_curl(path: Path) -> None:
               shift
             done
 
+            if [ -n "${CODEX_TEST_REQUEST_LOG:-}" ]; then
+              printf '%s\\n' "$url" >> "$CODEX_TEST_REQUEST_LOG"
+            fi
+
             case "$url" in
               https://api.github.com/*)
                 printf '%s\\n' "$CODEX_TEST_METADATA_JSON"
                 ;;
               https://github.com/*)
                 cp "$CODEX_TEST_ARCHIVE" "$output"
+                ;;
+              https://raw.githubusercontent.com/*)
+                printf '#!/bin/sh\\n' > "$output"
                 ;;
               *)
                 exit 22

@@ -221,9 +221,11 @@ current_fork_tag() {
   if [ -z "$tag" ]; then
     version="$(read_workspace_version || true)"
     build_number="$(read_fork_build_number || true)"
-    [ -n "$version" ] && [ -n "$build_number" ] ||
-      die "Could not resolve the current fork tag. Pass --tag rust-v<version>-apohl79-<build-number>."
-    tag="rust-v$version-apohl79-$build_number"
+    if [ -n "$version" ] && [ -n "$build_number" ]; then
+      tag="rust-v$version-apohl79-$build_number"
+    else
+      tag="$(latest_fork_tag)"
+    fi
   fi
 
   validate_tag "$tag"
@@ -279,6 +281,21 @@ detect_target() {
 release_metadata_url() {
   tag="$1"
   printf 'https://api.github.com/repos/%s/releases/tags/%s\n' "$APOHL79_REPO" "$tag"
+}
+
+latest_release_metadata_url() {
+  printf 'https://api.github.com/repos/%s/releases/latest\n' "$APOHL79_REPO"
+}
+
+latest_fork_tag() {
+  if ! release_json="$(download_text "$(latest_release_metadata_url)")"; then
+    die "Could not fetch the latest apohl79 Codex release metadata. GitHub API may be unavailable or rate limited."
+  fi
+
+  tag="$(printf '%s\n' "$release_json" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+  [ -n "$tag" ] || die "Could not resolve the latest apohl79 Codex release tag."
+  validate_tag "$tag"
+  printf '%s\n' "$tag"
 }
 
 release_url_for_asset() {
