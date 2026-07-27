@@ -10,6 +10,7 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_rollout::ARCHIVED_SESSIONS_SUBDIR;
 use codex_rollout::append_rollout_item_to_path;
+use codex_rollout::append_thread_name;
 use codex_rollout::append_thread_name_with_source;
 use codex_rollout::find_archived_thread_path_by_id_str;
 use codex_rollout::find_thread_path_by_id_str;
@@ -309,9 +310,9 @@ async fn apply_metadata_update(
             if let Some(preview) = patch.preview {
                 metadata.preview = Some(preview);
             }
-            if let Some(name) = patch.name {
+            if let Some(name) = patch.name.as_ref() {
                 metadata.name = name.clone();
-                metadata.title = name.unwrap_or_default();
+                metadata.title = name.clone().unwrap_or_default();
                 metadata.title_source = patch.title_source.unwrap_or(ThreadTitleSource::Manual);
             }
             if let Some(title) = patch.title {

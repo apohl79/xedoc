@@ -20,6 +20,7 @@ use super::helpers::git_info_from_parts;
 use super::helpers::permission_profile_from_metadata_value;
 use super::helpers::rollout_path_is_archived;
 use super::helpers::set_thread_name;
+use super::helpers::set_thread_name_from_title;
 use super::helpers::sqlite_thread_name;
 use super::helpers::stored_thread_from_rollout_item;
 use super::live_writer;
@@ -336,7 +337,7 @@ async fn stored_thread_from_sqlite_metadata(
     store: &LocalThreadStore,
     metadata: ThreadMetadata,
 ) -> ThreadStoreResult<StoredThread> {
-    let (name, title_source) = match distinct_thread_metadata_title(&metadata) {
+    let (_, title_source) = match distinct_thread_metadata_title(&metadata) {
         Some((title, title_source)) => (Some(title), Some(title_source)),
         None => {
             match find_thread_name_record_by_id(store.config.codex_home.as_path(), &metadata.id)
@@ -435,7 +436,7 @@ async fn thread_name_from_metadata(
         ThreadHistoryMode::Paginated => sqlite_thread_name(metadata),
         ThreadHistoryMode::Legacy => {
             if let Some(title) = distinct_thread_metadata_title(metadata) {
-                Some(title)
+                Some(title.0)
             } else {
                 find_thread_name_by_id(store.config.codex_home.as_path(), &metadata.id)
                     .await
