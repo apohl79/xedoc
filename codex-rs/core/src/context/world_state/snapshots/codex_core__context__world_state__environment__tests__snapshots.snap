@@ -1,6 +1,6 @@
 ---
 source: core/src/context/world_state/environment_tests.rs
-expression: "render_section_cases(&[(Absent, Absent), (Absent, Known(&full)),\n(Unknown, Known(&full)),\n(Known(&before_environment_changes), Known(&after_environment_changes),),\n(Known(&before_turn_context_changes), Known(&after_turn_context_changes),),\n(Absent, Known(&foreign_windows)),\n(Known(&unknown_shell), Known(&known_shell)),\n(Known(&legacy_environment), Known(&empty)),])"
+expression: "render_section_cases(&[(Absent, Absent), (Absent, Known(&full)),\n(Unknown, Known(&full)),\n(Known(&before_environment_changes), Known(&after_environment_changes),),\n(Known(&before_turn_context_changes), Known(&after_turn_context_changes),),\n(Known(&before_subagent_changes), Known(&after_subagent_changes),),\n(Absent, Known(&foreign_windows)),\n(Known(&unknown_shell), Known(&known_shell)),\n(Known(&legacy_environment), Known(&empty)),])"
 ---
 Absent -> Absent
 None
@@ -58,6 +58,13 @@ Unknown -> {"environments":{"devbox":{"cwd":"/workspace","shell":"bash","status"
   <timezone>America/Los_Angeles</timezone>
   <network enabled="true"><allowed>new.example.com</allowed><denied>blocked.example.com</denied></network>
   <filesystem><permission_profile type="external"><file_system type="external" /></permission_profile></filesystem>
+</environment_context>
+
+{"environments":{},"subagents":"- worker-a"} -> {"environments":{},"subagents":"- worker-b"} (role - user)
+<environment_context>
+  <subagents>
+    - worker-b
+  </subagents>
 </environment_context>
 
 Absent -> {"environments":{"remote":{"cwd":"C:\\windows","shell":"powershell","status":"available"}},"filesystem":"<filesystem><permission_profile type=\"disabled\"><file_system type=\"unrestricted\" /></permission_profile></filesystem>"} (role - user)

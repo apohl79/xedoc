@@ -8,6 +8,8 @@ use codex_extension_api::RenderedWorldStateFragment;
 use codex_extension_api::WorldStateSectionContribution;
 use codex_protocol::protocol::SKILLS_INSTRUCTIONS_CLOSE_TAG;
 use codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG;
+use codex_utils_string::approx_token_count;
+use codex_utils_string::truncate_middle_with_token_budget;
 use serde_json::json;
 
 use crate::catalog::SkillCatalog;
@@ -18,6 +20,7 @@ pub(crate) const SKILLS_WORLD_STATE_ID: &str = "skills";
 pub(crate) const HOST_SKILLS_WORLD_STATE_ID: &str = "host_skills";
 const MAX_HOST_SKILLS_METADATA_CHARS: usize = 8_000;
 const MAX_HOST_SKILLS_METADATA_TOKENS: usize = 4_000;
+const MAX_HOST_SKILLS_CONTEXT_TOKENS: usize = 4_000;
 const NO_EXECUTOR_SKILLS_BODY: &str =
     "\n## Skills update\nNo selected-environment skills are currently available.\n";
 const HIDDEN_EXECUTOR_SKILLS_BODY: &str = "\n## Skills update\nSelected-environment skills are not listed automatically. Explicit skill mentions can still be resolved when available.\n";
@@ -109,6 +112,7 @@ pub(crate) fn host_skills_world_state_section(
         )
         .body()
     });
+    let body = body.map(|body| truncate_to_token_budget(&body, MAX_HOST_SKILLS_CONTEXT_TOKENS));
     let snapshot = json!({
         "body": body,
         "includeInstructions": include_instructions,
@@ -149,5 +153,20 @@ pub(crate) fn host_skills_world_state_section(
             role == "developer" && text.contains(&fragment)
         }),
         None => contribution,
+    }
+}
+
+fn truncate_to_token_budget(text: &str, max_tokens: usize) -> String {
+    let mut budget = max_tokens;
+    loop {
+        let (candidate, _) = truncate_middle_with_token_budget(text, budget);
+        let candidate_tokens = approx_token_count(&candidate);
+        if candidate_tokens <= max_tokens {
+            return candidate;
+        }
+        if budget == 0 {
+            return String::new();
+        }
+        budget = budget.saturating_sub((candidate_tokens - max_tokens).max(1));
     }
 }

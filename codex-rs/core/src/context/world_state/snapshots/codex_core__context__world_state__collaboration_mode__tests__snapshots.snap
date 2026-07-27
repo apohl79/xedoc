@@ -5,17 +5,17 @@ expression: "render_section_cases(&[(Absent, Absent), (Absent, Known(&default)),
 Absent -> Absent
 None
 
-Absent -> "default" (role - developer)
+Absent -> {"instructions":"pair with the user","mode":"default"} (role - developer)
 <collaboration_mode>pair with the user</collaboration_mode>
 
-"default" -> "default"
+{"instructions":"pair with the user","mode":"default"} -> {"instructions":"pair with the user","mode":"default"}
 None
 
-"default" -> "default"
-None
+{"instructions":"old instructions","mode":"default"} -> {"instructions":"new instructions","mode":"default"} (role - developer)
+<collaboration_mode>new instructions</collaboration_mode>
 
-"default" -> "plan" (role - developer)
+{"instructions":"pair with the user","mode":"default"} -> {"instructions":"make a plan","mode":"plan"} (role - developer)
 <collaboration_mode>make a plan</collaboration_mode>
 
-Unknown -> "default"
+Unknown -> {"instructions":"pair with the user","mode":"default"}
 None

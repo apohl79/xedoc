@@ -5,10 +5,18 @@ use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::protocol::COLLABORATION_MODE_CLOSE_TAG;
 use codex_protocol::protocol::COLLABORATION_MODE_OPEN_TAG;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Collaboration-mode instructions currently visible to the model.
 #[derive(Clone, Debug)]
 pub(crate) struct CollaborationModeState {
+    mode: ModeKind,
+    instructions: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub(crate) struct CollaborationModeSnapshot {
     mode: ModeKind,
     instructions: String,
 }
@@ -29,10 +37,13 @@ impl CollaborationModeState {
 
 impl WorldStateSection for CollaborationModeState {
     const ID: &'static str = "collaboration_mode";
-    type Snapshot = ModeKind;
+    type Snapshot = CollaborationModeSnapshot;
 
     fn snapshot(&self) -> Self::Snapshot {
-        self.mode
+        CollaborationModeSnapshot {
+            mode: self.mode,
+            instructions: self.instructions.clone(),
+        }
     }
 
     fn matches_legacy_fragment(role: &str, text: &str) -> bool {
@@ -51,7 +62,7 @@ impl WorldStateSection for CollaborationModeState {
         &self,
         previous: PreviousSectionState<'_, Self::Snapshot>,
     ) -> Option<Box<dyn ContextualUserFragment>> {
-        if matches!(previous, PreviousSectionState::Known(previous) if previous == &self.mode)
+        if matches!(previous, PreviousSectionState::Known(previous) if previous.instructions == self.instructions)
             || matches!(previous, PreviousSectionState::Unknown)
         {
             return None;

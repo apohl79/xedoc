@@ -84,6 +84,14 @@ fn snapshots() -> Result<()> {
         )),
         ..environments
     };
+    let before_subagent_changes = EnvironmentsState {
+        subagents: Some("- worker-a".to_string()),
+        ..EnvironmentsState::default()
+    };
+    let after_subagent_changes = EnvironmentsState {
+        subagents: Some("- worker-b".to_string()),
+        ..EnvironmentsState::default()
+    };
     let foreign_windows = EnvironmentsState {
         environments: [(
             "remote".to_string(),
@@ -141,6 +149,10 @@ fn snapshots() -> Result<()> {
         (
             Known(&before_turn_context_changes),
             Known(&after_turn_context_changes),
+        ),
+        (
+            Known(&before_subagent_changes),
+            Known(&after_subagent_changes),
         ),
         (Absent, Known(&foreign_windows)),
         (Known(&unknown_shell), Known(&known_shell)),
