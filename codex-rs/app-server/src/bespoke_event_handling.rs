@@ -2184,6 +2184,16 @@ mod tests {
         }
     }
 
+    async fn recv_broadcast_notification(
+        rx: &mut mpsc::Receiver<OutgoingEnvelope>,
+    ) -> Result<ServerNotification> {
+        let message = recv_broadcast_message(rx).await?;
+        let OutgoingMessage::AppServerNotification(envelope) = message else {
+            bail!("unexpected message: {message:?}");
+        };
+        Ok(envelope.notification)
+    }
+
     #[test]
     fn rollback_response_rebuilds_pathless_thread_from_stored_history() -> Result<()> {
         let thread_id = ThreadId::from_string("00000000-0000-0000-0000-000000000789")?;
@@ -2543,9 +2553,9 @@ mod tests {
         .await;
         assert!(first_start);
 
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::ItemStarted(payload)) => {
+            ServerNotification::ItemStarted(payload) => {
                 assert_eq!(payload.thread_id, conversation_id.to_string());
                 assert_eq!(payload.turn_id, "turn-1");
                 assert_eq!(
@@ -2613,7 +2623,7 @@ mod tests {
             &thread_state,
         )
         .await;
-        let _started = recv_broadcast_message(&mut rx).await?;
+        let _started = recv_broadcast_notification(&mut rx).await?;
 
         complete_command_execution_item(
             &conversation_id,
@@ -2630,9 +2640,9 @@ mod tests {
         )
         .await;
 
-        let completed = recv_broadcast_message(&mut rx).await?;
+        let completed = recv_broadcast_notification(&mut rx).await?;
         match completed {
-            OutgoingMessage::AppServerNotification(ServerNotification::ItemCompleted(payload)) => {
+            ServerNotification::ItemCompleted(payload) => {
                 let ThreadItem::CommandExecution { id, status, .. } = payload.item else {
                     bail!("expected command execution completion");
                 };
@@ -2708,9 +2718,9 @@ mod tests {
                 GuardianAssessmentStatus::InProgress,
             ))
             .await;
-        let first = recv_broadcast_message(&mut rx).await?;
+        let first = recv_broadcast_notification(&mut rx).await?;
         match first {
-            OutgoingMessage::AppServerNotification(ServerNotification::ItemStarted(payload)) => {
+            ServerNotification::ItemStarted(payload) => {
                 assert_eq!(payload.turn_id, "turn-guardian-approved");
                 let ThreadItem::CommandExecution { id, status, .. } = payload.item else {
                     bail!("expected command execution item");
@@ -2720,11 +2730,9 @@ mod tests {
             }
             other => bail!("unexpected message: {other:?}"),
         }
-        let second = recv_broadcast_message(&mut rx).await?;
+        let second = recv_broadcast_notification(&mut rx).await?;
         match second {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::ItemGuardianApprovalReviewStarted(payload),
-            ) => {
+            ServerNotification::ItemGuardianApprovalReviewStarted(payload) => {
                 assert_eq!(payload.review_id, "review-cmd-guardian-approved");
                 assert_eq!(
                     payload.target_item_id.as_deref(),
@@ -2745,11 +2753,9 @@ mod tests {
                 GuardianAssessmentStatus::Approved,
             ))
             .await;
-        let third = recv_broadcast_message(&mut rx).await?;
+        let third = recv_broadcast_notification(&mut rx).await?;
         match third {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::ItemGuardianApprovalReviewCompleted(payload),
-            ) => {
+            ServerNotification::ItemGuardianApprovalReviewCompleted(payload) => {
                 assert_eq!(payload.review_id, "review-cmd-guardian-approved");
                 assert_eq!(
                     payload.target_item_id.as_deref(),
@@ -2775,9 +2781,9 @@ mod tests {
                 GuardianAssessmentStatus::InProgress,
             ))
             .await;
-        let fourth = recv_broadcast_message(&mut rx).await?;
+        let fourth = recv_broadcast_notification(&mut rx).await?;
         match fourth {
-            OutgoingMessage::AppServerNotification(ServerNotification::ItemStarted(payload)) => {
+            ServerNotification::ItemStarted(payload) => {
                 assert_eq!(payload.turn_id, "turn-guardian-denied");
                 let ThreadItem::CommandExecution { id, status, .. } = payload.item else {
                     bail!("expected command execution item");
@@ -2787,11 +2793,9 @@ mod tests {
             }
             other => bail!("unexpected message: {other:?}"),
         }
-        let fifth = recv_broadcast_message(&mut rx).await?;
+        let fifth = recv_broadcast_notification(&mut rx).await?;
         match fifth {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::ItemGuardianApprovalReviewStarted(payload),
-            ) => {
+            ServerNotification::ItemGuardianApprovalReviewStarted(payload) => {
                 assert_eq!(payload.review_id, "review-cmd-guardian-denied");
                 assert_eq!(
                     payload.target_item_id.as_deref(),
@@ -2812,11 +2816,9 @@ mod tests {
                 GuardianAssessmentStatus::Denied,
             ))
             .await;
-        let sixth = recv_broadcast_message(&mut rx).await?;
+        let sixth = recv_broadcast_notification(&mut rx).await?;
         match sixth {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::ItemGuardianApprovalReviewCompleted(payload),
-            ) => {
+            ServerNotification::ItemGuardianApprovalReviewCompleted(payload) => {
                 assert_eq!(payload.review_id, "review-cmd-guardian-denied");
                 assert_eq!(
                     payload.target_item_id.as_deref(),
@@ -2827,9 +2829,9 @@ mod tests {
             }
             other => bail!("unexpected message: {other:?}"),
         }
-        let seventh = recv_broadcast_message(&mut rx).await?;
+        let seventh = recv_broadcast_notification(&mut rx).await?;
         match seventh {
-            OutgoingMessage::AppServerNotification(ServerNotification::ItemCompleted(payload)) => {
+            ServerNotification::ItemCompleted(payload) => {
                 let ThreadItem::CommandExecution { id, status, .. } = payload.item else {
                     bail!("expected command execution completion");
                 };
@@ -2848,11 +2850,9 @@ mod tests {
         guardian_context
             .apply_guardian_assessment_event(missing_target)
             .await;
-        let eighth = recv_broadcast_message(&mut rx).await?;
+        let eighth = recv_broadcast_notification(&mut rx).await?;
         match eighth {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::ItemGuardianApprovalReviewStarted(payload),
-            ) => {
+            ServerNotification::ItemGuardianApprovalReviewStarted(payload) => {
                 assert_eq!(payload.review_id, "review-cmd-guardian-missing-target");
                 assert_eq!(payload.target_item_id, None);
                 assert_eq!(
@@ -3325,9 +3325,9 @@ mod tests {
         )
         .await;
 
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnStarted(n)) => {
+            ServerNotification::TurnStarted(n) => {
                 assert_eq!(n.turn.id, "turn-1");
                 assert_eq!(n.turn.items_view, TurnItemsView::NotLoaded);
                 assert!(n.turn.items.is_empty());
@@ -3405,10 +3405,8 @@ mod tests {
             ThreadStatus::NotLoaded
         );
         assert_eq!(thread_watch_manager.running_turn_count().await, 0);
-        let message = recv_broadcast_message(&mut rx).await?;
-        let OutgoingMessage::AppServerNotification(ServerNotification::ItemCompleted(payload)) =
-            message
-        else {
+        let message = recv_broadcast_notification(&mut rx).await?;
+        let ServerNotification::ItemCompleted(payload) = message else {
             bail!("unexpected message: {message:?}");
         };
         assert_eq!(
@@ -3490,10 +3488,8 @@ mod tests {
         )
         .await;
 
-        let item_started = recv_broadcast_message(&mut rx).await?;
-        let OutgoingMessage::AppServerNotification(ServerNotification::ItemStarted(payload)) =
-            item_started
-        else {
+        let item_started = recv_broadcast_notification(&mut rx).await?;
+        let ServerNotification::ItemStarted(payload) = item_started else {
             bail!("unexpected message: {item_started:?}");
         };
         assert_eq!(payload.item.id(), "dynamic-1");
@@ -3559,9 +3555,9 @@ mod tests {
         )
         .await;
 
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnCompleted(n)) => {
+            ServerNotification::TurnCompleted(n) => {
                 assert_eq!(n.turn.id, event_turn_id);
                 assert_eq!(n.turn.status, TurnStatus::Completed);
                 assert_eq!(n.turn.items_view, TurnItemsView::NotLoaded);
@@ -3612,9 +3608,9 @@ mod tests {
         )
         .await;
 
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnCompleted(n)) => {
+            ServerNotification::TurnCompleted(n) => {
                 assert_eq!(n.turn.id, event_turn_id);
                 assert_eq!(n.turn.status, TurnStatus::Interrupted);
                 assert_eq!(n.turn.error, None);
@@ -3662,9 +3658,9 @@ mod tests {
         )
         .await;
 
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnCompleted(n)) => {
+            ServerNotification::TurnCompleted(n) => {
                 assert_eq!(n.turn.id, event_turn_id);
                 assert_eq!(n.turn.status, TurnStatus::Failed);
                 assert_eq!(
@@ -3714,9 +3710,9 @@ mod tests {
 
         handle_turn_plan_update(conversation_id, "turn-123", update, &outgoing).await;
 
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnPlanUpdated(n)) => {
+            ServerNotification::TurnPlanUpdated(n) => {
                 assert_eq!(n.thread_id, conversation_id.to_string());
                 assert_eq!(n.turn_id, "turn-123");
                 assert_eq!(n.explanation.as_deref(), Some("need plan"));
@@ -3795,11 +3791,9 @@ mod tests {
         )
         .await;
 
-        let first = recv_broadcast_message(&mut rx).await?;
+        let first = recv_broadcast_notification(&mut rx).await?;
         match first {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::ThreadTokenUsageUpdated(payload),
-            ) => {
+            ServerNotification::ThreadTokenUsageUpdated(payload) => {
                 assert_eq!(payload.thread_id, conversation_id.to_string());
                 assert_eq!(payload.turn_id, turn_id);
                 let usage = payload.token_usage;
@@ -3811,11 +3805,9 @@ mod tests {
             other => bail!("unexpected notification: {other:?}"),
         }
 
-        let second = recv_broadcast_message(&mut rx).await?;
+        let second = recv_broadcast_notification(&mut rx).await?;
         match second {
-            OutgoingMessage::AppServerNotification(
-                ServerNotification::AccountRateLimitsUpdated(payload),
-            ) => {
+            ServerNotification::AccountRateLimitsUpdated(payload) => {
                 assert_eq!(payload.rate_limits.limit_id.as_deref(), Some("codex"));
                 assert_eq!(payload.rate_limits.limit_name, None);
                 assert!(payload.rate_limits.primary.is_some());
@@ -3932,9 +3924,9 @@ mod tests {
         .await;
 
         // Verify: A turn 1
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnCompleted(n)) => {
+            ServerNotification::TurnCompleted(n) => {
                 assert_eq!(n.turn.id, a_turn1);
                 assert_eq!(n.turn.status, TurnStatus::Failed);
                 assert_eq!(
@@ -3950,9 +3942,9 @@ mod tests {
         }
 
         // Verify: B turn 1
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnCompleted(n)) => {
+            ServerNotification::TurnCompleted(n) => {
                 assert_eq!(n.turn.id, b_turn1);
                 assert_eq!(n.turn.status, TurnStatus::Failed);
                 assert_eq!(
@@ -3968,9 +3960,9 @@ mod tests {
         }
 
         // Verify: A turn 2
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnCompleted(n)) => {
+            ServerNotification::TurnCompleted(n) => {
                 assert_eq!(n.turn.id, a_turn2);
                 assert_eq!(n.turn.status, TurnStatus::Completed);
                 assert_eq!(n.turn.error, None);
@@ -4007,11 +3999,9 @@ mod tests {
         )
         .await;
 
-        let msg = recv_broadcast_message(&mut rx).await?;
+        let msg = recv_broadcast_notification(&mut rx).await?;
         match msg {
-            OutgoingMessage::AppServerNotification(ServerNotification::TurnDiffUpdated(
-                notification,
-            )) => {
+            ServerNotification::TurnDiffUpdated(notification) => {
                 assert_eq!(notification.thread_id, conversation_id.to_string());
                 assert_eq!(notification.turn_id, "turn-1");
                 assert_eq!(notification.diff, unified_diff);
