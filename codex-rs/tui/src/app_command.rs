@@ -92,9 +92,6 @@ pub(crate) enum AppCommand {
         name: String,
     },
     Shutdown,
-    ThreadRollback {
-        num_turns: u32,
-    },
     Review {
         target: ReviewTarget,
     },
@@ -275,10 +272,6 @@ impl AppCommand {
     #[allow(dead_code)]
     pub(crate) fn shutdown() -> Self {
         Self::Shutdown
-    }
-
-    pub(crate) fn thread_rollback(num_turns: u32) -> Self {
-        Self::ThreadRollback { num_turns }
     }
 
     pub(crate) fn review(target: ReviewTarget) -> Self {
