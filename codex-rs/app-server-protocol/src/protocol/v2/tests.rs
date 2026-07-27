@@ -2781,6 +2781,11 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             query: Some("docs".to_string()),
             queries: None,
         },
+        results: Some(vec![serde_json::json!({
+            "type": "text_result",
+            "ref_id": "turn0search0",
+            "url": "https://example.com/docs",
+        })]),
     });
 
     let expected_search_item = WebSearchItem {
@@ -2790,6 +2795,11 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             query: Some("docs".to_string()),
             queries: None,
         }),
+        results: Some(vec![serde_json::json!({
+            "type": "text_result",
+            "ref_id": "turn0search0",
+            "url": "https://example.com/docs",
+        })]),
     };
 
     assert_eq!(

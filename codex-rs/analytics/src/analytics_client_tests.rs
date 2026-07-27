@@ -4424,6 +4424,7 @@ async fn turn_event_counts_completed_tool_items() {
             id: "web-1".to_string(),
             query: "codex".to_string(),
             action: None,
+            results: None,
         }),
         ThreadItem::ImageGeneration(ImageGenerationItem {
             id: "image-1".to_string(),
