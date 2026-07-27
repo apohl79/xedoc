@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn prefer_existing_explicit_title_preserves_generated_source() {
-        let mut next = expected_thread_metadata(None);
+        let mut next = expected_thread_metadata(/*reasoning_effort*/ None);
         next.title = "summarize first user message".to_string();
         next.first_user_message = Some("summarize first user message".to_string());
         let mut existing = next.clone();

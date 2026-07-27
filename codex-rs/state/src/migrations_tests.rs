@@ -2,6 +2,7 @@ use sqlx::Connection;
 use sqlx::Row;
 use sqlx::migrate::Migration;
 use sqlx::migrate::Migrator;
+use sqlx::sqlite::SqlitePoolOptions;
 use std::borrow::Cow;
 
 use super::STATE_MIGRATOR;

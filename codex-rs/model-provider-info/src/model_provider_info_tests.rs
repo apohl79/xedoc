@@ -571,7 +571,7 @@ refresh_interval_ms = 0
 #[test]
 fn merge_openai_model_prices() {
     use std::collections::HashMap;
-    let built_in = built_in_model_providers(None);
+    let built_in = built_in_model_providers(/*openai_base_url*/ None);
     let mut configured = HashMap::new();
     let mut prices = HashMap::new();
     prices.insert(
@@ -621,7 +621,7 @@ fn merge_openai_model_prices() {
 #[test]
 fn merge_openai_rejects_non_model_prices_fields() {
     use std::collections::HashMap;
-    let built_in = built_in_model_providers(None);
+    let built_in = built_in_model_providers(/*openai_base_url*/ None);
     let mut configured = HashMap::new();
     configured.insert(
         OPENAI_PROVIDER_ID.to_string(),

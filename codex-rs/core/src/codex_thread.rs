@@ -263,8 +263,7 @@ impl CodexThread {
     /// The event will be processed by the thread's event loop and
     /// forwarded to connected clients (e.g., TUI, app-server).
     pub async fn emit_event(&self, msg: codex_protocol::protocol::EventMsg) {
-        self.codex
-            .session
+        self.session
             .send_event_raw(codex_protocol::protocol::Event {
                 id: String::new(),
                 msg,
@@ -463,7 +462,7 @@ impl CodexThread {
 
     /// Returns the accumulated session cost when pricing is available.
     pub async fn session_cost_usd(&self) -> Option<f64> {
-        self.codex.session.session_cost_usd().await
+        self.session.session_cost_usd().await
     }
 
     /// Records a user-role session-prefix message without creating a new user turn boundary.
@@ -609,7 +608,7 @@ impl CodexThread {
         &self,
         current_name: Option<&str>,
     ) -> CodexResult<Option<String>> {
-        self.codex.session.generate_session_name(current_name).await
+        self.session.generate_session_name(current_name).await
     }
 
     pub async fn generate_session_name_with_partial_response(
@@ -617,8 +616,7 @@ impl CodexThread {
         current_name: Option<&str>,
         partial_response: Option<&str>,
     ) -> CodexResult<Option<String>> {
-        self.codex
-            .session
+        self.session
             .generate_session_name_with_partial_response(current_name, partial_response)
             .await
     }
