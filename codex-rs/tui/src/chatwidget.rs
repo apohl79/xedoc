@@ -477,7 +477,6 @@ const APPROVE_FOR_ME_LABEL: &str = "Approve for me";
 const AUTO_REVIEW_DESCRIPTION: &str = "Only ask for actions detected as potentially unsafe.";
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_STATUS_LINE_ITEMS: [&str; 2] = ["model-with-reasoning", "current-dir"];
-const MAX_AGENT_COPY_HISTORY: usize = 32;
 
 /// Common initialization parameters shared by all `ChatWidget` constructors.
 pub(crate) struct ChatWidgetInit {
@@ -975,10 +974,6 @@ impl ChatWidget {
         }
     }
 
-    fn record_visible_user_turn_for_copy(&mut self) {
-        self.transcript.record_visible_user_turn();
-    }
-
     pub(crate) fn open_feedback_note(
         &mut self,
         category: crate::app_event::FeedbackCategory,
@@ -1323,7 +1318,6 @@ impl ChatWidget {
             || !display.local_images.is_empty()
             || !display.remote_image_urls.is_empty()
         {
-            self.record_visible_user_turn_for_copy();
             self.add_to_history(history_cell::new_user_prompt(
                 display.message,
                 display.text_elements,
