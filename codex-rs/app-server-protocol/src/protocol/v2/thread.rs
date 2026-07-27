@@ -1491,7 +1491,7 @@ pub struct ThreadTokenUsage {
 
 impl From<CoreTokenUsageInfo> for ThreadTokenUsage {
     fn from(value: CoreTokenUsageInfo) -> Self {
-        Self::from_core_token_usage(value, None)
+        Self::from_core_token_usage(value, /*session_cost_usd*/ None)
     }
 }
 
