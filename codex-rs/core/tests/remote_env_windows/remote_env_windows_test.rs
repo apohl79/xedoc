@@ -12,6 +12,7 @@ use codex_protocol::protocol::Op;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::TurnEnvironmentSelections;
 use codex_protocol::user_input::UserInput;
+use codex_utils_path_uri::PathUri;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
@@ -22,7 +23,6 @@ use core_test_support::responses::start_mock_server;
 use core_test_support::test_codex::test_codex;
 use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
-use codex_utils_path_uri::PathUri;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use wine_exec_server_test_support::WineExecServer;
@@ -105,9 +105,13 @@ async fn windows_exec_server_runs_with_native_shell_and_cwd() -> Result<()> {
                 turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
             let environments = TurnEnvironmentSelections::new(
                 test.config.cwd.clone(),
-                vec![TurnEnvironmentSelection {
-                    environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-                    cwd: PathUri::parse("file:///C:/codex-home")?,
+                vec![{
+                    let cwd = PathUri::parse("file:///C:/codex-home")?;
+                    TurnEnvironmentSelection {
+                        environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
+                        cwd: cwd.clone(),
+                        workspace_roots: vec![cwd],
+                    }
                 }],
             );
 

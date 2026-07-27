@@ -143,7 +143,6 @@ impl ThreadConfigSnapshot {
 #[derive(Clone, Default)]
 pub struct CodexThreadSettingsOverrides {
     pub environments: Option<TurnEnvironmentSelections>,
-    pub workspace_roots: Option<Vec<AbsolutePathBuf>>,
     pub profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
     pub approval_policy: Option<AskForApproval>,
     pub approvals_reviewer: Option<ApprovalsReviewer>,
@@ -388,7 +387,6 @@ impl CodexThread {
     ) -> SessionSettingsUpdate {
         let CodexThreadSettingsOverrides {
             environments,
-            workspace_roots,
             profile_workspace_roots,
             approval_policy,
             approvals_reviewer,
@@ -415,7 +413,6 @@ impl CodexThread {
 
         SessionSettingsUpdate {
             environments,
-            workspace_roots,
             profile_workspace_roots,
             approval_policy,
             approvals_reviewer,

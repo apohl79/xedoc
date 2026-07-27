@@ -4231,13 +4231,15 @@ fn turn_start_params_round_trip_environments() {
     let raw_cwd = r"C:\workspace";
     let cwd: LegacyAppPathString =
         serde_json::from_value(json!(raw_cwd)).expect("API path should deserialize");
+    let workspace_root = cwd.clone();
     let params: TurnStartParams = serde_json::from_value(json!({
         "threadId": "thread_123",
         "input": [],
         "environments": [
             {
                 "environmentId": "local",
-                "cwd": cwd
+                "cwd": cwd,
+                "runtimeWorkspaceRoots": [workspace_root]
             }
         ],
     }))
@@ -4248,6 +4250,7 @@ fn turn_start_params_round_trip_environments() {
         Some(vec![TurnEnvironmentParams {
             environment_id: "local".to_string(),
             cwd: cwd.clone(),
+            runtime_workspace_roots: Some(vec![workspace_root.clone()]),
         }])
     );
     assert_eq!(
@@ -4261,7 +4264,8 @@ fn turn_start_params_round_trip_environments() {
         Some(&json!([
             {
                 "environmentId": "local",
-                "cwd": cwd
+                "cwd": cwd,
+                "runtimeWorkspaceRoots": [workspace_root]
             }
         ]))
     );
