@@ -5,9 +5,9 @@
 //! cache used for multi-agent navigation.
 
 use super::*;
-use crate::city_lights::CityLightsStylize;
 use crate::app_server_session::source_agent_path;
 use crate::app_server_session::thread_blocks_direct_input;
+use crate::city_lights::CityLightsStylize;
 use codex_config::types::ResumeCwdMode;
 
 #[derive(Clone, Copy)]

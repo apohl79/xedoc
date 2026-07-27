@@ -6,8 +6,8 @@
 use super::resize_reflow::trailing_run_start;
 use super::session_lifecycle::ThreadAttachPresentation;
 use super::*;
-use crate::city_lights::CityLightsStylize;
 use crate::app_server_session::ForkGoalContinuation;
+use crate::city_lights::CityLightsStylize;
 use crate::config_update::format_config_error;
 use crate::external_agent_config_migration_flow::ExternalAgentConfigMigrationFlowOutcome;
 #[cfg(target_os = "windows")]

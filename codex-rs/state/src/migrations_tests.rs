@@ -281,7 +281,6 @@ async fn repairs_title_source_migration_that_was_applied_as_version_40() {
         .map(|migration| (migration.version, migration.checksum.to_vec()))
         .collect::<Vec<_>>();
     assert_eq!(applied, expected);
-
 }
 
 #[tokio::test]
