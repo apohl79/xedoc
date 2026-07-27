@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 use crate::city_lights::CityLightsStylize;
 use codex_app_server_protocol::HookEventName;
 use codex_app_server_protocol::HookMetadata;

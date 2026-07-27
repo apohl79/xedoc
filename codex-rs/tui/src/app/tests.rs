@@ -30,6 +30,7 @@ use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::UserHistoryCell;
 use crate::history_cell::new_session_info;
 use crate::multi_agents::AgentPickerThreadEntry;
+use crate::multi_agents::AgentRunningStateUpdate;
 use crate::multi_agents::SubAgentActivityDisplay;
 use assert_matches::assert_matches;
 
@@ -1799,7 +1800,10 @@ async fn open_agent_picker_preserves_running_hints_until_observed_completion() -
         .record_sub_agent_activity(SubAgentActivityDisplay {
             thread_id,
             agent_path: "/root/child".to_string(),
-            is_running_hint: true,
+            model_provider_id: None,
+            model: None,
+            running_state_update: AgentRunningStateUpdate::SetRunning,
+            current_activity: None,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -1808,8 +1812,12 @@ async fn open_agent_picker_preserves_running_hints_until_observed_completion() -
         agent_nickname: None,
         agent_role: None,
         agent_path: Some("/root/child".to_string()),
+        model_provider_id: None,
+        model: None,
+        total_tokens: None,
         is_running: true,
         is_closed: false,
+        current_activity: None,
     };
     assert_eq!(app.agent_navigation.get(&thread_id), Some(&expected_entry));
     let status = loop {
@@ -1854,7 +1862,10 @@ async fn open_agent_picker_preserves_running_hints_until_observed_completion() -
         .record_sub_agent_activity(SubAgentActivityDisplay {
             thread_id,
             agent_path: "/root/child".to_string(),
-            is_running_hint: true,
+            model_provider_id: None,
+            model: None,
+            running_state_update: AgentRunningStateUpdate::SetRunning,
+            current_activity: None,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;
@@ -1934,7 +1945,10 @@ async fn open_agent_picker_selects_path_backed_agent() -> Result<()> {
         .record_sub_agent_activity(SubAgentActivityDisplay {
             thread_id,
             agent_path: "/root/worker".to_string(),
-            is_running_hint: true,
+            model_provider_id: None,
+            model: None,
+            running_state_update: AgentRunningStateUpdate::SetRunning,
+            current_activity: None,
         });
 
     Box::pin(app.open_agent_picker(&mut app_server)).await;

@@ -173,7 +173,6 @@ impl AppCommand {
             | Self::Compact
             | Self::SetThreadName { .. }
             | Self::Shutdown
-            | Self::ThreadRollback { .. }
             | Self::Review { .. }
             | Self::ApproveGuardianDeniedAction { .. } => None,
         }

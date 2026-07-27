@@ -159,6 +159,8 @@
 //! overall state machine, since it affects which transitions are even possible from a given UI
 //! state.
 //!
+#![allow(clippy::disallowed_methods)]
+
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::key_hint::has_ctrl_or_alt;

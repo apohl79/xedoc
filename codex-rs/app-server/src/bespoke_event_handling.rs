@@ -901,14 +901,13 @@ pub(crate) async fn apply_bespoke_event_handling(
             }
             // Forward activity summaries from sub-agent threads to the parent thread
             // so the parent's TUI can display what the sub-agent is currently doing.
-            if activity.current_activity.is_some() {
-                if let Some(parent_thread_id) = conversation.session_source().parent_thread_id() {
-                    if let Ok(parent_thread) = thread_manager.get_thread(parent_thread_id).await {
-                        parent_thread
-                            .emit_event(EventMsg::SubAgentActivity(activity.clone()))
-                            .await;
-                    }
-                }
+            if activity.current_activity.is_some()
+                && let Some(parent_thread_id) = conversation.session_source().parent_thread_id()
+                && let Ok(parent_thread) = thread_manager.get_thread(parent_thread_id).await
+            {
+                parent_thread
+                    .emit_event(EventMsg::SubAgentActivity(activity.clone()))
+                    .await;
             }
             let notification = item_event_to_server_notification(
                 EventMsg::SubAgentActivity(activity),

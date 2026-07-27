@@ -87,6 +87,10 @@ pub(crate) struct FooterProps {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CollaborationModeIndicator {
     Plan,
+    #[allow(dead_code)]
+    PairProgramming,
+    #[allow(dead_code)]
+    Execute,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,6 +145,10 @@ impl CollaborationModeIndicator {
         };
         match self {
             CollaborationModeIndicator::Plan => format!("Plan mode{suffix}"),
+            CollaborationModeIndicator::PairProgramming => {
+                format!("Pair Programming mode{suffix}")
+            }
+            CollaborationModeIndicator::Execute => format!("Execute mode{suffix}"),
         }
     }
 

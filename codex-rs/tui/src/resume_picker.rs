@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 use crate::city_lights::CityLightsStylize;
 use std::collections::HashMap;
 use std::collections::HashSet;

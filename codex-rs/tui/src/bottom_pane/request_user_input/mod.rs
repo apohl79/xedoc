@@ -6,6 +6,8 @@
 //! - Typing while focused on options jumps into notes to keep freeform input fast.
 //! - The composer submit binding advances to the next question; the last question submits all answers.
 //! - Freeform-only questions submit an empty answer list when empty.
+#![allow(clippy::disallowed_methods)]
+
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;

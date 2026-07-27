@@ -1,14 +1,7 @@
 //! Transcript and active-cell bookkeeping for `ChatWidget`.
 
 use super::HistoryCell;
-use super::MAX_AGENT_COPY_HISTORY;
 use codex_protocol::plan_tool::PlanItemArg;
-
-#[derive(Debug)]
-pub(super) struct AgentTurnMarkdown {
-    pub(super) user_turn_count: usize,
-    pub(super) markdown: String,
-}
 
 #[derive(Default)]
 pub(super) struct TranscriptState {

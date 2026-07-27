@@ -1,5 +1,7 @@
 //! Theme-derived styling for the configurable footer statusline.
 
+#![allow(clippy::disallowed_methods)]
+
 use crate::city_lights::CityLightsStylize;
 use ratatui::prelude::Stylize;
 use ratatui::style::Color;

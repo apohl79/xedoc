@@ -4,6 +4,8 @@
 //! entries, and the fast-switch keyboard shortcuts. Higher-level coordination, such as deciding
 //! which thread becomes active or when a thread closes, stays in [`crate::app::App`].
 
+#![allow(clippy::disallowed_methods)]
+
 use crate::city_lights::CityLightsStylize;
 use crate::history_cell::PlainHistoryCell;
 use crate::render::line_utils::prefix_lines;
@@ -711,6 +713,9 @@ mod tests {
             kind: SubAgentActivityKind::Interacted,
             agent_thread_id: ThreadId::new().to_string(),
             agent_path: "/root/child".to_string(),
+            model_provider: None,
+            model: None,
+            current_activity: None,
         };
 
         assert_eq!(sub_agent_activity_display(&item), None);

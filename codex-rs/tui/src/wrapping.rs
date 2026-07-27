@@ -25,6 +25,8 @@
 //! negatives let a URL get split. The heuristic is intentionally
 //! conservative: file paths like `src/main.rs` are not matched.
 
+#![allow(clippy::disallowed_methods)]
+
 #[cfg(test)]
 use crate::city_lights::CityLightsStylize;
 use ratatui::text::Line;

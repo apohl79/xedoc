@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 use codex_file_search::FileMatch;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;

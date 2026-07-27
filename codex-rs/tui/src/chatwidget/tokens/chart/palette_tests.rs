@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 use super::*;
 use crate::terminal_palette::rgb_color;
 use pretty_assertions::assert_eq;

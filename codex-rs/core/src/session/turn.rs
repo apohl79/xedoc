@@ -2058,7 +2058,9 @@ async fn try_run_sampling_request(
                 tick += 1;
                 tracing::info!("Activity summary timer tick {tick}");
                 let (recent_msgs, was_dirty) = {
-                    let mut state = state_ref.lock().unwrap();
+                    let mut state = state_ref
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let dirty = state.1;
                     state.1 = false;
                     (state.0.clone(), dirty)
@@ -2259,7 +2261,9 @@ async fn try_run_sampling_request(
                 }
                 if let Some(agent_message) = output_result.last_agent_message {
                     {
-                        let mut state = activity_state.lock().unwrap();
+                        let mut state = activity_state
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         state.0.push(agent_message.clone());
                         if state.0.len() > 3 {
                             state.0.remove(0);
@@ -2760,8 +2764,8 @@ fn select_activity_summary_model<'a>(
     default_model: &'a str,
     available_models: &'a [ModelPreset],
 ) -> String {
-    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID) {
-        if let Some(preset) = available_models
+    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID)
+        && let Some(preset) = available_models
             .iter()
             .filter(|p| p.show_in_picker)
             .find(|p| {
@@ -2770,9 +2774,8 @@ fn select_activity_summary_model<'a>(
                         .to_ascii_lowercase()
                         .contains(FAST_MODEL_KEYWORD)
             })
-        {
-            return preset.model.clone();
-        }
+    {
+        return preset.model.clone();
     }
     if let Some(model) = model_fast.map(str::trim).filter(|m| !m.is_empty()) {
         return model.to_string();
@@ -2795,8 +2798,7 @@ fn activity_summary_prompt(last_agent_message: Option<&str>) -> String {
         })
         .unwrap_or_default();
     format!(
-        "Summarize what this coding agent is currently working on in one very short phrase.\n         Max {max_chars} characters. No quotes. No markdown. No full sentences.\n         Examples: Writing integration tests, Fixing type errors, Reviewing PR feedback\n         {context}",
-        max_chars = MAX_ACTIVITY_SUMMARY_CHARS,
+        "Summarize what this coding agent is currently working on in one very short phrase.\n         Max {MAX_ACTIVITY_SUMMARY_CHARS} characters. No quotes. No markdown. No full sentences.\n         Examples: Writing integration tests, Fixing type errors, Reviewing PR feedback\n         {context}"
     )
 }
 fn normalize_activity_summary(raw: &str) -> Option<String> {

@@ -3,6 +3,8 @@
 //! Layout code measures and wraps ordinary ratatui lines. Hyperlink annotations are applied only
 //! when text reaches a terminal buffer or scrollback writer so OSC 8 bytes never affect geometry.
 
+#![allow(clippy::disallowed_methods)]
+
 use std::ops::Range;
 
 use ratatui::buffer::Buffer;

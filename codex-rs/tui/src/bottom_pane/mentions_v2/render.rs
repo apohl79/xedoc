@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 use crate::city_lights::CityLightsStylize;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;

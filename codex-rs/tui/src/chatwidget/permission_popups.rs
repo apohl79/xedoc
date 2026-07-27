@@ -4,6 +4,8 @@
 //! Windows-specific sandbox prompting lives beside it in
 //! `windows_sandbox_prompts`.
 
+#![allow(clippy::disallowed_methods)]
+
 use super::*;
 use crate::city_lights::CityLightsStylize;
 

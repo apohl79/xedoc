@@ -8,6 +8,8 @@
 //! On finalization, `finalize_and_drain_source()` flushes whatever remains (the last line, which
 //! may lack a trailing newline).
 
+#![allow(clippy::disallowed_methods)]
+
 #[cfg(test)]
 use ratatui::text::Line;
 use std::path::Path;

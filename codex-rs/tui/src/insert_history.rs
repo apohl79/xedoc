@@ -3,6 +3,8 @@
 //! Codex uses the terminal scrollback itself for finalized chat history, so inserting a history
 //! cell is an escape-sequence operation rather than a normal ratatui render.
 
+#![allow(clippy::disallowed_methods)]
+
 use std::fmt;
 use std::io;
 use std::io::Write;

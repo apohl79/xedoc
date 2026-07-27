@@ -29,8 +29,8 @@ impl App {
             .map(|(thread_id, _)| thread_id)
             .collect();
         let mut locally_refreshed_thread_ids = Vec::new();
-        for thread_id in path_backed_thread_ids {
-            if let Some(channel) = self.thread_event_channels.get(&thread_id)
+        for thread_id in &path_backed_thread_ids {
+            if let Some(channel) = self.thread_event_channels.get(thread_id)
                 && channel.attachment() == ThreadEventAttachment::Live
             {
                 let (has_active_turn, has_terminal_snapshot) = {
@@ -44,16 +44,16 @@ impl App {
                     )
                 };
                 if has_active_turn {
-                    self.agent_navigation.mark_running(thread_id);
-                    self.set_active_agent_running(thread_id, /*is_running*/ true);
-                    locally_refreshed_thread_ids.push(thread_id);
+                    self.agent_navigation.mark_running(*thread_id);
+                    self.set_active_agent_running(*thread_id, /*is_running*/ true);
+                    locally_refreshed_thread_ids.push(*thread_id);
                 } else if has_terminal_snapshot {
-                    self.agent_navigation.mark_stopped(thread_id);
-                    self.set_active_agent_running(thread_id, /*is_running*/ false);
-                    locally_refreshed_thread_ids.push(thread_id);
+                    self.agent_navigation.mark_stopped(*thread_id);
+                    self.set_active_agent_running(*thread_id, /*is_running*/ false);
+                    locally_refreshed_thread_ids.push(*thread_id);
                 }
             } else {
-                self.refresh_agent_picker_thread_liveness(app_server, thread_id)
+                self.refresh_agent_picker_thread_liveness(app_server, *thread_id)
                     .await;
             }
         }

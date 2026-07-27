@@ -1221,8 +1221,7 @@ async fn multi_agent_v2_non_openai_parent_send_message_uses_plaintext_message_en
             vec![UserInput::Text {
                 text: "boot worker".to_string(),
                 text_elements: Vec::new(),
-            }]
-            .into(),
+            }],
             Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
                 parent_thread_id: root.thread_id,
                 depth: 1,

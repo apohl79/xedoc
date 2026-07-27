@@ -1828,18 +1828,11 @@ impl Session {
 
         // Forward SubAgentActivity events to parent for live activity display.
         if let EventMsg::SubAgentActivity(activity) = msg {
-            eprintln!(
-                "DEBUG forward_activity: kind={:?}, current_activity={:?}, parent_thread_id={:?}",
-                activity.kind, activity.current_activity, turn_context.parent_thread_id
-            );
             if let Some(parent_thread_id) = turn_context.parent_thread_id {
                 self.services
                     .agent_control
                     .forward_sub_agent_activity_event(parent_thread_id, activity.clone())
                     .await;
-                eprintln!("DEBUG forward_activity: forwarded to parent {parent_thread_id}");
-            } else {
-                eprintln!("DEBUG forward_activity: NO parent_thread_id, event dropped");
             }
             return;
         }

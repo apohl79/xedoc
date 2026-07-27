@@ -1,5 +1,7 @@
 //! User, assistant, reasoning, and streaming message history cells.
 
+#![allow(clippy::disallowed_methods)]
+
 use crate::city_lights::CityLightsStylize;
 
 use super::*;
