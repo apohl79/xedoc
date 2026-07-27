@@ -396,7 +396,7 @@ impl ChatWidget {
         }
 
         if render_in_history {
-            self.record_cancel_edit_candidate(UserMessage {
+            self.safety_buffering_prompt = Some(UserMessage {
                 text: text.clone(),
                 local_images: local_images.clone(),
                 remote_image_urls: remote_image_urls.clone(),
