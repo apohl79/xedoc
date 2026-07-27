@@ -1631,6 +1631,7 @@ async fn multi_agent_v2_list_agents_returns_completed_status_with_plaintext_spaw
             child_turn.as_ref(),
             EventMsg::TurnComplete(TurnCompleteEvent {
                 turn_id: child_turn.sub_id.clone(),
+                started_at: None,
                 last_agent_message: Some("done".to_string()),
                 completed_at: None,
                 duration_ms: None,
@@ -2083,6 +2084,7 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
             first_turn.as_ref(),
             EventMsg::TurnComplete(TurnCompleteEvent {
                 turn_id: first_turn.sub_id.clone(),
+                started_at: None,
                 last_agent_message: Some("first done".to_string()),
                 completed_at: None,
                 duration_ms: None,
@@ -2125,6 +2127,7 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
             second_turn.as_ref(),
             EventMsg::TurnComplete(TurnCompleteEvent {
                 turn_id: second_turn.sub_id.clone(),
+                started_at: None,
                 last_agent_message: Some("second done".to_string()),
                 completed_at: None,
                 duration_ms: None,
@@ -2287,6 +2290,7 @@ async fn multi_agent_v2_interrupted_turn_does_not_notify_parent() {
             aborted_turn.as_ref(),
             EventMsg::TurnAborted(TurnAbortedEvent {
                 turn_id: Some(aborted_turn.sub_id.clone()),
+                started_at: None,
                 reason: TurnAbortReason::Interrupted,
                 completed_at: None,
                 duration_ms: None,
