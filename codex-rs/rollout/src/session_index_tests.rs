@@ -254,11 +254,13 @@ async fn reverse_lookup_accepts_valid_eof_json_and_skips_invalid() -> std::io::R
     let expected = SessionIndexEntry {
         id: ThreadId::new(),
         thread_name: "expected".to_string(),
+        title_source: None,
         updated_at: "2024-01-01T00:00:00Z".to_string(),
     };
     let unterminated = SessionIndexEntry {
         id: ThreadId::new(),
         thread_name: "unterminated".to_string(),
+        title_source: None,
         updated_at: "2024-01-02T00:00:00Z".to_string(),
     };
     std::fs::write(

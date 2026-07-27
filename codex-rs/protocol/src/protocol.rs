@@ -4553,6 +4553,7 @@ mod tests {
             content: "review the diff".to_string(),
             encrypted_content: None,
             internal_chat_message_metadata_passthrough: None,
+            session_cost_usd: None,
             trigger_turn: true,
         };
         communication.set_turn_id_if_missing("turn-1");

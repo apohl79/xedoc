@@ -1241,6 +1241,7 @@ fn token_usage_update_is_emitted_on_turn_completion() {
                         output_tokens: 29,
                         reasoning_output_tokens: 7,
                     },
+                    session_cost_usd: None,
                     model_context_window: Some(128_000),
                 },
             },

@@ -26,6 +26,7 @@ fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {
         model_provider: None,
         model: None,
         kind: SubAgentActivityKind::Started,
+        current_activity: None,
     });
 
     let Some(ToolRuntimeTraceEvent::Ended {

@@ -2168,7 +2168,7 @@ async fn try_run_sampling_request(
                 let previously_active_item_id = previously_active_item.as_ref().map(TurnItem::id);
                 let mut streamed_text = item
                     .id()
-                    .and_then(|item_id| streamed_assistant_text_by_item.remove(item_id));
+                    .and_then(|item_id| streamed_assistant_text_by_item.remove(item_id.as_str()));
                 if streamed_text.is_none()
                     && let Some(item_id) = previously_active_item_id.as_deref()
                 {

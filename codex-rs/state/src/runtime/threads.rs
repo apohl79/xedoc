@@ -2925,6 +2925,7 @@ mod tests {
                     model_context_window: None,
                 }),
                 rate_limits: None,
+                session_cost_usd: None,
             },
         ))];
         let override_updated_at =
