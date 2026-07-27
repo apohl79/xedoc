@@ -24,6 +24,10 @@ configure_testcontainers() {
   fi
 }
 
+verify_argument_comment_lint_targets() {
+  "${repo_root}/tools/argument-comment-lint/list-bazel-targets.sh" >/dev/null
+}
+
 run_stage() {
   local name="$1"
   local directory="$2"
@@ -80,6 +84,7 @@ main() {
   run_stage "Cargo workspace clippy" "${codex_rs_root}" just clippy --workspace --all-targets -- -D warnings
   run_stage "Cargo dependency lint" "${codex_rs_root}" cargo shear --deny-warnings
   run_stage "Bazel lockfile check" "${repo_root}" just bazel-lock-check
+  run_stage "argument-comment lint target discovery" "${repo_root}" verify_argument_comment_lint_targets
   run_stage "argument-comment lint" "${repo_root}" just argument-comment-lint
   run_stage "Bazel clippy" "${repo_root}" just bazel-clippy
 
