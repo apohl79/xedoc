@@ -242,7 +242,6 @@ async fn wait_for_subagent_notification(parent_thread: &Arc<CodexThread>) -> boo
     let wait = async {
         loop {
             let history_items = parent_thread
-                .codex
                 .session
                 .clone_history()
                 .await
@@ -263,9 +262,8 @@ async fn persist_thread_for_tree_resume(thread: &Arc<CodexThread>, message: &str
     thread
         .inject_user_message_without_turn(message.to_string())
         .await;
-    thread.codex.session.ensure_rollout_materialized().await;
+    thread.session.ensure_rollout_materialized().await;
     thread
-        .codex
         .session
         .flush_rollout()
         .await
@@ -562,10 +560,9 @@ async fn send_inter_agent_communication_without_turn_queues_message_without_trig
     timeout(Duration::from_secs(5), async {
         loop {
             if thread
-                .codex
                 .session
                 .input_queue
-                .has_pending_input(&thread.codex.session.active_turn)
+                .has_pending_input(&thread.session.active_turn)
                 .await
             {
                 break;
@@ -576,13 +573,7 @@ async fn send_inter_agent_communication_without_turn_queues_message_without_trig
     .await
     .expect("inter-agent communication should stay pending");
 
-    let history_items = thread
-        .codex
-        .session
-        .clone_history()
-        .await
-        .raw_items()
-        .to_vec();
+    let history_items = thread.session.clone_history().await.raw_items().to_vec();
     assert!(!history_contains_assistant_inter_agent_communication(
         &history_items,
         &communication
@@ -1041,7 +1032,6 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .inject_user_message_without_turn("parent seed context".to_string())
         .await;
     let expected_parent_seed = parent_thread
-        .codex
         .session
         .clone_history()
         .await
@@ -1049,7 +1039,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .first()
         .cloned()
         .expect("parent seed should be recorded");
-    let turn_context = parent_thread.codex.session.new_default_turn().await;
+    let turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-history".to_string();
     let trigger_message = InterAgentCommunication::new(
         AgentPath::root(),
@@ -1059,7 +1049,6 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         /*trigger_turn*/ true,
     );
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             turn_context.as_ref(),
@@ -1099,19 +1088,13 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .await;
     let parent_reference_context_item = turn_context.to_turn_context_item();
     parent_thread
-        .codex
         .session
         .persist_rollout_items(&[RolloutItem::TurnContext(
             parent_reference_context_item.clone(),
         )])
         .await;
+    parent_thread.session.ensure_rollout_materialized().await;
     parent_thread
-        .codex
-        .session
-        .ensure_rollout_materialized()
-        .await;
-    parent_thread
-        .codex
         .session
         .flush_rollout()
         .await
@@ -1144,7 +1127,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .await
         .expect("child thread should be registered");
     assert_ne!(child_thread_id, parent_thread_id);
-    let history = child_thread.codex.session.clone_history().await;
+    let history = child_thread.session.clone_history().await;
     let mut expected_final_answer =
         assistant_message("parent final answer", Some(MessagePhase::FinalAnswer));
     expected_final_answer.set_turn_id_if_missing(&turn_context.sub_id);
@@ -1167,7 +1150,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         "full-history forked child history should replace parent usage hints with the child subagent hint while filtering non-final assistant/tool chatter"
     );
     assert_eq!(
-        serde_json::to_value(child_thread.codex.session.reference_context_item().await)
+        serde_json::to_value(child_thread.session.reference_context_item().await)
             .expect("serialize child reference context item"),
         serde_json::to_value(Some(parent_reference_context_item))
             .expect("serialize expected reference context item"),
@@ -1203,7 +1186,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         .get_thread(no_hint_child_thread_id)
         .await
         .expect("no-hint child thread should be registered");
-    let no_hint_history = no_hint_child_thread.codex.session.clone_history().await;
+    let no_hint_history = no_hint_child_thread.session.clone_history().await;
     assert!(
         !history_contains_text(no_hint_history.raw_items(), "Child subagent guidance."),
         "full-history forked child should not add empty subagent guidance"
@@ -1267,7 +1250,7 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
         .expect("start parent thread");
     let parent_thread_id = new_thread.thread_id;
     let parent_thread = new_thread.thread;
-    let turn_context = parent_thread.codex.session.new_default_turn().await;
+    let turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-compacted-usage-hints".to_string();
     let replacement_history = vec![
         ResponseItem::Message {
@@ -1290,7 +1273,6 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
         },
     ];
     parent_thread
-        .codex
         .session
         .persist_rollout_items(&[
             RolloutItem::Compacted(CompactedItem {
@@ -1305,13 +1287,8 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
             RolloutItem::ResponseItem(spawn_agent_call(&parent_spawn_call_id)),
         ])
         .await;
+    parent_thread.session.ensure_rollout_materialized().await;
     parent_thread
-        .codex
-        .session
-        .ensure_rollout_materialized()
-        .await;
-    parent_thread
-        .codex
         .session
         .flush_rollout()
         .await
@@ -1344,7 +1321,7 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
         .get_thread(child_thread_id)
         .await
         .expect("child thread should be registered");
-    let history = child_thread.codex.session.clone_history().await;
+    let history = child_thread.session.clone_history().await;
     assert!(
         history_contains_text(history.raw_items(), "compacted parent summary"),
         "forked child history should retain compacted non-hint content"
@@ -1373,10 +1350,9 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
 async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
-    let turn_context = parent_thread.codex.session.new_default_turn().await;
+    let turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-unflushed".to_string();
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             turn_context.as_ref(),
@@ -1414,7 +1390,7 @@ async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
         .get_thread(child_thread_id)
         .await
         .expect("child thread should be registered");
-    let history = child_thread.codex.session.clone_history().await;
+    let history = child_thread.session.clone_history().await;
     assert!(
         history_contains_text(history.raw_items(), "unflushed final answer"),
         "forked child history should include unflushed assistant final answers after flushing the parent rollout"
@@ -1446,9 +1422,8 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
         "queued message".to_string(),
         /*trigger_turn*/ false,
     );
-    let queued_turn_context = parent_thread.codex.session.new_default_turn().await;
+    let queued_turn_context = parent_thread.session.new_default_turn().await;
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             queued_turn_context.as_ref(),
@@ -1463,9 +1438,8 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
         "triggered context".to_string(),
         /*trigger_turn*/ true,
     );
-    let triggered_turn_context = parent_thread.codex.session.new_default_turn().await;
+    let triggered_turn_context = parent_thread.session.new_default_turn().await;
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             triggered_turn_context.as_ref(),
@@ -1475,10 +1449,9 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
     parent_thread
         .inject_user_message_without_turn("current parent task".to_string())
         .await;
-    let spawn_turn_context = parent_thread.codex.session.new_default_turn().await;
+    let spawn_turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-last-n".to_string();
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             spawn_turn_context.as_ref(),
@@ -1486,19 +1459,13 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
         )
         .await;
     parent_thread
-        .codex
         .session
         .persist_rollout_items(&[RolloutItem::TurnContext(
             spawn_turn_context.to_turn_context_item(),
         )])
         .await;
+    parent_thread.session.ensure_rollout_materialized().await;
     parent_thread
-        .codex
-        .session
-        .ensure_rollout_materialized()
-        .await;
-    parent_thread
-        .codex
         .session
         .flush_rollout()
         .await
@@ -1531,7 +1498,7 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
         .get_thread(child_thread_id)
         .await
         .expect("child thread should be registered");
-    let history = child_thread.codex.session.clone_history().await;
+    let history = child_thread.session.clone_history().await;
 
     assert!(
         !history_contains_text(history.raw_items(), "old parent context"),
@@ -1551,7 +1518,6 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
     );
     assert!(
         child_thread
-            .codex
             .session
             .reference_context_item()
             .await
@@ -1602,9 +1568,8 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
         .expect("start parent thread");
     let parent_thread_id = parent.thread_id;
     let parent_thread = parent.thread;
-    let startup_turn_context = parent_thread.codex.session.new_default_turn().await;
+    let startup_turn_context = parent_thread.session.new_default_turn().await;
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             startup_turn_context.as_ref(),
@@ -1622,23 +1587,17 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
     parent_thread
         .inject_user_message_without_turn("current parent task".to_string())
         .await;
-    let spawn_turn_context = parent_thread.codex.session.new_default_turn().await;
+    let spawn_turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-last-n-under-limit".to_string();
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             spawn_turn_context.as_ref(),
             &[spawn_agent_call(&parent_spawn_call_id)],
         )
         .await;
+    parent_thread.session.ensure_rollout_materialized().await;
     parent_thread
-        .codex
-        .session
-        .ensure_rollout_materialized()
-        .await;
-    parent_thread
-        .codex
         .session
         .flush_rollout()
         .await
@@ -1671,7 +1630,7 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
         .get_thread(child_thread_id)
         .await
         .expect("child thread should be registered");
-    let history = child_thread.codex.session.clone_history().await;
+    let history = child_thread.session.clone_history().await;
     assert!(
         history_contains_text(history.raw_items(), "current parent task"),
         "bounded fork should retain the requested recent parent turn"
@@ -1681,16 +1640,11 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
         "bounded fork should drop parent startup context even when fewer turns exist than requested"
     );
     assert_eq!(
-        &child_thread
-            .codex
-            .session
-            .services
-            .selected_capability_roots,
+        &child_thread.session.services.selected_capability_roots,
         &selected_capability_roots
     );
     assert!(
         child_thread
-            .codex
             .session
             .reference_context_item()
             .await
@@ -1730,10 +1684,9 @@ async fn spawn_agent_fork_last_n_turns_strips_parent_usage_hints() {
     parent_thread
         .inject_user_message_without_turn("parent task".to_string())
         .await;
-    let turn_context = parent_thread.codex.session.new_default_turn().await;
+    let turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-last-n-usage-hints".to_string();
     parent_thread
-        .codex
         .session
         .record_conversation_items(
             turn_context.as_ref(),
@@ -1751,13 +1704,8 @@ async fn spawn_agent_fork_last_n_turns_strips_parent_usage_hints() {
             ],
         )
         .await;
+    parent_thread.session.ensure_rollout_materialized().await;
     parent_thread
-        .codex
-        .session
-        .ensure_rollout_materialized()
-        .await;
-    parent_thread
-        .codex
         .session
         .flush_rollout()
         .await
@@ -1790,7 +1738,7 @@ async fn spawn_agent_fork_last_n_turns_strips_parent_usage_hints() {
         .get_thread(child_thread_id)
         .await
         .expect("child thread should be registered");
-    let history = child_thread.codex.session.clone_history().await;
+    let history = child_thread.session.clone_history().await;
     assert!(
         history_contains_text(history.raw_items(), "parent task"),
         "bounded fork should retain the requested recent parent turn"
@@ -2127,9 +2075,8 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
         .get_thread(tester_thread_id)
         .await
         .expect("tester thread should exist");
-    let tester_turn = tester_thread.codex.session.new_default_turn().await;
+    let tester_turn = tester_thread.session.new_default_turn().await;
     tester_thread
-        .codex
         .session
         .send_event(
             tester_turn.as_ref(),
@@ -2165,7 +2112,6 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
     );
 
     let root_history_items = root_thread
-        .codex
         .session
         .clone_history()
         .await
@@ -2216,9 +2162,8 @@ async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
         tester_path.to_string(),
         Some(tester_path.clone()),
     );
-    let tester_turn = tester_thread.codex.session.new_default_turn().await;
+    let tester_turn = tester_thread.session.new_default_turn().await;
     tester_thread
-        .codex
         .session
         .send_event(
             tester_turn.as_ref(),
@@ -2270,7 +2215,6 @@ async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
     .expect("completion watcher should queue a direct-parent message");
 
     let root_history_items = root_thread
-        .codex
         .session
         .clone_history()
         .await
@@ -2310,7 +2254,6 @@ async fn completion_watcher_notifies_parent_when_child_is_missing() {
     assert_eq!(wait_for_subagent_notification(&parent_thread).await, true);
 
     let history_items = parent_thread
-        .codex
         .session
         .clone_history()
         .await
@@ -2549,13 +2492,8 @@ async fn resume_thread_subagent_restores_stored_metadata() {
         .get_thread(child_thread_id)
         .await
         .expect("child thread should exist");
+    child_thread.session.ensure_rollout_materialized().await;
     child_thread
-        .codex
-        .session
-        .ensure_rollout_materialized()
-        .await;
-    child_thread
-        .codex
         .session
         .flush_rollout()
         .await
