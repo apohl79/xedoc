@@ -4268,7 +4268,8 @@ pub struct SubAgentActivityEvent {
     pub model: Option<String>,
     pub kind: SubAgentActivityKind,
     /// Human-readable summary of what the sub-agent is currently doing.
-    /// Generated periodically by the sub-agent using the fast model.
+    /// Spawn and periodic heartbeat events report a non-empty working state;
+    /// generated summaries replace that state when available.
     /// Max 64 characters.
     #[serde(default)]
     pub current_activity: Option<String>,

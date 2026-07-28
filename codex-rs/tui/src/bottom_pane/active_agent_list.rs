@@ -20,6 +20,7 @@ use crate::tui::FrameRequester;
 
 const MAX_VISIBLE_AGENTS: usize = 7;
 const ELAPSED_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+const DEFAULT_ACTIVITY: &str = "Working...";
 
 #[derive(Clone, Debug)]
 pub(crate) struct ActiveAgentEntry {
@@ -109,9 +110,11 @@ impl ActiveAgentList {
             "□ ".cl_cyan().bold(),
             Span::styled(agent.name.clone(), Style::default().cl_cyan().bold()),
         ];
-        if let Some(activity) = agent.current_activity.as_ref() {
-            spans.push(Span::from(format!(" {activity}")));
-        }
+        let activity = agent
+            .current_activity
+            .as_deref()
+            .unwrap_or(DEFAULT_ACTIVITY);
+        spans.push(Span::from(format!(" {activity}")));
         spans.push(Span::from(" (").dim());
         spans.push(Span::from(elapsed).dim());
         if let Some(provider_model) = agent.provider_model.as_ref() {

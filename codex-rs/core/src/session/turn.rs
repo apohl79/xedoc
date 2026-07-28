@@ -2030,7 +2030,7 @@ async fn try_run_sampling_request(
         !sess.services.extensions.turn_item_contributors().is_empty();
     let mut active_item_is_streaming_to_client = false;
     let receiving_span = trace_span!("receiving_stream");
-    // Periodically generate activity summaries for sub-agents via timer.
+    // Periodically report activity for sub-agents via timer.
     let activity_cancel = CancellationToken::new();
     let activity_state = Arc::new(std::sync::Mutex::new((Vec::<String>::new(), false))); // (messages, dirty)
     let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
@@ -2040,6 +2040,7 @@ async fn try_run_sampling_request(
         let state_ref = Arc::clone(&activity_state);
         Some(tokio::spawn(async move {
             let mut tick: u32 = 0;
+            let mut current_activity = "Working...".to_string();
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => break,
@@ -2056,55 +2057,52 @@ async fn try_run_sampling_request(
                     state.1 = false;
                     (state.0.clone(), dirty)
                 };
-                if !was_dirty {
-                    tracing::info!("Activity summary: skipping, no new messages");
-                    continue;
-                }
-                let combined = if recent_msgs.is_empty() {
-                    None
-                } else {
-                    Some(recent_msgs.join(
-                        "
+                if was_dirty {
+                    let combined = if recent_msgs.is_empty() {
+                        None
+                    } else {
+                        Some(recent_msgs.join(
+                            "
 ",
-                    ))
-                };
-                match generate_sub_agent_activity_summary(
-                    sess.as_ref(),
-                    turn.as_ref(),
-                    combined.as_deref(),
-                )
-                .await
-                {
-                    Ok(Some(summary)) => {
-                        sess.send_event(
-                            turn.as_ref(),
-                            codex_protocol::protocol::SubAgentActivityEvent {
-                                event_id: format!("activity-timer-{tick}"),
-                                occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
-                                agent_thread_id: sess.thread_id,
-                                agent_path: turn
-                                    .session_source
-                                    .get_agent_path()
-                                    .unwrap_or_else(codex_protocol::AgentPath::root),
-                                model_provider: None,
-                                model: None,
-                                kind: codex_protocol::protocol::SubAgentActivityKind::Interacted,
-                                current_activity: Some(summary),
-                            }
-                            .into(),
-                        )
-                        .await;
-                    }
-                    Ok(None) => {
-                        tracing::info!("Timer activity summary returned empty");
-                    }
-                    Err(err) => {
-                        tracing::info!(
-                            error = %err,
-                            "Timer activity summary generation failed"
-                        );
+                        ))
+                    };
+                    match generate_sub_agent_activity_summary(
+                        sess.as_ref(),
+                        turn.as_ref(),
+                        combined.as_deref(),
+                    )
+                    .await
+                    {
+                        Ok(Some(summary)) => current_activity = summary,
+                        Ok(None) => {
+                            tracing::info!("Timer activity summary returned empty");
+                        }
+                        Err(err) => {
+                            tracing::info!(
+                                error = %err,
+                                "Timer activity summary generation failed"
+                            );
+                        }
                     }
                 }
+                sess.send_event(
+                    turn.as_ref(),
+                    codex_protocol::protocol::SubAgentActivityEvent {
+                        event_id: format!("activity-timer-{tick}"),
+                        occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
+                        agent_thread_id: sess.thread_id,
+                        agent_path: turn
+                            .session_source
+                            .get_agent_path()
+                            .unwrap_or_else(codex_protocol::AgentPath::root),
+                        model_provider: None,
+                        model: None,
+                        kind: codex_protocol::protocol::SubAgentActivityKind::Interacted,
+                        current_activity: Some(current_activity.clone()),
+                    }
+                    .into(),
+                )
+                .await;
             }
         }))
     } else {
