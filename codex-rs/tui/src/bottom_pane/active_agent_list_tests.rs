@@ -32,7 +32,10 @@ fn display_lines_renders_elapsed_agent() {
         .map(|line| line.spans.into_iter().map(|span| span.content).collect())
         .collect::<Vec<String>>();
 
-    assert_eq!(rendered, vec!["• Agents", "  └ □ reviewer (5m 26s)"]);
+    assert_eq!(
+        rendered,
+        vec!["• Agents", "  └ □ reviewer Working... (5m 26s)"]
+    );
 }
 
 #[test]
@@ -55,7 +58,10 @@ fn display_lines_renders_provider_model() {
 
     assert_eq!(
         rendered,
-        vec!["• Agents", "  └ □ reviewer (5m 26s, openai/gpt-5.5)"]
+        vec![
+            "• Agents",
+            "  └ □ reviewer Working... (5m 26s, openai/gpt-5.5)"
+        ]
     );
 }
 
@@ -79,7 +85,10 @@ fn display_lines_renders_provider_model_and_tokens() {
 
     assert_eq!(
         rendered,
-        vec!["• Agents", "  └ □ reviewer (32m 11s, openai/gpt-5.5, 42k)"]
+        vec![
+            "• Agents",
+            "  └ □ reviewer Working... (32m 11s, openai/gpt-5.5, 42k)"
+        ]
     );
 }
 

@@ -1,5 +1,7 @@
 //! Completed request-user-input transcript rendering.
 
+#![allow(clippy::disallowed_methods)]
+
 use super::*;
 use crate::city_lights::CityLightsStylize;
 

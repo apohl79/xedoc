@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)]
+
 #[cfg(test)]
 use crate::city_lights::CityLightsStylize;
 use crossterm::event::KeyCode;

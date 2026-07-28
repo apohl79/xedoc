@@ -6,6 +6,7 @@
 //! onboarding screen coordinates step progression.
 
 #![allow(clippy::unwrap_used)]
+#![allow(clippy::disallowed_methods)]
 
 use crate::city_lights::CityLightsStylize;
 use codex_app_server_client::AppServerRequestHandle;

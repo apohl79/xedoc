@@ -47,6 +47,7 @@ fn environment_descriptor_binds_every_manifest_resource() {
             mcp_servers: Some(PluginManifestMcpServers::Path(path_uri(&mcp_servers))),
             apps: Some(path_uri(&apps)),
             hooks: Some(PluginManifestHooks::Paths(vec![path_uri(&hooks)])),
+            context: None,
         },
         interface: Some(PluginManifestInterface {
             composer_icon: Some(path_uri(&composer_icon)),
@@ -87,6 +88,7 @@ fn environment_descriptor_binds_every_manifest_resource() {
                     "executor-1",
                     &hooks
                 )])),
+                context: None,
             },
             interface: Some(PluginManifestInterface {
                 composer_icon: Some(resource("executor-1", &composer_icon)),
@@ -113,6 +115,7 @@ fn environment_descriptor_rejects_resources_outside_package_root() {
             mcp_servers: Some(PluginManifestMcpServers::Path(path_uri(&outside))),
             apps: None,
             hooks: None,
+            context: None,
         },
         interface: None,
     };

@@ -3,6 +3,8 @@
 //! Codex uses the terminal scrollback itself for finalized chat history, so inserting a history
 //! cell is an escape-sequence operation rather than a normal ratatui render.
 
+#![allow(clippy::disallowed_methods)]
+
 use std::fmt;
 use std::io;
 use std::io::Write;
@@ -95,7 +97,7 @@ where
 {
     insert_history_hyperlink_lines_with_mode_and_wrap_policy(
         terminal,
-        plain_hyperlink_lines(lines.iter().map(line_to_static).collect()),
+        &plain_hyperlink_lines(lines.iter().map(line_to_static).collect()),
         mode,
         wrap_policy,
     )
@@ -103,7 +105,7 @@ where
 
 pub(crate) fn insert_history_hyperlink_lines_with_mode_and_wrap_policy<B>(
     terminal: &mut crate::custom_terminal::Terminal<B>,
-    lines: Vec<HyperlinkLine>,
+    lines: &[HyperlinkLine],
     mode: InsertHistoryMode,
     wrap_policy: HistoryLineWrapPolicy,
 ) -> io::Result<()>
@@ -131,7 +133,7 @@ where
     let mut wrapped = Vec::new();
     let mut wrapped_rows = 0usize;
 
-    for line in &lines {
+    for line in lines {
         let line_wrapped = match wrap_policy {
             HistoryLineWrapPolicy::Terminal => vec![line.clone()],
             HistoryLineWrapPolicy::PreWrap

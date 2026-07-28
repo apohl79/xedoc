@@ -332,6 +332,7 @@ fn message_text(content: &[ContentItem]) -> String {
                 Some(text.as_str())
             }
             ContentItem::InputImage { .. } => None,
+            ContentItem::InputAudio { .. } => None,
         })
         .collect::<Vec<_>>()
         .join("\n")

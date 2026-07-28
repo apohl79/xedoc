@@ -405,6 +405,7 @@ fn resolved_plugin(
                 mcp_servers,
                 apps: None,
                 hooks: None,
+                context: None,
             },
             interface: None,
         },

@@ -305,6 +305,7 @@ fn model_preset(model: &str, display_name: &str, show_in_picker: bool) -> ModelP
         is_default: false,
         upgrade: None,
         show_in_picker,
+        multi_agent_version: None,
         availability_nux: None,
         supported_in_api: true,
         input_modalities: Vec::new(),

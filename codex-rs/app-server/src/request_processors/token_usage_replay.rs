@@ -37,9 +37,8 @@ pub(super) async fn send_thread_token_usage_update_to_connection(
     outgoing: &Arc<OutgoingMessageSender>,
     connection_id: ConnectionId,
     thread_id: ThreadId,
-    thread: &Thread,
     conversation: &CodexThread,
-    token_usage_turn_id: Option<String>,
+    token_usage_turn_id: String,
 ) {
     let Some(info) = conversation.token_usage_info().await else {
         return;
@@ -47,7 +46,7 @@ pub(super) async fn send_thread_token_usage_update_to_connection(
     let session_cost_usd = conversation.session_cost_usd().await;
     let notification = ThreadTokenUsageUpdatedNotification {
         thread_id: thread_id.to_string(),
-        turn_id: token_usage_turn_id.unwrap_or_else(|| latest_token_usage_turn_id(thread)),
+        turn_id: token_usage_turn_id,
         token_usage: ThreadTokenUsage::from_core_token_usage(info, session_cost_usd),
     };
     outgoing
@@ -58,41 +57,36 @@ pub(super) async fn send_thread_token_usage_update_to_connection(
         .await;
 }
 
-/// Identifies the turn that was active when a `TokenCount` record appeared.
+pub(super) fn restored_token_usage_turn_id(
+    rollout_items: &[RolloutItem],
+    thread: &Thread,
+) -> String {
+    latest_token_usage_turn_id_from_rollout_items(rollout_items, thread.turns.as_slice())
+        .unwrap_or_else(|| latest_token_usage_turn_id(thread))
+}
+
+/// Identifies the turn that was active when the latest `TokenCount` record appeared.
 ///
 /// The id is preferred when it still appears in the rebuilt thread. The position is a
 /// fallback for histories whose implicit turn ids are regenerated during reconstruction.
-struct TokenUsageTurnOwner {
-    id: String,
-    position: Option<usize>,
-}
-
-pub(super) fn latest_token_usage_turn_id_from_rollout_items(
+fn latest_token_usage_turn_id_from_rollout_items(
     rollout_items: &[RolloutItem],
     turns: &[Turn],
 ) -> Option<String> {
+    let token_count_index = rollout_items
+        .iter()
+        .rposition(|item| matches!(item, RolloutItem::EventMsg(EventMsg::TokenCount(_))))?;
     let mut builder = ThreadHistoryBuilder::new();
-    let mut token_usage_turn_owner = None;
-
-    for item in rollout_items {
-        if matches!(item, RolloutItem::EventMsg(EventMsg::TokenCount(_))) {
-            token_usage_turn_owner =
-                builder
-                    .active_turn_snapshot()
-                    .map(|turn| TokenUsageTurnOwner {
-                        id: turn.id,
-                        position: builder.active_turn_position(),
-                    });
-        }
+    for item in &rollout_items[..token_count_index] {
         builder.handle_rollout_item(item);
     }
 
-    let owner = token_usage_turn_owner?;
-    if turns.iter().any(|turn| turn.id == owner.id) {
-        Some(owner.id)
+    let active_turn_id = builder.active_turn_id()?;
+    if turns.iter().any(|turn| turn.id == active_turn_id) {
+        Some(active_turn_id.to_string())
     } else {
-        owner
-            .position
+        builder
+            .active_turn_position()
             .and_then(|position| turns.get(position))
             .map(|turn| turn.id.clone())
     }
@@ -143,6 +137,18 @@ mod tests {
         assert_eq!(
             latest_token_usage_turn_id_from_rollout_items(&rollout_items, turns.as_slice()),
             Some("rebuilt-turn-id".to_string())
+        );
+    }
+
+    #[test]
+    fn replay_attribution_uses_latest_token_count_and_ignores_tail_turn() {
+        let mut rollout_items = token_usage_history();
+        rollout_items.extend(token_usage_history());
+        let turns = build_turns_from_rollout_items(&rollout_items);
+
+        assert_eq!(
+            latest_token_usage_turn_id_from_rollout_items(&rollout_items, turns.as_slice()),
+            Some(turns[2].id.clone())
         );
     }
 

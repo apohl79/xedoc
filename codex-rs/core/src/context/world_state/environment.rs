@@ -6,10 +6,15 @@ use crate::context::environment_context::NetworkContext;
 use crate::context::environment_context::push_xml_escaped_text;
 use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::session::turn_context::TurnContext;
+use crate::session::turn_context::TurnEnvironment;
 use codex_utils_path_uri::PathUri;
+use codex_utils_string::approx_token_count;
+use codex_utils_string::truncate_middle_with_token_budget;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
+
+const MAX_SUBAGENTS_CONTEXT_TOKENS: usize = 1_000;
 
 /// Environment values visible to the model.
 #[derive(Clone, Debug, Default)]
@@ -27,14 +32,18 @@ impl EnvironmentsState {
         turn_context: &TurnContext,
         environments: &TurnEnvironmentSnapshot,
     ) -> Self {
+        let workspace_roots = environments
+            .primary()
+            .map(TurnEnvironment::workspace_roots)
+            .unwrap_or_default();
         Self {
             environments: environment_states(environments),
             current_date: turn_context.current_date.clone(),
             timezone: turn_context.timezone.clone(),
             network: network_from_turn_context(turn_context),
             filesystem: Some(FileSystemContext::from_permission_profile(
-                &turn_context.permission_profile,
-                &turn_context.config.effective_workspace_roots(),
+                turn_context.config.permissions.permission_profile(),
+                workspace_roots,
             )),
             subagents: None,
         }
@@ -42,7 +51,10 @@ impl EnvironmentsState {
 
     pub(crate) fn with_subagents(mut self, subagents: String) -> Self {
         if !subagents.is_empty() {
-            self.subagents = Some(subagents);
+            self.subagents = Some(truncate_to_token_budget(
+                &subagents,
+                MAX_SUBAGENTS_CONTEXT_TOKENS,
+            ));
         }
         self
     }
@@ -61,7 +73,10 @@ impl EnvironmentsState {
             timezone: self.timezone.clone(),
             network: self.network.clone(),
             filesystem: self.filesystem.clone(),
-            subagents: self.subagents.clone(),
+            subagents: self
+                .subagents
+                .as_deref()
+                .map(|subagents| truncate_to_token_budget(subagents, MAX_SUBAGENTS_CONTEXT_TOKENS)),
         }
     }
 }
@@ -90,7 +105,10 @@ impl WorldStateSection for EnvironmentsState {
             timezone: self.timezone.clone(),
             network: self.network.as_ref().map(NetworkContext::render),
             filesystem: self.filesystem.as_ref().map(FileSystemContext::render),
-            subagents: self.subagents.clone(),
+            subagents: self
+                .subagents
+                .as_deref()
+                .map(|subagents| truncate_to_token_budget(subagents, MAX_SUBAGENTS_CONTEXT_TOKENS)),
         }
     }
 
@@ -107,7 +125,8 @@ impl WorldStateSection for EnvironmentsState {
         let turn_context_values_changed = current.current_date != previous.current_date
             || current.timezone != previous.timezone
             || current.network != previous.network
-            || current.filesystem != previous.filesystem;
+            || current.filesystem != previous.filesystem
+            || current.subagents != previous.subagents;
         let mut updates = self
             .environments
             .iter()
@@ -139,7 +158,9 @@ impl WorldStateSection for EnvironmentsState {
                 timezone: self.timezone.clone(),
                 network: self.network.clone(),
                 filesystem: self.filesystem.clone(),
-                subagents: self.subagents.clone(),
+                subagents: self.subagents.as_deref().map(|subagents| {
+                    truncate_to_token_budget(subagents, MAX_SUBAGENTS_CONTEXT_TOKENS)
+                }),
             }) as Box<dyn ContextualUserFragment>
         })
     }
@@ -193,6 +214,10 @@ impl ContextualUserFragment for RenderedEnvironments {
 
     fn body(&self) -> String {
         let mut rendered = "\n".to_string();
+        let bounded_subagents = self
+            .subagents
+            .as_deref()
+            .map(|subagents| truncate_to_token_budget(subagents, MAX_SUBAGENTS_CONTEXT_TOKENS));
         if self.legacy_single {
             if let Some(EnvironmentUpdate::Current(environment)) = self.updates.values().next() {
                 push_environment_values(&mut rendered, environment, "  ");
@@ -230,7 +255,7 @@ impl ContextualUserFragment for RenderedEnvironments {
             rendered.push_str(&filesystem.render());
             rendered.push('\n');
         }
-        if let Some(subagents) = &self.subagents {
+        if let Some(subagents) = bounded_subagents.as_deref() {
             rendered.push_str("  <subagents>\n");
             for line in subagents.lines() {
                 rendered.push_str("    ");
@@ -271,6 +296,21 @@ fn push_optional_element(rendered: &mut String, name: &str, value: Option<&str>)
     rendered.push_str("</");
     rendered.push_str(name);
     rendered.push_str(">\n");
+}
+
+fn truncate_to_token_budget(text: &str, max_tokens: usize) -> String {
+    let mut budget = max_tokens;
+    loop {
+        let (candidate, _) = truncate_middle_with_token_budget(text, budget);
+        let candidate_tokens = approx_token_count(&candidate);
+        if candidate_tokens <= max_tokens {
+            return candidate;
+        }
+        if budget == 0 {
+            return String::new();
+        }
+        budget = budget.saturating_sub((candidate_tokens - max_tokens).max(1));
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -318,8 +358,7 @@ enum EnvironmentStatus {
 
 fn environment_states(snapshot: &TurnEnvironmentSnapshot) -> BTreeMap<String, EnvironmentState> {
     let mut environments = snapshot
-        .turn_environments
-        .iter()
+        .turn_environments()
         .map(|environment| {
             (
                 environment.environment_id.clone(),
@@ -334,7 +373,7 @@ fn environment_states(snapshot: &TurnEnvironmentSnapshot) -> BTreeMap<String, En
             )
         })
         .collect::<BTreeMap<_, _>>();
-    for environment in &snapshot.starting {
+    for environment in snapshot.starting() {
         environments
             .entry(environment.selection.environment_id.clone())
             .or_insert_with(|| EnvironmentState {

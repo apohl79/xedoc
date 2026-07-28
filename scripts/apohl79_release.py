@@ -868,8 +868,12 @@ def fork_commits_between(prev_tag: str, ref: str) -> list[str]:
     try:
         raw = subprocess.check_output(
             [
-                "git", "log", "--oneline", "--no-merges",
-                "--author", author,
+                "git",
+                "log",
+                "--oneline",
+                "--no-merges",
+                "--author",
+                author,
                 f"{prev_tag}..{ref}",
             ],
             cwd=REPO_ROOT,
