@@ -23,6 +23,7 @@ fn display_lines_renders_elapsed_agent() {
         started_at: now - Duration::from_secs(326),
         provider_model: None,
         total_tokens: None,
+        token_usage: None,
         current_activity: None,
     }]);
 
@@ -47,6 +48,7 @@ fn display_lines_renders_provider_model() {
         started_at: now - Duration::from_secs(326),
         provider_model: Some(" openai/gpt-5.5 ".to_string()),
         total_tokens: None,
+        token_usage: None,
         current_activity: None,
     }]);
 
@@ -74,6 +76,7 @@ fn display_lines_renders_provider_model_and_tokens() {
         started_at: now - Duration::from_secs(1931),
         provider_model: Some(" openai/gpt-5.5 ".to_string()),
         total_tokens: Some(42_000),
+        token_usage: None,
         current_activity: None,
     }]);
 
@@ -93,6 +96,36 @@ fn display_lines_renders_provider_model_and_tokens() {
 }
 
 #[test]
+fn display_lines_renders_input_and_output_tokens() {
+    let now = Instant::now();
+    let mut list = ActiveAgentList::new(FrameRequester::test_dummy());
+    list.set_agents(vec![ActiveAgentEntry {
+        name: "reviewer".to_string(),
+        started_at: now,
+        provider_model: None,
+        total_tokens: Some(42_000),
+        token_usage: Some(TokenUsage {
+            input_tokens: 40_000,
+            output_tokens: 2_000,
+            total_tokens: 42_000,
+            ..Default::default()
+        }),
+        current_activity: None,
+    }]);
+
+    let rendered = list
+        .display_lines_at(/*width*/ 80, now)
+        .into_iter()
+        .map(|line| line.spans.into_iter().map(|span| span.content).collect())
+        .collect::<Vec<String>>();
+
+    assert_eq!(
+        rendered,
+        vec!["• Agents", "  └ □ reviewer Working... (0s, in 40k, out 2k)"]
+    );
+}
+
+#[test]
 fn display_lines_caps_visible_agents() {
     let now = Instant::now();
     let mut list = ActiveAgentList::new(FrameRequester::test_dummy());
@@ -103,6 +136,7 @@ fn display_lines_caps_visible_agents() {
                 started_at: now,
                 provider_model: None,
                 total_tokens: None,
+                token_usage: None,
                 current_activity: None,
             })
             .collect(),

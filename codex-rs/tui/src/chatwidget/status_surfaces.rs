@@ -586,7 +586,7 @@ impl ChatWidget {
                 "name": "default",
             },
             "cost": {
-                "total_cost_usd": self.session_cost_usd,
+                "total_cost_usd": self.session_cost_usd(),
                 "total_duration_ms": null,
                 "total_api_duration_ms": null,
                 "total_lines_added": null,

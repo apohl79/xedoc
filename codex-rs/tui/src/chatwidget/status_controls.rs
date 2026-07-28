@@ -223,11 +223,8 @@ impl ChatWidget {
         refreshing_rate_limits: bool,
         request_id: Option<u64>,
     ) {
-        let default_usage = TokenUsage::default();
         let token_info = self.token_info.as_ref();
-        let total_usage = token_info
-            .map(|ti| &ti.total_token_usage)
-            .unwrap_or(&default_usage);
+        let total_usage = self.status_line_total_usage();
         let collaboration_mode = self.collaboration_mode_label();
         let model = self.current_model().to_string();
         let model_default_reasoning_effort =
@@ -258,7 +255,7 @@ impl ChatWidget {
             self.remote_connection.as_ref(),
             self.status_account_display.as_ref(),
             token_info,
-            total_usage,
+            &total_usage,
             &self.thread_id,
             self.thread_name.clone(),
             self.forked_from,
@@ -410,10 +407,32 @@ impl ChatWidget {
     }
 
     pub(super) fn status_line_total_usage(&self) -> TokenUsage {
-        self.token_info
+        let mut usage = self
+            .token_info
             .as_ref()
             .map(|info| info.total_token_usage.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        usage.add_assign(&self.agent_token_usage);
+        usage
+    }
+
+    pub(crate) fn set_agent_token_usage(
+        &mut self,
+        token_usage: TokenUsage,
+        session_cost_usd: Option<f64>,
+    ) {
+        self.agent_token_usage = token_usage;
+        self.agent_session_cost_usd = session_cost_usd;
+        self.refresh_status_surfaces();
+    }
+
+    pub(crate) fn session_cost_usd(&self) -> Option<f64> {
+        match (self.session_cost_usd, self.agent_session_cost_usd) {
+            (Some(session_cost_usd), Some(agent_session_cost_usd)) => {
+                Some(session_cost_usd + agent_session_cost_usd)
+            }
+            (session_cost_usd, None) | (None, session_cost_usd) => session_cost_usd,
+        }
     }
 
     pub(super) fn status_line_limit_display(

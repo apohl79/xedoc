@@ -1015,7 +1015,11 @@ impl App {
         {
             let thread_id = activity.thread_id;
             let running_state_update = activity.running_state_update;
+            let clears_live_cost = matches!(running_state_update, AgentRunningStateUpdate::SetIdle);
             self.agent_navigation.record_sub_agent_activity(activity);
+            if clears_live_cost {
+                self.clear_agent_live_cost(thread_id);
+            }
             match running_state_update {
                 AgentRunningStateUpdate::SetRunning => {
                     self.set_active_agent_running(thread_id, /*is_running*/ true);
@@ -1109,9 +1113,20 @@ impl App {
         {
             return;
         }
+        let total_usage = &notification.token_usage.total;
         self.agent_navigation
-            .set_total_tokens(thread_id, Some(notification.token_usage.total.total_tokens));
-        self.sync_active_agent_display();
+            .set_total_tokens(thread_id, Some(total_usage.total_tokens));
+        self.update_agent_usage(
+            thread_id,
+            TokenUsage {
+                input_tokens: total_usage.input_tokens,
+                cached_input_tokens: total_usage.cached_input_tokens,
+                output_tokens: total_usage.output_tokens,
+                reasoning_output_tokens: total_usage.reasoning_output_tokens,
+                total_tokens: total_usage.total_tokens,
+            },
+            notification.token_usage.session_cost_usd,
+        );
     }
 
     pub(super) async fn infer_session_for_thread_notification(

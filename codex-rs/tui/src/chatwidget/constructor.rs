@@ -124,6 +124,8 @@ impl ChatWidget {
             remote_connection: None,
             token_info: None,
             session_cost_usd: None,
+            agent_token_usage: TokenUsage::default(),
+            agent_session_cost_usd: None,
             rate_limit_snapshots_by_limit_id: BTreeMap::new(),
             refreshing_status_outputs: Vec::new(),
             next_status_refresh_request_id: 0,

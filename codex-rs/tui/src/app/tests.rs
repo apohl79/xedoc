@@ -1667,7 +1667,7 @@ async fn inactive_agent_token_usage_updates_active_agent_display_metadata() -> R
 
     app.enqueue_thread_notification(
         agent_thread_id,
-        token_usage_notification(agent_thread_id, "turn-1", Some(100_000)),
+        token_usage_notification_with_cost(agent_thread_id, "turn-1", Some(100_000), Some(1.25)),
     )
     .await?;
 
@@ -1677,6 +1677,61 @@ async fn inactive_agent_token_usage_updates_active_agent_display_metadata() -> R
             .and_then(|entry| entry.total_tokens),
         Some(10)
     );
+    assert_eq!(
+        app.chat_widget.token_usage(),
+        TokenUsage {
+            input_tokens: 4,
+            cached_input_tokens: 1,
+            output_tokens: 5,
+            reasoning_output_tokens: 0,
+            total_tokens: 10,
+        }
+    );
+    assert_eq!(app.chat_widget.session_cost_usd(), Some(1.25));
+    Ok(())
+}
+
+#[tokio::test]
+async fn completed_agent_usage_keeps_tokens_but_drops_live_cost() -> Result<()> {
+    let mut app = make_test_app().await;
+    let parent_thread_id = ThreadId::new();
+    let agent_thread_id = ThreadId::new();
+    app.upsert_agent_picker_thread(
+        agent_thread_id,
+        Some("reviewer".to_string()),
+        Some("worker".to_string()),
+        /*is_closed*/ false,
+    );
+    app.set_active_agent_running(agent_thread_id, /*is_running*/ true);
+
+    app.enqueue_thread_notification(
+        agent_thread_id,
+        token_usage_notification_with_cost(agent_thread_id, "turn-1", None, Some(1.25)),
+    )
+    .await?;
+    app.enqueue_thread_notification(
+        parent_thread_id,
+        sub_agent_activity_notification(
+            parent_thread_id,
+            agent_thread_id,
+            codex_app_server_protocol::SubAgentActivityKind::Completed,
+            None,
+            None,
+        ),
+    )
+    .await?;
+
+    assert_eq!(
+        app.chat_widget.token_usage(),
+        TokenUsage {
+            input_tokens: 4,
+            cached_input_tokens: 1,
+            output_tokens: 5,
+            reasoning_output_tokens: 0,
+            total_tokens: 10,
+        }
+    );
+    assert_eq!(app.chat_widget.session_cost_usd(), None);
     Ok(())
 }
 
@@ -5094,6 +5149,7 @@ async fn make_test_app() -> App {
         thread_event_listener_tasks: HashMap::new(),
         agent_navigation: AgentNavigationState::default(),
         active_agent_started_at: HashMap::new(),
+        agent_usage: HashMap::new(),
         side_threads: HashMap::new(),
         active_thread_id: None,
         active_thread_rx: None,
@@ -5162,6 +5218,7 @@ async fn make_test_app_with_channels() -> (
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
             active_agent_started_at: HashMap::new(),
+            agent_usage: HashMap::new(),
             side_threads: HashMap::new(),
             active_thread_id: None,
             active_thread_rx: None,
@@ -5795,11 +5852,20 @@ fn token_usage_notification(
     turn_id: &str,
     model_context_window: Option<i64>,
 ) -> ServerNotification {
+    token_usage_notification_with_cost(thread_id, turn_id, model_context_window, None)
+}
+
+fn token_usage_notification_with_cost(
+    thread_id: ThreadId,
+    turn_id: &str,
+    model_context_window: Option<i64>,
+    session_cost_usd: Option<f64>,
+) -> ServerNotification {
     ServerNotification::ThreadTokenUsageUpdated(ThreadTokenUsageUpdatedNotification {
         thread_id: thread_id.to_string(),
         turn_id: turn_id.to_string(),
         token_usage: ThreadTokenUsage {
-            session_cost_usd: None,
+            session_cost_usd,
             total: TokenUsageBreakdown {
                 total_tokens: 10,
                 input_tokens: 4,

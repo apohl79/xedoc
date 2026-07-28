@@ -559,6 +559,10 @@ pub(crate) struct ChatWidget {
     token_info: Option<TokenUsageInfo>,
     /// Accumulated session cost in USD, updated with token usage notifications.
     session_cost_usd: Option<f64>,
+    /// Cumulative usage reported by subagents in the current session.
+    agent_token_usage: TokenUsage,
+    /// Live subagent cost not yet reflected in the parent session cost.
+    agent_session_cost_usd: Option<f64>,
     rate_limit_snapshots_by_limit_id: BTreeMap<String, RateLimitSnapshotDisplay>,
     refreshing_status_outputs: Vec<(u64, StatusHistoryHandle)>,
     next_status_refresh_request_id: u64,
@@ -1839,10 +1843,7 @@ impl ChatWidget {
     }
 
     pub(crate) fn token_usage(&self) -> TokenUsage {
-        self.token_info
-            .as_ref()
-            .map(|ti| ti.total_token_usage.clone())
-            .unwrap_or_default()
+        self.status_line_total_usage()
     }
 
     pub(crate) fn thread_id(&self) -> Option<ThreadId> {

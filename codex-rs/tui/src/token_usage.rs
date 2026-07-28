@@ -34,6 +34,14 @@ impl TokenUsage {
         (self.non_cached_input() + self.output_tokens.max(0)).max(0)
     }
 
+    pub(crate) fn add_assign(&mut self, other: &Self) {
+        self.input_tokens += other.input_tokens;
+        self.cached_input_tokens += other.cached_input_tokens;
+        self.output_tokens += other.output_tokens;
+        self.reasoning_output_tokens += other.reasoning_output_tokens;
+        self.total_tokens += other.total_tokens;
+    }
+
     /// Returns the raw `total_tokens` value. For `last_token_usage`, this is the latest active
     /// context size; for `total_token_usage`, this is the accumulated session total.
     pub(crate) fn tokens_in_context_window(&self) -> i64 {

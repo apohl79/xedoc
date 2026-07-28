@@ -564,6 +564,12 @@ struct InitialHistoryReplayBuffer {
     render_from_transcript_tail: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+struct ThreadAgentUsage {
+    token_usage: TokenUsage,
+    session_cost_usd: Option<f64>,
+}
+
 pub(crate) struct App {
     model_catalog: Arc<ModelCatalog>,
     pub(crate) session_telemetry: SessionTelemetry,
@@ -634,6 +640,7 @@ pub(crate) struct App {
     thread_event_listener_tasks: HashMap<ThreadId, JoinHandle<()>>,
     agent_navigation: AgentNavigationState,
     active_agent_started_at: HashMap<ThreadId, Instant>,
+    agent_usage: HashMap<ThreadId, ThreadAgentUsage>,
     side_threads: HashMap<ThreadId, SideThreadState>,
     active_thread_id: Option<ThreadId>,
     active_thread_rx: Option<mpsc::Receiver<ThreadBufferedEvent>>,
@@ -1128,6 +1135,7 @@ See the Codex keymap documentation for supported actions and examples."
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
             active_agent_started_at: HashMap::new(),
+            agent_usage: HashMap::new(),
             side_threads: HashMap::new(),
             active_thread_id: None,
             active_thread_rx: None,

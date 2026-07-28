@@ -225,7 +225,17 @@ impl App {
         let now = Instant::now();
         let mut active_thread_ids = Vec::new();
         let mut agents = Vec::new();
+        let mut agent_token_usage = TokenUsage::default();
+        let mut agent_session_cost_usd = 0.0;
+        let mut has_agent_session_cost = false;
         for (thread_id, entry) in self.agent_navigation.ordered_threads() {
+            if let Some(usage) = self.agent_usage.get(&thread_id) {
+                agent_token_usage.add_assign(&usage.token_usage);
+                if let Some(session_cost_usd) = usage.session_cost_usd {
+                    agent_session_cost_usd += session_cost_usd;
+                    has_agent_session_cost = true;
+                }
+            }
             if Some(thread_id) == self.primary_thread_id || !entry.is_running || entry.is_closed {
                 continue;
             }
@@ -266,12 +276,47 @@ impl App {
                 started_at,
                 provider_model,
                 total_tokens: entry.total_tokens,
+                token_usage: self
+                    .agent_usage
+                    .get(&thread_id)
+                    .map(|usage| usage.token_usage.clone()),
                 current_activity: entry.current_activity.clone(),
             });
         }
         self.active_agent_started_at
             .retain(|thread_id, _| active_thread_ids.contains(thread_id));
         self.chat_widget.set_active_agents(agents);
+        self.chat_widget.set_agent_token_usage(
+            agent_token_usage,
+            has_agent_session_cost.then_some(agent_session_cost_usd),
+        );
+    }
+
+    pub(super) fn update_agent_usage(
+        &mut self,
+        thread_id: ThreadId,
+        token_usage: TokenUsage,
+        session_cost_usd: Option<f64>,
+    ) {
+        self.agent_usage.insert(
+            thread_id,
+            ThreadAgentUsage {
+                token_usage,
+                session_cost_usd,
+            },
+        );
+        self.sync_active_agent_display();
+    }
+
+    pub(super) fn clear_agent_live_cost(&mut self, thread_id: ThreadId) {
+        let cleared = self
+            .agent_usage
+            .get_mut(&thread_id)
+            .and_then(|usage| usage.session_cost_usd.take())
+            .is_some();
+        if cleared {
+            self.sync_active_agent_display();
+        }
     }
 
     /// Persists the app-server's authoritative ownership flag and updates the active composer.
@@ -345,6 +390,7 @@ impl App {
             Err(err) => {
                 if Self::is_terminal_thread_read_error(&err) && !has_replay_channel {
                     self.agent_navigation.remove(thread_id);
+                    self.agent_usage.remove(&thread_id);
                     self.active_agent_started_at.remove(&thread_id);
                     self.sync_active_agent_display();
                     return false;
@@ -615,6 +661,7 @@ impl App {
         self.last_subagent_backfill_attempt = None;
         self.primary_session_configured = None;
         self.active_agent_started_at.clear();
+        self.agent_usage.clear();
         self.pending_primary_events.clear();
         self.pending_app_server_requests.clear();
         self.pending_startup_thread_start = false;
