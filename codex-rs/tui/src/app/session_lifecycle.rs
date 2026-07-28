@@ -242,31 +242,7 @@ impl App {
 
             active_thread_ids.push(thread_id);
             let started_at = *self.active_agent_started_at.entry(thread_id).or_insert(now);
-            let mut name = format_agent_picker_item_name(
-                entry.agent_nickname.as_deref(),
-                entry.agent_role.as_deref(),
-                /*is_primary*/ false,
-            );
-            if name == "Agent" {
-                if let Some(path_name) = entry
-                    .agent_path
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|agent_path| !agent_path.is_empty())
-                    .and_then(|agent_path| {
-                        agent_path
-                            .rsplit('/')
-                            .find(|segment| !segment.trim().is_empty())
-                            .map(str::to_string)
-                    })
-                {
-                    name = path_name;
-                } else {
-                    let thread_id = thread_id.to_string();
-                    let short_id: String = thread_id.chars().take(8).collect();
-                    name = format!("Agent ({short_id})");
-                }
-            }
+            let name = active_agent_display_name(thread_id, entry.agent_role.as_deref());
             let provider_model = active_agent_provider_model(
                 entry.model_provider_id.as_deref(),
                 entry.model.as_deref(),
@@ -1137,6 +1113,19 @@ fn active_agent_provider_model(provider: Option<&str>, model: Option<&str>) -> O
     }
 }
 
+fn active_agent_display_name(thread_id: ThreadId, agent_role: Option<&str>) -> String {
+    if let Some(agent_role) = agent_role
+        .map(str::trim)
+        .filter(|agent_role| !agent_role.is_empty())
+    {
+        return agent_role.to_string();
+    }
+
+    let thread_id = thread_id.to_string();
+    let short_id: String = thread_id.chars().take(8).collect();
+    format!("Agent ({short_id})")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1192,5 +1181,27 @@ mod tests {
 
         assert!(App::can_fallback_from_include_turns_error(&unmaterialized));
         assert!(App::can_fallback_from_include_turns_error(&ephemeral));
+    }
+
+    #[test]
+    fn active_agent_display_name_uses_role_without_nickname() {
+        let thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000201").expect("valid thread");
+
+        assert_eq!(
+            active_agent_display_name(thread_id, Some("reviewer")),
+            "reviewer"
+        );
+    }
+
+    #[test]
+    fn active_agent_display_name_uses_thread_id_when_role_is_missing() {
+        let thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000202").expect("valid thread");
+
+        assert_eq!(
+            active_agent_display_name(thread_id, None),
+            "Agent (00000000)"
+        );
     }
 }

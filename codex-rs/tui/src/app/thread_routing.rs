@@ -969,8 +969,8 @@ impl App {
             self.agent_navigation.mark_stopped(thread_id);
             self.set_active_agent_running(thread_id, /*is_running*/ false);
         }
-        if let Some(notification) = buffered_notification {
-            self.cache_collab_receiver_threads_for_notification(&notification);
+        if let Some(notification) = buffered_notification.as_ref().or(notification.as_ref()) {
+            self.cache_collab_receiver_threads_for_notification(notification);
         }
 
         if let Some(notification) = notification {

@@ -1604,6 +1604,43 @@ async fn inactive_sub_agent_activity_caches_active_agent_display_metadata() -> R
 }
 
 #[tokio::test]
+async fn active_sub_agent_activity_updates_active_agent_display_metadata() -> Result<()> {
+    let mut app = make_test_app().await;
+    let parent_thread_id = ThreadId::new();
+    let agent_thread_id = ThreadId::new();
+    app.upsert_agent_picker_thread(
+        agent_thread_id,
+        Some("reviewer".to_string()),
+        Some("worker".to_string()),
+        /*is_closed*/ false,
+    );
+    app.set_active_agent_running(agent_thread_id, /*is_running*/ true);
+    app.ensure_thread_channel(parent_thread_id);
+    app.activate_thread_channel(parent_thread_id).await;
+
+    app.enqueue_thread_notification(
+        parent_thread_id,
+        sub_agent_activity_notification_with_current_activity(
+            parent_thread_id,
+            agent_thread_id,
+            codex_app_server_protocol::SubAgentActivityKind::Interacted,
+            None,
+            None,
+            Some("Running validation tests"),
+        ),
+    )
+    .await?;
+
+    assert_eq!(
+        app.agent_navigation
+            .get(&agent_thread_id)
+            .and_then(|entry| entry.current_activity.as_deref()),
+        Some("Running validation tests")
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn inactive_sub_agent_interaction_preserves_completed_state() -> Result<()> {
     let mut app = make_test_app().await;
     let parent_thread_id = ThreadId::new();
@@ -5810,6 +5847,24 @@ fn sub_agent_activity_notification(
     model_provider: Option<&str>,
     model: Option<&str>,
 ) -> ServerNotification {
+    sub_agent_activity_notification_with_current_activity(
+        parent_thread_id,
+        agent_thread_id,
+        kind,
+        model_provider,
+        model,
+        None,
+    )
+}
+
+fn sub_agent_activity_notification_with_current_activity(
+    parent_thread_id: ThreadId,
+    agent_thread_id: ThreadId,
+    kind: codex_app_server_protocol::SubAgentActivityKind,
+    model_provider: Option<&str>,
+    model: Option<&str>,
+    current_activity: Option<&str>,
+) -> ServerNotification {
     ServerNotification::ItemCompleted(codex_app_server_protocol::ItemCompletedNotification {
         thread_id: parent_thread_id.to_string(),
         turn_id: "turn-1".to_string(),
@@ -5821,7 +5876,7 @@ fn sub_agent_activity_notification(
             agent_path: "/root/reviewer".to_string(),
             model_provider: model_provider.map(str::to_string),
             model: model.map(str::to_string),
-            current_activity: None,
+            current_activity: current_activity.map(str::to_string),
         },
     })
 }

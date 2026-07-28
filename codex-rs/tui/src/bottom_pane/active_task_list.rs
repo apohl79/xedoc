@@ -64,7 +64,7 @@ impl ActiveTaskList {
         lines.push(
             vec![
                 "• ".dim(),
-                "Tasks ".bold(),
+                "Tasks ".bold().dim(),
                 format!("{completed}/{total}").dim(),
             ]
             .into(),

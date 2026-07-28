@@ -83,7 +83,7 @@ impl ActiveAgentList {
         let visible_agents = total.min(MAX_VISIBLE_AGENTS);
         let mut lines =
             Vec::with_capacity(1 + visible_agents + usize::from(total > visible_agents));
-        lines.push(vec!["• ".dim(), "Agents".bold()].into());
+        lines.push(vec!["• ".dim(), "Agents".bold().dim()].into());
 
         let agent_lines = self.visible_agent_lines(now);
         lines.extend(prefix_lines(agent_lines, "  └ ".dim(), "    ".into()));
@@ -128,15 +128,21 @@ impl ActiveAgentList {
         }
         if let Some(token_usage) = agent.token_usage.as_ref() {
             spans.push(Span::from(", ").dim());
-            spans.push(Span::from(format!(
-                "in {}",
-                format_tokens_compact(token_usage.input_tokens).to_lowercase()
-            )));
+            spans.push(
+                Span::from(format!(
+                    "↓{}",
+                    format_tokens_compact(token_usage.input_tokens).to_lowercase()
+                ))
+                .dim(),
+            );
             spans.push(Span::from(", ").dim());
-            spans.push(Span::from(format!(
-                "out {}",
-                format_tokens_compact(token_usage.output_tokens).to_lowercase()
-            )));
+            spans.push(
+                Span::from(format!(
+                    "↑{}",
+                    format_tokens_compact(token_usage.output_tokens).to_lowercase()
+                ))
+                .dim(),
+            );
         } else if let Some(total_tokens) = agent.total_tokens {
             spans.push(Span::from(", ").dim());
             spans.push(Span::from(format_tokens_compact(total_tokens).to_lowercase()).dim());

@@ -121,7 +121,7 @@ fn display_lines_renders_input_and_output_tokens() {
 
     assert_eq!(
         rendered,
-        vec!["• Agents", "  └ □ reviewer Working... (0s, in 40k, out 2k)"]
+        vec!["• Agents", "  └ □ reviewer Working... (0s, ↓40k, ↑2k)"]
     );
 }
 
