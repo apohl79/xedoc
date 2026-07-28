@@ -272,8 +272,12 @@ fn session_lifecycle_avoids_redundant_subagent_metadata_reads() -> Result<()> {
                         agent_nickname: Some("worker".to_string()),
                         agent_role: Some("worker".to_string()),
                         agent_path: Some("/root/worker".to_string()),
+                        model_provider_id: None,
+                        model: None,
+                        total_tokens: None,
                         is_running: false,
                         is_closed: false,
+                        current_activity: None,
                     })
                 );
 

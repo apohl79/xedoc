@@ -118,13 +118,13 @@ fn display_lines_caps_visible_agents() {
         rendered,
         vec![
             "• Agents",
-            "  └ □ agent-1 (0s)",
-            "    □ agent-2 (0s)",
-            "    □ agent-3 (0s)",
-            "    □ agent-4 (0s)",
-            "    □ agent-5 (0s)",
-            "    □ agent-6 (0s)",
-            "    □ agent-7 (0s)",
+            "  └ □ agent-1 Working... (0s)",
+            "    □ agent-2 Working... (0s)",
+            "    □ agent-3 Working... (0s)",
+            "    □ agent-4 Working... (0s)",
+            "    □ agent-5 Working... (0s)",
+            "    □ agent-6 Working... (0s)",
+            "    □ agent-7 Working... (0s)",
             "    ... 1 more",
         ]
     );

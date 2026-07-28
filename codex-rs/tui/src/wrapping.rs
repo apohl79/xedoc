@@ -1081,6 +1081,7 @@ mod tests {
     use super::*;
     use itertools::Itertools as _;
     use pretty_assertions::assert_eq;
+    use ratatui::prelude::Stylize;
     use ratatui::style::Color;
     use std::string::ToString;
 

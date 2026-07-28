@@ -964,8 +964,10 @@ impl App {
         };
         if is_turn_started {
             self.agent_navigation.mark_running(thread_id);
+            self.set_active_agent_running(thread_id, /*is_running*/ true);
         } else if turn_stopped {
             self.agent_navigation.mark_stopped(thread_id);
+            self.set_active_agent_running(thread_id, /*is_running*/ false);
         }
         if let Some(notification) = buffered_notification {
             self.cache_collab_receiver_threads_for_notification(&notification);
@@ -1066,6 +1068,17 @@ impl App {
         &mut self,
         notification: &ServerNotification,
     ) {
+        // Turn liveness is synchronized above only after matching the completion to the active
+        // turn. Applying the generic notification state here would let stale completions stop a
+        // newly spawned agent.
+        if matches!(
+            notification,
+            ServerNotification::TurnStarted(_)
+                | ServerNotification::TurnCompleted(_)
+                | ServerNotification::ThreadClosed(_)
+        ) {
+            return;
+        }
         let Some((thread_id, is_running)) = thread_notification_running_state(notification) else {
             return;
         };

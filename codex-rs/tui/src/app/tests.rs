@@ -1707,6 +1707,11 @@ async fn inactive_agent_turn_completed_clears_active_agent_display() -> Result<(
 
     app.enqueue_thread_notification(
         agent_thread_id,
+        turn_started_notification(agent_thread_id, "agent-turn"),
+    )
+    .await?;
+    app.enqueue_thread_notification(
+        agent_thread_id,
         turn_completed_notification(agent_thread_id, "agent-turn", TurnStatus::Completed),
     )
     .await?;
@@ -1836,7 +1841,7 @@ async fn open_agent_picker_preserves_cached_metadata_for_replay_threads() -> Res
 
 #[tokio::test]
 async fn open_agent_picker_preserves_running_hints_until_observed_completion() -> Result<()> {
-    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
     let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(
         app.chat_widget.config_ref(),
     ))
@@ -1869,22 +1874,6 @@ async fn open_agent_picker_preserves_running_hints_until_observed_completion() -
         current_activity: None,
     };
     assert_eq!(app.agent_navigation.get(&thread_id), Some(&expected_entry));
-    let status = loop {
-        let event = app_event_rx.try_recv().expect("agent status history cell");
-        if let AppEvent::InsertHistoryCell(cell) = event {
-            let rendered = lines_to_single_string(&cell.display_lines(/*width*/ 80));
-            if rendered.contains("/agent") {
-                break rendered;
-            }
-        }
-    };
-    assert_snapshot!(status, @r###"
-    /agent
-    Sub-agents running
-
-      • `/root/child`
-        No recent activity yet.
-    "###);
 
     app.enqueue_thread_notification(
         thread_id,
@@ -2247,7 +2236,10 @@ fn selected_and_resumed_threads_use_server_capability_for_v1_and_v2_children() -
             .record_sub_agent_activity(SubAgentActivityDisplay {
                 thread_id: child_thread_ids[0],
                 agent_path: "/root/child-0".to_string(),
-                is_running_hint: true,
+                model_provider_id: None,
+                model: None,
+                running_state_update: AgentRunningStateUpdate::SetRunning,
+                current_activity: None,
             });
         app.thread_event_channels.remove(&child_thread_ids[1]);
         let backfill = app.backfill_loaded_subagent_threads(&mut app_server).await;
@@ -2262,8 +2254,12 @@ fn selected_and_resumed_threads_use_server_capability_for_v1_and_v2_children() -
                 agent_nickname: Some("child-0".to_string()),
                 agent_role: Some("worker".to_string()),
                 agent_path: Some("/root/child-0".to_string()),
+                model_provider_id: None,
+                model: None,
+                total_tokens: None,
                 is_running: true,
                 is_closed: false,
+                current_activity: None,
             })
         );
         assert!(!app.agent_navigation.is_parent_owned(child_thread_ids[0]));

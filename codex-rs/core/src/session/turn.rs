@@ -131,6 +131,10 @@ use tracing::trace;
 use tracing::trace_span;
 use tracing::warn;
 
+mod sub_agent_activity;
+
+use self::sub_agent_activity::RecentSubAgentActivity;
+
 /// Takes initial turn input and runs a loop where, at each sampling request,
 /// the model replies with either:
 ///
@@ -1991,6 +1995,85 @@ async fn try_run_sampling_request(
         turn_context.provider.info().name.as_str(),
     );
     let sampling_timing_guard = turn_context.turn_timing_state.begin_sampling();
+    // Periodically report activity for sub-agents via timer.
+    let activity_cancel = CancellationToken::new();
+    let _activity_cancel_guard = activity_cancel.clone().drop_guard();
+    let activity_state = Arc::new(std::sync::Mutex::new(RecentSubAgentActivity::default()));
+    let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
+        let sess = Arc::clone(&sess);
+        let turn = Arc::clone(&turn_context);
+        let cancel = activity_cancel.clone();
+        let state_ref = Arc::clone(&activity_state);
+        Some(tokio::spawn(async move {
+            let mut tick: u32 = 0;
+            let mut current_activity = "Working...".to_string();
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = tokio::time::sleep(Duration::from_secs(12)) => {}
+                }
+                if cancel.is_cancelled() {
+                    break;
+                }
+                tick += 1;
+                tracing::info!("Activity summary timer tick {tick}");
+                let recent_activity = {
+                    let mut state = state_ref
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    state.snapshot_if_changed()
+                };
+                if let Some(recent_activity) = recent_activity {
+                    match generate_sub_agent_activity_summary(
+                        sess.as_ref(),
+                        turn.as_ref(),
+                        Some(&recent_activity),
+                    )
+                    .await
+                    {
+                        Ok(Some(summary)) => current_activity = summary,
+                        Ok(None) => {
+                            tracing::info!("Timer activity summary returned empty");
+                            state_ref
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .retry();
+                        }
+                        Err(err) => {
+                            tracing::info!(
+                                error = %err,
+                                "Timer activity summary generation failed"
+                            );
+                            state_ref
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .retry();
+                        }
+                    }
+                }
+                sess.send_event(
+                    turn.as_ref(),
+                    codex_protocol::protocol::SubAgentActivityEvent {
+                        event_id: format!("activity-timer-{tick}"),
+                        occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
+                        agent_thread_id: sess.thread_id,
+                        agent_path: turn
+                            .session_source
+                            .get_agent_path()
+                            .unwrap_or_else(codex_protocol::AgentPath::root),
+                        model_provider: None,
+                        model: None,
+                        kind: codex_protocol::protocol::SubAgentActivityKind::Interacted,
+                        current_activity: Some(current_activity.clone()),
+                    }
+                    .into(),
+                )
+                .await;
+            }
+        }))
+    } else {
+        None
+    };
     let uses_sequential_cutoff_reasoning_summaries = turn_context
         .config
         .features
@@ -2030,86 +2113,6 @@ async fn try_run_sampling_request(
         !sess.services.extensions.turn_item_contributors().is_empty();
     let mut active_item_is_streaming_to_client = false;
     let receiving_span = trace_span!("receiving_stream");
-    // Periodically report activity for sub-agents via timer.
-    let activity_cancel = CancellationToken::new();
-    let activity_state = Arc::new(std::sync::Mutex::new((Vec::<String>::new(), false))); // (messages, dirty)
-    let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
-        let sess = Arc::clone(&sess);
-        let turn = Arc::clone(&turn_context);
-        let cancel = activity_cancel.clone();
-        let state_ref = Arc::clone(&activity_state);
-        Some(tokio::spawn(async move {
-            let mut tick: u32 = 0;
-            let mut current_activity = "Working...".to_string();
-            loop {
-                tokio::select! {
-                    _ = cancel.cancelled() => break,
-                    _ = tokio::time::sleep(Duration::from_secs(12)) => {}
-                }
-                if cancel.is_cancelled() {
-                    break;
-                }
-                tick += 1;
-                tracing::info!("Activity summary timer tick {tick}");
-                let (recent_msgs, was_dirty) = {
-                    let mut state = state_ref
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    let dirty = state.1;
-                    state.1 = false;
-                    (state.0.clone(), dirty)
-                };
-                if was_dirty {
-                    let combined = if recent_msgs.is_empty() {
-                        None
-                    } else {
-                        Some(recent_msgs.join(
-                            "
-",
-                        ))
-                    };
-                    match generate_sub_agent_activity_summary(
-                        sess.as_ref(),
-                        turn.as_ref(),
-                        combined.as_deref(),
-                    )
-                    .await
-                    {
-                        Ok(Some(summary)) => current_activity = summary,
-                        Ok(None) => {
-                            tracing::info!("Timer activity summary returned empty");
-                        }
-                        Err(err) => {
-                            tracing::info!(
-                                error = %err,
-                                "Timer activity summary generation failed"
-                            );
-                        }
-                    }
-                }
-                sess.send_event(
-                    turn.as_ref(),
-                    codex_protocol::protocol::SubAgentActivityEvent {
-                        event_id: format!("activity-timer-{tick}"),
-                        occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
-                        agent_thread_id: sess.thread_id,
-                        agent_path: turn
-                            .session_source
-                            .get_agent_path()
-                            .unwrap_or_else(codex_protocol::AgentPath::root),
-                        model_provider: None,
-                        model: None,
-                        kind: codex_protocol::protocol::SubAgentActivityKind::Interacted,
-                        current_activity: Some(current_activity.clone()),
-                    }
-                    .into(),
-                )
-                .await;
-            }
-        }))
-    } else {
-        None
-    };
 
     let outcome: CodexResult<SamplingRequestResult> = loop {
         let handle_responses = trace_span!(
@@ -2175,6 +2178,12 @@ async fn try_run_sampling_request(
                     streamed_text = streamed_assistant_text_by_item.remove(item_id);
                 }
                 backfill_empty_assistant_message_content(&mut item, streamed_text.as_deref());
+                if turn_context.parent_thread_id.is_some() {
+                    activity_state
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .record_response_item(&item);
+                }
                 let previously_streamed_item = if active_item_is_streaming_to_client {
                     previously_active_item
                 } else {
@@ -2251,16 +2260,6 @@ async fn try_run_sampling_request(
                     in_flight.push_back(tool_future);
                 }
                 if let Some(agent_message) = output_result.last_agent_message {
-                    {
-                        let mut state = activity_state
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        state.0.push(agent_message.clone());
-                        if state.0.len() > 3 {
-                            state.0.remove(0);
-                        }
-                        state.1 = true;
-                    }
                     last_agent_message = Some(agent_message);
                 }
                 needs_follow_up |= output_result.needs_follow_up;
@@ -2774,16 +2773,16 @@ fn select_activity_summary_model<'a>(
     default_model.to_string()
 }
 
-fn activity_summary_prompt(last_agent_message: Option<&str>) -> String {
-    let context = last_agent_message
-        .map(|msg| {
-            let trimmed: String = msg
+fn activity_summary_prompt(recent_activity: Option<&str>) -> String {
+    let context = recent_activity
+        .map(|activity| {
+            let trimmed: String = activity
                 .split_whitespace()
                 .take(100)
                 .collect::<Vec<_>>()
                 .join(" ");
             format!(
-                "Recent agent outputs:
+                "Recent agent activity:
 {trimmed}"
             )
         })

@@ -12,6 +12,7 @@ use crate::history_cell::UserHistoryCell;
 use crate::history_cell::split_reasoning_summary_parts;
 use crate::inline_visualization::InlineVisualizationContext;
 use crate::multi_agents::sub_agent_activity_summary;
+use codex_app_server_protocol::SubAgentActivityKind;
 use codex_app_server_protocol::Thread;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::UserInput;
@@ -218,6 +219,10 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             vec![format!("agent tool: {tool:?} · {status:?}").dim().into()]
         }
         ThreadItem::SubAgentActivity {
+            kind: SubAgentActivityKind::Interacted,
+            ..
+        } => Vec::new(),
+        ThreadItem::SubAgentActivity {
             kind, agent_path, ..
         } => {
             vec![sub_agent_activity_summary(*kind, agent_path).dim().into()]
@@ -258,3 +263,7 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
     };
     (!lines.is_empty()).then(|| PlainHistoryCell::new(lines))
 }
+
+#[cfg(test)]
+#[path = "thread_transcript_tests.rs"]
+mod tests;

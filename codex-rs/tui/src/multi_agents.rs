@@ -332,6 +332,9 @@ pub(crate) fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<Plain
     else {
         return None;
     };
+    if matches!(kind, SubAgentActivityKind::Interacted) {
+        return None;
+    }
     Some(collab_event(
         sub_agent_activity_title(*kind, agent_path),
         Vec::new(),
@@ -707,18 +710,62 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn interacted_sub_agent_activity_does_not_change_liveness() {
+    fn interacted_sub_agent_activity_updates_state_without_history_cell() {
+        let agent_thread_id = ThreadId::new();
         let item = ThreadItem::SubAgentActivity {
             id: "activity-1".to_string(),
             kind: SubAgentActivityKind::Interacted,
-            agent_thread_id: ThreadId::new().to_string(),
+            agent_thread_id: agent_thread_id.to_string(),
             agent_path: "/root/child".to_string(),
             model_provider: None,
             model: None,
-            current_activity: None,
+            current_activity: Some("Running tests".to_string()),
         };
 
-        assert_eq!(sub_agent_activity_display(&item), None);
+        assert_eq!(
+            (
+                sub_agent_activity_display(&item),
+                sub_agent_activity_history_cell(&item).is_none(),
+            ),
+            (
+                Some(SubAgentActivityDisplay {
+                    thread_id: agent_thread_id,
+                    agent_path: "/root/child".to_string(),
+                    model_provider_id: None,
+                    model: None,
+                    running_state_update: AgentRunningStateUpdate::Preserve,
+                    current_activity: Some("Running tests".to_string()),
+                }),
+                true,
+            )
+        );
+    }
+
+    #[test]
+    fn sub_agent_lifecycle_history_snapshot_omits_interactions() {
+        let agent_thread_id = ThreadId::new().to_string();
+        let snapshot = [
+            SubAgentActivityKind::Started,
+            SubAgentActivityKind::Interacted,
+            SubAgentActivityKind::Completed,
+        ]
+        .into_iter()
+        .filter_map(|kind| {
+            sub_agent_activity_history_cell(&ThreadItem::SubAgentActivity {
+                id: format!("activity-{kind:?}"),
+                kind,
+                agent_thread_id: agent_thread_id.clone(),
+                agent_path: "/root/child".to_string(),
+                model_provider: None,
+                model: None,
+                current_activity: None,
+            })
+        })
+        .map(|cell| cell_to_text(&cell))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+        assert_snapshot!("sub_agent_lifecycle_history", snapshot);
     }
 
     #[test]
