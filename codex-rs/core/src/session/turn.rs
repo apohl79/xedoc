@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use std::time::Instant;
 
 use crate::SkillInjections;
 use crate::build_skill_injections;
@@ -2000,6 +2001,7 @@ async fn try_run_sampling_request(
     let _activity_cancel_guard = activity_cancel.clone().drop_guard();
     let activity_state = Arc::new(std::sync::Mutex::new(RecentSubAgentActivity::default()));
     let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
+        tracing::info!("Starting sub-agent activity timer");
         let sess = Arc::clone(&sess);
         let turn = Arc::clone(&turn_context);
         let cancel = activity_cancel.clone();
@@ -2009,14 +2011,21 @@ async fn try_run_sampling_request(
             let mut current_activity = "Working...".to_string();
             loop {
                 tokio::select! {
-                    _ = cancel.cancelled() => break,
+                    _ = cancel.cancelled() => {
+                        tracing::info!(activity_timer_ticks = tick, "Stopping sub-agent activity timer");
+                        break;
+                    }
                     _ = tokio::time::sleep(Duration::from_secs(12)) => {}
                 }
                 if cancel.is_cancelled() {
+                    tracing::info!(
+                        activity_timer_ticks = tick,
+                        "Stopping sub-agent activity timer"
+                    );
                     break;
                 }
                 tick += 1;
-                tracing::info!("Activity summary timer tick {tick}");
+                tracing::info!(activity_timer_tick = tick, "Sub-agent activity timer tick");
                 let recent_activity = {
                     let mut state = state_ref
                         .lock()
@@ -2024,6 +2033,12 @@ async fn try_run_sampling_request(
                     state.snapshot_if_changed()
                 };
                 if let Some(recent_activity) = recent_activity {
+                    let summary_started_at = Instant::now();
+                    tracing::info!(
+                        activity_timer_tick = tick,
+                        recent_activity_chars = recent_activity.chars().count(),
+                        "Starting sub-agent activity summary request"
+                    );
                     match generate_sub_agent_activity_summary(
                         sess.as_ref(),
                         turn.as_ref(),
@@ -2031,9 +2046,21 @@ async fn try_run_sampling_request(
                     )
                     .await
                     {
-                        Ok(Some(summary)) => current_activity = summary,
+                        Ok(Some(summary)) => {
+                            tracing::info!(
+                                activity_timer_tick = tick,
+                                elapsed_ms = summary_started_at.elapsed().as_millis(),
+                                summary_chars = summary.chars().count(),
+                                "Sub-agent activity summary request completed"
+                            );
+                            current_activity = summary;
+                        }
                         Ok(None) => {
-                            tracing::info!("Timer activity summary returned empty");
+                            tracing::warn!(
+                                activity_timer_tick = tick,
+                                elapsed_ms = summary_started_at.elapsed().as_millis(),
+                                "Sub-agent activity summary request returned empty"
+                            );
                             state_ref
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -2041,8 +2068,10 @@ async fn try_run_sampling_request(
                         }
                         Err(err) => {
                             tracing::info!(
+                                activity_timer_tick = tick,
+                                elapsed_ms = summary_started_at.elapsed().as_millis(),
                                 error = %err,
-                                "Timer activity summary generation failed"
+                                "Sub-agent activity summary request failed"
                             );
                             state_ref
                                 .lock()
@@ -2050,7 +2079,17 @@ async fn try_run_sampling_request(
                                 .retry();
                         }
                     }
+                } else {
+                    tracing::debug!(
+                        activity_timer_tick = tick,
+                        "Sub-agent activity timer found no new response items"
+                    );
                 }
+                tracing::info!(
+                    activity_timer_tick = tick,
+                    current_activity_chars = current_activity.chars().count(),
+                    "Emitting sub-agent activity update"
+                );
                 sess.send_event(
                     turn.as_ref(),
                     codex_protocol::protocol::SubAgentActivityEvent {
@@ -2069,6 +2108,7 @@ async fn try_run_sampling_request(
                     .into(),
                 )
                 .await;
+                tracing::info!(activity_timer_tick = tick, "Sub-agent activity update sent");
             }
         }))
     } else {
@@ -2670,8 +2710,8 @@ async fn generate_sub_agent_activity_summary(
 ) -> CodexResult<Option<String>> {
     let prompt_text = activity_summary_prompt(last_agent_message);
     tracing::info!(
-        prompt = %prompt_text,
-        "Generating activity summary"
+        prompt_chars = prompt_text.chars().count(),
+        "Preparing sub-agent activity summary prompt"
     );
     let prompt = Prompt {
         input: vec![ResponseItem::Message {
@@ -2690,11 +2730,29 @@ async fn generate_sub_agent_activity_summary(
         turn_context.model_info.slug.as_str(),
         &turn_context.available_models,
     );
+    let available_mini_models = turn_context
+        .available_models
+        .iter()
+        .filter(|preset| {
+            preset.show_in_picker
+                && (preset
+                    .model
+                    .to_ascii_lowercase()
+                    .contains(FAST_MODEL_KEYWORD)
+                    || preset
+                        .display_name
+                        .to_ascii_lowercase()
+                        .contains(FAST_MODEL_KEYWORD))
+        })
+        .count();
     tracing::info!(
         provider_id = %turn_context.config.model_provider_id,
         model_fast = ?turn_context.config.model_fast,
+        default_model = %turn_context.model_info.slug,
+        available_models = turn_context.available_models.len(),
+        available_mini_models,
         selected_model = %selected_model,
-        "Generating activity summary"
+        "Selected sub-agent activity summary model"
     );
     let owned_turn_context: TurnContext = if selected_model != turn_context.model_info.slug {
         turn_context
@@ -2716,7 +2774,13 @@ async fn generate_sub_agent_activity_summary(
         CodexResponsesRequestKind::SessionName,
     );
     let mut client_session = sess.services.model_client.new_session();
-    let mut stream = client_session
+    let request_started_at = Instant::now();
+    tracing::info!(
+        provider_id = %turn_context.config.model_provider_id,
+        model = %turn_context.model_info.slug,
+        "Opening sub-agent activity summary model stream"
+    );
+    let stream_result = client_session
         .stream(
             &prompt,
             &turn_context.model_info,
@@ -2727,7 +2791,24 @@ async fn generate_sub_agent_activity_summary(
             &responses_metadata,
             &InferenceTraceContext::disabled(),
         )
-        .await?;
+        .await;
+    let mut stream = match stream_result {
+        Ok(stream) => {
+            tracing::info!(
+                elapsed_ms = request_started_at.elapsed().as_millis(),
+                "Sub-agent activity summary model stream opened"
+            );
+            stream
+        }
+        Err(err) => {
+            tracing::warn!(
+                elapsed_ms = request_started_at.elapsed().as_millis(),
+                error = %err,
+                "Sub-agent activity summary model stream failed to open"
+            );
+            return Err(err);
+        }
+    };
     let mut generated = String::new();
     while let Some(event) = stream.next().await {
         match event {
@@ -2739,13 +2820,33 @@ async fn generate_sub_agent_activity_summary(
             }
             Ok(ResponseEvent::Completed { .. }) => {
                 let summary = normalize_activity_summary(&generated);
+                tracing::info!(
+                    elapsed_ms = request_started_at.elapsed().as_millis(),
+                    generated_chars = generated.chars().count(),
+                    summary_chars = summary.as_ref().map(|value| value.chars().count()),
+                    "Sub-agent activity summary model stream completed"
+                );
                 return Ok(summary);
             }
             Ok(_) => {}
-            Err(err) => return Err(err),
+            Err(err) => {
+                tracing::warn!(
+                    elapsed_ms = request_started_at.elapsed().as_millis(),
+                    error = %err,
+                    "Sub-agent activity summary model stream returned an error"
+                );
+                return Err(err);
+            }
         }
     }
-    Ok(normalize_activity_summary(&generated))
+    let summary = normalize_activity_summary(&generated);
+    tracing::warn!(
+        elapsed_ms = request_started_at.elapsed().as_millis(),
+        generated_chars = generated.chars().count(),
+        summary_chars = summary.as_ref().map(|value| value.chars().count()),
+        "Sub-agent activity summary model stream ended without completion"
+    );
+    Ok(summary)
 }
 
 fn select_activity_summary_model<'a>(

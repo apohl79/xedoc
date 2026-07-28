@@ -901,13 +901,40 @@ pub(crate) async fn apply_bespoke_event_handling(
             }
             // Forward activity summaries from sub-agent threads to the parent thread
             // so the parent's TUI can display what the sub-agent is currently doing.
-            if activity.current_activity.is_some()
-                && let Some(parent_thread_id) = conversation.session_source().parent_thread_id()
-                && let Ok(parent_thread) = thread_manager.get_thread(parent_thread_id).await
-            {
-                parent_thread
-                    .emit_event(EventMsg::SubAgentActivity(activity.clone()))
-                    .await;
+            let parent_thread_id = conversation.session_source().parent_thread_id();
+            match (activity.current_activity.as_ref(), parent_thread_id) {
+                (Some(current_activity), Some(parent_thread_id)) => {
+                    match thread_manager.get_thread(parent_thread_id).await {
+                        Ok(parent_thread) => {
+                            tracing::info!(
+                                child_thread_id = %activity.agent_thread_id,
+                                parent_thread_id = %parent_thread_id,
+                                kind = ?activity.kind,
+                                summary_chars = current_activity.chars().count(),
+                                "Forwarding sub-agent activity summary to parent"
+                            );
+                            parent_thread
+                                .emit_event(EventMsg::SubAgentActivity(activity.clone()))
+                                .await;
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                child_thread_id = %activity.agent_thread_id,
+                                parent_thread_id = %parent_thread_id,
+                                error = %err,
+                                "Unable to forward sub-agent activity summary to parent"
+                            );
+                        }
+                    }
+                }
+                (current_activity, parent_thread_id) => {
+                    tracing::debug!(
+                        child_thread_id = %activity.agent_thread_id,
+                        has_current_activity = current_activity.is_some(),
+                        has_parent_thread = parent_thread_id.is_some(),
+                        "Skipped forwarding sub-agent activity summary"
+                    );
+                }
             }
             let notification = item_event_to_server_notification(
                 EventMsg::SubAgentActivity(activity),
