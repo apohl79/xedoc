@@ -105,8 +105,8 @@ is_nonzero_number() {
     [ "$normalized" != "0.000000" ]
 }
 
-# Separator (dark gray dot)
-sep="\033[38;5;240m•\033[0m"
+# Separator (dark gray middle dot)
+sep="\033[38;5;240m·\033[0m"
 
 # Collect visible parts — separators are only rendered between non-empty entries
 parts=()
