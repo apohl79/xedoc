@@ -30,7 +30,7 @@ fn migrator_through(version: i64) -> Migrator {
 }
 
 #[tokio::test]
-async fn agent_job_tables_are_dropped_when_upgrading() {
+async fn agent_job_tables_are_preserved_when_upgrading() {
     let sqlite_home = crate::runtime::test_support::unique_temp_dir();
     tokio::fs::create_dir_all(&sqlite_home)
         .await
@@ -117,7 +117,17 @@ ORDER BY name
     .fetch_all(&pool)
     .await
     .expect("remaining agent job tables should load");
-    assert_eq!(agent_job_tables, Vec::<String>::new());
+    assert_eq!(
+        agent_job_tables,
+        vec!["agent_job_items".to_string(), "agent_jobs".to_string()]
+    );
+
+    let agent_job_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_jobs WHERE id = 'job-1'")
+            .fetch_one(&pool)
+            .await
+            .expect("preserved agent job should load");
+    assert_eq!(agent_job_count, 1);
 
     pool.close().await;
 }
@@ -376,6 +386,83 @@ async fn repairs_title_source_migration_that_was_applied_as_version_40() {
         .map(|migration| (migration.version, migration.checksum.to_vec()))
         .collect::<Vec<_>>();
     assert_eq!(applied, expected);
+}
+
+#[tokio::test]
+async fn old_title_source_migration_at_version_41_remains_compatible() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory database should open");
+    migrator_through(/*version*/ 40)
+        .run(&pool)
+        .await
+        .expect("pre-title-source migrations should apply");
+
+    let title_source_migration = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .find(|migration| migration.version == 41)
+        .expect("title source migration should exist");
+    let mut legacy_migrations = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .filter(|migration| migration.version <= 40)
+        .cloned()
+        .collect::<Vec<_>>();
+    legacy_migrations.push(Migration::new(
+        41,
+        title_source_migration.description.clone(),
+        title_source_migration.migration_type,
+        title_source_migration.sql.clone(),
+        title_source_migration.no_tx,
+    ));
+    let legacy_title_source_migrator = Migrator::with_migrations(legacy_migrations);
+    legacy_title_source_migrator
+        .run(&pool)
+        .await
+        .expect("legacy title source migration should apply as version 41");
+
+    repair_legacy_state_migration_versions(&pool, &STATE_MIGRATOR)
+        .await
+        .expect("legacy migration history should be repaired");
+    STATE_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("current migrations should apply after repair");
+
+    let title_source_checksum = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT checksum FROM _sqlx_migrations WHERE version = 41",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("title source migration should remain recorded at version 41");
+    assert_eq!(
+        title_source_checksum,
+        title_source_migration.checksum.to_vec()
+    );
+
+    let name_migration = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .find(|migration| migration.version == 43)
+        .expect("thread name migration should exist");
+    let name_checksum = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT checksum FROM _sqlx_migrations WHERE version = 43",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("thread name migration should be recorded at version 43");
+    assert_eq!(name_checksum, name_migration.checksum.to_vec());
+
+    let name_column = sqlx::query_scalar::<_, String>(
+        "SELECT name FROM pragma_table_info('threads') WHERE name = 'name'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("upstream thread name migration should apply");
+    assert_eq!(name_column, "name");
 }
 
 #[tokio::test]
