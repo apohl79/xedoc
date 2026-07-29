@@ -481,7 +481,7 @@ async fn warm_plugins_and_skills_for_session_init(
 }
 
 impl Session {
-    fn model_client(
+    pub(super) fn model_client(
         auth_manager: Arc<AuthManager>,
         thread_id: ThreadId,
         session_configuration: &SessionConfiguration,

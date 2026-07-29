@@ -275,8 +275,8 @@ pub fn build_models_manager(
     let mut managers: Vec<(String, SharedModelsManager)> = Vec::new();
     let mut provider_infos = config.model_providers.iter().collect::<Vec<_>>();
     provider_infos.sort_by(|(left_id, _), (right_id, _)| {
-        (left_id != &config.model_provider_id)
-            .cmp(&(right_id != &config.model_provider_id))
+        (*left_id != &config.model_provider_id)
+            .cmp(&(*right_id != &config.model_provider_id))
             .then_with(|| left_id.cmp(right_id))
     });
     for (index, (provider_id, provider_info)) in provider_infos.into_iter().enumerate() {
