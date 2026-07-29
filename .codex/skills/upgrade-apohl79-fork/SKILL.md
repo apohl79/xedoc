@@ -7,8 +7,11 @@ description: Upgrade the local apohl79 Codex fork from an OpenAI upstream releas
 
 ## Overview
 
-Use this workflow to advance `main-fork` to a requested upstream OpenAI Codex
-release tag while preserving the fork-local inventory in `README.fork.md`.
+Use this workflow to advance `main-fork` from one requested upstream OpenAI
+Codex release tag to another while preserving the fork-local inventory in
+`README.fork.md`. Replay upstream history one commit at a time: first advance
+local `main` through the exact upstream commits, then merge that same commit
+into `main-fork` and resolve it against the inventory.
 
 `main-fork` is the durable fork branch. `feature/*` and `fix/*` branches are
 short-lived staging or review branches; do not discover, rebase, re-apply, or
@@ -19,19 +22,17 @@ for that extra branch work.
 
 - Require a clean worktree before starting. Stop on uncommitted changes unless
   the user explicitly asks how to handle them.
-- Require an explicit upstream tag from the user, such as
-  `rust-v0.142.4`. Do not guess the target tag.
+- Require explicit current and target upstream tags from the user, such as
+  `rust-v0.144.0` and `rust-v0.145.0`. Do not guess either tag.
 - Verify remotes before fetching or pushing:
   - `upstream` must be `openai/codex`.
   - `origin` must be `apohl79/codex`.
   - Stop for confirmation if the remote names or URLs differ.
-- Treat local `main` as the exact upstream release base after it is updated.
-  Do not push `main` to `origin` unless the user separately asks for that.
-- Prefer fast-forwarding local `main` to the requested upstream tag. If local
-  `main` points exactly at an older upstream release tag and has no local
-  changes or commits, a backup-protected ref move to the requested tag is
-  allowed after explicit user confirmation. Do not use `upstream/main` as the
-  base for a release-tag upgrade.
+- Local `main` is an upstream-only release track. It must point exactly at the
+  current release tag before replay and advances one upstream commit at a
+  time. Do not push `main` to `origin` unless the user separately asks.
+- The replay range is `current-tag..target-tag`; do not substitute
+  `upstream/main` or an untagged commit.
 - Create backup refs before rewriting `main` or `main-fork`. Use
   `refs/backup/apohl79-upgrade/<timestamp>/<branch>`.
 - Treat `README.fork.md` as the single source of truth for fork-only features
@@ -56,13 +57,23 @@ for that extra branch work.
    git fetch origin --prune
    ```
 
-2. Fetch and verify the requested upstream tag:
+2. Fetch and verify the current and target upstream tags:
 
    ```bash
-   tag=<requested-upstream-tag>
-   git fetch upstream "refs/tags/${tag}:refs/tags/${tag}"
-   git rev-parse --verify "$tag^{commit}"
+   current_tag=<current-upstream-tag>
+   target_tag=<target-upstream-tag>
+   git fetch upstream "refs/tags/${current_tag}:refs/tags/${current_tag}"
+   git fetch upstream "refs/tags/${target_tag}:refs/tags/${target_tag}"
+   git fetch upstream --tags
+   git rev-parse --verify "$current_tag^{commit}"
+   git rev-parse --verify "$target_tag^{commit}"
+   git merge-base --is-ancestor "$current_tag" "$target_tag"
+   git switch main
+   test "$(git rev-parse HEAD)" = "$(git rev-parse "$current_tag^{commit}")"
    ```
+
+   Stop if `main` is not exactly the current release tag. Do not reset it to
+   manufacture the baseline.
 
 3. Establish the fork preservation baseline:
 
@@ -70,8 +81,8 @@ for that extra branch work.
    git switch main-fork
    test -f README.fork.md
    sed -n '1,240p' README.fork.md
-   git log --cherry-pick --right-only --oneline "$tag"...main-fork
-   git diff --name-status "$tag"...main-fork -- \
+   git log --cherry-pick --right-only --oneline "$current_tag"...main-fork
+   git diff --name-status "$current_tag"...main-fork -- \
      README.fork.md \
      .gitleaksignore \
      .codex/skills/upgrade-apohl79-fork \
@@ -98,57 +109,86 @@ for that extra branch work.
    If the user explicitly named additional staging branches for the upgrade,
    back up those branches too before touching them.
 
-5. Update local `main` to the upstream tag, preferring a fast-forward:
+5. Map alpha release tags to their final code commits and identify validation
+   checkpoints before replaying any code. An alpha tag commonly carries
+   release metadata; its first parent is the last code-bearing commit for that
+   alpha. Map that parent into the replay range, then checkpoint every tenth
+   discovered alpha tag and the final target tag.
 
    ```bash
-   git switch main
-   git merge --ff-only "$tag"
-   git status --short --branch
+   target_version=${target_tag#rust-v}
+   git rev-list --reverse "$current_tag..$target_tag" > /tmp/apohl79-replay-commits
+   nl -ba /tmp/apohl79-replay-commits
+   git tag --list "rust-v${target_version}-alpha.*" --sort=v:refname |
+     while read -r alpha_tag; do
+       tag_commit=$(git rev-parse "${alpha_tag}^{commit}")
+       code_commit=$(git rev-parse "${tag_commit}^1")
+       if git merge-base --is-ancestor "$code_commit" "$target_tag"; then
+         ordinal=$(nl -ba /tmp/apohl79-replay-commits |
+           awk -v commit="$code_commit" '$2 == commit { print $1 }')
+         printf '%s\t%s\t%s\n' "$alpha_tag" "$code_commit" "$ordinal"
+       fi
+     done | tee /tmp/apohl79-alpha-checkpoints
    ```
 
-   If `main` cannot fast-forward to the tag, do not reset it. First verify
-   whether `main` is exactly an older upstream release tag with no local
-   changes:
+   Keep the resulting mapping with the upgrade notes. Mark every tenth row in
+   alpha-version order as a full-validation checkpoint, plus the final target
+   release commit. If an alpha tag does not map into the range, record that
+   fact and do not invent a checkpoint commit.
+
+6. Replay each upstream commit in chronological order. Advance `main` with a
+   fast-forward for the exact upstream commit, then create a separate merge on
+   `main-fork` for that same commit. This makes each conflict and its
+   fork-preservation resolution reviewable without importing the whole range
+   at once:
 
    ```bash
-   previous_tag=$(git tag --points-at main | head -n1)
-   test -n "$previous_tag"
-   git diff --stat "$previous_tag"..main
-   git log --cherry-pick --right-only --oneline "$previous_tag"...main
-   git log --left-right --cherry-pick --oneline main..."$tag"
+   while read -r commit; do
+     git switch main
+     git merge --ff-only "$commit"
+
+     git switch main-fork
+     git merge --no-ff --no-commit "$commit"
+
+     # Inspect the single-commit diff and resolve only with README.fork.md
+     # behavior preserved.
+     git diff --check
+     # Run the formatter/linter configured for the touched paths. Do not run
+     # compilation or tests for each replayed commit.
+     git commit -m "merge: replay upstream $(git show -s --format=%h "$commit")"
+   done < /tmp/apohl79-replay-commits
    ```
 
-   If `main` has no diff and no right-only commits relative to the older
-   release tag, ask for confirmation. After backup refs have been created, move
-   only the local `main` ref to the requested release commit:
+   Resolve every conflict behaviorally, not by accepting one side wholesale.
+   If the replayed upstream commit or a conflict resolution changes
+   binary-shipped code, increment `scripts/apohl79_build_number.txt` in that
+   same `main-fork` commit. Do not compile or run tests between ordinary replay
+   commits; formatting and lightweight lint/diff checks are required on each
+   commit.
+
+7. At each mapped checkpoint, run the full validation script only after the
+   checkpoint merge is committed. Start it in the background, wait solely for
+   its exit status, and inspect the log only after it ends. Do not tail, poll,
+   or otherwise monitor the script while it runs:
 
    ```bash
-   git update-ref refs/heads/main "$tag^{commit}"
+   checkpoint=<alpha-tag-or-target>
+   log="/tmp/apohl79-full-validation-${checkpoint}.log"
+   scripts/run-full-validation.sh >"$log" 2>&1 &
+   validation_pid=$!
+   wait "$validation_pid"
+   validation_status=$?
+   if test "$validation_status" -ne 0; then
+     sed -n '1,240p' "$log"
+   fi
    ```
 
-   Stop and report the divergence if local `main` contains any non-upstream
-   commits, the previous release tag cannot be verified, or the user does not
-   confirm the ref move.
+   When validation fails, inspect the completed log, fix the issue on
+   `main-fork`, rerun the same checkpoint validation with the same no-monitor
+   rule, and continue only after it passes. Repeat this procedure until the
+   target release checkpoint passes.
 
-6. Rebase `main-fork` onto the updated `main` unless the user explicitly asks
-   for a merge-based upgrade:
-
-   ```bash
-   git switch main-fork
-   git rebase main
-   ```
-
-   Resolve conflicts by preserving the fork-only behavior listed in
-   `README.fork.md`. Do not accept upstream wholesale when doing so removes fork
-   behavior. If upstream changed the same feature, compare behavior instead of
-   only comparing files; keep the fork behavior unless upstream is verified to
-   provide an equal or better equivalent.
-
-   If Rust code, tests, schema files, or dependencies are changed during
-   conflict resolution, follow the repository `just` validation rules for the
-   affected crate or workspace.
-
-7. Handle explicitly supplied staging branches only if requested:
+8. Handle explicitly supplied staging branches only if requested:
 
    ```bash
    git switch <branch>
@@ -159,7 +199,7 @@ for that extra branch work.
    `--force-with-lease` for rebased branches. Skip this step for ordinary fork
    upgrades.
 
-8. Verify the final branch state:
+9. Verify the final branch state:
 
    ```bash
    git status --short --branch
@@ -179,7 +219,8 @@ for that extra branch work.
    from the paths and behavior described in `README.fork.md`; do not add a
    separate hardcoded feature checklist to this skill.
 
-9. Run targeted validation for changed fork areas:
+10. Review the final validation result and run any targeted follow-up checks
+   required by the changed fork areas:
 
    - For TUI `@` completion, popup rendering, status line, active task list, or
      TUI snapshots, from `codex-rs`:
@@ -216,7 +257,7 @@ for that extra branch work.
    Run any additional repository-required checks for files changed during
    conflict resolution.
 
-10. Push `main-fork` to apohl79:
+11. Push `main-fork` to apohl79:
 
     ```bash
     git push --force-with-lease origin main-fork
@@ -245,7 +286,7 @@ for that extra branch work.
 
 ## Reporting
 
-Report the requested tag, the backup ref timestamp, the `README.fork.md`
-inventory result, any `README.fork.md` updates, the validation performed, and
-the push result. Distinguish local-only updates from updates already pushed to
-`origin`.
+Report the current and target tags, replay commit count, alpha-to-code-commit
+mapping, checkpoint results, the backup ref timestamp, the `README.fork.md`
+inventory result, any inventory updates, and the push result. Distinguish
+local-only updates from updates already pushed to `origin`.

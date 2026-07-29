@@ -65,6 +65,8 @@ external command mode.
   silently replaced.
 - Status-line output is preserved across TUI clear/rebuild flows when the
   configured command has not changed.
+- The installed `scripts/statusline.sh` uses `·` as its status-segment
+  separator.
 
 Primary files:
 
@@ -74,15 +76,16 @@ Primary files:
 - `codex-rs/tui/src/chatwidget/status.rs`
 - `codex-rs/tui/src/chatwidget/status_surfaces.rs`
 - `codex-rs/tui/src/status_line_command.rs`
+- `scripts/statusline.sh`
 
 ### TUI Session Name Composer Label
 
-The fork shows the current session name as a `[Name]` title on the composer
-border when a name is set.
+The fork shows the current session name as an accent-colored title on the
+composer border when a name is set.
 
-- Named or renamed threads render the session name as a bracket-enclosed title
-  on the rounded composer border. Brackets use the border color; the name text
-  uses the session-name accent color.
+- Named or renamed threads render the session name without brackets on the
+  rounded composer border. The title has its own darker border background while
+  the name text uses the session-name accent color.
 - Empty or whitespace-only names are hidden.
 - Long names are truncated with an ellipsis to preserve composer layout.
 - Session-load and thread-name-update paths both keep the composer label in
@@ -97,7 +100,18 @@ Primary files:
 - `codex-rs/tui/src/chatwidget/session_flow.rs`
 - `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
 
-### Automatic Session Naming
+### Terminal Title Identity Fallback
+
+The fork keeps the terminal title meaningful before a thread has a stable name.
+
+- When a configured terminal-title thread element has no usable thread name,
+  it falls back to the project or working-directory name rather than displaying
+  an opaque thread ID.
+
+Primary files:
+
+- `codex-rs/tui/src/chatwidget/status_surfaces.rs`
+- `codex-rs/tui/src/terminal_title.rs`
 
 ### City Lights (Doom Emacs) Color Theme
 
@@ -110,9 +124,9 @@ TUI chrome colors to the City Lights palette.
 - A `CityLightsStylize` extension trait replaces ratatui ANSI color chaining:
   `.cl_cyan()` → `#008B94`, `.cl_green()` → `#5CD6B6`,
   `.cl_red()` → `#D95468`, `.cl_magenta()` → `#A06BEA`.
-- The composer uses a full rounded-corner border with the session name
-  rendered as a `[Name]` title. Brackets use the border color and the text
-  uses the session-name accent color.
+- The composer uses a full rounded-corner border with the session name rendered
+  as an unbracketed title. The title background is darker than the border and
+  the text uses the session-name accent color.
 - The composer prompt uses `❯` in City Lights magenta (`.cl_magenta()`).
 - Chat history user messages use `❯` as the prefix in City Lights magenta.
 - Diff backgrounds, accents, and status-line theme styles all derive from the
@@ -127,6 +141,7 @@ Primary files:
 - `codex-rs/tui/src/bottom_pane/chat_composer.rs`
 - `codex-rs/tui/src/history_cell/messages.rs`
 
+### Automatic Session Naming
 
 The fork can generate short session names automatically from the conversation
 without changing the visible model response.
@@ -194,11 +209,25 @@ The fork keeps multi-agent and side-thread context visible without replacing the
 custom status line.
 
 - Active child agents are listed above the active task list in the bottom pane.
-- Each active-agent row shows the task name, elapsed runtime, provider/model
-  metadata when available, and token usage when available.
+- Each active-agent row shows the canonical child `agent_path` name, elapsed
+  runtime, provider/model metadata when available, and actual input/output
+  token usage while the child is running. It never substitutes a provider
+  nickname after thread navigation.
+- Token counts are dimmed and use compact `↓input` and `↑output` labels.
+- Live child usage and cost contribute to the parent session totals before the
+  child completes, then transfer cleanly to final totals without double-counting.
 - The active-agent list caps visible rows and summarizes overflow.
 - Agent metadata comes from child-agent activity and thread session state. It
   does not fall back to the parent session provider/model.
+- `Interacted with` transcript cells are hidden because they add no useful
+  activity detail.
+- Parent-owned tracking retains bounded recent child activity and, every
+  12 seconds when new activity exists, asks the parent session's fast model for
+  a short summary. OpenAI parents select an available mini model. The summary
+  request has tracing diagnostics for timer ticks, request start, completion,
+  empty result, and failure.
+- A newly spawned child begins as `Working...`; later summaries replace that
+  placeholder when a successful parent-owned request completes.
 - The footer renders active thread context on the right side, including side
   thread names and active-agent labels.
 - Active thread labels are dimmed right-side context, not status-line segments.
@@ -206,6 +235,8 @@ custom status line.
   active thread label when space allows.
 - Active agent lifecycle state is updated on spawn, resume, interrupt, message,
   and completion paths.
+- The `Agents` and `Tasks` labels alone use their light-gray header background;
+  their leading bullets and task-progress counters retain the normal background.
 
 Primary files:
 
@@ -218,6 +249,65 @@ Primary files:
 - `codex-rs/tui/src/bottom_pane/footer.rs`
 - `codex-rs/tui/src/bottom_pane/mod.rs`
 - `codex-rs/tui/src/multi_agents.rs`
+- `codex-rs/core/src/agent/control.rs`
+- `codex-rs/core/src/session/turn.rs`
+
+### Multi-Agent Configuration and Safety
+
+The fork adds provider and depth controls for multi-agent sessions.
+
+- Provider definitions support `namespace_tools` so tool names can be scoped
+  for providers that require namespaced tool identifiers.
+- `agent_max_depth` is copied into V2 agent control and enforced by the V2
+  `spawn_agent` handler, preventing children from exceeding the configured
+  nesting limit.
+- The `openai_developer_docs` feature flag is forwarded into MCP runtime setup,
+  so the developer-docs MCP surface follows the configured feature gate.
+
+Primary files:
+
+- `codex-rs/config/src/thread_config.rs`
+- `codex-rs/core/src/config/mod.rs`
+- `codex-rs/core/src/session/config_lock.rs`
+- `codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs`
+- `codex-rs/core/src/session/mcp_runtime.rs`
+
+### Cost and Provider Pricing
+
+The fork records session cost in USD from provider token usage and supports
+provider-specific pricing overrides.
+
+- Built-in OpenAI provider configuration can override `model_prices`.
+- Pricing supports standard and over-272K-token long-context rates for input,
+  cached input, and output tokens.
+- Session cost is aggregated as turns and live subagents report usage; models
+  without a configured price remain unpriced rather than guessed.
+
+Primary files:
+
+- `codex-rs/config/src/types.rs`
+- `codex-rs/core/src/session/mod.rs`
+- `codex-rs/core/src/token_usage.rs`
+- `codex-rs/tui/src/token_usage.rs`
+
+### State Database and Replay Compatibility
+
+The fork preserves local state compatibility across the 0.144-to-0.145
+upgrade and downgrade validation path.
+
+- State initialization repairs the historical fork title-source migration only
+  when its legacy row is present, leaving upstream migration history intact.
+- This prevents a modified migration checksum from blocking the newer binary
+  while preserving the older fork build's ability to open the database.
+- App-server token-usage replay tolerates paginated thread metadata so resumed
+  sessions retain the correct metadata and token-usage state.
+
+Primary files:
+
+- `codex-rs/state/src/migrations.rs`
+- `codex-rs/state/src/migrations_tests.rs`
+- `codex-rs/app-server/src/request_processors/token_usage_replay.rs`
+- `codex-rs/app-server/src/request_processors/thread_processor.rs`
 
 ### Hook Output Visibility
 
@@ -340,9 +430,9 @@ The fork adds release helpers for building apohl79-branded packages from
   dirty builds cannot create or upload a GitHub release.
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
-- The helper builds `codex-cli` with Cargo `--locked`, signs the binary, verifies
-  the signature, and invokes the Codex package builder with an explicit
-  entrypoint and version.
+- The helper builds `codex-cli` and `codex-code-mode-host` with Cargo `--locked`,
+  signs the binary, verifies the signature, and invokes the Codex package
+  builder with explicit entrypoint, code-mode host, and version.
 - Release builds preserve incremental Cargo artifacts by using the current
   checkout and `codex-rs/target` as the default target directory.
 - The helper limits default Cargo parallelism while respecting explicit caller
@@ -404,8 +494,12 @@ release drift.
 
 - The skill documents the fork upgrade workflow.
 - The skill includes an `openai` subagent for upstream inspection.
-- The workflow preserves fork-only changes while rebasing or replaying
-  `main-fork` onto a requested upstream release.
+- The workflow maps alpha tags to last code commits, advances the upstream-only
+  `main` track one commit at a time, and merges each corresponding upstream
+  commit into `main-fork` while preserving the inventory.
+- It runs `scripts/run-full-validation.sh` at every tenth alpha checkpoint and
+  at the target release. The script is waited on without live log monitoring;
+  failures are inspected, fixed, and rerun before replay continues.
 - The upstream-changes skill lists stable upstream `rust-vX.Y.Z` releases
   between the current apohl79 fork base and the latest non-alpha OpenAI Codex
   tag.
@@ -430,8 +524,9 @@ development and release hygiene.
 - Generated files and TUI snapshots are refreshed after release rebases when
   upstream changes require it.
 - The workspace version is pinned to the current fork release line.
-- `scripts/apohl79_build_number.txt` is incremented for each feature/fix merged
-  to `main-fork`.
+- `scripts/apohl79_build_number.txt` is incremented in every `main-fork` commit
+  that changes binary-shipped code. Documentation, installer-only, test-only,
+  and instruction-only commits do not require a bump.
 
 Primary files:
 
