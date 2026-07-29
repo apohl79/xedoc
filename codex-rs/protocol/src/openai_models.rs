@@ -244,6 +244,13 @@ pub struct ModelPreset {
     /// Input modalities accepted when composing user turns for this preset.
     #[serde(default = "default_input_modalities")]
     pub input_modalities: Vec<InputModality>,
+
+    /// The provider ID that this model belongs to (e.g., "openai", "claude").
+    /// Empty for models without an explicit provider association.
+    #[serde(default)]
+    #[schemars(skip)]
+    #[ts(skip)]
+    pub provider_id: String,
 }
 
 /// Visibility of a model in the picker or APIs.
@@ -634,6 +641,7 @@ impl From<ModelInfo> for ModelPreset {
             availability_nux: info.availability_nux,
             supported_in_api: info.supported_in_api,
             input_modalities: info.input_modalities,
+            provider_id: String::new(),
         }
     }
 }

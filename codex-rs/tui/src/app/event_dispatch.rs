@@ -1079,6 +1079,15 @@ impl App {
                 self.sync_active_thread_service_tier_to_cached_session()
                     .await;
             }
+            AppEvent::UpdateModelAndProvider { model, provider_id } => {
+                self.chat_widget.set_model(&model);
+                self.sync_active_thread_model_setting(app_server, model.clone())
+                    .await;
+                self.sync_active_thread_model_provider_setting(app_server, provider_id)
+                    .await;
+                self.sync_active_thread_service_tier_to_cached_session()
+                    .await;
+            }
             AppEvent::UpdatePersonality(personality) => {
                 self.on_update_personality(personality);
                 self.sync_active_thread_personality_setting(app_server, personality)

@@ -266,6 +266,22 @@ impl SessionConfiguration {
         if let Some(personality) = updates.personality {
             next_configuration.personality = Some(personality);
         }
+        if let Some(model_provider_id) = updates.model_provider_id.clone() {
+            if next_configuration
+                .original_config_do_not_use
+                .model_provider_id
+                != model_provider_id
+            {
+                let config = Arc::make_mut(&mut next_configuration.original_config_do_not_use);
+                config.model_provider_id = model_provider_id.clone();
+                let new_provider = config
+                    .model_providers
+                    .get(&model_provider_id)
+                    .cloned()
+                    .unwrap_or_else(|| config.model_provider.clone());
+                config.model_provider = new_provider;
+            }
+        }
         if let Some(approval_policy) = updates.approval_policy {
             next_configuration.approval_policy.set(approval_policy)?;
         }
@@ -429,6 +445,8 @@ pub(crate) struct SessionSettingsUpdate {
     pub(crate) personality: Option<Personality>,
     pub(crate) app_server_client_name: Option<String>,
     pub(crate) app_server_client_version: Option<String>,
+    /// Override the model provider id for subsequent turns.
+    pub(crate) model_provider_id: Option<String>,
 }
 
 pub(crate) struct AppServerClientMetadata {

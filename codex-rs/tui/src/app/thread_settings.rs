@@ -212,4 +212,23 @@ fn thread_settings_update_has_changes(params: &ThreadSettingsUpdateParams) -> bo
         || params.summary.is_some()
         || params.collaboration_mode.is_some()
         || params.personality.is_some()
+        || params.model_provider.is_some()
+}
+
+impl App {
+    pub(super) async fn sync_active_thread_model_provider_setting(
+        &mut self,
+        app_server: &mut AppServerSession,
+        provider_id: String,
+    ) {
+        let Some(thread_id) = self.active_thread_id else {
+            return;
+        };
+        let params = ThreadSettingsUpdateParams {
+            thread_id: thread_id.to_string(),
+            model_provider: Some(provider_id),
+            ..ThreadSettingsUpdateParams::default()
+        };
+        self.send_thread_settings_update(app_server, params).await;
+    }
 }

@@ -309,5 +309,6 @@ fn model_preset(model: &str, display_name: &str, show_in_picker: bool) -> ModelP
         availability_nux: None,
         supported_in_api: true,
         input_modalities: Vec::new(),
+        provider_id: String::new(),
     }
 }

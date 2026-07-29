@@ -158,6 +158,10 @@ pub struct TurnStartParams {
     #[experimental("turn/start.multiAgentMode")]
     #[ts(optional = nullable)]
     pub multi_agent_mode: Option<MultiAgentMode>,
+
+    /// Override the model provider for this turn and subsequent turns.
+    #[ts(optional = nullable)]
+    pub model_provider: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

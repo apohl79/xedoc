@@ -265,6 +265,12 @@ pub struct ThreadSettingsUpdateParams {
     /// Override the personality for subsequent turns.
     #[ts(optional = nullable)]
     pub personality: Option<Personality>,
+
+    /// Override the model provider for subsequent turns.
+    /// Switching providers changes the API endpoint and auth mechanism
+    /// used for model inference requests.
+    #[ts(optional = nullable)]
+    pub model_provider: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

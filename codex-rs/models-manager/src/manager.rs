@@ -210,6 +210,106 @@ pub type ModelsManagerFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a
 /// Shared model manager handle used across runtime services.
 pub type SharedModelsManager = Arc<dyn ModelsManager>;
 
+/// A models manager that aggregates models from multiple provider-specific managers.
+///
+/// Each sub-manager's models are tagged with the corresponding `provider_id` so that
+/// the TUI can show provider information and trigger provider switches when a model
+/// from a different provider is selected.
+#[derive(Debug)]
+pub struct MultiProviderModelsManager {
+    /// (provider_id, manager) pairs. The first entry is the primary/active provider.
+    managers: Vec<(String, SharedModelsManager)>,
+}
+
+impl MultiProviderModelsManager {
+    pub fn new(managers: Vec<(String, SharedModelsManager)>) -> Self {
+        Self { managers }
+    }
+
+    fn primary_manager(&self) -> &SharedModelsManager {
+        &self.managers[0].1
+    }
+}
+
+impl ModelsManager for MultiProviderModelsManager {
+    fn raw_model_catalog(
+        &self,
+        refresh_strategy: RefreshStrategy,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, ModelsResponse> {
+        Box::pin(async move {
+            let mut all_models = Vec::new();
+            for (_provider_id, manager) in &self.managers {
+                let catalog = manager
+                    .raw_model_catalog(refresh_strategy, http_client_factory.clone())
+                    .await;
+                all_models.extend(catalog.models);
+            }
+            ModelsResponse { models: all_models }
+        })
+    }
+
+    fn get_remote_models(&self) -> ModelsManagerFuture<'_, Vec<ModelInfo>> {
+        Box::pin(async move {
+            let mut all_models = Vec::new();
+            for (_provider_id, manager) in &self.managers {
+                let models = manager.get_remote_models().await;
+                all_models.extend(models);
+            }
+            all_models
+        })
+    }
+
+    fn try_get_remote_models(&self) -> Result<Vec<ModelInfo>, TryLockError> {
+        let mut all_models = Vec::new();
+        for (_provider_id, manager) in &self.managers {
+            let models = manager.try_get_remote_models()?;
+            all_models.extend(models);
+        }
+        Ok(all_models)
+    }
+
+    fn auth_manager(&self) -> Option<&AuthManager> {
+        self.primary_manager().auth_manager()
+    }
+
+    fn build_available_models(&self, remote_models: Vec<ModelInfo>) -> Vec<ModelPreset> {
+        // Fall back to the primary manager for filtering and default marking
+        self.primary_manager().build_available_models(remote_models)
+    }
+
+    fn list_collaboration_modes(&self) -> Vec<CollaborationModeMask> {
+        self.primary_manager().list_collaboration_modes()
+    }
+
+    fn try_list_models(&self) -> Result<Vec<ModelPreset>, TryLockError> {
+        let mut seen_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut all_presets = Vec::new();
+        for (provider_id, manager) in &self.managers {
+            let remote_models = manager.try_get_remote_models()?;
+            let presets = manager.build_available_models(remote_models);
+            for mut preset in presets {
+                if seen_slugs.insert(preset.model.clone()) {
+                    preset.provider_id = provider_id.clone();
+                    all_presets.push(preset);
+                }
+            }
+        }
+        Ok(all_presets)
+    }
+
+    fn refresh_if_new_etag(
+        &self,
+        etag: String,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, ()> {
+        let primary = self.primary_manager().clone();
+        Box::pin(async move {
+            primary.refresh_if_new_etag(etag, http_client_factory).await;
+        })
+    }
+}
+
 /// OpenAI-compatible model manager backed by bundled models, cache, and `/models`.
 #[derive(Debug)]
 pub struct OpenAiModelsManager {

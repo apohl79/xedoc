@@ -272,11 +272,24 @@ pub fn build_models_manager(
     config: &Config,
     auth_manager: Arc<AuthManager>,
 ) -> SharedModelsManager {
-    let provider = create_model_provider(config.model_provider.clone(), Some(auth_manager));
-    provider.models_manager(
-        config.codex_home.to_path_buf(),
-        config.model_catalog.clone(),
-    )
+    let mut managers: Vec<(String, SharedModelsManager)> = Vec::new();
+    for (provider_id, provider_info) in &config.model_providers {
+        let provider = create_model_provider(provider_info.clone(), Some(auth_manager.clone()));
+        let manager = provider.models_manager(
+            config.codex_home.to_path_buf(),
+            config.model_catalog.clone(),
+        );
+        managers.push((provider_id.clone(), manager));
+    }
+    if managers.is_empty() {
+        // Fallback to single-provider with the active provider
+        let provider = create_model_provider(config.model_provider.clone(), Some(auth_manager));
+        return provider.models_manager(
+            config.codex_home.to_path_buf(),
+            config.model_catalog.clone(),
+        );
+    }
+    Arc::new(codex_models_manager::manager::MultiProviderModelsManager::new(managers))
 }
 
 pub fn thread_store_from_config(

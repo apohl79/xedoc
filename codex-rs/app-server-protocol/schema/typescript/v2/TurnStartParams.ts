@@ -42,4 +42,7 @@ personality?: Personality | null, /**
  * Optional JSON Schema used to constrain the final assistant message for
  * this turn.
  */
-outputSchema?: JsonValue | null};
+outputSchema?: JsonValue | null, /**
+ * Override the model provider for this turn and subsequent turns.
+ */
+modelProvider?: string | null};

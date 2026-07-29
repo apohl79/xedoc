@@ -758,6 +758,12 @@ pub(crate) enum AppEvent {
     /// Update the current model slug in the running app and widget.
     UpdateModel(String),
 
+    /// Update the current model slug and model provider in the running app and widget.
+    UpdateModelAndProvider {
+        model: String,
+        provider_id: String,
+    },
+
     /// Update the current personality in the running app and widget.
     UpdatePersonality(Personality),
 

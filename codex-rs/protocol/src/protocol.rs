@@ -505,6 +505,10 @@ pub struct ThreadSettingsOverrides {
 
     /// Updated personality preference.
     pub personality: Option<Personality>,
+
+    /// Updated model provider id. When set, switches the active provider
+    /// for subsequent turns in this thread.
+    pub model_provider_id: Option<String>,
 }
 
 /// Source classification for client-supplied context.

@@ -157,6 +157,7 @@ pub struct CodexThreadSettingsOverrides {
     pub service_tier: Option<Option<String>>,
     pub collaboration_mode: Option<CollaborationMode>,
     pub personality: Option<Personality>,
+    pub model_provider_id: Option<String>,
 }
 
 pub struct CodexThread {
@@ -397,6 +398,7 @@ impl CodexThread {
             service_tier,
             collaboration_mode,
             personality,
+            model_provider_id,
         } = overrides;
         let collaboration_mode = if let Some(collaboration_mode) = collaboration_mode {
             collaboration_mode
@@ -420,6 +422,7 @@ impl CodexThread {
             reasoning_summary: summary,
             service_tier,
             personality,
+            model_provider_id,
             ..Default::default()
         }
     }

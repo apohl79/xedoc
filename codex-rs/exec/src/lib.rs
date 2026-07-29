@@ -915,6 +915,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
                         output_schema,
                         collaboration_mode: None,
                         multi_agent_mode: None,
+                        model_provider: None,
                     },
                 },
                 "turn/start",

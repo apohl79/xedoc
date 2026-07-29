@@ -135,6 +135,7 @@ struct ThreadSettingsBuildParams {
     summary: Option<ReasoningSummary>,
     collaboration_mode: Option<CollaborationMode>,
     personality: Option<Personality>,
+    model_provider: Option<String>,
 }
 
 impl TurnRequestProcessor {
@@ -552,6 +553,7 @@ impl TurnRequestProcessor {
                     summary: params.summary,
                     collaboration_mode: params.collaboration_mode,
                     personality: params.personality,
+                    model_provider: params.model_provider,
                 },
             )
             .await?;
@@ -697,6 +699,7 @@ impl TurnRequestProcessor {
             summary,
             collaboration_mode,
             personality,
+            model_provider,
         } = params;
 
         if sandbox_policy.is_some() && permissions.is_some() {
@@ -796,6 +799,7 @@ impl TurnRequestProcessor {
                     service_tier: service_tier.clone(),
                     collaboration_mode: collaboration_mode.clone(),
                     personality,
+                    model_provider_id: model_provider.clone(),
                 })
                 .await
                 .map_err(|err| {
@@ -818,6 +822,7 @@ impl TurnRequestProcessor {
             service_tier,
             collaboration_mode,
             personality,
+            model_provider_id: model_provider,
         })
     }
 
@@ -852,6 +857,7 @@ impl TurnRequestProcessor {
                     summary: params.summary,
                     collaboration_mode: params.collaboration_mode,
                     personality: params.personality,
+                    model_provider: params.model_provider.clone(),
                 },
             )
             .await?;

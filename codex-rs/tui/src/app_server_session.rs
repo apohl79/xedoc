@@ -934,6 +934,7 @@ impl AppServerSession {
                     output_schema,
                     collaboration_mode,
                     multi_agent_mode: None,
+                    model_provider: None,
                 },
             })
             .await
@@ -1367,6 +1368,7 @@ fn model_preset_from_api_model(model: ApiModel) -> ModelPreset {
         // `model/list` already returns models filtered for the active client/auth context.
         supported_in_api: true,
         input_modalities: model.input_modalities,
+        provider_id: String::new(),
     }
 }
 
