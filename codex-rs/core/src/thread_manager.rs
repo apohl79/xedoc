@@ -273,12 +273,22 @@ pub fn build_models_manager(
     auth_manager: Arc<AuthManager>,
 ) -> SharedModelsManager {
     let mut managers: Vec<(String, SharedModelsManager)> = Vec::new();
+    let mut is_first = true;
     for (provider_id, provider_info) in &config.model_providers {
+        let codex_home = if is_first {
+            is_first = false;
+            config.codex_home.to_path_buf()
+        } else {
+            // Use a provider-specific subdirectory so each provider gets its own
+            // cache file, avoiding overwrites between providers.
+            config
+                .codex_home
+                .join("models_cache")
+                .join(provider_id)
+                .to_path_buf()
+        };
         let provider = create_model_provider(provider_info.clone(), Some(auth_manager.clone()));
-        let manager = provider.models_manager(
-            config.codex_home.to_path_buf(),
-            config.model_catalog.clone(),
-        );
+        let manager = provider.models_manager(codex_home, config.model_catalog.clone());
         managers.push((provider_id.clone(), manager));
     }
     if managers.is_empty() {

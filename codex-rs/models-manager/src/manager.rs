@@ -303,9 +303,11 @@ impl ModelsManager for MultiProviderModelsManager {
         etag: String,
         http_client_factory: HttpClientFactory,
     ) -> ModelsManagerFuture<'_, ()> {
-        let primary = self.primary_manager().clone();
+        let managers: Vec<SharedModelsManager> = self.managers.iter().map(|(_, m)| m.clone()).collect();
         Box::pin(async move {
-            primary.refresh_if_new_etag(etag, http_client_factory).await;
+            for manager in &managers {
+                manager.refresh_if_new_etag(etag.clone(), http_client_factory.clone()).await;
+            }
         })
     }
 }
@@ -348,6 +350,23 @@ impl OpenAiModelsManager {
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
         Self::new_with_cache_manager(/*cache_manager*/ None, endpoint_client, auth_manager)
+    }
+
+    /// Construct a manager with a specific cache file path.
+    ///
+    /// The primary provider uses `models_cache.json`; additional providers
+    /// should use `models_cache_<provider_id>.json` to avoid overwriting
+    /// each other's cached catalogs.
+    pub fn new_with_cache_path(
+        cache_path: PathBuf,
+        endpoint_client: Arc<dyn ModelsEndpointClient>,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
+        Self::new_with_cache_manager(
+            Some(ModelsCacheManager::new(cache_path, DEFAULT_MODEL_CACHE_TTL)),
+            endpoint_client,
+            auth_manager,
+        )
     }
 
     fn new_with_cache_manager(
