@@ -40,6 +40,28 @@ fn display_lines_renders_elapsed_agent() {
 }
 
 #[test]
+fn display_lines_header_uses_lighter_gray_background_and_black_foreground() {
+    let now = Instant::now();
+    let mut list = ActiveAgentList::new(FrameRequester::test_dummy());
+    list.set_agents(vec![ActiveAgentEntry {
+        name: "reviewer".to_string(),
+        started_at: now,
+        provider_model: None,
+        total_tokens: None,
+        token_usage: None,
+        current_activity: None,
+    }]);
+
+    let header = &list.display_lines_at(/*width*/ 80, now)[0];
+    let header_style = crate::city_lights::active_list_header_style();
+
+    for span in &header.spans {
+        assert_eq!(span.style.bg, header_style.bg);
+        assert_eq!(span.style.fg, header_style.fg);
+    }
+}
+
+#[test]
 fn display_lines_renders_provider_model() {
     let now = Instant::now();
     let mut list = ActiveAgentList::new(FrameRequester::test_dummy());

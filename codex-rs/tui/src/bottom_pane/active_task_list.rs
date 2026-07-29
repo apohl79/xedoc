@@ -4,6 +4,7 @@ use codex_protocol::plan_tool::StepStatus;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use ratatui::style::Styled;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
@@ -61,11 +62,12 @@ impl ActiveTaskList {
         let completed = self.completed_count();
         let visible_tasks = total.min(MAX_VISIBLE_TASKS);
         let mut lines = Vec::with_capacity(1 + visible_tasks + usize::from(total > visible_tasks));
+        let header_style = crate::city_lights::active_list_header_style();
         lines.push(
             vec![
-                "• ".dim(),
-                "Tasks ".bold().dim(),
-                format!("{completed}/{total}").dim(),
+                "• ".set_style(header_style),
+                "Tasks ".set_style(header_style.bold()),
+                format!("{completed}/{total}").set_style(header_style),
             ]
             .into(),
         );
@@ -146,3 +148,7 @@ impl Renderable for ActiveTaskList {
         self.display_lines(width).len() as u16
     }
 }
+
+#[cfg(test)]
+#[path = "active_task_list_tests.rs"]
+mod tests;

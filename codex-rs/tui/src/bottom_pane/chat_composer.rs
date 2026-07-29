@@ -4860,15 +4860,12 @@ impl ChatComposer {
                     .fg
                     .unwrap_or(Color::Reset);
                 let name_color = session_name_color();
-                let title_line = Line::from(vec![
-                    Span::styled("[", Style::default().fg(border_color)),
-                    Span::styled(session_name.clone(), Style::default().fg(name_color)),
-                    Span::styled("]", Style::default().fg(border_color)),
-                ]);
-                let title_text = truncate_line_with_ellipsis_if_overflow(
-                    title_line,
-                    available_width.saturating_sub(2),
-                );
+                let title_line = Line::from(vec![Span::styled(
+                    session_name.clone(),
+                    Style::default().fg(name_color).bg(border_color),
+                )]);
+                let title_text =
+                    truncate_line_with_ellipsis_if_overflow(title_line, available_width);
                 block = block.title(Title {
                     content: title_text,
                     alignment: Some(Alignment::Right),
@@ -5587,12 +5584,21 @@ mod tests {
         composer.render(area, &mut buf);
 
         let title_row = 0;
+        let border_color = city_lights::composer_border_style()
+            .fg
+            .unwrap_or(Color::Reset);
         let mut text = String::new();
         let mut session_name_color_cells = String::new();
+        let mut session_name_background_cells = String::new();
         for x in 0..area.width {
             let cell = &buf[(x, title_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
             session_name_color_cells.push(if cell.style().fg == Some(session_name_color()) {
+                '^'
+            } else {
+                ' '
+            });
+            session_name_background_cells.push(if cell.style().bg == Some(border_color) {
                 '^'
             } else {
                 ' '
@@ -5604,10 +5610,15 @@ mod tests {
         while session_name_color_cells.ends_with(' ') {
             session_name_color_cells.pop();
         }
+        while session_name_background_cells.ends_with(' ') {
+            session_name_background_cells.pop();
+        }
 
         insta::assert_snapshot!(
             "session_name_renders_with_session_name_color",
-            format!("text:               {text}\nsession_name_color: {session_name_color_cells}")
+            format!(
+                "text:                       {text}\nsession_name_color:         {session_name_color_cells}\nsession_name_background: {session_name_background_cells}"
+            )
         );
     }
 

@@ -5,6 +5,7 @@ use std::time::Instant;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use ratatui::style::Styled;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
@@ -83,7 +84,14 @@ impl ActiveAgentList {
         let visible_agents = total.min(MAX_VISIBLE_AGENTS);
         let mut lines =
             Vec::with_capacity(1 + visible_agents + usize::from(total > visible_agents));
-        lines.push(vec!["• ".dim(), "Agents".bold().dim()].into());
+        let header_style = crate::city_lights::active_list_header_style();
+        lines.push(
+            vec![
+                "• ".set_style(header_style),
+                "Agents".set_style(header_style.bold()),
+            ]
+            .into(),
+        );
 
         let agent_lines = self.visible_agent_lines(now);
         lines.extend(prefix_lines(agent_lines, "  └ ".dim(), "    ".into()));

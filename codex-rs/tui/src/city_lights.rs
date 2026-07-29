@@ -17,6 +17,8 @@ use ratatui::text::Span;
 pub const CL_BG: (u8, u8, u8) = (0x1D, 0x25, 0x2C);
 /// Comments / dim text.
 pub const CL_COMMENT: (u8, u8, u8) = (0x41, 0x50, 0x5E);
+/// Slightly lighter gray used behind active Agents and Tasks headers.
+pub const CL_HEADER_BG: (u8, u8, u8) = (0x5A, 0x64, 0x6E);
 /// Strings / success.
 pub const CL_GREEN: (u8, u8, u8) = (0x5C, 0xD6, 0xB6);
 /// Types / magenta-purple.
@@ -139,6 +141,11 @@ pub fn accent_style_cl() -> Style {
 /// Style for the composer top border.
 pub fn composer_border_style() -> Style {
     Style::default().fg(rgb(CL_COMMENT))
+}
+
+/// Style for active Agents and Tasks section headers.
+pub fn active_list_header_style() -> Style {
+    Style::default().fg(Color::Black).bg(rgb(CL_HEADER_BG))
 }
 
 // -- Widget-type impls --------------------------------------------------------
