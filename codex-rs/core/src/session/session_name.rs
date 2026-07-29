@@ -108,7 +108,7 @@ impl Session {
             window_id,
             CodexResponsesRequestKind::SessionName,
         );
-        let mut client_session = self.services.model_client.new_session();
+        let mut client_session = self.services.model_client.load().new_session();
         let mut stream = client_session
             .stream(
                 &prompt,

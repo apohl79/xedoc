@@ -9451,6 +9451,10 @@
         "model": {
           "type": "string"
         },
+        "providerId": {
+          "description": "Identifier of the provider that serves this model.",
+          "type": "string"
+        },
         "serviceTiers": {
           "default": [],
           "items": {
@@ -9493,6 +9497,7 @@
         "id",
         "isDefault",
         "model",
+        "providerId",
         "supportedReasoningEfforts"
       ],
       "type": "object"

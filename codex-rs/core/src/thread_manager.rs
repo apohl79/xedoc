@@ -273,10 +273,14 @@ pub fn build_models_manager(
     auth_manager: Arc<AuthManager>,
 ) -> SharedModelsManager {
     let mut managers: Vec<(String, SharedModelsManager)> = Vec::new();
-    let mut is_first = true;
-    for (provider_id, provider_info) in &config.model_providers {
-        let codex_home = if is_first {
-            is_first = false;
+    let mut provider_infos = config.model_providers.iter().collect::<Vec<_>>();
+    provider_infos.sort_by(|(left_id, _), (right_id, _)| {
+        (left_id != &config.model_provider_id)
+            .cmp(&(right_id != &config.model_provider_id))
+            .then_with(|| left_id.cmp(right_id))
+    });
+    for (index, (provider_id, provider_info)) in provider_infos.into_iter().enumerate() {
+        let codex_home = if index == 0 {
             config.codex_home.to_path_buf()
         } else {
             // Use a provider-specific subdirectory so each provider gets its own

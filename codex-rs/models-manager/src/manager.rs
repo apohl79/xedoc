@@ -232,6 +232,29 @@ impl MultiProviderModelsManager {
 }
 
 impl ModelsManager for MultiProviderModelsManager {
+    fn list_models(
+        &self,
+        refresh_strategy: RefreshStrategy,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, Vec<ModelPreset>> {
+        Box::pin(async move {
+            let mut seen_slugs = std::collections::HashSet::new();
+            let mut all_presets = Vec::new();
+            for (provider_id, manager) in &self.managers {
+                for mut preset in manager
+                    .list_models(refresh_strategy, http_client_factory.clone())
+                    .await
+                {
+                    if seen_slugs.insert(preset.model.clone()) {
+                        preset.provider_id.clone_from(provider_id);
+                        all_presets.push(preset);
+                    }
+                }
+            }
+            all_presets
+        })
+    }
+
     fn raw_model_catalog(
         &self,
         refresh_strategy: RefreshStrategy,
@@ -303,10 +326,13 @@ impl ModelsManager for MultiProviderModelsManager {
         etag: String,
         http_client_factory: HttpClientFactory,
     ) -> ModelsManagerFuture<'_, ()> {
-        let managers: Vec<SharedModelsManager> = self.managers.iter().map(|(_, m)| m.clone()).collect();
+        let managers: Vec<SharedModelsManager> =
+            self.managers.iter().map(|(_, m)| m.clone()).collect();
         Box::pin(async move {
             for manager in &managers {
-                manager.refresh_if_new_etag(etag.clone(), http_client_factory.clone()).await;
+                manager
+                    .refresh_if_new_etag(etag.clone(), http_client_factory.clone())
+                    .await;
             }
         })
     }

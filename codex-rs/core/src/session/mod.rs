@@ -1523,12 +1523,25 @@ impl Session {
             let updated_permission_profile = updated.permission_profile();
             let permission_profile_changed =
                 previous_permission_profile != updated_permission_profile;
+            let model_client =
+                (state.session_configuration.provider != updated.provider).then(|| {
+                    Self::model_client(
+                        Arc::clone(&self.services.auth_manager),
+                        self.thread_id,
+                        &updated,
+                        updated.original_config_do_not_use.as_ref(),
+                        self.services.attestation_provider.clone(),
+                    )
+                });
             if updates.environments.is_some() {
                 self.services
                     .turn_environments
                     .update_selections(updated.environment_selections());
             }
             state.session_configuration = updated;
+            if let Some(model_client) = model_client {
+                self.services.model_client.store(Arc::new(model_client));
+            }
             (previous_config, new_config, permission_profile_changed)
         };
         self.emit_config_changed_contributors(previous_config.as_ref(), new_config.as_ref());

@@ -210,6 +210,48 @@ fn static_manager_for_tests(model_catalog: ModelsResponse) -> StaticModelsManage
 }
 
 #[tokio::test]
+async fn multi_provider_list_models_tags_and_deduplicates_presets() {
+    let primary_models = ModelsResponse {
+        models: vec![
+            remote_model("shared", "Shared Primary", /*priority*/ 0),
+            remote_model("primary-only", "Primary Only", /*priority*/ 1),
+        ],
+    };
+    let secondary_models = ModelsResponse {
+        models: vec![
+            remote_model("shared", "Shared Secondary", /*priority*/ 0),
+            remote_model("secondary-only", "Secondary Only", /*priority*/ 1),
+        ],
+    };
+    let manager = MultiProviderModelsManager::new(vec![
+        (
+            "primary".to_string(),
+            Arc::new(static_manager_for_tests(primary_models)),
+        ),
+        (
+            "secondary".to_string(),
+            Arc::new(static_manager_for_tests(secondary_models)),
+        ),
+    ]);
+
+    let models = manager
+        .list_models(RefreshStrategy::Offline, DEFAULT_HTTP_CLIENT_FACTORY)
+        .await;
+
+    assert_eq!(
+        models
+            .into_iter()
+            .map(|model| (model.model, model.provider_id))
+            .collect::<Vec<_>>(),
+        vec![
+            ("shared".to_string(), "primary".to_string()),
+            ("primary-only".to_string(), "primary".to_string()),
+            ("secondary-only".to_string(), "secondary".to_string()),
+        ]
+    );
+}
+
+#[tokio::test]
 async fn manager_without_cache_fetches_on_every_refresh() {
     let remote_models = vec![remote_model("remote", "Remote", /*priority*/ 0)];
     let endpoint = TestModelsEndpoint::new(vec![remote_models.clone(), remote_models.clone()]);

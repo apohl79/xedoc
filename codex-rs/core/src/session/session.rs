@@ -279,7 +279,8 @@ impl SessionConfiguration {
                     .get(&model_provider_id)
                     .cloned()
                     .unwrap_or_else(|| config.model_provider.clone());
-                config.model_provider = new_provider;
+                config.model_provider.clone_from(&new_provider);
+                next_configuration.provider = new_provider;
             }
         }
         if let Some(approval_policy) = updates.approval_policy {
@@ -480,6 +481,49 @@ async fn warm_plugins_and_skills_for_session_init(
 }
 
 impl Session {
+    fn model_client(
+        auth_manager: Arc<AuthManager>,
+        thread_id: ThreadId,
+        session_configuration: &SessionConfiguration,
+        config: &Config,
+        attestation_provider: Option<Arc<dyn AttestationProvider>>,
+    ) -> ModelClient {
+        ModelClient::new(
+            Some(auth_manager),
+            if config.features.enabled(Feature::UseAgentIdentity) {
+                AgentIdentityAuthPolicy::ChatGptAuth
+            } else {
+                AgentIdentityAuthPolicy::JwtOnly
+            },
+            thread_id,
+            session_configuration.provider.clone(),
+            session_configuration.session_source.clone(),
+            session_configuration.originator.clone(),
+            config.model_verbosity,
+            config.features.enabled(Feature::EnableRequestCompression),
+            config.features.enabled(Feature::RuntimeMetrics),
+            Self::build_model_client_beta_features_header(config),
+            /*item_ids_enabled*/
+            config.features.enabled(Feature::ItemIds)
+                || matches!(
+                    session_configuration.history_mode,
+                    ThreadHistoryMode::Paginated
+                ),
+            /*concurrent_reasoning_summaries_enabled*/
+            config
+                .features
+                .enabled(Feature::ConcurrentReasoningSummaries),
+            attestation_provider,
+            config.http_client_factory(),
+        )
+        .with_prompt_cache_key_override(
+            crate::guardian::prompt_cache_key_override_for_review_session(
+                &session_configuration.session_source,
+                session_configuration.parent_thread_id,
+            ),
+        )
+    }
+
     /// Returns the concrete identity for this thread.
     pub(crate) fn thread_id(&self) -> ThreadId {
         self.thread_id
@@ -1137,38 +1181,13 @@ impl Session {
                 thread_store: Arc::clone(&thread_store),
                 attestation_provider: attestation_provider.clone(),
                 time_provider,
-                model_client: ModelClient::new(
-                    Some(Arc::clone(&auth_manager)),
-                    if config.features.enabled(Feature::UseAgentIdentity) {
-                        AgentIdentityAuthPolicy::ChatGptAuth
-                    } else {
-                        AgentIdentityAuthPolicy::JwtOnly
-                    },
+                model_client: arc_swap::ArcSwap::from_pointee(Self::model_client(
+                    Arc::clone(&auth_manager),
                     thread_id,
-                    session_configuration.provider.clone(),
-                    session_configuration.session_source.clone(),
-                    session_configuration.originator.clone(),
-                    config.model_verbosity,
-                    config.features.enabled(Feature::EnableRequestCompression),
-                    config.features.enabled(Feature::RuntimeMetrics),
-                    Self::build_model_client_beta_features_header(config.as_ref()),
-                    /*item_ids_enabled*/ config.features.enabled(Feature::ItemIds)
-                        || matches!(
-                            session_configuration.history_mode,
-                            ThreadHistoryMode::Paginated
-                        ),
-                    /*concurrent_reasoning_summaries_enabled*/ config
-                        .features
-                        .enabled(Feature::ConcurrentReasoningSummaries),
+                    &session_configuration,
+                    config.as_ref(),
                     attestation_provider,
-                    config.http_client_factory(),
-                )
-                .with_prompt_cache_key_override(
-                    crate::guardian::prompt_cache_key_override_for_review_session(
-                        &session_configuration.session_source,
-                        session_configuration.parent_thread_id,
-                    ),
-                ),
+                )),
                 code_mode_service: crate::tools::code_mode::CodeModeService::new(
                     Arc::clone(&code_mode_session_provider),
                     &config.features,

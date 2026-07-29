@@ -4362,6 +4362,53 @@ async fn session_settings_legacy_fast_service_tier_update_uses_priority_request_
     );
 }
 
+#[tokio::test]
+async fn session_provider_update_replaces_provider_metadata() {
+    let (session, _) = make_session_and_context().await;
+    let expected_provider = {
+        let state = session.state.lock().await;
+        state
+            .session_configuration
+            .original_config_do_not_use
+            .model_providers
+            .get("amazon-bedrock")
+            .cloned()
+            .expect("Amazon Bedrock provider should be configured")
+    };
+
+    session
+        .update_settings(SessionSettingsUpdate {
+            model_provider_id: Some("amazon-bedrock".to_string()),
+            ..Default::default()
+        })
+        .await
+        .expect("provider update should apply");
+
+    assert_eq!(session.provider().await, expected_provider);
+}
+
+#[tokio::test]
+async fn session_provider_update_rebuilds_model_client() {
+    let (session, _) = make_session_and_context().await;
+
+    session
+        .update_settings(SessionSettingsUpdate {
+            model_provider_id: Some("amazon-bedrock".to_string()),
+            ..Default::default()
+        })
+        .await
+        .expect("provider update should apply");
+
+    assert_eq!(
+        session
+            .services
+            .model_client
+            .load()
+            .responses_websocket_enabled(),
+        false
+    );
+}
+
 pub(crate) async fn make_session_configuration_for_tests() -> SessionConfiguration {
     let codex_home = tempfile::tempdir().expect("create temp dir");
     let config = build_test_config(codex_home.path()).await;
@@ -5371,7 +5418,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         )),
         attestation_provider: None,
         time_provider: Arc::new(crate::current_time::SystemTimeProvider),
-        model_client: ModelClient::new(
+        model_client: arc_swap::ArcSwap::from_pointee(ModelClient::new(
             Some(auth_manager.clone()),
             AgentIdentityAuthPolicy::JwtOnly,
             thread_id,
@@ -5389,7 +5436,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
                 .enabled(Feature::ConcurrentReasoningSummaries),
             /*attestation_provider*/ None,
             config.http_client_factory(),
-        ),
+        )),
         code_mode_service: crate::tools::code_mode::CodeModeService::new(
             Arc::new(codex_code_mode::InProcessCodeModeSessionProvider),
             &config.features,
@@ -7529,7 +7576,7 @@ where
         )),
         attestation_provider: None,
         time_provider: Arc::new(crate::current_time::SystemTimeProvider),
-        model_client: ModelClient::new(
+        model_client: arc_swap::ArcSwap::from_pointee(ModelClient::new(
             Some(Arc::clone(&auth_manager)),
             AgentIdentityAuthPolicy::JwtOnly,
             thread_id,
@@ -7547,7 +7594,7 @@ where
                 .enabled(Feature::ConcurrentReasoningSummaries),
             /*attestation_provider*/ None,
             config.http_client_factory(),
-        ),
+        )),
         code_mode_service: crate::tools::code_mode::CodeModeService::new(
             Arc::new(codex_code_mode::InProcessCodeModeSessionProvider),
             &config.features,

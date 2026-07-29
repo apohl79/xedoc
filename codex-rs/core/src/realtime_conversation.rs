@@ -1408,7 +1408,7 @@ async fn handle_start_inner(
         codex_response_handoff_mode,
         realtime_call_api_provider,
         session_config,
-        model_client: sess.services.model_client.clone(),
+        model_client: sess.services.model_client.load_full().as_ref().clone(),
         sdp,
     };
     let start_output = sess.conversation.start(start).await?;

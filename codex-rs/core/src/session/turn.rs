@@ -157,7 +157,7 @@ pub(crate) async fn run_turn(
     cancellation_token: CancellationToken,
 ) -> CodexResult<Option<String>> {
     let mut client_session =
-        prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session());
+        prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.load().new_session());
     // TODO(ccunningham): Pre-turn compaction runs before context updates and the
     // new user message are recorded. Estimate pending incoming items (context
     // diffs/full reinjection + user input) and trigger compaction preemptively
@@ -2659,7 +2659,7 @@ pub(crate) async fn generate_sub_agent_activity_summary(
         sess.current_window_id().await,
         CodexResponsesRequestKind::SessionName,
     );
-    let mut client_session = sess.services.model_client.new_session();
+    let mut client_session = sess.services.model_client.load().new_session();
     let request_started_at = Instant::now();
     tracing::info!(
         provider_id = %turn_context.config.model_provider_id,

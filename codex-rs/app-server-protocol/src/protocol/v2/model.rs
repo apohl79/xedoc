@@ -82,6 +82,8 @@ pub struct ModelServiceTier {
 pub struct Model {
     pub id: String,
     pub model: String,
+    /// Identifier of the provider that serves this model.
+    pub provider_id: String,
     pub upgrade: Option<String>,
     pub upgrade_info: Option<ModelUpgradeInfo>,
     pub availability_nux: Option<ModelAvailabilityNux>,

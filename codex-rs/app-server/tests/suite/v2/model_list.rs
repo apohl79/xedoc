@@ -34,6 +34,7 @@ fn model_from_preset(preset: &ModelPreset) -> Model {
     Model {
         id: preset.id.clone(),
         model: preset.model.clone(),
+        provider_id: preset.provider_id.clone(),
         upgrade: preset.upgrade.as_ref().map(|upgrade| upgrade.id.clone()),
         upgrade_info: preset.upgrade.as_ref().map(|upgrade| ModelUpgradeInfo {
             model: upgrade.id.clone(),
@@ -84,6 +85,9 @@ fn expected_visible_models() -> Vec<Model> {
 
     // Mirror `ModelsManager::build_available_models()` default selection after auth filtering.
     ModelPreset::mark_default_by_picker_visibility(&mut presets);
+    for preset in &mut presets {
+        preset.provider_id = "openai".to_string();
+    }
 
     presets
         .iter()
@@ -251,6 +255,7 @@ openai_base_url = "{server_uri}/v1"
     } = to_response::<ModelListResponse>(response)?;
     let mut expected_presets: Vec<ModelPreset> = vec![remote_model.into()];
     ModelPreset::mark_default_by_picker_visibility(&mut expected_presets);
+    expected_presets[0].provider_id = "openai".to_string();
     let mut expected_items = expected_presets
         .iter()
         .map(model_from_preset)
