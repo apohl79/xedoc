@@ -67,7 +67,7 @@ impl ActiveTaskList {
             vec![
                 "• ".dim(),
                 "Tasks ".set_style(header_style.bold()),
-                format!("{completed}/{total}").set_style(header_style),
+                format!("{completed}/{total}").into(),
             ]
             .into(),
         );

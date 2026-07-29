@@ -4856,13 +4856,10 @@ impl ChatComposer {
         if let Some(session_name) = self.session_name.as_ref() {
             let available_width = composer_rect.width.saturating_sub(4) as usize;
             if available_width > 0 {
-                let border_color = city_lights::composer_border_style()
-                    .fg
-                    .unwrap_or(Color::Reset);
                 let name_color = session_name_color();
                 let title_line = Line::from(vec![Span::styled(
                     session_name.clone(),
-                    Style::default().fg(name_color).bg(border_color),
+                    city_lights::composer_session_title_style().fg(name_color),
                 )]);
                 let title_text =
                     truncate_line_with_ellipsis_if_overflow(title_line, available_width);
@@ -5584,9 +5581,7 @@ mod tests {
         composer.render(area, &mut buf);
 
         let title_row = 0;
-        let border_color = city_lights::composer_border_style()
-            .fg
-            .unwrap_or(Color::Reset);
+        let session_name_background = city_lights::composer_session_title_style().bg;
         let mut text = String::new();
         let mut session_name_color_cells = String::new();
         let mut session_name_background_cells = String::new();
@@ -5598,7 +5593,7 @@ mod tests {
             } else {
                 ' '
             });
-            session_name_background_cells.push(if cell.style().bg == Some(border_color) {
+            session_name_background_cells.push(if cell.style().bg == session_name_background {
                 '^'
             } else {
                 ' '

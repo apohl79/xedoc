@@ -16,8 +16,8 @@ fn display_lines_header_uses_lighter_gray_background_and_black_foreground() {
 
     assert_eq!(header.spans[0].style.bg, None);
     assert_eq!(header.spans[0].style.fg, None);
-    for span in &header.spans[1..] {
-        assert_eq!(span.style.bg, header_style.bg);
-        assert_eq!(span.style.fg, header_style.fg);
-    }
+    assert_eq!(header.spans[1].style.bg, header_style.bg);
+    assert_eq!(header.spans[1].style.fg, header_style.fg);
+    assert_eq!(header.spans[2].style.bg, None);
+    assert_eq!(header.spans[2].style.fg, None);
 }

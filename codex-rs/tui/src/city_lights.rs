@@ -19,6 +19,8 @@ pub const CL_BG: (u8, u8, u8) = (0x1D, 0x25, 0x2C);
 pub const CL_COMMENT: (u8, u8, u8) = (0x41, 0x50, 0x5E);
 /// Slightly lighter gray used behind active Agents and Tasks headers.
 pub const CL_HEADER_BG: (u8, u8, u8) = (0x5A, 0x64, 0x6E);
+/// Dark gray used behind the composer session title.
+pub const CL_SESSION_TITLE_BG: (u8, u8, u8) = (0x30, 0x3A, 0x44);
 /// Strings / success.
 pub const CL_GREEN: (u8, u8, u8) = (0x5C, 0xD6, 0xB6);
 /// Types / magenta-purple.
@@ -146,6 +148,11 @@ pub fn composer_border_style() -> Style {
 /// Style for active Agents and Tasks section headers.
 pub fn active_list_header_style() -> Style {
     Style::default().fg(Color::Black).bg(rgb(CL_HEADER_BG))
+}
+
+/// Style for the composer session title.
+pub fn composer_session_title_style() -> Style {
+    Style::default().bg(rgb(CL_SESSION_TITLE_BG))
 }
 
 // -- Widget-type impls --------------------------------------------------------
