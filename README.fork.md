@@ -67,6 +67,8 @@ external command mode.
   configured command has not changed.
 - The installed `scripts/statusline.sh` uses `·` as its status-segment
   separator.
+- The installed script renders a non-default reasoning effort beside the model.
+  Set `ENABLE_REASONING=0` to hide that segment.
 
 Primary files:
 

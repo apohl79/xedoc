@@ -10,6 +10,8 @@ ENABLE_DIR=${ENABLE_DIR:-1}
 ENABLE_GIT=${ENABLE_GIT:-1}
 # Model name (magenta)
 ENABLE_MODEL=${ENABLE_MODEL:-1}
+# Reasoning effort (magenta)
+ENABLE_REASONING=${ENABLE_REASONING:-1}
 # Context window usage percentage (cyan)
 ENABLE_CONTEXT=${ENABLE_CONTEXT:-1}
 # Actual token usage / context window size next to the percentage (cyan)
@@ -50,6 +52,7 @@ status_fields=$(printf '%s' "$input" | jq -r '
         (.harness // ""),
         (.session_id // ""),
         (.model.id // "unknown"),
+        (.effort.level // "default"),
         $ctx_pct,
         $ctx_used,
         $ctx_size,
@@ -68,7 +71,7 @@ status_fields=$(printf '%s' "$input" | jq -r '
     | join("\u001f")
 ')
 
-IFS=$'\037' read -r cwd harness session_id model ctx_pct ctx_used ctx_size session_name vim_mode task_text in_tok out_tok cost added removed dur_ms version <<< "$status_fields"
+IFS=$'\037' read -r cwd harness session_id model reasoning_effort ctx_pct ctx_used ctx_size session_name vim_mode task_text in_tok out_tok cost added removed dur_ms version <<< "$status_fields"
 
 # Helpers
 fmt_duration() {
@@ -173,6 +176,11 @@ fi
 # --- Model (magenta) ---
 if [ "$ENABLE_MODEL" = "1" ] && [ -n "$model" ] && [ "$model" != "unknown" ]; then
     parts+=("\033[35m${model}\033[0m")
+fi
+
+# --- Reasoning effort (magenta) ---
+if [ "$ENABLE_REASONING" = "1" ] && [ -n "$reasoning_effort" ] && [ "$reasoning_effort" != "default" ]; then
+    parts+=("\033[35m${reasoning_effort}\033[0m")
 fi
 
 # --- Vim mode (bold yellow) ---
