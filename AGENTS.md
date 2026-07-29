@@ -12,7 +12,7 @@
   (e.g. post-turn vs pre-commit) create noise without benefit.
 -->
 
-- [pre-commit] Bump `scripts/apohl79_build_number.txt` only when the change requires building a new binary release.
+- [pre-commit] On `main-fork`, bump `scripts/apohl79_build_number.txt` in every commit or merge that changes code shipped in the binary. Do not bump it for documentation, installer, test-only, or instruction-only changes.
 - [pre-edit] Re-read the repository evidence gate in AGENTS.md before touching source files.
 
 # Rust/codex-rs
@@ -55,7 +55,7 @@ In the codex-rs folder where the rust code lives:
   repo root to refresh `MODULE.bazel.lock`, and include that lockfile update in the same change.
 - After dependency changes, run `just bazel-lock-check` from the repo root so lockfile drift is caught
   locally before CI.
-- Every `main-fork` change that requires building a new binary release must increment `scripts/apohl79_build_number.txt`.
+- Every `main-fork` commit or merge that changes code shipped in the binary must increment `scripts/apohl79_build_number.txt`.
   This fork build number is monotonically increasing across upstream Codex
   release upgrades, and fork release versions must use
   `[codex-version]-apohl79-[build-number]`.
