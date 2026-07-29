@@ -20,4 +20,5 @@ fn display_lines_header_uses_lighter_gray_background_and_black_foreground() {
     assert_eq!(header.spans[1].style.fg, header_style.fg);
     assert_eq!(header.spans[2].style.bg, None);
     assert_eq!(header.spans[2].style.fg, None);
+    assert_eq!(header.spans[2].content.as_ref(), " 0/1");
 }
