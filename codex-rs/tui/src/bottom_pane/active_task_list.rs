@@ -65,7 +65,7 @@ impl ActiveTaskList {
         let header_style = crate::city_lights::active_list_header_style();
         lines.push(
             vec![
-                "• ".set_style(header_style),
+                "• ".dim(),
                 "Tasks ".set_style(header_style.bold()),
                 format!("{completed}/{total}").set_style(header_style),
             ]

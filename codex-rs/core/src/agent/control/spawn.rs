@@ -518,6 +518,21 @@ impl AgentControl {
         // TODO(jif) add helper for drain
         state.notify_thread_created(new_thread.thread_id);
 
+        if multi_agent_version == MultiAgentVersion::V2
+            && let Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id,
+                ..
+            })) = notification_source.as_ref()
+            && let Some(agent_path) = agent_metadata.agent_path.clone()
+        {
+            self.start_sub_agent_activity_tracking(
+                *parent_thread_id,
+                new_thread.thread_id,
+                agent_path,
+            )
+            .await;
+        }
+
         self.persist_thread_spawn_edge_for_source(
             new_thread.thread.as_ref(),
             new_thread.thread_id,

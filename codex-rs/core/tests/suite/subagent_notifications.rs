@@ -1832,7 +1832,7 @@ async fn multi_agent_v2_activity_heartbeat_reports_working_without_child_message
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn multi_agent_v2_activity_heartbeat_summarizes_recent_tool_activity() -> Result<()> {
+async fn multi_agent_v2_parent_activity_timer_summarizes_recent_tool_activity() -> Result<()> {
     const ACTIVITY_SUMMARY: &str = "Running validation tests";
     const SLEEP_CALL_ID: &str = "sleep-call-1";
 

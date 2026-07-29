@@ -12,6 +12,10 @@ use crate::config::RolloutBudgetConfig;
 use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::rollout_budget::RolloutBudget;
 use crate::session::emit_subagent_session_started;
+use crate::session::session::Session;
+use crate::session::turn::generate_sub_agent_activity_summary;
+use crate::session::turn::sub_agent_activity::RecentSubAgentActivity;
+use crate::session::turn_context::TurnContext;
 use crate::session_prefix::format_inter_agent_completion_message;
 use crate::session_prefix::format_subagent_context_line;
 use crate::session_prefix::format_subagent_notification_message;
@@ -45,7 +49,10 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::Weak;
+use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::watch;
 use tracing::warn;
 
@@ -59,6 +66,28 @@ mod execution;
 mod legacy;
 mod residency;
 mod spawn;
+
+#[derive(Default)]
+struct SubAgentActivityRegistry {
+    parents: HashMap<ThreadId, ParentSubAgentActivity>,
+}
+
+#[derive(Default)]
+struct ParentSubAgentActivity {
+    children: HashMap<ThreadId, ChildSubAgentActivity>,
+    timer_running: bool,
+}
+
+struct ChildSubAgentActivity {
+    agent_path: AgentPath,
+    recent_activity: RecentSubAgentActivity,
+}
+
+struct PendingSubAgentActivity {
+    agent_thread_id: ThreadId,
+    agent_path: AgentPath,
+    recent_activity: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SpawnAgentForkMode {
@@ -108,6 +137,8 @@ pub(crate) struct AgentControl {
     agent_execution_limiter: Arc<AgentExecutionLimiter>,
     /// Session-scoped state shared by the root thread and every cloned sub-agent control handle.
     rollout_budget: Arc<RolloutBudget>,
+    /// Bounded raw activity retained for direct children until their parent summarizes it.
+    sub_agent_activity: Arc<Mutex<SubAgentActivityRegistry>>,
 }
 
 impl AgentControl {
@@ -157,6 +188,253 @@ impl AgentControl {
                 activity,
             ))
             .await;
+    }
+
+    /// Starts parent-owned activity summarization for a newly spawned V2 child.
+    pub(crate) async fn start_sub_agent_activity_tracking(
+        &self,
+        parent_thread_id: ThreadId,
+        child_thread_id: ThreadId,
+        agent_path: AgentPath,
+    ) {
+        let Ok(state) = self.upgrade() else {
+            return;
+        };
+        let Ok(parent_thread) = state.get_thread(parent_thread_id).await else {
+            return;
+        };
+        let parent_session = Arc::clone(&parent_thread.session);
+        let Some((turn_context, _)) = parent_session
+            .active_turn_context_and_cancellation_token()
+            .await
+        else {
+            tracing::warn!(
+                %parent_thread_id,
+                %child_thread_id,
+                "Skipping parent-owned sub-agent activity tracking without an active parent turn"
+            );
+            return;
+        };
+
+        let should_start_timer = {
+            let mut registry = self
+                .sub_agent_activity
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let parent = registry.parents.entry(parent_thread_id).or_default();
+            parent.children.insert(
+                child_thread_id,
+                ChildSubAgentActivity {
+                    agent_path,
+                    recent_activity: RecentSubAgentActivity::default(),
+                },
+            );
+            if parent.timer_running {
+                false
+            } else {
+                parent.timer_running = true;
+                true
+            }
+        };
+        if should_start_timer {
+            tracing::info!(
+                %parent_thread_id,
+                %child_thread_id,
+                "Starting parent-owned sub-agent activity timer"
+            );
+            let control = self.clone();
+            tokio::spawn(async move {
+                control
+                    .run_sub_agent_activity_timer(parent_thread_id, parent_session, turn_context)
+                    .await;
+            });
+        }
+    }
+
+    pub(crate) fn record_sub_agent_activity(
+        &self,
+        parent_thread_id: ThreadId,
+        child_thread_id: ThreadId,
+        agent_path: AgentPath,
+        item: &ResponseItem,
+    ) {
+        let mut registry = self
+            .sub_agent_activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let parent = registry.parents.entry(parent_thread_id).or_default();
+        let child =
+            parent
+                .children
+                .entry(child_thread_id)
+                .or_insert_with(|| ChildSubAgentActivity {
+                    agent_path,
+                    recent_activity: RecentSubAgentActivity::default(),
+                });
+        child.recent_activity.record_response_item(item);
+    }
+
+    pub(crate) fn stop_sub_agent_activity_tracking(
+        &self,
+        parent_thread_id: ThreadId,
+        child_thread_id: ThreadId,
+    ) {
+        let mut registry = self
+            .sub_agent_activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(parent) = registry.parents.get_mut(&parent_thread_id) else {
+            return;
+        };
+        parent.children.remove(&child_thread_id);
+    }
+
+    async fn run_sub_agent_activity_timer(
+        self,
+        parent_thread_id: ThreadId,
+        parent_session: Arc<Session>,
+        turn_context: Arc<TurnContext>,
+    ) {
+        let mut tick = 0_u32;
+        loop {
+            tokio::time::sleep(Duration::from_secs(12)).await;
+            tick += 1;
+            let (pending_activity, has_children) =
+                self.take_pending_sub_agent_activity(parent_thread_id);
+            if !has_children {
+                tracing::info!(
+                    %parent_thread_id,
+                    activity_timer_ticks = tick,
+                    "Stopping parent-owned sub-agent activity timer"
+                );
+                return;
+            }
+            tracing::info!(
+                %parent_thread_id,
+                activity_timer_tick = tick,
+                pending_children = pending_activity.len(),
+                "Parent-owned sub-agent activity timer tick"
+            );
+            for pending in pending_activity {
+                let summary_started_at = Instant::now();
+                tracing::info!(
+                    %parent_thread_id,
+                    agent_thread_id = %pending.agent_thread_id,
+                    activity_timer_tick = tick,
+                    recent_activity_chars = pending.recent_activity.chars().count(),
+                    "Starting parent-owned sub-agent activity summary request"
+                );
+                match generate_sub_agent_activity_summary(
+                    parent_session.as_ref(),
+                    turn_context.as_ref(),
+                    Some(&pending.recent_activity),
+                )
+                .await
+                {
+                    Ok(Some(summary)) => {
+                        tracing::info!(
+                            %parent_thread_id,
+                            agent_thread_id = %pending.agent_thread_id,
+                            activity_timer_tick = tick,
+                            elapsed_ms = summary_started_at.elapsed().as_millis(),
+                            summary_chars = summary.chars().count(),
+                            "Parent-owned sub-agent activity summary request completed"
+                        );
+                        parent_session
+                            .send_event(
+                                turn_context.as_ref(),
+                                codex_protocol::protocol::SubAgentActivityEvent {
+                                    event_id: format!(
+                                        "parent-activity-{parent_thread_id}-{tick}-{}",
+                                        pending.agent_thread_id
+                                    ),
+                                    occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
+                                    agent_thread_id: pending.agent_thread_id,
+                                    agent_path: pending.agent_path,
+                                    model_provider: None,
+                                    model: None,
+                                    kind:
+                                        codex_protocol::protocol::SubAgentActivityKind::Interacted,
+                                    current_activity: Some(summary),
+                                }
+                                .into(),
+                            )
+                            .await;
+                    }
+                    Ok(None) => {
+                        tracing::warn!(
+                            %parent_thread_id,
+                            agent_thread_id = %pending.agent_thread_id,
+                            activity_timer_tick = tick,
+                            elapsed_ms = summary_started_at.elapsed().as_millis(),
+                            "Parent-owned sub-agent activity summary request returned empty"
+                        );
+                        self.retry_sub_agent_activity(parent_thread_id, pending.agent_thread_id);
+                    }
+                    Err(err) => {
+                        tracing::info!(
+                            %parent_thread_id,
+                            agent_thread_id = %pending.agent_thread_id,
+                            activity_timer_tick = tick,
+                            elapsed_ms = summary_started_at.elapsed().as_millis(),
+                            error = %err,
+                            "Parent-owned sub-agent activity summary request failed"
+                        );
+                        self.retry_sub_agent_activity(parent_thread_id, pending.agent_thread_id);
+                    }
+                }
+            }
+        }
+    }
+
+    fn take_pending_sub_agent_activity(
+        &self,
+        parent_thread_id: ThreadId,
+    ) -> (Vec<PendingSubAgentActivity>, bool) {
+        let mut registry = self
+            .sub_agent_activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if registry
+            .parents
+            .get(&parent_thread_id)
+            .is_none_or(|parent| parent.children.is_empty())
+        {
+            registry.parents.remove(&parent_thread_id);
+            return (Vec::new(), false);
+        }
+        let Some(parent) = registry.parents.get_mut(&parent_thread_id) else {
+            return (Vec::new(), false);
+        };
+        let pending_activity = parent
+            .children
+            .iter_mut()
+            .filter_map(|(agent_thread_id, child)| {
+                child
+                    .recent_activity
+                    .snapshot_if_changed()
+                    .map(|recent_activity| PendingSubAgentActivity {
+                        agent_thread_id: *agent_thread_id,
+                        agent_path: child.agent_path.clone(),
+                        recent_activity,
+                    })
+            })
+            .collect();
+        (pending_activity, !parent.children.is_empty())
+    }
+
+    fn retry_sub_agent_activity(&self, parent_thread_id: ThreadId, child_thread_id: ThreadId) {
+        let mut registry = self
+            .sub_agent_activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(child) = registry
+            .parents
+            .get_mut(&parent_thread_id)
+            .and_then(|parent| parent.children.get_mut(&child_thread_id))
+        {
+            child.recent_activity.retry();
+        }
     }
 
     /// Send rich user input items to an existing agent thread.

@@ -55,7 +55,9 @@ fn display_lines_header_uses_lighter_gray_background_and_black_foreground() {
     let header = &list.display_lines_at(/*width*/ 80, now)[0];
     let header_style = crate::city_lights::active_list_header_style();
 
-    for span in &header.spans {
+    assert_eq!(header.spans[0].style.bg, None);
+    assert_eq!(header.spans[0].style.fg, None);
+    for span in &header.spans[1..] {
         assert_eq!(span.style.bg, header_style.bg);
         assert_eq!(span.style.fg, header_style.fg);
     }

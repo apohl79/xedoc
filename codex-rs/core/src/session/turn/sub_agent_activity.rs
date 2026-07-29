@@ -11,13 +11,13 @@ const MAX_RECENT_ACTIVITY_ITEMS: usize = 8;
 const MAX_ACTIVITY_ITEM_CHARS: usize = 512;
 
 #[derive(Debug, Default)]
-pub(super) struct RecentSubAgentActivity {
+pub(crate) struct RecentSubAgentActivity {
     items: VecDeque<String>,
     changed: bool,
 }
 
 impl RecentSubAgentActivity {
-    pub(super) fn record_response_item(&mut self, item: &ResponseItem) {
+    pub(crate) fn record_response_item(&mut self, item: &ResponseItem) {
         let Some(activity) = response_item_activity(item) else {
             return;
         };
@@ -38,7 +38,7 @@ impl RecentSubAgentActivity {
         self.changed = true;
     }
 
-    pub(super) fn snapshot_if_changed(&mut self) -> Option<String> {
+    pub(crate) fn snapshot_if_changed(&mut self) -> Option<String> {
         if !self.changed {
             return None;
         }
@@ -46,7 +46,7 @@ impl RecentSubAgentActivity {
         Some(self.items.iter().cloned().collect::<Vec<_>>().join("\n"))
     }
 
-    pub(super) fn retry(&mut self) {
+    pub(crate) fn retry(&mut self) {
         self.changed = !self.items.is_empty();
     }
 }

@@ -85,13 +85,7 @@ impl ActiveAgentList {
         let mut lines =
             Vec::with_capacity(1 + visible_agents + usize::from(total > visible_agents));
         let header_style = crate::city_lights::active_list_header_style();
-        lines.push(
-            vec![
-                "• ".set_style(header_style),
-                "Agents".set_style(header_style.bold()),
-            ]
-            .into(),
-        );
+        lines.push(vec!["• ".dim(), "Agents".set_style(header_style.bold())].into());
 
         let agent_lines = self.visible_agent_lines(now);
         lines.extend(prefix_lines(agent_lines, "  └ ".dim(), "    ".into()));

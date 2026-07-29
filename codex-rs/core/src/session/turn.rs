@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 use std::time::Instant;
 
 use crate::SkillInjections;
@@ -103,6 +102,7 @@ use codex_protocol::protocol::AgentReasoningSectionBreakEvent;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::PlanDeltaEvent;
 use codex_protocol::protocol::RawResponseCompletedEvent;
 use codex_protocol::protocol::ReasoningContentDeltaEvent;
@@ -132,9 +132,7 @@ use tracing::trace;
 use tracing::trace_span;
 use tracing::warn;
 
-mod sub_agent_activity;
-
-use self::sub_agent_activity::RecentSubAgentActivity;
+pub(crate) mod sub_agent_activity;
 
 /// Takes initial turn input and runs a loop where, at each sampling request,
 /// the model replies with either:
@@ -1996,124 +1994,6 @@ async fn try_run_sampling_request(
         turn_context.provider.info().name.as_str(),
     );
     let sampling_timing_guard = turn_context.turn_timing_state.begin_sampling();
-    // Periodically report activity for sub-agents via timer.
-    let activity_cancel = CancellationToken::new();
-    let _activity_cancel_guard = activity_cancel.clone().drop_guard();
-    let activity_state = Arc::new(std::sync::Mutex::new(RecentSubAgentActivity::default()));
-    let _activity_summary_task = if turn_context.parent_thread_id.is_some() {
-        tracing::info!("Starting sub-agent activity timer");
-        let sess = Arc::clone(&sess);
-        let turn = Arc::clone(&turn_context);
-        let cancel = activity_cancel.clone();
-        let state_ref = Arc::clone(&activity_state);
-        Some(tokio::spawn(async move {
-            let mut tick: u32 = 0;
-            let mut current_activity = "Working...".to_string();
-            loop {
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        tracing::info!(activity_timer_ticks = tick, "Stopping sub-agent activity timer");
-                        break;
-                    }
-                    _ = tokio::time::sleep(Duration::from_secs(12)) => {}
-                }
-                if cancel.is_cancelled() {
-                    tracing::info!(
-                        activity_timer_ticks = tick,
-                        "Stopping sub-agent activity timer"
-                    );
-                    break;
-                }
-                tick += 1;
-                tracing::info!(activity_timer_tick = tick, "Sub-agent activity timer tick");
-                let recent_activity = {
-                    let mut state = state_ref
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    state.snapshot_if_changed()
-                };
-                if let Some(recent_activity) = recent_activity {
-                    let summary_started_at = Instant::now();
-                    tracing::info!(
-                        activity_timer_tick = tick,
-                        recent_activity_chars = recent_activity.chars().count(),
-                        "Starting sub-agent activity summary request"
-                    );
-                    match generate_sub_agent_activity_summary(
-                        sess.as_ref(),
-                        turn.as_ref(),
-                        Some(&recent_activity),
-                    )
-                    .await
-                    {
-                        Ok(Some(summary)) => {
-                            tracing::info!(
-                                activity_timer_tick = tick,
-                                elapsed_ms = summary_started_at.elapsed().as_millis(),
-                                summary_chars = summary.chars().count(),
-                                "Sub-agent activity summary request completed"
-                            );
-                            current_activity = summary;
-                        }
-                        Ok(None) => {
-                            tracing::warn!(
-                                activity_timer_tick = tick,
-                                elapsed_ms = summary_started_at.elapsed().as_millis(),
-                                "Sub-agent activity summary request returned empty"
-                            );
-                            state_ref
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                .retry();
-                        }
-                        Err(err) => {
-                            tracing::info!(
-                                activity_timer_tick = tick,
-                                elapsed_ms = summary_started_at.elapsed().as_millis(),
-                                error = %err,
-                                "Sub-agent activity summary request failed"
-                            );
-                            state_ref
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                .retry();
-                        }
-                    }
-                } else {
-                    tracing::debug!(
-                        activity_timer_tick = tick,
-                        "Sub-agent activity timer found no new response items"
-                    );
-                }
-                tracing::info!(
-                    activity_timer_tick = tick,
-                    current_activity_chars = current_activity.chars().count(),
-                    "Emitting sub-agent activity update"
-                );
-                sess.send_event(
-                    turn.as_ref(),
-                    codex_protocol::protocol::SubAgentActivityEvent {
-                        event_id: format!("activity-timer-{tick}"),
-                        occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
-                        agent_thread_id: sess.thread_id,
-                        agent_path: turn
-                            .session_source
-                            .get_agent_path()
-                            .unwrap_or_else(codex_protocol::AgentPath::root),
-                        model_provider: None,
-                        model: None,
-                        kind: codex_protocol::protocol::SubAgentActivityKind::Interacted,
-                        current_activity: Some(current_activity.clone()),
-                    }
-                    .into(),
-                )
-                .await;
-                tracing::info!(activity_timer_tick = tick, "Sub-agent activity update sent");
-            }
-        }))
-    } else {
-        None
-    };
     let uses_sequential_cutoff_reasoning_summaries = turn_context
         .config
         .features
@@ -2218,11 +2098,18 @@ async fn try_run_sampling_request(
                     streamed_text = streamed_assistant_text_by_item.remove(item_id);
                 }
                 backfill_empty_assistant_message_content(&mut item, streamed_text.as_deref());
-                if turn_context.parent_thread_id.is_some() {
-                    activity_state
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .record_response_item(&item);
+                if turn_context.multi_agent_version == MultiAgentVersion::V2
+                    && let Some(parent_thread_id) = turn_context.parent_thread_id
+                {
+                    sess.services.agent_control.record_sub_agent_activity(
+                        parent_thread_id,
+                        sess.thread_id,
+                        turn_context
+                            .session_source
+                            .get_agent_path()
+                            .unwrap_or_else(codex_protocol::AgentPath::root),
+                        &item,
+                    );
                 }
                 let previously_streamed_item = if active_item_is_streaming_to_client {
                     previously_active_item
@@ -2681,7 +2568,6 @@ async fn try_run_sampling_request(
         }
     }
 
-    activity_cancel.cancel();
     outcome
 }
 
@@ -2703,7 +2589,7 @@ const FAST_MODEL_KEYWORD: &str = "mini";
 ///
 /// Uses the configured `model_fast` when available; falls back to the default model.
 /// The result is clamped to `MAX_ACTIVITY_SUMMARY_CHARS` characters.
-async fn generate_sub_agent_activity_summary(
+pub(crate) async fn generate_sub_agent_activity_summary(
     sess: &Session,
     turn_context: &TurnContext,
     last_agent_message: Option<&str>,
