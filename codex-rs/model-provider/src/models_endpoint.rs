@@ -116,6 +116,18 @@ impl OpenAiModelsEndpoint {
                 ModelCatalog::Codex(models) => models,
                 ModelCatalog::OpenAiCompatible(models) => models
                     .into_iter()
+                    .filter(|model| {
+                        self.provider_info
+                            .query_params
+                            .as_ref()
+                            .and_then(|query_params| query_params.get("provider"))
+                            .is_none_or(|provider_id| {
+                                model
+                                    .owned_by
+                                    .as_deref()
+                                    .is_none_or(|owned_by| owned_by == provider_id)
+                            })
+                    })
                     .enumerate()
                     .map(|(priority, model)| {
                         let model_id = model.id.strip_prefix("models/").unwrap_or(&model.id);
@@ -300,6 +312,7 @@ impl RequestTelemetry for ModelsRequestTelemetry {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::num::NonZeroU64;
     use std::sync::Mutex;
 
@@ -455,6 +468,53 @@ mod tests {
             expected
         })
         .collect::<Vec<_>>();
+
+        let (models, _) = endpoint
+            .list_models(
+                "0.0.0",
+                HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            )
+            .await
+            .expect("models request should succeed");
+
+        assert_eq!(models, expected);
+    }
+
+    #[tokio::test]
+    async fn scoped_catalog_excludes_models_owned_by_another_provider() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .and(query_param("provider", "anthropic"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "object": "list",
+                "data": [
+                    {"id": "claude-opus-5", "owned_by": "anthropic"},
+                    {"id": "deepseek-v4-pro", "owned_by": "deepseek"},
+                    {"id": "unknown-model"}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
+        provider_info.name = "Claude".to_string();
+        provider_info.query_params = Some(HashMap::from([(
+            "provider".to_string(),
+            "anthropic".to_string(),
+        )]));
+        let endpoint = OpenAiModelsEndpoint::new(provider_info, /*auth_manager*/ None);
+        let expected = ["claude-opus-5", "unknown-model"]
+            .into_iter()
+            .enumerate()
+            .map(|(priority, model)| {
+                let mut expected = model_info_from_provider_catalog_slug(model, "Claude");
+                expected.priority = i32::try_from(priority).expect("test priority fits in i32");
+                expected.visibility = ModelVisibility::List;
+                expected
+            })
+            .collect::<Vec<_>>();
 
         let (models, _) = endpoint
             .list_models(
