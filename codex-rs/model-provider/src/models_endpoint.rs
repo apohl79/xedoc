@@ -44,7 +44,6 @@ const MODELS_ENDPOINT: &str = "/models";
 /// Provider-owned OpenAI-compatible `/models` endpoint.
 #[derive(Debug)]
 pub(crate) struct OpenAiModelsEndpoint {
-    provider_id: Option<String>,
     provider_info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
     transport_builder: Arc<dyn ModelsTransportBuilder>,
@@ -56,20 +55,6 @@ impl OpenAiModelsEndpoint {
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
         Self {
-            provider_id: None,
-            provider_info,
-            auth_manager,
-            transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
-        }
-    }
-
-    pub(crate) fn new_with_provider_id(
-        provider_id: String,
-        provider_info: ModelProviderInfo,
-        auth_manager: Option<Arc<AuthManager>>,
-    ) -> Self {
-        Self {
-            provider_id: Some(provider_id),
             provider_info,
             auth_manager,
             transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
@@ -136,7 +121,6 @@ impl OpenAiModelsEndpoint {
                         let model_id = model.id.strip_prefix("models/").unwrap_or(&model.id);
                         let mut model_info = model_info_from_provider_catalog_slug(
                             model_id,
-                            self.provider_id.as_deref().unwrap_or_default(),
                             &self.provider_info.name,
                         );
                         model_info.priority = i32::try_from(priority).unwrap_or(i32::MAX);
@@ -407,7 +391,6 @@ mod tests {
 
         let observed_request = Arc::new(Mutex::new(None));
         let endpoint = OpenAiModelsEndpoint {
-            provider_id: None,
             provider_info: ModelProviderInfo::create_openai_provider(Some(server.uri())),
             auth_manager: None,
             transport_builder: Arc::new(RecordingTransportBuilder {
@@ -455,11 +438,7 @@ mod tests {
 
         let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
         provider_info.name = "Claude".to_string();
-        let endpoint = OpenAiModelsEndpoint::new_with_provider_id(
-            "anthropic".to_string(),
-            provider_info,
-            /*auth_manager*/ None,
-        );
+        let endpoint = OpenAiModelsEndpoint::new(provider_info, /*auth_manager*/ None);
         let expected = [
             "claude-opus-5",
             "claude-sonnet-5",
@@ -470,7 +449,7 @@ mod tests {
         .into_iter()
         .enumerate()
         .map(|(priority, model)| {
-            let mut expected = model_info_from_provider_catalog_slug(model, "anthropic", "Claude");
+            let mut expected = model_info_from_provider_catalog_slug(model, "Claude");
             expected.priority = i32::try_from(priority).expect("test priority fits in i32");
             expected.visibility = ModelVisibility::List;
             expected
@@ -505,13 +484,8 @@ mod tests {
 
         let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
         provider_info.name = "Gemini".to_string();
-        let endpoint = OpenAiModelsEndpoint::new_with_provider_id(
-            "gemini".to_string(),
-            provider_info,
-            /*auth_manager*/ None,
-        );
-        let mut expected =
-            model_info_from_provider_catalog_slug("gemini-3.6-flash", "gemini", "Gemini");
+        let endpoint = OpenAiModelsEndpoint::new(provider_info, /*auth_manager*/ None);
+        let mut expected = model_info_from_provider_catalog_slug("gemini-3.6-flash", "Gemini");
         expected.priority = 0;
         expected.visibility = ModelVisibility::List;
 

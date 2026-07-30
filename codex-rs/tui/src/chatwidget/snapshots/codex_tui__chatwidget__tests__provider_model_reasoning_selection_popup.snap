@@ -2,7 +2,7 @@
 source: tui/src/chatwidget/tests/popups_and_settings.rs
 expression: popup
 ---
-  Select Reasoning Level for claude-opus-5
+  Select Reasoning Level for gemini-3.6-flash
 
   1. Low               Fast responses with lighter reasoning
 › 2. Medium (default)  Balanced reasoning for most tasks

@@ -15,17 +15,17 @@ fn config_with_personality(personality: Option<Personality>) -> ModelsManagerCon
 }
 
 #[test]
-fn provider_catalog_metadata_identifies_the_model_and_provider() {
-    let model = model_info_from_provider_catalog_slug("claude-opus-5", "anthropic", "Claude");
+fn provider_catalog_metadata_identifies_the_model_provider_and_reasoning_levels() {
+    let model = model_info_from_provider_catalog_slug("gemini-3.6-flash", "Gemini");
 
     assert_eq!(
         model.description,
-        Some("Claude model claude-opus-5".to_string())
+        Some("Gemini model gemini-3.6-flash".to_string())
     );
     assert!(
         model
             .base_instructions
-            .contains("You are running as the claude-opus-5 model provided by Claude.")
+            .contains("You are running as the gemini-3.6-flash model provided by Gemini.")
     );
     assert_eq!(model.default_reasoning_level, Some(ReasoningEffort::Medium));
     assert_eq!(

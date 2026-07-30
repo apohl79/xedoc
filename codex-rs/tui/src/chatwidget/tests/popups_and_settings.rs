@@ -3215,10 +3215,10 @@ async fn provider_model_reasoning_selection_popup_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
 
     let mut preset = get_available_model(&chat, "gpt-5.6-sol");
-    preset.id = "claude-opus-5".to_string();
-    preset.model = "claude-opus-5".to_string();
-    preset.display_name = "claude-opus-5".to_string();
-    preset.description = "Claude model claude-opus-5".to_string();
+    preset.id = "gemini-3.6-flash".to_string();
+    preset.model = "gemini-3.6-flash".to_string();
+    preset.display_name = "gemini-3.6-flash".to_string();
+    preset.description = "Gemini model gemini-3.6-flash".to_string();
     preset.default_reasoning_effort = ReasoningEffortConfig::Medium;
     preset.supported_reasoning_efforts = vec![
         ReasoningEffortPreset {
@@ -3238,7 +3238,7 @@ async fn provider_model_reasoning_selection_popup_snapshot() {
             description: "Maximum reasoning depth for difficult tasks".to_string(),
         },
     ];
-    preset.provider_id = "anthropic".to_string();
+    preset.provider_id = "gemini".to_string();
     chat.open_reasoning_popup(preset);
 
     let popup = render_bottom_popup(&chat, /*width*/ 100);

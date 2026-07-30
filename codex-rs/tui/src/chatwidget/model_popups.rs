@@ -133,7 +133,7 @@ impl ChatWidget {
                     name: model.clone(),
                     description,
                     category_tag: (!preset.provider_id.is_empty())
-                        .then_some(preset.provider_id.clone()),
+                        .then(|| format!("[{}]", preset.provider_id)),
                     is_current: model.as_str() == current_model,
                     is_default: preset.is_default,
                     actions,
@@ -248,7 +248,7 @@ impl ChatWidget {
                 name: preset.model.clone(),
                 description,
                 category_tag: (!preset.provider_id.is_empty())
-                    .then_some(preset.provider_id.clone()),
+                    .then(|| format!("[{}]", preset.provider_id)),
                 is_current,
                 is_default: preset.is_default,
                 actions,
