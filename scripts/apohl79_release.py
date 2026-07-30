@@ -845,7 +845,7 @@ def find_previous_published_fork_release(
                     "--paginate",
                 ],
                 cwd=REPO_ROOT,
-                env=env,
+                env={**os.environ, **env} if env else None,
                 text=True,
             )
         )
