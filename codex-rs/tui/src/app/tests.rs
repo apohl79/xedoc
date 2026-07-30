@@ -7661,6 +7661,35 @@ async fn override_turn_context_sends_thread_settings_update() {
 }
 
 #[tokio::test]
+async fn cross_provider_thread_settings_update_syncs_model_provider_and_reasoning_together() {
+    let mut app = make_test_app().await;
+    let thread_id = ThreadId::new();
+    app.active_thread_id = Some(thread_id);
+
+    app.chat_widget.set_model("deepseek-v4-pro");
+    let params = app
+        .active_thread_model_selection_update_params(
+            "deepseek-v4-pro".to_string(),
+            "deepseek".to_string(),
+            Some(ReasoningEffortConfig::Medium),
+        )
+        .expect("active thread should produce update params");
+
+    assert_eq!(params.thread_id, thread_id.to_string());
+    assert_eq!(params.model, Some("deepseek-v4-pro".to_string()));
+    assert_eq!(params.model_provider, Some("deepseek".to_string()));
+    assert_eq!(params.effort, Some(ReasoningEffortConfig::Medium));
+    assert_eq!(
+        params
+            .collaboration_mode
+            .expect("collaboration mode should sync with model selection")
+            .settings
+            .model,
+        "deepseek-v4-pro"
+    );
+}
+
+#[tokio::test]
 async fn thread_setting_update_params_sync_model_and_default_reasoning() {
     let mut app = make_test_app().await;
     let thread_id = ThreadId::new();

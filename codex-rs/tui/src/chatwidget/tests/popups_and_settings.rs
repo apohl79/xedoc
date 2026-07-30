@@ -3211,6 +3211,41 @@ async fn model_reasoning_selection_popup_snapshot() {
 }
 
 #[tokio::test]
+async fn provider_model_reasoning_selection_popup_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
+
+    let mut preset = get_available_model(&chat, "gpt-5.6-sol");
+    preset.id = "claude-opus-5".to_string();
+    preset.model = "claude-opus-5".to_string();
+    preset.display_name = "claude-opus-5".to_string();
+    preset.description = "Claude model claude-opus-5".to_string();
+    preset.default_reasoning_effort = ReasoningEffortConfig::Medium;
+    preset.supported_reasoning_efforts = vec![
+        ReasoningEffortPreset {
+            effort: ReasoningEffortConfig::Low,
+            description: "Fast responses with lighter reasoning".to_string(),
+        },
+        ReasoningEffortPreset {
+            effort: ReasoningEffortConfig::Medium,
+            description: "Balanced reasoning for most tasks".to_string(),
+        },
+        ReasoningEffortPreset {
+            effort: ReasoningEffortConfig::High,
+            description: "Deeper reasoning for complex tasks".to_string(),
+        },
+        ReasoningEffortPreset {
+            effort: ReasoningEffortConfig::XHigh,
+            description: "Maximum reasoning depth for difficult tasks".to_string(),
+        },
+    ];
+    preset.provider_id = "anthropic".to_string();
+    chat.open_reasoning_popup(preset);
+
+    let popup = render_bottom_popup(&chat, /*width*/ 100);
+    assert_chatwidget_snapshot!("provider_model_reasoning_selection_popup", popup);
+}
+
+#[tokio::test]
 async fn model_advanced_reasoning_selection_popup_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     chat.set_reasoning_effort(Some(ReasoningEffortConfig::Ultra));
@@ -3703,13 +3738,17 @@ async fn model_without_reasoning_metadata_dismisses_picker_and_clears_effort() {
     let events = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
     assert!(events.iter().any(|event| matches!(
         event,
-        AppEvent::UpdateModelAndProvider { model, provider_id }
+        AppEvent::UpdateModelAndProvider {
+            model,
+            provider_id,
+            effort: None,
+        }
             if model == "claude-opus-5" && provider_id == "anthropic"
     )));
     assert!(
         events
             .iter()
-            .any(|event| matches!(event, AppEvent::UpdateReasoningEffort(None)))
+            .all(|event| !matches!(event, AppEvent::UpdateReasoningEffort(None)))
     );
     assert!(events.iter().any(|event| matches!(
         event,

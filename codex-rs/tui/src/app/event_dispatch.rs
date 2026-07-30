@@ -1079,12 +1079,25 @@ impl App {
                 self.sync_active_thread_service_tier_to_cached_session()
                     .await;
             }
-            AppEvent::UpdateModelAndProvider { model, provider_id } => {
+            AppEvent::UpdateModelAndProvider {
+                model,
+                provider_id,
+                effort,
+            } => {
+                self.config.model_provider_id.clone_from(&provider_id);
+                if let Some(provider) = self.config.model_providers.get(&provider_id).cloned() {
+                    self.config.model_provider = provider;
+                }
+                self.chat_widget.set_model_provider(&provider_id);
                 self.chat_widget.set_model(&model);
-                self.sync_active_thread_model_setting(app_server, model.clone())
-                    .await;
-                self.sync_active_thread_model_provider_setting(app_server, provider_id)
-                    .await;
+                self.on_update_reasoning_effort(effort.clone());
+                self.sync_active_thread_model_selection_setting(
+                    app_server,
+                    model,
+                    provider_id,
+                    effort,
+                )
+                .await;
                 self.sync_active_thread_service_tier_to_cached_session()
                     .await;
             }
@@ -1142,9 +1155,13 @@ impl App {
                     );
                 }
             }
-            AppEvent::OpenPlanReasoningScopePrompt { model, effort } => {
+            AppEvent::OpenPlanReasoningScopePrompt {
+                model,
+                effort,
+                provider_id,
+            } => {
                 self.chat_widget
-                    .open_plan_reasoning_scope_prompt(model, effort);
+                    .open_plan_reasoning_scope_prompt(model, effort, provider_id);
             }
             AppEvent::OpenAllModelsPopup { models } => {
                 self.chat_widget.open_all_models_popup(models);

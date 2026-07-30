@@ -152,6 +152,7 @@ impl OpenAiModelsEndpoint {
                     .map(|(priority, model)| {
                         let mut model_info = model_info_from_provider_catalog_slug(
                             &model.id,
+                            self.provider_id.as_deref().unwrap_or_default(),
                             &self.provider_info.name,
                         );
                         model_info.priority = i32::try_from(priority).unwrap_or(i32::MAX);
@@ -475,11 +476,12 @@ mod tests {
             provider_info,
             /*auth_manager*/ None,
         );
-        let mut expected_opus = model_info_from_provider_catalog_slug("claude-opus-5", "Claude");
+        let mut expected_opus =
+            model_info_from_provider_catalog_slug("claude-opus-5", "anthropic", "Claude");
         expected_opus.priority = 0;
         expected_opus.visibility = ModelVisibility::List;
         let mut expected_sonnet =
-            model_info_from_provider_catalog_slug("claude-sonnet-5", "Claude");
+            model_info_from_provider_catalog_slug("claude-sonnet-5", "anthropic", "Claude");
         expected_sonnet.priority = 1;
         expected_sonnet.visibility = ModelVisibility::List;
 

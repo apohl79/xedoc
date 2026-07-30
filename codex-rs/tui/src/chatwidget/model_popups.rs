@@ -292,17 +292,19 @@ impl ChatWidget {
                 tx.send(AppEvent::OpenPlanReasoningScopePrompt {
                     model: model_for_action.clone(),
                     effort: effort_for_action.clone(),
+                    provider_id: provider_id.clone(),
                 });
             } else {
                 if should_switch_provider {
                     tx.send(AppEvent::UpdateModelAndProvider {
                         model: model_for_action.clone(),
                         provider_id: provider_id.clone(),
+                        effort: effort_for_action.clone(),
                     });
                 } else {
                     tx.send(AppEvent::UpdateModel(model_for_action.clone()));
+                    tx.send(AppEvent::UpdateReasoningEffort(effort_for_action.clone()));
                 }
-                tx.send(AppEvent::UpdateReasoningEffort(effort_for_action.clone()));
                 tx.send(AppEvent::PersistModelSelection {
                     model: model_for_action.clone(),
                     effort: effort_for_action.clone(),
@@ -340,6 +342,7 @@ impl ChatWidget {
         &mut self,
         model: String,
         effort: Option<ReasoningEffortConfig>,
+        provider_id: String,
     ) {
         let reasoning_phrase = match effort.as_ref() {
             Some(ReasoningEffortConfig::None) => "no reasoning".to_string(),
@@ -382,13 +385,24 @@ impl ChatWidget {
         let warning = effort
             .as_ref()
             .and_then(|effort| self.ultra_reasoning_concurrency_warning(effort));
+        let should_switch_provider =
+            !provider_id.is_empty() && provider_id != self.config.model_provider_id;
 
         let plan_only_actions: Vec<SelectionAction> = vec![Box::new({
             let model = model.clone();
             let effort = effort.clone();
+            let provider_id = provider_id.clone();
             let warning = warning.clone();
             move |tx| {
-                tx.send(AppEvent::UpdateModel(model.clone()));
+                if should_switch_provider {
+                    tx.send(AppEvent::UpdateModelAndProvider {
+                        model: model.clone(),
+                        provider_id: provider_id.clone(),
+                        effort: None,
+                    });
+                } else {
+                    tx.send(AppEvent::UpdateModel(model.clone()));
+                }
                 tx.send(AppEvent::UpdatePlanModeReasoningEffort(effort.clone()));
                 tx.send(AppEvent::PersistPlanModeReasoningEffort(effort.clone()));
                 if let Some(warning) = warning.clone() {
@@ -398,19 +412,30 @@ impl ChatWidget {
                 }
             }
         })];
-        let all_modes_actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
-            tx.send(AppEvent::UpdateModel(model.clone()));
-            tx.send(AppEvent::UpdateReasoningEffort(effort.clone()));
-            tx.send(AppEvent::UpdatePlanModeReasoningEffort(effort.clone()));
-            tx.send(AppEvent::PersistPlanModeReasoningEffort(effort.clone()));
-            tx.send(AppEvent::PersistModelSelection {
-                model: model.clone(),
-                effort: effort.clone(),
-            });
-            if let Some(warning) = warning.clone() {
-                tx.send(AppEvent::InsertHistoryCell(Box::new(
-                    history_cell::new_warning_event(warning),
-                )));
+        let all_modes_actions: Vec<SelectionAction> = vec![Box::new({
+            let provider_id = provider_id;
+            move |tx| {
+                if should_switch_provider {
+                    tx.send(AppEvent::UpdateModelAndProvider {
+                        model: model.clone(),
+                        provider_id: provider_id.clone(),
+                        effort: effort.clone(),
+                    });
+                } else {
+                    tx.send(AppEvent::UpdateModel(model.clone()));
+                    tx.send(AppEvent::UpdateReasoningEffort(effort.clone()));
+                }
+                tx.send(AppEvent::UpdatePlanModeReasoningEffort(effort.clone()));
+                tx.send(AppEvent::PersistPlanModeReasoningEffort(effort.clone()));
+                tx.send(AppEvent::PersistModelSelection {
+                    model: model.clone(),
+                    effort: effort.clone(),
+                });
+                if let Some(warning) = warning.clone() {
+                    tx.send(AppEvent::InsertHistoryCell(Box::new(
+                        history_cell::new_warning_event(warning),
+                    )));
+                }
             }
         })];
 
@@ -495,6 +520,7 @@ impl ChatWidget {
                     .send(AppEvent::OpenPlanReasoningScopePrompt {
                         model: selected_model,
                         effort: selected_effort,
+                        provider_id: preset.provider_id.clone(),
                     });
             } else {
                 self.apply_model_and_effort(
@@ -754,12 +780,13 @@ impl ChatWidget {
             self.app_event_tx.send(AppEvent::UpdateModelAndProvider {
                 model,
                 provider_id: pid.clone(),
+                effort,
             });
         } else {
             self.app_event_tx.send(AppEvent::UpdateModel(model));
+            self.app_event_tx
+                .send(AppEvent::UpdateReasoningEffort(effort));
         }
-        self.app_event_tx
-            .send(AppEvent::UpdateReasoningEffort(effort));
         if let Some(warning) = warning {
             self.app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
                 history_cell::new_warning_event(warning),

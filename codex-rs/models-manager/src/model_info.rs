@@ -5,6 +5,8 @@ use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelInstructionsVariables;
 use codex_protocol::openai_models::ModelMessages;
 use codex_protocol::openai_models::ModelVisibility;
+use codex_protocol::openai_models::ReasoningEffort;
+use codex_protocol::openai_models::ReasoningEffortPreset;
 use codex_protocol::openai_models::TruncationMode;
 use codex_protocol::openai_models::TruncationPolicyConfig;
 use codex_protocol::openai_models::WebSearchToolType;
@@ -173,12 +175,37 @@ pub fn model_info_from_catalog_slug(slug: &str) -> ModelInfo {
 }
 
 /// Build fallback metadata for a model explicitly advertised by a named provider catalog.
-pub fn model_info_from_provider_catalog_slug(slug: &str, provider_name: &str) -> ModelInfo {
+pub fn model_info_from_provider_catalog_slug(
+    slug: &str,
+    provider_id: &str,
+    provider_name: &str,
+) -> ModelInfo {
     let mut model = model_info_from_catalog_slug(slug);
     model.description = Some(format!("{provider_name} model {slug}"));
     model.base_instructions = format!(
         "{BASE_INSTRUCTIONS}\n\n# Model Identity\nYou are running as the {slug} model provided by {provider_name}. When asked about your underlying model or provider, identify yourself as {slug} from {provider_name}."
     );
+    if matches!(provider_id, "anthropic" | "deepseek") {
+        model.default_reasoning_level = Some(ReasoningEffort::Medium);
+        model.supported_reasoning_levels = vec![
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::Low,
+                description: "Fast responses with lighter reasoning".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::Medium,
+                description: "Balanced reasoning for most tasks".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::High,
+                description: "Deeper reasoning for complex tasks".to_string(),
+            },
+            ReasoningEffortPreset {
+                effort: ReasoningEffort::XHigh,
+                description: "Maximum reasoning depth for difficult tasks".to_string(),
+            },
+        ];
+    }
     model
 }
 

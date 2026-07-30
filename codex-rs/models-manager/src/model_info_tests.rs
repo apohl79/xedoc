@@ -16,7 +16,7 @@ fn config_with_personality(personality: Option<Personality>) -> ModelsManagerCon
 
 #[test]
 fn provider_catalog_metadata_identifies_the_model_and_provider() {
-    let model = model_info_from_provider_catalog_slug("claude-opus-5", "Claude");
+    let model = model_info_from_provider_catalog_slug("claude-opus-5", "anthropic", "Claude");
 
     assert_eq!(
         model.description,
@@ -26,6 +26,20 @@ fn provider_catalog_metadata_identifies_the_model_and_provider() {
         model
             .base_instructions
             .contains("You are running as the claude-opus-5 model provided by Claude.")
+    );
+    assert_eq!(model.default_reasoning_level, Some(ReasoningEffort::Medium));
+    assert_eq!(
+        model
+            .supported_reasoning_levels
+            .iter()
+            .map(|preset| preset.effort.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::XHigh,
+        ]
     );
 }
 
