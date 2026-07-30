@@ -23,7 +23,7 @@ use tracing::Instrument as _;
 use tracing::error;
 use tracing::info;
 
-const MODEL_CACHE_FILE: &str = "models_cache.json";
+const MODEL_CACHE_FILE: &str = "models_cache_v2.json";
 const DEFAULT_MODEL_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// Remote endpoint used by the OpenAI-compatible model manager.
@@ -629,8 +629,6 @@ impl OpenAiModelsManager {
             codex_otel::start_global_timer("codex.remote_models.load_cache.duration_ms", &[]);
         let client_version = crate::client_version_to_whole();
         info!(client_version, "models cache: evaluating cache eligibility");
-        // TODO(celia-oai): Include provider identity in cache eligibility so switching
-        // providers does not reuse a fresh models_cache.json entry from another provider.
         let cache = match cache_manager.load_fresh(&client_version).await {
             Some(cache) => cache,
             None => {
