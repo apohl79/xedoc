@@ -406,11 +406,7 @@ impl OpenAiModelsManager {
         Self::new_with_cache_manager(/*cache_manager*/ None, endpoint_client, auth_manager)
     }
 
-    /// Construct a manager with a specific cache file path.
-    ///
-    /// The primary provider uses `models_cache.json`; additional providers
-    /// should use `models_cache_<provider_id>.json` to avoid overwriting
-    /// each other's cached catalogs.
+    /// Construct a manager with a specific provider-scoped cache file path.
     pub fn new_with_cache_path(
         cache_path: PathBuf,
         endpoint_client: Arc<dyn ModelsEndpointClient>,

@@ -1,5 +1,6 @@
 use core_test_support::test_codex::local_selections;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -38,6 +39,7 @@ use wiremock::MockServer;
 
 const ETAG: &str = "\"models-etag-ttl\"";
 const CACHE_FILE: &str = "models_cache.json";
+const OPENAI_PROVIDER_ID: &str = "openai";
 const REMOTE_MODEL: &str = "codex-test-ttl";
 const VERSIONED_MODEL: &str = "codex-test-versioned";
 const MISSING_VERSION_MODEL: &str = "codex-test-missing-version";
@@ -62,6 +64,10 @@ async fn renews_cache_ttl_on_matching_models_etag() -> Result<()> {
         config.model = Some("gpt-5.2".to_string());
         config.model_provider.request_max_retries = Some(0);
         config.model_provider.stream_max_retries = Some(1);
+        config.model_providers.insert(
+            config.model_provider_id.clone(),
+            config.model_provider.clone(),
+        );
     });
 
     let test = builder.build(&server).await?;
@@ -77,7 +83,7 @@ async fn renews_cache_ttl_on_matching_models_etag() -> Result<()> {
         )
         .await;
 
-    let cache_path = config.codex_home.join(CACHE_FILE);
+    let cache_path = cache_path(config.codex_home.as_path());
     let stale_time = Utc.timestamp_opt(0, 0).single().expect("valid epoch");
     rewrite_cache_timestamp(&cache_path, stale_time).await?;
 
@@ -174,11 +180,15 @@ async fn uses_cache_when_version_matches() -> Result<()> {
                 client_version: Some(client_version_to_whole()),
                 models: vec![cached_model],
             };
-            let cache_path = home.join(CACHE_FILE);
+            let cache_path = cache_path(home);
             write_cache_sync(&cache_path, &cache).expect("write cache");
         })
         .with_config(|config| {
             config.model_provider.request_max_retries = Some(0);
+            config.model_providers.insert(
+                config.model_provider_id.clone(),
+                config.model_provider.clone(),
+            );
         });
 
     let test = builder.build(&server).await?;
@@ -224,11 +234,15 @@ async fn refreshes_when_cache_version_missing() -> Result<()> {
                 client_version: None,
                 models: vec![cached_model],
             };
-            let cache_path = home.join(CACHE_FILE);
+            let cache_path = cache_path(home);
             write_cache_sync(&cache_path, &cache).expect("write cache");
         })
         .with_config(|config| {
             config.model_provider.request_max_retries = Some(0);
+            config.model_providers.insert(
+                config.model_provider_id.clone(),
+                config.model_provider.clone(),
+            );
         });
 
     let test = builder.build(&server).await?;
@@ -275,11 +289,15 @@ async fn refreshes_when_cache_version_differs() -> Result<()> {
                 client_version: Some(format!("{client_version}-diff")),
                 models: vec![cached_model],
             };
-            let cache_path = home.join(CACHE_FILE);
+            let cache_path = cache_path(home);
             write_cache_sync(&cache_path, &cache).expect("write cache");
         })
         .with_config(|config| {
             config.model_provider.request_max_retries = Some(0);
+            config.model_providers.insert(
+                config.model_provider_id.clone(),
+                config.model_provider.clone(),
+            );
         });
 
     let test = builder.build(&server).await?;
@@ -313,6 +331,12 @@ async fn rewrite_cache_timestamp(path: &Path, fetched_at: DateTime<Utc>) -> Resu
     Ok(())
 }
 
+fn cache_path(home: &Path) -> PathBuf {
+    home.join("models_cache")
+        .join(OPENAI_PROVIDER_ID)
+        .join(CACHE_FILE)
+}
+
 async fn read_cache(path: &Path) -> Result<ModelsCache> {
     let contents = tokio::fs::read(path).await?;
     let cache = serde_json::from_slice(&contents)?;
@@ -320,12 +344,18 @@ async fn read_cache(path: &Path) -> Result<ModelsCache> {
 }
 
 async fn write_cache(path: &Path, cache: &ModelsCache) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
     let contents = serde_json::to_vec_pretty(cache)?;
     tokio::fs::write(path, contents).await?;
     Ok(())
 }
 
 fn write_cache_sync(path: &Path, cache: &ModelsCache) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let contents = serde_json::to_vec_pretty(cache)?;
     std::fs::write(path, contents)?;
     Ok(())

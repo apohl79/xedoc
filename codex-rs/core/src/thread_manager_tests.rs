@@ -32,6 +32,7 @@ use core_test_support::PathBufExt;
 use core_test_support::PathExt;
 use core_test_support::responses::mount_models_once;
 use pretty_assertions::assert_eq;
+use std::collections::HashMap;
 use std::time::Duration;
 use tempfile::tempdir;
 use wiremock::MockServer;
@@ -1425,6 +1426,49 @@ async fn new_uses_active_provider_for_model_refresh() {
             crate::test_support::default_http_client_factory(),
         )
         .await;
+    assert_eq!(models_mock.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn active_provider_ignores_legacy_shared_models_cache() {
+    let server = MockServer::start().await;
+    let models_mock = mount_models_once(&server, ModelsResponse { models: vec![] }).await;
+
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    config.model_catalog = None;
+    let mut provider = config.model_provider.clone();
+    provider.name = "Anthropic".to_string();
+    provider.base_url = Some(server.uri());
+    config.model_provider_id = "anthropic".to_string();
+    config.model_provider = provider.clone();
+    config.model_providers = HashMap::from([("anthropic".to_string(), provider)]);
+
+    let legacy_cache = serde_json::json!({
+        "fetched_at": chrono::Utc::now(),
+        "etag": null,
+        "client_version": codex_models_manager::client_version_to_whole(),
+        "models": [],
+    });
+    std::fs::write(
+        config.codex_home.join("models_cache.json"),
+        serde_json::to_vec(&legacy_cache).expect("serialize legacy cache"),
+    )
+    .expect("write legacy cache");
+
+    let auth_manager =
+        AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());
+    let models_manager = build_models_manager(&config, auth_manager);
+    let _ = models_manager
+        .list_models(
+            RefreshStrategy::OnlineIfUncached,
+            crate::test_support::default_http_client_factory(),
+        )
+        .await;
+
     assert_eq!(models_mock.requests().len(), 1);
 }
 

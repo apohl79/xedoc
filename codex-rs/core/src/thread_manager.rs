@@ -300,18 +300,12 @@ pub fn build_models_manager(
             .cmp(&(*right_id != &config.model_provider_id))
             .then_with(|| left_id.cmp(right_id))
     });
-    for (index, (provider_id, provider_info)) in provider_infos.into_iter().enumerate() {
-        let codex_home = if index == 0 {
-            config.codex_home.to_path_buf()
-        } else {
-            // Use a provider-specific subdirectory so each provider gets its own
-            // cache file, avoiding overwrites between providers.
-            config
-                .codex_home
-                .join("models_cache")
-                .join(provider_id)
-                .to_path_buf()
-        };
+    for (provider_id, provider_info) in provider_infos {
+        let codex_home = config
+            .codex_home
+            .join("models_cache")
+            .join(provider_id)
+            .to_path_buf();
         let provider = create_model_provider_for_configured_id(
             provider_id.clone(),
             provider_info.clone(),
@@ -328,7 +322,11 @@ pub fn build_models_manager(
             Some(auth_manager),
         );
         return provider.models_manager(
-            config.codex_home.to_path_buf(),
+            config
+                .codex_home
+                .join("models_cache")
+                .join(&config.model_provider_id)
+                .to_path_buf(),
             config.model_catalog.clone(),
         );
     }
