@@ -30,25 +30,19 @@ pub(super) fn resume_model_settings_for_overrides(
     config: &Config,
     harness_overrides: &ConfigOverrides,
 ) -> crate::app_server_session::ResumeModelSettings {
-    let has_layer_override = config
+    let has_session_flag_override = config
         .config_layer_stack
         .layers_high_to_low()
         .into_iter()
         .any(|layer| {
-            matches!(
-                &layer.name,
-                ConfigLayerSource::SessionFlags
-                    | ConfigLayerSource::User {
-                        profile: Some(_),
-                        ..
-                    }
-            ) && ["model", "model_provider", "model_reasoning_effort"]
-                .iter()
-                .any(|key| layer.config.get(*key).is_some())
+            matches!(&layer.name, ConfigLayerSource::SessionFlags)
+                && ["model", "model_provider", "model_reasoning_effort"]
+                    .iter()
+                    .any(|key| layer.config.get(*key).is_some())
         });
     if harness_overrides.model.is_some()
         || harness_overrides.model_provider.is_some()
-        || has_layer_override
+        || has_session_flag_override
     {
         crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig
     } else {
@@ -1433,7 +1427,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resume_model_settings_preserves_only_explicit_model_overrides() {
+    async fn resume_model_settings_restores_profile_model_settings_from_the_thread() {
         let mut app = make_test_app().await;
 
         assert_eq!(
@@ -1444,7 +1438,7 @@ mod tests {
         let profile = "work"
             .parse::<codex_config::ProfileV2Name>()
             .expect("valid profile name");
-        for (key, expected) in [
+        for (key, session_flags_expected) in [
             (
                 "model",
                 crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig,
@@ -1475,14 +1469,17 @@ mod tests {
                 Default::default(),
             )
             .expect("session flags layer stack");
-            assert_eq!(app.resume_model_settings(), expected);
+            assert_eq!(app.resume_model_settings(), session_flags_expected);
 
             app.config.config_layer_stack = ConfigLayerStack::default().with_user_config_profile(
                 &profile_path,
                 Some(&profile),
                 config,
             );
-            assert_eq!(app.resume_model_settings(), expected);
+            assert_eq!(
+                app.resume_model_settings(),
+                crate::app_server_session::ResumeModelSettings::RestoreFromThread
+            );
         }
 
         app.config.config_layer_stack = ConfigLayerStack::default().with_user_config(

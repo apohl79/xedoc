@@ -171,10 +171,15 @@
 //!
 #![allow(clippy::disallowed_methods)]
 
+use crate::color::blend;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::key_hint::has_ctrl_or_alt;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
+use crate::terminal_palette::StdoutColorLevel;
+use crate::terminal_palette::best_color_for_level;
+use crate::terminal_palette::default_fg;
+use crate::terminal_palette::effective_stdout_color_level;
 use crate::ui_consts::FOOTER_INDENT_COLS;
 use codex_message_history::HistoryBatchCursor;
 use crossterm::event::KeyCode;
@@ -326,9 +331,35 @@ use ratatui::style::Color;
 /// placeholder in the UI.
 const LARGE_PASTE_CHAR_THRESHOLD: usize = 1000;
 const STATUSLINE_SESSION_NAME_COLOR_INDEX: u8 = 141;
+const ACTIVE_TURN_TIMER_FOREGROUND_ALPHA: f32 = 0.75;
 
 fn session_name_color() -> Color {
     indexed_color(STATUSLINE_SESSION_NAME_COLOR_INDEX)
+}
+
+fn active_turn_timer_style() -> Style {
+    active_turn_timer_style_for(default_fg(), effective_stdout_color_level())
+}
+
+fn active_turn_timer_style_for(
+    terminal_foreground: Option<(u8, u8, u8)>,
+    color_level: StdoutColorLevel,
+) -> Style {
+    let style = city_lights::composer_session_title_style();
+    let Some(terminal_foreground) = terminal_foreground else {
+        return style.dim();
+    };
+    let color = blend(
+        terminal_foreground,
+        city_lights::CL_SESSION_TITLE_BG,
+        ACTIVE_TURN_TIMER_FOREGROUND_ALPHA,
+    );
+    match color_level {
+        StdoutColorLevel::TrueColor | StdoutColorLevel::Ansi256 => {
+            style.fg(best_color_for_level(color, color_level))
+        }
+        StdoutColorLevel::Ansi16 | StdoutColorLevel::Unknown => style.dim(),
+    }
 }
 
 fn user_input_too_large_message(actual_chars: usize) -> String {
@@ -4890,7 +4921,7 @@ impl ChatComposer {
         if let Some(elapsed_seconds) = active_turn_elapsed_seconds {
             let timer = Span::styled(
                 crate::status_indicator_widget::fmt_elapsed_compact(elapsed_seconds),
-                city_lights::composer_session_title_style().fg(Color::Black),
+                active_turn_timer_style(),
             );
             block = block.title_bottom(Line::from(timer).alignment(Alignment::Right));
             if let Some(frame_requester) = &self.frame_requester {
@@ -5641,6 +5672,73 @@ mod tests {
             format!(
                 "text:                       {text}\nsession_name_color:         {session_name_color_cells}\nsession_name_background: {session_name_background_cells}"
             )
+        );
+    }
+
+    #[test]
+    fn active_turn_timer_blends_default_foreground_halfway_from_dim() {
+        let style = active_turn_timer_style_for(Some((240, 240, 240)), StdoutColorLevel::TrueColor);
+
+        assert_eq!(style.fg, Some(Color::Rgb(192, 194, 197)));
+        assert_eq!(style.bg, city_lights::composer_session_title_style().bg);
+        assert!(!style.add_modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn active_turn_timer_dims_when_the_terminal_foreground_is_unavailable() {
+        assert_eq!(
+            active_turn_timer_style_for(
+                /*terminal_foreground*/ None,
+                StdoutColorLevel::TrueColor
+            ),
+            city_lights::composer_session_title_style().dim()
+        );
+    }
+
+    #[test]
+    fn active_turn_elapsed_time_uses_timer_style_snapshot() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ true,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        let area = Rect::new(0, 0, 40, 5);
+        let mut buf = Buffer::empty(area);
+        composer.render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+            area,
+            &mut buf,
+            /*mask_char*/ None,
+            /*textarea_right_reserve*/ 0,
+            /*active_turn_elapsed_seconds*/ Some(5),
+        );
+
+        let timer_row = area.height - 2;
+        let timer_background = city_lights::composer_session_title_style().bg;
+        let mut text = String::new();
+        let mut timer_background_cells = String::new();
+        for x in 0..area.width {
+            let cell = &buf[(x, timer_row)];
+            text.push(cell.symbol().chars().next().unwrap_or(' '));
+            timer_background_cells.push(if cell.style().bg == timer_background {
+                '^'
+            } else {
+                ' '
+            });
+        }
+        while text.ends_with(' ') {
+            text.pop();
+        }
+        while timer_background_cells.ends_with(' ') {
+            timer_background_cells.pop();
+        }
+
+        insta::assert_snapshot!(
+            "active_turn_elapsed_time_uses_timer_style",
+            format!("text:              {text}\ntimer_background: {timer_background_cells}")
         );
     }
 

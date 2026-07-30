@@ -1,0 +1,6 @@
+---
+source: tui/src/bottom_pane/chat_composer.rs
+expression: "format!(\"text:              {text}\\ntimer_background: {timer_background_cells}\")"
+---
+text:              ╰────────────────────────────────────5s╯
+timer_background:                                      ^^
