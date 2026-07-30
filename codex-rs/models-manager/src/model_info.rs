@@ -172,6 +172,16 @@ pub fn model_info_from_catalog_slug(slug: &str) -> ModelInfo {
     }
 }
 
+/// Build fallback metadata for a model explicitly advertised by a named provider catalog.
+pub fn model_info_from_provider_catalog_slug(slug: &str, provider_name: &str) -> ModelInfo {
+    let mut model = model_info_from_catalog_slug(slug);
+    model.description = Some(format!("{provider_name} model {slug}"));
+    model.base_instructions = format!(
+        "{BASE_INSTRUCTIONS}\n\n# Model Identity\nYou are running as the {slug} model provided by {provider_name}. When asked about your underlying model or provider, identify yourself as {slug} from {provider_name}."
+    );
+    model
+}
+
 fn local_personality_messages_for_slug(slug: &str) -> Option<ModelMessages> {
     match slug {
         "gpt-5.2-codex" | "exp-codex-personality" => Some(ModelMessages {

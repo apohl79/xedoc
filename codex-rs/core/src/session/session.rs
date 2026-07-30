@@ -247,6 +247,9 @@ impl SessionConfiguration {
         if let Some(collaboration_mode) = updates.collaboration_mode.clone() {
             next_configuration.collaboration_mode = collaboration_mode;
         }
+        if let Some(base_instructions) = updates.base_instructions.clone() {
+            next_configuration.base_instructions = base_instructions;
+        }
         if let Some(summary) = updates.reasoning_summary {
             next_configuration.model_reasoning_summary = Some(summary);
         }
@@ -266,22 +269,21 @@ impl SessionConfiguration {
         if let Some(personality) = updates.personality {
             next_configuration.personality = Some(personality);
         }
-        if let Some(model_provider_id) = updates.model_provider_id.clone() {
-            if next_configuration
+        if let Some(model_provider_id) = updates.model_provider_id.clone()
+            && next_configuration
                 .original_config_do_not_use
                 .model_provider_id
                 != model_provider_id
-            {
-                let config = Arc::make_mut(&mut next_configuration.original_config_do_not_use);
-                config.model_provider_id = model_provider_id.clone();
-                let new_provider = config
-                    .model_providers
-                    .get(&model_provider_id)
-                    .cloned()
-                    .unwrap_or_else(|| config.model_provider.clone());
-                config.model_provider.clone_from(&new_provider);
-                next_configuration.provider = new_provider;
-            }
+        {
+            let config = Arc::make_mut(&mut next_configuration.original_config_do_not_use);
+            config.model_provider_id = model_provider_id.clone();
+            let new_provider = config
+                .model_providers
+                .get(&model_provider_id)
+                .cloned()
+                .unwrap_or_else(|| config.model_provider.clone());
+            config.model_provider.clone_from(&new_provider);
+            next_configuration.provider = new_provider;
         }
         if let Some(approval_policy) = updates.approval_policy {
             next_configuration.approval_policy.set(approval_policy)?;
@@ -440,6 +442,7 @@ pub(crate) struct SessionSettingsUpdate {
     pub(crate) active_permission_profile: Option<ActivePermissionProfile>,
     pub(crate) windows_sandbox_level: Option<WindowsSandboxLevel>,
     pub(crate) collaboration_mode: Option<CollaborationMode>,
+    pub(crate) base_instructions: Option<String>,
     pub(crate) reasoning_summary: Option<ReasoningSummaryConfig>,
     pub(crate) service_tier: Option<Option<String>>,
     pub(crate) final_output_json_schema: Option<Option<Value>>,

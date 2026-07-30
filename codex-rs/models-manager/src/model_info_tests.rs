@@ -15,6 +15,21 @@ fn config_with_personality(personality: Option<Personality>) -> ModelsManagerCon
 }
 
 #[test]
+fn provider_catalog_metadata_identifies_the_model_and_provider() {
+    let model = model_info_from_provider_catalog_slug("claude-opus-5", "Claude");
+
+    assert_eq!(
+        model.description,
+        Some("Claude model claude-opus-5".to_string())
+    );
+    assert!(
+        model
+            .base_instructions
+            .contains("You are running as the claude-opus-5 model provided by Claude.")
+    );
+}
+
+#[test]
 fn base_instruction_override_preserves_catalog_approval_messages() {
     let mut model = model_info_from_slug("unknown-model");
     let approvals = ApprovalMessages {

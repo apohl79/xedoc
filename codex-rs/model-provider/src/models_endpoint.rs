@@ -24,7 +24,7 @@ use codex_login::default_client::build_default_reqwest_client_for_route_async;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_models_manager::manager::ModelsEndpointClient;
 use codex_models_manager::manager::ModelsEndpointFuture;
-use codex_models_manager::model_info::model_info_from_catalog_slug;
+use codex_models_manager::model_info::model_info_from_provider_catalog_slug;
 use codex_otel::TelemetryAuthMode;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CoreResult;
@@ -132,15 +132,28 @@ impl OpenAiModelsEndpoint {
                 ModelCatalog::OpenAiCompatible(models) => models
                     .into_iter()
                     .filter(|model| {
-                        model.owned_by.as_ref().is_none_or(|owner| {
+                        let belongs_to_provider = model.owned_by.as_ref().is_none_or(|owner| {
                             self.provider_id
                                 .as_ref()
                                 .is_none_or(|provider_id| owner == provider_id)
-                        })
+                        });
+                        let is_provider_model = match self.provider_id.as_deref() {
+                            Some("anthropic") => {
+                                ["claude-opus-", "claude-sonnet-", "claude-haiku-"]
+                                    .iter()
+                                    .any(|prefix| model.id.starts_with(prefix))
+                            }
+                            Some("deepseek") => model.id.starts_with("deepseek-"),
+                            _ => true,
+                        };
+                        belongs_to_provider && is_provider_model
                     })
                     .enumerate()
                     .map(|(priority, model)| {
-                        let mut model_info = model_info_from_catalog_slug(&model.id);
+                        let mut model_info = model_info_from_provider_catalog_slug(
+                            &model.id,
+                            &self.provider_info.name,
+                        );
                         model_info.priority = i32::try_from(priority).unwrap_or(i32::MAX);
                         model_info.visibility = ModelVisibility::List;
                         model_info
@@ -437,7 +450,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn standard_catalog_filters_models_by_provider_id() {
+    async fn standard_catalog_filters_models_by_provider_id_and_family() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/models"))
@@ -445,6 +458,9 @@ mod tests {
                 "object": "list",
                 "data": [
                     {"id": "claude-opus-5", "owned_by": "anthropic"},
+                    {"id": "claude-sonnet-5", "owned_by": "anthropic"},
+                    {"id": "claude-fable-5", "owned_by": "anthropic"},
+                    {"id": "opus", "owned_by": "anthropic"},
                     {"id": "deepseek-v4-pro", "owned_by": "deepseek"}
                 ]
             })))
@@ -452,14 +468,20 @@ mod tests {
             .mount(&server)
             .await;
 
+        let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
+        provider_info.name = "Claude".to_string();
         let endpoint = OpenAiModelsEndpoint::new_with_provider_id(
             "anthropic".to_string(),
-            ModelProviderInfo::create_openai_provider(Some(server.uri())),
+            provider_info,
             /*auth_manager*/ None,
         );
-        let mut expected_model = model_info_from_catalog_slug("claude-opus-5");
-        expected_model.priority = 0;
-        expected_model.visibility = ModelVisibility::List;
+        let mut expected_opus = model_info_from_provider_catalog_slug("claude-opus-5", "Claude");
+        expected_opus.priority = 0;
+        expected_opus.visibility = ModelVisibility::List;
+        let mut expected_sonnet =
+            model_info_from_provider_catalog_slug("claude-sonnet-5", "Claude");
+        expected_sonnet.priority = 1;
+        expected_sonnet.visibility = ModelVisibility::List;
 
         let (models, _) = endpoint
             .list_models(
@@ -469,6 +491,6 @@ mod tests {
             .await
             .expect("models request should succeed");
 
-        assert_eq!(models, vec![expected_model]);
+        assert_eq!(models, vec![expected_opus, expected_sonnet]);
     }
 }

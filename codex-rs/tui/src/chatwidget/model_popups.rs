@@ -98,15 +98,8 @@ impl ChatWidget {
         let mut items: Vec<SelectionItem> = auto_presets
             .into_iter()
             .map(|preset| {
-                let mut description =
+                let description =
                     (!preset.description.is_empty()).then_some(preset.description.clone());
-                if !preset.provider_id.is_empty() {
-                    let provider_note = format!("Provider: {}", preset.provider_id);
-                    description = Some(match description {
-                        Some(desc) => format!("{desc}  |  {provider_note}"),
-                        None => provider_note,
-                    });
-                }
                 let model = preset.model.clone();
                 let requires_advanced_selection =
                     Self::is_advanced_reasoning_effort(&preset.default_reasoning_effort)
@@ -122,14 +115,16 @@ impl ChatWidget {
                         });
                     })]
                 } else {
+                    let selected_effort = (!preset.supported_reasoning_efforts.is_empty())
+                        .then_some(preset.default_reasoning_effort.clone());
                     let should_prompt_plan_mode_scope = self
                         .should_prompt_plan_mode_reasoning_scope(
                             model.as_str(),
-                            Some(preset.default_reasoning_effort.clone()),
+                            selected_effort.clone(),
                         );
                     self.model_selection_actions(
                         model.clone(),
-                        Some(preset.default_reasoning_effort.clone()),
+                        selected_effort,
                         should_prompt_plan_mode_scope,
                         preset.provider_id.clone(),
                     )
@@ -137,6 +132,8 @@ impl ChatWidget {
                 SelectionItem {
                     name: model.clone(),
                     description,
+                    category_tag: (!preset.provider_id.is_empty())
+                        .then_some(preset.provider_id.clone()),
                     is_current: model.as_str() == current_model,
                     is_default: preset.is_default,
                     actions,
@@ -195,7 +192,7 @@ impl ChatWidget {
         }
     }
 
-    pub(crate) fn open_all_models_popup(&mut self, presets: Vec<ModelPreset>) {
+    pub(crate) fn open_all_models_popup(&mut self, mut presets: Vec<ModelPreset>) {
         if presets.is_empty() {
             self.add_info_message(
                 "No additional models are available right now.".to_string(),
@@ -204,34 +201,59 @@ impl ChatWidget {
             return;
         }
 
+        presets.sort_by(|left, right| {
+            let provider_rank = |provider_id: &str| match provider_id {
+                "openai" => 0,
+                "anthropic" => 1,
+                "deepseek" => 2,
+                _ => 3,
+            };
+            provider_rank(&left.provider_id)
+                .cmp(&provider_rank(&right.provider_id))
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+        });
+
         let mut items: Vec<SelectionItem> = Vec::new();
         for preset in presets.into_iter() {
-            let mut description =
+            let description =
                 (!preset.description.is_empty()).then_some(preset.description.to_string());
-            if !preset.provider_id.is_empty() {
-                let provider_note = format!("Provider: {}", preset.provider_id);
-                description = Some(match description {
-                    Some(desc) => format!("{desc}  |  {provider_note}"),
-                    None => provider_note,
-                });
-            }
             let is_current = preset.model.as_str() == self.current_model();
-            let single_supported_effort = preset.supported_reasoning_efforts.len() == 1;
-            let preset_for_action = preset.clone();
-            let actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
-                let preset_for_event = preset_for_action.clone();
-                tx.send(AppEvent::OpenReasoningPopup {
-                    model: preset_for_event,
-                });
-            })];
+            let requires_reasoning_selection = preset.supported_reasoning_efforts.len() > 1
+                || preset
+                    .supported_reasoning_efforts
+                    .iter()
+                    .any(|option| Self::is_advanced_reasoning_effort(&option.effort));
+            let selected_effort = (!preset.supported_reasoning_efforts.is_empty())
+                .then_some(preset.default_reasoning_effort.clone());
+            let actions: Vec<SelectionAction> = if requires_reasoning_selection {
+                let preset_for_action = preset.clone();
+                vec![Box::new(move |tx| {
+                    tx.send(AppEvent::OpenReasoningPopup {
+                        model: preset_for_action.clone(),
+                    });
+                })]
+            } else {
+                let should_prompt_plan_mode_scope = self.should_prompt_plan_mode_reasoning_scope(
+                    preset.model.as_str(),
+                    selected_effort.clone(),
+                );
+                self.model_selection_actions(
+                    preset.model.clone(),
+                    selected_effort,
+                    should_prompt_plan_mode_scope,
+                    preset.provider_id.clone(),
+                )
+            };
             items.push(SelectionItem {
                 name: preset.model.clone(),
                 description,
+                category_tag: (!preset.provider_id.is_empty())
+                    .then_some(preset.provider_id.clone()),
                 is_current,
                 is_default: preset.is_default,
                 actions,
-                dismiss_on_select: single_supported_effort,
-                dismiss_parent_on_child_accept: !single_supported_effort,
+                dismiss_on_select: !requires_reasoning_selection,
+                dismiss_parent_on_child_accept: requires_reasoning_selection,
                 ..Default::default()
             });
         }
@@ -424,8 +446,13 @@ impl ChatWidget {
     /// Max and Ultra require an explicit second step so expensive efforts cannot
     /// be selected accidentally while moving through the normal effort scale.
     pub(crate) fn open_reasoning_popup(&mut self, preset: ModelPreset) {
-        let default_effort = preset.default_reasoning_effort.clone();
         let supported = &preset.supported_reasoning_efforts;
+        if supported.is_empty() {
+            self.apply_model_and_effort(preset.model, None, Some(preset.provider_id));
+            return;
+        }
+
+        let default_effort = preset.default_reasoning_effort.clone();
         let in_plan_mode =
             self.collaboration_modes_enabled() && self.active_mode_kind() == ModeKind::Plan;
 
@@ -450,13 +477,10 @@ impl ChatWidget {
             || preset.model.starts_with("gpt-5.1-codex-max")
             || preset.model.starts_with("gpt-5.2");
 
-        let mut all_choices: Vec<ReasoningEffortConfig> = supported
+        let all_choices: Vec<ReasoningEffortConfig> = supported
             .iter()
             .map(|option| option.effort.clone())
             .collect();
-        if all_choices.is_empty() {
-            all_choices.push(default_effort.clone());
-        }
         let (choices, advanced_choices): (Vec<_>, Vec<_>) = all_choices
             .into_iter()
             .partition(|effort| !Self::is_advanced_reasoning_effort(effort));

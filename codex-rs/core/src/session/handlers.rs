@@ -137,17 +137,23 @@ async fn thread_settings_update(
         personality,
         model_provider_id,
     } = thread_settings;
-    let collaboration_mode = match collaboration_mode {
-        Some(collaboration_mode) => collaboration_mode,
-        None => {
-            let state = sess.state.lock().await;
-            // Model and reasoning effort live in CollaborationMode settings today, so
-            // partial thread-settings updates refresh those fields on the active mode.
-            state
-                .session_configuration
-                .collaboration_mode
-                .with_updates(model, effort, /*developer_instructions*/ None)
-        }
+    let current_collaboration_mode = sess.collaboration_mode().await;
+    let collaboration_mode = collaboration_mode.unwrap_or_else(|| {
+        // Model and reasoning effort live in CollaborationMode settings today, so
+        // partial thread-settings updates refresh those fields on the active mode.
+        current_collaboration_mode.with_updates(model, effort, /*developer_instructions*/ None)
+    });
+    let selected_provider_id = match model_provider_id.as_ref() {
+        Some(provider_id) => provider_id.clone(),
+        None => sess.get_config().await.model_provider_id.clone(),
+    };
+    let base_instructions = if collaboration_mode.model() != current_collaboration_mode.model()
+        || model_provider_id.is_some()
+    {
+        sess.base_instructions_for_model(collaboration_mode.model(), &selected_provider_id)
+            .await
+    } else {
+        None
     };
     SessionSettingsUpdate {
         environments,
@@ -159,6 +165,7 @@ async fn thread_settings_update(
         active_permission_profile,
         windows_sandbox_level,
         collaboration_mode: Some(collaboration_mode),
+        base_instructions,
         reasoning_summary: summary,
         service_tier,
         personality,

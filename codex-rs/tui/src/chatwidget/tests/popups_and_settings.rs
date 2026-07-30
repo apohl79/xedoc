@@ -3648,6 +3648,76 @@ async fn single_reasoning_option_skips_selection() {
 }
 
 #[tokio::test]
+async fn all_models_popup_groups_models_by_provider_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
+
+    let mut openai = get_available_model(&chat, "gpt-5.6-sol");
+    openai.provider_id = "openai".to_string();
+
+    let mut anthropic = openai.clone();
+    anthropic.id = "claude-opus-5".to_string();
+    anthropic.model = "claude-opus-5".to_string();
+    anthropic.display_name = "claude-opus-5".to_string();
+    anthropic.description = "Claude model claude-opus-5".to_string();
+    anthropic.default_reasoning_effort = ReasoningEffortConfig::None;
+    anthropic.supported_reasoning_efforts = Vec::new();
+    anthropic.provider_id = "anthropic".to_string();
+
+    let mut deepseek = anthropic.clone();
+    deepseek.id = "deepseek-v4-pro".to_string();
+    deepseek.model = "deepseek-v4-pro".to_string();
+    deepseek.display_name = "deepseek-v4-pro".to_string();
+    deepseek.description = "DeepSeek model deepseek-v4-pro".to_string();
+    deepseek.provider_id = "deepseek".to_string();
+
+    chat.open_all_models_popup(vec![deepseek, anthropic, openai]);
+
+    let popup = render_bottom_popup(&chat, /*width*/ 100);
+    assert_chatwidget_snapshot!("all_models_popup_groups_models_by_provider", popup);
+}
+
+#[tokio::test]
+async fn model_without_reasoning_metadata_dismisses_picker_and_clears_effort() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.6-sol")).await;
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
+    while rx.try_recv().is_ok() {}
+
+    let mut preset = get_available_model(&chat, "gpt-5.6-sol");
+    preset.id = "claude-opus-5".to_string();
+    preset.model = "claude-opus-5".to_string();
+    preset.display_name = "claude-opus-5".to_string();
+    preset.description = "Claude model claude-opus-5".to_string();
+    preset.default_reasoning_effort = ReasoningEffortConfig::None;
+    preset.supported_reasoning_efforts = Vec::new();
+    preset.provider_id = "anthropic".to_string();
+
+    chat.open_all_models_popup(vec![preset]);
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+    let popup = render_bottom_popup(&chat, /*width*/ 80);
+    assert!(
+        !popup.contains("Select Model and Effort"),
+        "expected the model picker to dismiss after selecting a model without reasoning metadata: {popup}"
+    );
+
+    let events = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AppEvent::UpdateModelAndProvider { model, provider_id }
+            if model == "claude-opus-5" && provider_id == "anthropic"
+    )));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AppEvent::UpdateReasoningEffort(None)))
+    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AppEvent::PersistModelSelection { model, effort: None } if model == "claude-opus-5"
+    )));
+}
+
+#[tokio::test]
 async fn advanced_only_reasoning_option_requires_explicit_selection() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let mut preset = get_available_model(&chat, "gpt-5.4");

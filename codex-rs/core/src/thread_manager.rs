@@ -274,7 +274,27 @@ pub fn build_models_manager(
     auth_manager: Arc<AuthManager>,
 ) -> SharedModelsManager {
     let mut managers: Vec<(String, SharedModelsManager)> = Vec::new();
-    let mut provider_infos = config.model_providers.iter().collect::<Vec<_>>();
+    let configured_provider_ids = config
+        .config_layer_stack
+        .effective_user_config()
+        .map(|user_config| {
+            user_config
+                .get("model_providers")
+                .and_then(toml::Value::as_table)
+                .map(|providers| providers.keys().cloned().collect::<HashSet<_>>())
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    let mut provider_infos = config
+        .model_providers
+        .iter()
+        .filter(|(provider_id, _)| {
+            let provider_id = *provider_id;
+            provider_id == &config.model_provider_id
+                || provider_id.as_str() == OPENAI_PROVIDER_ID
+                || configured_provider_ids.contains(provider_id)
+        })
+        .collect::<Vec<_>>();
     provider_infos.sort_by(|(left_id, _), (right_id, _)| {
         (*left_id != &config.model_provider_id)
             .cmp(&(*right_id != &config.model_provider_id))

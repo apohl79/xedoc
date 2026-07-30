@@ -195,6 +195,19 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
         )
     }
 
+    /// Look up metadata from the model provider selected for the current turn.
+    ///
+    /// Single-provider managers use their normal catalog. Multi-provider managers override this
+    /// to retain provider-specific metadata when model slugs overlap.
+    fn get_model_info_for_provider<'a>(
+        &'a self,
+        model: &'a str,
+        _provider_id: &'a str,
+        config: &'a ModelsManagerConfig,
+    ) -> ModelsManagerFuture<'a, ModelInfo> {
+        self.get_model_info(model, config)
+    }
+
     /// Refresh models if the provided ETag differs from the cached ETag.
     ///
     /// Uses `Online` strategy to fetch latest models when ETags differ.
@@ -319,6 +332,21 @@ impl ModelsManager for MultiProviderModelsManager {
             }
         }
         Ok(all_presets)
+    }
+
+    fn get_model_info_for_provider<'a>(
+        &'a self,
+        model: &'a str,
+        provider_id: &'a str,
+        config: &'a ModelsManagerConfig,
+    ) -> ModelsManagerFuture<'a, ModelInfo> {
+        let manager = self
+            .managers
+            .iter()
+            .find(|(id, _)| id == provider_id)
+            .map(|(_, manager)| manager)
+            .unwrap_or_else(|| self.primary_manager());
+        manager.get_model_info(model, config)
     }
 
     fn refresh_if_new_etag(

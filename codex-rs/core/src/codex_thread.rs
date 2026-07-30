@@ -400,13 +400,23 @@ impl CodexThread {
             personality,
             model_provider_id,
         } = overrides;
-        let collaboration_mode = if let Some(collaboration_mode) = collaboration_mode {
-            collaboration_mode
-        } else {
-            self.session
-                .collaboration_mode()
-                .await
+        let current_collaboration_mode = self.session.collaboration_mode().await;
+        let collaboration_mode = collaboration_mode.unwrap_or_else(|| {
+            current_collaboration_mode
                 .with_updates(model, effort, /*developer_instructions*/ None)
+        });
+        let selected_provider_id = match model_provider_id.as_ref() {
+            Some(provider_id) => provider_id.clone(),
+            None => self.session.get_config().await.model_provider_id.clone(),
+        };
+        let base_instructions = if collaboration_mode.model() != current_collaboration_mode.model()
+            || model_provider_id.is_some()
+        {
+            self.session
+                .base_instructions_for_model(collaboration_mode.model(), &selected_provider_id)
+                .await
+        } else {
+            None
         };
 
         SessionSettingsUpdate {
@@ -419,6 +429,7 @@ impl CodexThread {
             active_permission_profile,
             windows_sandbox_level,
             collaboration_mode: Some(collaboration_mode),
+            base_instructions,
             reasoning_summary: summary,
             service_tier,
             personality,

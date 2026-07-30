@@ -617,7 +617,11 @@ impl Session {
         // 2. conversation history => session_meta.base_instructions
         // 3. base_instructions for current model
         let model_info = models_manager
-            .get_model_info(model.as_str(), &config.to_models_manager_config())
+            .get_model_info_for_provider(
+                model.as_str(),
+                config.model_provider_id.as_str(),
+                &config.to_models_manager_config(),
+            )
             .await;
         let multi_agent_version = config.multi_agent_version_override().or_else(|| {
             resolve_multi_agent_version(&conversation_history, inherited_multi_agent_version)
@@ -1245,6 +1249,29 @@ impl Session {
         BaseInstructions {
             text: state.session_configuration.base_instructions.clone(),
         }
+    }
+
+    pub(crate) async fn base_instructions_for_model(
+        &self,
+        model: &str,
+        model_provider_id: &str,
+    ) -> Option<String> {
+        let config = self.get_config().await;
+        if config.base_instructions.is_some() {
+            return None;
+        }
+
+        Some(
+            self.services
+                .models_manager
+                .get_model_info_for_provider(
+                    model,
+                    model_provider_id,
+                    &config.to_models_manager_config(),
+                )
+                .await
+                .get_model_instructions(config.personality),
+        )
     }
 
     // Merges connector IDs into the session-level explicit connector selection.

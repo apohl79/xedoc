@@ -252,6 +252,40 @@ async fn multi_provider_list_models_tags_and_deduplicates_presets() {
 }
 
 #[tokio::test]
+async fn multi_provider_model_info_uses_the_selected_provider() {
+    let primary_models = ModelsResponse {
+        models: vec![remote_model(
+            "shared",
+            "Shared Primary",
+            /*priority*/ 0,
+        )],
+    };
+    let secondary_models = ModelsResponse {
+        models: vec![remote_model(
+            "shared",
+            "Shared Secondary",
+            /*priority*/ 0,
+        )],
+    };
+    let manager = MultiProviderModelsManager::new(vec![
+        (
+            "primary".to_string(),
+            Arc::new(static_manager_for_tests(primary_models)),
+        ),
+        (
+            "secondary".to_string(),
+            Arc::new(static_manager_for_tests(secondary_models)),
+        ),
+    ]);
+
+    let model = manager
+        .get_model_info_for_provider("shared", "secondary", &ModelsManagerConfig::default())
+        .await;
+
+    assert_eq!(model.display_name, "Shared Secondary");
+}
+
+#[tokio::test]
 async fn manager_without_cache_fetches_on_every_refresh() {
     let remote_models = vec![remote_model("remote", "Remote", /*priority*/ 0)];
     let endpoint = TestModelsEndpoint::new(vec![remote_models.clone(), remote_models.clone()]);

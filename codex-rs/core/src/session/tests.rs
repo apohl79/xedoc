@@ -4409,6 +4409,36 @@ async fn session_provider_update_rebuilds_model_client() {
     );
 }
 
+#[tokio::test]
+async fn session_model_update_replaces_derived_base_instructions() {
+    let (session, _) = make_session_and_context().await;
+    let model = "gpt-5.4";
+    let provider_id = session.get_config().await.model_provider_id.clone();
+    let base_instructions = session
+        .base_instructions_for_model(model, &provider_id)
+        .await
+        .expect("derived model instructions");
+    let collaboration_mode = session.collaboration_mode().await.with_updates(
+        Some(model.to_string()),
+        /*effort*/ None,
+        /*developer_instructions*/ None,
+    );
+
+    session
+        .update_settings(SessionSettingsUpdate {
+            collaboration_mode: Some(collaboration_mode),
+            base_instructions: Some(base_instructions.clone()),
+            ..Default::default()
+        })
+        .await
+        .expect("model settings update should apply");
+
+    assert_eq!(
+        session.get_base_instructions().await.text,
+        base_instructions
+    );
+}
+
 pub(crate) async fn make_session_configuration_for_tests() -> SessionConfiguration {
     let codex_home = tempfile::tempdir().expect("create temp dir");
     let config = build_test_config(codex_home.path()).await;
