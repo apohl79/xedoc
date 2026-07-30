@@ -131,27 +131,11 @@ impl OpenAiModelsEndpoint {
                 ModelCatalog::Codex(models) => models,
                 ModelCatalog::OpenAiCompatible(models) => models
                     .into_iter()
-                    .filter(|model| {
-                        let belongs_to_provider = model.owned_by.as_ref().is_none_or(|owner| {
-                            self.provider_id
-                                .as_ref()
-                                .is_none_or(|provider_id| owner == provider_id)
-                        });
-                        let is_provider_model = match self.provider_id.as_deref() {
-                            Some("anthropic") => {
-                                ["claude-opus-", "claude-sonnet-", "claude-haiku-"]
-                                    .iter()
-                                    .any(|prefix| model.id.starts_with(prefix))
-                            }
-                            Some("deepseek") => model.id.starts_with("deepseek-"),
-                            _ => true,
-                        };
-                        belongs_to_provider && is_provider_model
-                    })
                     .enumerate()
                     .map(|(priority, model)| {
+                        let model_id = model.id.strip_prefix("models/").unwrap_or(&model.id);
                         let mut model_info = model_info_from_provider_catalog_slug(
-                            &model.id,
+                            model_id,
                             self.provider_id.as_deref().unwrap_or_default(),
                             &self.provider_info.name,
                         );
@@ -451,7 +435,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn standard_catalog_filters_models_by_provider_id_and_family() {
+    async fn standard_catalog_uses_all_models_from_configured_endpoint() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/models"))
@@ -476,14 +460,22 @@ mod tests {
             provider_info,
             /*auth_manager*/ None,
         );
-        let mut expected_opus =
-            model_info_from_provider_catalog_slug("claude-opus-5", "anthropic", "Claude");
-        expected_opus.priority = 0;
-        expected_opus.visibility = ModelVisibility::List;
-        let mut expected_sonnet =
-            model_info_from_provider_catalog_slug("claude-sonnet-5", "anthropic", "Claude");
-        expected_sonnet.priority = 1;
-        expected_sonnet.visibility = ModelVisibility::List;
+        let expected = [
+            "claude-opus-5",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "opus",
+            "deepseek-v4-pro",
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(priority, model)| {
+            let mut expected = model_info_from_provider_catalog_slug(model, "anthropic", "Claude");
+            expected.priority = i32::try_from(priority).expect("test priority fits in i32");
+            expected.visibility = ModelVisibility::List;
+            expected
+        })
+        .collect::<Vec<_>>();
 
         let (models, _) = endpoint
             .list_models(
@@ -493,6 +485,44 @@ mod tests {
             .await
             .expect("models request should succeed");
 
-        assert_eq!(models, vec![expected_opus, expected_sonnet]);
+        assert_eq!(models, expected);
+    }
+
+    #[tokio::test]
+    async fn catalog_accepts_vendor_owned_models_and_normalizes_resource_ids() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "object": "list",
+                "data": [
+                    {"id": "models/gemini-3.6-flash", "owned_by": "google"}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
+        provider_info.name = "Gemini".to_string();
+        let endpoint = OpenAiModelsEndpoint::new_with_provider_id(
+            "gemini".to_string(),
+            provider_info,
+            /*auth_manager*/ None,
+        );
+        let mut expected =
+            model_info_from_provider_catalog_slug("gemini-3.6-flash", "gemini", "Gemini");
+        expected.priority = 0;
+        expected.visibility = ModelVisibility::List;
+
+        let (models, _) = endpoint
+            .list_models(
+                "0.0.0",
+                HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            )
+            .await
+            .expect("models request should succeed");
+
+        assert_eq!(models, vec![expected]);
     }
 }

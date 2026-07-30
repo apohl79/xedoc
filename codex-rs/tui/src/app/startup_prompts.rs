@@ -5,6 +5,7 @@
 
 use super::*;
 use codex_config::ConfigLayerSource;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -201,6 +202,34 @@ pub(super) fn apply_accepted_model_migration(
         model: target_model,
         effort: Some(target_default_effort),
     });
+}
+
+pub(super) fn align_selected_model_provider_with_catalog(
+    config: &mut Config,
+    model: &str,
+    available_models: &[ModelPreset],
+) {
+    let provider_ids: BTreeSet<&str> = available_models
+        .iter()
+        .filter(|preset| preset.model == model && !preset.provider_id.is_empty())
+        .map(|preset| preset.provider_id.as_str())
+        .collect();
+    if provider_ids.len() != 1 {
+        return;
+    }
+
+    let Some(provider_id) = provider_ids.into_iter().next() else {
+        return;
+    };
+    if config.model_provider_id == provider_id {
+        return;
+    }
+    let Some(provider) = config.model_providers.get(provider_id).cloned() else {
+        return;
+    };
+
+    config.model_provider_id = provider_id.to_string();
+    config.model_provider = provider;
 }
 
 pub(super) const MODEL_AVAILABILITY_NUX_MAX_SHOW_COUNT: u32 = 4;

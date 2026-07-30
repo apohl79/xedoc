@@ -1139,6 +1139,7 @@ impl App {
                         app_server.request_handle(),
                         crate::config_update::build_model_selection_edits(
                             model.as_str(),
+                            self.config.model_provider_id.as_str(),
                             Some(default_effort),
                         ),
                     )
@@ -1676,6 +1677,7 @@ impl App {
                     app_server.request_handle(),
                     crate::config_update::build_model_selection_edits(
                         model.as_str(),
+                        self.config.model_provider_id.as_str(),
                         effort.as_ref(),
                     ),
                 )

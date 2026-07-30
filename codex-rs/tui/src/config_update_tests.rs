@@ -50,3 +50,51 @@ fn build_auto_session_name_edits_targets_top_level_setting() {
         }]
     );
 }
+
+#[test]
+fn build_model_selection_edits_persists_provider_with_reasoning_effort() {
+    assert_eq!(
+        build_model_selection_edits("deepseek-v4-pro", "deepseek", Some("high")),
+        vec![
+            ConfigEdit {
+                key_path: "model".to_string(),
+                value: serde_json::json!("deepseek-v4-pro"),
+                merge_strategy: MergeStrategy::Replace,
+            },
+            ConfigEdit {
+                key_path: "model_provider".to_string(),
+                value: serde_json::json!("deepseek"),
+                merge_strategy: MergeStrategy::Replace,
+            },
+            ConfigEdit {
+                key_path: "model_reasoning_effort".to_string(),
+                value: serde_json::json!("high"),
+                merge_strategy: MergeStrategy::Replace,
+            },
+        ]
+    );
+}
+
+#[test]
+fn build_model_selection_edits_persists_provider_when_clearing_reasoning_effort() {
+    assert_eq!(
+        build_model_selection_edits("claude-opus-5", "anthropic", None::<String>),
+        vec![
+            ConfigEdit {
+                key_path: "model".to_string(),
+                value: serde_json::json!("claude-opus-5"),
+                merge_strategy: MergeStrategy::Replace,
+            },
+            ConfigEdit {
+                key_path: "model_provider".to_string(),
+                value: serde_json::json!("anthropic"),
+                merge_strategy: MergeStrategy::Replace,
+            },
+            ConfigEdit {
+                key_path: "model_reasoning_effort".to_string(),
+                value: serde_json::Value::Null,
+                merge_strategy: MergeStrategy::Replace,
+            },
+        ]
+    );
+}

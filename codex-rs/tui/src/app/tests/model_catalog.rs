@@ -36,6 +36,17 @@ fn model_availability_nux_config(shown_count: &[(&str, u32)]) -> ModelAvailabili
     }
 }
 
+fn model_preset_for_provider(model: &str, provider_id: &str) -> ModelPreset {
+    let mut preset = all_model_presets()
+        .into_iter()
+        .next()
+        .expect("test model preset");
+    preset.id = format!("{provider_id}.{model}");
+    preset.model = model.to_string();
+    preset.provider_id = provider_id.to_string();
+    preset
+}
+
 fn model_migration_copy_to_plain_text(copy: &crate::model_migration::ModelMigrationCopy) -> String {
     if let Some(markdown) = copy.markdown.as_ref() {
         return markdown.clone();
@@ -271,6 +282,52 @@ async fn accepted_model_migration_persists_target_default_reasoning_effort() {
         AppEvent::PersistModelSelection { model, effort }
             if model == "gpt-5.4" && effort == Some(ReasoningEffortConfig::Medium)
     );
+}
+
+#[tokio::test]
+async fn startup_aligns_unique_selected_model_provider_with_catalog() {
+    let codex_home = tempdir().expect("temp codex home");
+    let mut config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .build()
+        .await
+        .expect("config");
+    let deepseek_provider = config.model_provider.clone();
+    config
+        .model_providers
+        .insert("deepseek".to_string(), deepseek_provider.clone());
+
+    align_selected_model_provider_with_catalog(
+        &mut config,
+        "deepseek-v4-pro",
+        &[model_preset_for_provider("deepseek-v4-pro", "deepseek")],
+    );
+
+    assert_eq!(config.model_provider_id, "deepseek");
+    assert_eq!(config.model_provider, deepseek_provider);
+}
+
+#[tokio::test]
+async fn startup_keeps_provider_for_ambiguous_selected_model() {
+    let codex_home = tempdir().expect("temp codex home");
+    let mut config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .build()
+        .await
+        .expect("config");
+    let original_provider = config.model_provider.clone();
+
+    align_selected_model_provider_with_catalog(
+        &mut config,
+        "shared-model",
+        &[
+            model_preset_for_provider("shared-model", "openai"),
+            model_preset_for_provider("shared-model", "deepseek"),
+        ],
+    );
+
+    assert_eq!(config.model_provider_id, "openai");
+    assert_eq!(config.model_provider, original_provider);
 }
 
 #[tokio::test]
