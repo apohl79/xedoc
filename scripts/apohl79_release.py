@@ -1,6 +1,7 @@
 """Build helpers for apohl79 fork release packages."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -333,7 +334,13 @@ def build_release(args: argparse.Namespace) -> None:
             target=release_target,
             archive_outputs=archive_outputs,
             env=github_env,
-            notes=generate_release_notes(release_tag, fork_version),
+            notes=generate_release_notes(
+                release_tag,
+                fork_version,
+                gh=args.gh,
+                repo=args.github_repo,
+                env=github_env,
+            ),
         )
 
     print(f"Built apohl79 Codex release {fork_version}")
@@ -755,12 +762,19 @@ def ensure_github_release_target_exists(
     )
 
 
-def generate_release_notes(tag: str, fork_version: str) -> str:
+def generate_release_notes(
+    tag: str,
+    fork_version: str,
+    *,
+    gh: str = "gh",
+    repo: str = DEFAULT_GITHUB_REPO,
+    env: dict[str, str] | None = None,
+) -> str:
     """Generate a changelog body for the GitHub release from git history."""
     if not _is_git_repo():
         return f"apohl79 Codex {fork_version}"
 
-    prev_tag = find_previous_fork_tag(tag)
+    previous_release = find_previous_published_fork_release(tag, gh=gh, repo=repo, env=env)
     upstream_base = upstream_base_from_fork_version(fork_version)
     date = subprocess.check_output(
         ["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d", "HEAD"],
@@ -768,10 +782,11 @@ def generate_release_notes(tag: str, fork_version: str) -> str:
         text=True,
     ).strip()
 
-    if prev_tag is None:
+    if previous_release is None:
         return initial_release_notes(upstream_base, date, fork_version)
 
-    fork_commits = fork_commits_between(prev_tag, "HEAD")
+    prev_tag, previous_target = previous_release
+    fork_commits = fork_commits_between(previous_target, "HEAD")
     prev_upstream = (
         upstream_base_from_fork_version(prev_tag.replace("rust-v", ""))
         if prev_tag
@@ -808,6 +823,44 @@ def find_previous_fork_tag(tag: str) -> str | None:
     except ValueError:
         return fork_tags[-1] if fork_tags else None
     return fork_tags[idx - 1] if idx > 0 else None
+
+
+def find_previous_published_fork_release(
+    tag: str,
+    *,
+    gh: str,
+    repo: str,
+    env: dict[str, str] | None,
+) -> tuple[str, str] | None:
+    """Return the previous published fork release tag and target commit."""
+    try:
+        releases = json.loads(
+            subprocess.check_output(
+                [
+                    gh,
+                    "release",
+                    "list",
+                    "--repo",
+                    repo,
+                    "--limit",
+                    "100",
+                    "--json",
+                    "tagName,targetCommitish",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+            )
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError):
+        previous_tag = find_previous_fork_tag(tag)
+        return (previous_tag, previous_tag) if previous_tag else None
+
+    for release in releases:
+        previous_tag = release["tagName"]
+        if previous_tag != tag and previous_tag.startswith("rust-v") and "apohl79" in previous_tag:
+            return previous_tag, release["targetCommitish"]
+    return None
 
 
 def upstream_base_from_fork_version(fork_version: str) -> str:
@@ -882,7 +935,7 @@ def fork_commits_between(prev_tag: str, ref: str) -> list[str]:
     except subprocess.CalledProcessError:
         return []
     lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
-    return [ln[9:].strip() for ln in lines]
+    return [ln.split(maxsplit=1)[1] for ln in lines]
 
 
 def _bullet_list(items: list[str], indent: str = "") -> str:

@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -22,6 +23,38 @@ from apohl79_release import run
 
 
 class Apohl79ReleaseTest(unittest.TestCase):
+    def test_previous_published_release_uses_github_target_and_skips_current(self) -> None:
+        releases = [
+            {"tagName": "rust-v0.145.0-apohl79-51", "targetCommitish": "current"},
+            {"tagName": "rust-v0.145.0-apohl79-38", "targetCommitish": "previous"},
+        ]
+        with mock.patch.object(
+            apohl79_release.subprocess,
+            "check_output",
+            return_value=json.dumps(releases),
+        ):
+            result = apohl79_release.find_previous_published_fork_release(
+                "rust-v0.145.0-apohl79-51",
+                gh="gh",
+                repo="apohl79/codex",
+                env=None,
+            )
+
+        self.assertEqual(result, ("rust-v0.145.0-apohl79-38", "previous"))
+
+    def test_fork_commit_subjects_preserve_the_first_character(self) -> None:
+        with (
+            mock.patch.object(apohl79_release, "fork_author", return_value="Andreas Pohl"),
+            mock.patch.object(
+                apohl79_release.subprocess,
+                "check_output",
+                return_value="abcdef1 feat: complete subject\n",
+            ),
+        ):
+            result = apohl79_release.fork_commits_between("previous", "HEAD")
+
+        self.assertEqual(result, ["feat: complete subject"])
+
     def test_release_version_uses_cargo_version_when_not_sentinel(self) -> None:
         self.assertEqual(
             derive_fork_version(
