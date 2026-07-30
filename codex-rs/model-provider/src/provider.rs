@@ -236,21 +236,48 @@ pub fn create_model_provider(
     if provider_info.is_amazon_bedrock() {
         Arc::new(AmazonBedrockModelProvider::new(provider_info, auth_manager))
     } else {
-        Arc::new(ConfiguredModelProvider::new(provider_info, auth_manager))
+        Arc::new(ConfiguredModelProvider::new(
+            None,
+            provider_info,
+            auth_manager,
+        ))
+    }
+}
+
+/// Creates a runtime model provider for a configured provider ID and metadata.
+pub fn create_model_provider_for_configured_id(
+    provider_id: String,
+    provider_info: ModelProviderInfo,
+    auth_manager: Option<Arc<AuthManager>>,
+) -> SharedModelProvider {
+    if provider_info.is_amazon_bedrock() {
+        Arc::new(AmazonBedrockModelProvider::new(provider_info, auth_manager))
+    } else {
+        Arc::new(ConfiguredModelProvider::new(
+            Some(provider_id),
+            provider_info,
+            auth_manager,
+        ))
     }
 }
 
 /// Runtime model provider backed by configured `ModelProviderInfo`.
 #[derive(Clone, Debug)]
 struct ConfiguredModelProvider {
+    provider_id: Option<String>,
     info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
 }
 
 impl ConfiguredModelProvider {
-    fn new(provider_info: ModelProviderInfo, auth_manager: Option<Arc<AuthManager>>) -> Self {
+    fn new(
+        provider_id: Option<String>,
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
         let auth_manager = auth_manager_for_provider(auth_manager, &provider_info);
         Self {
+            provider_id,
             info: provider_info,
             auth_manager,
         }
@@ -343,10 +370,7 @@ impl ModelProvider for ConfiguredModelProvider {
                 model_catalog,
             )),
             None => {
-                let endpoint = Arc::new(OpenAiModelsEndpoint::new(
-                    self.info.clone(),
-                    self.auth_manager.clone(),
-                ));
+                let endpoint = Arc::new(self.models_endpoint());
                 Arc::new(OpenAiModelsManager::new(
                     codex_home,
                     endpoint,
@@ -366,15 +390,25 @@ impl ModelProvider for ConfiguredModelProvider {
                 model_catalog,
             )),
             None => {
-                let endpoint = Arc::new(OpenAiModelsEndpoint::new(
-                    self.info.clone(),
-                    self.auth_manager.clone(),
-                ));
+                let endpoint = Arc::new(self.models_endpoint());
                 Arc::new(OpenAiModelsManager::new_without_cache(
                     endpoint,
                     self.auth_manager.clone(),
                 ))
             }
+        }
+    }
+}
+
+impl ConfiguredModelProvider {
+    fn models_endpoint(&self) -> OpenAiModelsEndpoint {
+        match self.provider_id.clone() {
+            Some(provider_id) => OpenAiModelsEndpoint::new_with_provider_id(
+                provider_id,
+                self.info.clone(),
+                self.auth_manager.clone(),
+            ),
+            None => OpenAiModelsEndpoint::new(self.info.clone(), self.auth_manager.clone()),
         }
     }
 }

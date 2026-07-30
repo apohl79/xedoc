@@ -38,6 +38,7 @@ use codex_login::CodexAuth;
 use codex_login::default_client::CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR;
 use codex_login::default_client::originator;
 use codex_model_provider::create_model_provider;
+use codex_model_provider::create_model_provider_for_configured_id;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_models_manager::manager::RefreshStrategy;
@@ -291,13 +292,21 @@ pub fn build_models_manager(
                 .join(provider_id)
                 .to_path_buf()
         };
-        let provider = create_model_provider(provider_info.clone(), Some(auth_manager.clone()));
+        let provider = create_model_provider_for_configured_id(
+            provider_id.clone(),
+            provider_info.clone(),
+            Some(auth_manager.clone()),
+        );
         let manager = provider.models_manager(codex_home, config.model_catalog.clone());
         managers.push((provider_id.clone(), manager));
     }
     if managers.is_empty() {
         // Fallback to single-provider with the active provider
-        let provider = create_model_provider(config.model_provider.clone(), Some(auth_manager));
+        let provider = create_model_provider_for_configured_id(
+            config.model_provider_id.clone(),
+            config.model_provider.clone(),
+            Some(auth_manager),
+        );
         return provider.models_manager(
             config.codex_home.to_path_buf(),
             config.model_catalog.clone(),

@@ -1,4 +1,5 @@
 use codex_api::AuthProvider;
+use codex_api::ModelCatalog;
 use codex_api::ModelsClient;
 use codex_api::Provider;
 use codex_api::RetryConfig;
@@ -122,13 +123,12 @@ async fn models_client_hits_models_endpoint() {
     let request_url = ModelsClient::<ReqwestTransport>::request_url(&provider, "0.1.0");
     let client = ModelsClient::new(transport, provider, Arc::new(DummyAuth));
 
-    let (models, _) = client
+    let (catalog, _) = client
         .list_models(request_url, HeaderMap::new())
         .await
         .expect("models request should succeed");
 
-    assert_eq!(models.len(), 1);
-    assert_eq!(models[0].slug, "gpt-test");
+    assert_eq!(catalog, ModelCatalog::Codex(response.models));
 
     let received = server
         .received_requests()

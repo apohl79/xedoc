@@ -9,7 +9,39 @@ use codex_protocol::openai_models::ModelsResponse;
 use http::HeaderMap;
 use http::Method;
 use http::header::ETAG;
+use serde::Deserialize;
 use std::sync::Arc;
+
+/// A model catalog returned by a Codex or OpenAI-compatible endpoint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelCatalog {
+    /// Complete metadata returned by the Codex `/models` endpoint.
+    Codex(Vec<ModelInfo>),
+    /// Model IDs returned by a standard OpenAI-compatible `/models` endpoint.
+    OpenAiCompatible(Vec<OpenAiCompatibleModel>),
+}
+
+/// A model advertised by a standard OpenAI-compatible `/models` endpoint.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct OpenAiCompatibleModel {
+    /// Stable model identifier.
+    pub id: String,
+    /// Provider identifier reported by the catalog, when available.
+    #[serde(default)]
+    pub owned_by: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiCompatibleModelsResponse {
+    data: Vec<OpenAiCompatibleModel>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ModelsResponseBody {
+    Codex(ModelsResponse),
+    OpenAiCompatible(OpenAiCompatibleModelsResponse),
+}
 
 pub struct ModelsClient<T: HttpTransport> {
     session: EndpointSession<T>,
@@ -47,7 +79,7 @@ impl<T: HttpTransport> ModelsClient<T> {
         &self,
         request_url: String,
         extra_headers: HeaderMap,
-    ) -> Result<(Vec<ModelInfo>, Option<String>), ApiError> {
+    ) -> Result<(ModelCatalog, Option<String>), ApiError> {
         let resp = self
             .session
             .execute_with(
@@ -67,15 +99,18 @@ impl<T: HttpTransport> ModelsClient<T> {
             .and_then(|value| value.to_str().ok())
             .map(ToString::to_string);
 
-        let ModelsResponse { models } = serde_json::from_slice::<ModelsResponse>(&resp.body)
-            .map_err(|e| {
-                ApiError::Stream(format!(
-                    "failed to decode models response: {e}; body: {}",
-                    String::from_utf8_lossy(&resp.body)
-                ))
+        let catalog = serde_json::from_slice::<ModelsResponseBody>(&resp.body)
+            .map(|response| match response {
+                ModelsResponseBody::Codex(ModelsResponse { models }) => ModelCatalog::Codex(models),
+                ModelsResponseBody::OpenAiCompatible(OpenAiCompatibleModelsResponse { data }) => {
+                    ModelCatalog::OpenAiCompatible(data)
+                }
+            })
+            .map_err(|error| {
+                ApiError::Stream(format!("failed to decode models response: {error}"))
             })?;
 
-        Ok((models, header_etag))
+        Ok((catalog, header_etag))
     }
 }
 
@@ -163,7 +198,7 @@ mod tests {
 
         let transport = CapturingTransport {
             last_request: Arc::new(Mutex::new(None)),
-            body: Arc::new(response),
+            body: Arc::new(response.clone()),
             etag: None,
         };
 
@@ -171,12 +206,12 @@ mod tests {
         let request_url = ModelsClient::<CapturingTransport>::request_url(&provider, "0.99.0");
         let client = ModelsClient::new(transport.clone(), provider, Arc::new(DummyAuth));
 
-        let (models, _) = client
+        let (catalog, _) = client
             .list_models(request_url, HeaderMap::new())
             .await
             .expect("request should succeed");
 
-        assert_eq!(models.len(), 0);
+        assert_eq!(catalog, ModelCatalog::Codex(Vec::new()));
 
         let url = transport
             .last_request
@@ -224,7 +259,7 @@ mod tests {
 
         let transport = CapturingTransport {
             last_request: Arc::new(Mutex::new(None)),
-            body: Arc::new(response),
+            body: Arc::new(response.clone()),
             etag: None,
         };
 
@@ -232,15 +267,12 @@ mod tests {
         let request_url = ModelsClient::<CapturingTransport>::request_url(&provider, "0.99.0");
         let client = ModelsClient::new(transport, provider, Arc::new(DummyAuth));
 
-        let (models, _) = client
+        let (catalog, _) = client
             .list_models(request_url, HeaderMap::new())
             .await
             .expect("request should succeed");
 
-        assert_eq!(models.len(), 1);
-        assert_eq!(models[0].slug, "gpt-test");
-        assert_eq!(models[0].supported_in_api, true);
-        assert_eq!(models[0].priority, 1);
+        assert_eq!(catalog, ModelCatalog::Codex(response.models));
     }
 
     #[tokio::test]
@@ -257,12 +289,12 @@ mod tests {
         let request_url = ModelsClient::<CapturingTransport>::request_url(&provider, "0.1.0");
         let client = ModelsClient::new(transport, provider, Arc::new(DummyAuth));
 
-        let (models, etag) = client
+        let (catalog, etag) = client
             .list_models(request_url, HeaderMap::new())
             .await
             .expect("request should succeed");
 
-        assert_eq!(models.len(), 0);
+        assert_eq!(catalog, ModelCatalog::Codex(Vec::new()));
         assert_eq!(etag, Some("\"abc\"".to_string()));
     }
 }

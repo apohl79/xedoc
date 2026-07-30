@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use codex_api::AgentIdentityTelemetry;
+use codex_api::ModelCatalog;
 use codex_api::ModelsClient;
 use codex_api::RequestTelemetry;
 use codex_api::ReqwestTransport;
@@ -23,10 +24,12 @@ use codex_login::default_client::build_default_reqwest_client_for_route_async;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_models_manager::manager::ModelsEndpointClient;
 use codex_models_manager::manager::ModelsEndpointFuture;
+use codex_models_manager::model_info::model_info_from_catalog_slug;
 use codex_otel::TelemetryAuthMode;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CoreResult;
 use codex_protocol::openai_models::ModelInfo;
+use codex_protocol::openai_models::ModelVisibility;
 use codex_response_debug_context::extract_response_debug_context;
 use codex_response_debug_context::telemetry_transport_error_message;
 use http::HeaderMap;
@@ -41,6 +44,7 @@ const MODELS_ENDPOINT: &str = "/models";
 /// Provider-owned OpenAI-compatible `/models` endpoint.
 #[derive(Debug)]
 pub(crate) struct OpenAiModelsEndpoint {
+    provider_id: Option<String>,
     provider_info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
     transport_builder: Arc<dyn ModelsTransportBuilder>,
@@ -52,6 +56,20 @@ impl OpenAiModelsEndpoint {
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
         Self {
+            provider_id: None,
+            provider_info,
+            auth_manager,
+            transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
+        }
+    }
+
+    pub(crate) fn new_with_provider_id(
+        provider_id: String,
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
+        Self {
+            provider_id: Some(provider_id),
             provider_info,
             auth_manager,
             transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
@@ -105,10 +123,31 @@ impl OpenAiModelsEndpoint {
                 .await?;
             let client = ModelsClient::new(transport, api_provider, api_auth)
                 .with_telemetry(Some(request_telemetry));
-            client
+            let (catalog, etag) = client
                 .list_models(request_url, HeaderMap::new())
                 .await
-                .map_err(map_api_error)
+                .map_err(map_api_error)?;
+            let models = match catalog {
+                ModelCatalog::Codex(models) => models,
+                ModelCatalog::OpenAiCompatible(models) => models
+                    .into_iter()
+                    .filter(|model| {
+                        model.owned_by.as_ref().is_none_or(|owner| {
+                            self.provider_id
+                                .as_ref()
+                                .is_none_or(|provider_id| owner == provider_id)
+                        })
+                    })
+                    .enumerate()
+                    .map(|(priority, model)| {
+                        let mut model_info = model_info_from_catalog_slug(&model.id);
+                        model_info.priority = i32::try_from(priority).unwrap_or(i32::MAX);
+                        model_info.visibility = ModelVisibility::List;
+                        model_info
+                    })
+                    .collect(),
+            };
+            Ok((models, etag))
         })
         .await
         .map_err(|_| CodexErr::Timeout)?
@@ -288,6 +327,7 @@ mod tests {
     use codex_protocol::config_types::ModelProviderAuthInfo;
     use codex_protocol::openai_models::ModelsResponse;
     use pretty_assertions::assert_eq;
+    use serde_json::json;
     use wiremock::Mock;
     use wiremock::MockServer;
     use wiremock::ResponseTemplate;
@@ -369,6 +409,7 @@ mod tests {
 
         let observed_request = Arc::new(Mutex::new(None));
         let endpoint = OpenAiModelsEndpoint {
+            provider_id: None,
             provider_info: ModelProviderInfo::create_openai_provider(Some(server.uri())),
             auth_manager: None,
             transport_builder: Arc::new(RecordingTransportBuilder {
@@ -393,5 +434,41 @@ mod tests {
                 format!("{}/models?client_version=0.0.0", server.uri()),
             ))
         );
+    }
+
+    #[tokio::test]
+    async fn standard_catalog_filters_models_by_provider_id() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "object": "list",
+                "data": [
+                    {"id": "claude-opus-5", "owned_by": "anthropic"},
+                    {"id": "deepseek-v4-pro", "owned_by": "deepseek"}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let endpoint = OpenAiModelsEndpoint::new_with_provider_id(
+            "anthropic".to_string(),
+            ModelProviderInfo::create_openai_provider(Some(server.uri())),
+            /*auth_manager*/ None,
+        );
+        let mut expected_model = model_info_from_catalog_slug("claude-opus-5");
+        expected_model.priority = 0;
+        expected_model.visibility = ModelVisibility::List;
+
+        let (models, _) = endpoint
+            .list_models(
+                "0.0.0",
+                HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            )
+            .await
+            .expect("models request should succeed");
+
+        assert_eq!(models, vec![expected_model]);
     }
 }

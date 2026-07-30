@@ -124,6 +124,11 @@ fn clear_instruction_messages(model: &mut ModelInfo) {
 /// Build a minimal fallback model descriptor for missing/unknown slugs.
 pub fn model_info_from_slug(slug: &str) -> ModelInfo {
     warn!("Unknown model {slug} is used. This will use fallback model metadata.");
+    model_info_from_catalog_slug(slug)
+}
+
+/// Build fallback metadata for a model explicitly advertised by a provider catalog.
+pub fn model_info_from_catalog_slug(slug: &str) -> ModelInfo {
     ModelInfo {
         slug: slug.to_string(),
         display_name: slug.to_string(),
