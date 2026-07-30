@@ -111,7 +111,7 @@ fn prompt_accent_blends_with_the_terminal_foreground() {
             EffortTier::Ultra,
             (224, 220, 214),
             (18, 22, 28),
-            (191, 142, 249),
+            (250, 155, 77),
         ),
         (EffortTier::Max, (30, 32, 36), (250, 248, 244), (155, 88, 5)),
     ] {
@@ -150,7 +150,7 @@ fn prompt_accent_degrades_with_terminal_color_support() {
         (
             EffortTier::Ultra,
             StdoutColorLevel::Ansi16,
-            Some(Color::Magenta),
+            Some(Color::Yellow),
         ),
         (EffortTier::Ultra, StdoutColorLevel::Unknown, None),
     ] {
@@ -167,8 +167,8 @@ fn max_and_ultra_prompts_render_their_accent_and_glyph() {
         /*x*/ 0, /*y*/ 0, /*width*/ 1, /*height*/ 1,
     );
     for (tier, glyph, color) in [
-        (EffortTier::Max, "›", Color::Yellow),
-        (EffortTier::Ultra, "»", Color::Magenta),
+        (EffortTier::Max, "❯", Color::Yellow),
+        (EffortTier::Ultra, "❯", Color::Yellow),
     ] {
         let mut buf = Buffer::empty(area);
         tier.prompt_for(

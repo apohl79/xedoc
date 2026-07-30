@@ -4552,6 +4552,23 @@ impl ChatComposer {
         mask_char: Option<char>,
         textarea_right_reserve: u16,
     ) {
+        self.render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+            area,
+            buf,
+            mask_char,
+            textarea_right_reserve,
+            /*active_turn_elapsed_seconds*/ None,
+        );
+    }
+
+    pub(crate) fn render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        mask_char: Option<char>,
+        textarea_right_reserve: u16,
+        active_turn_elapsed_seconds: Option<u64>,
+    ) {
         let [composer_rect, remote_images_rect, textarea_rect, popup_rect] =
             self.layout_areas_with_textarea_right_reserve(area, textarea_right_reserve);
         match &self.popups.active {
@@ -4868,6 +4885,16 @@ impl ChatComposer {
                     alignment: Some(Alignment::Right),
                     position: None,
                 });
+            }
+        }
+        if let Some(elapsed_seconds) = active_turn_elapsed_seconds {
+            let timer = Span::styled(
+                crate::status_indicator_widget::fmt_elapsed_compact(elapsed_seconds),
+                city_lights::composer_session_title_style().fg(Color::Black),
+            );
+            block = block.title_bottom(Line::from(timer).alignment(Alignment::Right));
+            if let Some(frame_requester) = &self.frame_requester {
+                frame_requester.schedule_frame_in(Duration::from_secs(/*secs*/ 1));
             }
         }
         block.render_ref(composer_rect, buf);

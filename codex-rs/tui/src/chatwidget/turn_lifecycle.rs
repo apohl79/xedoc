@@ -10,6 +10,7 @@ pub(super) struct TurnLifecycleState {
     pub(super) sleep_inhibitor: SleepInhibitor,
     /// Tracks whether codex-core currently considers an agent turn to be in progress.
     pub(super) agent_turn_running: bool,
+    pub(super) active_turn_started_at: Option<Instant>,
     pub(super) last_turn_id: Option<String>,
     pub(super) budget_limited_turn_ids: HashSet<String>,
     pub(super) goal_status_active_turn_started_at: Option<Instant>,
@@ -20,6 +21,7 @@ impl TurnLifecycleState {
         Self {
             sleep_inhibitor: SleepInhibitor::new(prevent_idle_sleep),
             agent_turn_running: false,
+            active_turn_started_at: None,
             last_turn_id: None,
             budget_limited_turn_ids: HashSet::new(),
             goal_status_active_turn_started_at: None,
@@ -28,12 +30,14 @@ impl TurnLifecycleState {
 
     pub(super) fn start(&mut self, now: Instant) {
         self.agent_turn_running = true;
+        self.active_turn_started_at = Some(now);
         self.goal_status_active_turn_started_at = Some(now);
         self.sleep_inhibitor.set_turn_running(/*turn_running*/ true);
     }
 
     pub(super) fn finish(&mut self) {
         self.agent_turn_running = false;
+        self.active_turn_started_at = None;
         self.goal_status_active_turn_started_at = None;
         self.sleep_inhibitor
             .set_turn_running(/*turn_running*/ false);
@@ -41,6 +45,7 @@ impl TurnLifecycleState {
 
     pub(super) fn restore_running(&mut self, running: bool, now: Instant) {
         self.agent_turn_running = running;
+        self.active_turn_started_at = running.then_some(now);
         self.goal_status_active_turn_started_at = running.then_some(now);
         self.sleep_inhibitor.set_turn_running(running);
     }

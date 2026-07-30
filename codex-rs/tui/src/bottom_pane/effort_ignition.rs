@@ -102,19 +102,12 @@ impl EffortTier {
         }
     }
 
-    fn prompt_glyph(self) -> &'static str {
-        match self {
-            Self::Max => "›",
-            Self::Ultra => "»",
-        }
-    }
-
     pub(super) fn hues(self, on_light_bg: bool) -> [(u8, u8, u8); 3] {
         match (self, on_light_bg) {
             (Self::Max, false) => [(255, 178, 66), (255, 214, 120), (255, 120, 60)],
             (Self::Max, true) => [(176, 98, 0), (150, 110, 0), (200, 70, 20)],
-            (Self::Ultra, false) => [(186, 130, 255), (255, 120, 220), (120, 170, 255)],
-            (Self::Ultra, true) => [(124, 58, 217), (190, 40, 150), (30, 100, 220)],
+            (Self::Ultra, false) => [(255, 145, 55), (255, 190, 100), (255, 105, 35)],
+            (Self::Ultra, true) => [(185, 75, 0), (155, 95, 0), (215, 55, 0)],
         }
     }
 
@@ -125,7 +118,7 @@ impl EffortTier {
     fn accent_fallback(self) -> Color {
         match self {
             Self::Max => Color::Yellow,
-            Self::Ultra => Color::Magenta,
+            Self::Ultra => Color::Yellow,
         }
     }
 
@@ -150,7 +143,7 @@ impl EffortTier {
         if let Some(color) = color {
             style = style.fg(color);
         }
-        Span::styled(self.prompt_glyph(), style)
+        Span::styled("❯", style)
     }
 
     fn accent_color_for(

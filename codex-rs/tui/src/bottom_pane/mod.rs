@@ -238,6 +238,7 @@ pub(crate) struct BottomPane {
     enhanced_keys_supported: bool,
     disable_paste_burst: bool,
     is_task_running: bool,
+    active_turn_started_at: Option<Instant>,
     esc_backtrack_hint: bool,
     animations_enabled: bool,
 
@@ -307,6 +308,7 @@ impl BottomPane {
             enhanced_keys_supported,
             disable_paste_burst,
             is_task_running: false,
+            active_turn_started_at: None,
             status: None,
             unified_exec_footer: UnifiedExecFooter::new(),
             pending_input_preview: PendingInputPreview::new(),
@@ -1086,6 +1088,11 @@ impl BottomPane {
         }
     }
 
+    /// Sets the start time for the active agent turn shown on the composer border.
+    pub(crate) fn set_active_turn_started_at(&mut self, started_at: Option<Instant>) {
+        self.active_turn_started_at = started_at;
+    }
+
     pub(crate) fn set_queue_submissions(&mut self, queue_submissions: bool) {
         self.composer.set_queue_submissions(queue_submissions);
     }
@@ -1838,14 +1845,13 @@ impl BottomPane {
             }
             let mut flex2 = FlexRenderable::new();
             flex2.push(/*flex*/ 1, RenderableItem::Owned(flex.into()));
-            let composer: RenderableItem<'_> = if composer_right_reserve == 0 {
-                RenderableItem::Borrowed(&self.composer)
-            } else {
-                RenderableItem::Owned(Box::new(ChatComposerRightReserveRenderable {
-                    composer: &self.composer,
-                    right_reserve: composer_right_reserve,
-                }))
-            };
+            let composer = RenderableItem::Owned(Box::new(ChatComposerRightReserveRenderable {
+                composer: &self.composer,
+                right_reserve: composer_right_reserve,
+                active_turn_elapsed_seconds: self
+                    .active_turn_started_at
+                    .map(|started_at| started_at.elapsed().as_secs()),
+            }));
             flex2.push(/*flex*/ 0, composer);
             RenderableItem::Owned(Box::new(flex2))
         }
@@ -1889,16 +1895,19 @@ impl BottomPane {
 struct ChatComposerRightReserveRenderable<'a> {
     composer: &'a chat_composer::ChatComposer,
     right_reserve: u16,
+    active_turn_elapsed_seconds: Option<u64>,
 }
 
 impl Renderable for ChatComposerRightReserveRenderable<'_> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        self.composer.render_with_mask_and_textarea_right_reserve(
-            area,
-            buf,
-            /*mask_char*/ None,
-            self.right_reserve,
-        );
+        self.composer
+            .render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+                area,
+                buf,
+                /*mask_char*/ None,
+                self.right_reserve,
+                self.active_turn_elapsed_seconds,
+            );
     }
 
     fn desired_height(&self, width: u16) -> u16 {
