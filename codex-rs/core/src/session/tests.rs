@@ -4410,6 +4410,56 @@ async fn session_provider_update_rebuilds_model_client() {
 }
 
 #[tokio::test]
+async fn session_provider_update_aborts_startup_prewarm() {
+    struct PrewarmAbortNotifier(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for PrewarmAbortNotifier {
+        fn drop(&mut self) {
+            if let Some(sender) = self.0.take() {
+                let _ = sender.send(());
+            }
+        }
+    }
+
+    let (session, _) = make_session_and_context().await;
+    let (prewarm_started_tx, prewarm_started_rx) = tokio::sync::oneshot::channel();
+    let (prewarm_aborted_tx, prewarm_aborted_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        let _abort_notifier = PrewarmAbortNotifier(Some(prewarm_aborted_tx));
+        let _ = prewarm_started_tx.send(());
+        std::future::pending().await
+    });
+    prewarm_started_rx
+        .await
+        .expect("startup prewarm task should start");
+    session
+        .set_session_startup_prewarm(
+            crate::session_startup_prewarm::SessionStartupPrewarmHandle::new(
+                task,
+                std::time::Instant::now(),
+                crate::client::WEBSOCKET_CONNECT_TIMEOUT,
+            ),
+        )
+        .await;
+
+    session
+        .update_settings(SessionSettingsUpdate {
+            model_provider_id: Some("amazon-bedrock".to_string()),
+            ..Default::default()
+        })
+        .await
+        .expect("provider update should apply");
+
+    assert_eq!(
+        (
+            prewarm_aborted_rx.await,
+            session.take_session_startup_prewarm().await.is_none(),
+        ),
+        (Ok(()), true)
+    );
+}
+
+#[tokio::test]
 async fn session_model_update_replaces_derived_base_instructions() {
     let (session, _) = make_session_and_context().await;
     let model = "gpt-5.4";

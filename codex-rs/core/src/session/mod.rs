@@ -1532,7 +1532,7 @@ impl Session {
         updates: SessionSettingsUpdate,
     ) -> ConstraintResult<()> {
         let notify_config_contributors = !self.services.extensions.config_contributors().is_empty();
-        let (previous_config, new_config, permission_profile_changed) = {
+        let (previous_config, new_config, permission_profile_changed, startup_prewarm) = {
             let mut state = self.state.lock().await;
             let updated = match state.session_configuration.apply(&updates) {
                 Ok(updated) => updated,
@@ -1550,16 +1550,19 @@ impl Session {
             let updated_permission_profile = updated.permission_profile();
             let permission_profile_changed =
                 previous_permission_profile != updated_permission_profile;
-            let model_client =
-                (state.session_configuration.provider != updated.provider).then(|| {
-                    Self::model_client(
-                        Arc::clone(&self.services.auth_manager),
-                        self.thread_id,
-                        &updated,
-                        updated.original_config_do_not_use.as_ref(),
-                        self.services.attestation_provider.clone(),
-                    )
-                });
+            let provider_changed = state.session_configuration.provider != updated.provider;
+            let model_client = provider_changed.then(|| {
+                Self::model_client(
+                    Arc::clone(&self.services.auth_manager),
+                    self.thread_id,
+                    &updated,
+                    updated.original_config_do_not_use.as_ref(),
+                    self.services.attestation_provider.clone(),
+                )
+            });
+            let startup_prewarm = provider_changed
+                .then(|| state.take_session_startup_prewarm())
+                .flatten();
             if updates.environments.is_some() {
                 self.services
                     .turn_environments
@@ -1569,8 +1572,16 @@ impl Session {
             if let Some(model_client) = model_client {
                 self.services.model_client.store(Arc::new(model_client));
             }
-            (previous_config, new_config, permission_profile_changed)
+            (
+                previous_config,
+                new_config,
+                permission_profile_changed,
+                startup_prewarm,
+            )
         };
+        if let Some(startup_prewarm) = startup_prewarm {
+            startup_prewarm.abort().await;
+        }
         self.emit_config_changed_contributors(previous_config.as_ref(), new_config.as_ref());
         if permission_profile_changed {
             self.refresh_managed_network_proxy_for_current_permission_profile()
