@@ -840,14 +840,9 @@ def find_previous_published_fork_release(
             subprocess.check_output(
                 [
                     gh,
-                    "release",
-                    "list",
-                    "--repo",
-                    repo,
-                    "--limit",
-                    "100",
-                    "--json",
-                    "tagName",
+                    "api",
+                    f"repos/{repo}/releases",
+                    "--paginate",
                 ],
                 cwd=REPO_ROOT,
                 env=env,
@@ -859,17 +854,9 @@ def find_previous_published_fork_release(
         return (previous_tag, previous_tag) if previous_tag else None
 
     for release in releases:
-        previous_tag = release["tagName"]
+        previous_tag = release["tag_name"]
         if previous_tag != tag and previous_tag.startswith("rust-v") and "apohl79" in previous_tag:
-            target = json.loads(
-                subprocess.check_output(
-                    [gh, "release", "view", previous_tag, "--repo", repo, "--json", "targetCommitish"],
-                    cwd=REPO_ROOT,
-                    env=env,
-                    text=True,
-                )
-            )["targetCommitish"]
-            return previous_tag, target
+            return previous_tag, release["target_commitish"]
     return None
 
 

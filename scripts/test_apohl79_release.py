@@ -24,11 +24,14 @@ from apohl79_release import run
 
 class Apohl79ReleaseTest(unittest.TestCase):
     def test_previous_published_release_uses_github_target_and_skips_current(self) -> None:
-        releases = [{"tagName": "rust-v0.145.0-apohl79-51"}, {"tagName": "rust-v0.145.0-apohl79-38"}]
+        releases = [
+            {"tag_name": "rust-v0.145.0-apohl79-51", "target_commitish": "current"},
+            {"tag_name": "rust-v0.145.0-apohl79-38", "target_commitish": "previous"},
+        ]
         with mock.patch.object(
             apohl79_release.subprocess,
             "check_output",
-            side_effect=[json.dumps(releases), json.dumps({"targetCommitish": "previous"})],
+            return_value=json.dumps(releases),
         ):
             result = apohl79_release.find_previous_published_fork_release(
                 "rust-v0.145.0-apohl79-51",
