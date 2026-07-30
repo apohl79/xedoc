@@ -340,6 +340,7 @@ def build_release(args: argparse.Namespace) -> None:
                 gh=args.gh,
                 repo=args.github_repo,
                 env=github_env,
+                target=release_target,
             ),
         )
 
@@ -769,6 +770,7 @@ def generate_release_notes(
     gh: str = "gh",
     repo: str = DEFAULT_GITHUB_REPO,
     env: dict[str, str] | None = None,
+    target: str = "HEAD",
 ) -> str:
     """Generate a changelog body for the GitHub release from git history."""
     if not _is_git_repo():
@@ -777,7 +779,7 @@ def generate_release_notes(
     previous_release = find_previous_published_fork_release(tag, gh=gh, repo=repo, env=env)
     upstream_base = upstream_base_from_fork_version(fork_version)
     date = subprocess.check_output(
-        ["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d", "HEAD"],
+        ["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d", target],
         cwd=REPO_ROOT,
         text=True,
     ).strip()
@@ -786,7 +788,7 @@ def generate_release_notes(
         return initial_release_notes(upstream_base, date, fork_version)
 
     prev_tag, previous_target = previous_release
-    fork_commits = fork_commits_between(previous_target, "HEAD")
+    fork_commits = fork_commits_between(previous_target, target)
     prev_upstream = (
         upstream_base_from_fork_version(prev_tag.replace("rust-v", ""))
         if prev_tag
