@@ -7,6 +7,8 @@ use super::*;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::tools::context::FunctionToolOutput;
+use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::SubAgentSource;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MessageDeliveryMode {
@@ -88,6 +90,33 @@ pub(crate) async fn handle_message_string_tool(
         .ensure_v2_agent_loaded(resume_config, receiver_thread_id)
         .await
         .map_err(|err| collab_agent_error(receiver_thread_id, err))?;
+    let activity_tracking_parent_thread_id = if mode == MessageDeliveryMode::TriggerTurn {
+        let activity_source = session
+            .services
+            .agent_control
+            .get_agent_config_snapshot(receiver_thread_id)
+            .await
+            .and_then(|snapshot| match snapshot.session_source {
+                SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                    parent_thread_id,
+                    agent_path: Some(agent_path),
+                    ..
+                }) => Some((parent_thread_id, agent_path)),
+                _ => None,
+            });
+        if let Some((parent_thread_id, agent_path)) = activity_source {
+            session
+                .services
+                .agent_control
+                .start_sub_agent_activity_tracking(parent_thread_id, receiver_thread_id, agent_path)
+                .await;
+            Some(parent_thread_id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     let author = turn
         .session_source
         .get_agent_path()
@@ -109,6 +138,14 @@ pub(crate) async fn handle_message_string_tool(
         .send_inter_agent_communication(receiver_thread_id, communication, context)
         .await
         .map_err(|err| collab_agent_error(receiver_thread_id, err));
+    if result.is_err()
+        && let Some(parent_thread_id) = activity_tracking_parent_thread_id
+    {
+        session
+            .services
+            .agent_control
+            .stop_sub_agent_activity_tracking(parent_thread_id, receiver_thread_id);
+    }
     result?;
     session
         .send_event(

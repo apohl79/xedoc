@@ -1954,6 +1954,189 @@ async fn multi_agent_v2_parent_activity_timer_summarizes_recent_tool_activity() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn multi_agent_v2_followup_restarts_parent_activity_tracking() -> Result<()> {
+    const FOLLOWUP_PROMPT: &str = "give the completed child another task";
+    const FOLLOWUP_TASK: &str = "child: continue work";
+    const FOLLOWUP_CALL_ID: &str = "followup-call-1";
+    const ACTIVITY_SUMMARY: &str = "Reviewing the continued work";
+    const SLEEP_CALL_ID: &str = "sleep-call-2";
+
+    let server = start_mock_server().await;
+    let spawn_args = serde_json::to_string(&json!({
+        "message": CHILD_PROMPT,
+        "task_name": "worker",
+    }))?;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
+        sse(vec![
+            ev_response_created("resp-parent-1"),
+            ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "spawn_agent",
+                &spawn_args,
+            ),
+            ev_completed("resp-parent-1"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| {
+            body_contains(req, CHILD_PROMPT) && !body_contains(req, SPAWN_CALL_ID)
+        },
+        sse(vec![
+            ev_response_created("resp-child-1"),
+            ev_assistant_message("msg-child-1", "initial work complete"),
+            ev_completed("resp-child-1"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, SPAWN_CALL_ID),
+        sse(vec![
+            ev_response_created("resp-parent-2"),
+            ev_assistant_message("msg-parent-2", "initial child done"),
+            ev_completed("resp-parent-2"),
+        ]),
+    )
+    .await;
+
+    let followup_args = serde_json::to_string(&json!({
+        "target": "worker",
+        "message": FOLLOWUP_TASK,
+    }))?;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, FOLLOWUP_PROMPT),
+        sse(vec![
+            ev_response_created("resp-parent-3"),
+            ev_function_call_with_namespace(
+                FOLLOWUP_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "followup_task",
+                &followup_args,
+            ),
+            ev_completed("resp-parent-3"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| {
+            body_contains(req, FOLLOWUP_TASK) && !body_contains(req, FOLLOWUP_CALL_ID)
+        },
+        sse(vec![
+            ev_response_created("resp-child-2"),
+            ev_function_call_with_namespace(
+                SLEEP_CALL_ID,
+                "clock",
+                "sleep",
+                &json!({ "duration_ms": 30_000 }).to_string(),
+            ),
+            ev_completed("resp-child-2"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, "Recent agent activity:"),
+        sse(vec![
+            ev_response_created("resp-activity-summary"),
+            ev_output_text_delta(ACTIVITY_SUMMARY),
+            ev_completed("resp-activity-summary"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, FOLLOWUP_CALL_ID),
+        sse(vec![
+            ev_response_created("resp-parent-4"),
+            ev_assistant_message("msg-parent-4", "follow-up sent"),
+            ev_completed("resp-parent-4"),
+        ]),
+    )
+    .await;
+
+    let test = test_codex()
+        .with_model("koffing")
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::Collab)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::CurrentTimeReminder)
+                .expect("test config should allow feature update");
+            config.current_time_reminder = Some(CurrentTimeReminderConfig {
+                sleep_tool: true,
+                ..CurrentTimeReminderConfig::default()
+            });
+            config.model_provider.request_max_retries = Some(0);
+            config.model_provider.stream_max_retries = Some(0);
+            config.model_provider.supports_websockets = false;
+        })
+        .build(&server)
+        .await?;
+
+    test.submit_turn(TURN_1_PROMPT).await?;
+    wait_for_event_with_timeout(
+        &test.codex,
+        |event| {
+            matches!(
+                event,
+                EventMsg::SubAgentActivity(activity)
+                    if activity.kind == SubAgentActivityKind::Completed
+            )
+        },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    sleep(Duration::from_secs(13)).await;
+
+    test.submit_turn(FOLLOWUP_PROMPT).await?;
+    let event = wait_for_event_with_timeout(
+        &test.codex,
+        |event| {
+            matches!(
+                event,
+                EventMsg::SubAgentActivity(activity)
+                    if activity.current_activity.as_deref() == Some(ACTIVITY_SUMMARY)
+            )
+        },
+        Duration::from_secs(25),
+    )
+    .await;
+    let EventMsg::SubAgentActivity(activity) = event else {
+        anyhow::bail!("event matcher must return a sub-agent activity event");
+    };
+
+    assert_eq!(
+        (
+            activity.kind,
+            activity.current_activity.as_deref(),
+            activity.agent_path.to_string(),
+        ),
+        (
+            SubAgentActivityKind::Interacted,
+            Some(ACTIVITY_SUMMARY),
+            "/root/worker".to_string(),
+        )
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn skills_toggle_skips_instructions_for_parent_and_spawned_child() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
