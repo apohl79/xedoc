@@ -160,6 +160,7 @@ enum PickerLoadRequest {
 #[derive(Clone)]
 enum ProviderFilter {
     Any,
+    #[cfg(test)]
     MatchDefault(String),
 }
 
@@ -358,7 +359,6 @@ async fn run_resume_picker_with_launch_context(
         app_server.remote_cwd_override(),
     );
     let local_filter_cwd = local_picker_cwd_filter(&cwd_filter, uses_remote_workspace);
-    let provider_filter = picker_provider_filter(config, uses_remote_workspace);
     let runtime_keymap = picker_runtime_keymap(config)?;
     let options = SessionPickerRunOptions {
         show_all,
@@ -366,7 +366,7 @@ async fn run_resume_picker_with_launch_context(
         local_filter_cwd,
         action: SessionPickerAction::Resume,
         launch_context,
-        provider_filter,
+        provider_filter: ProviderFilter::Any,
         initial_density: SessionListDensity::from(config.tui_session_picker_view),
         view_persistence: Some(SessionPickerViewPersistence {
             codex_home: config.codex_home.to_path_buf(),
@@ -404,7 +404,6 @@ pub async fn run_fork_picker_with_app_server(
         app_server.remote_cwd_override(),
     );
     let local_filter_cwd = local_picker_cwd_filter(&cwd_filter, uses_remote_workspace);
-    let provider_filter = picker_provider_filter(config, uses_remote_workspace);
     let runtime_keymap = picker_runtime_keymap(config)?;
     let options = SessionPickerRunOptions {
         show_all,
@@ -412,7 +411,7 @@ pub async fn run_fork_picker_with_app_server(
         local_filter_cwd,
         action: SessionPickerAction::Fork,
         launch_context: SessionPickerLaunchContext::Startup,
-        provider_filter,
+        provider_filter: ProviderFilter::Any,
         initial_density: SessionListDensity::from(config.tui_session_picker_view),
         view_persistence: Some(SessionPickerViewPersistence {
             codex_home: config.codex_home.to_path_buf(),
@@ -522,14 +521,6 @@ fn local_picker_cwd_filter(
         None
     } else {
         cwd_filter.clone()
-    }
-}
-
-fn picker_provider_filter(config: &Config, uses_remote_workspace: bool) -> ProviderFilter {
-    if uses_remote_workspace {
-        ProviderFilter::Any
-    } else {
-        ProviderFilter::MatchDefault(config.model_provider_id.to_string())
     }
 }
 
@@ -1849,7 +1840,8 @@ fn thread_list_params(
         sort_key: Some(sort_key),
         sort_direction: None,
         model_providers: match provider_filter {
-            ProviderFilter::Any => None,
+            ProviderFilter::Any => Some(Vec::new()),
+            #[cfg(test)]
             ProviderFilter::MatchDefault(default_provider) => Some(vec![default_provider]),
         },
         source_kinds: Some(crate::resume_source_kinds(include_non_interactive)),
@@ -3355,6 +3347,27 @@ mod tests {
     }
 
     #[test]
+    fn thread_list_params_distinguish_all_and_explicit_providers() {
+        for (provider_filter, expected_model_providers) in [
+            (ProviderFilter::Any, Some(Vec::new())),
+            (
+                ProviderFilter::MatchDefault(String::from("openai")),
+                Some(vec![String::from("openai")]),
+            ),
+        ] {
+            let params = thread_list_params(
+                /*cursor*/ None,
+                /*cwd_filter*/ None,
+                provider_filter,
+                ThreadSortKey::UpdatedAt,
+                /*include_non_interactive*/ false,
+            );
+
+            assert_eq!(params.model_providers, expected_model_providers);
+        }
+    }
+
+    #[test]
     fn row_search_matches_metadata_fields() {
         let thread_id =
             ThreadId::from_string("019dabc1-0ef5-7431-b81c-03037f51f62c").expect("thread id");
@@ -3564,7 +3577,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_thread_list_params_omit_provider_filter() {
+    fn remote_thread_list_params_request_all_providers() {
         let params = thread_list_params(
             Some(String::from("cursor-1")),
             Some(Path::new("repo/on/server")),
@@ -3574,7 +3587,7 @@ mod tests {
         );
 
         assert_eq!(params.cursor, Some(String::from("cursor-1")));
-        assert_eq!(params.model_providers, None);
+        assert_eq!(params.model_providers, Some(Vec::new()));
         assert_eq!(
             params.source_kinds,
             Some(vec![ThreadSourceKind::Cli, ThreadSourceKind::VsCode])
@@ -3596,7 +3609,7 @@ mod tests {
         );
 
         assert_eq!(params.cursor, Some(String::from("cursor-1")));
-        assert_eq!(params.model_providers, None);
+        assert_eq!(params.model_providers, Some(Vec::new()));
         let source_kinds = crate::resume_source_kinds(/*include_non_interactive*/ true);
         assert_eq!(params.source_kinds, Some(source_kinds));
     }
