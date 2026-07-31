@@ -1011,6 +1011,31 @@ impl ChatComposer {
             .unwrap_or_else(|| footer_height(footer_props))
     }
 
+    fn footer_content_rects(
+        popup_rect: Rect,
+        footer_hint_height: u16,
+        persistent_status_line_height: u16,
+    ) -> [Rect; 2] {
+        let footer_content_height = footer_hint_height + persistent_status_line_height;
+        let footer_spacing = Self::footer_spacing(footer_content_height);
+        let content_rect = if footer_spacing > 0 && footer_content_height > 0 {
+            let [_, content_rect] = Layout::vertical([
+                Constraint::Length(footer_spacing),
+                Constraint::Length(footer_content_height),
+            ])
+            .areas(popup_rect);
+            content_rect
+        } else {
+            popup_rect
+        };
+
+        Layout::vertical([
+            Constraint::Length(persistent_status_line_height),
+            Constraint::Length(footer_hint_height),
+        ])
+        .areas(content_rect)
+    }
+
     fn persistent_status_line(&self, footer_props: &FooterProps) -> Option<Line<'static>> {
         if !footer_props.status_line_enabled {
             return None;
@@ -4638,23 +4663,11 @@ impl ChatComposer {
                 let footer_hint_height = self.footer_hint_height(&footer_props);
                 let persistent_status_line = self.persistent_status_line(&footer_props);
                 let persistent_status_line_height = u16::from(persistent_status_line.is_some());
-                let footer_content_height = footer_hint_height + persistent_status_line_height;
-                let footer_spacing = Self::footer_spacing(footer_content_height);
-                let content_rect = if footer_spacing > 0 && footer_content_height > 0 {
-                    let [_, content_rect] = Layout::vertical([
-                        Constraint::Length(footer_spacing),
-                        Constraint::Length(footer_content_height),
-                    ])
-                    .areas(popup_rect);
-                    content_rect
-                } else {
-                    popup_rect
-                };
-                let [persistent_status_line_rect, hint_rect] = Layout::vertical([
-                    Constraint::Length(persistent_status_line_height),
-                    Constraint::Length(footer_hint_height),
-                ])
-                .areas(content_rect);
+                let [persistent_status_line_rect, hint_rect] = Self::footer_content_rects(
+                    popup_rect,
+                    footer_hint_height,
+                    persistent_status_line_height,
+                );
                 if let Some(line) = persistent_status_line {
                     let available_width = persistent_status_line_rect
                         .width

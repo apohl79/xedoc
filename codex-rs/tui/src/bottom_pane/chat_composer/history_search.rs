@@ -25,8 +25,6 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
-use ratatui::layout::Constraint;
-use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
@@ -34,7 +32,6 @@ use ratatui::text::Span;
 
 use super::super::chat_composer_history::HistorySearchDirection;
 use super::super::chat_composer_history::HistorySearchResult;
-use super::super::footer::footer_height;
 use super::super::footer::reset_mode_after_activity;
 use super::ActivePopup;
 use super::ChatComposer;
@@ -456,20 +453,14 @@ impl ChatComposer {
         }
 
         let footer_props = self.footer_props();
-        let footer_hint_height = self
-            .custom_footer_height()
-            .unwrap_or_else(|| footer_height(&footer_props));
-        let footer_spacing = Self::footer_spacing(footer_hint_height);
-        let hint_rect = if footer_spacing > 0 && footer_hint_height > 0 {
-            let [_, hint_rect] = Layout::vertical([
-                Constraint::Length(footer_spacing),
-                Constraint::Length(footer_hint_height),
-            ])
-            .areas(popup_rect);
-            hint_rect
-        } else {
-            popup_rect
-        };
+        let footer_hint_height = self.footer_hint_height(&footer_props);
+        let persistent_status_line_height =
+            u16::from(self.persistent_status_line(&footer_props).is_some());
+        let [_, hint_rect] = Self::footer_content_rects(
+            popup_rect,
+            footer_hint_height,
+            persistent_status_line_height,
+        );
         if hint_rect.is_empty() {
             return None;
         }
@@ -497,6 +488,7 @@ mod tests {
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::style::Modifier;
+    use ratatui::text::Line;
     use tokio::sync::mpsc::unbounded_channel;
 
     use super::super::super::chat_composer_history::HistoryEntry;
@@ -529,6 +521,25 @@ mod tests {
         assert!(composer.history_search_active());
         assert!(composer.draft.textarea.is_empty());
         assert_eq!(composer.footer_mode(), FooterMode::HistorySearch);
+    }
+
+    #[test]
+    fn history_search_cursor_uses_footer_hint_row_below_persistent_status() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Codex to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        composer.set_status_line_enabled(/*enabled*/ true);
+        composer.set_status_line(Some(Line::from("codex · main-fork")));
+
+        let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
+
+        assert_eq!(composer.cursor_pos(Rect::new(0, 0, 80, 6)), Some((20, 5)));
     }
 
     #[test]
