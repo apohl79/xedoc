@@ -461,6 +461,7 @@ async fn advanced_reasoning_selection_in_plan_mode_uses_expected_scope() {
                 AppEvent::ApplyAdvancedReasoning {
                     model,
                     effort: ReasoningEffortConfig::Ultra,
+                    ..
                 } if model == "gpt-5.4"
             )));
             assert!(events.iter().all(|event| !matches!(

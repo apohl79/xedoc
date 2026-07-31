@@ -196,6 +196,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn primary_thread_attachment_syncs_app_model_and_provider() {
+        let mut app = make_test_app().await;
+        let session_provider_id = "resumed-provider".to_string();
+        let expected_provider = app.config.model_provider.clone();
+        app.config
+            .model_providers
+            .insert(session_provider_id.clone(), expected_provider.clone());
+        app.config.model = Some("launch-model".to_string());
+        app.config.model_provider_id = "launch-provider".to_string();
+        let session = ThreadSessionState {
+            model: "resumed-model".to_string(),
+            model_provider_id: session_provider_id.clone(),
+            ..test_thread_session(ThreadId::new(), test_path_buf("/tmp/resumed"))
+        };
+
+        app.enqueue_primary_thread_session(session.clone(), Vec::new())
+            .await
+            .expect("primary thread should attach");
+
+        let fresh_config = app.fresh_session_config();
+        assert_eq!(app.config.model, Some(session.model.clone()));
+        assert_eq!(app.config.model_provider_id, session.model_provider_id);
+        assert_eq!(app.config.model_provider, expected_provider);
+        assert_eq!(fresh_config.model, Some(session.model));
+        assert_eq!(fresh_config.model_provider_id, session_provider_id);
+    }
+
+    #[tokio::test]
     async fn permission_settings_sync_updates_active_snapshot_without_rewriting_side_thread() {
         let mut app = make_test_app().await;
         let main_thread_id =

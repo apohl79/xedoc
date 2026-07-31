@@ -38,7 +38,8 @@
         "startup",
         "resume",
         "clear",
-        "compact"
+        "compact",
+        "model_change"
       ],
       "type": "string"
     },

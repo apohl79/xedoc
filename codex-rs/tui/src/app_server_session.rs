@@ -538,11 +538,7 @@ impl AppServerSession {
         model_settings: ResumeModelSettings,
     ) -> Result<AppServerStartedThread> {
         let request_id = self.next_request_id();
-        let session_config = if model_settings == ResumeModelSettings::RestoreFromThread {
-            config.clone()
-        } else {
-            self.session_config_with_effective_service_tier(&config)
-        };
+        let session_config = self.session_config_with_effective_service_tier(&config);
         let response: ThreadResumeResponse = self
             .client
             .request_typed(ClientRequest::ThreadResume {
@@ -2456,6 +2452,49 @@ mod tests {
             .await?;
 
         assert_eq!(resumed.session.service_tier, None);
+        app_server.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn persisted_resume_normalizes_unsupported_service_tier() -> Result<()> {
+        let codex_home = tempfile::tempdir().expect("tempdir");
+        let mut config = build_config(&codex_home).await;
+        config.model = Some("gpt-5.4".to_string());
+        config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
+        config
+            .features
+            .enable(Feature::FastMode)
+            .expect("enable fast mode");
+        let thread_id = ThreadId::from_string(
+            &create_fake_rollout(
+                codex_home.path(),
+                "2025-01-05T12-00-00",
+                "2025-01-05T12:00:00Z",
+                "Saved user message",
+                Some(config.model_provider_id.as_str()),
+                /*git_info*/ None,
+            )
+            .expect("create source rollout"),
+        )?;
+        let mut app_server = crate::start_embedded_app_server_for_picker(&config).await?;
+        let mut preset = crate::test_support::TEST_MODEL_PRESETS
+            .iter()
+            .find(|preset| preset.model == "gpt-5.4")
+            .expect("gpt-5.4 test preset")
+            .clone();
+        preset.service_tiers.clear();
+        preset.default_service_tier = None;
+        app_server.available_models = vec![preset];
+
+        let resumed = app_server
+            .resume_thread(config, thread_id, ResumeModelSettings::RestoreFromThread)
+            .await?;
+
+        assert_eq!(
+            resumed.session.service_tier,
+            Some(SERVICE_TIER_DEFAULT_REQUEST_VALUE.to_string())
+        );
         app_server.shutdown().await?;
         Ok(())
     }

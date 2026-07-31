@@ -27,6 +27,7 @@ pub enum SessionStartSource {
     Resume,
     Clear,
     Compact,
+    ModelChange,
 }
 
 impl SessionStartSource {
@@ -36,6 +37,7 @@ impl SessionStartSource {
             Self::Resume => "resume",
             Self::Clear => "clear",
             Self::Compact => "compact",
+            Self::ModelChange => "model_change",
         }
     }
 }

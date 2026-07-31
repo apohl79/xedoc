@@ -1281,6 +1281,18 @@ impl App {
         turns: Vec<Turn>,
         presentation: ThreadAttachPresentation,
     ) -> Result<()> {
+        self.config.model = Some(session.model.clone());
+        self.config
+            .model_provider_id
+            .clone_from(&session.model_provider_id);
+        if let Some(provider) = self
+            .config
+            .model_providers
+            .get(&session.model_provider_id)
+            .cloned()
+        {
+            self.config.model_provider = provider;
+        }
         let thread_id = session.thread_id;
         self.primary_thread_id = Some(thread_id);
         self.primary_session_configured = Some(session.clone());

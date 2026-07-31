@@ -802,6 +802,7 @@ pub(crate) enum AppEvent {
     /// Apply an advanced reasoning effort to the active conversation without changing defaults.
     ApplyAdvancedReasoning {
         model: String,
+        provider_id: String,
         effort: ReasoningEffort,
     },
 

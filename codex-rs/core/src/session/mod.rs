@@ -1551,6 +1551,11 @@ impl Session {
             let permission_profile_changed =
                 previous_permission_profile != updated_permission_profile;
             let provider_changed = state.session_configuration.provider != updated.provider;
+            let model_provider_changed = state
+                .session_configuration
+                .original_config_do_not_use
+                .model_provider_id
+                != updated.original_config_do_not_use.model_provider_id;
             let model_client = provider_changed.then(|| {
                 Self::model_client(
                     Arc::clone(&self.services.auth_manager),
@@ -1569,6 +1574,11 @@ impl Session {
                     .update_selections(updated.environment_selections());
             }
             state.session_configuration = updated;
+            if model_provider_changed {
+                state.queue_pending_session_start_source(
+                    codex_hooks::SessionStartSource::ModelChange,
+                );
+            }
             if let Some(model_client) = model_client {
                 self.services.model_client.store(Arc::new(model_client));
             }

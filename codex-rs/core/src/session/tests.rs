@@ -4365,6 +4365,8 @@ async fn session_settings_legacy_fast_service_tier_update_uses_priority_request_
 #[tokio::test]
 async fn session_provider_update_replaces_provider_metadata() {
     let (session, _) = make_session_and_context().await;
+    while session.take_pending_session_start_source().await.is_some() {}
+    let current_provider_id = session.get_config().await.model_provider_id.clone();
     let expected_provider = {
         let state = session.state.lock().await;
         state
@@ -4378,6 +4380,15 @@ async fn session_provider_update_replaces_provider_metadata() {
 
     session
         .update_settings(SessionSettingsUpdate {
+            model_provider_id: Some(current_provider_id),
+            ..Default::default()
+        })
+        .await
+        .expect("same provider update should apply");
+    assert!(session.take_pending_session_start_source().await.is_none());
+
+    session
+        .update_settings(SessionSettingsUpdate {
             model_provider_id: Some("amazon-bedrock".to_string()),
             ..Default::default()
         })
@@ -4385,6 +4396,10 @@ async fn session_provider_update_replaces_provider_metadata() {
         .expect("provider update should apply");
 
     assert_eq!(session.provider().await, expected_provider);
+    assert!(matches!(
+        session.take_pending_session_start_source().await,
+        Some(codex_hooks::SessionStartSource::ModelChange)
+    ));
 }
 
 #[tokio::test]

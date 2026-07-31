@@ -25,6 +25,7 @@ use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::protocol::ThreadSettingsOverrides;
 use codex_protocol::request_permissions::PermissionGrantScope;
 use codex_protocol::request_permissions::RequestPermissionProfile;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
@@ -786,6 +787,7 @@ transcript_path = payload.get("transcript_path")
 record = {{
     "transcript_path": transcript_path,
     "exists": Path(transcript_path).exists() if transcript_path else False,
+    "source": payload.get("source"),
 }}
 
 with Path(r"{log_path}").open("a", encoding="utf-8") as handle:
@@ -1440,6 +1442,60 @@ async fn session_end_skips_subagents() -> Result<()> {
             .join("session_end_hook_log.jsonl")
             .exists(),
         "subagents must not run SessionEnd hooks"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn provider_change_runs_session_start_hook_on_next_turn() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let _response = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message("msg-1", "hello after provider change"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+    let test = test_codex()
+        .with_pre_build_hook(|home| {
+            write_session_start_hook_recording_transcript(home)
+                .expect("failed to write session start hook test fixture");
+        })
+        .with_config(|config| {
+            config
+                .model_providers
+                .insert("alternate".to_string(), config.model_provider.clone());
+            trust_discovered_hooks(config);
+        })
+        .build(&server)
+        .await?;
+
+    test.codex
+        .submit(Op::ThreadSettings {
+            thread_settings: ThreadSettingsOverrides {
+                model_provider_id: Some("alternate".to_string()),
+                ..Default::default()
+            },
+        })
+        .await?;
+    wait_for_event(&test.codex, |event| {
+        matches!(event, EventMsg::ThreadSettingsApplied(_))
+    })
+    .await;
+
+    test.submit_turn("hello").await?;
+
+    let hook_inputs = read_session_start_hook_inputs(test.codex_home_path())?;
+    assert_eq!(
+        hook_inputs
+            .iter()
+            .filter_map(|input| input.get("source").and_then(Value::as_str))
+            .collect::<Vec<_>>(),
+        vec!["startup", "model_change"]
     );
     Ok(())
 }

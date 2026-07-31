@@ -166,6 +166,58 @@ fn merge_persisted_resume_metadata(
     }
 }
 
+fn merge_rollout_resume_metadata(
+    thread_history: &InitialHistory,
+    request_overrides: &mut Option<HashMap<String, serde_json::Value>>,
+    typesafe_overrides: &mut ConfigOverrides,
+) {
+    if has_model_resume_override(request_overrides.as_ref(), typesafe_overrides) {
+        return;
+    }
+
+    let InitialHistory::Resumed(resumed_history) = thread_history else {
+        return;
+    };
+
+    let mut model = None;
+    let mut model_provider = None;
+    let mut reasoning_effort = None;
+    for item in resumed_history.history.iter() {
+        match item {
+            RolloutItem::SessionMeta(meta_line) => {
+                if let Some(provider) = meta_line.meta.model_provider.as_ref() {
+                    model_provider = Some(provider.clone());
+                }
+            }
+            RolloutItem::TurnContext(turn_context) => {
+                model = Some(turn_context.model.clone());
+                reasoning_effort = turn_context.effort.clone();
+            }
+            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
+                let settings = &event.thread_settings;
+                model = Some(settings.model.clone());
+                model_provider = Some(settings.model_provider_id.clone());
+                reasoning_effort = settings.reasoning_effort.clone();
+            }
+            RolloutItem::ResponseItem(_)
+            | RolloutItem::InterAgentCommunication(_)
+            | RolloutItem::InterAgentCommunicationMetadata { .. }
+            | RolloutItem::Compacted(_)
+            | RolloutItem::WorldState(_)
+            | RolloutItem::EventMsg(_) => {}
+        }
+    }
+
+    typesafe_overrides.model = model;
+    typesafe_overrides.model_provider = model_provider;
+    if let Some(reasoning_effort) = reasoning_effort {
+        request_overrides.get_or_insert_with(HashMap::new).insert(
+            "model_reasoning_effort".to_string(),
+            serde_json::Value::String(reasoning_effort.to_string()),
+        );
+    }
+}
+
 fn merge_persisted_approvals_reviewer(
     thread_history: &InitialHistory,
     request_overrides: Option<&HashMap<String, serde_json::Value>>,
@@ -3416,14 +3468,26 @@ impl ThreadRequestProcessor {
         let InitialHistory::Resumed(resumed_history) = thread_history else {
             return None;
         };
-        let state_db_ctx = self.state_db.clone()?;
-        let persisted_metadata = state_db_ctx
-            .get_thread(resumed_history.conversation_id)
-            .await
-            .ok()
-            .flatten()?;
-        merge_persisted_resume_metadata(request_overrides, typesafe_overrides, &persisted_metadata);
-        Some(persisted_metadata)
+        let persisted_metadata = if let Some(state_db_ctx) = self.state_db.clone() {
+            state_db_ctx
+                .get_thread(resumed_history.conversation_id)
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
+        if let Some(persisted_metadata) = persisted_metadata {
+            merge_persisted_resume_metadata(
+                request_overrides,
+                typesafe_overrides,
+                &persisted_metadata,
+            );
+            Some(persisted_metadata)
+        } else {
+            merge_rollout_resume_metadata(thread_history, request_overrides, typesafe_overrides);
+            None
+        }
     }
 
     #[tracing::instrument(level = "trace", skip_all)]

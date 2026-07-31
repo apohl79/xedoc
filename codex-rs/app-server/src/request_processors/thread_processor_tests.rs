@@ -123,6 +123,7 @@ mod thread_processor_behavior_tests {
     use codex_protocol::ThreadId;
     use codex_protocol::config_types::CollaborationMode;
     use codex_protocol::config_types::ModeKind;
+    use codex_protocol::config_types::ReasoningSummary;
     use codex_protocol::config_types::Settings;
     use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
     use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
@@ -134,8 +135,15 @@ mod thread_processor_behavior_tests {
     use codex_protocol::permissions::FileSystemSandboxEntry;
     use codex_protocol::permissions::NetworkSandboxPolicy;
     use codex_protocol::protocol::AskForApproval;
+    use codex_protocol::protocol::InitialHistory;
+    use codex_protocol::protocol::ResumedHistory;
+    use codex_protocol::protocol::RolloutItem;
+    use codex_protocol::protocol::SandboxPolicy;
+    use codex_protocol::protocol::SessionMeta;
+    use codex_protocol::protocol::SessionMetaLine;
     use codex_protocol::protocol::SessionSource;
     use codex_protocol::protocol::SubAgentSource;
+    use codex_protocol::protocol::TurnContextItem;
     use codex_protocol::protocol::TurnEnvironmentSelections;
     use codex_state::ThreadMetadataBuilder;
     use codex_thread_store::StoredThread;
@@ -992,6 +1000,67 @@ mod thread_processor_behavior_tests {
         );
         assert_eq!(request_overrides, None);
         Ok(())
+    }
+
+    #[test]
+    fn merge_rollout_resume_metadata_restores_saved_settings() {
+        let thread_id = ThreadId::new();
+        let thread_history = InitialHistory::Resumed(ResumedHistory {
+            conversation_id: thread_id,
+            history: Arc::new(vec![
+                RolloutItem::SessionMeta(SessionMetaLine {
+                    meta: SessionMeta {
+                        model_provider: Some("openai".to_string()),
+                        ..Default::default()
+                    },
+                    git: None,
+                }),
+                RolloutItem::TurnContext(TurnContextItem {
+                    turn_id: Some("turn-1".to_string()),
+                    cwd: test_path_buf("/tmp/resume").abs(),
+                    workspace_roots: None,
+                    current_date: None,
+                    timezone: None,
+                    approval_policy: AskForApproval::OnRequest,
+                    approvals_reviewer: None,
+                    sandbox_policy: SandboxPolicy::new_read_only_policy(),
+                    permission_profile: None,
+                    network: None,
+                    file_system_sandbox_policy: None,
+                    model: "gpt-5.6-sol".to_string(),
+                    comp_hash: None,
+                    personality: None,
+                    collaboration_mode: None,
+                    multi_agent_version: None,
+                    multi_agent_mode: None,
+                    realtime_active: None,
+                    effort: Some(ReasoningEffort::High),
+                    summary: ReasoningSummary::Auto,
+                }),
+            ]),
+            rollout_path: None,
+        });
+        let mut request_overrides = None;
+        let mut typesafe_overrides = ConfigOverrides::default();
+
+        merge_rollout_resume_metadata(
+            &thread_history,
+            &mut request_overrides,
+            &mut typesafe_overrides,
+        );
+
+        assert_eq!(typesafe_overrides.model, Some("gpt-5.6-sol".to_string()));
+        assert_eq!(
+            typesafe_overrides.model_provider,
+            Some("openai".to_string())
+        );
+        assert_eq!(
+            request_overrides,
+            Some(HashMap::from([(
+                "model_reasoning_effort".to_string(),
+                serde_json::Value::String("high".to_string()),
+            )]))
+        );
     }
 
     #[tokio::test]

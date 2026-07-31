@@ -64,6 +64,20 @@ fn configured_thread_session(thread_id: ThreadId) -> crate::session_state::Threa
     }
 }
 
+#[tokio::test]
+async fn session_configured_restores_model_provider() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    let mut session = configured_thread_session(ThreadId::new());
+    session.model_provider_id = "restored-provider".to_string();
+
+    chat.handle_thread_session(session);
+
+    assert_eq!(
+        chat.config_ref().model_provider_id,
+        "restored-provider".to_string()
+    );
+}
+
 fn start_safety_buffering_test_turn(
     chat: &mut ChatWidget,
     op_rx: &mut tokio::sync::mpsc::UnboundedReceiver<Op>,

@@ -1122,13 +1122,30 @@ impl App {
             AppEvent::OpenAdvancedReasoningPopup { model } => {
                 self.chat_widget.open_advanced_reasoning_popup(model);
             }
-            AppEvent::ApplyAdvancedReasoning { model, effort } => {
+            AppEvent::ApplyAdvancedReasoning {
+                model,
+                provider_id,
+                effort,
+            } => {
+                let provider_id = if provider_id.is_empty() {
+                    self.config.model_provider_id.clone()
+                } else {
+                    provider_id
+                };
+                if provider_id != self.config.model_provider_id {
+                    self.config.model_provider_id.clone_from(&provider_id);
+                    if let Some(provider) = self.config.model_providers.get(&provider_id).cloned() {
+                        self.config.model_provider = provider;
+                    }
+                    self.chat_widget.set_model_provider(&provider_id);
+                }
                 let default_effort =
                     self.on_apply_advanced_reasoning(model.as_str(), effort.clone());
-                if let Some(mut params) =
-                    self.active_thread_model_setting_update_params(model.clone())
-                {
-                    params.effort = Some(effort.clone());
+                if let Some(params) = self.active_thread_model_selection_update_params(
+                    model.clone(),
+                    provider_id,
+                    Some(effort.clone()),
+                ) {
                     self.send_thread_settings_update(app_server, params).await;
                 }
                 self.sync_active_thread_service_tier_to_cached_session()

@@ -3355,6 +3355,32 @@ async fn select_ultra_with_multi_agent_thread_limit(max_threads: usize) -> (bool
 }
 
 #[tokio::test]
+async fn ultra_reasoning_selection_preserves_model_provider() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
+    let mut preset = get_available_model(&chat, "gpt-5.4");
+    preset.provider_id = "deepseek".to_string();
+    preset.default_reasoning_effort = ReasoningEffortConfig::Ultra;
+    preset.supported_reasoning_efforts = vec![ReasoningEffortPreset {
+        effort: ReasoningEffortConfig::Ultra,
+        description: "Ultra reasoning".to_string(),
+    }];
+
+    chat.open_advanced_reasoning_popup(preset);
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+    assert!(
+        std::iter::from_fn(|| rx.try_recv().ok()).any(|event| matches!(
+            event,
+            AppEvent::ApplyAdvancedReasoning {
+                model,
+                provider_id,
+                effort: ReasoningEffortConfig::Ultra,
+            } if model == "gpt-5.4" && provider_id == "deepseek"
+        ))
+    );
+}
+
+#[tokio::test]
 async fn ultra_reasoning_selection_warns_for_high_multi_agent_concurrency() {
     let (selected_ultra, warnings) =
         select_ultra_with_multi_agent_thread_limit(/*max_threads*/ 8).await;

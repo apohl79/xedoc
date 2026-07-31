@@ -43,6 +43,7 @@ impl ChatWidget {
         self.config
             .permissions
             .set_workspace_roots(runtime_workspace_roots);
+        self.set_model_provider(&session.model_provider_id);
         self.effective_service_tier = session.service_tier.clone();
         if let Err(err) = self
             .config

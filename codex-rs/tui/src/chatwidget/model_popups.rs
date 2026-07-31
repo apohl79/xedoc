@@ -286,6 +286,7 @@ impl ChatWidget {
             if effort_for_action == Some(ReasoningEffortConfig::Ultra) {
                 tx.send(AppEvent::ApplyAdvancedReasoning {
                     model: model_for_action.clone(),
+                    provider_id: provider_id.clone(),
                     effort: ReasoningEffortConfig::Ultra,
                 });
             } else if should_prompt_plan_mode_scope {
