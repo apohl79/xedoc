@@ -1,5 +1,5 @@
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
-This `apohl79/codex` fork tracks upstream Codex on `main-fork` with substantial agent improvements: persistent task lists, cross-model sub-agent routing, active-agent UI, multi-provider error handling, and TUI productivity enhancements.
+This `apohl79/codex` project began as a fork of OpenAI Codex and now follows its own Codex-focused direction, extending beyond the upstream project with persistent task lists, cross-model sub-agent routing, active-agent UI, multi-provider error handling, and TUI productivity enhancements.
 <p align="center">
   <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
 </p>
@@ -12,9 +12,9 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 ## Quickstart
 
-### Installing and running this fork
+### Installing and running this project
 
-Install the latest apohl79 fork release on macOS:
+Install the latest apohl79 Codex release on macOS:
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install-apohl79.sh | bash
@@ -28,7 +28,7 @@ git clone --branch main-fork https://github.com/apohl79/codex.git && cd codex/co
 
 Then simply run `codex` to get started.
 
-### Fork features
+### Project features
 
 - Plugin context declarations in `plugin.json` for permanent, position-aware
   model instructions injected via `ContextContributor` — zero-overhead replacement
@@ -47,12 +47,12 @@ Then simply run `codex` to get started.
 - Queued-input recall cleanup for TUI prompt history.
 - apohl79 release packaging and installer scripts.
 - macOS binary-release update checks, installation, and relaunch.
-- Fork upgrade and upstream-change report skills.
+- Upstream-change report and upgrade skills.
 - City Lights (Doom Emacs) color theme for the TUI.
 
 - **Multi-model provider support via codex-providers** — use Codex with DeepSeek or
   Claude models through [codex-providers](https://github.com/apohl79/codex-providers),
-  an OAuth-to-API provider gateway. The fork includes
+  an OAuth-to-API provider gateway. The project adds
   per-model prompt adjustments for non-OpenAI reasoning budgets, the
   `codex-manager` profile wizard for zero-config Claude and DeepSeek setup, and
   cross-provider sub-agent support (e.g., Claude parent agent spawning GPT or
@@ -117,7 +117,7 @@ You can also use Codex with an API key, but this requires [additional setup](htt
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
-- [**Fork notes**](./README.fork.md)
+- [**Project notes**](./README.fork.md)
 - [**Contributing**](./docs/contributing.md)
 - [**Installing & building**](./docs/install.md)
 - [**Open source fund**](./docs/open-source-fund.md)
