@@ -12,6 +12,9 @@ from .zsh import ZSH_RESOURCE_PATH
 
 
 LAYOUT_VERSION = 1
+SESSION_CONTROL_LAYOUT_VERSION = 2
+SESSION_CONTROL_SOURCE = Path(__file__).resolve().parents[1] / "codex-session"
+SESSION_CONTROL_NAME = "codex-session"
 
 
 def prepare_package_dir(package_dir: Path, *, force: bool) -> None:
@@ -37,6 +40,8 @@ def build_package_dir(
     variant: PackageVariant,
     spec: TargetSpec,
     inputs: PackageInputs,
+    *,
+    include_session_control: bool = False,
 ) -> None:
     bin_dir = package_dir / "bin"
     resources_dir = package_dir / "codex-resources"
@@ -56,6 +61,18 @@ def build_package_dir(
         bin_dir / f"codex-code-mode-host{spec.exe_suffix}",
         is_windows=spec.is_windows,
     )
+    if include_session_control:
+        if spec.is_windows:
+            raise RuntimeError("Session-control CLI is only supported on Unix targets")
+        if not SESSION_CONTROL_SOURCE.is_file():
+            raise RuntimeError(
+                f"Missing session-control script: {SESSION_CONTROL_SOURCE}"
+            )
+        copy_executable(
+            SESSION_CONTROL_SOURCE,
+            bin_dir / SESSION_CONTROL_NAME,
+            is_windows=False,
+        )
     copy_executable(inputs.rg_bin, path_dir / spec.rg_name, is_windows=spec.is_windows)
 
     if inputs.zsh_bin is not None:
@@ -83,7 +100,11 @@ def build_package_dir(
         )
 
     metadata = {
-        "layoutVersion": LAYOUT_VERSION,
+        "layoutVersion": (
+            SESSION_CONTROL_LAYOUT_VERSION
+            if include_session_control
+            else LAYOUT_VERSION
+        ),
         "version": version,
         "target": spec.target,
         "variant": variant.name,
@@ -100,6 +121,7 @@ def validate_package_dir(
     spec: TargetSpec,
     *,
     include_zsh: bool,
+    include_session_control: bool = False,
 ) -> None:
     required_dirs = [
         Path("bin"),
@@ -119,7 +141,11 @@ def validate_package_dir(
         metadata = json.load(fh)
 
     expected_metadata = {
-        "layoutVersion": LAYOUT_VERSION,
+        "layoutVersion": (
+            SESSION_CONTROL_LAYOUT_VERSION
+            if include_session_control
+            else LAYOUT_VERSION
+        ),
         "target": spec.target,
         "variant": variant.name,
         "entrypoint": f"bin/{variant.entrypoint_name(spec)}",
@@ -139,6 +165,13 @@ def validate_package_dir(
         Path("codex-path") / spec.rg_name,
     ]
     executable_files = list(required_files)
+
+    if include_session_control:
+        if spec.is_windows:
+            raise RuntimeError("Session-control CLI is only supported on Unix targets")
+        session_control_path = Path("bin") / SESSION_CONTROL_NAME
+        required_files.append(session_control_path)
+        executable_files.append(session_control_path)
 
     if include_zsh:
         zsh_path = Path("codex-resources") / ZSH_RESOURCE_PATH

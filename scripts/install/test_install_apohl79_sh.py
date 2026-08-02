@@ -67,6 +67,7 @@ class InstallApohl79ShTest(unittest.TestCase):
                     "returncode": result.returncode,
                     "codex_link": os.readlink(install_bin / "codex"),
                     "host_link": os.readlink(install_bin / "codex-code-mode-host"),
+                    "session_link": os.readlink(install_bin / "codex-session"),
                     "host_installed": (
                         release_dir / "bin/codex-code-mode-host"
                     ).is_file(),
@@ -80,8 +81,58 @@ class InstallApohl79ShTest(unittest.TestCase):
                         root
                         / "codex-home/packages/standalone/current/bin/codex-code-mode-host"
                     ),
+                    "session_link": str(
+                        root
+                        / "codex-home/packages/standalone/current/bin/codex-session"
+                    ),
                     "host_installed": True,
                 },
+            )
+
+    def test_saved_zshrc_choice_adds_app_server_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            choice_path.parent.mkdir(parents=True)
+            choice_path.write_text("enabled\n", encoding="utf-8")
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CODEX_APOHL79_REPO": "apohl79/codex",
+                    "CODEX_APOHL79_TAG": TAG,
+                    "CODEX_APOHL79_TARGET": TARGET,
+                    "CODEX_HOME": str(root / "codex-home"),
+                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
+                    "CODEX_TEST_ARCHIVE": str(archive_path),
+                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+            (root / "home").mkdir()
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT)],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            zshrc = (root / "home/.zshrc").read_text(encoding="utf-8")
+            expected_binary = root / "install-bin/codex"
+            self.assertIn(
+                f'"{expected_binary}" app-server daemon start',
+                zshrc,
             )
 
     def test_streamed_installer_uses_the_latest_fork_release(self) -> None:
@@ -145,6 +196,60 @@ class InstallApohl79ShTest(unittest.TestCase):
                 },
             )
 
+    def test_existing_statusline_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            existing_statusline = root / "codex-home/statusline.sh"
+            existing_statusline.parent.mkdir(parents=True)
+            existing_statusline.write_text(
+                "#!/bin/sh\n# user customization\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CODEX_APOHL79_REPO": "apohl79/codex",
+                    "CODEX_APOHL79_TAG": TAG,
+                    "CODEX_APOHL79_TARGET": TARGET,
+                    "CODEX_HOME": str(root / "codex-home"),
+                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
+                    "CODEX_TEST_ARCHIVE": str(archive_path),
+                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT)],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
+            )
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "statusline": existing_statusline.read_text(encoding="utf-8"),
+                    "downloaded_statusline": "Downloading statusline script"
+                    in result.stdout,
+                },
+                {
+                    "returncode": 0,
+                    "statusline": "#!/bin/sh\n# user customization\n",
+                    "downloaded_statusline": False,
+                },
+            )
+
 
 def write_package_archive(archive_path: Path) -> None:
     with zipfile.ZipFile(archive_path, "w") as archive:
@@ -158,6 +263,12 @@ def write_package_archive(archive_path: Path) -> None:
         write_zip_text(
             archive,
             "bin/codex-code-mode-host",
+            "#!/bin/sh\nexit 0\n",
+            mode=0o755,
+        )
+        write_zip_text(
+            archive,
+            "bin/codex-session",
             "#!/bin/sh\nexit 0\n",
             mode=0o755,
         )

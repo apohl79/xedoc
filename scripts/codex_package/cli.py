@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         help="Replace an existing package directory or archive output.",
     )
     parser.add_argument(
+        "--include-session-control",
+        action="store_true",
+        help="Include the Unix codex-session control CLI in the package.",
+    )
+    parser.add_argument(
         "--cargo",
         default="cargo",
         help="Cargo executable to use for source-built package artifacts.",
@@ -192,9 +197,20 @@ def main() -> int:
         codex_windows_sandbox_setup_bin=source_outputs.codex_windows_sandbox_setup_bin,
     )
     prepare_package_dir(package_dir, force=args.force)
-    build_package_dir(package_dir, version, variant, spec, inputs)
+    build_package_dir(
+        package_dir,
+        version,
+        variant,
+        spec,
+        inputs,
+        include_session_control=args.include_session_control,
+    )
     validate_package_dir(
-        package_dir, variant, spec, include_zsh=inputs.zsh_bin is not None
+        package_dir,
+        variant,
+        spec,
+        include_zsh=inputs.zsh_bin is not None,
+        include_session_control=args.include_session_control,
     )
 
     for archive_output in args.archive_output:

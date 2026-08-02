@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+
+import argparse
+import base64
+import hashlib
+import json
+import os
+from pathlib import Path
+import secrets
+import socket
+import struct
+import sys
+from typing import cast
+
+
+DEFAULT_CODEX_HOME = Path.home() / ".codex"
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+MAX_HANDSHAKE_BYTES = 64 * 1024
+MAX_MESSAGE_BYTES = 128 << 20
+
+
+class AppServerError(RuntimeError):
+    def __init__(self, message: str, code: int | None = None) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+class WebSocketConnection:
+    def __init__(self, socket_path: Path, timeout: float) -> None:
+        self.socket_path = socket_path
+        self.timeout = timeout
+        self.socket: socket.socket | None = None
+        self.read_buffer = b""
+
+    def connect(self) -> None:
+        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        connection.settimeout(self.timeout)
+        connection.connect(str(self.socket_path))
+        self.socket = connection
+
+        key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
+        request = (
+            "GET /rpc HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        ).encode("ascii")
+        connection.sendall(request)
+
+        response = self._read_until(b"\r\n\r\n", MAX_HANDSHAKE_BYTES)
+        self._validate_handshake(response, key)
+
+    def send_json(self, payload: dict[str, object]) -> None:
+        self._send_frame(0x1, json.dumps(payload, separators=(",", ":")).encode())
+
+    def receive_json(self) -> dict[str, object]:
+        payload = self._receive_message()
+        try:
+            value = json.loads(payload)
+        except json.JSONDecodeError as error:
+            raise AppServerError("app-server returned invalid JSON") from error
+        if not isinstance(value, dict):
+            raise AppServerError("app-server returned a non-object JSON message")
+        return cast(dict[str, object], value)
+
+    def close(self) -> None:
+        connection = self.socket
+        if connection is None:
+            return
+        try:
+            self._send_frame(0x8, b"")
+        except (AppServerError, OSError):
+            pass
+        finally:
+            self.socket = None
+            connection.close()
+
+    def _send_frame(self, opcode: int, payload: bytes) -> None:
+        connection = self.socket
+        if connection is None:
+            raise AppServerError("app-server connection is closed")
+        if len(payload) > MAX_MESSAGE_BYTES:
+            raise AppServerError("websocket message exceeds the size limit")
+
+        mask = secrets.token_bytes(4)
+        masked_payload = bytes(
+            value ^ mask[index % len(mask)] for index, value in enumerate(payload)
+        )
+        length = len(payload)
+        if length < 126:
+            header = bytes((0x80 | opcode, 0x80 | length))
+        elif length <= 0xFFFF:
+            header = bytes((0x80 | opcode, 0x80 | 126)) + struct.pack("!H", length)
+        else:
+            header = bytes((0x80 | opcode, 0x80 | 127)) + struct.pack("!Q", length)
+        connection.sendall(header + mask + masked_payload)
+
+    def _receive_message(self) -> bytes:
+        fragments: list[bytes] = []
+        opcode: int | None = None
+        while True:
+            fin, frame_opcode, payload = self._receive_frame()
+            if frame_opcode == 0x8:
+                self._send_frame(0x8, payload[:125])
+                raise AppServerError("app-server closed the connection")
+            if frame_opcode == 0x9:
+                self._send_frame(0xA, payload)
+                continue
+            if frame_opcode == 0xA:
+                continue
+            if frame_opcode == 0x1:
+                if opcode is not None:
+                    raise AppServerError("invalid websocket text frame sequence")
+                opcode = frame_opcode
+            elif frame_opcode != 0x0 or opcode is None:
+                raise AppServerError("invalid websocket frame sequence")
+            fragments.append(payload)
+            if sum(len(fragment) for fragment in fragments) > MAX_MESSAGE_BYTES:
+                raise AppServerError("websocket message exceeds the size limit")
+            if fin:
+                return b"".join(fragments)
+
+    def _receive_frame(self) -> tuple[bool, int, bytes]:
+        first, second = self._read_exact(2)
+        fin = bool(first & 0x80)
+        frame_opcode = first & 0x0F
+        if first & 0x70:
+            raise AppServerError("app-server used unsupported websocket extensions")
+
+        masked = bool(second & 0x80)
+        payload_length = second & 0x7F
+        if payload_length == 126:
+            payload_length = struct.unpack("!H", self._read_exact(2))[0]
+        elif payload_length == 127:
+            payload_length = struct.unpack("!Q", self._read_exact(8))[0]
+        if payload_length > MAX_MESSAGE_BYTES:
+            raise AppServerError("websocket message exceeds the size limit")
+
+        mask = self._read_exact(4) if masked else b""
+        payload = self._read_exact(payload_length)
+        if masked:
+            payload = bytes(
+                value ^ mask[index % len(mask)] for index, value in enumerate(payload)
+            )
+        return fin, frame_opcode, payload
+
+    def _read_exact(self, size: int) -> bytes:
+        while len(self.read_buffer) < size:
+            connection = self.socket
+            if connection is None:
+                raise AppServerError("app-server connection is closed")
+            chunk = connection.recv(max(4096, size - len(self.read_buffer)))
+            if not chunk:
+                raise AppServerError("app-server closed the connection")
+            self.read_buffer += chunk
+        result = self.read_buffer[:size]
+        self.read_buffer = self.read_buffer[size:]
+        return result
+
+    def _read_until(self, marker: bytes, max_size: int) -> bytes:
+        while marker not in self.read_buffer:
+            connection = self.socket
+            if connection is None:
+                raise AppServerError("app-server connection is closed")
+            chunk = connection.recv(4096)
+            if not chunk:
+                raise AppServerError("app-server closed the connection")
+            self.read_buffer += chunk
+            if len(self.read_buffer) > max_size:
+                raise AppServerError("app-server handshake exceeds the size limit")
+        end = self.read_buffer.index(marker) + len(marker)
+        result = self.read_buffer[:end]
+        self.read_buffer = self.read_buffer[end:]
+        return result
+
+    @staticmethod
+    def _validate_handshake(response: bytes, key: str) -> None:
+        lines = response.decode("latin1").split("\r\n")
+        if not lines or not lines[0].startswith("HTTP/1.1 101"):
+            raise AppServerError("app-server rejected the websocket handshake")
+        headers = {
+            name.strip().lower(): value.strip()
+            for line in lines[1:]
+            if ":" in line
+            for name, value in [line.split(":", 1)]
+        }
+        expected_accept = base64.b64encode(
+            hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()
+        ).decode("ascii")
+        if headers.get("sec-websocket-accept") != expected_accept:
+            raise AppServerError("app-server returned an invalid websocket handshake")
+
+
+class AppServerClient:
+    def __init__(self, socket_path: Path, timeout: float, client_name: str) -> None:
+        self.connection = WebSocketConnection(socket_path, timeout)
+        self.client_name = client_name
+        self.next_request_id = 1
+
+    def __enter__(self) -> "AppServerClient":
+        self.connection.connect()
+        self.request(
+            "initialize",
+            {
+                "clientInfo": {
+                    "name": self.client_name,
+                    "title": "Codex session control",
+                    "version": "0.1.0",
+                },
+                "capabilities": {"experimentalApi": True},
+            },
+        )
+        self.notify("initialized")
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self.connection.close()
+
+    def request(self, method: str, params: dict[str, object]) -> dict[str, object]:
+        request_id = self.next_request_id
+        self.next_request_id += 1
+        self.connection.send_json(
+            {"method": method, "id": request_id, "params": params}
+        )
+        while True:
+            message = self.connection.receive_json()
+            if message.get("method") is not None:
+                if message.get("id") is not None:
+                    raise AppServerError(
+                        f"app-server sent an unsupported server request: {message.get('method')}"
+                    )
+                continue
+            if message.get("id") != request_id:
+                continue
+            error = message.get("error")
+            if isinstance(error, dict):
+                error_object = cast(dict[str, object], error)
+                error_code = error_object.get("code")
+                code = error_code if isinstance(error_code, int) else None
+                error_message = error_object.get("message", "app-server request failed")
+                raise AppServerError(str(error_message), code)
+            result = message.get("result", {})
+            if not isinstance(result, dict):
+                raise AppServerError("app-server returned a non-object result")
+            return cast(dict[str, object], result)
+
+    def notify(self, method: str) -> None:
+        self.connection.send_json({"method": method})
+
+
+def default_socket_path() -> Path:
+    codex_home = Path(os.environ.get("CODEX_HOME", DEFAULT_CODEX_HOME))
+    return codex_home / "app-server-control" / "app-server-control.sock"
+
+
+def build_turn_start_params(
+    thread_id: str, prompt: str, client_message_id: str | None
+) -> dict[str, object]:
+    params: dict[str, object] = {
+        "threadId": thread_id,
+        "input": [{"type": "text", "text": prompt}],
+    }
+    if client_message_id is not None:
+        params["clientUserMessageId"] = client_message_id
+    return params
+
+
+def build_turn_steer_params(
+    thread_id: str,
+    turn_id: str,
+    prompt: str,
+    client_message_id: str | None,
+) -> dict[str, object]:
+    params: dict[str, object] = {
+        "threadId": thread_id,
+        "input": [{"type": "text", "text": prompt}],
+        "expectedTurnId": turn_id,
+    }
+    if client_message_id is not None:
+        params["clientUserMessageId"] = client_message_id
+    return params
+
+
+def as_object(value: object, label: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise AppServerError(f"app-server returned an invalid {label} object")
+    return cast(dict[str, object], value)
+
+
+def as_object_list(value: object, label: str) -> list[dict[str, object]]:
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        raise AppServerError(f"app-server returned an invalid {label} list")
+    return [cast(dict[str, object], item) for item in value]
+
+
+def list_sessions(client: AppServerClient) -> list[dict[str, object]]:
+    loaded = client.request("thread/loaded/list", {})
+    thread_ids = loaded.get("data", [])
+    if not isinstance(thread_ids, list) or not all(
+        isinstance(thread_id, str) for thread_id in thread_ids
+    ):
+        raise AppServerError("app-server returned invalid loaded thread ids")
+
+    sessions: list[dict[str, object]] = []
+    for thread_id in thread_ids:
+        response = client.request(
+            "thread/read", {"threadId": thread_id, "includeTurns": False}
+        )
+        thread = as_object(response.get("thread"), "thread")
+        sessions.append(
+            {
+                "id": thread.get("id", thread_id),
+                "name": thread.get("name"),
+                "status": thread.get("status"),
+                "canAcceptDirectInput": thread.get("canAcceptDirectInput"),
+            }
+        )
+    return sessions
+
+
+def list_running_turns(
+    client: AppServerClient, thread_id: str
+) -> list[dict[str, object]]:
+    response = client.request(
+        "thread/read", {"threadId": thread_id, "includeTurns": True}
+    )
+    thread = as_object(response.get("thread"), "thread")
+    turns = as_object_list(thread.get("turns", []), "turn")
+    return [
+        {
+            "id": turn.get("id"),
+            "status": turn.get("status"),
+            "startedAt": turn.get("startedAt"),
+        }
+        for turn in turns
+        if turn.get("status") == "inProgress"
+    ]
+
+
+def resume_thread(client: AppServerClient, thread_id: str) -> dict[str, object]:
+    response = client.request("thread/resume", {"threadId": thread_id})
+    return as_object(response.get("thread"), "thread")
+
+
+def start_turn(
+    client: AppServerClient,
+    thread_id: str,
+    prompt: str,
+    client_message_id: str | None,
+) -> dict[str, object]:
+    resume_thread(client, thread_id)
+    return client.request(
+        "turn/start", build_turn_start_params(thread_id, prompt, client_message_id)
+    )
+
+
+def steer_turn(
+    client: AppServerClient,
+    thread_id: str,
+    turn_id: str,
+    prompt: str,
+    client_message_id: str | None,
+) -> dict[str, object]:
+    resume_thread(client, thread_id)
+    return client.request(
+        "turn/steer",
+        build_turn_steer_params(thread_id, turn_id, prompt, client_message_id),
+    )
+
+
+def send_turn(
+    client: AppServerClient,
+    thread_id: str,
+    prompt: str,
+    client_message_id: str | None,
+) -> dict[str, object]:
+    thread = resume_thread(client, thread_id)
+    turns = as_object_list(thread.get("turns", []), "turn")
+    active_turns = [turn for turn in turns if turn.get("status") == "inProgress"]
+    if len(active_turns) > 1:
+        raise AppServerError(f"thread {thread_id} has multiple active turns")
+    if active_turns:
+        active_turn_id = active_turns[0].get("id")
+        if not isinstance(active_turn_id, str):
+            raise AppServerError("app-server returned an invalid active turn id")
+        return client.request(
+            "turn/steer",
+            build_turn_steer_params(
+                thread_id, active_turn_id, prompt, client_message_id
+            ),
+        )
+    return client.request(
+        "turn/start", build_turn_start_params(thread_id, prompt, client_message_id)
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Inspect and send prompts to sessions in a local Codex app-server."
+    )
+    parser.add_argument(
+        "--socket",
+        type=Path,
+        default=default_socket_path(),
+        help="App-server Unix socket path.",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=10.0,
+        help="Socket timeout in seconds.",
+    )
+    parser.add_argument(
+        "--client-name",
+        default="codex-session",
+        help="Client name sent during app-server initialization.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    subparsers.add_parser("sessions", help="List loaded sessions.")
+
+    turns_parser = subparsers.add_parser(
+        "turns", help="List running turns for a thread."
+    )
+    turns_parser.add_argument("thread_id")
+
+    start_parser = subparsers.add_parser(
+        "start", help="Send a prompt, steering an active turn when available."
+    )
+    start_parser.add_argument("thread_id")
+    start_parser.add_argument("prompt")
+    start_parser.add_argument("--client-message-id")
+
+    steer_parser = subparsers.add_parser("steer", help="Send a turn/steer prompt.")
+    steer_parser.add_argument("thread_id")
+    steer_parser.add_argument("turn_id", help="Expected active turn id.")
+    steer_parser.add_argument("prompt")
+    steer_parser.add_argument("--client-message-id")
+    return parser
+
+
+def run(args: argparse.Namespace) -> list[dict[str, object]] | dict[str, object]:
+    with AppServerClient(args.socket, args.timeout, args.client_name) as client:
+        if args.command == "sessions":
+            return list_sessions(client)
+        if args.command == "turns":
+            return list_running_turns(client, args.thread_id)
+        if args.command == "start":
+            return send_turn(
+                client, args.thread_id, args.prompt, args.client_message_id
+            )
+        if args.command == "steer":
+            return steer_turn(
+                client,
+                args.thread_id,
+                args.turn_id,
+                args.prompt,
+                args.client_message_id,
+            )
+        raise AppServerError(f"unsupported command: {args.command}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        result = run(args)
+    except (AppServerError, OSError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

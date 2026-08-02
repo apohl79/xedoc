@@ -8,7 +8,11 @@ APOHL79_TARGET="${CODEX_APOHL79_TARGET:-}"
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/codex"
 HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
+SESSION_CONTROL_BIN_PATH="$BIN_DIR/codex-session"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
+NON_INTERACTIVE="${CODEX_NON_INTERACTIVE:-false}"
+ZSHRC_PATH="$HOME/.zshrc"
+ZSHRC_APP_SERVER_CHOICE_PATH="$CODEX_HOME_DIR/app-server-daemon/zshrc-start"
 STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
@@ -47,6 +51,7 @@ Environment:
   CODEX_APOHL79_REPO    Same as --repo.
   CODEX_INSTALL_DIR     Directory for the visible codex symlinks. Defaults to ~/.local/bin.
   CODEX_HOME            Codex home directory. Defaults to ~/.codex.
+  CODEX_NON_INTERACTIVE  Set to 1, true, or yes to skip prompts.
   GH_TOKEN/GITHUB_TOKEN Optional GitHub token for API requests.
 EOF
 }
@@ -86,6 +91,169 @@ parse_args() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required."
+}
+
+prompt_user_available() {
+  case "$NON_INTERACTIVE" in
+    1 | [Tt][Rr][Uu][Ee] | [Yy][Ee][Ss])
+      return 1
+      ;;
+  esac
+
+  if ( : </dev/tty ) 2>/dev/null || [ -t 0 ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+prompt_yes_no() {
+  prompt="$1"
+  if ! prompt_user_available; then
+    return 1
+  fi
+
+  printf '%s [y/N] ' "$prompt" >/dev/tty 2>/dev/null ||
+    printf '%s [y/N] ' "$prompt"
+  if ( : </dev/tty ) 2>/dev/null; then
+    IFS= read -r answer </dev/tty || return 1
+  else
+    IFS= read -r answer || return 1
+  fi
+
+  case "$answer" in
+    y | Y | yes | YES)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+read_zshrc_app_server_choice() {
+  if [ ! -f "$ZSHRC_APP_SERVER_CHOICE_PATH" ]; then
+    return 1
+  fi
+
+  choice="$(sed -n '1p' "$ZSHRC_APP_SERVER_CHOICE_PATH" 2>/dev/null || true)"
+  case "$choice" in
+    enabled | disabled)
+      printf '%s\n' "$choice"
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+write_zshrc_app_server_choice() {
+  mkdir -p "$(dirname "$ZSHRC_APP_SERVER_CHOICE_PATH")"
+  printf '%s\n' "$1" >"$ZSHRC_APP_SERVER_CHOICE_PATH"
+}
+
+rewrite_zshrc_app_server_block() {
+  zshrc_begin_marker="# >>> Codex app-server installer >>>"
+  zshrc_end_marker="# <<< Codex app-server installer <<<"
+  zshrc_start_line="  \"$BIN_PATH\" app-server daemon start >/dev/null 2>&1 &!"
+  tmp_profile="$tmp_dir/zshrc.$$.tmp"
+
+  awk \
+    -v begin="$zshrc_begin_marker" \
+    -v end="$zshrc_end_marker" \
+    -v bin="$BIN_PATH" \
+    -v start_line="$zshrc_start_line" '
+      BEGIN {
+        in_block = 0
+        replaced = 0
+      }
+      $0 == begin {
+        if (!replaced) {
+          print begin
+          print "if [ -x \"" bin "\" ]; then"
+          print start_line
+          print "fi"
+          print end
+          replaced = 1
+        }
+        in_block = 1
+        next
+      }
+      in_block {
+        if ($0 == end) {
+          in_block = 0
+        }
+        next
+      }
+      {
+        print
+      }
+      END {
+        if (in_block != 0) {
+          exit 1
+        }
+      }
+    ' "$ZSHRC_PATH" >"$tmp_profile"
+  mv "$tmp_profile" "$ZSHRC_PATH"
+}
+
+append_zshrc_app_server_block() {
+  zshrc_begin_marker="# >>> Codex app-server installer >>>"
+  zshrc_end_marker="# <<< Codex app-server installer <<<"
+
+  {
+    printf '\n%s\n' "$zshrc_begin_marker"
+    printf 'if [ -x "%s" ]; then\n' "$BIN_PATH"
+    printf '  "%s" app-server daemon start >/dev/null 2>&1 &!\n' "$BIN_PATH"
+    printf 'fi\n%s\n' "$zshrc_end_marker"
+  } >>"$ZSHRC_PATH"
+}
+
+configure_zshrc_app_server() {
+  zshrc_app_server_action="skipped"
+  choice="$(read_zshrc_app_server_choice || true)"
+
+  case "$choice" in
+    enabled | disabled)
+      ;;
+    *)
+      if ! prompt_user_available; then
+        return
+      fi
+      if prompt_yes_no "Start the Codex app-server automatically from ~/.zshrc?"; then
+        choice="enabled"
+      else
+        choice="disabled"
+      fi
+      write_zshrc_app_server_choice "$choice"
+      ;;
+  esac
+
+  if [ "$choice" = "disabled" ]; then
+    zshrc_app_server_action="disabled"
+    return
+  fi
+
+  zshrc_begin_marker="# >>> Codex app-server installer >>>"
+  zshrc_end_marker="# <<< Codex app-server installer <<<"
+  zshrc_start_line="  \"$BIN_PATH\" app-server daemon start >/dev/null 2>&1 &!"
+  if [ -f "$ZSHRC_PATH" ] &&
+    grep -F "$zshrc_begin_marker" "$ZSHRC_PATH" >/dev/null 2>&1 &&
+    grep -F "$zshrc_end_marker" "$ZSHRC_PATH" >/dev/null 2>&1 &&
+    grep -F "$zshrc_start_line" "$ZSHRC_PATH" >/dev/null 2>&1; then
+    zshrc_app_server_action="configured"
+    return
+  fi
+
+  if [ -f "$ZSHRC_PATH" ] &&
+    grep -F "$zshrc_begin_marker" "$ZSHRC_PATH" >/dev/null 2>&1; then
+    rewrite_zshrc_app_server_block
+    zshrc_app_server_action="updated"
+    return
+  fi
+
+  append_zshrc_app_server_block
+  zshrc_app_server_action="added"
 }
 
 github_token() {
@@ -416,6 +584,7 @@ release_dir_is_complete() {
     [ -f "$release_dir/codex-package.json" ] &&
     [ -x "$release_dir/bin/codex" ] &&
     [ -x "$release_dir/bin/codex-code-mode-host" ] &&
+    [ -x "$release_dir/bin/codex-session" ] &&
     [ -x "$release_dir/codex" ] &&
     [ -x "$release_dir/codex-path/rg" ]
 }
@@ -432,10 +601,12 @@ install_zip_release() {
 
   [ -f "$stage_release/bin/codex" ] || die "Archive is missing bin/codex."
   [ -f "$stage_release/bin/codex-code-mode-host" ] || die "Archive is missing bin/codex-code-mode-host."
+  [ -f "$stage_release/bin/codex-session" ] || die "Archive is missing bin/codex-session."
   [ -f "$stage_release/codex-path/rg" ] || die "Archive is missing codex-path/rg."
   chmod 0755 \
     "$stage_release/bin/codex" \
     "$stage_release/bin/codex-code-mode-host" \
+    "$stage_release/bin/codex-session" \
     "$stage_release/codex-path/rg"
   if [ -f "$stage_release/codex-resources/zsh/bin/zsh" ]; then
     chmod 0755 "$stage_release/codex-resources/zsh/bin/zsh"
@@ -460,8 +631,13 @@ update_visible_command() {
   mkdir -p "$BIN_DIR"
   tmp_link="$BIN_DIR/.codex.$$"
   tmp_host_link="$BIN_DIR/.codex-code-mode-host.$$"
+  tmp_session_link="$BIN_DIR/.codex-session.$$"
 
   replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/bin/codex" "$tmp_link"
+  replace_path_with_symlink \
+    "$SESSION_CONTROL_BIN_PATH" \
+    "$CURRENT_LINK/bin/codex-session" \
+    "$tmp_session_link"
   replace_path_with_symlink \
     "$HOST_BIN_PATH" \
     "$CURRENT_LINK/bin/codex-code-mode-host" \
@@ -481,6 +657,23 @@ print_path_note() {
       ;;
     *)
       step "Add $BIN_DIR to PATH, or run: $BIN_PATH"
+      ;;
+  esac
+}
+
+print_zshrc_app_server_instructions() {
+  case "$zshrc_app_server_action" in
+    added)
+      step "App-server startup was added to $ZSHRC_PATH"
+      ;;
+    updated)
+      step "App-server startup was updated in $ZSHRC_PATH"
+      ;;
+    configured)
+      step "App-server startup is already configured in $ZSHRC_PATH"
+      ;;
+    disabled)
+      step "App-server startup remains disabled by your saved installer choice"
       ;;
   esac
 }
@@ -528,20 +721,26 @@ fi
 update_current_link "$release_dir"
 update_visible_command
 "$BIN_PATH" --version >/dev/null
+configure_zshrc_app_server
 
 # Deploy statusline script
-STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
 STATUSLINE_DST="$CODEX_HOME_DIR/statusline.sh"
-if [ ! -f "$STATUSLINE_SRC" ]; then
-  STATUSLINE_SRC="$tmp_dir/statusline.sh"
-  STATUSLINE_URL="https://raw.githubusercontent.com/$APOHL79_REPO/$tag/scripts/statusline.sh"
-  step "Downloading statusline script"
-  download_file "$STATUSLINE_URL" "$STATUSLINE_SRC"
+if [ -f "$STATUSLINE_DST" ]; then
+  step "Keeping existing statusline script at $STATUSLINE_DST"
+else
+  STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
+  if [ ! -f "$STATUSLINE_SRC" ]; then
+    STATUSLINE_SRC="$tmp_dir/statusline.sh"
+    STATUSLINE_URL="https://raw.githubusercontent.com/$APOHL79_REPO/$tag/scripts/statusline.sh"
+    step "Downloading statusline script"
+    download_file "$STATUSLINE_URL" "$STATUSLINE_SRC"
+  fi
+  step "Deploying statusline script to $STATUSLINE_DST"
+  mkdir -p "$CODEX_HOME_DIR"
+  cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
+  chmod +x "$STATUSLINE_DST"
 fi
-step "Deploying statusline script to $STATUSLINE_DST"
-mkdir -p "$CODEX_HOME_DIR"
-cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
-chmod +x "$STATUSLINE_DST"
 
 print_path_note
+print_zshrc_app_server_instructions
 printf 'apohl79 Codex CLI %s installed successfully.\n' "$fork_version"

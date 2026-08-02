@@ -450,6 +450,10 @@ The fork adds release helpers for building apohl79-branded packages from
   current fork tag from a checked-out tag or `[workspace.package].version` plus
   the tracked build number, and verifies the uploaded asset SHA-256 before
   installing.
+- Unix packages install the `codex-session` control CLI beside `codex`. On the
+  first interactive install, the installer asks whether `~/.zshrc` should
+  start the local app-server daemon; the enabled or disabled choice is saved
+  under `CODEX_HOME/app-server-daemon/zshrc-start` and reused on updates.
 - The release helper creates the matching GitHub release in `apohl79/codex` if
   it does not already exist.
 - The release helper uploads generated archives to the release with clobbering
@@ -484,6 +488,7 @@ Primary files:
 - `scripts/apohl79_build_number.txt`
 - `scripts/build_apohl79_release.py`
 - `scripts/build_apohl79_release.sh`
+- `scripts/codex-session`
 - `scripts/install/install-apohl79.sh`
 - `scripts/test_apohl79_release.py`
 - `scripts/codex_package/cli.py`

@@ -317,6 +317,7 @@ def build_release(args: argparse.Namespace) -> None:
         "release",
         "--package-dir",
         str(package_dir),
+        "--include-session-control",
     ]
     for archive_output in archive_outputs:
         package_args.extend(["--archive-output", str(archive_output)])

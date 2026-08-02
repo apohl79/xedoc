@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import json
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,46 @@ from codex_package.targets import TARGET_SPECS
 
 
 class PackageLayoutTest(unittest.TestCase):
+    def test_default_package_layout_excludes_session_control(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            package_dir = root / "package"
+            package_dir.mkdir()
+            inputs = PackageInputs(
+                entrypoint_bin=touch_executable(root / "codex"),
+                code_mode_host_bin=touch_executable(root / "codex-code-mode-host"),
+                rg_bin=touch_executable(root / "rg"),
+                zsh_bin=None,
+                bwrap_bin=touch_executable(root / "bwrap"),
+                codex_command_runner_bin=None,
+                codex_windows_sandbox_setup_bin=None,
+            )
+
+            build_package_dir(
+                package_dir,
+                "1.2.3",
+                PACKAGE_VARIANTS["codex"],
+                TARGET_SPECS["x86_64-unknown-linux-musl"],
+                inputs,
+            )
+            validate_package_dir(
+                package_dir,
+                PACKAGE_VARIANTS["codex"],
+                TARGET_SPECS["x86_64-unknown-linux-musl"],
+                include_zsh=False,
+            )
+
+            metadata = json.loads(
+                (package_dir / "codex-package.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                {
+                    "layout_version": metadata["layoutVersion"],
+                    "session_control": (package_dir / "bin" / "codex-session").exists(),
+                },
+                {"layout_version": 1, "session_control": False},
+            )
+
     def test_app_server_package_places_code_mode_host_beside_entrypoint(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -36,15 +77,23 @@ class PackageLayoutTest(unittest.TestCase):
                 PACKAGE_VARIANTS["codex-app-server"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
                 inputs,
+                include_session_control=True,
             )
             validate_package_dir(
                 package_dir,
                 PACKAGE_VARIANTS["codex-app-server"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
                 include_zsh=False,
+                include_session_control=True,
             )
 
-            self.assertTrue((package_dir / "bin" / "codex-code-mode-host").is_file())
+            self.assertEqual(
+                {
+                    name: (package_dir / "bin" / name).is_file()
+                    for name in ("codex-code-mode-host", "codex-session")
+                },
+                {"codex-code-mode-host": True, "codex-session": True},
+            )
 
 
 def touch_executable(path: Path) -> Path:
