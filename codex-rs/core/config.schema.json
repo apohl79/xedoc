@@ -3400,8 +3400,8 @@
           "description": "Preferred layout for resume/fork session picker results."
         },
         "show_tooltips": {
-          "default": true,
-          "description": "Show startup tooltips in the TUI welcome screen. Defaults to `true`.",
+          "default": false,
+          "description": "Show startup tooltips in the TUI welcome screen. Defaults to `false`.",
           "type": "boolean"
         },
         "status_line": {

@@ -1236,6 +1236,12 @@ pub fn test_codex() -> TestCodexBuilder {
                 .features
                 .disable(Feature::ShellSnapshot)
                 .expect("test config should allow ShellSnapshot override");
+            // Multi-agent V2 tests opt in explicitly; avoid injecting agent instructions into
+            // every generic integration test request.
+            config
+                .features
+                .disable(Feature::MultiAgentV2)
+                .expect("test config should allow MultiAgentV2 override");
         })],
         auth: CodexAuth::from_api_key("dummy"),
         pre_build_hooks: vec![],

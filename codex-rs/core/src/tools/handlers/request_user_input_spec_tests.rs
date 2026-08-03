@@ -9,9 +9,9 @@ use codex_tools::request_user_input_available_modes;
 use pretty_assertions::assert_eq;
 use std::collections::BTreeMap;
 
-fn default_mode_enabled_available_modes() -> Vec<ModeKind> {
+fn default_mode_disabled_available_modes() -> Vec<ModeKind> {
     let mut features = Features::with_defaults();
-    features.enable(Feature::DefaultModeRequestUserInput);
+    features.disable(Feature::DefaultModeRequestUserInput);
     request_user_input_available_modes(&features)
 }
 
@@ -205,14 +205,14 @@ fn request_user_input_unavailable_messages_respect_default_mode_feature_flag() {
     );
     assert_eq!(
         request_user_input_unavailable_message(ModeKind::Default, &default_available_modes()),
-        Some("request_user_input is unavailable in Default mode".to_string())
+        None
     );
     assert_eq!(
         request_user_input_unavailable_message(
             ModeKind::Default,
-            &default_mode_enabled_available_modes()
+            &default_mode_disabled_available_modes()
         ),
-        None
+        Some("request_user_input is unavailable in Default mode".to_string())
     );
     assert_eq!(
         request_user_input_unavailable_message(ModeKind::Execute, &default_available_modes()),
@@ -231,10 +231,10 @@ fn request_user_input_unavailable_messages_respect_default_mode_feature_flag() {
 fn request_user_input_tool_description_mentions_available_modes() {
     assert_eq!(
         request_user_input_tool_description(&default_available_modes()),
-        "Request user input for one to three short questions and wait for the response. Set autoResolutionMs, from 60000 to 240000 milliseconds, only when the question is useful but non-blocking and continuing with best judgment is acceptable if the user does not answer; omit it when explicit user input is required. This tool is only available in Plan mode.".to_string()
+        "Request user input for one to three short questions and wait for the response. Set autoResolutionMs, from 60000 to 240000 milliseconds, only when the question is useful but non-blocking and continuing with best judgment is acceptable if the user does not answer; omit it when explicit user input is required. This tool is only available in Default or Plan mode.".to_string()
     );
     assert_eq!(
-        request_user_input_tool_description(&default_mode_enabled_available_modes()),
-        "Request user input for one to three short questions and wait for the response. Set autoResolutionMs, from 60000 to 240000 milliseconds, only when the question is useful but non-blocking and continuing with best judgment is acceptable if the user does not answer; omit it when explicit user input is required. This tool is only available in Default or Plan mode.".to_string()
+        request_user_input_tool_description(&default_mode_disabled_available_modes()),
+        "Request user input for one to three short questions and wait for the response. Set autoResolutionMs, from 60000 to 240000 milliseconds, only when the question is useful but non-blocking and continuing with best judgment is acceptable if the user does not answer; omit it when explicit user input is required. This tool is only available in Plan mode.".to_string()
     );
 }

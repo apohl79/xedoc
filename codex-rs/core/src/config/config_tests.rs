@@ -966,7 +966,7 @@ fn config_toml_deserializes_model_availability_nux() {
         Tui {
             notification_settings: TuiNotificationSettings::default(),
             animations: true,
-            show_tooltips: true,
+            show_tooltips: false,
             vim_mode_default: false,
             raw_output_mode: false,
             alternate_screen: AltScreenMode::default(),
@@ -3869,7 +3869,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
         Tui {
             notification_settings: TuiNotificationSettings::default(),
             animations: true,
-            show_tooltips: true,
+            show_tooltips: false,
             vim_mode_default: false,
             raw_output_mode: false,
             alternate_screen: AltScreenMode::Auto,
@@ -10686,15 +10686,8 @@ max_concurrent_threads_per_session = 9
 }
 
 #[tokio::test]
-async fn multi_agent_v2_default_session_thread_cap_counts_root() -> std::io::Result<()> {
+async fn fork_defaults_enable_multi_agent_v2_and_expand_subagent_capacity() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[features.multi_agent_v2]
-enabled = true
-"#,
-    )?;
-
     let config = ConfigBuilder::without_managed_config_for_tests()
         .codex_home(codex_home.path().to_path_buf())
         .fallback_cwd(Some(codex_home.path().to_path_buf()))
@@ -10702,15 +10695,18 @@ enabled = true
         .await?;
 
     assert_eq!(
-        config.multi_agent_v2,
-        resolve_multi_agent_v2_config(&ConfigToml::default())
-    );
-    assert_eq!(
         (
-            config.agent_max_threads,
-            config.effective_agent_max_threads(MultiAgentVersion::V2)
+            config.features.enabled(Feature::MultiAgentV2),
+            config
+                .features
+                .enabled(Feature::DefaultModeRequestUserInput),
+            config.multi_agent_v2.max_concurrent_threads_per_session,
+            config.effective_agent_max_threads(MultiAgentVersion::V2),
+            config.multi_agent_v2.hide_spawn_agent_metadata,
+            config.agent_max_depth,
+            config.show_tooltips,
         ),
-        (None, Some(3))
+        (true, true, 8, Some(7), false, 2, false)
     );
 
     Ok(())
