@@ -3961,7 +3961,7 @@ async fn inactive_thread_started_notification_initializes_replay_session() -> Re
                 extra: None,
                 session_id: agent_thread_id.to_string(),
                 forked_from_id: None,
-                parent_thread_id: None,
+                parent_thread_id: Some(main_thread_id.to_string()),
                 preview: "agent thread".to_string(),
                 ephemeral: false,
                 history_mode: Default::default(),
@@ -3973,7 +3973,15 @@ async fn inactive_thread_started_notification_initializes_replay_session() -> Re
                 path: Some(rollout_path.clone()),
                 cwd: test_path_buf("/tmp/agent").abs(),
                 cli_version: "0.0.0".to_string(),
-                source: codex_app_server_protocol::SessionSource::Unknown,
+                source: codex_app_server_protocol::SessionSource::SubAgent(
+                    SubAgentSource::ThreadSpawn {
+                        parent_thread_id: main_thread_id,
+                        depth: 1,
+                        agent_path: None,
+                        agent_nickname: None,
+                        agent_role: None,
+                    },
+                ),
                 can_accept_direct_input: None,
                 thread_source: None,
                 agent_nickname: Some("Robie".to_string()),
@@ -4026,13 +4034,15 @@ async fn inactive_thread_started_notification_initializes_replay_session() -> Re
 }
 
 #[tokio::test]
-async fn inactive_thread_started_notification_preserves_primary_model_when_path_missing()
--> Result<()> {
+async fn nested_thread_started_notification_preserves_primary_model_when_path_missing() -> Result<()>
+{
     let mut app = make_test_app().await;
     let main_thread_id =
         ThreadId::from_string("00000000-0000-0000-0000-000000000301").expect("valid thread");
     let agent_thread_id =
         ThreadId::from_string("00000000-0000-0000-0000-000000000302").expect("valid thread");
+    let parent_agent_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000303").expect("valid thread");
     let primary_cwd = test_path_buf("/tmp/main").abs();
     let primary_session = ThreadSessionState {
         approval_policy: AskForApproval::OnRequest,
@@ -4052,6 +4062,12 @@ async fn inactive_thread_started_notification_preserves_primary_model_when_path_
             Vec::new(),
         ),
     );
+    app.upsert_agent_picker_thread(
+        parent_agent_thread_id,
+        /*agent_nickname*/ None,
+        /*agent_role*/ None,
+        /*is_closed*/ false,
+    );
 
     app.enqueue_thread_notification(
         agent_thread_id,
@@ -4061,7 +4077,7 @@ async fn inactive_thread_started_notification_preserves_primary_model_when_path_
                 extra: None,
                 session_id: agent_thread_id.to_string(),
                 forked_from_id: None,
-                parent_thread_id: None,
+                parent_thread_id: Some(parent_agent_thread_id.to_string()),
                 preview: "agent thread".to_string(),
                 ephemeral: false,
                 history_mode: Default::default(),
@@ -4073,7 +4089,15 @@ async fn inactive_thread_started_notification_preserves_primary_model_when_path_
                 path: None,
                 cwd: test_path_buf("/tmp/agent").abs(),
                 cli_version: "0.0.0".to_string(),
-                source: codex_app_server_protocol::SessionSource::Unknown,
+                source: codex_app_server_protocol::SessionSource::SubAgent(
+                    SubAgentSource::ThreadSpawn {
+                        parent_thread_id: parent_agent_thread_id,
+                        depth: 1,
+                        agent_path: None,
+                        agent_nickname: None,
+                        agent_role: None,
+                    },
+                ),
                 can_accept_direct_input: None,
                 thread_source: None,
                 agent_nickname: Some("Robie".to_string()),
@@ -4096,6 +4120,64 @@ async fn inactive_thread_started_notification_preserves_primary_model_when_path_
     let session = store.session.clone().expect("inferred session");
 
     assert_eq!(session.model, primary_session.model);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn unrelated_thread_events_are_ignored() -> Result<()> {
+    let mut app = make_test_app().await;
+    let main_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000351").expect("valid thread");
+    let unrelated_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000352").expect("valid thread");
+    app.primary_thread_id = Some(main_thread_id);
+
+    app.enqueue_thread_notification(
+        unrelated_thread_id,
+        ServerNotification::ThreadStarted(ThreadStartedNotification {
+            thread: Thread {
+                id: unrelated_thread_id.to_string(),
+                extra: None,
+                session_id: unrelated_thread_id.to_string(),
+                forked_from_id: None,
+                parent_thread_id: None,
+                preview: "unrelated thread".to_string(),
+                ephemeral: false,
+                history_mode: Default::default(),
+                model_provider: "unrelated-provider".to_string(),
+                created_at: 1,
+                updated_at: 2,
+                recency_at: Some(2),
+                status: ThreadStatus::Idle,
+                path: None,
+                cwd: test_path_buf("/tmp/unrelated").abs(),
+                cli_version: "0.0.0".to_string(),
+                source: codex_app_server_protocol::SessionSource::Unknown,
+                can_accept_direct_input: None,
+                thread_source: None,
+                agent_nickname: None,
+                agent_role: None,
+                git_info: None,
+                name: None,
+                turns: Vec::new(),
+            },
+        }),
+    )
+    .await?;
+    app.enqueue_thread_request(
+        unrelated_thread_id,
+        request_user_input_request(unrelated_thread_id, "turn-input", "call-input"),
+    )
+    .await?;
+
+    assert_eq!(
+        (
+            app.thread_event_channels.contains_key(&unrelated_thread_id),
+            app.agent_navigation.get(&unrelated_thread_id).is_some(),
+        ),
+        (false, false)
+    );
 
     Ok(())
 }
@@ -4581,6 +4663,12 @@ async fn primary_thread_ignores_child_mcp_startup_notifications() {
     let child_thread_id = ThreadId::new();
     app.primary_thread_id = Some(parent_thread_id);
     app.active_thread_id = Some(parent_thread_id);
+    app.upsert_agent_picker_thread(
+        child_thread_id,
+        /*agent_nickname*/ None,
+        /*agent_role*/ None,
+        /*is_closed*/ false,
+    );
 
     app.handle_app_server_event(
         &app_server,

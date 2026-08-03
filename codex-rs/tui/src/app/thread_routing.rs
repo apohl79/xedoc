@@ -8,6 +8,8 @@ use super::session_lifecycle::ThreadAttachPresentation;
 use super::*;
 use crate::chatwidget::ThreadInputStateRestoreMode;
 use crate::session_resume::read_session_model;
+use codex_app_server_protocol::SessionSource;
+use codex_protocol::protocol::SubAgentSource;
 
 impl App {
     pub(super) async fn shutdown_current_thread(&mut self, app_server: &mut AppServerSession) {
@@ -913,10 +915,20 @@ impl App {
         thread_id: ThreadId,
         notification: ServerNotification,
     ) -> Result<()> {
-        if matches!(notification, ServerNotification::ThreadSettingsUpdated(_))
-            && self.primary_thread_id.is_some()
-            && self.primary_thread_id != Some(thread_id)
-            && !self.thread_event_channels.contains_key(&thread_id)
+        let is_new_descendant = matches!(
+            &notification,
+            ServerNotification::ThreadStarted(notification)
+                if matches!(
+                    &notification.thread.source,
+                    SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                        parent_thread_id,
+                        ..
+                    }) if self.is_primary_or_known_thread(*parent_thread_id)
+                )
+        );
+        if self.primary_thread_id.is_some()
+            && !self.is_primary_or_known_thread(thread_id)
+            && !is_new_descendant
         {
             return Ok(());
         }
@@ -997,6 +1009,12 @@ impl App {
         }
         self.refresh_pending_thread_approvals().await;
         Ok(())
+    }
+
+    fn is_primary_or_known_thread(&self, thread_id: ThreadId) -> bool {
+        self.primary_thread_id == Some(thread_id)
+            || self.thread_event_channels.contains_key(&thread_id)
+            || self.agent_navigation.get(&thread_id).is_some()
     }
 
     /// Locally remembers receiver threads referenced by a collab notification.
@@ -1168,6 +1186,9 @@ impl App {
         thread_id: ThreadId,
         request: ServerRequest,
     ) -> Result<()> {
+        if self.primary_thread_id.is_some() && !self.is_primary_or_known_thread(thread_id) {
+            return Ok(());
+        }
         let inactive_interactive_request = if self.active_thread_id != Some(thread_id) {
             self.interactive_request_for_thread_request(thread_id, &request)
                 .await?
