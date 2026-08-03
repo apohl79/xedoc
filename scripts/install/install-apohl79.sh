@@ -13,11 +13,14 @@ CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 NON_INTERACTIVE="${CODEX_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
 ZSHRC_APP_SERVER_CHOICE_PATH="$CODEX_HOME_DIR/app-server-daemon/zshrc-start"
+CODEX_PROVIDERS_INSTALL_CHOICE_PATH="$CODEX_HOME_DIR/codex-providers/install"
+CODEX_PROVIDERS_INSTALL_URL="https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh"
 STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
 CHECK_ONLY=false
 tmp_dir=""
+codex_providers_action="skipped"
 
 script_dir="$(CDPATH='' cd "$(dirname "$0")" && pwd)"
 repo_root="$(CDPATH='' cd "$script_dir/../.." && pwd)"
@@ -254,6 +257,50 @@ configure_zshrc_app_server() {
 
   append_zshrc_app_server_block
   zshrc_app_server_action="added"
+}
+
+codex_providers_is_installed() {
+  command -v codex-providers >/dev/null 2>&1 ||
+    [ -x "$HOME/bin/codex-providers" ] ||
+    [ -x "$HOME/.local/bin/codex-providers" ]
+}
+
+configure_codex_providers() {
+  if codex_providers_is_installed; then
+    codex_providers_action="already-installed"
+    return
+  fi
+
+  choice=""
+  if [ -f "$CODEX_PROVIDERS_INSTALL_CHOICE_PATH" ]; then
+    choice="$(sed -n '1p' "$CODEX_PROVIDERS_INSTALL_CHOICE_PATH" 2>/dev/null || true)"
+  fi
+  if [ "$choice" = "disabled" ]; then
+    codex_providers_action="disabled"
+    return
+  fi
+
+  if ! prompt_user_available; then
+    return
+  fi
+
+  if prompt_yes_no "Install optional codex-providers for Claude, DeepSeek, and Gemini support?"; then
+    require_command curl
+    require_command bash
+    step "Installing codex-providers"
+    if ! bash -o pipefail -c 'curl -fsSL "$1" | bash' codex-providers-installer "$CODEX_PROVIDERS_INSTALL_URL"; then
+      die "codex-providers installation failed."
+    fi
+    if ! codex_providers_is_installed; then
+      die "codex-providers installer completed without installing the codex-providers command."
+    fi
+    codex_providers_action="installed"
+    return
+  fi
+
+  mkdir -p "$(dirname "$CODEX_PROVIDERS_INSTALL_CHOICE_PATH")"
+  printf '%s\n' "disabled" >"$CODEX_PROVIDERS_INSTALL_CHOICE_PATH"
+  codex_providers_action="disabled"
 }
 
 github_token() {
@@ -678,6 +725,17 @@ print_zshrc_app_server_instructions() {
   esac
 }
 
+print_codex_providers_instructions() {
+  case "$codex_providers_action" in
+    installed)
+      step "codex-providers installed. Run: codex-providers setup"
+      ;;
+    disabled)
+      step "codex-providers installation remains disabled by your saved installer choice"
+      ;;
+  esac
+}
+
 parse_args "$@"
 validate_repo "$APOHL79_REPO"
 
@@ -722,6 +780,7 @@ update_current_link "$release_dir"
 update_visible_command
 "$BIN_PATH" --version >/dev/null
 configure_zshrc_app_server
+configure_codex_providers
 
 # Deploy statusline script
 STATUSLINE_DST="$CODEX_HOME_DIR/statusline.sh"
@@ -743,4 +802,5 @@ fi
 
 print_path_note
 print_zshrc_app_server_instructions
+print_codex_providers_instructions
 printf 'apohl79 Codex CLI %s installed successfully.\n' "$fork_version"
