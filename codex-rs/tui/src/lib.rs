@@ -399,7 +399,7 @@ pub fn remote_addr_supports_auth_token(endpoint: &RemoteAppServerEndpoint) -> bo
     }
 }
 
-async fn connect_remote_app_server(
+pub(crate) async fn connect_remote_app_server(
     endpoint: RemoteAppServerEndpoint,
 ) -> color_eyre::Result<AppServerClient> {
     let app_server = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {

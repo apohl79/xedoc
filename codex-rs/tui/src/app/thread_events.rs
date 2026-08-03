@@ -96,6 +96,16 @@ impl ThreadEventStore {
         self.buffer.retain(Self::event_survives_session_refresh);
     }
 
+    /// Drops buffered events and pending request state that belonged to a disconnected server.
+    ///
+    /// A local daemon restart invalidates JSON-RPC request IDs, so retaining approvals or other
+    /// buffered transport events would let the TUI send stale resolutions to the replacement
+    /// connection. `thread/resume` repopulates the authoritative thread state after reconnecting.
+    pub(super) fn reset_after_app_server_reconnect(&mut self) {
+        self.buffer.clear();
+        self.pending_interactive_replay.clear();
+    }
+
     pub(super) fn set_turns(&mut self, turns: Vec<Turn>) {
         self.active_turn_id = turns
             .iter()
