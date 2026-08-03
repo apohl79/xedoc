@@ -630,7 +630,11 @@ impl App {
                             .turn_steer(thread_id, steer_turn_id.clone(), items.to_vec())
                             .await
                         {
-                            Ok(_) => return Ok(true),
+                            Ok(_) => {
+                                self.chat_widget
+                                    .record_safety_buffering_steer(&steer_turn_id, items);
+                                return Ok(true);
+                            }
                             Err(error) => {
                                 if let Some(turn_error) =
                                     active_turn_not_steerable_turn_error(&error)

@@ -46,6 +46,14 @@ impl App {
 
         let retry_config = self.chat_widget.config_ref().clone();
         let input_state = self.chat_widget.capture_thread_input_state();
+        let mut retry_input_state = input_state
+            .clone()
+            .expect("thread input state should always be captured");
+        self.chat_widget.apply_safety_buffered_retry_input(
+            &turn_id,
+            &mut turn,
+            &mut retry_input_state,
+        );
 
         let AppCommand::UserTurn {
             items,
@@ -147,7 +155,7 @@ impl App {
 
         let failure_input_state = input_state.clone();
         self.chat_widget.restore_thread_input_state(
-            input_state,
+            Some(retry_input_state),
             ThreadInputStateRestoreMode {
                 preserve_in_flight_turn: false,
             },

@@ -21,12 +21,63 @@ struct ActiveSafetyBuffering {
 #[derive(Debug, Default)]
 pub(super) struct SafetyBufferingState {
     submitted_turn: Option<(String, AppCommand)>,
+    accepted_steer_count: usize,
     active: Option<ActiveSafetyBuffering>,
 }
 
 impl ChatWidget {
     pub(crate) fn record_safety_buffering_turn(&mut self, turn_id: String, turn: &AppCommand) {
         self.safety_buffering.submitted_turn = Some((turn_id, turn.clone()));
+        self.safety_buffering.accepted_steer_count = 0;
+    }
+
+    pub(crate) fn record_safety_buffering_steer(&mut self, turn_id: &str, input: &[UserInput]) {
+        let Some((submitted_turn_id, AppCommand::UserTurn { items, .. })) =
+            self.safety_buffering.submitted_turn.as_mut()
+        else {
+            return;
+        };
+        if submitted_turn_id != turn_id || input.is_empty() {
+            return;
+        }
+        items.push(UserInput::Text {
+            text: "\n".to_string(),
+            text_elements: Vec::new(),
+        });
+        items.extend(input.iter().cloned());
+        self.safety_buffering.accepted_steer_count += 1;
+    }
+
+    pub(crate) fn apply_safety_buffered_retry_input(
+        &self,
+        turn_id: &str,
+        turn: &mut AppCommand,
+        input_state: &mut ThreadInputState,
+    ) {
+        let Some((submitted_turn_id, AppCommand::UserTurn { items, .. })) =
+            self.safety_buffering.submitted_turn.as_ref()
+        else {
+            return;
+        };
+        let AppCommand::UserTurn {
+            items: retry_items, ..
+        } = turn
+        else {
+            return;
+        };
+        if submitted_turn_id != turn_id {
+            return;
+        }
+        *retry_items = items.clone();
+        let steer_count = self
+            .safety_buffering
+            .accepted_steer_count
+            .min(input_state.pending_steers.len());
+        input_state.pending_steers.drain(..steer_count);
+        input_state
+            .pending_steer_history_records
+            .drain(..steer_count);
+        input_state.pending_steer_compare_keys.drain(..steer_count);
     }
 
     pub(super) fn reset_safety_buffering_for_turn_start(&mut self) {
