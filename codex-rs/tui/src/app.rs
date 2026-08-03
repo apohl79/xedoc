@@ -88,6 +88,7 @@ use crate::version::CODEX_CLI_VERSION;
 use crate::workspace_command::AppServerWorkspaceCommandRunner;
 use crate::workspace_command::WorkspaceCommandRunner;
 use codex_ansi_escape::ansi_escape_line;
+use codex_app_server_client::AppServerEvent;
 use codex_app_server_client::AppServerRequestHandle;
 use codex_app_server_client::TypedRequestError;
 use codex_app_server_protocol::AddCreditsNudgeCreditType;
@@ -1293,6 +1294,9 @@ See the Codex keymap documentation for supported actions and examples."
                     }
                     app_server_event = app_server.next_event(), if listen_for_app_server_events => {
                         match app_server_event {
+                            Some(AppServerEvent::Disconnected { message }) => {
+                                app.handle_app_server_disconnected(&mut app_server, message).await;
+                            }
                             Some(event) => app.handle_app_server_event(&app_server, event).await,
                             None => {
                                 listen_for_app_server_events = false;

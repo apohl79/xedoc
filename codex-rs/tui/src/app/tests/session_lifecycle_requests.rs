@@ -2,6 +2,9 @@ use super::*;
 use app_test_support::create_fake_parented_rollout_with_source;
 use app_test_support::create_fake_rollout;
 use app_test_support::rollout_path;
+use codex_app_server_client::AppServerEvent;
+use codex_app_server_client::InProcessAppServerClient;
+use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_app_server_protocol::ClientNotification;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCError;
@@ -13,6 +16,7 @@ use futures::StreamExt;
 use pretty_assertions::assert_eq;
 use std::sync::Mutex;
 use tokio::net::TcpListener;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -132,6 +136,154 @@ async fn start_recording_app_server(
             app_server,
             crate::app_server_session::ThreadParamsMode::Embedded,
         ),
+        requests,
+        proxy,
+    ))
+}
+
+async fn forward_remote_app_server_message(
+    websocket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    embedded: &InProcessAppServerClient,
+    request_sink: &Mutex<Vec<String>>,
+    codex_home: &str,
+    frame: std::result::Result<Message, tokio_tungstenite::tungstenite::Error>,
+) -> Result<()> {
+    let Message::Text(text) = frame? else {
+        return Ok(());
+    };
+    let message = serde_json::from_str::<JSONRPCMessage>(&text)?;
+    match message {
+        JSONRPCMessage::Request(request) if request.method == "initialize" => {
+            websocket
+                .send(Message::Text(
+                    serde_json::to_string(&JSONRPCMessage::Response(JSONRPCResponse {
+                        id: request.id,
+                        result: serde_json::json!({
+                            "userAgent": "codex-tui-test",
+                            "codexHome": codex_home,
+                        }),
+                    }))?
+                    .into(),
+                ))
+                .await?;
+        }
+        JSONRPCMessage::Request(request) => {
+            request_sink
+                .lock()
+                .expect("request recorder lock")
+                .push(request.method.clone());
+            let request_id = request.id.clone();
+            let request = serde_json::from_value::<ClientRequest>(serde_json::to_value(request)?)?;
+            let response = match embedded.request(request).await? {
+                Ok(result) => JSONRPCMessage::Response(JSONRPCResponse {
+                    id: request_id,
+                    result,
+                }),
+                Err(error) => JSONRPCMessage::Error(JSONRPCError {
+                    id: request_id,
+                    error,
+                }),
+            };
+            websocket
+                .send(Message::Text(serde_json::to_string(&response)?.into()))
+                .await?;
+        }
+        JSONRPCMessage::Notification(notification) if notification.method == "initialized" => {}
+        JSONRPCMessage::Notification(notification) => {
+            embedded
+                .notify(serde_json::from_value::<ClientNotification>(
+                    serde_json::to_value(notification)?,
+                )?)
+                .await?;
+        }
+        JSONRPCMessage::Response(_) | JSONRPCMessage::Error(_) => {}
+    }
+    Ok(())
+}
+
+/// Starts a proxy that drops its first WebSocket client without a closing handshake, then accepts
+/// the replacement connection on the same endpoint.
+async fn start_reconnectable_app_server(
+    config: &Config,
+) -> Result<(
+    AppServerSession,
+    RemoteAppServerEndpoint,
+    oneshot::Sender<()>,
+    Arc<Mutex<Vec<String>>>,
+    JoinHandle<Result<()>>,
+)> {
+    let state_db =
+        crate::init_state_db_for_app_server_target(config, &crate::AppServerTarget::Embedded)
+            .await?;
+    let embedded = crate::start_embedded_app_server(
+        codex_arg0::Arg0DispatchPaths::default(),
+        config.clone(),
+        Vec::new(),
+        codex_config::LoaderOverrides::default(),
+        /*strict_config*/ false,
+        codex_config::CloudConfigBundleLoader::default(),
+        codex_feedback::CodexFeedback::new(),
+        /*log_db*/ None,
+        state_db,
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+    )
+    .await?;
+    let codex_home = config.codex_home.display().to_string();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let request_sink = Arc::clone(&requests);
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let endpoint = RemoteAppServerEndpoint::WebSocket {
+        websocket_url: format!("ws://{}", listener.local_addr()?),
+        auth_token: None,
+    };
+    let (disconnect_tx, mut disconnect_rx) = oneshot::channel();
+    let proxy = tokio::spawn(async move {
+        let (first_stream, _) = listener.accept().await?;
+        let mut first_websocket = accept_async(first_stream).await?;
+        loop {
+            tokio::select! {
+                _ = &mut disconnect_rx => break,
+                frame = first_websocket.next() => {
+                    let Some(frame) = frame else {
+                        break;
+                    };
+                    forward_remote_app_server_message(
+                        &mut first_websocket,
+                        &embedded,
+                        &request_sink,
+                        &codex_home,
+                        frame,
+                    )
+                    .await?;
+                }
+            }
+        }
+        drop(first_websocket);
+
+        let (second_stream, _) = listener.accept().await?;
+        let mut second_websocket = accept_async(second_stream).await?;
+        while let Some(frame) = second_websocket.next().await {
+            forward_remote_app_server_message(
+                &mut second_websocket,
+                &embedded,
+                &request_sink,
+                &codex_home,
+                frame,
+            )
+            .await?;
+        }
+        embedded.shutdown().await?;
+        Ok(())
+    });
+    let app_server = crate::connect_remote_app_server(endpoint.clone()).await?;
+
+    Ok((
+        AppServerSession::new(
+            app_server,
+            crate::app_server_session::ThreadParamsMode::Embedded,
+        ),
+        endpoint,
+        disconnect_tx,
         requests,
         proxy,
     ))
@@ -293,4 +445,74 @@ fn session_lifecycle_avoids_redundant_subagent_metadata_reads() -> Result<()> {
         })?
         .join()
         .expect("session lifecycle request test thread")
+}
+
+#[test]
+fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+    std::thread::Builder::new()
+        .name("tui-local-daemon-reconnect".to_string())
+        .stack_size(TEST_STACK_SIZE_BYTES)
+        .spawn(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            runtime.block_on(async {
+                let mut app = make_test_app().await;
+                let codex_home = tempdir()?;
+                app.config.codex_home = codex_home.path().to_path_buf().abs();
+                app.config.sqlite_home = codex_home.path().to_path_buf();
+                let thread_id = ThreadId::from_string(
+                    &create_fake_rollout(
+                        codex_home.path(),
+                        "2026-01-01T00-00-00",
+                        "2026-01-01T00:00:00Z",
+                        "Saved user message",
+                        Some(app.config.model_provider_id.as_str()),
+                        /*git_info*/ None,
+                    )
+                    .expect("create root rollout"),
+                )?;
+                let (mut app_server, endpoint, disconnect_tx, requests, proxy) =
+                    start_reconnectable_app_server(&app.config).await?;
+                app.app_server_target = crate::AppServerTarget::LocalDaemon { endpoint };
+
+                let started = app_server
+                    .resume_thread(app.config.clone(), thread_id, app.resume_model_settings())
+                    .await?;
+                app.enqueue_primary_thread_session(started.session, started.turns)
+                    .await?;
+
+                disconnect_tx
+                    .send(())
+                    .expect("first connection should still be active");
+                let event = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    app_server.next_event(),
+                )
+                .await?
+                .ok_or_else(|| color_eyre::eyre::eyre!("remote event stream closed"))?;
+                assert!(matches!(event, AppServerEvent::Disconnected { .. }));
+
+                let AppServerEvent::Disconnected { message } = event else {
+                    panic!("expected app-server disconnect event");
+                };
+                app.handle_app_server_disconnected(&mut app_server, message)
+                    .await;
+
+                let resume_count = requests
+                    .lock()
+                    .expect("request recorder lock")
+                    .iter()
+                    .filter(|method| method.as_str() == "thread/resume")
+                    .count();
+                assert_eq!(resume_count, 2);
+                app_server.shutdown().await?;
+                proxy.await??;
+                Ok(())
+            })
+        })?
+        .join()
+        .expect("local daemon reconnect test thread")
 }

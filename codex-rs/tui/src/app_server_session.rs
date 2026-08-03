@@ -18,6 +18,7 @@ use codex_app_server_client::AppServerClient;
 use codex_app_server_client::AppServerEvent;
 use codex_app_server_client::AppServerPath;
 use codex_app_server_client::AppServerRequestHandle;
+use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_app_server_client::TypedRequestError;
 use codex_app_server_protocol::Account;
 use codex_app_server_protocol::AskForApproval;
@@ -283,6 +284,18 @@ impl AppServerSession {
 
     pub(crate) fn uses_embedded_app_server(&self) -> bool {
         matches!(&self.client, AppServerClient::InProcess(_))
+    }
+
+    pub(crate) async fn reconnect_remote(
+        &mut self,
+        endpoint: RemoteAppServerEndpoint,
+    ) -> Result<()> {
+        let client = crate::connect_remote_app_server(endpoint).await?;
+        let disconnected_client = std::mem::replace(&mut self.client, client);
+        if let Err(err) = disconnected_client.shutdown().await {
+            tracing::debug!(%err, "failed to shut down disconnected remote app server client");
+        }
+        Ok(())
     }
 
     pub(crate) fn codex_home_path(
