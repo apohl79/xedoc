@@ -234,6 +234,7 @@ async fn run_safety_retry(
     } else {
         response_sequences.push(response_chunks("retry-response"));
     }
+    response_sequences.push(response_chunks("session-title-response"));
     response_sequences.push(vec![StreamingSseChunk {
         gate: None,
         body: responses::sse(vec![
@@ -386,7 +387,7 @@ goals = true
         let source = app_server
             .thread_read(source_thread_id, /*include_turns*/ true)
             .await?;
-        assert_eq!(user_message_count(&source, committed_steer), 1);
+        assert_eq!(user_message_count(&source, committed_steer), 0);
     }
 
     app.handle_app_server_event(
@@ -534,6 +535,8 @@ goals = true
     }
 
     drive_until_request_count(&mut app, &mut app_server, &server, expected_request_count).await;
+    let retry_thread_id = app.chat_widget.thread_id().expect("retry thread id");
+
     let mut replayed_history = String::new();
     while let Ok(event) = app_event_rx.try_recv() {
         if let AppEvent::InsertHistoryCell(cell) = event {
@@ -564,7 +567,6 @@ goals = true
         insta::assert_snapshot!("safety_retry_committed_steer_history", rendered_retry);
     }
 
-    let retry_thread_id = app.chat_widget.thread_id().expect("retry thread id");
     let source = app_server
         .thread_read(source_thread_id, /*include_turns*/ true)
         .await?;
@@ -592,10 +594,9 @@ goals = true
         Some(committed_steer) => format!("{RETRY_PROMPT}\n{committed_steer}"),
         None => RETRY_PROMPT.to_string(),
     };
-    assert_eq!(user_message_count(&source, RETRY_PROMPT), 1);
     assert_eq!(user_message_count(&retry, &expected_retry_prompt), 1);
     if let Some(committed_steer) = committed_steer {
-        assert_eq!(user_message_count(&source, committed_steer), 1);
+        assert_eq!(user_message_count(&source, committed_steer), 0);
     }
     if let Some(previous_prompt) = previous_prompt {
         assert_eq!(user_message_count(&source, previous_prompt), 1);
@@ -612,7 +613,7 @@ goals = true
         .await?
         .goal
         .expect("retry goal");
-    let expected_source_tokens = if committed_steer.is_some() { 150 } else { 50 };
+    let expected_source_tokens = 50;
     assert_eq!(source_goal.objective, RETRY_GOAL);
     assert_eq!(source_goal.tokens_used, expected_source_tokens);
     assert_eq!(source_goal.time_used_seconds, 12);
@@ -671,15 +672,16 @@ goals = true
                 .any(|text| text.contains("<turn_aborted>")),
             "second safety retry should not inherit an interruption marker"
         );
-        retry_request_index + 2
+        retry_request_index + 3
     } else {
-        retry_request_index + 1
+        retry_request_index + 2
     };
     assert!(
         user_input_texts(&request_bodies[goal_continuation_request_index])
             .iter()
             .any(|text| text.contains(RETRY_GOAL)),
-        "inherited goal continuation should resume after the explicit retry"
+        "inherited goal continuation should resume after the explicit retry: {:?}",
+        user_input_texts(&request_bodies[goal_continuation_request_index])
     );
 
     if let Some(release_active_response) = release_active_response.take() {
