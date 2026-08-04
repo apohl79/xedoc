@@ -97,6 +97,13 @@ pub async fn update_thread_settings(
     let updates = thread_settings_update(sess, thread_settings).await;
     match sess.update_settings(updates).await {
         Ok(()) => {
+            if sess.refresh_model_context_window().await {
+                sess.send_event_raw_without_materializing_rollout(Event {
+                    id: sub_id.clone(),
+                    msg: sess.token_count_event().await,
+                })
+                .await;
+            }
             sess.send_event_raw_without_materializing_rollout(Event {
                 id: sub_id,
                 msg: thread_settings_applied_event(sess).await,

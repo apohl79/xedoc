@@ -1231,6 +1231,41 @@ impl Session {
         state.token_info()
     }
 
+    pub(crate) async fn refresh_model_context_window(&self) -> bool {
+        let (model, provider_id, models_manager_config) = {
+            let state = self.state.lock().await;
+            let per_turn_config = Self::build_per_turn_config(
+                &state.session_configuration,
+                state.session_configuration.cwd().clone(),
+            );
+            (
+                state
+                    .session_configuration
+                    .collaboration_mode
+                    .model()
+                    .to_string(),
+                per_turn_config.model_provider_id.clone(),
+                per_turn_config.to_models_manager_config(),
+            )
+        };
+        let model_info = self
+            .services
+            .models_manager
+            .get_model_info_for_provider(&model, &provider_id, &models_manager_config)
+            .await;
+        let model_context_window = model_info.resolved_context_window().map(|context_window| {
+            context_window.saturating_mul(model_info.effective_context_window_percent) / 100
+        });
+
+        let mut state = self.state.lock().await;
+        let Some(mut token_info) = state.token_info() else {
+            return false;
+        };
+        token_info.model_context_window = model_context_window;
+        state.set_token_info(Some(token_info));
+        true
+    }
+
     pub(crate) async fn session_cost_usd(&self) -> Option<f64> {
         let state = self.state.lock().await;
         state.cost_tracker.available_cost_usd()
@@ -3949,18 +3984,22 @@ impl Session {
     }
 
     pub(crate) async fn send_token_count_event(&self, turn_context: &TurnContext) {
+        self.send_event(turn_context, self.token_count_event().await)
+            .await;
+    }
+
+    pub(crate) async fn token_count_event(&self) -> EventMsg {
         let (info, rate_limits, session_cost_usd) = {
             let state = self.state.lock().await;
             let (info, rate_limits) = state.token_info_and_rate_limits();
             let cost = state.cost_tracker.available_cost_usd();
             (info, rate_limits, cost)
         };
-        let event = EventMsg::TokenCount(TokenCountEvent {
+        EventMsg::TokenCount(TokenCountEvent {
             info,
             rate_limits,
             session_cost_usd,
-        });
-        self.send_event(turn_context, event).await;
+        })
     }
 
     pub(crate) async fn set_total_tokens_full(&self, turn_context: &TurnContext) {

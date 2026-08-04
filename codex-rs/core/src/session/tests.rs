@@ -2355,6 +2355,44 @@ async fn recompute_token_usage_updates_model_context_window() {
 }
 
 #[tokio::test]
+async fn thread_settings_update_emits_selected_model_context_window() {
+    let (session, _turn_context, rx) = make_session_and_context_with_rx().await;
+    {
+        let mut state = session.state.lock().await;
+        state.set_token_info(Some(TokenUsageInfo {
+            total_token_usage: TokenUsage::default(),
+            last_token_usage: TokenUsage::default(),
+            model_context_window: Some(111_111),
+        }));
+    }
+
+    handlers::update_thread_settings(
+        &session,
+        "settings-update".to_string(),
+        ThreadSettingsOverrides {
+            model: Some("claude-opus-5".to_string()),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    loop {
+        let event = rx.recv().await.expect("session event");
+        if let EventMsg::TokenCount(token_count) = event.msg {
+            assert_eq!(event.id, "settings-update");
+            assert_eq!(
+                token_count
+                    .info
+                    .expect("token info should be preserved")
+                    .model_context_window,
+                Some(258_400)
+            );
+            break;
+        }
+    }
+}
+
+#[tokio::test]
 async fn record_token_usage_info_notifies_extension_contributors() {
     struct SessionTokenUsageMarker;
     struct ThreadTokenUsageMarker;

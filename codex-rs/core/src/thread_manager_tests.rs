@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::ConfigBuilder;
 use crate::config::test_config;
 use crate::init_state_db;
 use crate::installation_id::INSTALLATION_ID_FILENAME;
@@ -9,6 +10,8 @@ use crate::session::tests::make_session_and_context;
 use crate::tasks::InterruptedTurnHistoryMarker;
 use crate::tasks::interrupted_turn_history_marker;
 use codex_extension_api::empty_extension_registry;
+use codex_models_manager::ModelsManagerConfig;
+use codex_models_manager::bundled_models_response;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_protocol::ResponseItemId;
 use codex_protocol::capabilities::CapabilityRootLocation;
@@ -1427,6 +1430,59 @@ async fn new_uses_active_provider_for_model_refresh() {
         )
         .await;
     assert_eq!(models_mock.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn provider_profile_catalog_is_used_for_non_active_provider() -> std::io::Result<()> {
+    let codex_home = tempdir()?;
+    let catalog_path = codex_home.path().join("anthropic-models.json");
+    let mut catalog = bundled_models_response().expect("bundled catalog should parse");
+    let mut model = catalog
+        .models
+        .first()
+        .cloned()
+        .expect("bundled catalog should not be empty");
+    model.slug = "claude-opus-5".to_string();
+    model.context_window = Some(400_000);
+    model.max_context_window = Some(400_000);
+    catalog.models = vec![model];
+    std::fs::write(&catalog_path, serde_json::to_vec(&catalog)?)?;
+    std::fs::write(
+        codex_home.path().join("config.toml"),
+        r#"
+model = "gpt-5.5"
+model_provider = "openai"
+
+[model_providers.anthropic]
+name = "Anthropic"
+base_url = "http://127.0.0.1:8317/v1"
+wire_api = "responses"
+requires_openai_auth = false
+"#,
+    )?;
+    std::fs::write(
+        codex_home.path().join("claude.config.toml"),
+        "model_provider = \"anthropic\"\nmodel_catalog_json = \"anthropic-models.json\"\n",
+    )?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+    let auth_manager =
+        AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());
+    let models_manager = build_models_manager(&config, auth_manager);
+    let model_info = models_manager
+        .get_model_info_for_provider(
+            "claude-opus-5",
+            "anthropic",
+            &ModelsManagerConfig::default(),
+        )
+        .await;
+
+    assert_eq!(model_info.resolved_context_window(), Some(400_000));
+    Ok(())
 }
 
 #[tokio::test]

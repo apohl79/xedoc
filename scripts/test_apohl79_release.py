@@ -23,7 +23,9 @@ from apohl79_release import run
 
 
 class Apohl79ReleaseTest(unittest.TestCase):
-    def test_previous_published_release_uses_github_target_and_skips_current(self) -> None:
+    def test_previous_published_release_uses_github_target_and_skips_current(
+        self,
+    ) -> None:
         releases = [
             {"tag_name": "rust-v0.145.0-apohl79-51", "target_commitish": "current"},
             {"tag_name": "rust-v0.145.0-apohl79-38", "target_commitish": "previous"},
@@ -44,7 +46,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
     def test_fork_commit_subjects_preserve_the_first_character(self) -> None:
         with (
-            mock.patch.object(apohl79_release, "fork_author", return_value="Andreas Pohl"),
+            mock.patch.object(
+                apohl79_release, "fork_author", return_value="Andreas Pohl"
+            ),
             mock.patch.object(
                 apohl79_release.subprocess,
                 "check_output",

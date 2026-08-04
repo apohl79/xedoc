@@ -32,6 +32,7 @@ use codex_config::config_toml::validate_model_providers;
 use codex_config::loader::load_config_layers_state;
 use codex_config::loader::project_trust_key;
 use codex_config::permissions_toml::PermissionsToml;
+use codex_config::profile_toml::ConfigProfile;
 use codex_config::sandbox_mode_requirement_for_permission_profile;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::AuthCredentialsStoreMode;
@@ -1946,6 +1947,112 @@ fn load_model_catalog(
     model_catalog_json
         .map(|path| load_catalog_json(&path))
         .transpose()
+}
+
+/// Load static model catalogs declared by named provider profiles.
+///
+/// Profiles are startup configuration, but the model manager is shared by all
+/// threads in the process. Keep each profile catalog associated with its
+/// provider so runtime model changes and restored threads do not fall back to
+/// the startup provider's catalog.
+pub(crate) fn model_catalogs_for_config(config: &Config) -> HashMap<String, ModelsResponse> {
+    let mut catalogs = HashMap::new();
+
+    if let Some(profiles) = config
+        .config_layer_stack
+        .effective_config()
+        .get("profiles")
+        .and_then(TomlValue::as_table)
+    {
+        let _guard = AbsolutePathBufGuard::new(config.codex_home.as_path());
+        for profile in profiles.values() {
+            let Ok(profile) = profile.clone().try_into::<ConfigProfile>() else {
+                continue;
+            };
+            add_profile_model_catalog(&mut catalogs, profile, "legacy profile");
+        }
+    }
+
+    let mut profile_paths = std::fs::read_dir(config.codex_home.as_path())
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(".config.toml"))
+        })
+        .collect::<Vec<_>>();
+    profile_paths.sort();
+
+    for profile_path in profile_paths {
+        let contents = match std::fs::read_to_string(&profile_path) {
+            Ok(contents) => contents,
+            Err(err) => {
+                tracing::warn!(
+                    path = %profile_path.display(),
+                    error = %err,
+                    "failed to read model provider profile"
+                );
+                continue;
+            }
+        };
+        let _guard = AbsolutePathBufGuard::new(config.codex_home.as_path());
+        let profile = match toml::from_str::<ConfigProfile>(&contents) {
+            Ok(profile) => profile,
+            Err(err) => {
+                tracing::warn!(
+                    path = %profile_path.display(),
+                    error = %err,
+                    "failed to parse model provider profile"
+                );
+                continue;
+            }
+        };
+        add_profile_model_catalog(
+            &mut catalogs,
+            profile,
+            profile_path.to_string_lossy().as_ref(),
+        );
+    }
+
+    // The active config is the highest-precedence source, including when a
+    // caller has supplied a runtime override or a test has changed it.
+    if let Some(model_catalog) = config.model_catalog.clone() {
+        catalogs.insert(config.model_provider_id.clone(), model_catalog);
+    }
+
+    catalogs
+}
+
+fn add_profile_model_catalog(
+    catalogs: &mut HashMap<String, ModelsResponse>,
+    profile: ConfigProfile,
+    profile_source: &str,
+) {
+    let (Some(provider_id), Some(model_catalog_json)) =
+        (profile.model_provider, profile.model_catalog_json)
+    else {
+        return;
+    };
+
+    match load_model_catalog(Some(model_catalog_json)) {
+        Ok(Some(model_catalog)) => {
+            catalogs.insert(provider_id, model_catalog);
+        }
+        Ok(None) => unreachable!("model catalog path was present"),
+        Err(err) => {
+            tracing::warn!(
+                provider_id = %provider_id,
+                source = profile_source,
+                error = %err,
+                "failed to load model provider catalog"
+            );
+        }
+    }
 }
 
 fn filter_mcp_servers_by_requirements(

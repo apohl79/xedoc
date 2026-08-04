@@ -178,6 +178,9 @@ impl App {
                         .await;
                     let mut fork_config = self.config.clone();
                     fork_config.model = Some(self.chat_widget.current_model().to_string());
+                    let active_provider = self.chat_widget.config_ref();
+                    fork_config.model_provider_id = active_provider.model_provider_id.clone();
+                    fork_config.model_provider = active_provider.model_provider.clone();
                     fork_config.model_reasoning_effort =
                         self.chat_widget.current_reasoning_effort();
                     match app_server.fork_thread(fork_config, thread_id).await {

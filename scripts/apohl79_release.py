@@ -777,7 +777,9 @@ def generate_release_notes(
     if not _is_git_repo():
         return f"apohl79 Codex {fork_version}"
 
-    previous_release = find_previous_published_fork_release(tag, gh=gh, repo=repo, env=env)
+    previous_release = find_previous_published_fork_release(
+        tag, gh=gh, repo=repo, env=env
+    )
     upstream_base = upstream_base_from_fork_version(fork_version)
     date = subprocess.check_output(
         ["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d", target],
@@ -856,7 +858,11 @@ def find_previous_published_fork_release(
 
     for release in releases:
         previous_tag = release["tag_name"]
-        if previous_tag != tag and previous_tag.startswith("rust-v") and "apohl79" in previous_tag:
+        if (
+            previous_tag != tag
+            and previous_tag.startswith("rust-v")
+            and "apohl79" in previous_tag
+        ):
             return previous_tag, release["target_commitish"]
     return None
 

@@ -305,6 +305,20 @@ fn session_lifecycle_avoids_redundant_subagent_metadata_reads() -> Result<()> {
                 let codex_home = tempdir()?;
                 app.config.codex_home = codex_home.path().to_path_buf().abs();
                 app.config.sqlite_home = codex_home.path().to_path_buf();
+                std::fs::write(
+                    codex_home.path().join("config.toml"),
+                    r#"
+[model_providers.anthropic]
+name = "Anthropic"
+base_url = "http://127.0.0.1:8317/v1"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+"#,
+                )?;
+                app.config
+                    .model_providers
+                    .insert("anthropic".to_string(), app.config.model_provider.clone());
                 let root_timestamp = "2026-01-01T00-00-00";
                 let root_thread_id = ThreadId::from_string(
                     &create_fake_rollout(
@@ -355,6 +369,8 @@ fn session_lifecycle_avoids_redundant_subagent_metadata_reads() -> Result<()> {
                     .await?;
                 app.enqueue_primary_thread_session(root.session, root.turns)
                     .await?;
+                app.chat_widget.set_model_provider("anthropic");
+                app.chat_widget.set_model("claude-opus-5");
                 app_server
                     .resume_thread(
                         app.config.clone(),
@@ -374,6 +390,7 @@ fn session_lifecycle_avoids_redundant_subagent_metadata_reads() -> Result<()> {
 
                 assert!(matches!(control, AppRunControl::Continue));
                 assert_ne!(app.chat_widget.thread_id(), Some(root_thread_id));
+                assert_eq!(app.chat_widget.config_ref().model_provider_id, "anthropic");
                 // Forking may read the source metadata once when the response includes its parent
                 // id. It must not scan or backfill loaded threads for the newly created fork.
                 assert!(matches!(take_backfill_counts(&requests), (0, 0) | (0, 1)));

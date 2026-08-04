@@ -5,6 +5,7 @@ use crate::attestation::AttestationProvider;
 use crate::codex_thread::CodexThread;
 use crate::config::Config;
 use crate::config::ThreadStoreConfig;
+use crate::config::model_catalogs_for_config;
 use crate::current_time::TimeProvider;
 use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::environment_selection::default_thread_environment_selections;
@@ -274,6 +275,7 @@ pub fn build_models_manager(
     auth_manager: Arc<AuthManager>,
 ) -> SharedModelsManager {
     let mut managers: Vec<(String, SharedModelsManager)> = Vec::new();
+    let model_catalogs = model_catalogs_for_config(config);
     let configured_provider_ids = config
         .config_layer_stack
         .effective_user_config()
@@ -311,7 +313,12 @@ pub fn build_models_manager(
             provider_info.clone(),
             Some(auth_manager.clone()),
         );
-        let manager = provider.models_manager(codex_home, config.model_catalog.clone());
+        let model_catalog = model_catalogs.get(provider_id).cloned().or_else(|| {
+            (provider_id == &config.model_provider_id)
+                .then(|| config.model_catalog.clone())
+                .flatten()
+        });
+        let manager = provider.models_manager(codex_home, model_catalog);
         managers.push((provider_id.clone(), manager));
     }
     if managers.is_empty() {
@@ -321,13 +328,17 @@ pub fn build_models_manager(
             config.model_provider.clone(),
             Some(auth_manager),
         );
+        let model_catalog = model_catalogs
+            .get(&config.model_provider_id)
+            .cloned()
+            .or(config.model_catalog.clone());
         return provider.models_manager(
             config
                 .codex_home
                 .join("models_cache")
                 .join(&config.model_provider_id)
                 .to_path_buf(),
-            config.model_catalog.clone(),
+            model_catalog,
         );
     }
     Arc::new(codex_models_manager::manager::MultiProviderModelsManager::new(managers))

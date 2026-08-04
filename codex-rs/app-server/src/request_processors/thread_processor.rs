@@ -4129,12 +4129,17 @@ impl ThreadRequestProcessor {
                 WindowsSandboxLevel::Disabled => {}
             }
         }
-        let request_overrides = if cli_overrides.is_empty() {
+        let mut request_overrides = if cli_overrides.is_empty() {
             None
         } else {
             Some(cli_overrides)
         };
         let runtime_workspace_roots = runtime_workspace_roots.map(resolve_runtime_workspace_roots);
+        let thread_history = InitialHistory::Resumed(ResumedHistory {
+            conversation_id: source_thread_id,
+            history: Arc::clone(&history_items),
+            rollout_path: source_thread.rollout_path.clone(),
+        });
         let mut typesafe_overrides = self.build_thread_config_overrides(
             model,
             model_provider,
@@ -4149,6 +4154,12 @@ impl ThreadRequestProcessor {
             developer_instructions,
             /*personality*/ None,
         );
+        self.load_and_apply_persisted_resume_metadata(
+            &thread_history,
+            &mut request_overrides,
+            &mut typesafe_overrides,
+        )
+        .await;
         typesafe_overrides.ephemeral = ephemeral.then_some(true);
         // Derive a Config using the same logic as new conversation, honoring overrides if provided.
         let config = self
@@ -4170,11 +4181,7 @@ impl ThreadRequestProcessor {
             .fork_thread_from_history(
                 ForkSnapshot::Interrupted,
                 config,
-                InitialHistory::Resumed(ResumedHistory {
-                    conversation_id: source_thread_id,
-                    history: Arc::clone(&history_items),
-                    rollout_path: source_thread.rollout_path.clone(),
-                }),
+                thread_history,
                 thread_source.map(Into::into),
                 self.request_trace_context(&request_id).await,
                 supports_openai_form_elicitation,
