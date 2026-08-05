@@ -428,6 +428,28 @@ pub fn process_responses_event(
                     .and_then(|details| details.get("reason"))
                     .and_then(Value::as_str)
             });
+            if reason == Some("max_output_tokens")
+                && let Some(resp_val) = event.response
+            {
+                match serde_json::from_value::<ResponseCompleted>(resp_val) {
+                    Ok(resp) => {
+                        return Ok(Some(ResponseEvent::Completed {
+                            response_id: resp.id,
+                            token_usage: resp.usage.map(Into::into),
+                            // A token-limited response is a valid partial turn. Let the
+                            // session request a continuation instead of treating it as a
+                            // transport failure and reconnecting the same request.
+                            end_turn: Some(false),
+                        }));
+                    }
+                    Err(err) => {
+                        let error = format!("failed to parse incomplete Responses response: {err}");
+                        debug!("{error}");
+                        return Err(ResponsesEventError::Api(ApiError::Stream(error)));
+                    }
+                }
+            }
+
             let reason = reason.unwrap_or("unknown");
             let message = format!("Incomplete response returned, reason: {reason}");
             return Err(ResponsesEventError::Api(ApiError::Stream(message)));
@@ -806,6 +828,41 @@ mod tests {
             }
             other => panic!("unexpected third event: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn treats_max_output_tokens_as_a_continuable_response() {
+        let events = run_sse(vec![json!({
+            "type": "response.incomplete",
+            "response": {
+                "id": "resp-incomplete",
+                "usage": {
+                    "input_tokens": 10,
+                    "input_tokens_details": null,
+                    "output_tokens": 20,
+                    "output_tokens_details": null,
+                    "total_tokens": 30
+                },
+                "incomplete_details": {
+                    "reason": "max_output_tokens"
+                }
+            }
+        })])
+        .await;
+
+        assert_matches!(
+            &events[..],
+            [ResponseEvent::Completed {
+                response_id,
+                token_usage: Some(TokenUsage {
+                    input_tokens: 10,
+                    output_tokens: 20,
+                    total_tokens: 30,
+                    ..
+                }),
+                end_turn: Some(false),
+            }] if response_id == "resp-incomplete"
+        );
     }
 
     #[test]

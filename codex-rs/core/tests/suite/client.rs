@@ -3789,6 +3789,73 @@ async fn incomplete_response_emits_content_filter_error_message() -> anyhow::Res
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn max_output_tokens_continues_without_stream_retry() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+
+    let first_response = sse(vec![
+        ev_response_created("resp_partial"),
+        ev_message_item_added("msg_partial", ""),
+        ev_output_text_delta("partial "),
+        ev_assistant_message("msg_partial", "partial "),
+        json!({
+            "type": "response.incomplete",
+            "response": {
+                "id": "resp_partial",
+                "object": "response",
+                "status": "incomplete",
+                "usage": {
+                    "input_tokens": 10,
+                    "input_tokens_details": null,
+                    "output_tokens": 20,
+                    "output_tokens_details": null,
+                    "total_tokens": 30
+                },
+                "error": null,
+                "incomplete_details": {
+                    "reason": "max_output_tokens"
+                }
+            }
+        }),
+    ]);
+    let continuation_response = sse(vec![
+        ev_response_created("resp_continuation"),
+        ev_message_item_added("msg_continuation", ""),
+        ev_output_text_delta("response"),
+        ev_assistant_message("msg_continuation", "response"),
+        ev_completed("resp_continuation"),
+    ]);
+    let responses_mock =
+        mount_sse_sequence(&server, vec![first_response, continuation_response]).await;
+
+    let TestCodex { codex, .. } = test_codex()
+        .with_config(|config| {
+            config.model_provider.stream_max_retries = Some(0);
+        })
+        .build(&server)
+        .await?;
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "trigger continuation".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let requests = responses_mock.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(requests[1].body_contains_text("partial "));
+    Ok(())
+}
+
 /// We try to avoid setting env vars in tests because std::env::set_var() is
 /// process-wide and unsafe. Though for this test, we want to simulate the
 /// presence of an environment variable that the provider will read for auth, so
