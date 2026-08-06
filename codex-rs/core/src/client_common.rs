@@ -4,7 +4,10 @@ use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::ModelInfo;
 use codex_tools::ToolSpec;
+use codex_tools::create_tools_json_for_responses_api;
+use codex_utils_output_truncation::approx_token_count;
 use futures::Stream;
 use serde_json::Value;
 use std::pin::Pin;
@@ -49,6 +52,50 @@ impl Default for Prompt {
 }
 
 impl Prompt {
+    /// Estimates the serialized input sent on the next request.
+    ///
+    /// Model switches cannot reuse a previous response, so the full request shape matters more
+    /// than the previous provider's reported usage. This intentionally favors a conservative
+    /// estimate over tokenizer-specific precision.
+    pub(crate) fn estimated_request_token_count(&self, model_info: &ModelInfo) -> Option<i64> {
+        let mut input = self.get_formatted_input_for_request(model_info.use_responses_lite);
+        let tools = create_tools_json_for_responses_api(&self.tools).ok()?;
+        let (instructions, request_tools) = if model_info.use_responses_lite {
+            let mut prefix = vec![ResponseItem::AdditionalTools {
+                id: None,
+                role: "developer".to_string(),
+                tools,
+            }];
+            if !self.base_instructions.text.is_empty() {
+                prefix.push(ResponseItem::Message {
+                    id: None,
+                    role: "developer".to_string(),
+                    content: vec![ContentItem::InputText {
+                        text: self.base_instructions.text.clone(),
+                    }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                });
+            }
+            input.splice(0..0, prefix);
+            (String::new(), serde_json::Value::Null)
+        } else {
+            (
+                self.base_instructions.text.clone(),
+                serde_json::Value::Array(tools),
+            )
+        };
+        let request = serde_json::json!({
+            "instructions": instructions,
+            "input": input,
+            "tools": request_tools,
+            "parallel_tool_calls": self.parallel_tool_calls,
+            "output_schema": self.output_schema,
+        });
+        let serialized = serde_json::to_string(&request).ok()?;
+        i64::try_from(approx_token_count(&serialized)).ok()
+    }
+
     pub(crate) fn get_formatted_input_for_request(
         &self,
         use_responses_lite: bool,

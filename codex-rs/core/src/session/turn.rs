@@ -158,10 +158,6 @@ pub(crate) async fn run_turn(
 ) -> CodexResult<Option<String>> {
     let mut client_session =
         prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.load().new_session());
-    // TODO(ccunningham): Pre-turn compaction runs before context updates and the
-    // new user message are recorded. Estimate pending incoming items (context
-    // diffs/full reinjection + user input) and trigger compaction preemptively
-    // when they would push the thread over the compaction threshold.
     if let Err(err) = run_pre_sampling_compact(&sess, &turn_context, &mut client_session).await {
         if matches!(err, CodexErr::TurnAborted) {
             return Err(err);
@@ -202,17 +198,33 @@ pub(crate) async fn run_turn(
 
     sess.merge_connector_selection(explicitly_enabled_connectors.clone())
         .await;
+    let previous_turn_settings = sess.previous_turn_settings().await;
+    for response_item in injection_items {
+        sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
+            .await;
+    }
+
+    let (mut first_sampling_router, context_was_compacted) =
+        maybe_run_model_switch_request_baseline_compact(
+            &sess,
+            &turn_context,
+            &first_step_context,
+            previous_turn_settings,
+            &mut client_session,
+            &cancellation_token,
+        )
+        .await?;
+    if context_was_compacted {
+        world_state = sess
+            .record_context_updates_and_set_reference_context_item(first_step_context.as_ref())
+            .await;
+    }
     sess.set_previous_turn_settings(Some(PreviousTurnSettings {
         model: turn_context.model_info.slug.clone(),
         comp_hash: turn_context.model_info.comp_hash.clone(),
         realtime_active: Some(turn_context.realtime_active),
     }))
     .await;
-    for response_item in injection_items {
-        sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
-            .await;
-    }
-
     track_turn_resolved_config_analytics(&sess, &turn_context, &input).await;
 
     let mut last_agent_message: Option<String> = None;
@@ -292,6 +304,7 @@ pub(crate) async fn run_turn(
                 &mut client_session,
                 &responses_metadata,
                 sampling_request_input,
+                first_sampling_router.take(),
                 cancellation_token.child_token(),
             )
             .await
@@ -833,6 +846,92 @@ async fn run_pre_sampling_compact(
     Ok(())
 }
 
+/// Compacts a model switch when the first target-model request would exceed its budget.
+///
+/// This runs after the turn's pending context and user input are recorded so the estimate matches
+/// the full replay that a cross-provider request must send.
+async fn maybe_run_model_switch_request_baseline_compact(
+    sess: &Arc<Session>,
+    turn_context: &Arc<TurnContext>,
+    step_context: &Arc<StepContext>,
+    previous_turn_settings: Option<PreviousTurnSettings>,
+    client_session: &mut ModelClientSession,
+    cancellation_token: &CancellationToken,
+) -> CodexResult<(Option<Arc<ToolRouter>>, bool)> {
+    let Some(previous_turn_settings) = previous_turn_settings else {
+        return Ok((None, false));
+    };
+    if previous_turn_settings.model == turn_context.model_info.slug {
+        return Ok((None, false));
+    }
+
+    let router = built_tools(sess.as_ref(), step_context.as_ref(), cancellation_token).await?;
+    if comp_hash_changed(
+        previous_turn_settings.comp_hash.as_deref(),
+        turn_context.model_info.comp_hash.as_deref(),
+    ) {
+        return Ok((Some(router), false));
+    }
+
+    let input = sess
+        .clone_history()
+        .await
+        .for_prompt(&turn_context.model_info.input_modalities);
+    let prompt = build_prompt(
+        input,
+        router.as_ref(),
+        turn_context,
+        sess.get_base_instructions().await,
+    );
+    let Some(estimated_request_tokens) =
+        prompt.estimated_request_token_count(&turn_context.model_info)
+    else {
+        return Ok((Some(router), false));
+    };
+
+    let auto_compact_scope_tokens = match turn_context.config.model_auto_compact_token_limit_scope {
+        AutoCompactTokenLimitScope::Total => estimated_request_tokens,
+        AutoCompactTokenLimitScope::BodyAfterPrefix => {
+            let prefill_tokens = sess
+                .auto_compact_window_snapshot()
+                .await
+                .prefill_input_tokens
+                .unwrap_or(0);
+            estimated_request_tokens.saturating_sub(prefill_tokens)
+        }
+    };
+    let auto_compact_limit = turn_context.model_info.auto_compact_token_limit();
+    let full_context_window_limit = turn_context.model_context_window();
+    let token_limit_reached = auto_compact_limit
+        .is_some_and(|limit| auto_compact_scope_tokens >= limit)
+        || full_context_window_limit.is_some_and(|limit| estimated_request_tokens >= limit);
+    trace!(
+        previous_model = %previous_turn_settings.model,
+        target_model = %turn_context.model_info.slug,
+        estimated_request_tokens,
+        auto_compact_scope_tokens,
+        auto_compact_limit,
+        full_context_window_limit,
+        token_limit_reached,
+        "model switch request baseline"
+    );
+    if !token_limit_reached {
+        return Ok((Some(router), false));
+    }
+
+    run_auto_compact(
+        sess,
+        Arc::clone(step_context),
+        /*fallback_step_context*/ None,
+        client_session,
+        InitialContextInjection::DoNotInject,
+        CompactionReason::ContextLimit,
+        CompactionPhase::PreTurn,
+    )
+    .await?;
+    Ok((Some(router), true))
+}
+
 /// Returns true only when both turns declare compaction compatibility hashes and they differ.
 /// A missing hash does not provide enough information to trigger compaction.
 fn comp_hash_changed(previous: Option<&str>, current: Option<&str>) -> bool {
@@ -1090,10 +1189,14 @@ async fn run_sampling_request(
     client_session: &mut ModelClientSession,
     responses_metadata: &CodexResponsesMetadata,
     input: Vec<ResponseItem>,
+    prebuilt_router: Option<Arc<ToolRouter>>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<(SamplingRequestResult, Vec<ResponseItem>)> {
     let turn_context = Arc::clone(&step_context.turn);
-    let router = built_tools(sess.as_ref(), step_context.as_ref(), &cancellation_token).await?;
+    let router = match prebuilt_router {
+        Some(router) => router,
+        None => built_tools(sess.as_ref(), step_context.as_ref(), &cancellation_token).await?,
+    };
 
     let base_instructions = sess.get_base_instructions().await;
 
