@@ -484,7 +484,9 @@ class InstallApohl79ShTest(unittest.TestCase):
                 },
             )
 
-    def test_running_app_server_is_left_unchanged_when_restart_is_declined(self) -> None:
+    def test_running_app_server_is_left_unchanged_when_restart_is_declined(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             archive_path = root / ASSET
