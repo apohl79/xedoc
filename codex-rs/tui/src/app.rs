@@ -708,6 +708,7 @@ fn spawn_startup_thread_start(
     app_event_tx: AppEventSender,
 ) {
     let request_handle = app_server.request_handle();
+    let config = app_server.session_config_with_effective_service_tier(&config);
     let thread_params_mode = app_server.thread_params_mode();
     let remote_cwd_override = app_server.remote_cwd_override().map(Path::to_path_buf);
     tokio::spawn(async move {
@@ -1081,6 +1082,7 @@ impl App {
             }
         };
         chat_widget.remote_connection = remote_connection;
+        chat_widget.set_can_disconnect_active_turn(app_server_target.supports_thread_disconnect());
         let thread_and_widget_ms = thread_and_widget_started_at.elapsed().as_millis();
         chat_widget
             .maybe_prompt_windows_sandbox_enable(should_prompt_windows_sandbox_nux_at_startup);

@@ -422,6 +422,15 @@ impl ChatWidget {
     /// Ctrl-D only participates in quit when the composer is empty and no modal/popup is active.
     /// Otherwise it should be routed to the active view and not attempt to quit.
     fn on_ctrl_d(&mut self) -> bool {
+        if self.bottom_pane.can_disconnect_active_turn()
+            && self.turn_lifecycle.agent_turn_running
+            && self.bottom_pane.composer_is_empty()
+            && self.bottom_pane.no_modal_or_popup_active()
+        {
+            self.open_active_turn_disconnect_prompt();
+            return true;
+        }
+
         let key = key_hint::ctrl(KeyCode::Char('d'));
         if !DOUBLE_PRESS_QUIT_SHORTCUT_ENABLED {
             if !self.bottom_pane.composer_is_empty() || !self.bottom_pane.no_modal_or_popup_active()
@@ -446,6 +455,30 @@ impl ChatWidget {
 
         self.arm_quit_shortcut(key);
         true
+    }
+
+    fn open_active_turn_disconnect_prompt(&mut self) {
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Disconnect from active turn?".to_string()),
+            subtitle: Some("The turn will continue running in the background.".to_string()),
+            items: vec![
+                SelectionItem {
+                    name: "Disconnect and keep running".to_string(),
+                    actions: vec![Box::new(|tx| {
+                        tx.send(AppEvent::Exit(ExitMode::ShutdownFirst));
+                    })],
+                    dismiss_on_select: true,
+                    ..Default::default()
+                },
+                SelectionItem {
+                    name: "Stay connected".to_string(),
+                    dismiss_on_select: true,
+                    ..Default::default()
+                },
+            ],
+            initial_selected_idx: Some(1),
+            ..Default::default()
+        });
     }
 
     /// True if `key` matches the armed quit shortcut and the window has not expired.

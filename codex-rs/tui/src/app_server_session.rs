@@ -677,7 +677,7 @@ impl AppServerSession {
         self.thread_params_mode
     }
 
-    fn session_config_with_effective_service_tier(&self, config: &Config) -> Config {
+    pub(crate) fn session_config_with_effective_service_tier(&self, config: &Config) -> Config {
         let Some(model) = config.model.as_deref().or(self.default_model.as_deref()) else {
             return config.clone();
         };
@@ -2506,6 +2506,36 @@ mod tests {
 
         assert_eq!(
             resumed.session.service_tier,
+            Some(SERVICE_TIER_DEFAULT_REQUEST_VALUE.to_string())
+        );
+        app_server.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn startup_thread_config_normalizes_unsupported_service_tier() -> Result<()> {
+        let codex_home = tempfile::tempdir().expect("tempdir");
+        let mut config = build_config(&codex_home).await;
+        config.model = Some("gpt-5.4".to_string());
+        config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
+        config
+            .features
+            .enable(Feature::FastMode)
+            .expect("enable fast mode");
+        let mut app_server = crate::start_embedded_app_server_for_picker(&config).await?;
+        let mut preset = crate::test_support::TEST_MODEL_PRESETS
+            .iter()
+            .find(|preset| preset.model == "gpt-5.4")
+            .expect("gpt-5.4 test preset")
+            .clone();
+        preset.service_tiers.clear();
+        preset.default_service_tier = None;
+        app_server.available_models = vec![preset];
+
+        let normalized = app_server.session_config_with_effective_service_tier(&config);
+
+        assert_eq!(
+            normalized.service_tier,
             Some(SERVICE_TIER_DEFAULT_REQUEST_VALUE.to_string())
         );
         app_server.shutdown().await?;

@@ -273,6 +273,10 @@ pub(crate) enum AppServerTarget {
 }
 
 impl AppServerTarget {
+    pub(crate) fn supports_thread_disconnect(&self) -> bool {
+        matches!(self, Self::LocalDaemon { .. } | Self::Remote { .. })
+    }
+
     pub(crate) fn uses_remote_workspace(&self) -> bool {
         matches!(self, Self::Remote { .. })
     }

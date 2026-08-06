@@ -201,8 +201,8 @@ async fn forward_remote_app_server_message(
     Ok(())
 }
 
-/// Starts a proxy that drops its first WebSocket client without a closing handshake, then accepts
-/// the replacement connection on the same endpoint.
+/// Starts a proxy that drops the first WebSocket client without a closing handshake, then drops
+/// the first replacement while restoring a thread before accepting the next replacement.
 async fn start_reconnectable_app_server(
     config: &Config,
 ) -> Result<(
@@ -262,7 +262,31 @@ async fn start_reconnectable_app_server(
 
         let (second_stream, _) = listener.accept().await?;
         let mut second_websocket = accept_async(second_stream).await?;
-        while let Some(frame) = second_websocket.next().await {
+        let mut force_restore_disconnect = true;
+        loop {
+            let Some(frame) = second_websocket.next().await else {
+                break;
+            };
+            let is_thread_resume = if let Ok(Message::Text(text)) = &frame {
+                serde_json::from_str::<JSONRPCMessage>(text)
+                    .ok()
+                    .is_some_and(|message| {
+                        matches!(
+                            message,
+                            JSONRPCMessage::Request(request)
+                                if request.method == "thread/resume"
+                        )
+                    })
+            } else {
+                false
+            };
+            if force_restore_disconnect && is_thread_resume {
+                force_restore_disconnect = false;
+                drop(second_websocket);
+                let (third_stream, _) = listener.accept().await?;
+                second_websocket = accept_async(third_stream).await?;
+                continue;
+            }
             forward_remote_app_server_message(
                 &mut second_websocket,
                 &embedded,

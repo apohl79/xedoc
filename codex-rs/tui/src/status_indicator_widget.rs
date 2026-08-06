@@ -51,6 +51,7 @@ pub(crate) struct StatusIndicatorWidget {
     inline_message: Option<String>,
     show_interrupt_hint: bool,
     interrupt_binding: Option<KeyBinding>,
+    show_detach_hint: bool,
 
     elapsed_running: Duration,
     last_resume_at: Instant,
@@ -90,6 +91,7 @@ impl StatusIndicatorWidget {
             inline_message: None,
             show_interrupt_hint: true,
             interrupt_binding: Some(key_hint::plain(KeyCode::Esc)),
+            show_detach_hint: false,
             elapsed_running: Duration::ZERO,
             last_resume_at: Instant::now(),
             is_paused: false,
@@ -154,6 +156,10 @@ impl StatusIndicatorWidget {
 
     pub(crate) fn set_interrupt_binding(&mut self, binding: Option<KeyBinding>) {
         self.interrupt_binding = binding;
+    }
+
+    pub(crate) fn set_detach_hint_visible(&mut self, visible: bool) {
+        self.show_detach_hint = visible;
     }
 
     pub(crate) fn pause_timer(&mut self) {
@@ -250,7 +256,7 @@ impl Renderable for StatusIndicatorWidget {
         let pretty_elapsed = fmt_elapsed_compact(elapsed_duration.as_secs());
         let motion_mode = MotionMode::from_animations_enabled(self.animations_enabled);
 
-        let mut spans = Vec::with_capacity(5);
+        let mut spans = Vec::with_capacity(8);
         if let Some(indicator) = activity_indicator(
             Some(self.last_resume_at),
             motion_mode,
@@ -263,17 +269,24 @@ impl Renderable for StatusIndicatorWidget {
         if !spans.is_empty() {
             spans.push(" ".into());
         }
+        spans.push(format!("({pretty_elapsed}").dim());
         if self.show_interrupt_hint
             && let Some(interrupt_binding) = self.interrupt_binding
         {
             spans.extend(vec![
-                format!("({pretty_elapsed} • ").dim(),
+                " • ".dim(),
                 interrupt_binding.into(),
-                " to interrupt)".dim(),
+                " to interrupt".dim(),
             ]);
-        } else {
-            spans.push(format!("({pretty_elapsed})").dim());
         }
+        if self.show_detach_hint {
+            spans.extend(vec![
+                " • ".dim(),
+                key_hint::ctrl(KeyCode::Char('d')).into(),
+                " to detach".dim(),
+            ]);
+        }
+        spans.push(")".dim());
         if let Some(message) = &self.inline_message {
             // Keep optional context after elapsed/interrupt text so that core
             // interrupt affordances stay in a fixed visual location.
@@ -411,6 +424,26 @@ mod tests {
             .collect::<String>();
 
         assert!(line.starts_with("Working (0s • esc to interrupt)"));
+    }
+
+    #[test]
+    fn renders_detach_hint() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        w.set_detach_hint_visible(/*visible*/ true);
+        w.is_paused = true;
+        w.elapsed_running = Duration::ZERO;
+
+        let mut terminal = Terminal::new(TestBackend::new(80, 1)).expect("terminal");
+        terminal
+            .draw(|f| w.render(f.area(), f.buffer_mut()))
+            .expect("draw");
+        insta::assert_snapshot!(terminal.backend());
     }
 
     #[test]

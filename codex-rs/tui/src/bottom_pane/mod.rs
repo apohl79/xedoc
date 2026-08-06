@@ -239,6 +239,8 @@ pub(crate) struct BottomPane {
     disable_paste_burst: bool,
     is_task_running: bool,
     active_turn_started_at: Option<Instant>,
+    active_turn_running: bool,
+    can_disconnect_active_turn: bool,
     esc_backtrack_hint: bool,
     animations_enabled: bool,
 
@@ -309,6 +311,8 @@ impl BottomPane {
             disable_paste_burst,
             is_task_running: false,
             active_turn_started_at: None,
+            active_turn_running: false,
+            can_disconnect_active_turn: false,
             status: None,
             unified_exec_footer: UnifiedExecFooter::new(),
             pending_input_preview: PendingInputPreview::new(),
@@ -1077,6 +1081,9 @@ impl BottomPane {
                 if let Some(status) = self.status.as_mut() {
                     status.set_interrupt_hint_visible(/*visible*/ true);
                     status.set_interrupt_binding(primary_binding(&self.keymap.chat.interrupt_turn));
+                    status.set_detach_hint_visible(
+                        self.can_disconnect_active_turn && self.active_turn_running,
+                    );
                 }
                 self.sync_status_inline_message();
                 self.request_redraw();
@@ -1113,6 +1120,9 @@ impl BottomPane {
             ));
             if let Some(status) = self.status.as_mut() {
                 status.set_interrupt_binding(primary_binding(&self.keymap.chat.interrupt_turn));
+                status.set_detach_hint_visible(
+                    self.can_disconnect_active_turn && self.active_turn_running,
+                );
             }
             self.sync_status_inline_message();
             self.request_redraw();
@@ -1122,6 +1132,26 @@ impl BottomPane {
     pub(crate) fn set_interrupt_hint_visible(&mut self, visible: bool) {
         if let Some(status) = self.status.as_mut() {
             status.set_interrupt_hint_visible(visible);
+            self.request_redraw();
+        }
+    }
+
+    pub(crate) fn set_can_disconnect_active_turn(&mut self, can_disconnect: bool) {
+        self.can_disconnect_active_turn = can_disconnect;
+        if let Some(status) = self.status.as_mut() {
+            status.set_detach_hint_visible(can_disconnect && self.active_turn_running);
+            self.request_redraw();
+        }
+    }
+
+    pub(crate) fn can_disconnect_active_turn(&self) -> bool {
+        self.can_disconnect_active_turn
+    }
+
+    pub(crate) fn set_active_turn_running(&mut self, running: bool) {
+        self.active_turn_running = running;
+        if let Some(status) = self.status.as_mut() {
+            status.set_detach_hint_visible(running && self.can_disconnect_active_turn);
             self.request_redraw();
         }
     }

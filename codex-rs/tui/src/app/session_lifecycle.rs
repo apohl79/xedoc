@@ -481,6 +481,8 @@ impl App {
         }
         chat_widget.seed_status_line_command_output_from(&self.chat_widget);
         chat_widget.remote_connection = self.chat_widget.remote_connection.clone();
+        chat_widget
+            .set_can_disconnect_active_turn(self.app_server_target.supports_thread_disconnect());
         for (thread_id, entry) in self.agent_navigation.ordered_threads() {
             chat_widget.set_collab_agent_metadata(
                 thread_id,

@@ -1,0 +1,11 @@
+---
+source: tui/src/chatwidget/tests/slash_commands.rs
+expression: "render_bottom_popup(&chat, 80)"
+---
+  Disconnect from active turn?
+  The turn will continue running in the background.
+
+  1. Disconnect and keep running
+› 2. Stay connected
+
+  Press enter to confirm or esc to go back

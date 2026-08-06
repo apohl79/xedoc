@@ -1720,6 +1720,11 @@ impl ChatWidget {
         self.bottom_pane.set_remote_image_urls(remote_image_urls);
     }
 
+    pub(crate) fn set_can_disconnect_active_turn(&mut self, can_disconnect: bool) {
+        self.bottom_pane
+            .set_can_disconnect_active_turn(can_disconnect);
+    }
+
     fn take_remote_image_urls(&mut self) -> Vec<String> {
         self.bottom_pane.take_remote_image_urls()
     }

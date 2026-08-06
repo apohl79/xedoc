@@ -35,6 +35,8 @@ impl ChatWidget {
         let task_running =
             self.turn_lifecycle.agent_turn_running || self.mcp_startup_status.is_some();
         let was_task_running = self.bottom_pane.is_task_running();
+        self.bottom_pane
+            .set_active_turn_running(self.turn_lifecycle.agent_turn_running);
         self.bottom_pane.set_task_running(task_running);
         self.bottom_pane
             .set_active_turn_started_at(self.turn_lifecycle.active_turn_started_at);

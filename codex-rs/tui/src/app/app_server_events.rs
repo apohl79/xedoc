@@ -19,7 +19,7 @@ use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
 use std::time::Duration;
 
-const LOCAL_DAEMON_RECONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const LOCAL_DAEMON_RECONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const LOCAL_DAEMON_RECONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(100);
 
 impl App {
@@ -87,22 +87,26 @@ impl App {
         &mut self,
         app_server_client: &mut AppServerSession,
     ) -> Result<(), String> {
-        let AppServerTarget::LocalDaemon { endpoint } = &self.app_server_target else {
-            return Err("disconnected app server is not the local daemon".to_string());
+        let endpoint = match &self.app_server_target {
+            AppServerTarget::LocalDaemon { endpoint } => endpoint.clone(),
+            _ => return Err("disconnected app server is not the local daemon".to_string()),
         };
 
         let deadline = tokio::time::Instant::now() + LOCAL_DAEMON_RECONNECT_TIMEOUT;
         let mut last_error = None;
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            match tokio::time::timeout(
-                remaining,
-                app_server_client.reconnect_remote(endpoint.clone()),
-            )
+            match tokio::time::timeout(remaining, async {
+                app_server_client
+                    .reconnect_remote(endpoint.clone())
+                    .await
+                    .map_err(|err| format!("{err:#}"))?;
+                self.restore_local_daemon_threads(app_server_client).await
+            })
             .await
             {
-                Ok(Ok(())) => return self.restore_local_daemon_threads(app_server_client).await,
-                Ok(Err(err)) => last_error = Some(format!("{err:#}")),
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(err)) => last_error = Some(err),
                 Err(_) => break,
             }
 
@@ -115,7 +119,7 @@ impl App {
 
         let detail = last_error.unwrap_or_else(|| "connection attempt timed out".to_string());
         Err(format!(
-            "local app-server daemon did not accept a replacement connection within {} seconds: {detail}",
+            "local app-server daemon did not recover the TUI session within {} seconds: {detail}",
             LOCAL_DAEMON_RECONNECT_TIMEOUT.as_secs()
         ))
     }
