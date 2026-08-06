@@ -478,10 +478,21 @@ impl ModelClient {
     /// This constructor does not perform network I/O itself; the session opens a websocket lazily
     /// when the first stream request is issued.
     pub fn new_session(&self) -> ModelClientSession {
+        self.new_session_with_turn_state(Arc::new(OnceLock::new()))
+    }
+
+    /// Creates a fresh streaming session that shares the caller's sticky turn state.
+    ///
+    /// Parallel requests within one logical turn must use the same routing token while keeping
+    /// independent websocket state. This is used by hierarchical compaction's bounded map phase.
+    pub(crate) fn new_session_with_turn_state(
+        &self,
+        turn_state: Arc<OnceLock<String>>,
+    ) -> ModelClientSession {
         ModelClientSession {
             client: self.clone(),
             websocket_session: self.take_cached_websocket_session(),
-            turn_state: Arc::new(OnceLock::new()),
+            turn_state,
         }
     }
 

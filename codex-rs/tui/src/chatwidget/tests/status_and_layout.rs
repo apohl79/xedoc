@@ -2636,6 +2636,39 @@ async fn warning_event_adds_warning_history_cell() {
 }
 
 #[tokio::test]
+async fn compaction_progress_updates_status_without_history_cell() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    handle_warning(&mut chat, "• Compacting... map 1/3");
+
+    let cells = drain_insert_history(&mut rx);
+    assert!(cells.is_empty(), "compaction progress should be transient");
+    let status = chat
+        .bottom_pane
+        .status_widget()
+        .expect("status indicator should be visible");
+    assert_eq!(status.header(), "Compacting... map 1/3");
+}
+
+#[tokio::test]
+async fn compaction_progress_status_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    handle_turn_started(&mut chat, "turn-1");
+    handle_warning(&mut chat, "• Compacting... reduce layer 2 (3 groups)");
+
+    let height = chat.desired_height(/*width*/ 80);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))
+        .expect("create terminal");
+    terminal
+        .draw(|f| chat.render(f.area(), f.buffer_mut()))
+        .expect("draw status widget");
+    assert_chatwidget_snapshot!(
+        "compaction_progress_status",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
+#[tokio::test]
 async fn unsupported_code_mode_warning_renders_as_warning_history_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_warning(

@@ -34,6 +34,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::InternalChatMessageMetadataPassthrough;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::COMPACTION_PROGRESS_PREFIX;
 use codex_protocol::protocol::CompactedItem;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::RawResponseCompletedEvent;
@@ -228,11 +229,11 @@ async fn run_compact_task_inner_impl(
     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
     sess.emit_turn_item_started(&turn_context, &compaction_item)
         .await;
-    let initial_input_for_turn: ResponseInputItem = ResponseInputItem::from(input);
+    let initial_input_for_turn: ResponseInputItem = ResponseInputItem::from(input.clone());
 
     let mut history = sess.clone_history().await;
     history.record_items(
-        &[initial_input_for_turn.into()],
+        &[initial_input_for_turn.clone().into()],
         turn_context.model_info.truncation_policy.into(),
     );
 
@@ -249,82 +250,132 @@ async fn run_compact_task_inner_impl(
         CodexResponsesRequestKind::Compaction(compaction_metadata),
     );
 
-    loop {
-        // Clone is required because of the loop
-        let turn_input = history
-            .clone()
-            .for_prompt(&turn_context.model_info.input_modalities);
-        let turn_input_len = turn_input.len();
-        let prompt = Prompt {
-            input: turn_input,
-            base_instructions: sess.get_base_instructions().await,
-            ..Default::default()
-        };
-        let attempt_result = drain_to_completed(
-            &sess,
-            turn_context.as_ref(),
-            &mut client_session,
-            &responses_metadata,
-            &prompt,
+    let base_instructions = sess.get_base_instructions().await;
+    let normalized_history = history
+        .clone()
+        .for_prompt(&turn_context.model_info.input_modalities);
+    let compaction_prompt_item = ResponseItem::from(initial_input_for_turn);
+    let history_for_hierarchy = normalized_history
+        .strip_suffix(std::slice::from_ref(&compaction_prompt_item))
+        .unwrap_or(&normalized_history)
+        .to_vec();
+    let use_hierarchical_compaction = turn_context
+        .model_info
+        .auto_compact_token_limit()
+        .is_some_and(|query_budget| {
+            let base_tokens =
+                i64::try_from(approx_token_count(&base_instructions.text)).unwrap_or(i64::MAX);
+            let history_tokens = normalized_history
+                .iter()
+                .map(crate::context_manager::estimate_item_token_count)
+                .fold(0_i64, i64::saturating_add);
+            base_tokens.saturating_add(history_tokens) > query_budget
+        });
+
+    let (summary_suffix, history_items) = if use_hierarchical_compaction {
+        let summary = crate::compact_hierarchical::summarize_history(
+            Arc::clone(&sess),
+            Arc::clone(&turn_context),
+            history_for_hierarchy,
+            compaction_prompt_item,
+            base_instructions,
+            responses_metadata.clone(),
+            client_session.turn_state(),
         )
         .await;
+        let summary = match summary {
+            Ok(summary) => summary,
+            Err(error) => {
+                sess.send_event(
+                    &turn_context,
+                    EventMsg::Warning(WarningEvent {
+                        message: format!("{COMPACTION_PROGRESS_PREFIX} failed"),
+                    }),
+                )
+                .await;
+                return Err(error);
+            }
+        };
+        (summary, normalized_history)
+    } else {
+        loop {
+            // Clone is required because of the loop
+            let turn_input = history
+                .clone()
+                .for_prompt(&turn_context.model_info.input_modalities);
+            let turn_input_len = turn_input.len();
+            let prompt = Prompt {
+                input: turn_input,
+                base_instructions: base_instructions.clone(),
+                ..Default::default()
+            };
+            let attempt_result = drain_to_completed(
+                &sess,
+                turn_context.as_ref(),
+                &mut client_session,
+                &responses_metadata,
+                &prompt,
+            )
+            .await;
 
-        match attempt_result {
-            Ok(()) => {
-                break;
-            }
-            Err(err @ (CodexErr::Interrupted | CodexErr::TurnAborted)) => {
-                return Err(err);
-            }
-            Err(e @ CodexErr::SessionBudgetExceeded) => {
-                sess.track_turn_codex_error(turn_context.as_ref(), &e);
-                let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
-                sess.send_event(&turn_context, event).await;
-                return Err(e);
-            }
-            Err(e @ CodexErr::ContextWindowExceeded) => {
-                if turn_input_len > 1 {
-                    // Trim from the beginning to preserve cache (prefix-based) and keep recent messages intact.
-                    error!(
-                        "Context window exceeded while compacting; removing oldest history item. Error: {e}"
-                    );
-                    history.remove_first_item();
-                    retries = 0;
-                    continue;
+            match attempt_result {
+                Ok(()) => {
+                    break;
                 }
-                sess.set_total_tokens_full(turn_context.as_ref()).await;
-                sess.track_turn_codex_error(turn_context.as_ref(), &e);
-                let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
-                sess.send_event(&turn_context, event).await;
-                return Err(e);
-            }
-            Err(e) => {
-                if retries < max_retries {
-                    retries += 1;
-                    let delay = backoff(retries);
-                    sess.notify_stream_error(
-                        turn_context.as_ref(),
-                        format!("Reconnecting... {retries}/{max_retries}"),
-                        e,
-                    )
-                    .await;
-                    tokio::time::sleep(delay).await;
-                    continue;
-                } else {
+                Err(err @ (CodexErr::Interrupted | CodexErr::TurnAborted)) => {
+                    return Err(err);
+                }
+                Err(e @ CodexErr::SessionBudgetExceeded) => {
                     sess.track_turn_codex_error(turn_context.as_ref(), &e);
                     let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
                     sess.send_event(&turn_context, event).await;
                     return Err(e);
                 }
+                Err(e @ CodexErr::ContextWindowExceeded) => {
+                    if turn_input_len > 1 {
+                        // Trim from the beginning to preserve cache (prefix-based) and keep recent messages intact.
+                        error!(
+                            "Context window exceeded while compacting; removing oldest history item. Error: {e}"
+                        );
+                        history.remove_first_item();
+                        retries = 0;
+                        continue;
+                    }
+                    sess.set_total_tokens_full(turn_context.as_ref()).await;
+                    sess.track_turn_codex_error(turn_context.as_ref(), &e);
+                    let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
+                    sess.send_event(&turn_context, event).await;
+                    return Err(e);
+                }
+                Err(e) => {
+                    if retries < max_retries {
+                        retries += 1;
+                        let delay = backoff(retries);
+                        sess.notify_stream_error(
+                            turn_context.as_ref(),
+                            format!("Reconnecting... {retries}/{max_retries}"),
+                            e,
+                        )
+                        .await;
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    } else {
+                        sess.track_turn_codex_error(turn_context.as_ref(), &e);
+                        let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
+                        sess.send_event(&turn_context, event).await;
+                        return Err(e);
+                    }
+                }
             }
         }
-    }
-
-    let history_snapshot = sess.clone_history().await;
-    let history_items = history_snapshot.raw_items();
-    let summary_suffix = get_last_assistant_message_from_turn(history_items).unwrap_or_default();
+        let history_snapshot = sess.clone_history().await;
+        (
+            get_last_assistant_message_from_turn(history_snapshot.raw_items()).unwrap_or_default(),
+            history_snapshot.into_raw_items(),
+        )
+    };
     let summary_text = format!("{SUMMARY_PREFIX}\n{summary_suffix}");
-    let user_messages = collect_user_messages(history_items);
+    let user_messages = collect_user_messages(&history_items);
 
     let mut new_history = build_compacted_history(Vec::new(), &user_messages, &summary_text);
     if let Some(summary_item) = new_history.last_mut() {

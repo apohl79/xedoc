@@ -283,23 +283,6 @@ fn openai_model_provider(server: &MockServer) -> ModelProviderInfo {
     provider
 }
 
-fn invalid_request_response(message: impl Into<String>) -> wiremock::ResponseTemplate {
-    wiremock::ResponseTemplate::new(/*status*/ 400).set_body_json(json!({
-        "detail": message.into(),
-    }))
-}
-
-fn model_not_found_response(model: &str) -> wiremock::ResponseTemplate {
-    wiremock::ResponseTemplate::new(/*status*/ 404).set_body_json(json!({
-        "error": {
-            "message": format!("Model not found {model}"),
-            "type": "invalid_request_error",
-            "param": "model",
-            "code": null,
-        }
-    }))
-}
-
 fn write_global_file(
     home: &TempDir,
     filename: &str,
@@ -410,7 +393,7 @@ fn assert_pre_sampling_switch_compaction_requests(
     next_model: &str,
 ) {
     assert_eq!(first["model"].as_str(), Some(previous_model));
-    assert_eq!(compact["model"].as_str(), Some(previous_model));
+    assert_eq!(compact["model"].as_str(), Some(next_model));
     assert_eq!(follow_up["model"].as_str(), Some(next_model));
 
     let compact_body = compact.to_string();
@@ -2205,7 +2188,7 @@ async fn pre_sampling_compact_runs_on_switch_to_smaller_context_model() {
     insta::assert_snapshot!(
         "pre_sampling_model_switch_compaction_shapes",
         format_labeled_requests_snapshot(
-            "Pre-sampling compaction on model switch to a smaller context window: current behavior compacts using prior-turn history only (incoming user message excluded), and the follow-up request carries compacted history plus the new user message.",
+            "Pre-sampling compaction on model switch to a smaller context window: current behavior compacts using the target model and prior-turn history only (incoming user message excluded), and the follow-up request carries compacted history plus the new user message.",
             &[
                 ("Initial Request (Previous Model)", &requests[0]),
                 ("Pre-sampling Compaction Request", &requests[1]),
@@ -2306,7 +2289,7 @@ async fn pre_sampling_compact_runs_when_comp_hash_changes() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pre_sampling_compact_falls_back_from_retired_previous_model_after_rename() {
+async fn pre_sampling_compact_uses_target_model_after_previous_model_rename() {
     skip_if_no_network!();
 
     let server = MockServer::start().await;
@@ -2333,9 +2316,6 @@ async fn pre_sampling_compact_falls_back_from_retired_previous_model_after_renam
                 ev_assistant_message("m1", "before switch"),
                 ev_completed_with_tokens("r1", /*total_tokens*/ 100),
             ])),
-            invalid_request_response(format!(
-                "The '{retired_model}' model is not supported when using Codex with a ChatGPT account."
-            )),
             sse_response(sse(vec![
                 json!({
                     "type": "response.output_item.done",
@@ -2425,8 +2405,8 @@ async fn pre_sampling_compact_falls_back_from_retired_previous_model_after_renam
     assert_eq!(models_mock.requests().len(), 1);
     assert_eq!(
         requests.len(),
-        4,
-        "the renamed-model turn should retry compaction and then sample"
+        3,
+        "the renamed-model turn should compact with the target model and then sample"
     );
     assert_eq!(
         requests[0].body_json()["model"].as_str(),
@@ -2434,20 +2414,16 @@ async fn pre_sampling_compact_falls_back_from_retired_previous_model_after_renam
     );
     assert_eq!(
         requests[1].body_json()["model"].as_str(),
-        Some(retired_model)
+        Some(renamed_model)
     );
     assert_eq!(
         requests[2].body_json()["model"].as_str(),
         Some(renamed_model)
     );
-    assert_eq!(
-        requests[3].body_json()["model"].as_str(),
-        Some(renamed_model)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pre_sampling_compact_falls_back_when_previous_model_is_not_found() {
+async fn pre_sampling_compact_uses_target_model_when_previous_model_is_not_found() {
     skip_if_no_network!();
 
     let server = MockServer::start().await;
@@ -2474,7 +2450,6 @@ async fn pre_sampling_compact_falls_back_when_previous_model_is_not_found() {
                 ev_assistant_message("m1", "before switch"),
                 ev_completed_with_tokens("r1", /*total_tokens*/ 100),
             ])),
-            model_not_found_response(retired_model),
             sse_response(sse(vec![
                 json!({
                     "type": "response.output_item.done",
@@ -2565,8 +2540,8 @@ async fn pre_sampling_compact_falls_back_when_previous_model_is_not_found() {
     assert_eq!(models_mock.requests().len(), 1);
     assert_eq!(
         requests.len(),
-        4,
-        "the renamed-model turn should retry compaction and then sample"
+        3,
+        "the renamed-model turn should compact with the target model and then sample"
     );
     assert_eq!(
         requests[0].body_json()["model"].as_str(),
@@ -2574,20 +2549,16 @@ async fn pre_sampling_compact_falls_back_when_previous_model_is_not_found() {
     );
     assert_eq!(
         requests[1].body_json()["model"].as_str(),
-        Some(retired_model)
+        Some(renamed_model)
     );
     assert_eq!(
         requests[2].body_json()["model"].as_str(),
         Some(renamed_model)
     );
-    assert_eq!(
-        requests[3].body_json()["model"].as_str(),
-        Some(renamed_model)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pre_sampling_compact_falls_back_after_previous_model_invalid_request_on_downshift() {
+async fn pre_sampling_compact_uses_target_model_on_downshift() {
     skip_if_no_network!();
 
     let server = MockServer::start().await;
@@ -2616,7 +2587,6 @@ async fn pre_sampling_compact_falls_back_after_previous_model_invalid_request_on
                 ev_assistant_message("m1", "before switch"),
                 ev_completed_with_tokens("r1", /*total_tokens*/ 120_000),
             ])),
-            invalid_request_response("previous-model compaction was rejected"),
             sse_response(sse(vec![
                 json!({
                     "type": "response.output_item.done",
@@ -2673,23 +2643,19 @@ async fn pre_sampling_compact_falls_back_after_previous_model_invalid_request_on
     assert_eq!(models_mock.requests().len(), 1);
     assert_eq!(
         requests.len(),
-        4,
-        "the smaller-model turn should retry compaction and then sample"
+        3,
+        "the smaller-model turn should compact with the target model and then sample"
     );
     assert_eq!(
         requests[0].body_json()["model"].as_str(),
         Some(retired_model)
     );
-    assert_eq!(
-        requests[1].body_json()["model"].as_str(),
-        Some(retired_model)
-    );
+    assert_eq!(requests[1].body_json()["model"].as_str(), Some(next_model));
     assert_eq!(requests[2].body_json()["model"].as_str(), Some(next_model));
-    assert_eq!(requests[3].body_json()["model"].as_str(), Some(next_model));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pre_sampling_legacy_remote_compact_falls_back_after_previous_model_invalid_request() {
+async fn pre_sampling_legacy_remote_compact_uses_target_model_on_downshift() {
     skip_if_no_network!();
 
     let server = MockServer::start().await;
@@ -2727,7 +2693,6 @@ async fn pre_sampling_legacy_remote_compact_falls_back_after_previous_model_inva
     let compact_request_log = mount_compact_response_sequence(
         &server,
         vec![
-            invalid_request_response("previous-model compaction was rejected"),
             wiremock::ResponseTemplate::new(/*status*/ 200)
                 .insert_header("content-type", "application/json")
                 .set_body_json(json!({
@@ -2778,17 +2743,13 @@ async fn pre_sampling_legacy_remote_compact_falls_back_after_previous_model_inva
     let compact_requests = compact_request_log.requests();
     assert_eq!(models_mock.requests().len(), 1);
     assert_eq!(requests.len(), 2);
-    assert_eq!(compact_requests.len(), 2);
+    assert_eq!(compact_requests.len(), 1);
     assert_eq!(
         requests[0].body_json()["model"].as_str(),
         Some(retired_model)
     );
     assert_eq!(
         compact_requests[0].body_json()["model"].as_str(),
-        Some(retired_model)
-    );
-    assert_eq!(
-        compact_requests[1].body_json()["model"].as_str(),
         Some(next_model)
     );
     assert_eq!(requests[1].body_json()["model"].as_str(), Some(next_model));

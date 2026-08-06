@@ -4,6 +4,7 @@
 //! and final-message separator handling.
 
 use super::*;
+use codex_protocol::protocol::COMPACTION_PROGRESS_PREFIX;
 
 const LEGACY_SAFETY_ACCESS_BLOCK_PREFIX: &str =
     "Invalid prompt: we've limited access to this content for safety reasons.";
@@ -489,6 +490,11 @@ impl ChatWidget {
 
     pub(super) fn on_warning(&mut self, message: impl Into<String>) {
         let message = message.into();
+        if let Some(details) = message.strip_prefix(COMPACTION_PROGRESS_PREFIX) {
+            self.set_status_header(format!("Compacting...{details}"));
+            self.request_redraw();
+            return;
+        }
         if !self.warning_display_state.should_display(&message) {
             return;
         }
