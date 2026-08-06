@@ -65,6 +65,7 @@ class SessionControlTest(unittest.TestCase):
                     "thread": {
                         "id": "thr-1",
                         "name": "Build session",
+                        "cwd": "/workspace/project",
                         "status": {"type": "active", "activeFlags": []},
                         "canAcceptDirectInput": True,
                     }
@@ -78,6 +79,7 @@ class SessionControlTest(unittest.TestCase):
                 {
                     "id": "thr-1",
                     "name": "Build session",
+                    "cwd": "/workspace/project",
                     "status": {"type": "active", "activeFlags": []},
                     "canAcceptDirectInput": True,
                 }
