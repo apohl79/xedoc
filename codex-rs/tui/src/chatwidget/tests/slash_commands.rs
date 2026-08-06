@@ -626,7 +626,7 @@ async fn ctrl_d_quits_without_prompt() {
 }
 
 #[tokio::test]
-async fn ctrl_d_prompts_before_disconnecting_active_daemon_turn() {
+async fn ctrl_d_disconnects_active_daemon_turn_without_prompt() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.set_can_disconnect_active_turn(/*can_disconnect*/ true);
     chat.thread_id = Some(ThreadId::new());
@@ -634,33 +634,9 @@ async fn ctrl_d_prompts_before_disconnecting_active_daemon_turn() {
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
 
-    assert!(chat.bottom_pane.has_active_view());
-    insta::assert_snapshot!(
-        "ctrl_d_disconnect_prompt",
-        render_bottom_popup(&chat, /*width*/ 80)
-    );
-    assert_matches!(rx.try_recv(), Err(TryRecvError::Empty));
-    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
-
-    chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
+    assert!(!chat.bottom_pane.has_active_view());
     assert_matches!(rx.try_recv(), Ok(AppEvent::Exit(ExitMode::ShutdownFirst)));
     assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
-}
-
-#[tokio::test]
-async fn ctrl_d_cancels_active_turn_disconnect_prompt() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.set_can_disconnect_active_turn(/*can_disconnect*/ true);
-    chat.thread_id = Some(ThreadId::new());
-    handle_turn_started(&mut chat, "turn-1");
-
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
-    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-
-    assert!(!chat.bottom_pane.has_active_view());
-    assert_matches!(rx.try_recv(), Err(TryRecvError::Empty));
 }
 
 #[tokio::test]

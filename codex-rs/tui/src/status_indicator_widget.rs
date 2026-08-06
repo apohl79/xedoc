@@ -280,11 +280,7 @@ impl Renderable for StatusIndicatorWidget {
             ]);
         }
         if self.show_detach_hint {
-            spans.extend(vec![
-                " • ".dim(),
-                key_hint::ctrl(KeyCode::Char('d')).into(),
-                " to detach".dim(),
-            ]);
+            spans.extend(vec![" • ".dim(), "ctrl+d".dim(), " to detach".dim()]);
         }
         spans.push(")".dim());
         if let Some(message) = &self.inline_message {

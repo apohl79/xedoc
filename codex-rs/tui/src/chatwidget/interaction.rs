@@ -427,7 +427,8 @@ impl ChatWidget {
             && self.bottom_pane.composer_is_empty()
             && self.bottom_pane.no_modal_or_popup_active()
         {
-            self.open_active_turn_disconnect_prompt();
+            self.app_event_tx
+                .send(AppEvent::Exit(ExitMode::ShutdownFirst));
             return true;
         }
 
@@ -455,30 +456,6 @@ impl ChatWidget {
 
         self.arm_quit_shortcut(key);
         true
-    }
-
-    fn open_active_turn_disconnect_prompt(&mut self) {
-        self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some("Disconnect from active turn?".to_string()),
-            subtitle: Some("The turn will continue running in the background.".to_string()),
-            items: vec![
-                SelectionItem {
-                    name: "Disconnect and keep running".to_string(),
-                    actions: vec![Box::new(|tx| {
-                        tx.send(AppEvent::Exit(ExitMode::ShutdownFirst));
-                    })],
-                    dismiss_on_select: true,
-                    ..Default::default()
-                },
-                SelectionItem {
-                    name: "Stay connected".to_string(),
-                    dismiss_on_select: true,
-                    ..Default::default()
-                },
-            ],
-            initial_selected_idx: Some(1),
-            ..Default::default()
-        });
     }
 
     /// True if `key` matches the armed quit shortcut and the window has not expired.

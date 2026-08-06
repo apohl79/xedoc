@@ -2,4 +2,4 @@
 source: tui/src/status_indicator_widget.rs
 expression: terminal.backend()
 ---
-"Working (0s • esc to interrupt • ctrl + d to detach)                            "
+"Working (0s • esc to interrupt • ctrl+d to detach)                              "
