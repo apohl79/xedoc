@@ -427,6 +427,165 @@ class InstallApohl79ShTest(unittest.TestCase):
                 },
             )
 
+    def test_running_app_server_can_be_restarted_after_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            install_bin = root / "install-bin"
+            install_bin.mkdir()
+            old_codex = root / "old-codex"
+            write_fake_codex(old_codex)
+            old_codex.chmod(0o755)
+            os.symlink(old_codex, install_bin / "codex")
+            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_choice_path = root / "codex-home/codex-providers/install"
+            provider_choice_path.parent.mkdir(parents=True)
+            provider_choice_path.write_text("disabled\n", encoding="utf-8")
+            restart_log = root / "app-server-restart.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CODEX_APOHL79_REPO": "apohl79/codex",
+                    "CODEX_APOHL79_TAG": TAG,
+                    "CODEX_APOHL79_TARGET": TARGET,
+                    "CODEX_HOME": str(root / "codex-home"),
+                    "CODEX_INSTALL_DIR": str(install_bin),
+                    "CODEX_TEST_ARCHIVE": str(archive_path),
+                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "CODEX_TEST_APP_SERVER_RUNNING": "1",
+                    "CODEX_TEST_RESTART_LOG": str(restart_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = run_interactive_installer(env, "y\n")
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "prompt_seen": "Restart it to use the upgraded version?"
+                    in result.stdout,
+                    "restart_log": restart_log.read_text(encoding="utf-8"),
+                },
+                {
+                    "returncode": 0,
+                    "prompt_seen": True,
+                    "restart_log": "restarted\n",
+                },
+            )
+
+    def test_running_app_server_is_left_unchanged_when_restart_is_declined(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            install_bin = root / "install-bin"
+            install_bin.mkdir()
+            old_codex = root / "old-codex"
+            write_fake_codex(old_codex)
+            old_codex.chmod(0o755)
+            os.symlink(old_codex, install_bin / "codex")
+            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_choice_path = root / "codex-home/codex-providers/install"
+            provider_choice_path.parent.mkdir(parents=True)
+            provider_choice_path.write_text("disabled\n", encoding="utf-8")
+            restart_log = root / "app-server-restart.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CODEX_APOHL79_REPO": "apohl79/codex",
+                    "CODEX_APOHL79_TAG": TAG,
+                    "CODEX_APOHL79_TARGET": TARGET,
+                    "CODEX_HOME": str(root / "codex-home"),
+                    "CODEX_INSTALL_DIR": str(install_bin),
+                    "CODEX_TEST_ARCHIVE": str(archive_path),
+                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "CODEX_TEST_APP_SERVER_RUNNING": "1",
+                    "CODEX_TEST_RESTART_LOG": str(restart_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = run_interactive_installer(env, "n\n")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Restart it to use the upgraded version?", result.stdout)
+            self.assertFalse(restart_log.exists())
+
+    def test_running_app_server_is_not_prompted_in_non_interactive_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            install_bin = root / "install-bin"
+            install_bin.mkdir()
+            old_codex = root / "old-codex"
+            write_fake_codex(old_codex)
+            old_codex.chmod(0o755)
+            os.symlink(old_codex, install_bin / "codex")
+            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_choice_path = root / "codex-home/codex-providers/install"
+            provider_choice_path.parent.mkdir(parents=True)
+            provider_choice_path.write_text("disabled\n", encoding="utf-8")
+            restart_log = root / "app-server-restart.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CODEX_APOHL79_REPO": "apohl79/codex",
+                    "CODEX_APOHL79_TAG": TAG,
+                    "CODEX_APOHL79_TARGET": TARGET,
+                    "CODEX_HOME": str(root / "codex-home"),
+                    "CODEX_INSTALL_DIR": str(install_bin),
+                    "CODEX_TEST_ARCHIVE": str(archive_path),
+                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "CODEX_TEST_APP_SERVER_RUNNING": "1",
+                    "CODEX_TEST_RESTART_LOG": str(restart_log),
+                    "CODEX_NON_INTERACTIVE": "1",
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT)],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("Restart it to use the upgraded version?", result.stdout)
+            self.assertIn("leaving it running in non-interactive mode", result.stdout)
+            self.assertFalse(restart_log.exists())
+
 
 def run_interactive_installer(
     env: dict[str, str], response: str
@@ -467,7 +626,7 @@ def write_package_archive(archive_path: Path) -> None:
         write_zip_text(
             archive,
             "bin/codex",
-            "#!/bin/sh\nprintf 'codex-cli 0.144.0-apohl79-17\\n'\n",
+            fake_codex_content(),
             mode=0o755,
         )
         write_zip_text(
@@ -483,6 +642,31 @@ def write_package_archive(archive_path: Path) -> None:
             mode=0o755,
         )
         write_zip_text(archive, "codex-path/rg", "#!/bin/sh\nexit 0\n", mode=0o755)
+
+
+def write_fake_codex(path: Path) -> None:
+    path.write_text(fake_codex_content(), encoding="utf-8")
+
+
+def fake_codex_content() -> str:
+    return textwrap.dedent(
+        """\
+        #!/bin/sh
+        case "$*" in
+          "app-server daemon version")
+            [ "${CODEX_TEST_APP_SERVER_RUNNING:-}" = "1" ]
+            ;;
+          "app-server daemon restart")
+            if [ -n "${CODEX_TEST_RESTART_LOG:-}" ]; then
+              printf 'restarted\\n' > "$CODEX_TEST_RESTART_LOG"
+            fi
+            ;;
+          *)
+            printf 'codex-cli 0.144.0-apohl79-17\\n'
+            ;;
+        esac
+        """
+    )
 
 
 def write_zip_text(

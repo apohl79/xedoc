@@ -21,6 +21,7 @@ CURRENT_LINK="$STANDALONE_ROOT/current"
 CHECK_ONLY=false
 tmp_dir=""
 codex_providers_action="skipped"
+app_server_was_running=false
 
 script_dir="$(CDPATH='' cd "$(dirname "$0")" && pwd)"
 repo_root="$(CDPATH='' cd "$script_dir/../.." && pwd)"
@@ -132,6 +133,35 @@ prompt_yes_no() {
       return 1
       ;;
   esac
+}
+
+app_server_is_running() {
+  [ -x "$BIN_PATH" ] &&
+    "$BIN_PATH" app-server daemon version >/dev/null 2>&1
+}
+
+restart_running_app_server() {
+  if [ "$app_server_was_running" != true ]; then
+    return 0
+  fi
+
+  if ! prompt_user_available; then
+    step "App-server was running before the upgrade; leaving it running in non-interactive mode"
+    return
+  fi
+
+  if ! prompt_yes_no "The Codex app-server is running. Restart it to use the upgraded version?"; then
+    step "Leaving the running Codex app-server unchanged"
+    return
+  fi
+
+  step "Restarting Codex app-server"
+  if "$BIN_PATH" app-server daemon restart >/dev/null 2>&1; then
+    step "Codex app-server restarted"
+  else
+    printf 'WARNING: Could not restart the running Codex app-server. Run: "%s" app-server daemon restart\n' \
+      "$BIN_PATH" >&2
+  fi
 }
 
 read_zshrc_app_server_choice() {
@@ -760,6 +790,10 @@ if [ "$CHECK_ONLY" = true ]; then
   exit 0
 fi
 
+if app_server_is_running; then
+  app_server_was_running=true
+fi
+
 require_command mktemp
 require_command unzip
 
@@ -779,6 +813,7 @@ fi
 update_current_link "$release_dir"
 update_visible_command
 "$BIN_PATH" --version >/dev/null
+restart_running_app_server
 configure_zshrc_app_server
 configure_codex_providers
 
