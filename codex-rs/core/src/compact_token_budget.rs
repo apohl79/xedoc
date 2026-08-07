@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use crate::compact::InitialContextInjection;
+use crate::compact_progress::CompactionCause;
+use crate::compact_progress::CompactionStage;
+use crate::compact_progress::send_progress;
 use crate::context::world_state::WorldState;
 use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
@@ -67,10 +70,18 @@ async fn run_compact_task_inner(
     world_state: Arc<WorldState>,
     trigger: CompactionTrigger,
 ) -> CodexResult<()> {
+    let cause = match trigger {
+        CompactionTrigger::Manual => CompactionCause::UserRequested,
+        CompactionTrigger::Auto => CompactionCause::ContextLimit,
+    };
+    send_progress(sess, turn_context, cause, CompactionStage::Preparing).await;
     let pre_compact_outcome = run_pre_compact_hooks(sess, turn_context, trigger).await;
     match pre_compact_outcome {
         PreCompactHookOutcome::Continue => {}
-        PreCompactHookOutcome::Stopped => return Err(CodexErr::TurnAborted),
+        PreCompactHookOutcome::Stopped => {
+            send_progress(sess, turn_context, cause, CompactionStage::Failed).await;
+            return Err(CodexErr::TurnAborted);
+        }
     }
 
     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
@@ -83,8 +94,10 @@ async fn run_compact_task_inner(
 
     let post_compact_outcome = run_post_compact_hooks(sess, turn_context, trigger).await;
     if let PostCompactHookOutcome::Stopped = post_compact_outcome {
+        send_progress(sess, turn_context, cause, CompactionStage::Failed).await;
         return Err(CodexErr::TurnAborted);
     }
+    send_progress(sess, turn_context, cause, CompactionStage::Complete).await;
 
     Ok(())
 }

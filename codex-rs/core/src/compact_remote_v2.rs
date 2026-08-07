@@ -10,6 +10,9 @@ use crate::compact::InitialContextInjection;
 use crate::compact::compaction_status_from_result;
 use crate::compact_model_fallback::record_model_fallback;
 use crate::compact_model_fallback::should_retry_with_current_model;
+use crate::compact_progress::CompactionCause;
+use crate::compact_progress::CompactionStage;
+use crate::compact_progress::send_progress;
 use crate::compact_remote::process_compacted_history;
 use crate::compact_remote::should_keep_compacted_history_item;
 use crate::hook_runtime::PostCompactHookOutcome;
@@ -127,6 +130,8 @@ async fn run_remote_compact_task_inner(
     let reason = compaction_metadata.reason();
     let implementation = compaction_metadata.implementation();
     let phase = compaction_metadata.phase();
+    let cause = CompactionCause::from(reason);
+    send_progress(sess, turn_context, cause, CompactionStage::Preparing).await;
     let mut analytics_details = CompactionAnalyticsDetails {
         active_context_tokens_before: Some(sess.get_total_token_usage().await),
         ..Default::default()
@@ -166,16 +171,21 @@ async fn run_remote_compact_task_inner(
         &mut analytics_details,
     )
     .await;
+    if result.is_err() {
+        send_progress(sess, turn_context, cause, CompactionStage::Failed).await;
+    }
     let status = compaction_status_from_result(&result);
     let codex_error = result.as_ref().err();
     if result.is_ok() {
         let post_compact_outcome = run_post_compact_hooks(sess, turn_context, trigger).await;
         if let PostCompactHookOutcome::Stopped = post_compact_outcome {
+            send_progress(sess, turn_context, cause, CompactionStage::Failed).await;
             attempt
                 .track(sess.as_ref(), status, codex_error, analytics_details)
                 .await;
             return Err(CodexErr::TurnAborted);
         }
+        send_progress(sess, turn_context, cause, CompactionStage::Complete).await;
     }
     attempt
         .track(sess.as_ref(), status, codex_error, analytics_details)
@@ -215,6 +225,13 @@ async fn run_remote_compact_task_inner_impl(
     let compaction_item = TurnItem::ContextCompaction(context_compaction_item);
     sess.emit_turn_item_started(turn_context, &compaction_item)
         .await;
+    send_progress(
+        sess,
+        turn_context,
+        CompactionCause::from(compaction_metadata.reason()),
+        CompactionStage::Summarizing,
+    )
+    .await;
 
     let attempt = run_remote_compact_v2_attempt(
         sess,

@@ -158,6 +158,10 @@ impl StatusState {
             .is_some_and(|active| active != header)
     }
 
+    pub(super) fn compaction_status_active(&self) -> bool {
+        self.active_compaction_header.is_some()
+    }
+
     pub(super) fn take_retry_status_header(&mut self) -> Option<String> {
         self.retry_status_header.take()
     }

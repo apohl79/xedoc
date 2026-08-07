@@ -27,6 +27,7 @@ fn model_switch_reasons_map_to_one_cause() {
 #[test]
 fn progress_messages_include_cause_and_stage() {
     let messages = [
+        CompactionStage::Preparing,
         CompactionStage::Planning { chunks: 5 },
         CompactionStage::Mapping {
             completed: 2,
@@ -45,6 +46,7 @@ fn progress_messages_include_cause_and_stage() {
     assert_eq!(
         messages,
         [
+            "• Compacting... (model switch) preparing compaction".to_string(),
             "• Compacting... (model switch) planning 5 history chunks".to_string(),
             "• Compacting... (model switch) summarizing 2/5".to_string(),
             "• Compacting... (model switch) merging layer 1 (3 groups)".to_string(),

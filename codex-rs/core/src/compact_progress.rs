@@ -59,6 +59,8 @@ impl CompactionCause {
 /// compaction additionally reports map and reduce progress so long runs stay legible.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CompactionStage {
+    /// Preparing the compaction request before history analysis or model work begins.
+    Preparing,
     /// Preparing the run; `chunks` is how many history chunks will be summarized.
     Planning { chunks: usize },
     /// Summarizing history chunks; `completed` of `total` chunks are done.
@@ -76,6 +78,7 @@ pub(crate) enum CompactionStage {
 impl CompactionStage {
     fn details(&self) -> String {
         match self {
+            Self::Preparing => String::from("preparing compaction"),
             Self::Planning { chunks } => format!("planning {chunks} history chunks"),
             Self::Mapping { completed, total } => format!("summarizing {completed}/{total}"),
             Self::Reducing { layer, groups } => format!("merging layer {layer} ({groups} groups)"),

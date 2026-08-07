@@ -72,6 +72,14 @@ impl ChatWidget {
         )
     }
 
+    /// Hide the status row unless an in-flight compaction still owns it.
+    pub(super) fn hide_status_indicator(&mut self) {
+        if self.status_state.compaction_status_active() {
+            return;
+        }
+        self.bottom_pane.hide_status_indicator();
+    }
+
     /// Sets the currently rendered footer status-line value.
     pub(crate) fn set_status_line(&mut self, status_line: Option<Line<'static>>) {
         self.bottom_pane.set_status_line(status_line);

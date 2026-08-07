@@ -159,6 +159,13 @@ async fn run_compact_task_inner(
     reason: CompactionReason,
     phase: CompactionPhase,
 ) -> CodexResult<()> {
+    send_progress(
+        &sess,
+        &turn_context,
+        CompactionCause::from(reason),
+        CompactionStage::Preparing,
+    )
+    .await;
     let compaction_metadata =
         CompactionTurnMetadata::new(trigger, reason, CompactionImplementation::Responses, phase);
     let attempt = CompactionAnalyticsAttempt::begin(
@@ -175,6 +182,13 @@ async fn run_compact_task_inner(
         PreCompactHookOutcome::Continue => {}
         PreCompactHookOutcome::Stopped => {
             let error = CodexErr::TurnAborted;
+            send_progress(
+                &sess,
+                &turn_context,
+                CompactionCause::from(reason),
+                CompactionStage::Failed,
+            )
+            .await;
             attempt
                 .track(
                     sess.as_ref(),

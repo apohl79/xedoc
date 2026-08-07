@@ -2683,12 +2683,36 @@ async fn compaction_progress_survives_other_status_headers_until_complete() {
 }
 
 #[tokio::test]
+async fn compaction_progress_survives_status_row_hide_requests() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    handle_warning(
+        &mut chat,
+        "• Compacting... (model switch) summarizing history",
+    );
+    chat.hide_status_indicator();
+
+    assert_eq!(
+        chat.bottom_pane
+            .status_widget()
+            .expect("compaction status should remain visible")
+            .header(),
+        "Compacting... (model switch) summarizing history"
+    );
+
+    handle_warning(&mut chat, "• Compacting... (model switch) complete");
+    chat.hide_status_indicator();
+    assert!(chat.bottom_pane.status_widget().is_none());
+}
+
+#[tokio::test]
 async fn compaction_progress_status_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
     handle_warning(
         &mut chat,
-        "• Compacting... (model switch) merging layer 2 (3 groups)",
+        "• Compacting... (requested) preparing compaction",
     );
 
     let height = chat.desired_height(/*width*/ 80);

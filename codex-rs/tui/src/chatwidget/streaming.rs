@@ -32,7 +32,7 @@ impl ChatWidget {
             // Match newline-committed streaming behavior: once assistant output is ready to be
             // committed into history, hide the inline status row so transcript content replaces it.
             if cell.is_some() {
-                self.bottom_pane.hide_status_indicator();
+                self.hide_status_indicator();
             }
             let deferred_history_cell =
                 if scrollback_reflow == crate::app_event::ConsolidationScrollbackReflow::Required {
@@ -373,7 +373,7 @@ impl ChatWidget {
             now,
         );
         for cell in outcome.cells {
-            self.bottom_pane.hide_status_indicator();
+            self.hide_status_indicator();
             self.add_boxed_history(cell);
         }
         if scope == CommitTickScope::AnyMode || outcome.has_controller {
@@ -416,7 +416,7 @@ impl ChatWidget {
 
     pub(super) fn handle_stream_finished(&mut self) {
         if self.task_complete_pending {
-            self.bottom_pane.hide_status_indicator();
+            self.hide_status_indicator();
             self.task_complete_pending = false;
         }
         // A completed stream indicates non-exec content was just inserted.
@@ -481,17 +481,20 @@ impl ChatWidget {
     }
 
     pub(super) fn sync_active_stream_tail(&mut self) -> bool {
-        if let Some(controller) = self.stream_controller.as_ref() {
-            let tail_lines = controller.current_tail_lines();
+        if let Some((tail_lines, tail_starts_stream)) =
+            self.stream_controller.as_ref().map(|controller| {
+                (
+                    controller.current_tail_lines(),
+                    controller.tail_starts_stream(),
+                )
+            })
+        {
             if tail_lines.is_empty() {
                 return self.clear_active_stream_tail();
             }
 
-            self.bottom_pane.hide_status_indicator();
-            let cell = history_cell::StreamingAgentTailCell::new(
-                tail_lines,
-                controller.tail_starts_stream(),
-            );
+            self.hide_status_indicator();
+            let cell = history_cell::StreamingAgentTailCell::new(tail_lines, tail_starts_stream);
             if self
                 .transcript
                 .active_cell
@@ -510,17 +513,20 @@ impl ChatWidget {
             return true;
         }
 
-        if let Some(controller) = self.plan_stream_controller.as_ref() {
-            let tail_lines = controller.current_tail_display_lines();
+        if let Some((tail_lines, tail_starts_stream)) =
+            self.plan_stream_controller.as_ref().map(|controller| {
+                (
+                    controller.current_tail_display_lines(),
+                    controller.tail_starts_stream(),
+                )
+            })
+        {
             if tail_lines.is_empty() {
                 return self.clear_active_stream_tail();
             }
 
-            self.bottom_pane.hide_status_indicator();
-            let cell = history_cell::StreamingPlanTailCell::new(
-                tail_lines,
-                !controller.tail_starts_stream(),
-            );
+            self.hide_status_indicator();
+            let cell = history_cell::StreamingPlanTailCell::new(tail_lines, !tail_starts_stream);
             if self
                 .transcript
                 .active_cell

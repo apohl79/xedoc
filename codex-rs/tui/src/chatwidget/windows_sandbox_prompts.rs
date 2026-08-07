@@ -502,7 +502,7 @@ impl ChatWidget {
     pub(crate) fn clear_windows_sandbox_setup_status(&mut self) {
         self.bottom_pane
             .set_composer_input_enabled(/*enabled*/ true, /*placeholder*/ None);
-        self.bottom_pane.hide_status_indicator();
+        self.hide_status_indicator();
         self.request_redraw();
     }
 
