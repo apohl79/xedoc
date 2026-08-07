@@ -21,6 +21,49 @@ ASSET = f"codex-{TARGET}-{VERSION}.zip"
 
 
 class InstallApohl79ShTest(unittest.TestCase):
+    def test_local_package_install_skips_github_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / "offline-package.zip"
+            write_package_archive(archive_path)
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            request_log = root / "requests.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CODEX_HOME": str(root / "codex-home"),
+                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
+                    "CODEX_TEST_REQUEST_LOG": str(request_log),
+                    "CODEX_NON_INTERACTIVE": "1",
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh", "-s", "--", "--local-zip", str(archive_path)],
+                capture_output=True,
+                check=False,
+                cwd=root,
+                env=env,
+                input=INSTALL_SCRIPT.read_text(encoding="utf-8"),
+                text=True,
+            )
+
+            install_bin = root / "install-bin"
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                os.readlink(install_bin / "codex"),
+                str(root / "codex-home/packages/standalone/current/bin/codex"),
+            )
+            self.assertIn("Installing local package ZIP", result.stdout)
+            self.assertIn("Skipping statusline script for local package", result.stdout)
+            self.assertFalse(request_log.exists())
+
     def test_package_install_creates_visible_codex_and_host_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -624,7 +667,22 @@ def run_interactive_installer(
 
 def write_package_archive(archive_path: Path) -> None:
     with zipfile.ZipFile(archive_path, "w") as archive:
-        write_zip_text(archive, "codex-package.json", "{}\n")
+        write_zip_text(
+            archive,
+            "codex-package.json",
+            json.dumps(
+                {
+                    "layoutVersion": 2,
+                    "version": VERSION,
+                    "target": TARGET,
+                    "variant": "codex",
+                    "entrypoint": "bin/codex",
+                    "resourcesDir": "codex-resources",
+                    "pathDir": "codex-path",
+                }
+            )
+            + "\n",
+        )
         write_zip_text(
             archive,
             "bin/codex",

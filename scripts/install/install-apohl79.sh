@@ -5,6 +5,7 @@ set -eu
 APOHL79_REPO="${CODEX_APOHL79_REPO:-apohl79/codex}"
 APOHL79_TAG="${CODEX_APOHL79_TAG:-}"
 APOHL79_TARGET="${CODEX_APOHL79_TARGET:-}"
+LOCAL_ZIP="${CODEX_APOHL79_LOCAL_ZIP:-}"
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/codex"
 HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
@@ -37,15 +38,18 @@ die() {
 
 usage() {
   cat <<EOF
-Usage: install-apohl79.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--check]
+Usage: install-apohl79.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--check]
 
-Downloads and installs the apohl79 Codex fork binary release for the current fork tag.
+Downloads and installs the apohl79 Codex fork binary release for the current fork tag,
+or installs a local release ZIP without contacting GitHub.
 
 Options:
   --tag TAG        Fork release tag to install. Defaults to the current rust-v*-apohl79-N tag.
   --target TARGET  Release target triple. Defaults to the current platform.
   --repo OWNER/REPO
                    GitHub repository to read releases from. Defaults to apohl79/codex.
+  --local-zip PATH  Install a local release ZIP instead of downloading one from GitHub.
+                   The ZIP must contain codex-package.json.
   --check          Verify that the release asset exists, then print the plan and exit.
   -h, --help       Show this help.
 
@@ -53,6 +57,8 @@ Environment:
   CODEX_APOHL79_TAG     Same as --tag.
   CODEX_APOHL79_TARGET  Same as --target.
   CODEX_APOHL79_REPO    Same as --repo.
+  CODEX_APOHL79_LOCAL_ZIP
+                       Same as --local-zip.
   CODEX_INSTALL_DIR     Directory for the visible codex symlinks. Defaults to ~/.local/bin.
   CODEX_HOME            Codex home directory. Defaults to ~/.codex.
   CODEX_NON_INTERACTIVE  Set to 1, true, or yes to skip prompts.
@@ -76,6 +82,11 @@ parse_args() {
       --repo)
         [ "$#" -ge 2 ] || die "--repo requires a value."
         APOHL79_REPO="$2"
+        shift
+        ;;
+      --local-zip)
+        [ "$#" -ge 2 ] || die "--local-zip requires a value."
+        LOCAL_ZIP="$2"
         shift
         ;;
       --check)
@@ -543,6 +554,53 @@ latest_fork_tag() {
   printf '%s\n' "$tag"
 }
 
+local_package_metadata_field() {
+  field="$1"
+  printf '%s\n' "$local_package_metadata" |
+    sed -n "s/.*\"$field\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" |
+    head -n 1
+}
+
+prepare_local_package() {
+  [ -n "$LOCAL_ZIP" ] || return 1
+  [ -f "$LOCAL_ZIP" ] || die "Local package ZIP does not exist: $LOCAL_ZIP"
+  case "$LOCAL_ZIP" in
+    *.zip) ;;
+    *) die "Local package must be a ZIP file: $LOCAL_ZIP" ;;
+  esac
+
+  LOCAL_ZIP="$(CDPATH='' cd "$(dirname "$LOCAL_ZIP")" && pwd)/$(basename "$LOCAL_ZIP")"
+  local_package_metadata="$(unzip -p "$LOCAL_ZIP" codex-package.json 2>/dev/null || true)"
+  [ -n "$local_package_metadata" ] ||
+    die "Local package ZIP is missing codex-package.json: $LOCAL_ZIP"
+
+  local_version="$(local_package_metadata_field version)"
+  local_target="$(local_package_metadata_field target)"
+  [ -n "$local_version" ] ||
+    die "Local package metadata is missing version: $LOCAL_ZIP"
+  [ -n "$local_target" ] ||
+    die "Local package metadata is missing target: $LOCAL_ZIP"
+
+  local_tag="rust-v$local_version"
+  validate_tag "$local_tag"
+  if [ -n "$APOHL79_TAG" ]; then
+    validate_tag "$APOHL79_TAG"
+    [ "$APOHL79_TAG" = "$local_tag" ] ||
+      die "Local package version does not match tag $APOHL79_TAG."
+  else
+    APOHL79_TAG="$local_tag"
+  fi
+
+  validate_target "$local_target"
+  if [ -n "$APOHL79_TARGET" ]; then
+    validate_target "$APOHL79_TARGET"
+    [ "$APOHL79_TARGET" = "$local_target" ] ||
+      die "Local package target does not match target $APOHL79_TARGET."
+  else
+    APOHL79_TARGET="$local_target"
+  fi
+}
+
 release_url_for_asset() {
   tag="$1"
   asset="$2"
@@ -769,22 +827,34 @@ print_codex_providers_instructions() {
 parse_args "$@"
 validate_repo "$APOHL79_REPO"
 
+if [ -n "$LOCAL_ZIP" ]; then
+  require_command unzip
+  prepare_local_package
+fi
+
 tag="$(current_fork_tag)"
 target="$(detect_target)"
 fork_version="${tag#rust-v}"
 asset="codex-$target-$fork_version.zip"
-download_url="$(release_url_for_asset "$tag" "$asset")"
-expected_digest="$(release_asset_digest "$tag" "$asset")"
 release_name="$fork_version-$target"
 release_dir="$RELEASES_DIR/$release_name"
 
-step "Found apohl79 Codex release asset"
-printf 'Repository: %s\n' "$APOHL79_REPO"
+if [ -n "$LOCAL_ZIP" ]; then
+  local_digest="$(file_sha256 "$LOCAL_ZIP")"
+  step "Found local apohl79 Codex package"
+  printf 'Package:    %s\n' "$LOCAL_ZIP"
+  printf 'SHA256:     %s\n' "$local_digest"
+else
+  download_url="$(release_url_for_asset "$tag" "$asset")"
+  expected_digest="$(release_asset_digest "$tag" "$asset")"
+  step "Found apohl79 Codex release asset"
+  printf 'Repository: %s\n' "$APOHL79_REPO"
+  printf 'Asset:      %s\n' "$asset"
+  printf 'SHA256:     %s\n' "$expected_digest"
+  printf 'URL:        %s\n' "$download_url"
+fi
 printf 'Tag:        %s\n' "$tag"
 printf 'Target:     %s\n' "$target"
-printf 'Asset:      %s\n' "$asset"
-printf 'SHA256:     %s\n' "$expected_digest"
-printf 'URL:        %s\n' "$download_url"
 
 if [ "$CHECK_ONLY" = true ]; then
   exit 0
@@ -801,10 +871,15 @@ tmp_dir="$(mktemp -d)"
 trap cleanup EXIT INT TERM
 
 if ! release_dir_is_complete "$release_dir" "$release_name"; then
-  archive_path="$tmp_dir/$asset"
-  step "Downloading $asset"
-  download_file "$download_url" "$archive_path"
-  verify_archive_digest "$archive_path" "$expected_digest"
+  if [ -n "$LOCAL_ZIP" ]; then
+    archive_path="$LOCAL_ZIP"
+    step "Installing local package ZIP"
+  else
+    archive_path="$tmp_dir/$asset"
+    step "Downloading $asset"
+    download_file "$download_url" "$archive_path"
+    verify_archive_digest "$archive_path" "$expected_digest"
+  fi
 
   step "Installing standalone package to $release_dir"
   install_zip_release "$release_dir" "$archive_path"
@@ -823,16 +898,20 @@ if [ -f "$STATUSLINE_DST" ]; then
   step "Keeping existing statusline script at $STATUSLINE_DST"
 else
   STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
-  if [ ! -f "$STATUSLINE_SRC" ]; then
+  if [ ! -f "$STATUSLINE_SRC" ] && [ -z "$LOCAL_ZIP" ]; then
     STATUSLINE_SRC="$tmp_dir/statusline.sh"
     STATUSLINE_URL="https://raw.githubusercontent.com/$APOHL79_REPO/$tag/scripts/statusline.sh"
     step "Downloading statusline script"
     download_file "$STATUSLINE_URL" "$STATUSLINE_SRC"
   fi
-  step "Deploying statusline script to $STATUSLINE_DST"
-  mkdir -p "$CODEX_HOME_DIR"
-  cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
-  chmod +x "$STATUSLINE_DST"
+  if [ -f "$STATUSLINE_SRC" ]; then
+    step "Deploying statusline script to $STATUSLINE_DST"
+    mkdir -p "$CODEX_HOME_DIR"
+    cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
+    chmod +x "$STATUSLINE_DST"
+  elif [ -n "$LOCAL_ZIP" ]; then
+    step "Skipping statusline script for local package"
+  fi
 fi
 
 print_path_note
