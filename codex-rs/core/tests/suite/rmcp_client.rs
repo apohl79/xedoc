@@ -1795,6 +1795,7 @@ async fn stdio_image_responses_are_sanitized_for_text_only_model() -> anyhow::Re
     let fixture = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_config(move |config| {
+            config.model = Some(text_only_model_slug.to_string());
             insert_mcp_server(
                 config,
                 server_name,
@@ -1824,7 +1825,11 @@ async fn stdio_image_responses_are_sanitized_for_text_only_model() -> anyhow::Re
             codex_core::test_support::default_http_client_factory(),
         )
         .await;
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(
+        models_mock.requests().len(),
+        1,
+        "the custom text-only model must be loaded from the test catalog"
+    );
 
     fixture
         .codex

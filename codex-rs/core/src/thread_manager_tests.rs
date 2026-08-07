@@ -1,6 +1,6 @@
 use super::*;
 use crate::config::ConfigBuilder;
-use crate::config::test_config;
+use crate::config::test_config as load_test_config;
 use crate::init_state_db;
 use crate::installation_id::INSTALLATION_ID_FILENAME;
 use crate::rollout::RolloutRecorder;
@@ -10,6 +10,7 @@ use crate::session::tests::make_session_and_context;
 use crate::tasks::InterruptedTurnHistoryMarker;
 use crate::tasks::interrupted_turn_history_marker;
 use codex_extension_api::empty_extension_registry;
+use codex_features::Feature;
 use codex_models_manager::ModelsManagerConfig;
 use codex_models_manager::bundled_models_response;
 use codex_models_manager::manager::RefreshStrategy;
@@ -41,6 +42,15 @@ use tempfile::tempdir;
 use wiremock::MockServer;
 
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+async fn test_config() -> crate::config::Config {
+    let mut config = load_test_config().await;
+    config
+        .features
+        .disable(Feature::MultiAgentV2)
+        .expect("MultiAgentV2 should be disableable in tests");
+    config
+}
 
 struct FakeAgentGraphStore {
     root_thread_id: ThreadId,
@@ -350,7 +360,8 @@ async fn ignores_session_prefix_messages_when_truncating() {
     let mut items = session
         .build_initial_context_with_world_state(&turn_context, &world_state)
         .await;
-    items.push(user_msg("feature request"));
+    let feature_request = user_msg("feature request");
+    items.push(feature_request.clone());
     items.push(assistant_msg("ack"));
     items.push(user_msg("second question"));
     items.push(assistant_msg("answer"));
@@ -360,10 +371,19 @@ async fn ignores_session_prefix_messages_when_truncating() {
         .cloned()
         .map(RolloutItem::ResponseItem)
         .collect();
+    let feature_request_index = items
+        .iter()
+        .position(|item| item == &feature_request)
+        .expect("feature request should be present");
+    let user_message_positions = truncation::user_message_positions_in_rollout(&rollout_items);
+    let feature_request_number = user_message_positions
+        .iter()
+        .position(|index| *index == feature_request_index)
+        .expect("feature request should be a user-message boundary");
 
     let truncated = truncate_before_nth_user_message(
         InitialHistory::Forked(rollout_items),
-        /*n*/ 1,
+        feature_request_number,
         &SnapshotTurnState {
             ends_mid_turn: false,
             active_turn_id: None,
@@ -373,12 +393,11 @@ async fn ignores_session_prefix_messages_when_truncating() {
     );
     let got_items = truncated.get_rollout_items();
 
-    let expected: Vec<RolloutItem> = vec![
-        RolloutItem::ResponseItem(items[0].clone()),
-        RolloutItem::ResponseItem(items[1].clone()),
-        RolloutItem::ResponseItem(items[2].clone()),
-        RolloutItem::ResponseItem(items[3].clone()),
-    ];
+    let expected: Vec<RolloutItem> = items[..feature_request_index]
+        .iter()
+        .cloned()
+        .map(RolloutItem::ResponseItem)
+        .collect();
 
     assert_eq!(
         serde_json::to_value(got_items).unwrap(),
@@ -1403,6 +1422,10 @@ async fn new_uses_active_provider_for_model_refresh() {
     std::fs::create_dir_all(&config.codex_home).expect("create codex home");
     config.model_catalog = None;
     config.model_provider.base_url = Some(server.uri());
+    config.model_providers.insert(
+        config.model_provider_id.clone(),
+        config.model_provider.clone(),
+    );
 
     let auth_manager =
         AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());

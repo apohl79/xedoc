@@ -321,6 +321,7 @@ pub async fn submit_thread_settings(
         if ev.id == submission_id {
             match ev.msg {
                 EventMsg::ThreadSettingsApplied(_) => return Ok(()),
+                EventMsg::TokenCount(_) => continue,
                 EventMsg::Error(err) => panic!("thread settings update failed: {}", err.message),
                 other => panic!("unexpected thread settings update event: {other:?}"),
             }

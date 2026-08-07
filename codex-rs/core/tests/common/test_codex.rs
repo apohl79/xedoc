@@ -753,9 +753,13 @@ impl TestCodexBuilder {
         };
         // Keep generic tests stable when the bundled catalog default changes. Tests that need a
         // specific model can still override this with a config mutator.
-        config.model = Some("gpt-5.5".to_string());
+        config.model = Some("gpt-5.6".to_string());
         config.cwd = cwd_override;
         config.model_provider = model_provider;
+        config.model_providers.insert(
+            config.model_provider_id.clone(),
+            config.model_provider.clone(),
+        );
         if let Ok(path) = codex_utils_cargo_bin::cargo_bin("codex") {
             config.codex_self_exe = Some(path);
         } else if let Ok(path) = codex_utils_cargo_bin::cargo_bin("codex-exec") {
@@ -786,25 +790,36 @@ impl TestCodexBuilder {
 }
 
 fn ensure_test_model_catalog(config: &mut Config) -> Result<()> {
-    if config.model.as_deref() != Some(TEST_MODEL_WITH_EXPERIMENTAL_TOOLS)
-        || config.model_catalog.is_some()
-    {
+    if config.model_catalog.is_some() {
         return Ok(());
     }
 
+    let (source_slug, test_slug) = match config.model.as_deref() {
+        // The bundled catalog advertises versioned gpt-5.6 models, but generic
+        // core fixtures intentionally use the unversioned alias.
+        Some("gpt-5.6") => ("gpt-5.5", "gpt-5.6"),
+        Some(TEST_MODEL_WITH_EXPERIMENTAL_TOOLS) => ("gpt-5.2", TEST_MODEL_WITH_EXPERIMENTAL_TOOLS),
+        _ => return Ok(()),
+    };
+
     let bundled_models = bundled_models_response().expect("bundled models.json should parse");
-    let mut model = bundled_models
-        .models
+    let mut models = bundled_models.models;
+    let mut model = models
         .iter()
-        .find(|candidate| candidate.slug == "gpt-5.2")
+        .find(|candidate| candidate.slug == source_slug)
         .cloned()
-        .expect("missing bundled model gpt-5.2");
-    model.slug = TEST_MODEL_WITH_EXPERIMENTAL_TOOLS.to_string();
-    model.display_name = TEST_MODEL_WITH_EXPERIMENTAL_TOOLS.to_string();
-    model.experimental_supported_tools = vec!["test_sync_tool".to_string()];
-    config.model_catalog = Some(ModelsResponse {
-        models: vec![model],
-    });
+        .unwrap_or_else(|| panic!("missing bundled model {source_slug}"));
+    model.slug = test_slug.to_string();
+    model.display_name = test_slug.to_string();
+    if test_slug == TEST_MODEL_WITH_EXPERIMENTAL_TOOLS {
+        model.experimental_supported_tools = vec!["test_sync_tool".to_string()];
+    }
+    if test_slug == "gpt-5.6" {
+        models.push(model);
+    } else {
+        models = vec![model];
+    }
+    config.model_catalog = Some(ModelsResponse { models });
     Ok(())
 }
 

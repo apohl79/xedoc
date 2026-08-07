@@ -30,7 +30,7 @@ expression: render.lines
     HyperlinkLine {
         line: Line::from_iter([
             Span::from("("),
-            Span::from("https://example.com").cyan().underlined(),
+            Span::from("https://example.com").fg(Color::Rgb(0, 139, 148)).underlined(),
             Span::from(")"),
             Span::from("."),
         ]),
@@ -72,7 +72,7 @@ expression: render.lines
         line: Line::from_iter([
             Span::from("> "),
             Span::from("Quoted paragraph"),
-        ]).green(),
+        ]).fg(Color::Rgb(92, 214, 182)),
         hyperlinks: [],
     },
     HyperlinkLine {

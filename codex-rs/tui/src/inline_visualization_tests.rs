@@ -8,6 +8,7 @@ use crate::streaming::controller::StreamController;
 use pretty_assertions::assert_eq;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 use ratatui::style::Style;
 use ratatui::style::Stylize;
 use std::sync::Arc;
@@ -263,7 +264,10 @@ fn finalized_agent_cell_replays_visualization_link() {
         .flat_map(|line| &line.line.spans)
         .find(|span| span.content.starts_with("file://"))
         .expect("visualization URL span");
-    assert_eq!(url_span.style, Style::new().cyan().underlined());
+    assert_eq!(
+        url_span.style,
+        Style::new().fg(Color::Rgb(0, 139, 148)).underlined()
+    );
     let destinations = lines
         .iter()
         .flat_map(|line| &line.hyperlinks)

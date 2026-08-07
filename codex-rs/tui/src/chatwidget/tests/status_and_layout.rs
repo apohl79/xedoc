@@ -2639,7 +2639,7 @@ async fn warning_event_adds_warning_history_cell() {
 async fn compaction_progress_updates_status_without_history_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);
-    handle_warning(&mut chat, "• Compacting... map 1/3");
+    handle_warning(&mut chat, "• Compacting... (model switch) summarizing 1/3");
 
     let cells = drain_insert_history(&mut rx);
     assert!(cells.is_empty(), "compaction progress should be transient");
@@ -2647,14 +2647,49 @@ async fn compaction_progress_updates_status_without_history_cell() {
         .bottom_pane
         .status_widget()
         .expect("status indicator should be visible");
-    assert_eq!(status.header(), "Compacting... map 1/3");
+    assert_eq!(
+        status.header(),
+        "Compacting... (model switch) summarizing 1/3"
+    );
+}
+
+#[tokio::test]
+async fn compaction_progress_survives_other_status_headers_until_complete() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    handle_warning(&mut chat, "• Compacting... (model switch) summarizing 1/3");
+    // A concurrent turn header must not hide in-flight compaction progress.
+    chat.set_status_header(String::from("Working"));
+
+    assert_eq!(
+        chat.bottom_pane
+            .status_widget()
+            .expect("status indicator should be visible")
+            .header(),
+        "Compacting... (model switch) summarizing 1/3"
+    );
+
+    handle_warning(&mut chat, "• Compacting... (model switch) complete");
+    chat.set_status_header(String::from("Working"));
+
+    assert_eq!(
+        chat.bottom_pane
+            .status_widget()
+            .expect("status indicator should be visible")
+            .header(),
+        "Working"
+    );
 }
 
 #[tokio::test]
 async fn compaction_progress_status_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
-    handle_warning(&mut chat, "• Compacting... reduce layer 2 (3 groups)");
+    handle_warning(
+        &mut chat,
+        "• Compacting... (model switch) merging layer 2 (3 groups)",
+    );
 
     let height = chat.desired_height(/*width*/ 80);
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))

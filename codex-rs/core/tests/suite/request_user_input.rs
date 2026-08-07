@@ -347,6 +347,12 @@ where
     let server = start_mock_server().await;
 
     let mut builder = test_codex();
+    builder = builder.with_config(|config| {
+        config
+            .features
+            .disable(Feature::DefaultModeRequestUserInput)
+            .expect("test config should allow feature update");
+    });
     let TestCodex {
         codex,
         cwd,

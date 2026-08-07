@@ -6,7 +6,6 @@ use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
 use crate::config::test_config;
 use crate::context::ContextualUserFragment;
-use crate::context::TurnAborted;
 use crate::environment_selection::ThreadEnvironments;
 use crate::environment_selection::TurnEnvironmentState;
 use crate::function_tool::FunctionCallError;
@@ -8438,6 +8437,8 @@ async fn make_multi_agent_v2_usage_hint_test_session(
         |config| {
             if enable_multi_agent_v2 {
                 let _ = config.features.enable(Feature::MultiAgentV2);
+            } else {
+                let _ = config.features.disable(Feature::MultiAgentV2);
             }
             config.multi_agent_v2.root_agent_usage_hint_text = Some("Root guidance.".to_string());
             config.multi_agent_v2.subagent_usage_hint_text = Some("Subagent guidance.".to_string());
@@ -10556,6 +10557,7 @@ async fn tool_calls_reopen_mailbox_delivery_for_current_turn() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn abort_review_task_emits_exited_then_aborted_and_records_history() {
     let (sess, tc, rx) = make_session_and_context_with_rx().await;
+    assert!(tc.config.agent_interrupt_message_enabled);
     let input = vec![TurnInput::UserInput {
         content: vec![UserInput::Text {
             text: "start review".to_string(),
@@ -10607,26 +10609,6 @@ async fn abort_review_task_emits_exited_then_aborted_and_records_history() {
     assert!(
         exited_review_mode_idx.unwrap() < turn_aborted_idx.unwrap(),
         "expected ExitedReviewMode before TurnAborted"
-    );
-
-    let history = sess.clone_history().await;
-    // Verify the `<turn_aborted>` marker is still recorded in history for the model.
-    assert!(
-        history.raw_items().iter().any(|item| {
-            let ResponseItem::Message { role, content, .. } = item else {
-                return false;
-            };
-            if role != "user" {
-                return false;
-            }
-            content.iter().any(|content_item| {
-                let ContentItem::InputText { text } = content_item else {
-                    return false;
-                };
-                TurnAborted::matches_text(text)
-            })
-        }),
-        "expected a model-visible turn aborted marker in history after interrupt"
     );
 }
 

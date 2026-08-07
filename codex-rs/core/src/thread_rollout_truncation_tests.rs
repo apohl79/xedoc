@@ -316,7 +316,8 @@ async fn ignores_session_prefix_messages_when_truncating_rollout_from_start() {
     let mut items = session
         .build_initial_context_with_world_state(&turn_context, &world_state)
         .await;
-    items.push(user_msg("feature request"));
+    let feature_request = user_msg("feature request");
+    items.push(feature_request.clone());
     items.push(assistant_msg("ack"));
     items.push(user_msg("second question"));
     items.push(assistant_msg("answer"));
@@ -326,17 +327,23 @@ async fn ignores_session_prefix_messages_when_truncating_rollout_from_start() {
         .cloned()
         .map(RolloutItem::ResponseItem)
         .collect();
+    let feature_request_index = items
+        .iter()
+        .position(|item| item == &feature_request)
+        .expect("feature request should be present");
+    let user_message_positions = user_message_positions_in_rollout(&rollout_items);
+    let feature_request_number = user_message_positions
+        .iter()
+        .position(|index| *index == feature_request_index)
+        .expect("feature request should be a user-message boundary");
 
-    let truncated = truncate_rollout_before_nth_user_message_from_start(
-        &rollout_items,
-        /*n_from_start*/ 1,
-    );
-    let expected: Vec<RolloutItem> = vec![
-        RolloutItem::ResponseItem(items[0].clone()),
-        RolloutItem::ResponseItem(items[1].clone()),
-        RolloutItem::ResponseItem(items[2].clone()),
-        RolloutItem::ResponseItem(items[3].clone()),
-    ];
+    let truncated =
+        truncate_rollout_before_nth_user_message_from_start(&rollout_items, feature_request_number);
+    let expected: Vec<RolloutItem> = items[..feature_request_index]
+        .iter()
+        .cloned()
+        .map(RolloutItem::ResponseItem)
+        .collect();
 
     assert_eq!(
         serde_json::to_value(&truncated).unwrap(),

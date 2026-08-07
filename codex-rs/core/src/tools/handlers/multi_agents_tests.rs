@@ -6,7 +6,7 @@ use crate::function_tool::FunctionCallError;
 use crate::init_state_db;
 use crate::local_agent_graph_store_from_state_db;
 use crate::session::step_context::StepContext;
-use crate::session::tests::make_session_and_context;
+use crate::session::tests::make_session_and_context as make_base_session_and_context;
 use crate::session::turn_context::TurnContext;
 use crate::session_prefix::format_inter_agent_completion_message;
 use crate::thread_manager::thread_store_from_config;
@@ -24,6 +24,8 @@ use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_model_provider::create_model_provider;
 use codex_model_provider_info::built_in_model_providers;
+use codex_models_manager::bundled_models_response;
+use codex_models_manager::manager::StaticModelsManager;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ApprovalsReviewer;
@@ -68,6 +70,20 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
+
+async fn make_session_and_context() -> (crate::session::session::Session, TurnContext) {
+    let (mut session, mut turn) = make_base_session_and_context().await;
+    let model_catalog =
+        bundled_models_response().expect("bundled models.json should parse for multi-agent tests");
+    let mut config = (*turn.config).clone();
+    config.model_catalog = Some(model_catalog.clone());
+    turn.config = Arc::new(config);
+    session.services.models_manager = Arc::new(StaticModelsManager::new(
+        Some(Arc::clone(&session.services.auth_manager)),
+        model_catalog,
+    ));
+    (session, turn)
+}
 
 fn invocation(
     session: Arc<crate::session::session::Session>,
@@ -143,6 +159,15 @@ model_reasoning_effort = "minimal"
 fn set_turn_config(turn: &mut TurnContext, config: crate::config::Config) {
     turn.multi_agent_version = config.multi_agent_version_from_features();
     turn.config = Arc::new(config);
+}
+
+fn disable_multi_agent_v2(turn: &mut TurnContext) {
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .disable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    set_turn_config(turn, config);
 }
 
 fn expect_text_output<T>(output: T) -> (String, Option<bool>)
@@ -434,7 +459,8 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
     }
 
     {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, mut turn) = make_session_and_context().await;
+        disable_multi_agent_v2(&mut turn);
         let manager = thread_manager();
         let root = manager
             .start_thread((*turn.config).clone())
@@ -473,7 +499,8 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
     }
 
     {
-        let (session, turn) = make_session_and_context().await;
+        let (session, mut turn) = make_session_and_context().await;
+        disable_multi_agent_v2(&mut turn);
         let err = SpawnAgentHandler::default()
             .handle(invocation(
                 Arc::new(session),
@@ -499,7 +526,8 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
     }
 
     {
-        let (session, turn) = make_session_and_context().await;
+        let (session, mut turn) = make_session_and_context().await;
+        disable_multi_agent_v2(&mut turn);
         let err = SpawnAgentHandler::default()
             .handle(invocation(
                 Arc::new(session),
@@ -533,7 +561,8 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
     }
 
     {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, mut turn) = make_session_and_context().await;
+        disable_multi_agent_v2(&mut turn);
         let mut turn = turn
             .with_model("gpt-5.4".to_string(), &session.services.models_manager)
             .await;
@@ -574,7 +603,8 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
     }
 
     {
-        let (mut session, turn) = make_session_and_context().await;
+        let (mut session, mut turn) = make_session_and_context().await;
+        disable_multi_agent_v2(&mut turn);
         let mut turn = turn
             .with_model("gpt-5.4".to_string(), &session.services.models_manager)
             .await;
@@ -616,6 +646,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
 
     {
         let (mut session, mut turn) = make_session_and_context().await;
+        disable_multi_agent_v2(&mut turn);
         tokio::fs::create_dir_all(&turn.config.codex_home)
             .await
             .expect("codex home should be created");
@@ -688,7 +719,8 @@ async fn spawn_agent_role_service_tier_falls_back_to_supported_parent_tier() {
         agent_id: String,
     }
 
-    let (mut session, turn) = make_session_and_context().await;
+    let (mut session, mut turn) = make_session_and_context().await;
+    disable_multi_agent_v2(&mut turn);
     let mut turn = turn
         .with_model("gpt-5.4".to_string(), &session.services.models_manager)
         .await;
@@ -1131,7 +1163,12 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
     let spawn_result: SpawnAgentResult =
         serde_json::from_str(&content).expect("spawn result should parse");
     assert_eq!(spawn_result.task_name, "/root/test_process");
-    assert_eq!(spawn_result.nickname, None);
+    assert!(
+        spawn_result
+            .nickname
+            .as_deref()
+            .is_some_and(|nickname| !nickname.is_empty())
+    );
 
     let child_thread_id = session
         .services
@@ -2313,7 +2350,12 @@ async fn multi_agent_v2_spawn_omits_agent_id_when_named() {
 
     assert!(result.get("agent_id").is_none());
     assert_eq!(result["task_name"], "/root/test_process");
-    assert!(result.get("nickname").is_none());
+    assert!(
+        result
+            .get("nickname")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|nickname| !nickname.is_empty())
+    );
     assert_eq!(success, Some(true));
 }
 
@@ -2525,13 +2567,7 @@ async fn spawn_agent_allows_depth_up_to_configured_max_depth() {
 }
 
 #[tokio::test]
-async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
-    #[derive(Debug, Deserialize)]
-    struct SpawnAgentResult {
-        task_name: String,
-        nickname: Option<String>,
-    }
-
+async fn multi_agent_v2_spawn_enforces_configured_max_depth() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let mut config = (*turn.config).clone();
@@ -2566,16 +2602,15 @@ async fn multi_agent_v2_spawn_agent_ignores_configured_max_depth() {
             "fork_turns": "none"
         })),
     );
-    let output = SpawnAgentHandlerV2::default()
-        .handle(invocation)
-        .await
-        .expect("multi-agent v2 spawn should ignore max depth");
-    let (content, success) = expect_text_output(output);
-    let result: SpawnAgentResult =
-        serde_json::from_str(&content).expect("spawn_agent result should be json");
-    assert_eq!(result.task_name, "/root/parent/child");
-    assert_eq!(result.nickname, None);
-    assert_eq!(success, Some(true));
+    let Err(err) = SpawnAgentHandlerV2::default().handle(invocation).await else {
+        panic!("multi-agent v2 spawn should enforce max depth");
+    };
+    assert_eq!(
+        err,
+        FunctionCallError::RespondToModel(
+            "Cannot spawn agent: maximum nesting depth of 1 exceeded (would be 2)".to_string(),
+        )
+    );
 }
 
 #[tokio::test]
@@ -4288,6 +4323,10 @@ async fn tool_handlers_cascade_close_and_resume_and_keep_explicitly_closed_subtr
         .features
         .enable(Feature::Sqlite)
         .expect("test config should allow sqlite");
+    config
+        .features
+        .disable(Feature::MultiAgentV2)
+        .expect("test config should allow legacy collaboration tests");
     let state_db = init_state_db(&config).await;
     let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("dummy"));
     let manager = ThreadManager::new(

@@ -512,7 +512,7 @@ async fn get_context_remaining_returns_token_budget_remaining_fragment() -> Resu
     );
 
     let thread_id = test.session_configured.thread_id;
-    let remaining_context = "You have 6500 tokens left in this context window.".to_string();
+    let remaining_context = "You have 2141 tokens left in this context window.".to_string();
     let token_budgets = token_budget_contexts(&requests[1]);
     assert_eq!(token_budgets.len(), 1);
     token_budget_window_ids(&token_budgets[0], thread_id);
@@ -579,7 +579,7 @@ async fn get_context_remaining_uses_body_after_prefix_window() -> Result<()> {
         "get_context_remaining should be exposed when token budget is enabled"
     );
 
-    let remaining_context = "You have 6500 tokens left in this context window.".to_string();
+    let remaining_context = "You have 2141 tokens left in this context window.".to_string();
     assert_eq!(
         requests[2].function_call_output_content_and_success(call_id),
         Some((Some(remaining_context), None))

@@ -8,6 +8,15 @@ async fn fork_current_session_preserves_conversation_ultra() -> Result<()> {
     let codex_home = tempdir()?;
     app.config.codex_home = codex_home.path().to_path_buf().abs();
     app.config.sqlite_home = codex_home.path().to_path_buf();
+    let openai_provider = app
+        .config
+        .model_providers
+        .get("openai")
+        .cloned()
+        .expect("openai test provider");
+    app.config.model_provider_id = "openai".to_string();
+    app.config.model_provider = openai_provider;
+    app.chat_widget.set_model_provider("openai");
     let source_thread_id = ThreadId::from_string(
         &create_fake_rollout(
             codex_home.path(),
@@ -19,11 +28,13 @@ async fn fork_current_session_preserves_conversation_ultra() -> Result<()> {
         )
         .expect("create source rollout"),
     )?;
-    app.chat_widget.handle_thread_session(ThreadSessionState {
+    let mut session = ThreadSessionState {
         model: "gpt-5.4".to_string(),
         reasoning_effort: Some(ReasoningEffortConfig::Ultra),
         ..test_thread_session(source_thread_id, test_path_buf("/tmp/project"))
-    });
+    };
+    session.model_provider_id = "openai".to_string();
+    app.chat_widget.handle_thread_session(session);
     let mut tui = crate::tui::test_support::make_test_tui()?;
     let mut app_server = crate::start_embedded_app_server_for_picker(&app.config).await?;
 

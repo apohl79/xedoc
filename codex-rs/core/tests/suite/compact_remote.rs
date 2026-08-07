@@ -9,6 +9,7 @@ use codex_features::Feature;
 use codex_login::CodexAuth;
 use codex_login::auth::AgentIdentityAuth;
 use codex_login::auth::AgentIdentityAuthRecord;
+use codex_models_manager::bundled_models_response;
 use codex_protocol::account::PlanType as AccountPlanType;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem;
@@ -191,6 +192,29 @@ fn format_labeled_requests_snapshot(
     )
 }
 
+fn normalize_snapshot_wall_times(snapshot: String) -> String {
+    snapshot
+        .lines()
+        .map(|line| {
+            let Some((prefix, rest)) = line.split_once("Wall time: ") else {
+                return line.to_string();
+            };
+            let Some((duration, suffix)) = rest.split_once(" seconds") else {
+                return line.to_string();
+            };
+            if duration
+                .chars()
+                .all(|character| character.is_ascii_digit() || character == '.')
+            {
+                format!("{prefix}Wall time: 0 seconds{suffix}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn compacted_summary_only_output(summary: &str) -> Vec<ResponseItem> {
     vec![ResponseItem::Compaction {
         id: None,
@@ -202,6 +226,10 @@ fn compacted_summary_only_output(summary: &str) -> Vec<ResponseItem> {
 fn test_codex() -> TestCodexBuilder {
     base_test_codex().with_config(|config| {
         let _ = config.features.disable(Feature::RemoteCompactionV2);
+        config.base_instructions = Some("test base instructions".to_string());
+        config.include_permissions_instructions = false;
+        config.include_environment_context = false;
+        config.include_skill_instructions = false;
     })
 }
 
@@ -654,6 +682,7 @@ async fn assert_remote_manual_compact_request_parity(
     let mut builder = test_codex().with_auth(auth);
     if let Some(service_tier) = configured_service_tier {
         builder = builder.with_config(move |config| {
+            config.model = Some("gpt-5.6-luna".to_string());
             config.service_tier = Some(service_tier.request_value().to_string());
         });
     }
@@ -2205,13 +2234,13 @@ async fn remote_compact_trim_estimate_uses_session_base_instructions() -> Result
     let override_retained_call_id = "override-retained-call";
     let override_trailing_call_id = "override-trailing-call";
     let retained_command = "printf retained-shell-output";
-    let trailing_command = "printf '%020000d' 0";
+    let trailing_command = "printf '%08000d' 0";
 
     let baseline_harness = TestCodexHarness::with_builder(
         test_codex()
             .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
             .with_config(|config| {
-                config.model_context_window = Some(200_000);
+                config.model_context_window = Some(1_000_000);
             }),
     )
     .await?;
@@ -2232,9 +2261,6 @@ async fn remote_compact_trim_estimate_uses_session_base_instructions() -> Result
                 responses::ev_shell_command_call(baseline_trailing_call_id, trailing_command),
                 responses::ev_completed("baseline-trailing-call-response"),
             ]),
-            sse(vec![responses::ev_completed(
-                "baseline-trailing-final-response",
-            )]),
         ],
     )
     .await;
@@ -2340,9 +2366,6 @@ async fn remote_compact_trim_estimate_uses_session_base_instructions() -> Result
                 responses::ev_shell_command_call(override_trailing_call_id, trailing_command),
                 responses::ev_completed("override-trailing-call-response"),
             ]),
-            sse(vec![responses::ev_completed(
-                "override-trailing-final-response",
-            )]),
         ],
     )
     .await;
@@ -2704,8 +2727,14 @@ async fn remote_compact_and_resume_refresh_stale_developer_instructions() -> Res
     let server = wiremock::MockServer::start().await;
     let stale_developer_message = "STALE_DEVELOPER_INSTRUCTIONS_SHOULD_BE_REMOVED";
 
-    let mut start_builder =
-        test_codex().with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing());
+    let mut start_builder = test_codex()
+        .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_config(|config| {
+            config.base_instructions = None;
+            config.include_permissions_instructions = true;
+            config.include_environment_context = true;
+            config.include_skill_instructions = true;
+        });
     let initial = start_builder.build(&server).await?;
     let home = initial.home.clone();
     let rollout_path = initial
@@ -2794,8 +2823,14 @@ async fn remote_compact_and_resume_refresh_stale_developer_instructions() -> Res
     })
     .await;
 
-    let mut resume_builder =
-        test_codex().with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing());
+    let mut resume_builder = test_codex()
+        .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_config(|config| {
+            config.base_instructions = None;
+            config.include_permissions_instructions = true;
+            config.include_environment_context = true;
+            config.include_skill_instructions = true;
+        });
     let resumed = resume_builder.resume(&server, home, rollout_path).await?;
 
     resumed
@@ -2858,7 +2893,14 @@ async fn remote_compact_refreshes_stale_developer_instructions_without_resume() 
     let server = wiremock::MockServer::start().await;
     let stale_developer_message = "STALE_DEVELOPER_INSTRUCTIONS_SHOULD_BE_REMOVED";
 
-    let mut builder = test_codex().with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing());
+    let mut builder = test_codex()
+        .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_config(|config| {
+            config.base_instructions = None;
+            config.include_permissions_instructions = true;
+            config.include_environment_context = true;
+            config.include_skill_instructions = true;
+        });
     let test = builder.build(&server).await?;
 
     let responses_mock = responses::mount_sse_sequence(
@@ -3264,9 +3306,17 @@ async fn snapshot_request_shape_remote_mid_turn_compaction_does_not_restate_real
 
     let server = wiremock::MockServer::start().await;
     let realtime_server = start_remote_realtime_server().await;
-    let mut builder = remote_realtime_test_codex_builder(&realtime_server).with_config(|config| {
-        config.model_auto_compact_token_limit = Some(200);
-    });
+    let mut builder = remote_realtime_test_codex_builder(&realtime_server)
+        .with_model("gpt-5.4")
+        .with_model_info_override("gpt-5.4", |model| {
+            model.context_window = Some(10_000);
+            model.max_context_window = Some(10_000);
+            model.auto_compact_token_limit = Some(9_000);
+        })
+        .with_config(|config| {
+            config.model_context_window = Some(10_000);
+            config.model_auto_compact_token_limit = Some(9_000);
+        });
     let test = builder.build(&server).await?;
 
     let responses_mock = responses::mount_sse_sequence(
@@ -3278,7 +3328,7 @@ async fn snapshot_request_shape_remote_mid_turn_compaction_does_not_restate_real
             ]),
             responses::sse(vec![
                 responses::ev_function_call("call-remote-mid-turn", DUMMY_FUNCTION_NAME, "{}"),
-                responses::ev_completed_with_tokens("r1", /*total_tokens*/ 500),
+                responses::ev_completed_with_tokens("r1", /*total_tokens*/ 9_501),
             ]),
             responses::sse(vec![
                 responses::ev_assistant_message("m2", "REMOTE_MID_TURN_FINAL_REPLY"),
@@ -3472,12 +3522,22 @@ async fn snapshot_request_shape_remote_pre_turn_compaction_strips_incoming_model
 
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
+    let mut model_catalog = bundled_models_response().expect("bundled models.json should parse");
+    for model in &mut model_catalog.models {
+        if model.slug == previous_model || model.slug == next_model {
+            model.context_window = Some(100_000);
+            model.max_context_window = Some(100_000);
+            model.auto_compact_token_limit = Some(100_000);
+            model.comp_hash = Some("same-hash".to_string());
+        }
+    }
     let harness = TestCodexHarness::with_builder(
         test_codex()
             .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
             .with_model(previous_model)
-            .with_config(|config| {
-                config.model_auto_compact_token_limit = Some(200);
+            .with_config(move |config| {
+                config.model_catalog = Some(model_catalog);
+                config.model_auto_compact_token_limit = Some(100_000);
             }),
     )
     .await?;
@@ -3487,7 +3547,7 @@ async fn snapshot_request_shape_remote_pre_turn_compaction_strips_incoming_model
         harness.server(),
         responses::sse(vec![
             responses::ev_assistant_message("m1", "BEFORE_SWITCH_REPLY"),
-            responses::ev_completed_with_tokens("r1", /*total_tokens*/ 500),
+            responses::ev_completed_with_tokens("r1", /*total_tokens*/ 100_000),
         ]),
     )
     .await;
@@ -4317,7 +4377,7 @@ async fn snapshot_request_shape_remote_mid_turn_compaction_multi_summary_reinjec
     );
     insta::assert_snapshot!(
         "remote_mid_turn_compaction_multi_summary_reinjects_above_last_summary_shapes",
-        format_labeled_requests_snapshot(
+        normalize_snapshot_wall_times(format_labeled_requests_snapshot(
             "After a prior manual /compact produced an older remote compaction item, the next turn hits remote auto-compaction before the next sampling request. The compact request carries forward that earlier compaction item, and the next sampling request shows the latest compaction item with context reinjected before USER_TWO.",
             &[
                 ("Remote Compaction Request", &compact_request),
@@ -4326,7 +4386,7 @@ async fn snapshot_request_shape_remote_mid_turn_compaction_multi_summary_reinjec
                     &second_turn_request
                 ),
             ]
-        )
+        ))
     );
 
     Ok(())

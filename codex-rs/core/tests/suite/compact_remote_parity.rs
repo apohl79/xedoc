@@ -342,7 +342,7 @@ async fn run_pre_turn_auto_session(mode: Mode) -> Result<Capture> {
                 responses::ev_assistant_message("pre-turn-first-message", "PRE_TURN_FIRST_REPLY"),
                 responses::ev_completed_with_tokens(
                     "pre-turn-first-response",
-                    /*total_tokens*/ 500,
+                    /*total_tokens*/ 10_000,
                 ),
             ]),
             after_compact_response_body("pre_turn_auto"),
@@ -352,7 +352,7 @@ async fn run_pre_turn_auto_session(mode: Mode) -> Result<Capture> {
                 responses::ev_assistant_message("pre-turn-first-message", "PRE_TURN_FIRST_REPLY"),
                 responses::ev_completed_with_tokens(
                     "pre-turn-first-response",
-                    /*total_tokens*/ 500,
+                    /*total_tokens*/ 10_000,
                 ),
             ]),
             compaction_v2_response_body(),
@@ -400,7 +400,7 @@ async fn run_mid_turn_auto_session(mode: Mode) -> Result<Capture> {
                 responses::ev_function_call("mid-turn-call", DUMMY_FUNCTION_NAME, "{}"),
                 responses::ev_completed_with_tokens(
                     "mid-turn-call-response",
-                    /*total_tokens*/ 500,
+                    /*total_tokens*/ 10_000,
                 ),
             ]),
             after_compact_response_body("mid_turn_auto"),
@@ -410,7 +410,7 @@ async fn run_mid_turn_auto_session(mode: Mode) -> Result<Capture> {
                 responses::ev_function_call("mid-turn-call", DUMMY_FUNCTION_NAME, "{}"),
                 responses::ev_completed_with_tokens(
                     "mid-turn-call-response",
-                    /*total_tokens*/ 500,
+                    /*total_tokens*/ 10_000,
                 ),
             ]),
             compaction_v2_response_body(),
@@ -491,7 +491,7 @@ async fn build_auto_harness(mode: Mode) -> Result<TestCodexHarness> {
         mode,
         RunSettings::default(),
         /*hooks*/ false,
-        Some(200),
+        Some(10_000),
     )
     .await
 }
@@ -523,6 +523,7 @@ async fn build_harness_inner(
         .expect("fixed cwd should be absolute");
         config.developer_instructions = Some("PARITY_DEVELOPER_INSTRUCTIONS".to_string());
         if settings.service_tier_fast {
+            config.model = Some("gpt-5.6-luna".to_string());
             config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
         }
         config.model_auto_compact_token_limit = auto_compact_limit;

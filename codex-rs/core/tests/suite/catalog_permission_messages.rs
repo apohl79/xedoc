@@ -56,6 +56,7 @@ async fn catalog_permission_message_loaded_from_remote_models_is_sent() -> Resul
     let mut builder = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_config(|config| {
+            config.model = Some(model_slug.to_string());
             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::Never);
             config
                 .permissions

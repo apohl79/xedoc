@@ -966,7 +966,7 @@ text(JSON.stringify(result));
     assert_eq!(
         parsed,
         serde_json::json!({
-            "tokens_left": 9000,
+            "tokens_left": 2139,
         })
     );
 

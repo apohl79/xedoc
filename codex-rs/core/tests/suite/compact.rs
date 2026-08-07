@@ -140,6 +140,10 @@ fn summary_with_prefix(summary: &str) -> String {
 
 fn set_test_compact_prompt(config: &mut Config) {
     config.compact_prompt = Some(SUMMARIZATION_PROMPT.to_string());
+    config.base_instructions = Some("test base instructions".to_string());
+    config.include_permissions_instructions = false;
+    config.include_environment_context = false;
+    config.include_skill_instructions = false;
 }
 
 fn ev_completed_with_usage(id: &str, input_tokens: i64, output_tokens: i64) -> Value {
@@ -526,7 +530,13 @@ async fn summarize_context_three_requests_and_instructions() {
 
     // 2) Summarize – second hit should include the summarization prompt.
     codex.submit(Op::Compact).await.unwrap();
-    let warning_event = wait_for_event(&codex, |ev| matches!(ev, EventMsg::Warning(_))).await;
+    let warning_event = wait_for_event(&codex, |ev| {
+        matches!(
+            ev,
+            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
+        )
+    })
+    .await;
     let EventMsg::Warning(WarningEvent { message }) = warning_event else {
         panic!("expected warning event after compact");
     };
@@ -731,7 +741,13 @@ async fn manual_pre_compact_block_decision_does_not_block_compaction() {
     })
     .await;
     assert_eq!(completed.run.status, HookRunStatus::Failed);
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::Warning(_))).await;
+    wait_for_event(&codex, |ev| {
+        matches!(
+            ev,
+            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
+        )
+    })
+    .await;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let requests = request_log.requests();
@@ -793,7 +809,13 @@ async fn compact_hooks_respect_matchers_and_post_runs_after_compaction() {
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     codex.submit(Op::Compact).await.expect("trigger compact");
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::Warning(_))).await;
+    wait_for_event(&codex, |ev| {
+        matches!(
+            ev,
+            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
+        )
+    })
+    .await;
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     assert_eq!(request_log.requests().len(), 2);
@@ -863,7 +885,13 @@ async fn manual_compact_uses_custom_prompt() {
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     codex.submit(Op::Compact).await.expect("trigger compact");
-    let warning_event = wait_for_event(&codex, |ev| matches!(ev, EventMsg::Warning(_))).await;
+    let warning_event = wait_for_event(&codex, |ev| {
+        matches!(
+            ev,
+            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
+        )
+    })
+    .await;
     let EventMsg::Warning(WarningEvent { message }) = warning_event else {
         panic!("expected warning event after compact");
     };
@@ -2107,16 +2135,13 @@ async fn pre_sampling_compact_runs_on_switch_to_smaller_context_model() {
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![
-                model_info_with_context_window(previous_model, /*context_window*/ 273_000),
-                model_info_with_context_window(next_model, /*context_window*/ 125_000),
-            ],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_context_window(previous_model, /*context_window*/ 273_000),
+            model_info_with_context_window(next_model, /*context_window*/ 125_000),
+        ],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_sse_sequence(
         &server,
@@ -2143,6 +2168,7 @@ async fn pre_sampling_compact_runs_on_switch_to_smaller_context_model() {
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let test = builder.build(&server).await.expect("build test codex");
@@ -2171,7 +2197,7 @@ async fn pre_sampling_compact_runs_on_switch_to_smaller_context_model() {
     assert_compaction_uses_turn_lifecycle_id(&test.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -2298,16 +2324,13 @@ async fn pre_sampling_compact_runs_when_comp_hash_changes() {
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![
-                model_info_with_optional_comp_hash(previous_model, Some("hash-a")),
-                model_info_with_optional_comp_hash(next_model, Some("hash-b")),
-            ],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_optional_comp_hash(previous_model, Some("hash-a")),
+            model_info_with_optional_comp_hash(next_model, Some("hash-b")),
+        ],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_sse_sequence(
         &server,
@@ -2334,6 +2357,7 @@ async fn pre_sampling_compact_runs_when_comp_hash_changes() {
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let test = builder.build(&server).await.expect("build test codex");
@@ -2362,7 +2386,7 @@ async fn pre_sampling_compact_runs_when_comp_hash_changes() {
     assert_compaction_uses_turn_lifecycle_id(&test.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -2390,13 +2414,10 @@ async fn pre_sampling_compact_uses_target_model_after_previous_model_rename() {
     let mut renamed_model_info = model_info_with_optional_comp_hash("gpt-5.4", Some("hash-b"));
     renamed_model_info.slug = renamed_model.to_string();
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![previous_model_info, renamed_model_info],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![previous_model_info, renamed_model_info],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_response_sequence(
         &server,
@@ -2424,11 +2445,13 @@ async fn pre_sampling_compact_uses_target_model_after_previous_model_rename() {
     .await;
 
     let model_provider = openai_model_provider(&server);
+    let initial_model_catalog = model_catalog.clone();
     let mut initial_builder = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_model(retired_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(initial_model_catalog);
             set_test_compact_prompt(config);
         });
     let initial = initial_builder
@@ -2472,6 +2495,7 @@ async fn pre_sampling_compact_uses_target_model_after_previous_model_rename() {
         .with_model(retired_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let resumed = resumed_builder
@@ -2491,7 +2515,7 @@ async fn pre_sampling_compact_uses_target_model_after_previous_model_rename() {
     assert_compaction_uses_turn_lifecycle_id(&resumed.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -2524,13 +2548,10 @@ async fn pre_sampling_compact_uses_target_model_when_previous_model_is_not_found
     let mut renamed_model_info = model_info_with_optional_comp_hash("gpt-5.4", Some("hash-b"));
     renamed_model_info.slug = renamed_model.to_string();
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![previous_model_info, renamed_model_info],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![previous_model_info, renamed_model_info],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_response_sequence(
         &server,
@@ -2558,11 +2579,13 @@ async fn pre_sampling_compact_uses_target_model_when_previous_model_is_not_found
     .await;
 
     let model_provider = openai_model_provider(&server);
+    let initial_model_catalog = model_catalog.clone();
     let mut initial_builder = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_model(retired_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(initial_model_catalog);
             set_test_compact_prompt(config);
         });
     let initial = initial_builder
@@ -2607,6 +2630,7 @@ async fn pre_sampling_compact_uses_target_model_when_previous_model_is_not_found
         .with_model(retired_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let resumed = resumed_builder
@@ -2626,7 +2650,7 @@ async fn pre_sampling_compact_uses_target_model_when_previous_model_is_not_found
     assert_compaction_uses_turn_lifecycle_id(&resumed.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -2661,13 +2685,10 @@ async fn pre_sampling_compact_uses_target_model_on_downshift() {
         model_info_with_context_window("gpt-5.4", /*context_window*/ 125_000);
     next_model_info.slug = next_model.to_string();
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![previous_model_info, next_model_info],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![previous_model_info, next_model_info],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_response_sequence(
         &server,
@@ -2700,6 +2721,7 @@ async fn pre_sampling_compact_uses_target_model_on_downshift() {
         .with_model(retired_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
             let _ = config.features.enable(Feature::RemoteCompactionV2);
         });
@@ -2729,7 +2751,7 @@ async fn pre_sampling_compact_uses_target_model_on_downshift() {
     assert_compaction_uses_turn_lifecycle_id(&test.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -2758,13 +2780,10 @@ async fn pre_sampling_legacy_remote_compact_uses_target_model_on_downshift() {
         model_info_with_context_window("gpt-5.4", /*context_window*/ 125_000);
     next_model_info.slug = next_model.to_string();
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![previous_model_info, next_model_info],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![previous_model_info, next_model_info],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
     let request_log = mount_sse_sequence(
         &server,
         vec![
@@ -2800,6 +2819,7 @@ async fn pre_sampling_legacy_remote_compact_uses_target_model_on_downshift() {
         .with_model(retired_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
             let _ = config.features.disable(Feature::RemoteCompactionV2);
         });
@@ -2830,7 +2850,7 @@ async fn pre_sampling_legacy_remote_compact_uses_target_model_on_downshift() {
 
     let requests = request_log.requests();
     let compact_requests = compact_request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(requests.len(), 2);
     assert_eq!(compact_requests.len(), 1);
     assert_eq!(
@@ -2937,20 +2957,14 @@ async fn pre_sampling_compact_skips_when_either_comp_hash_is_missing() {
     let model_with_hash = "gpt-5.5";
     let next_model_without_hash = "gpt-5.2";
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![
-                model_info_with_optional_comp_hash(model_without_hash, /*comp_hash*/ None),
-                model_info_with_optional_comp_hash(model_with_hash, Some("hash-a")),
-                model_info_with_optional_comp_hash(
-                    next_model_without_hash,
-                    /*comp_hash*/ None,
-                ),
-            ],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_optional_comp_hash(model_without_hash, /*comp_hash*/ None),
+            model_info_with_optional_comp_hash(model_with_hash, Some("hash-a")),
+            model_info_with_optional_comp_hash(next_model_without_hash, /*comp_hash*/ None),
+        ],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_sse_sequence(
         &server,
@@ -2977,6 +2991,7 @@ async fn pre_sampling_compact_skips_when_either_comp_hash_is_missing() {
         .with_model(model_without_hash)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let test = builder.build(&server).await.expect("build test codex");
@@ -3021,7 +3036,7 @@ async fn pre_sampling_compact_skips_when_either_comp_hash_is_missing() {
     .await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests
             .iter()
@@ -3046,23 +3061,22 @@ async fn body_after_prefix_model_switch_budget_compacts_with_next_model() {
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![
-                model_info_with_context_window(previous_model, /*context_window*/ 273_000),
-                model_info_with_context_window(next_model, /*context_window*/ 125_000),
-            ],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_context_window(previous_model, /*context_window*/ 273_000),
+            model_info_with_context_window(next_model, /*context_window*/ 125_000),
+        ],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_sse_sequence(
         &server,
         vec![
             sse(vec![
                 ev_assistant_message("m1", "before switch"),
-                ev_completed_with_usage("r1", /*input_tokens*/ 100, /*output_tokens*/ 50),
+                ev_completed_with_usage(
+                    "r1", /*input_tokens*/ 1_000, /*output_tokens*/ 5_000,
+                ),
             ]),
             sse(vec![
                 ev_assistant_message("m2", "BODY_BUDGET_SUMMARY"),
@@ -3082,9 +3096,10 @@ async fn body_after_prefix_model_switch_budget_compacts_with_next_model() {
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
             let _ = config.features.enable(Feature::RemoteModels);
-            config.model_auto_compact_token_limit = Some(20);
+            config.model_auto_compact_token_limit = Some(4_000);
             config.model_auto_compact_token_limit_scope =
                 AutoCompactTokenLimitScope::BodyAfterPrefix;
         });
@@ -3114,7 +3129,7 @@ async fn body_after_prefix_model_switch_budget_compacts_with_next_model() {
     assert_compaction_uses_turn_lifecycle_id(&test.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -3140,16 +3155,13 @@ async fn pre_sampling_compact_runs_after_resume_and_switch_to_smaller_model() {
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![
-                model_info_with_context_window(previous_model, /*context_window*/ 273_000),
-                model_info_with_context_window(next_model, /*context_window*/ 125_000),
-            ],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_context_window(previous_model, /*context_window*/ 273_000),
+            model_info_with_context_window(next_model, /*context_window*/ 125_000),
+        ],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_sse_sequence(
         &server,
@@ -3171,11 +3183,13 @@ async fn pre_sampling_compact_runs_after_resume_and_switch_to_smaller_model() {
     .await;
 
     let model_provider = non_openai_model_provider(&server);
+    let initial_model_catalog = model_catalog.clone();
     let mut initial_builder = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(initial_model_catalog);
             set_test_compact_prompt(config);
         });
     let initial = initial_builder
@@ -3219,6 +3233,7 @@ async fn pre_sampling_compact_runs_after_resume_and_switch_to_smaller_model() {
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let resumed = resumed_builder
@@ -3238,7 +3253,7 @@ async fn pre_sampling_compact_runs_after_resume_and_switch_to_smaller_model() {
     assert_compaction_uses_turn_lifecycle_id(&resumed.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -3261,16 +3276,13 @@ async fn pre_sampling_compact_recovers_comp_hash_after_resume() {
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![
-                model_info_with_optional_comp_hash(previous_model, Some("hash-a")),
-                model_info_with_optional_comp_hash(next_model, Some("hash-b")),
-            ],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_optional_comp_hash(previous_model, Some("hash-a")),
+            model_info_with_optional_comp_hash(next_model, Some("hash-b")),
+        ],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_sse_sequence(
         &server,
@@ -3292,11 +3304,13 @@ async fn pre_sampling_compact_recovers_comp_hash_after_resume() {
     .await;
 
     let model_provider = non_openai_model_provider(&server);
+    let initial_model_catalog = model_catalog.clone();
     let mut initial_builder = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(initial_model_catalog);
             set_test_compact_prompt(config);
         });
     let initial = initial_builder
@@ -3350,6 +3364,7 @@ async fn pre_sampling_compact_recovers_comp_hash_after_resume() {
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let resumed = resumed_builder
@@ -3369,7 +3384,7 @@ async fn pre_sampling_compact_recovers_comp_hash_after_resume() {
     assert_compaction_uses_turn_lifecycle_id(&resumed.codex).await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests.len(),
         3,
@@ -3392,16 +3407,13 @@ async fn pre_sampling_compact_skips_missing_comp_hash_after_resume() {
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
 
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![
-                model_info_with_optional_comp_hash(previous_model, /*comp_hash*/ None),
-                model_info_with_optional_comp_hash(next_model, Some("hash-b")),
-            ],
-        },
-    )
-    .await;
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_optional_comp_hash(previous_model, /*comp_hash*/ None),
+            model_info_with_optional_comp_hash(next_model, Some("hash-b")),
+        ],
+    };
+    let models_mock = mount_models_once(&server, model_catalog.clone()).await;
 
     let request_log = mount_sse_sequence(
         &server,
@@ -3419,11 +3431,13 @@ async fn pre_sampling_compact_skips_missing_comp_hash_after_resume() {
     .await;
 
     let model_provider = non_openai_model_provider(&server);
+    let initial_model_catalog = model_catalog.clone();
     let mut initial_builder = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(initial_model_catalog);
             set_test_compact_prompt(config);
         });
     let initial = initial_builder
@@ -3475,6 +3489,7 @@ async fn pre_sampling_compact_skips_missing_comp_hash_after_resume() {
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
         });
     let resumed = resumed_builder
@@ -3497,7 +3512,7 @@ async fn pre_sampling_compact_skips_missing_comp_hash_after_resume() {
     .await;
 
     let requests = request_log.requests();
-    assert_eq!(models_mock.requests().len(), 1);
+    assert_eq!(models_mock.requests().len(), 0);
     assert_eq!(
         requests
             .iter()
@@ -3708,7 +3723,13 @@ async fn manual_compact_retries_after_context_window_error() {
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     codex.submit(Op::Compact).await.unwrap();
-    let warning_event = wait_for_event(&codex, |ev| matches!(ev, EventMsg::Warning(_))).await;
+    let warning_event = wait_for_event(&codex, |ev| {
+        matches!(
+            ev,
+            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
+        )
+    })
+    .await;
     let EventMsg::Warning(WarningEvent { message }) = warning_event else {
         panic!("expected warning event after compact retry");
     };
@@ -4064,10 +4085,6 @@ async fn manual_compact_twice_preserves_latest_user_messages() {
         .last()
         .expect("final turn request missing")
         .message_input_texts("user");
-    assert!(
-        !initial_seeded_user_prefix.is_empty(),
-        "first turn should include seeded user prefix before the submitted user message"
-    );
     let (final_request_last_user_text, final_request_before_last_user) = final_request_user_texts
         .split_last()
         .expect("final turn request missing user messages");
@@ -4094,7 +4111,9 @@ async fn auto_compact_allows_multiple_attempts_when_interleaved_with_other_turn_
 
     let sse1 = sse(vec![
         ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_tokens("r1", /*total_tokens*/ 500),
+        ev_completed_with_usage(
+            "r1", /*input_tokens*/ 9_000, /*output_tokens*/ 1_000,
+        ),
     ]);
     let first_summary_payload = auto_summary(FIRST_AUTO_SUMMARY);
     let sse2 = sse(vec![
@@ -4103,11 +4122,15 @@ async fn auto_compact_allows_multiple_attempts_when_interleaved_with_other_turn_
     ]);
     let sse3 = sse(vec![
         ev_function_call(DUMMY_CALL_ID, DUMMY_FUNCTION_NAME, "{}"),
-        ev_completed_with_tokens("r3", /*total_tokens*/ 150),
+        ev_completed_with_usage(
+            "r3", /*input_tokens*/ 7_500, /*output_tokens*/ 500,
+        ),
     ]);
     let sse4 = sse(vec![
         ev_assistant_message("m4", SECOND_LARGE_REPLY),
-        ev_completed_with_tokens("r4", /*total_tokens*/ 450),
+        ev_completed_with_usage(
+            "r4", /*input_tokens*/ 14_000, /*output_tokens*/ 1_000,
+        ),
     ]);
     let second_summary_payload = auto_summary(SECOND_AUTO_SUMMARY);
     let sse5 = sse(vec![
@@ -4128,7 +4151,7 @@ async fn auto_compact_allows_multiple_attempts_when_interleaved_with_other_turn_
     let mut builder = test_codex().with_config(move |config| {
         config.model_provider = model_provider;
         set_test_compact_prompt(config);
-        config.model_auto_compact_token_limit = Some(200);
+        config.model_auto_compact_token_limit = Some(10_000);
     });
     let codex = builder.build(&server).await.unwrap().codex;
 
@@ -4206,7 +4229,7 @@ async fn snapshot_request_shape_mid_turn_continuation_compaction() {
 
     let server = start_mock_server().await;
 
-    let context_window = 100;
+    let context_window = 10_000;
     let limit = context_window * 90 / 100;
     let over_limit_tokens = context_window * 95 / 100 + 1;
 
@@ -4224,10 +4247,11 @@ async fn snapshot_request_shape_mid_turn_continuation_compaction() {
         ev_completed_with_tokens("r4", /*total_tokens*/ 10),
     ]);
 
-    // Mount responses in order and keep mocks only for the ones we assert on.
-    let first_turn_mock = mount_sse_once(&server, first_turn).await;
-    let auto_compact_mock = mount_sse_once(&server, auto_compact_turn).await;
-    let post_auto_compact_mock = mount_sse_once(&server, post_auto_compact_turn).await;
+    let request_log = mount_sse_sequence(
+        &server,
+        vec![first_turn, auto_compact_turn, post_auto_compact_turn],
+    )
+    .await;
 
     let model_provider = non_openai_model_provider(&server);
 
@@ -4256,7 +4280,9 @@ async fn snapshot_request_shape_mid_turn_continuation_compaction() {
     wait_for_event(&codex, |msg| matches!(msg, EventMsg::TurnComplete(_))).await;
 
     // Assert first request captured expected user message that triggers function call.
-    let first_request = first_turn_mock.single_request().input();
+    let requests = request_log.requests();
+    assert_eq!(requests.len(), 3);
+    let first_request = requests[0].input();
     assert!(
         first_request.iter().any(|item| {
             item.get("type").and_then(|value| value.as_str()) == Some("message")
@@ -4271,9 +4297,7 @@ async fn snapshot_request_shape_mid_turn_continuation_compaction() {
         "first request should include the user message that triggers the function call"
     );
 
-    let function_call_output = auto_compact_mock
-        .single_request()
-        .function_call_output(DUMMY_CALL_ID);
+    let function_call_output = requests[1].function_call_output(DUMMY_CALL_ID);
     let output_text = function_call_output
         .get("output")
         .and_then(|value| value.as_str())
@@ -4283,7 +4307,7 @@ async fn snapshot_request_shape_mid_turn_continuation_compaction() {
         "function call output should be sent before auto compact"
     );
 
-    let auto_compact_body = auto_compact_mock.single_request().body_json().to_string();
+    let auto_compact_body = requests[1].body_json().to_string();
     assert!(
         body_contains_text(&auto_compact_body, SUMMARIZATION_PROMPT),
         "mid-turn auto compact request should include the summarization prompt after exceeding 95% (limit {limit})"
@@ -4294,14 +4318,8 @@ async fn snapshot_request_shape_mid_turn_continuation_compaction() {
         format_labeled_requests_snapshot(
             "True mid-turn continuation compaction after tool output: compact request includes tool artifacts, and the continuation request includes the summary in the same turn.",
             &[
-                (
-                    "Local Compaction Request",
-                    &auto_compact_mock.single_request()
-                ),
-                (
-                    "Local Post-Compaction History Layout",
-                    &post_auto_compact_mock.single_request()
-                ),
+                ("Local Compaction Request", &requests[1]),
+                ("Local Post-Compaction History Layout", &requests[2]),
             ]
         )
     );
@@ -4313,8 +4331,8 @@ async fn auto_compact_clamps_config_limit_to_context_window() {
 
     let server = start_mock_server().await;
 
-    let context_window = 100;
-    let config_limit = 200;
+    let context_window = 10_000;
+    let config_limit = 20_000;
     let over_limit_tokens = context_window * 90 / 100 + 1;
 
     let first_turn = sse(vec![
@@ -4330,9 +4348,11 @@ async fn auto_compact_clamps_config_limit_to_context_window() {
         "r3", /*total_tokens*/ 10,
     )]);
 
-    let first_turn_mock = mount_sse_once(&server, first_turn).await;
-    let auto_compact_mock = mount_sse_once(&server, auto_compact_turn).await;
-    mount_sse_once(&server, post_auto_compact_turn).await;
+    let request_log = mount_sse_sequence(
+        &server,
+        vec![first_turn, auto_compact_turn, post_auto_compact_turn],
+    )
+    .await;
 
     let model_provider = non_openai_model_provider(&server);
     let mut builder = test_codex().with_config(move |config| {
@@ -4345,9 +4365,10 @@ async fn auto_compact_clamps_config_limit_to_context_window() {
 
     codex.submit_turn("OVER_LIMIT_TURN").await.unwrap();
     codex.submit_turn("FOLLOW_UP_AFTER_CLAMP").await.unwrap();
-
+    let requests = request_log.requests();
+    assert_eq!(requests.len(), 3);
     assert!(
-        first_turn_mock.single_request().input().iter().any(|item| {
+        requests[0].input().iter().any(|item| {
             item.get("type").and_then(|value| value.as_str()) == Some("message")
                 && item
                     .get("content")
@@ -4360,7 +4381,7 @@ async fn auto_compact_clamps_config_limit_to_context_window() {
         "first request should contain the over-limit user input"
     );
 
-    let auto_compact_body = auto_compact_mock.single_request().body_json().to_string();
+    let auto_compact_body = requests[1].body_json().to_string();
     assert!(
         body_contains_text(&auto_compact_body, SUMMARIZATION_PROMPT),
         "auto compact should run with the summarization prompt when config limit exceeds context"
@@ -4375,11 +4396,13 @@ async fn auto_compact_body_after_prefix_ignores_starting_window_prefix() {
 
     let first_turn = sse(vec![
         ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_usage("r1", /*input_tokens*/ 600, /*output_tokens*/ 50),
+        ev_completed_with_usage(
+            "r1", /*input_tokens*/ 1_000, /*output_tokens*/ 1_000,
+        ),
     ]);
     let second_turn = sse(vec![
         ev_assistant_message("m2", SECOND_LARGE_REPLY),
-        ev_completed_with_usage("r2", /*input_tokens*/ 700, /*output_tokens*/ 50),
+        ev_completed_with_usage("r2", /*input_tokens*/ 7_000, /*output_tokens*/ 50),
     ]);
     let auto_compact_turn = sse(vec![
         ev_assistant_message("m3", AUTO_SUMMARY_TEXT),
@@ -4400,8 +4423,8 @@ async fn auto_compact_body_after_prefix_ignores_starting_window_prefix() {
         .with_config(move |config| {
             config.model_provider = model_provider;
             set_test_compact_prompt(config);
-            config.model_context_window = Some(1_000);
-            config.model_auto_compact_token_limit = Some(100);
+            config.model_context_window = Some(10_000);
+            config.model_auto_compact_token_limit = Some(4_000);
             config.model_auto_compact_token_limit_scope =
                 AutoCompactTokenLimitScope::BodyAfterPrefix;
         })
@@ -4444,7 +4467,9 @@ async fn auto_compact_body_after_prefix_counts_growth_after_compaction() {
 
     let first_turn = sse(vec![
         ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_usage("r1", /*input_tokens*/ 100, /*output_tokens*/ 50),
+        ev_completed_with_usage(
+            "r1", /*input_tokens*/ 1_000, /*output_tokens*/ 5_000,
+        ),
     ]);
     let first_auto_compact_turn = sse(vec![
         ev_assistant_message("m2", AUTO_SUMMARY_TEXT),
@@ -4459,7 +4484,7 @@ async fn auto_compact_body_after_prefix_counts_growth_after_compaction() {
     let third_turn = sse(vec![
         ev_assistant_message("m4", FINAL_REPLY),
         ev_completed_with_usage(
-            "r4", /*input_tokens*/ 100_100, /*output_tokens*/ 5,
+            "r4", /*input_tokens*/ 105_000, /*output_tokens*/ 100,
         ),
     ]);
     let second_auto_compact_turn = sse(vec![
@@ -4489,7 +4514,7 @@ async fn auto_compact_body_after_prefix_counts_growth_after_compaction() {
             config.model_provider = model_provider;
             set_test_compact_prompt(config);
             config.model_context_window = Some(200_000);
-            config.model_auto_compact_token_limit = Some(40);
+            config.model_auto_compact_token_limit = Some(4_000);
             config.model_auto_compact_token_limit_scope =
                 AutoCompactTokenLimitScope::BodyAfterPrefix;
         })
@@ -4547,11 +4572,11 @@ async fn auto_compact_body_after_prefix_still_caps_at_context_window() {
 
     let first_turn = sse(vec![
         ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_usage("r1", /*input_tokens*/ 80, /*output_tokens*/ 5),
+        ev_completed_with_usage("r1", /*input_tokens*/ 8_000, /*output_tokens*/ 5),
     ]);
     let second_turn = sse(vec![
         ev_assistant_message("m2", SECOND_LARGE_REPLY),
-        ev_completed_with_usage("r2", /*input_tokens*/ 98, /*output_tokens*/ 1),
+        ev_completed_with_usage("r2", /*input_tokens*/ 9_800, /*output_tokens*/ 1),
     ]);
     let auto_compact_turn = sse(vec![
         ev_assistant_message("m3", AUTO_SUMMARY_TEXT),
@@ -4572,7 +4597,7 @@ async fn auto_compact_body_after_prefix_still_caps_at_context_window() {
         .with_config(move |config| {
             config.model_provider = model_provider;
             set_test_compact_prompt(config);
-            config.model_context_window = Some(100);
+            config.model_context_window = Some(10_000);
             config.model_auto_compact_token_limit = Some(200);
             config.model_auto_compact_token_limit_scope =
                 AutoCompactTokenLimitScope::BodyAfterPrefix;
@@ -4662,7 +4687,7 @@ async fn auto_compact_counts_encrypted_reasoning_before_last_user() {
         .with_config(move |config| {
             config.chatgpt_base_url = chatgpt_base_url;
             set_test_compact_prompt(config);
-            config.model_auto_compact_token_limit = Some(300);
+            config.model_auto_compact_token_limit = Some(900);
             let _ = config.features.disable(Feature::RemoteCompactionV2);
         })
         .build(&server)
@@ -4788,7 +4813,7 @@ async fn auto_compact_runs_when_reasoning_header_clears_between_turns() {
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_config(|config| {
             set_test_compact_prompt(config);
-            config.model_auto_compact_token_limit = Some(300);
+            config.model_auto_compact_token_limit = Some(900);
             let _ = config.features.disable(Feature::RemoteCompactionV2);
         })
         .build(&server)
@@ -4834,7 +4859,9 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
     ]);
     let sse2 = sse(vec![
         ev_assistant_message("m2", "SECOND_REPLY"),
-        ev_completed_with_tokens("r2", /*total_tokens*/ 500),
+        ev_completed_with_usage(
+            "r2", /*input_tokens*/ 89_000, /*output_tokens*/ 1_000,
+        ),
     ]);
     let sse3 = sse(vec![
         ev_assistant_message("m3", "PRE_TURN_SUMMARY"),
@@ -4851,7 +4878,8 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
         .with_config(move |config| {
             config.model_provider = model_provider;
             set_test_compact_prompt(config);
-            config.model_auto_compact_token_limit = Some(200);
+            config.model_context_window = Some(100_000);
+            config.model_auto_compact_token_limit = Some(90_000);
         })
         .build(&server)
         .await
@@ -4951,13 +4979,21 @@ async fn snapshot_request_shape_pre_turn_compaction_strips_incoming_model_switch
     let server = start_mock_server().await;
     let previous_model = "gpt-5.4";
     let next_model = "gpt-5.2";
+    let model_catalog = ModelsResponse {
+        models: vec![
+            model_info_with_optional_comp_hash(previous_model, Some("same-hash")),
+            model_info_with_optional_comp_hash(next_model, Some("same-hash")),
+        ],
+    };
 
     let request_log = mount_sse_sequence(
         &server,
         vec![
             sse(vec![
                 ev_assistant_message("m1", "BEFORE_SWITCH_REPLY"),
-                ev_completed_with_tokens("r1", /*total_tokens*/ 500),
+                ev_completed_with_usage(
+                    "r1", /*input_tokens*/ 99_000, /*output_tokens*/ 1_000,
+                ),
             ]),
             sse(vec![
                 ev_assistant_message("m2", "PRETURN_SWITCH_SUMMARY"),
@@ -4977,9 +5013,10 @@ async fn snapshot_request_shape_pre_turn_compaction_strips_incoming_model_switch
         .with_model(previous_model)
         .with_config(move |config| {
             config.model_provider = model_provider;
+            config.model_catalog = Some(model_catalog);
             set_test_compact_prompt(config);
             let _ = config.features.enable(Feature::RemoteModels);
-            config.model_auto_compact_token_limit = Some(200);
+            config.model_auto_compact_token_limit = Some(100_000);
         })
         .build(&server)
         .await
@@ -5055,11 +5092,13 @@ async fn snapshot_request_shape_pre_turn_compaction_context_window_exceeded() {
 
     let first_turn = sse(vec![
         ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_tokens("r1", /*total_tokens*/ 500),
+        ev_completed_with_usage(
+            "r1", /*input_tokens*/ 9_000, /*output_tokens*/ 1_000,
+        ),
     ]);
     let mut responses = vec![first_turn];
     responses.extend(
-        (0..5).map(|_| {
+        (0..3).map(|_| {
             sse_failed(
                 "compact-failed",
                 "context_length_exceeded",
@@ -5075,7 +5114,7 @@ async fn snapshot_request_shape_pre_turn_compaction_context_window_exceeded() {
         .with_config(move |config| {
             config.model_provider = model_provider;
             set_test_compact_prompt(config);
-            config.model_auto_compact_token_limit = Some(200);
+            config.model_auto_compact_token_limit = Some(10_000);
         })
         .build(&server)
         .await
@@ -5292,7 +5331,7 @@ async fn mid_turn_compaction_keeps_the_creation_time_global_instructions() -> Re
         vec![
             responses::sse(vec![
                 responses::ev_function_call("call-1", "unsupported_tool", "{}"),
-                responses::ev_completed_with_tokens("first-response", /*total_tokens*/ 96),
+                responses::ev_completed_with_tokens("first-response", /*total_tokens*/ 9_600),
             ]),
             responses::sse(vec![
                 responses::ev_assistant_message("compact-message", "summary"),
@@ -5318,8 +5357,8 @@ async fn mid_turn_compaction_keeps_the_creation_time_global_instructions() -> Re
         .with_home(Arc::clone(&home))
         .with_config(move |config| {
             config.model_provider = provider;
-            config.model_context_window = Some(100);
-            config.model_auto_compact_token_limit = Some(90);
+            config.model_context_window = Some(10_000);
+            config.model_auto_compact_token_limit = Some(9_000);
         });
     let test = builder.build(&server).await?;
 

@@ -38,7 +38,7 @@ use serde::Serialize;
 use wiremock::MockServer;
 
 const ETAG: &str = "\"models-etag-ttl\"";
-const CACHE_FILE: &str = "models_cache.json";
+const CACHE_FILE: &str = "models_cache_v2.json";
 const OPENAI_PROVIDER_ID: &str = "openai";
 const REMOTE_MODEL: &str = "codex-test-ttl";
 const VERSIONED_MODEL: &str = "codex-test-versioned";
@@ -184,6 +184,7 @@ async fn uses_cache_when_version_matches() -> Result<()> {
             write_cache_sync(&cache_path, &cache).expect("write cache");
         })
         .with_config(|config| {
+            config.model = Some(VERSIONED_MODEL.to_string());
             config.model_provider.request_max_retries = Some(0);
             config.model_providers.insert(
                 config.model_provider_id.clone(),
@@ -238,6 +239,7 @@ async fn refreshes_when_cache_version_missing() -> Result<()> {
             write_cache_sync(&cache_path, &cache).expect("write cache");
         })
         .with_config(|config| {
+            config.model = Some(MISSING_VERSION_MODEL.to_string());
             config.model_provider.request_max_retries = Some(0);
             config.model_providers.insert(
                 config.model_provider_id.clone(),
@@ -293,6 +295,7 @@ async fn refreshes_when_cache_version_differs() -> Result<()> {
             write_cache_sync(&cache_path, &cache).expect("write cache");
         })
         .with_config(|config| {
+            config.model = Some(DIFFERENT_VERSION_MODEL.to_string());
             config.model_provider.request_max_retries = Some(0);
             config.model_providers.insert(
                 config.model_provider_id.clone(),

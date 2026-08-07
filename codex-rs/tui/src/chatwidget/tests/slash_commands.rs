@@ -403,7 +403,7 @@ async fn queued_settings_selection_applies_before_next_input() {
     chat.thread_id = Some(ThreadId::new());
     let mut preset = get_available_model(&chat, "gpt-5.6-terra");
     preset.supported_reasoning_efforts.truncate(1);
-    let selected_effort = preset.supported_reasoning_efforts[0].effort.clone();
+    let selected_effort = preset.default_reasoning_effort.clone();
     chat.model_catalog = std::sync::Arc::new(ModelCatalog::new(vec![preset]));
     handle_turn_started(&mut chat, "turn-1");
 

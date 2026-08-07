@@ -77,6 +77,10 @@ async fn test_config_with_cli_overrides(
         .build()
         .await
         .expect("load default test config");
+    let mut config = config;
+    // These control tests exercise the legacy descendant-resume behavior unless a test opts
+    // into MultiAgentV2 explicitly.
+    let _ = config.features.disable(Feature::MultiAgentV2);
     (home, config)
 }
 

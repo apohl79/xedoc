@@ -6,9 +6,12 @@ use codex_core::config::CurrentTimeReminderConfig;
 use codex_extension_items::ExtensionItem;
 use codex_extension_items::sleep::SleepItem;
 use codex_features::Feature;
+use codex_models_manager::bundled_models_response;
 use codex_protocol::AgentPath;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::openai_models::ModelInfo;
+use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::InterAgentCommunication;
@@ -118,6 +121,19 @@ fn response_completed_chunks(response_id: &str) -> Vec<StreamingSseChunk> {
         chunk(ev_response_created(response_id)),
         chunk(ev_completed(response_id)),
     ]
+}
+
+fn compact_test_model_info(slug: &str) -> ModelInfo {
+    let mut model = bundled_models_response()
+        .expect("bundled models.json should parse")
+        .models
+        .into_iter()
+        .find(|model| model.slug == slug)
+        .expect("test model should exist in models.json");
+    model.context_window = Some(100_000);
+    model.max_context_window = Some(100_000);
+    model.auto_compact_token_limit = Some(10_000);
+    model
 }
 
 async fn build_codex(server: &StreamingSseServer) -> Arc<CodexThread> {
@@ -893,7 +909,7 @@ async fn steered_user_input_waits_for_model_continuation_after_mid_turn_compact(
         chunk(ev_response_created("resp-1")),
         chunk(ev_function_call("call-1", "test_tool", "{}")),
         chunk(ev_completed_with_tokens(
-            "resp-1", /*total_tokens*/ 500,
+            "resp-1", /*total_tokens*/ 10_000,
         )),
     ];
 
@@ -942,7 +958,9 @@ async fn steered_user_input_waits_for_model_continuation_after_mid_turn_compact(
         .with_config(|config| {
             config.model_provider.name = "OpenAI (test)".to_string();
             config.model_provider.supports_websockets = false;
-            config.model_auto_compact_token_limit = Some(200);
+            config.model_catalog = Some(ModelsResponse {
+                models: vec![compact_test_model_info("gpt-5.4")],
+            });
         })
         .build_with_streaming_server(&server)
         .await
@@ -992,7 +1010,7 @@ async fn steered_user_input_follows_compact_when_only_the_steer_needs_follow_up(
         gated_chunk(
             gate_first_completed_rx,
             vec![ev_completed_with_tokens(
-                "resp-1", /*total_tokens*/ 500,
+                "resp-1", /*total_tokens*/ 10_000,
             )],
         ),
     ];
@@ -1027,7 +1045,7 @@ async fn steered_user_input_follows_compact_when_only_the_steer_needs_follow_up(
         .with_config(|config| {
             config.model_provider.name = "OpenAI (test)".to_string();
             config.model_provider.supports_websockets = false;
-            config.model_auto_compact_token_limit = Some(200);
+            config.model_auto_compact_token_limit = Some(10_000);
         })
         .build_with_streaming_server(&server)
         .await
@@ -1072,9 +1090,9 @@ async fn steered_user_input_waits_when_tool_output_triggers_compact_before_next_
     let (gate_first_completed_tx, gate_first_completed_rx) = oneshot::channel();
 
     let large_output_command = if cfg!(windows) {
-        "[Console]::Out.Write([string]::new([char]'0', 4000))"
+        "[Console]::Out.Write([string]::new([char]'0', 40000))"
     } else {
-        "printf '%04000d' 0"
+        "printf '%040000d' 0"
     };
     let large_output_args = json!({
         "command": large_output_command,
@@ -1093,7 +1111,7 @@ async fn steered_user_input_waits_when_tool_output_triggers_compact_before_next_
         gated_chunk(
             gate_first_completed_rx,
             vec![ev_completed_with_tokens(
-                "resp-1", /*total_tokens*/ 100,
+                "resp-1", /*total_tokens*/ 1_000,
             )],
         ),
     ];
@@ -1144,7 +1162,9 @@ async fn steered_user_input_waits_when_tool_output_triggers_compact_before_next_
         .with_config(|config| {
             config.model_provider.name = "OpenAI (test)".to_string();
             config.model_provider.supports_websockets = false;
-            config.model_auto_compact_token_limit = Some(200);
+            config.model_catalog = Some(ModelsResponse {
+                models: vec![compact_test_model_info("gpt-5.4")],
+            });
         })
         .build_with_streaming_server(&server)
         .await

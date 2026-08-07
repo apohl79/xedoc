@@ -154,7 +154,6 @@ async fn responses_mode_stream_cli_supports_personal_access_tokens() {
 
     let mut cmd = personal_access_token_exec_command(&server, &home);
     let output = run_cli_command(&mut cmd).unwrap();
-
     assert!(
         output.status.success(),
         "codex-cli exec failed: {}",
@@ -474,10 +473,10 @@ async fn integration_creates_and_checks_session_file() -> anyhow::Result<()> {
     let marker = format!("integration-test-{}", Uuid::new_v4());
     let prompt = format!("echo {marker}");
 
-    // 3. Serve two hermetic SSE responses, one for the initial run and one for resume.
+    // 3. Serve hermetic SSE responses for the turn and automatic session naming on each run.
     let server = MockServer::start().await;
     let resp_mock =
-        responses::mount_sse_sequence(&server, vec![cli_sse_response(), cli_sse_response()]).await;
+        responses::mount_sse_sequence(&server, (0..3).map(|_| cli_sse_response()).collect()).await;
     let repo_root = repo_root();
 
     // 4. Run the codex CLI and invoke `exec`, which is what records a session.
@@ -613,7 +612,7 @@ async fn integration_creates_and_checks_session_file() -> anyhow::Result<()> {
 
     let output2 = run_cli_command(&mut cmd2).unwrap();
     assert!(output2.status.success(), "resume codex-cli run failed");
-    assert_eq!(resp_mock.requests().len(), 2);
+    assert_eq!(resp_mock.requests().len(), 3);
 
     // Find the new session file containing the resumed marker.
     let marker2_clone = marker2.clone();

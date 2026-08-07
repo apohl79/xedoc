@@ -37,7 +37,7 @@ use tokio::time::sleep;
 const CHILD_MODEL: &str = "test-multi-agent-child";
 const ROOT_MODEL: &str = "test-multi-agent-root";
 const ROOT_PROMPT: &str = "spawn a child";
-const MULTI_AGENT_V2_NAMESPACE: &str = "collaboration";
+const MULTI_AGENT_V2_NAMESPACE: &str = "multi_agent_v2";
 const UNSUPPORTED_CODE_MODE_WARNING: &str = "does not advertise Code Mode support";
 
 struct RemoteModelResponse {
@@ -115,9 +115,13 @@ async fn response_for_remote_model(
     )
     .await;
 
+    let configured_model_slug = model_slug.clone();
     let mut builder = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
-        .with_config(configure);
+        .with_config(move |config| {
+            config.model = Some(configured_model_slug.clone());
+            configure(config);
+        });
     let test = builder.build(&server).await?;
     let models_manager = test.thread_manager.get_models_manager();
     let available_model = wait_for_model_available(&models_manager, &model_slug).await;
@@ -260,9 +264,11 @@ async fn unsupported_code_mode_warning_is_emitted_each_turn() -> Result<()> {
         ],
     )
     .await;
+    let configured_model_slug = model_slug.to_string();
     let test = test_codex()
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
-        .with_config(|config| {
+        .with_config(move |config| {
+            config.model = Some(configured_model_slug);
             config
                 .features
                 .enable(Feature::CodeMode)
@@ -445,17 +451,15 @@ async fn remote_multi_agent_selector_uses_model_selected_before_first_turn() -> 
     })
     .await;
 
+    let response_body = response_mock
+        .last_request()
+        .expect("expected response request")
+        .body_json();
     assert_eq!(
         (
             models_mock.requests().len(),
             test.codex.multi_agent_version(),
-            tool_names(
-                &response_mock
-                    .last_request()
-                    .expect("expected response request")
-                    .body_json(),
-            )
-            .contains(&MULTI_AGENT_V2_NAMESPACE.to_string()),
+            tool_names(&response_body).contains(&MULTI_AGENT_V2_NAMESPACE.to_string()),
         ),
         (1, Some(MultiAgentVersion::V2), true)
     );

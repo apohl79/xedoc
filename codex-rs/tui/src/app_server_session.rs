@@ -2426,7 +2426,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persisted_resume_does_not_forward_implicit_service_tier() -> Result<()> {
+    async fn persisted_resume_applies_model_default_service_tier() -> Result<()> {
         let codex_home = tempfile::tempdir().expect("tempdir");
         let mut config = build_config(&codex_home).await;
         config.model = Some("gpt-5.4".to_string());
@@ -2464,7 +2464,10 @@ mod tests {
             .resume_thread(config, thread_id, ResumeModelSettings::RestoreFromThread)
             .await?;
 
-        assert_eq!(resumed.session.service_tier, None);
+        assert_eq!(
+            resumed.session.service_tier,
+            Some(ServiceTier::Fast.request_value().to_string())
+        );
         app_server.shutdown().await?;
         Ok(())
     }

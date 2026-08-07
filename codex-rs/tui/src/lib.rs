@@ -2588,21 +2588,15 @@ mod tests {
     async fn latest_session_lookup_params_keep_local_filters_for_embedded_sessions()
     -> std::io::Result<()> {
         let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
         let cwd = temp_dir.path().join("project");
 
         let params = latest_session_lookup_params(
-            /*uses_remote_workspace*/ false,
-            &config,
             Some(cwd.as_path()),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
         );
 
-        assert_eq!(
-            params.model_providers,
-            Some(vec![config.model_provider_id.clone()])
-        );
+        assert_eq!(params.model_providers, Some(Vec::new()));
         assert_eq!(
             params.cwd,
             Some(ThreadListCwdFilter::One(cwd.to_string_lossy().to_string()))
@@ -2610,8 +2604,6 @@ mod tests {
         assert!(params.use_state_db_only);
 
         let scan_params = latest_session_lookup_params(
-            /*uses_remote_workspace*/ false,
-            &config,
             Some(cwd.as_path()),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::ScanAndRepair,
@@ -2621,26 +2613,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn latest_session_lookup_params_keep_local_filters_for_local_daemon_sessions()
+    async fn latest_session_lookup_params_list_all_providers_for_local_daemon_sessions()
     -> color_eyre::Result<()> {
         let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
         let cwd = temp_dir.path().join("project");
-        let target = AppServerTarget::LocalDaemon {
-            endpoint: RemoteAppServerEndpoint::UnixSocket {
-                socket_path: AbsolutePathBuf::relative_to_current_dir("codex.sock")?,
-            },
-        };
 
         let params = latest_session_lookup_params(
-            target.uses_remote_workspace(),
-            &config,
             Some(cwd.as_path()),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
         );
 
-        assert_eq!(params.model_providers, Some(vec![config.model_provider_id]));
+        assert_eq!(params.model_providers, Some(Vec::new()));
         assert_eq!(
             params.cwd,
             Some(ThreadListCwdFilter::One(cwd.to_string_lossy().to_string()))
@@ -2651,18 +2635,13 @@ mod tests {
     #[tokio::test]
     async fn latest_session_lookup_params_omit_local_filters_for_remote_sessions()
     -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
-
         let params = latest_session_lookup_params(
-            /*uses_remote_workspace*/ true,
-            &config,
             /*cwd_filter*/ None,
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
         );
 
-        assert_eq!(params.model_providers, None);
+        assert_eq!(params.model_providers, Some(Vec::new()));
         assert_eq!(params.cwd, None);
         Ok(())
     }
@@ -2670,12 +2649,7 @@ mod tests {
     #[tokio::test]
     async fn latest_session_lookup_params_can_include_non_interactive_sources()
     -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
-
         let params = latest_session_lookup_params(
-            /*uses_remote_workspace*/ true,
-            &config,
             /*cwd_filter*/ None,
             /*include_non_interactive*/ true,
             LatestSessionLookupMode::StateDbOnly,
@@ -2696,19 +2670,15 @@ mod tests {
     #[tokio::test]
     async fn latest_session_lookup_params_keep_explicit_cwd_filter_for_remote_sessions()
     -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
         let cwd = Path::new("repo/on/server");
 
         let params = latest_session_lookup_params(
-            /*uses_remote_workspace*/ true,
-            &config,
             Some(cwd),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
         );
 
-        assert_eq!(params.model_providers, None);
+        assert_eq!(params.model_providers, Some(Vec::new()));
         assert_eq!(
             params.cwd,
             Some(ThreadListCwdFilter::One(String::from("repo/on/server")))
@@ -2789,7 +2759,6 @@ mod tests {
         );
         let scoped_target = lookup_latest_session_target_with_app_server(
             &mut app_server,
-            &config,
             filter_cwd,
             /*include_non_interactive*/ false,
         )
@@ -2801,7 +2770,6 @@ mod tests {
         );
         let show_all_target = lookup_latest_session_target_with_app_server(
             &mut app_server,
-            &config,
             show_all_filter_cwd,
             /*include_non_interactive*/ false,
         )
@@ -2811,6 +2779,60 @@ mod tests {
 
         assert_eq!(scoped_target.thread_id, project_thread_id);
         assert_eq!(show_all_target.thread_id, other_thread_id);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn latest_session_lookup_returns_session_from_another_provider() -> color_eyre::Result<()>
+    {
+        let temp_dir = TempDir::new()?;
+        let project_cwd = temp_dir.path().join("project");
+        std::fs::create_dir_all(&project_cwd)?;
+
+        let config = ConfigBuilder::default()
+            .codex_home(temp_dir.path().to_path_buf())
+            .harness_overrides(ConfigOverrides {
+                cwd: Some(project_cwd.clone()),
+                ..Default::default()
+            })
+            .build()
+            .await?;
+
+        // Older session on the configured provider, newer session on another provider. Sessions
+        // record the provider they last ran with, so `--last` must still pick the newer one.
+        write_session_rollout(
+            temp_dir.path(),
+            "2025-01-02T10-00-00",
+            "2025-01-02T10:00:00Z",
+            "older session on the configured provider",
+            config.model_provider_id.as_str(),
+            &project_cwd,
+        )?;
+        let newest_thread_id = write_session_rollout(
+            temp_dir.path(),
+            "2025-01-02T12-00-00",
+            "2025-01-02T12:00:00Z",
+            "newer session on another provider",
+            "another-provider",
+            &project_cwd,
+        )?;
+
+        let mut app_server = AppServerSession::new(
+            codex_app_server_client::AppServerClient::InProcess(
+                start_test_embedded_app_server(config.clone()).await?,
+            ),
+            ThreadParamsMode::Embedded,
+        );
+        let target = lookup_latest_session_target_with_app_server(
+            &mut app_server,
+            Some(project_cwd.as_path()),
+            /*include_non_interactive*/ false,
+        )
+        .await?
+        .expect("expected cross-provider resume --last target");
+        app_server.shutdown().await?;
+
+        assert_eq!(target.thread_id, newest_thread_id);
         Ok(())
     }
 
@@ -2847,7 +2869,6 @@ mod tests {
 
         let target = lookup_latest_session_target_with_app_server(
             &mut app_server,
-            &config,
             Some(project_cwd.as_path()),
             /*include_non_interactive*/ false,
         )

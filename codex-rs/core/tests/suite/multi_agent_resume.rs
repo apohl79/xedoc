@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 use tokio::time::sleep;
 
-const COLLABORATION_NAMESPACE: &str = "collaboration";
+const COLLABORATION_NAMESPACE: &str = "multi_agent_v2";
 const SPAWN_CALL_ID: &str = "spawn-worker";
 const FOLLOWUP_CALL_ID: &str = "followup-worker";
 const INITIAL_PROMPT: &str = "spawn a durable worker";

@@ -197,6 +197,7 @@ async fn prepare_startup_tooltip_override_persists_model_availability_nux_count(
         .build()
         .await
         .expect("config");
+    config.show_tooltips = true;
     let mut presets = all_model_presets();
     presets.iter_mut().for_each(|preset| {
         preset.availability_nux = None;

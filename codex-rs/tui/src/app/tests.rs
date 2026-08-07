@@ -2260,8 +2260,24 @@ fn selected_and_resumed_threads_use_server_capability_for_v1_and_v2_children() -
 
     runtime.block_on(async {
         let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-        let mut app_server =
-            crate::start_embedded_app_server_for_picker(app.chat_widget.config_ref()).await?;
+        app.config
+            .features
+            .disable(Feature::MultiAgentV2)
+            .expect("disable multi-agent v2 for legacy capability fixture");
+        app.chat_widget
+            .set_feature_enabled(Feature::MultiAgentV2, /*enabled*/ false);
+        assert!(!app.config.features.enabled(Feature::MultiAgentV2));
+        assert!(
+            !app.chat_widget
+                .config_ref()
+                .features
+                .enabled(Feature::MultiAgentV2)
+        );
+        std::fs::write(
+            app.config.codex_home.join("config.toml"),
+            "[features]\nmulti_agent_v2 = false\n",
+        )?;
+        let mut app_server = crate::start_embedded_app_server_for_picker(&app.config).await?;
         let root = app_server
             .start_thread(app.chat_widget.config_ref())
             .await?;
@@ -6707,7 +6723,7 @@ async fn remote_resume_keeps_server_only_cwd_out_of_local_config() -> Result<()>
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn in_app_resume_uses_configured_or_explicit_cwd() -> Result<()> {
     for (configured_mode, has_explicit_cwd, has_remote_exec, expected_directory) in [
         ("current", false, false, "launch"),

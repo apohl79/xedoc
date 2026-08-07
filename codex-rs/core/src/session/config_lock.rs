@@ -318,17 +318,21 @@ mod tests {
             .multi_agent_v2
             .as_ref()
             .expect("multi_agent_v2 config should be materialized");
+        let multi_agent_v2_enabled = sc
+            .original_config_do_not_use
+            .features
+            .enabled(Feature::MultiAgentV2);
         assert!(matches!(
             multi_agent_v2,
             FeatureToml::Config(MultiAgentV2ConfigToml {
-                enabled: Some(false),
+                enabled: Some(enabled),
                 max_concurrent_threads_per_session: Some(_),
                 min_wait_timeout_ms: Some(_),
                 max_wait_timeout_ms: Some(_),
                 default_wait_timeout_ms: Some(_),
                 hide_spawn_agent_metadata: Some(_),
                 ..
-            })
+            }) if *enabled == multi_agent_v2_enabled
         ));
 
         assert_eq!(
