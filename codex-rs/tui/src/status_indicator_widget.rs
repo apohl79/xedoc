@@ -19,6 +19,7 @@ use ratatui::widgets::WidgetRef;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app_event_sender::AppEventSender;
+use crate::city_lights::CityLightsStylize;
 use crate::key_hint;
 use crate::key_hint::KeyBinding;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
@@ -265,7 +266,13 @@ impl Renderable for StatusIndicatorWidget {
             spans.push(indicator);
             spans.push(" ".into());
         }
-        spans.extend(shimmer_text(&self.header, motion_mode));
+        if let Some(pass) = compaction_pass(&self.header) {
+            spans.extend(shimmer_text("Compacting", motion_mode));
+            spans.push(" ".into());
+            spans.push(format!("pass {pass}").cl_cyan());
+        } else {
+            spans.extend(shimmer_text(&self.header, motion_mode));
+        }
         if !spans.is_empty() {
             spans.push(" ".into());
         }
@@ -306,6 +313,21 @@ impl Renderable for StatusIndicatorWidget {
     }
 }
 
+fn compaction_pass(header: &str) -> Option<&str> {
+    let pass = header.strip_prefix("Compacting pass ")?;
+    let (completed, total) = pass.split_once('/')?;
+    if completed.is_empty()
+        || total.is_empty()
+        || !completed
+            .chars()
+            .all(|character| character.is_ascii_digit())
+        || !total.chars().all(|character| character.is_ascii_digit())
+    {
+        return None;
+    }
+    Some(pass)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,6 +335,7 @@ mod tests {
     use crate::app_event_sender::AppEventSender;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::style::Style;
     use std::time::Duration;
     use std::time::Instant;
     use tokio::sync::mpsc::unbounded_channel;
@@ -420,6 +443,33 @@ mod tests {
             .collect::<String>();
 
         assert!(line.starts_with("Working (0s • esc to interrupt)"));
+    }
+
+    #[test]
+    fn renders_compaction_pass_with_cyan_highlight() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        w.update_header("Compacting pass 1/4".to_string());
+        w.is_paused = true;
+        w.elapsed_running = Duration::ZERO;
+
+        let mut terminal = Terminal::new(TestBackend::new(80, 1)).expect("terminal");
+        terminal
+            .draw(|f| w.render(f.area(), f.buffer_mut()))
+            .expect("draw");
+
+        let pass_cell = terminal
+            .backend()
+            .buffer()
+            .cell((/*x*/ 11, /*y*/ 0))
+            .expect("pass text cell should exist");
+        let expected_color = Style::default().cl_cyan().fg.expect("cyan color");
+        assert_eq!(pass_cell.fg, expected_color);
     }
 
     #[test]

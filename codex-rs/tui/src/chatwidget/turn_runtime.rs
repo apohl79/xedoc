@@ -17,6 +17,23 @@ fn is_safety_access_block_message(message: &str) -> bool {
 }
 
 impl ChatWidget {
+    fn compaction_status_header(details: &str) -> String {
+        let stage = details
+            .trim()
+            .split_once(") ")
+            .map_or(details.trim(), |(_, stage)| stage);
+        let pass = stage.strip_prefix("summarizing ").and_then(|progress| {
+            let (completed, total) = progress.split_once('/')?;
+            let completed = completed.parse::<usize>().ok()?;
+            let total = total.parse::<usize>().ok()?;
+            (total > 1 && completed > 0 && completed <= total).then_some((completed, total))
+        });
+        pass.map_or_else(
+            || String::from("Compacting"),
+            |(completed, total)| format!("Compacting pass {completed}/{total}"),
+        )
+    }
+
     fn clear_guardian_review_status(&mut self) {
         self.status_state.pending_guardian_review_status.clear();
         if self.status_state.current_status.is_guardian_review() {
@@ -496,7 +513,7 @@ impl ChatWidget {
     pub(super) fn on_warning(&mut self, message: impl Into<String>) {
         let message = message.into();
         if let Some(details) = message.strip_prefix(COMPACTION_PROGRESS_PREFIX) {
-            let header = format!("Compacting...{details}");
+            let header = Self::compaction_status_header(details);
             // Compaction owns the status indicator for the whole run. Terminal stages release it
             // so the next turn header can take over again.
             let run_finished = details.ends_with(" complete") || details.ends_with(" failed");

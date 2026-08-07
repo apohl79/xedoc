@@ -24,5 +24,5 @@ Read this directory at the start of feature work, research, planning, or review.
 
 - Terms: 5
 - Components: 53
-- Patterns: 244
+- Patterns: 245
 - Open questions: 0
