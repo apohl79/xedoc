@@ -1419,12 +1419,14 @@ impl Session {
                 // immediately on resume/fork.
                 let (token_info, session_cost_usd) =
                     Self::last_token_count_from_rollout(&rollout_items);
-                if token_info.is_some() || session_cost_usd.is_some() {
+                if token_info.is_some() || (session_cost_usd.is_some() && !is_subagent) {
                     let mut state = self.state.lock().await;
                     if let Some(token_info) = token_info {
                         state.set_token_info(Some(token_info.clone()));
                     }
-                    state.cost_tracker.restore_total_cost_usd(session_cost_usd);
+                    if !is_subagent {
+                        state.cost_tracker.restore_total_cost_usd(session_cost_usd);
+                    }
                 }
 
                 // Paginated subagents persist inherited model context while creating the live
