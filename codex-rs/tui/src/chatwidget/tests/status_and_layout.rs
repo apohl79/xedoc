@@ -2668,7 +2668,6 @@ async fn compaction_progress_survives_other_status_headers_until_complete() {
     );
 
     handle_warning(&mut chat, "• Compacting... (model switch) complete");
-    chat.set_status_header(String::from("Working"));
 
     assert_eq!(
         chat.bottom_pane

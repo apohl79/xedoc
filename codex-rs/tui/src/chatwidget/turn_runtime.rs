@@ -519,11 +519,12 @@ impl ChatWidget {
             let run_finished = details.ends_with(" complete") || details.ends_with(" failed");
             if run_finished {
                 self.status_state.end_compaction_status();
+                self.set_status_header(String::from("Working"));
             } else {
                 self.status_state.begin_compaction_status(header.clone());
+                self.set_status_header(header);
             }
             self.bottom_pane.ensure_status_indicator();
-            self.set_status_header(header);
             self.request_redraw();
             return;
         }
