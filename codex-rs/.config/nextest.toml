@@ -25,6 +25,9 @@ max-threads = 4
 [test-groups.core_apply_patch_cli_integration]
 max-threads = 1
 
+[test-groups.core_approval_matrix]
+max-threads = 1
+
 [test-groups.windows_sandbox_legacy_sessions]
 max-threads = 1
 
@@ -37,8 +40,12 @@ filter = 'test(rmcp_client) | test(humanlike_typing_1000_chars_appears_live_no_p
 slow-timeout = { period = "1m", terminate-after = 4 }
 
 [[profile.default.overrides]]
-filter = 'test(approval_matrix_covers_all_modes)'
-slow-timeout = { period = "30s", terminate-after = 2 }
+# These scenario groups each run several full Codex turns and launch shell
+# processes. Serialize them so their mock servers and subprocesses do not
+# contend with each other under the full core suite.
+filter = 'package(codex-core) & test(suite::approvals::approval_matrix_covers_group)'
+test-group = 'core_approval_matrix'
+slow-timeout = { period = "1m", terminate-after = 2 }
 
 [[profile.default.overrides]]
 filter = 'package(codex-app-server-protocol) & (test(typescript_schema_fixtures_match_generated) | test(json_schema_fixtures_match_generated) | test(generate_ts_with_experimental_api_retains_experimental_entries) | test(generated_ts_optional_nullable_fields_only_in_params) | test(generate_json_filters_experimental_fields_and_methods))'
@@ -49,6 +56,12 @@ test-group = 'app_server_protocol_codegen'
 # Keep the library unit tests parallel.
 filter = 'package(codex-app-server) & kind(test)'
 test-group = 'app_server_integration'
+
+[[profile.default.overrides]]
+# Large image resize assertions are CPU-bound and can exceed the normal local
+# timeout while the full core suite is running concurrently.
+filter = 'package(codex-core) & test(detail_policies_apply_the_expected_budgets)'
+slow-timeout = { period = "2m", terminate-after = 2 }
 
 [[profile.local.overrides]]
 # Use up to four app-server subprocesses locally. The global nextest pool still
@@ -67,6 +80,12 @@ test-group = 'core_apply_patch_cli_integration'
 # Serialize them to avoid exhausting Windows session/global desktop resources in CI.
 filter = 'package(codex-windows-sandbox) & test(legacy_)'
 test-group = 'windows_sandbox_legacy_sessions'
+
+[[profile.default.overrides]]
+# This resume matrix starts five embedded app-server instances in one test and
+# can exceed the general timeout while the full TUI suite is under load.
+filter = 'package(codex-tui) & test(in_app_resume_uses_configured_or_explicit_cwd)'
+slow-timeout = { period = "2m", terminate-after = 2 }
 
 [[profile.default.overrides]]
 # This Codex-home startup path still exceeded the broader Windows-heavy ceiling

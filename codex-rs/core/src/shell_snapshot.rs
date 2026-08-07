@@ -280,6 +280,18 @@ async fn run_script_with_timeout(
     use_login_shell: bool,
     cwd: &AbsolutePathBuf,
 ) -> Result<String> {
+    run_script_with_timeout_and_env(shell, script, snapshot_timeout, use_login_shell, cwd, &[])
+        .await
+}
+
+async fn run_script_with_timeout_and_env(
+    shell: &Shell,
+    script: &str,
+    snapshot_timeout: Duration,
+    use_login_shell: bool,
+    cwd: &AbsolutePathBuf,
+    env: &[(&str, &str)],
+) -> Result<String> {
     let args = shell.derive_exec_args(script, use_login_shell);
     let shell_name = shell.name();
 
@@ -289,6 +301,9 @@ async fn run_script_with_timeout(
     handler.args(&args[1..]);
     handler.stdin(Stdio::null());
     handler.current_dir(cwd);
+    for (key, value) in env {
+        handler.env(key, value);
+    }
     #[cfg(unix)]
     unsafe {
         handler.pre_exec(|| {

@@ -18,6 +18,11 @@ impl ChatWidget {
         details_capitalization: StatusDetailsCapitalization,
         details_max_lines: usize,
     ) -> bool {
+        // An in-flight compaction run owns the status indicator until it reports completion, so
+        // unrelated turn headers (for example "Working") cannot hide its progress.
+        if self.status_state.compaction_status_blocks(&header) {
+            return false;
+        }
         let details = details
             .filter(|details| !details.is_empty())
             .map(|details| {

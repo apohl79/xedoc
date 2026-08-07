@@ -1377,11 +1377,19 @@ async fn session_end_flushes_transcript_and_ignores_control_output() -> Result<(
     test.submit_turn("persist this before shutdown").await?;
     test.codex.shutdown_and_wait().await?;
 
-    let inputs = read_hook_inputs_from_log(
-        test.codex_home_path()
-            .join("session_end_hook_log.jsonl")
-            .as_path(),
-    )?;
+    let log_path = test.codex_home_path().join("session_end_hook_log.jsonl");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let inputs = loop {
+        if let Ok(inputs) = read_hook_inputs_from_log(&log_path)
+            && !inputs.is_empty()
+        {
+            break inputs;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            break read_hook_inputs_from_log(&log_path)?;
+        }
+        sleep(Duration::from_millis(20)).await;
+    };
     assert_eq!(inputs.len(), 1);
     assert_eq!(inputs[0]["hook_event_name"], "SessionEnd");
     assert_eq!(inputs[0]["reason"], "other");

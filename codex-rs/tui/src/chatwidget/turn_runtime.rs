@@ -94,6 +94,7 @@ impl ChatWidget {
         self.status_state.retry_status_header = None;
         self.clear_active_hook_cell();
         self.status_state.pending_status_indicator_restore = false;
+        self.status_state.end_compaction_status();
         self.bottom_pane
             .set_interrupt_hint_visible(/*visible*/ true);
         self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Working;
@@ -195,6 +196,7 @@ impl ChatWidget {
         }
         // Mark task stopped and request redraw now that all content is in history.
         self.status_state.pending_status_indicator_restore = false;
+        self.status_state.end_compaction_status();
         self.input_queue.user_turn_pending_start = false;
         self.clear_active_hook_cell();
         self.clear_guardian_review_status();
@@ -357,6 +359,7 @@ impl ChatWidget {
         self.plan_stream_controller = None;
         self.request_pending_usage_output_insertion_after_stream_shutdown();
         self.status_state.pending_status_indicator_restore = false;
+        self.status_state.end_compaction_status();
         self.safety_buffering_prompt = None;
         self.request_status_line_branch_refresh();
         self.request_status_line_git_summary_refresh();
@@ -493,7 +496,17 @@ impl ChatWidget {
     pub(super) fn on_warning(&mut self, message: impl Into<String>) {
         let message = message.into();
         if let Some(details) = message.strip_prefix(COMPACTION_PROGRESS_PREFIX) {
-            self.set_status_header(format!("Compacting...{details}"));
+            let header = format!("Compacting...{details}");
+            // Compaction owns the status indicator for the whole run. Terminal stages release it
+            // so the next turn header can take over again.
+            let run_finished = details.ends_with(" complete") || details.ends_with(" failed");
+            if run_finished {
+                self.status_state.end_compaction_status();
+            } else {
+                self.status_state.begin_compaction_status(header.clone());
+            }
+            self.bottom_pane.ensure_status_indicator();
+            self.set_status_header(header);
             self.request_redraw();
             return;
         }

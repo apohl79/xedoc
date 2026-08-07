@@ -3214,12 +3214,15 @@ async fn unified_exec_enforces_glob_deny_read_policy() -> Result<()> {
 async fn unified_exec_python_prompt_under_seatbelt() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
-    let python = match which::which("python").or_else(|_| which::which("python3")) {
-        Ok(path) => path,
-        Err(_) => {
-            eprintln!("python not found in PATH, skipping test.");
-            return Ok(());
-        }
+    let python = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"]
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .find(|path| path.is_file())
+        .or_else(|| which::which("python").ok())
+        .or_else(|| which::which("python3").ok());
+    let Some(python) = python else {
+        eprintln!("python not found in PATH, skipping test.");
+        return Ok(());
     };
 
     let server = start_mock_server().await;

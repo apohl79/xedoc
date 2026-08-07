@@ -4,6 +4,9 @@ use std::time::Instant;
 use crate::Prompt;
 use crate::client::ModelClientSession;
 use crate::client_common::ResponseEvent;
+use crate::compact_progress::CompactionCause;
+use crate::compact_progress::CompactionStage;
+use crate::compact_progress::send_progress;
 use crate::context::world_state::WorldState;
 use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
@@ -34,7 +37,6 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::InternalChatMessageMetadataPassthrough;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::protocol::COMPACTION_PROGRESS_PREFIX;
 use codex_protocol::protocol::CompactedItem;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::RawResponseCompletedEvent;
@@ -190,6 +192,7 @@ async fn run_compact_task_inner(
         input,
         initial_context_injection,
         compaction_metadata,
+        CompactionCause::from(reason),
     )
     .await;
     let status = compaction_status_from_result(&result);
@@ -225,6 +228,7 @@ async fn run_compact_task_inner_impl(
     input: Vec<UserInput>,
     initial_context_injection: InitialContextInjection,
     compaction_metadata: CompactionTurnMetadata,
+    cause: CompactionCause,
 ) -> CodexResult<String> {
     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
     sess.emit_turn_item_started(&turn_context, &compaction_item)
@@ -281,23 +285,19 @@ async fn run_compact_task_inner_impl(
             base_instructions,
             responses_metadata.clone(),
             client_session.turn_state(),
+            cause,
         )
         .await;
         let summary = match summary {
             Ok(summary) => summary,
             Err(error) => {
-                sess.send_event(
-                    &turn_context,
-                    EventMsg::Warning(WarningEvent {
-                        message: format!("{COMPACTION_PROGRESS_PREFIX} failed"),
-                    }),
-                )
-                .await;
+                send_progress(&sess, &turn_context, cause, CompactionStage::Failed).await;
                 return Err(error);
             }
         };
         (summary, normalized_history)
     } else {
+        send_progress(&sess, &turn_context, cause, CompactionStage::Summarizing).await;
         loop {
             // Clone is required because of the loop
             let turn_input = history
@@ -375,6 +375,7 @@ async fn run_compact_task_inner_impl(
         )
     };
     let summary_text = format!("{SUMMARY_PREFIX}\n{summary_suffix}");
+    send_progress(&sess, &turn_context, cause, CompactionStage::Complete).await;
     let user_messages = collect_user_messages(&history_items);
 
     let mut new_history = build_compacted_history(Vec::new(), &user_messages, &summary_text);

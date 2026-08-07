@@ -63,7 +63,7 @@ const SIGKILL_CODE: i32 = 9;
 const TIMEOUT_CODE: i32 = 64;
 const EXIT_CODE_SIGNAL_BASE: i32 = 128; // conventional shell: 128 + signal
 const EXEC_TIMEOUT_EXIT_CODE: i32 = 124; // conventional timeout exit code
-const CANCELLATION_TERMINATION_GRACE_PERIOD: Duration = Duration::from_millis(50);
+const CANCELLATION_TERMINATION_GRACE_PERIOD: Duration = Duration::from_secs(2);
 
 // I/O buffer sizing
 const READ_CHUNK_SIZE: usize = 8192; // bytes per read
@@ -78,6 +78,14 @@ const EXEC_OUTPUT_MAX_BYTES: usize = DEFAULT_OUTPUT_BYTES_CAP;
 /// Limit the number of ExecCommandOutputDelta events emitted per exec call.
 /// Aggregation still collects full output; only the live event stream is capped.
 pub(crate) const MAX_EXEC_OUTPUT_DELTAS_PER_CALL: usize = 10_000;
+
+fn start_kill_if_running(child: &mut Child) -> io::Result<()> {
+    match child.start_kill() {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
 
 // Wait for the stdout/stderr collection tasks but guard against them
 // hanging forever. In the normal case, both pipes are closed once the child
@@ -1011,7 +1019,7 @@ async fn consume_output(
             match outcome {
                 Some(ExecExpirationOutcome::TimedOut) => {
                     kill_child_process_group(&mut child)?;
-                    child.start_kill()?;
+                    start_kill_if_running(&mut child)?;
                     (
                         synthetic_exit_status(EXIT_CODE_SIGNAL_BASE + TIMEOUT_CODE),
                         true,
@@ -1044,7 +1052,7 @@ async fn consume_output(
                         }
                         Err(_) => {
                             kill_child_process_group(&mut child)?;
-                            child.start_kill()?;
+                            start_kill_if_running(&mut child)?;
                         }
                     }
                     (synthetic_exit_status_for_code(/*code*/ 1), false)
@@ -1054,7 +1062,7 @@ async fn consume_output(
         }
         _ = tokio::signal::ctrl_c() => {
             kill_child_process_group(&mut child)?;
-            child.start_kill()?;
+            start_kill_if_running(&mut child)?;
             (synthetic_exit_status(EXIT_CODE_SIGNAL_BASE + SIGKILL_CODE), false)
         }
     };

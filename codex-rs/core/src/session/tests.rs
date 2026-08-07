@@ -10942,6 +10942,7 @@ async fn rejects_escalated_permissions_when_policy_not_on_request() {
 #[tokio::test]
 async fn shell_tool_cancellation_waits_for_runtime_cleanup() -> anyhow::Result<()> {
     let session = make_session_with_config(|config| {
+        config.permissions.allow_login_shell = false;
         let cwd = config.cwd.clone();
         config
             .permissions

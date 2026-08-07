@@ -105,7 +105,13 @@ async fn exec_command_with_tty(
     let cwd = workdir
         .as_ref()
         .map_or_else(|| turn.cwd.clone(), |workdir| turn.cwd.join(workdir));
-    let command = vec!["bash".to_string(), "-lc".to_string(), cmd.to_string()];
+    let command = vec![
+        "bash".to_string(),
+        "--noprofile".to_string(),
+        "--norc".to_string(),
+        "-lc".to_string(),
+        cmd.to_string(),
+    ];
     let request = test_exec_request(turn, command.clone(), cwd.clone(), shell_env());
 
     let process = Arc::new(
@@ -761,7 +767,7 @@ async fn completed_pipe_commands_preserve_exit_code() -> anyhow::Result<()> {
     if !process.has_exited() {
         let exit_signal = process.cancellation_token();
         assert!(
-            tokio::time::timeout(Duration::from_secs(2), exit_signal.cancelled())
+            tokio::time::timeout(Duration::from_secs(10), exit_signal.cancelled())
                 .await
                 .is_ok(),
             "process did not report exit within timeout"

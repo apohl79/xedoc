@@ -115,6 +115,12 @@ pub(super) struct StatusState {
     pub(super) terminal_title_status_kind: TerminalTitleStatusKind,
     pub(super) retry_status_header: Option<String>,
     pub(super) pending_status_indicator_restore: bool,
+    /// Header of the compaction run that currently owns the status indicator, if any.
+    ///
+    /// Compaction can run for a long time while the rest of the turn pipeline keeps setting
+    /// headers such as "Working". Remembering the active compaction header lets the widget keep
+    /// compaction progress visible until the run reports completion or failure.
+    active_compaction_header: Option<String>,
 }
 
 impl Default for StatusState {
@@ -125,6 +131,7 @@ impl Default for StatusState {
             terminal_title_status_kind: TerminalTitleStatusKind::Working,
             retry_status_header: None,
             pending_status_indicator_restore: false,
+            active_compaction_header: None,
         }
     }
 }
@@ -132,6 +139,23 @@ impl Default for StatusState {
 impl StatusState {
     pub(super) fn set_status(&mut self, status: StatusIndicatorState) {
         self.current_status = status;
+    }
+
+    /// Records that a compaction run owns the status indicator and should not be overwritten.
+    pub(super) fn begin_compaction_status(&mut self, header: String) {
+        self.active_compaction_header = Some(header);
+    }
+
+    /// Releases the compaction status so normal turn headers apply again.
+    pub(super) fn end_compaction_status(&mut self) {
+        self.active_compaction_header = None;
+    }
+
+    /// True when `header` would replace visible compaction progress.
+    pub(super) fn compaction_status_blocks(&self, header: &str) -> bool {
+        self.active_compaction_header
+            .as_ref()
+            .is_some_and(|active| active != header)
     }
 
     pub(super) fn take_retry_status_header(&mut self) -> Option<String> {

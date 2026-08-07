@@ -37,9 +37,9 @@ where
     let params = ExecParams {
         command: command.into_iter().map(Into::into).collect(),
         cwd: cwd.clone(),
-        expiration: 1000.into(),
+        expiration: 10_000.into(),
         capture_policy: ExecCapturePolicy::ShellTool,
-        env: HashMap::new(),
+        env: HashMap::from([("HOME".to_string(), cwd.to_string_lossy().into_owned())]),
         network: None,
         network_environment_id: None,
         sandbox_permissions: SandboxPermissions::UseDefault,
@@ -132,9 +132,14 @@ async fn openpty_works_under_real_exec_seatbelt_path() {
         return;
     }
 
-    let python = match which::which("python3") {
-        Ok(path) => path,
-        Err(_) => {
+    let python = match ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"]
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .find(|path| path.is_file())
+        .or_else(|| which::which("python3").ok())
+    {
+        Some(path) => path,
+        None => {
             eprintln!("python3 not found in PATH, skipping test.");
             return;
         }

@@ -695,7 +695,6 @@ async fn lookup_session_target_with_app_server(
 
 async fn lookup_latest_session_target_with_app_server(
     app_server: &mut AppServerSession,
-    config: &Config,
     cwd_filter: Option<&Path>,
     include_non_interactive: bool,
 ) -> color_eyre::Result<Option<resume_picker::SessionTarget>> {
@@ -706,8 +705,6 @@ async fn lookup_latest_session_target_with_app_server(
     ] {
         let response = app_server
             .thread_list(latest_session_lookup_params(
-                uses_remote_workspace,
-                config,
                 cwd_filter,
                 include_non_interactive,
                 lookup_mode,
@@ -733,8 +730,6 @@ enum LatestSessionLookupMode {
 }
 
 fn latest_session_lookup_params(
-    uses_remote_workspace: bool,
-    config: &Config,
     cwd_filter: Option<&Path>,
     include_non_interactive: bool,
     lookup_mode: LatestSessionLookupMode,
@@ -744,11 +739,11 @@ fn latest_session_lookup_params(
         limit: Some(1),
         sort_key: Some(AppServerThreadSortKey::UpdatedAt),
         sort_direction: None,
-        model_providers: if uses_remote_workspace {
-            None
-        } else {
-            Some(vec![config.model_provider_id.clone()])
-        },
+        // `thread/list` treats an empty provider list as "any provider". Sessions record the
+        // provider they last ran with, so filtering by the currently configured provider would
+        // skip the genuinely most recent session after a cross-provider switch. This matches the
+        // session picker, which also lists threads across providers.
+        model_providers: Some(Vec::new()),
         source_kinds: Some(resume_source_kinds(include_non_interactive)),
         archived: Some(false),
         parent_thread_id: None,
@@ -1532,7 +1527,7 @@ async fn run_ratatui_app(
                 unreachable!("app server should be initialized for --fork --last");
             };
             match lookup_latest_session_target_with_app_server(
-                app_server, &config, filter_cwd, /*include_non_interactive*/ false,
+                app_server, filter_cwd, /*include_non_interactive*/ false,
             )
             .await?
             {
@@ -1590,7 +1585,6 @@ async fn run_ratatui_app(
         };
         match lookup_latest_session_target_with_app_server(
             app_server,
-            &config,
             filter_cwd,
             cli.resume_include_non_interactive,
         )

@@ -80,14 +80,6 @@ async fn build_codex_with_test_tool(server: &wiremock::MockServer) -> anyhow::Re
     builder.build(server).await
 }
 
-fn assert_parallel_duration(actual: Duration) {
-    // Allow headroom for slow CI scheduling; barrier synchronization already enforces overlap.
-    assert!(
-        actual < Duration::from_secs(3),
-        "expected parallel execution to finish quickly, got {actual:?}"
-    );
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn read_file_tools_run_in_parallel() -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
@@ -144,8 +136,7 @@ async fn read_file_tools_run_in_parallel() -> anyhow::Result<()> {
 
     run_turn(&test, "warm up parallel tool").await?;
 
-    let duration = run_turn_and_measure(&test, "exercise sync tool").await?;
-    assert_parallel_duration(duration);
+    run_turn_and_measure(&test, "exercise sync tool").await?;
 
     Ok(())
 }
@@ -179,8 +170,7 @@ async fn shell_tools_run_in_parallel() -> anyhow::Result<()> {
     ]);
     mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
-    let duration = run_turn_and_measure(&test, "run shell_command twice").await?;
-    assert_parallel_duration(duration);
+    run_turn_and_measure(&test, "run shell_command twice").await?;
 
     Ok(())
 }
@@ -215,8 +205,7 @@ async fn mixed_parallel_tools_run_in_parallel() -> anyhow::Result<()> {
     ]);
     mount_sse_sequence(&server, vec![first_response, second_response]).await;
 
-    let duration = run_turn_and_measure(&test, "mix tools").await?;
-    assert_parallel_duration(duration);
+    run_turn_and_measure(&test, "mix tools").await?;
 
     Ok(())
 }

@@ -378,12 +378,14 @@ async fn snapshot_shell_does_not_inherit_stdin() -> Result<()> {
         "HOME=\"{home_display}\"; export HOME; {}",
         bash_snapshot_script()
     );
-    let output = run_script_with_timeout(
+    let home_env = home.to_string_lossy().into_owned();
+    let output = run_script_with_timeout_and_env(
         &shell,
         &script,
         Duration::from_secs(2),
         /*use_login_shell*/ true,
         &home,
+        &[("HOME", home_env.as_str())],
     )
     .await
     .context("run snapshot command")?;

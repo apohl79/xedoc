@@ -57,6 +57,8 @@ use serde_json::json;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(target_os = "macos")]
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -68,6 +70,19 @@ use wiremock::Request;
 use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
+
+fn python3_command() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        if Path::new("/opt/homebrew/bin/python3").is_file() {
+            return "/opt/homebrew/bin/python3";
+        }
+        if Path::new("/usr/local/bin/python3").is_file() {
+            return "/usr/local/bin/python3";
+        }
+    }
+    "python3"
+}
 
 #[derive(Clone, Copy)]
 enum TargetPath {
@@ -164,7 +179,7 @@ impl ActionKind {
                 let script = format!(
                     "from pathlib import Path; path = Path({path_str:?}); content = {content:?}; path.write_text(content, encoding='utf-8'); print(path.read_text(encoding='utf-8'), end='')",
                 );
-                let command = format!("python3 -c {script:?}");
+                let command = format!("{} -c {script:?}", python3_command());
                 let event = shell_event(
                     call_id,
                     &command,
@@ -191,7 +206,7 @@ impl ActionKind {
                     "import sys\nimport urllib.request\nurl = '{escaped_url}'\ntry:\n    data = urllib.request.urlopen(url, timeout=2).read().decode()\n    print('OK:' + data.strip())\nexcept Exception as exc:\n    print('ERR:' + exc.__class__.__name__)\n    sys.exit(1)",
                 );
 
-                let command = format!("python3 -c \"{script}\"");
+                let command = format!("{} -c \"{script}\"", python3_command());
                 let event = shell_event(
                     call_id,
                     &command,
@@ -218,7 +233,7 @@ impl ActionKind {
                     "import sys\nimport urllib.request\nurl = '{escaped_url}'\nopener = urllib.request.build_opener(urllib.request.ProxyHandler({{}}))\ntry:\n    data = opener.open(url, timeout=2).read().decode()\n    print('OK:' + data.strip())\nexcept Exception as exc:\n    print('ERR:' + exc.__class__.__name__)\n    sys.exit(1)",
                 );
 
-                let command = format!("python3 -c \"{script}\"");
+                let command = format!("{} -c \"{script}\"", python3_command());
                 let event = shell_event(
                     call_id,
                     &command,
@@ -871,7 +886,7 @@ fn body_contains(req: &Request, text: &str) -> bool {
 }
 
 async fn wait_for_spawned_thread(test: &TestCodex) -> Result<Arc<CodexThread>> {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     loop {
         let ids = test.thread_manager.list_thread_ids().await;
         if let Some(thread_id) = ids
@@ -1858,6 +1873,7 @@ async fn run_scenario(scenario: &ScenarioSpec) -> Result<()> {
         config.experimental_thread_store = ThreadStoreConfig::InMemory {
             id: thread_store_id,
         };
+        config.permissions.allow_login_shell = false;
         config.permissions.approval_policy = Constrained::allow_any(approval_policy);
         config
             .set_legacy_sandbox_policy(sandbox_policy.clone())

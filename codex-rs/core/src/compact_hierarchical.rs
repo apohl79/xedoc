@@ -4,6 +4,9 @@ use std::sync::OnceLock;
 use crate::Prompt;
 use crate::client::ModelClient;
 use crate::client_common::ResponseEvent;
+use crate::compact_progress::CompactionCause;
+use crate::compact_progress::CompactionStage;
+use crate::compact_progress::send_progress;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::session::session::Session;
 use crate::session::turn::get_last_assistant_message_from_turn;
@@ -13,16 +16,12 @@ use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::WarningEvent;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_utils_output_truncation::approx_token_count;
 use futures::FutureExt;
 use futures::StreamExt;
 use futures::stream;
 use tracing::debug;
-
-use codex_protocol::protocol::COMPACTION_PROGRESS_PREFIX;
 
 const MAX_PARALLEL_COMPACTION_REQUESTS: usize = 4;
 
@@ -77,6 +76,7 @@ pub(crate) async fn summarize_history(
     base_instructions: BaseInstructions,
     responses_metadata: CodexResponsesMetadata,
     turn_state: Arc<OnceLock<String>>,
+    cause: CompactionCause,
 ) -> CodexResult<String> {
     let item_budget = compaction_item_budget(&turn_context, &base_instructions, &compaction_prompt)
         .ok_or(CodexErr::ContextWindowExceeded)?;
@@ -84,7 +84,10 @@ pub(crate) async fn summarize_history(
     send_progress(
         &sess,
         &turn_context,
-        format!("planning {} history chunks", map_chunks.len()),
+        cause,
+        CompactionStage::Planning {
+            chunks: map_chunks.len(),
+        },
     )
     .await;
     debug!(
@@ -108,14 +111,32 @@ pub(crate) async fn summarize_history(
     }))
     .buffer_unordered(MAX_PARALLEL_COMPACTION_REQUESTS);
 
-    send_progress(&sess, &turn_context, format!("map 0/{map_total}")).await;
+    send_progress(
+        &sess,
+        &turn_context,
+        cause,
+        CompactionStage::Mapping {
+            completed: 0,
+            total: map_total,
+        },
+    )
+    .await;
     let mut summaries = Vec::with_capacity(map_total);
     let mut completed = 0;
     while let Some((index, result)) = map_results.next().await {
         let summary = result?;
         summaries.push((index, summary));
         completed += 1;
-        send_progress(&sess, &turn_context, format!("map {completed}/{map_total}")).await;
+        send_progress(
+            &sess,
+            &turn_context,
+            cause,
+            CompactionStage::Mapping {
+                completed,
+                total: map_total,
+            },
+        )
+        .await;
     }
     summaries.sort_by_key(|(index, _)| *index);
     let mut summaries: Vec<ResponseItem> = summaries
@@ -130,7 +151,11 @@ pub(crate) async fn summarize_history(
         send_progress(
             &sess,
             &turn_context,
-            format!("reduce layer {layer} ({} groups)", reduction_chunks.len()),
+            cause,
+            CompactionStage::Reducing {
+                layer,
+                groups: reduction_chunks.len(),
+            },
         )
         .await;
         let mut reduction_results = stream::iter(reduction_chunks.into_iter().enumerate().map(
@@ -157,15 +182,6 @@ pub(crate) async fn summarize_history(
             .into_iter()
             .map(|(_, summary)| summary_message(summary))
             .collect();
-        send_progress(
-            &sess,
-            &turn_context,
-            format!(
-                "reduce layer {layer} complete ({} summaries remain)",
-                summaries.len()
-            ),
-        )
-        .await;
     }
 
     let summary = summaries
@@ -173,7 +189,6 @@ pub(crate) async fn summarize_history(
         .next()
         .and_then(|item| get_last_assistant_message_from_turn(&[item]))
         .ok_or_else(|| CodexErr::Stream("compaction produced no summary".to_string(), None))?;
-    send_progress(&sess, &turn_context, "complete".to_string()).await;
     Ok(summary)
 }
 
@@ -259,16 +274,6 @@ fn summary_message(summary: String) -> ResponseItem {
         phase: None,
         internal_chat_message_metadata_passthrough: None,
     }
-}
-
-async fn send_progress(sess: &Session, turn_context: &TurnContext, details: String) {
-    sess.send_event(
-        turn_context,
-        EventMsg::Warning(WarningEvent {
-            message: format!("{COMPACTION_PROGRESS_PREFIX} {details}"),
-        }),
-    )
-    .await;
 }
 
 fn is_matching_tool_output(previous: Option<&ResponseItem>, current: &ResponseItem) -> bool {

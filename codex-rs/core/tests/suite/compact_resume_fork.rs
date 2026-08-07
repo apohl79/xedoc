@@ -35,10 +35,12 @@ use core_test_support::responses::sse;
 use core_test_support::test_codex::local_selections;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_event;
+use core_test_support::wait_for_event_with_timeout;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::TempDir;
 use wiremock::MockServer;
 
@@ -455,8 +457,12 @@ async fn snapshot_rollback_past_compaction_replays_append_only_history() -> Resu
     base.submit(Op::ThreadRollback { num_turns: 1 })
         .await
         .expect("submit thread rollback");
-    let rollback_event =
-        wait_for_event(&base, |ev| matches!(ev, EventMsg::ThreadRolledBack(_))).await;
+    let rollback_event = wait_for_event_with_timeout(
+        &base,
+        |ev| matches!(ev, EventMsg::ThreadRolledBack(_)),
+        Duration::from_secs(30),
+    )
+    .await;
     let EventMsg::ThreadRolledBack(rollback_event) = rollback_event else {
         panic!("expected thread rolled back event");
     };

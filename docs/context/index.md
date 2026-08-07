@@ -22,7 +22,7 @@ Read this directory at the start of feature work, research, planning, or review.
 
 ## Counts
 
-- Terms: 4
+- Terms: 5
 - Components: 53
-- Patterns: 242
+- Patterns: 244
 - Open questions: 0
