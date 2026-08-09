@@ -186,7 +186,9 @@ async def _connect(socket_path: Path, url: str | None) -> WebSocket:
         if url is not None:
             return cast(
                 WebSocket,
-                await websockets.connect(url, max_size=None, proxy=None),
+                await websockets.connect(
+                    url, max_size=None, proxy=None, compression=None
+                ),
             )
         if not socket_path.exists():
             raise RealtimeClientError(
@@ -199,6 +201,7 @@ async def _connect(socket_path: Path, url: str | None) -> WebSocket:
                 uri="ws://localhost/rpc",
                 max_size=None,
                 proxy=None,
+                compression=None,
             ),
         )
     except RealtimeClientError:
@@ -330,14 +333,16 @@ async def _send_microphone(
     rpc: JsonRpcClient,
     thread_id: str,
     stop_event: asyncio.Event,
-    input_stream: object,
+    audio_queue: asyncio.Queue[tuple[bytes, bool]],
     *,
     sample_rate: int,
     channels: int,
-    block_size: int,
 ) -> None:
     while not stop_event.is_set():
-        data, overflowed = await asyncio.to_thread(input_stream.read, block_size)  # type: ignore[attr-defined]
+        try:
+            data, overflowed = await asyncio.wait_for(audio_queue.get(), 0.1)
+        except TimeoutError:
+            continue
         if overflowed:
             print("\nWarning: microphone input overflow", file=sys.stderr, flush=True)
         await rpc.send_request(
@@ -387,13 +392,37 @@ async def run(args: argparse.Namespace) -> None:
         print(f"Realtime audio connected to thread {args.thread_id}.", flush=True)
         print("Press Ctrl+C to stop.", flush=True)
 
+        loop = asyncio.get_running_loop()
+        audio_queue: asyncio.Queue[tuple[bytes, bool]] = asyncio.Queue(maxsize=8)
+
+        def on_audio(
+            data: object,
+            _frames: int,
+            _time: object,
+            status: object,
+        ) -> None:
+            chunk = (bytes(data), bool(getattr(status, "input_overflow", False)))
+
+            def enqueue() -> None:
+                if stop_event.is_set():
+                    return
+                if audio_queue.full():
+                    with suppress(asyncio.QueueEmpty):
+                        audio_queue.get_nowait()
+                with suppress(asyncio.QueueFull):
+                    audio_queue.put_nowait(chunk)
+
+            with suppress(RuntimeError):
+                loop.call_soon_threadsafe(enqueue)
+
         with sd.RawInputStream(
             samplerate=args.sample_rate,
             blocksize=args.block_size,
             channels=args.channels,
             dtype="int16",
             device=args.input_device,
-        ) as input_stream:
+            callback=on_audio,
+        ) as _input_stream:
             receive_task = asyncio.create_task(
                 _receive_events(websocket, stop_event, player, TranscriptPrinter())
             )
@@ -402,10 +431,9 @@ async def run(args: argparse.Namespace) -> None:
                     rpc,
                     args.thread_id,
                     stop_event,
-                    input_stream,
+                    audio_queue,
                     sample_rate=args.sample_rate,
                     channels=args.channels,
-                    block_size=args.block_size,
                 )
             )
             done, _ = await asyncio.wait(
