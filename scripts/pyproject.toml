@@ -2,7 +2,11 @@
 name = "codex-scripts"
 version = "0.0.0"
 requires-python = ">=3.10"
-dependencies = ["ruff>=0.15.8"]
+dependencies = [
+    "ruff>=0.15.8",
+    "sounddevice>=0.5.0",
+    "websockets>=15.0",
+]
 
 [tool.uv]
 exclude-newer = "7 days"
