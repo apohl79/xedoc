@@ -266,10 +266,10 @@ impl Renderable for StatusIndicatorWidget {
             spans.push(indicator);
             spans.push(" ".into());
         }
-        if let Some(pass) = compaction_pass(&self.header) {
+        if let Some(part) = compaction_part(&self.header) {
             spans.extend(shimmer_text("Compacting", motion_mode));
             spans.push(" ".into());
-            spans.push(format!("pass {pass}").cl_cyan());
+            spans.push(format!("part {part}").cl_cyan());
         } else {
             spans.extend(shimmer_text(&self.header, motion_mode));
         }
@@ -313,19 +313,20 @@ impl Renderable for StatusIndicatorWidget {
     }
 }
 
-fn compaction_pass(header: &str) -> Option<&str> {
-    let pass = header.strip_prefix("Compacting pass ")?;
-    let (completed, total) = pass.split_once('/')?;
+fn compaction_part(header: &str) -> Option<&str> {
+    let part = header.strip_prefix("Compacting part ")?;
+    let (completed, total) = part.split_once('/')?;
     if completed.is_empty()
         || total.is_empty()
         || !completed
             .chars()
             .all(|character| character.is_ascii_digit())
         || !total.chars().all(|character| character.is_ascii_digit())
+        || total.parse::<usize>().ok()? <= 1
     {
         return None;
     }
-    Some(pass)
+    Some(part)
 }
 
 #[cfg(test)]
@@ -446,7 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_compaction_pass_with_cyan_highlight() {
+    fn renders_compaction_part_with_cyan_highlight() {
         let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
         let tx = AppEventSender::new(tx_raw);
         let mut w = StatusIndicatorWidget::new(
@@ -454,7 +455,7 @@ mod tests {
             crate::tui::FrameRequester::test_dummy(),
             /*animations_enabled*/ false,
         );
-        w.update_header("Compacting pass 1/4".to_string());
+        w.update_header("Compacting part 1/4".to_string());
         w.is_paused = true;
         w.elapsed_running = Duration::ZERO;
 
