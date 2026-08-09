@@ -22,15 +22,15 @@ impl ChatWidget {
             .trim()
             .split_once(") ")
             .map_or(details.trim(), |(_, stage)| stage);
-        let pass = stage.strip_prefix("summarizing ").and_then(|progress| {
+        let part = stage.strip_prefix("summarizing ").and_then(|progress| {
             let (completed, total) = progress.split_once('/')?;
             let completed = completed.parse::<usize>().ok()?;
             let total = total.parse::<usize>().ok()?;
             (total > 1 && completed > 0 && completed <= total).then_some((completed, total))
         });
-        pass.map_or_else(
+        part.map_or_else(
             || String::from("Compacting"),
-            |(completed, total)| format!("Compacting pass {completed}/{total}"),
+            |(completed, total)| format!("Compacting part {completed}/{total}"),
         )
     }
 
@@ -516,7 +516,12 @@ impl ChatWidget {
             let header = Self::compaction_status_header(details);
             // Compaction owns the status indicator for the whole run. Terminal stages release it
             // so the next turn header can take over again.
-            let run_finished = details.ends_with(" complete") || details.ends_with(" failed");
+            let stage = details
+                .trim()
+                .split_once(") ")
+                .map_or(details.trim(), |(_, stage)| stage)
+                .trim();
+            let run_finished = matches!(stage, "complete" | "failed");
             if run_finished {
                 self.status_state.end_compaction_status();
                 self.set_status_header(String::from("Working"));

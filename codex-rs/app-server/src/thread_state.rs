@@ -207,6 +207,15 @@ impl ThreadState {
             .note_delta(event, self.completed_turn_count)
     }
 
+    pub(crate) fn note_agent_message_for_auto_session_name(
+        &mut self,
+        turn_id: &str,
+        message: &str,
+    ) -> Option<MidTurnAutoSessionNameRequest> {
+        self.mid_turn_auto_session_name
+            .note_message(turn_id, message, self.completed_turn_count)
+    }
+
     pub(crate) fn completed_turn_had_mid_turn_auto_session_name_request(
         &self,
         turn_id: &str,
@@ -240,6 +249,28 @@ impl MidTurnAutoSessionNameState {
         self.requested = true;
         Some(MidTurnAutoSessionNameRequest {
             turn_id: event.turn_id.clone(),
+            completed_turn_count,
+            partial_response: self.partial_response.clone(),
+        })
+    }
+
+    fn note_message(
+        &mut self,
+        turn_id: &str,
+        message: &str,
+        completed_turn_count: u64,
+    ) -> Option<MidTurnAutoSessionNameRequest> {
+        if self.turn_id.as_deref() != Some(turn_id) {
+            self.start_turn(turn_id.to_string());
+        }
+        if message.trim().is_empty() || self.requested {
+            return None;
+        }
+        self.partial_response.clear();
+        self.push_capped(message);
+        self.requested = true;
+        Some(MidTurnAutoSessionNameRequest {
+            turn_id: turn_id.to_string(),
             completed_turn_count,
             partial_response: self.partial_response.clone(),
         })
@@ -357,6 +388,23 @@ mod tests {
         let next_request = state.note_agent_message_delta_for_auto_session_name(
             &agent_message_delta("turn-1", "msg-1", "ignored"),
         );
+        assert!(next_request.is_none());
+    }
+
+    #[test]
+    fn mid_turn_auto_session_name_request_fires_for_completed_message_without_deltas() {
+        let mut state = ThreadState::default();
+
+        let request = state
+            .note_agent_message_for_auto_session_name("turn-1", "A completed assistant message")
+            .expect("first non-empty completed message should request a generated session name");
+
+        assert_eq!(request.turn_id, "turn-1");
+        assert_eq!(request.completed_turn_count, 0);
+        assert_eq!(request.partial_response, "A completed assistant message");
+
+        let next_request =
+            state.note_agent_message_for_auto_session_name("turn-1", "ignored completed message");
         assert!(next_request.is_none());
     }
 

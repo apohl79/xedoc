@@ -1091,6 +1091,30 @@ pub(crate) async fn apply_bespoke_event_handling(
             }
         }
         EventMsg::ItemCompleted(event) => {
+            if let CoreTurnItem::AgentMessage(agent_message) = &event.item {
+                let message = agent_message
+                    .content
+                    .iter()
+                    .map(|content| match content {
+                        codex_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
+                    })
+                    .collect::<String>();
+                if let Some(request) = thread_state
+                    .lock()
+                    .await
+                    .note_agent_message_for_auto_session_name(&event_turn_id, &message)
+                {
+                    maybe_spawn_auto_session_name_update(
+                        conversation_id,
+                        conversation.clone(),
+                        thread_manager.clone(),
+                        outgoing.clone(),
+                        thread_state.clone(),
+                        thread_list_state_permit.clone(),
+                        AutoSessionNameUpdate::mid_turn(request),
+                    );
+                }
+            }
             apply_canonical_item_completed_side_effects(
                 &thread_manager,
                 &thread_watch_manager,

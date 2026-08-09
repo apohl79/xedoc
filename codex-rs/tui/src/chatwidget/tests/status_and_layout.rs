@@ -2647,7 +2647,20 @@ async fn compaction_progress_updates_status_without_history_cell() {
         .bottom_pane
         .status_widget()
         .expect("status indicator should be visible");
-    assert_eq!(status.header(), "Compacting pass 1/3");
+    assert_eq!(status.header(), "Compacting part 1/3");
+}
+
+#[tokio::test]
+async fn single_part_compaction_progress_omits_part_label() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    handle_warning(&mut chat, "• Compacting... (context limit) summarizing 1/1");
+
+    let status = chat
+        .bottom_pane
+        .status_widget()
+        .expect("status indicator should be visible");
+    assert_eq!(status.header(), "Compacting");
 }
 
 #[tokio::test]
@@ -2664,10 +2677,10 @@ async fn compaction_progress_survives_other_status_headers_until_complete() {
             .status_widget()
             .expect("status indicator should be visible")
             .header(),
-        "Compacting pass 1/3"
+        "Compacting part 1/3"
     );
 
-    handle_warning(&mut chat, "• Compacting... (model switch) complete");
+    handle_warning(&mut chat, "• Compacting... (model switch) complete ");
 
     assert_eq!(
         chat.bottom_pane
@@ -2724,7 +2737,7 @@ async fn compaction_progress_status_snapshot() {
 }
 
 #[tokio::test]
-async fn compaction_progress_pass_status_snapshot() {
+async fn compaction_progress_part_status_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
     handle_warning(&mut chat, "• Compacting... (requested) summarizing 1/4");
@@ -2736,7 +2749,7 @@ async fn compaction_progress_pass_status_snapshot() {
         .draw(|f| chat.render(f.area(), f.buffer_mut()))
         .expect("draw status widget");
     assert_chatwidget_snapshot!(
-        "compaction_progress_pass_status",
+        "compaction_progress_part_status",
         normalized_backend_snapshot(terminal.backend())
     );
 }
