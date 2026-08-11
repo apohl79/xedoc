@@ -91,7 +91,6 @@ use uuid::Uuid;
 use wiremock::Mock;
 use wiremock::MockServer;
 use wiremock::ResponseTemplate;
-use wiremock::matchers::body_string_contains;
 use wiremock::matchers::header;
 use wiremock::matchers::header_regex;
 use wiremock::matchers::method;
@@ -101,6 +100,14 @@ use wiremock::matchers::query_param;
 const INSTALLATION_ID_FILENAME: &str = "installation_id";
 const TEST_WINDOW_ID: &str = "test-thread:0";
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+fn non_openai_model_provider(server: &MockServer) -> ModelProviderInfo {
+    let mut provider = built_in_model_providers(/*openai_base_url*/ None)["openai"].clone();
+    provider.name = "OpenAI (test)".into();
+    provider.base_url = Some(format!("{}/v1", server.uri()));
+    provider.supports_websockets = false;
+    provider
+}
 
 fn test_turn_responses_metadata(
     _client: &ModelClient,
@@ -3631,31 +3638,38 @@ async fn context_window_error_sets_total_tokens_to_model_window() -> anyhow::Res
 
     const EFFECTIVE_CONTEXT_WINDOW: i64 = (272_000 * 95) / 100;
 
-    mount_sse_once_match(
+    let responses_mock = mount_sse_sequence(
         &server,
-        body_string_contains("trigger context window"),
-        sse_failed(
-            "resp_context_window",
-            "context_length_exceeded",
-            "Your input exceeds the context window of this model. Please adjust your input and try again.",
-        ),
-    )
-    .await;
-
-    mount_sse_once_match(
-        &server,
-        body_string_contains("seed turn"),
-        sse(vec![
+        vec![
+            sse(vec![
             ev_response_created("resp_seed"),
             ev_completed("resp_seed"),
-        ]),
+            ]),
+            sse_failed(
+                "resp_context_window",
+                "context_length_exceeded",
+                "Your input exceeds the context window of this model. Please adjust your input and try again.",
+            ),
+            sse(vec![
+                ev_response_created("resp_compact"),
+                ev_assistant_message("msg_compact", "compacted context"),
+                ev_completed("resp_compact"),
+            ]),
+            sse_failed(
+                "resp_context_window_retry",
+                "context_length_exceeded",
+                "Your input exceeds the context window of this model. Please adjust your input and try again.",
+            ),
+        ],
     )
     .await;
 
+    let model_provider = non_openai_model_provider(&server);
     let TestCodex { codex, .. } = test_codex()
-        .with_config(|config| {
+        .with_config(move |config| {
             config.model = Some("gpt-5.4".to_string());
             config.model_context_window = Some(272_000);
+            config.model_provider = model_provider;
         })
         .build(&server)
         .await?;
@@ -3725,6 +3739,77 @@ async fn context_window_error_sets_total_tokens_to_model_window() -> anyhow::Res
     );
 
     wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    let requests = responses_mock.requests();
+    assert_eq!(requests.len(), 4);
+    assert!(
+        requests[3]
+            .body_json()
+            .to_string()
+            .contains("trigger context window")
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn context_window_error_compacts_and_retries() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let responses_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse_failed(
+                "resp_context_window",
+                "context_length_exceeded",
+                "Your input exceeds the context window of this model. Please adjust your input and try again.",
+            ),
+            sse(vec![
+                ev_response_created("resp_compact"),
+                ev_assistant_message("msg_compact", "compacted context"),
+                ev_completed("resp_compact"),
+            ]),
+            sse(vec![
+                ev_response_created("resp_retried"),
+                ev_assistant_message("msg_retried", "recovered response"),
+                ev_completed("resp_retried"),
+            ]),
+        ],
+    )
+    .await;
+
+    let model_provider = non_openai_model_provider(&server);
+    let TestCodex { codex, .. } = test_codex()
+        .with_config(move |config| {
+            config.model = Some("gpt-5.4".to_string());
+            config.model_context_window = Some(272_000);
+            config.model_provider = model_provider;
+        })
+        .build(&server)
+        .await?;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "recover context window".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let requests = responses_mock.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(
+        requests[2]
+            .body_json()
+            .to_string()
+            .contains("recover context window")
+    );
 
     Ok(())
 }

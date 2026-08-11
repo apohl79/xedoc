@@ -244,6 +244,7 @@ pub(crate) async fn run_turn(
 
     let mut next_step_context = Some(first_step_context);
     let mut consecutive_empty_output_limited_responses = 0;
+    let mut retried_after_context_window_error = false;
     loop {
         // Note that pending_input would be something like a message the user
         // submitted through the UI while the model was running. Though the UI
@@ -491,6 +492,32 @@ pub(crate) async fn run_turn(
                 });
                 sess.send_event(&turn_context, event).await;
                 break;
+            }
+            Err(CodexErr::ContextWindowExceeded) if !retried_after_context_window_error => {
+                retried_after_context_window_error = true;
+                if let Err(err) = run_auto_compact(
+                    &sess,
+                    Arc::clone(&step_context),
+                    /*fallback_step_context*/ None,
+                    &mut client_session,
+                    InitialContextInjection::BeforeLastUserMessage(Arc::clone(&world_state)),
+                    CompactionReason::ContextLimit,
+                    CompactionPhase::MidTurn,
+                )
+                .await
+                {
+                    if matches!(err, CodexErr::TurnAborted) {
+                        return Err(err);
+                    }
+                    let error = err.to_codex_protocol_error();
+                    sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())
+                        .await;
+                    return Ok(None);
+                }
+                if run_pending_session_start_hooks(&sess, &turn_context).await {
+                    return Ok(None);
+                }
+                continue;
             }
             Err(e) => {
                 info!("Turn error: {e:#}");
