@@ -33,6 +33,47 @@ foo = "bar"
 }
 
 #[test]
+fn profile_is_loaded_for_direct_app_server() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join("config.toml"),
+        "model = \"gpt-base\"\n",
+    )?;
+    std::fs::write(
+        codex_home.path().join("work.config.toml"),
+        "profile_only_field = true\n",
+    )?;
+
+    let mut cmd = codex_command(codex_home.path())?;
+    cmd.args([
+        "--profile",
+        "work",
+        "app-server",
+        "--strict-config",
+        "--listen",
+        "off",
+    ])
+    .assert()
+    .failure()
+    .stderr(contains("unknown configuration field"));
+
+    Ok(())
+}
+
+#[test]
+fn profile_is_rejected_for_app_server_daemon_tooling() -> Result<()> {
+    let codex_home = TempDir::new()?;
+
+    let mut cmd = codex_command(codex_home.path())?;
+    cmd.args(["--profile", "work", "app-server", "daemon", "version"])
+        .assert()
+        .failure()
+        .stderr(contains("--profile only applies"));
+
+    Ok(())
+}
+
+#[test]
 fn app_server_emits_json_info_events() -> Result<()> {
     let codex_home = TempDir::new()?;
     let event = app_server_json_shutdown_event("codex", &["app-server"], codex_home.path())?;

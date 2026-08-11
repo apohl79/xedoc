@@ -1122,6 +1122,8 @@ async fn cli_main(
             }
         }
         Some(Subcommand::AppServer(app_server_cli)) => {
+            let loader_overrides =
+                loader_overrides_for_profile(interactive.config_profile_v2.as_ref())?;
             let AppServerCommand {
                 subcommand,
                 strict_config: app_server_strict_config,
@@ -1164,7 +1166,7 @@ async fn cli_main(
                     codex_app_server::run_main_with_transport_options(
                         arg0_paths.clone(),
                         root_config_overrides,
-                        LoaderOverrides::default(),
+                        loader_overrides,
                         strict_config,
                         analytics_default_enabled,
                         transport,
@@ -1689,11 +1691,14 @@ fn profile_v2_for_subcommand<'a>(
         | Subcommand::Fork(_)
         | Subcommand::Mcp(_)
         | Subcommand::Sandbox(_)
+        | Subcommand::AppServer(AppServerCommand {
+            subcommand: None, ..
+        })
         | Subcommand::Debug(DebugCommand {
             subcommand: DebugSubcommand::PromptInput(_),
         }) => Ok(Some(profile_v2)),
         _ => anyhow::bail!(
-            "--profile only applies to runtime commands and `codex mcp`: `codex`, `codex exec`, `codex review`, `codex resume`, `codex archive`, `codex delete`, `codex unarchive`, `codex fork`, `codex mcp`, `codex sandbox`, and `codex debug prompt-input`."
+            "--profile only applies to runtime commands and `codex mcp`: `codex`, `codex exec`, `codex review`, `codex resume`, `codex archive`, `codex delete`, `codex unarchive`, `codex fork`, `codex mcp`, `codex sandbox`, `codex app-server`, and `codex debug prompt-input`."
         ),
     }
 }
