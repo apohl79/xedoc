@@ -45,6 +45,7 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::models::WebSearchAction;
 use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ReasoningEffort;
+use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
@@ -3853,6 +3854,69 @@ async fn max_output_tokens_continues_without_stream_retry() -> anyhow::Result<()
     let requests = responses_mock.requests();
     assert_eq!(requests.len(), 2);
     assert!(requests[1].body_contains_text("partial "));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repeated_empty_max_output_tokens_responses_emit_error() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let empty_responses = ["resp-empty-1", "resp-empty-2", "resp-empty-3"]
+        .into_iter()
+        .map(|response_id| {
+            sse(vec![
+                ev_response_created(response_id),
+                json!({
+                    "type": "response.incomplete",
+                    "response": {
+                        "id": response_id,
+                        "object": "response",
+                        "status": "incomplete",
+                        "usage": {
+                            "input_tokens": 10,
+                            "input_tokens_details": null,
+                            "output_tokens": 20,
+                            "output_tokens_details": null,
+                            "total_tokens": 30
+                        },
+                        "error": null,
+                        "incomplete_details": {
+                            "reason": "max_output_tokens"
+                        }
+                    }
+                }),
+            ])
+        })
+        .collect();
+    let responses_mock = mount_sse_sequence(&server, empty_responses).await;
+    let TestCodex { codex, .. } = test_codex()
+        .with_config(|config| {
+            config.model_provider.stream_max_retries = Some(0);
+        })
+        .build(&server)
+        .await?;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "trigger empty continuations".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+
+    let error_event = wait_for_event(&codex, |event| matches!(event, EventMsg::Error(_))).await;
+    let EventMsg::Error(error) = error_event else {
+        unreachable!("wait_for_event returned a non-error event")
+    };
+    assert_eq!(error.message, CodexErr::RepeatedOutputLimit.to_string());
+    assert_eq!(error.codex_error_info, Some(CodexErrorInfo::Other));
+    assert_eq!(responses_mock.requests().len(), 3);
+
     Ok(())
 }
 

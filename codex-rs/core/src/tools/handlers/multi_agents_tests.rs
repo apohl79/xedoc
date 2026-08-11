@@ -25,6 +25,7 @@ use codex_login::CodexAuth;
 use codex_model_provider::create_model_provider;
 use codex_model_provider_info::built_in_model_providers;
 use codex_models_manager::bundled_models_response;
+use codex_models_manager::manager::MultiProviderModelsManager;
 use codex_models_manager::manager::StaticModelsManager;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
@@ -38,6 +39,7 @@ use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::SandboxEnforcement;
+use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::AskForApproval;
@@ -83,6 +85,81 @@ async fn make_session_and_context() -> (crate::session::session::Session, TurnCo
         model_catalog,
     ));
     (session, turn)
+}
+
+#[tokio::test]
+async fn spawn_agent_model_override_switches_to_selected_provider() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let catalog = bundled_models_response().expect("bundled models.json should parse");
+    let inherited_model = catalog
+        .models
+        .iter()
+        .find(|model| model.slug == "gpt-5.6-sol")
+        .cloned()
+        .expect("bundled models should include gpt-5.6-sol");
+    let selected_model = catalog
+        .models
+        .iter()
+        .find(|model| model.slug == "gpt-5.6-terra")
+        .cloned()
+        .expect("bundled models should include gpt-5.6-terra");
+    let openai_provider = built_in_model_providers(/*openai_base_url*/ None)["openai"].clone();
+    let mut inherited_provider = openai_provider.clone();
+    inherited_provider.name = "Anthropic".to_string();
+    let mut config = (*turn.config).clone();
+    config.model_provider_id = "anthropic".to_string();
+    config.model_provider = inherited_provider.clone();
+    config
+        .model_providers
+        .insert("anthropic".to_string(), inherited_provider.clone());
+    config
+        .model_providers
+        .insert("openai".to_string(), openai_provider.clone());
+    turn.provider = create_model_provider(inherited_provider, None);
+    turn.config = Arc::new(config.clone());
+    session.services.models_manager = Arc::new(MultiProviderModelsManager::new(vec![
+        (
+            "anthropic".to_string(),
+            Arc::new(StaticModelsManager::new(
+                Some(Arc::clone(&session.services.auth_manager)),
+                ModelsResponse {
+                    models: vec![inherited_model],
+                },
+            )),
+        ),
+        (
+            "openai".to_string(),
+            Arc::new(StaticModelsManager::new(
+                Some(Arc::clone(&session.services.auth_manager)),
+                ModelsResponse {
+                    models: vec![selected_model],
+                },
+            )),
+        ),
+    ]));
+
+    apply_requested_spawn_agent_model_overrides(
+        &session,
+        &turn,
+        &mut config,
+        Some("gpt-5.6-terra"),
+        None,
+    )
+    .await
+    .expect("selected model should configure the child");
+
+    assert_eq!(
+        (
+            config.model,
+            config.model_provider_id,
+            config.model_provider
+        ),
+        (
+            Some("gpt-5.6-terra".to_string()),
+            "openai".to_string(),
+            openai_provider,
+        )
+    );
 }
 
 fn invocation(

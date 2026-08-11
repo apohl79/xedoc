@@ -2292,21 +2292,8 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
 }
 
 #[tokio::test]
-async fn record_initial_history_does_not_restore_parent_cost_for_subagent_fork() {
+async fn record_initial_history_does_not_restore_parent_cost_for_fork() {
     let (session, _turn_context) = make_session_and_context().await;
-    session
-        .state
-        .lock()
-        .await
-        .session_configuration
-        .session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-        parent_thread_id: ThreadId::new(),
-        depth: 1,
-        agent_path: None,
-        agent_nickname: None,
-        agent_role: None,
-    });
-
     session
         .record_initial_history(InitialHistory::Forked(vec![RolloutItem::EventMsg(
             EventMsg::TokenCount(TokenCountEvent {

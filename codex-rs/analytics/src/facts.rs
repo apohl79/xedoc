@@ -143,6 +143,7 @@ impl TurnCodexErrorFact {
 pub enum CodexErrKind {
     TurnAborted,
     SessionBudgetExceeded,
+    RepeatedOutputLimit,
     Stream,
     ContextWindowExceeded,
     ThreadNotFound,
@@ -200,6 +201,7 @@ impl From<&CodexErr> for CodexErrKind {
         match error {
             CodexErr::TurnAborted => CodexErrKind::TurnAborted,
             CodexErr::SessionBudgetExceeded => CodexErrKind::SessionBudgetExceeded,
+            CodexErr::RepeatedOutputLimit => CodexErrKind::RepeatedOutputLimit,
             CodexErr::Stream(..) => CodexErrKind::Stream,
             CodexErr::ContextWindowExceeded => CodexErrKind::ContextWindowExceeded,
             CodexErr::ThreadNotFound(_) => CodexErrKind::ThreadNotFound,

@@ -243,6 +243,7 @@ pub(crate) async fn run_turn(
     // 2. After auto-compact, when model/tool continuation needs to resume before any steer.
 
     let mut next_step_context = Some(first_step_context);
+    let mut consecutive_empty_output_limited_responses = 0;
     loop {
         // Note that pending_input would be something like a message the user
         // submitted through the UI while the model was running. Though the UI
@@ -315,7 +316,31 @@ pub(crate) async fn run_turn(
                 let SamplingRequestResult {
                     needs_follow_up: model_needs_follow_up,
                     last_agent_message: sampling_request_last_agent_message,
+                    continued_due_to_output_limit,
+                    made_progress,
                 } = sampling_request_output;
+                if continued_due_to_output_limit && !made_progress {
+                    consecutive_empty_output_limited_responses += 1;
+                    if consecutive_empty_output_limited_responses
+                        >= MAX_CONSECUTIVE_EMPTY_OUTPUT_LIMITED_RESPONSES
+                    {
+                        let error = CodexErr::RepeatedOutputLimit;
+                        sess.emit_turn_error_lifecycle(
+                            turn_context.as_ref(),
+                            error.to_codex_protocol_error(),
+                        )
+                        .await;
+                        sess.track_turn_codex_error(turn_context.as_ref(), &error);
+                        sess.send_event(
+                            &turn_context,
+                            EventMsg::Error(error.to_error_event(/*message_prefix*/ None)),
+                        )
+                        .await;
+                        break;
+                    }
+                } else {
+                    consecutive_empty_output_limited_responses = 0;
+                }
                 if model_needs_follow_up {
                     sess.input_queue
                         .accept_mailbox_delivery_for_current_turn(
@@ -1424,7 +1449,11 @@ pub(crate) async fn built_tools(
 struct SamplingRequestResult {
     needs_follow_up: bool,
     last_agent_message: Option<String>,
+    continued_due_to_output_limit: bool,
+    made_progress: bool,
 }
+
+const MAX_CONSECUTIVE_EMPTY_OUTPUT_LIMITED_RESPONSES: usize = 3;
 
 /// Ephemeral per-response state for streaming a single proposed plan.
 /// This is intentionally not persisted or stored in session/state since it
@@ -2082,6 +2111,7 @@ async fn try_run_sampling_request(
         FuturesOrdered::new();
     let mut needs_follow_up = false;
     let mut last_agent_message: Option<String> = None;
+    let mut made_progress = false;
     let mut active_item: Option<TurnItem> = None;
     let mut active_tool_argument_diff_consumer: Option<(
         String,
@@ -2249,9 +2279,11 @@ async fn try_run_sampling_request(
                         Err(err) => break Err(err),
                     };
                 if let Some(tool_future) = output_result.tool_future {
+                    made_progress = true;
                     in_flight.push_back(tool_future);
                 }
                 if let Some(agent_message) = output_result.last_agent_message {
+                    made_progress = true;
                     last_agent_message = Some(agent_message);
                 }
                 needs_follow_up |= output_result.needs_follow_up;
@@ -2260,6 +2292,8 @@ async fn try_run_sampling_request(
                     break Ok(SamplingRequestResult {
                         needs_follow_up: true,
                         last_agent_message,
+                        continued_due_to_output_limit: false,
+                        made_progress,
                     });
                 }
             }
@@ -2434,6 +2468,8 @@ async fn try_run_sampling_request(
                 break Ok(SamplingRequestResult {
                     needs_follow_up,
                     last_agent_message,
+                    continued_due_to_output_limit: end_turn == Some(false),
+                    made_progress,
                 });
             }
             ResponseEvent::OutputTextDelta(delta) => {
@@ -2443,6 +2479,7 @@ async fn try_run_sampling_request(
                     let item_id = active.id();
                     let active_is_agent_message = matches!(active, TurnItem::AgentMessage(_));
                     if active_is_agent_message {
+                        made_progress |= !delta.trim().is_empty();
                         streamed_assistant_text_by_item
                             .entry(item_id.clone())
                             .or_default()

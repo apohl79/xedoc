@@ -261,18 +261,34 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
             .models_manager
             .list_models(RefreshStrategy::Offline, config.http_client_factory())
             .await;
-        let selected_model_name = find_spawn_agent_model_name(
-            &available_models,
-            requested_model,
-            turn.multi_agent_version,
-        )?;
+        let selected_model =
+            find_spawn_agent_model(&available_models, requested_model, turn.multi_agent_version)?;
+        let selected_model_name = &selected_model.model;
+        let selected_provider_id = (!selected_model.provider_id.is_empty())
+            .then(|| selected_model.provider_id.clone())
+            .unwrap_or_else(|| config.model_provider_id.clone());
+        let selected_provider = config
+            .model_providers
+            .get(&selected_provider_id)
+            .cloned()
+            .ok_or_else(|| {
+                FunctionCallError::RespondToModel(format!(
+                    "spawn_agent could not resolve provider `{selected_provider_id}` for model `{selected_model_name}`"
+                ))
+            })?;
         let selected_model_info = session
             .services
             .models_manager
-            .get_model_info(&selected_model_name, &config.to_models_manager_config())
+            .get_model_info_for_provider(
+                selected_model_name,
+                &selected_provider_id,
+                &config.to_models_manager_config(),
+            )
             .await;
 
         config.model = Some(selected_model_name.clone());
+        config.model_provider_id = selected_provider_id;
+        config.model_provider = selected_provider;
         if let Some(reasoning_effort) = requested_reasoning_effort {
             validate_spawn_agent_reasoning_effort(
                 &selected_model_name,
@@ -394,18 +410,17 @@ pub(crate) async fn apply_spawn_agent_role(
     )
 }
 
-fn find_spawn_agent_model_name(
-    available_models: &[ModelPreset],
+fn find_spawn_agent_model<'a>(
+    available_models: &'a [ModelPreset],
     requested_model: &str,
     multi_agent_version: MultiAgentVersion,
-) -> Result<String, FunctionCallError> {
+) -> Result<&'a ModelPreset, FunctionCallError> {
     available_models
         .iter()
         .find(|model| {
             model.model == requested_model
                 && model_supports_multi_agent_backend(model, multi_agent_version)
         })
-        .map(|model| model.model.clone())
         .ok_or_else(|| {
             let available = available_models
                 .iter()

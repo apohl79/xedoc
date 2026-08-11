@@ -72,6 +72,9 @@ pub enum CodexErr {
     #[error("shared rollout token budget exhausted")]
     SessionBudgetExceeded,
 
+    #[error("model repeatedly reached the output token limit without making progress")]
+    RepeatedOutputLimit,
+
     /// Returned by ResponsesClient when the SSE stream disconnects or errors out **after** the HTTP
     /// handshake has succeeded but **before** it finished emitting `response.completed`.
     ///
@@ -177,6 +180,7 @@ impl CodexErr {
         match self {
             CodexErr::TurnAborted
             | CodexErr::SessionBudgetExceeded
+            | CodexErr::RepeatedOutputLimit
             | CodexErr::Interrupted
             | CodexErr::EnvVar(_)
             | CodexErr::Fatal(_)

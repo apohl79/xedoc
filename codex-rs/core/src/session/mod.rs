@@ -1417,15 +1417,11 @@ impl Session {
 
                 // Seed usage info from the recorded rollout so UIs can show token counts
                 // immediately on resume/fork.
-                let (token_info, session_cost_usd) =
-                    Self::last_token_count_from_rollout(&rollout_items);
-                if token_info.is_some() || (session_cost_usd.is_some() && !is_subagent) {
+                let (token_info, _) = Self::last_token_count_from_rollout(&rollout_items);
+                if token_info.is_some() {
                     let mut state = self.state.lock().await;
                     if let Some(token_info) = token_info {
                         state.set_token_info(Some(token_info.clone()));
-                    }
-                    if !is_subagent {
-                        state.cost_tracker.restore_total_cost_usd(session_cost_usd);
                     }
                 }
 
