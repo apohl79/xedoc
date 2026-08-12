@@ -1289,7 +1289,7 @@ pub struct EnvironmentConnectionEvent {
 }
 
 /// Prefix used for transient compaction progress messages.
-pub const COMPACTION_PROGRESS_PREFIX: &str = "• Compacting...";
+pub const COMPACTION_PROGRESS_PREFIX: &str = "• Compacting";
 
 /// Response event from the agent
 /// NOTE: Make sure none of these values have optional types, as it will mess up the extension code-gen.

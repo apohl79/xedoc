@@ -47,6 +47,7 @@ use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_completed_with_tokens;
 use core_test_support::responses::ev_function_call;
+use core_test_support::responses::ev_output_text_delta;
 use core_test_support::responses::mount_compact_json_once;
 use core_test_support::responses::mount_compact_response_sequence;
 use core_test_support::responses::mount_response_sequence;
@@ -939,6 +940,74 @@ async fn manual_compact_uses_custom_prompt() {
             "summarization prompt should not appear if compaction omits a prompt"
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn manual_compact_reports_single_pass_lifecycle_progress() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+    let _request_log = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_assistant_message("m0", FIRST_REPLY),
+                ev_completed_with_tokens("r0", /*total_tokens*/ 80),
+            ]),
+            sse(vec![
+                ev_output_text_delta(SUMMARY_TEXT),
+                ev_assistant_message("m1", SUMMARY_TEXT),
+                ev_completed_with_tokens("r1", /*total_tokens*/ 100),
+            ]),
+        ],
+    )
+    .await;
+    let model_provider = non_openai_model_provider(&server);
+    let codex = test_codex()
+        .with_config(move |config| config.model_provider = model_provider)
+        .build(&server)
+        .await
+        .expect("create conversation")
+        .codex;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "USER_ONE".to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await
+        .expect("submit first user turn");
+    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+
+    codex.submit(Op::Compact).await.expect("trigger compact");
+    let mut progress = Vec::new();
+    loop {
+        let event = codex.next_event().await.expect("next compaction event");
+        match event.msg {
+            EventMsg::Warning(WarningEvent { message }) if message.starts_with("• Compacting") => {
+                progress.push(message);
+            }
+            EventMsg::TurnComplete(_) => break,
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        progress,
+        vec![
+            "• Compacting preparing compaction",
+            "• Compacting summarizing history",
+            "• Compacting writing summary",
+            "• Compacting installing summary",
+            "• Compacting complete",
+        ]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

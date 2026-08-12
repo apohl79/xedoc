@@ -4,7 +4,6 @@ use std::time::Instant;
 use crate::Prompt;
 use crate::client::ModelClientSession;
 use crate::client_common::ResponseEvent;
-use crate::compact_progress::CompactionCause;
 use crate::compact_progress::CompactionStage;
 use crate::compact_progress::send_progress;
 use crate::context::world_state::WorldState;
@@ -159,13 +158,7 @@ async fn run_compact_task_inner(
     reason: CompactionReason,
     phase: CompactionPhase,
 ) -> CodexResult<()> {
-    send_progress(
-        &sess,
-        &turn_context,
-        CompactionCause::from(reason),
-        CompactionStage::Preparing,
-    )
-    .await;
+    send_progress(&sess, &turn_context, CompactionStage::Preparing).await;
     let compaction_metadata =
         CompactionTurnMetadata::new(trigger, reason, CompactionImplementation::Responses, phase);
     let attempt = CompactionAnalyticsAttempt::begin(
@@ -182,13 +175,7 @@ async fn run_compact_task_inner(
         PreCompactHookOutcome::Continue => {}
         PreCompactHookOutcome::Stopped => {
             let error = CodexErr::TurnAborted;
-            send_progress(
-                &sess,
-                &turn_context,
-                CompactionCause::from(reason),
-                CompactionStage::Failed,
-            )
-            .await;
+            send_progress(&sess, &turn_context, CompactionStage::Failed).await;
             attempt
                 .track(
                     sess.as_ref(),
@@ -206,7 +193,6 @@ async fn run_compact_task_inner(
         input,
         initial_context_injection,
         compaction_metadata,
-        CompactionCause::from(reason),
     )
     .await;
     let status = compaction_status_from_result(&result);
@@ -242,7 +228,6 @@ async fn run_compact_task_inner_impl(
     input: Vec<UserInput>,
     initial_context_injection: InitialContextInjection,
     compaction_metadata: CompactionTurnMetadata,
-    cause: CompactionCause,
 ) -> CodexResult<String> {
     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
     sess.emit_turn_item_started(&turn_context, &compaction_item)
@@ -299,19 +284,18 @@ async fn run_compact_task_inner_impl(
             base_instructions,
             responses_metadata.clone(),
             client_session.turn_state(),
-            cause,
         )
         .await;
         let summary = match summary {
             Ok(summary) => summary,
             Err(error) => {
-                send_progress(&sess, &turn_context, cause, CompactionStage::Failed).await;
+                send_progress(&sess, &turn_context, CompactionStage::Failed).await;
                 return Err(error);
             }
         };
         (summary, normalized_history)
     } else {
-        send_progress(&sess, &turn_context, cause, CompactionStage::Summarizing).await;
+        send_progress(&sess, &turn_context, CompactionStage::Summarizing).await;
         loop {
             // Clone is required because of the loop
             let turn_input = history
@@ -389,7 +373,7 @@ async fn run_compact_task_inner_impl(
         )
     };
     let summary_text = format!("{SUMMARY_PREFIX}\n{summary_suffix}");
-    send_progress(&sess, &turn_context, cause, CompactionStage::Complete).await;
+    send_progress(&sess, &turn_context, CompactionStage::InstallingSummary).await;
     let user_messages = collect_user_messages(&history_items);
 
     let mut new_history = build_compacted_history(Vec::new(), &user_messages, &summary_text);
@@ -436,6 +420,7 @@ async fn run_compact_task_inner_impl(
 
     sess.emit_turn_item_completed(&turn_context, compaction_item)
         .await;
+    send_progress(&sess, &turn_context, CompactionStage::Complete).await;
     let warning = EventMsg::Warning(WarningEvent {
         message: "Heads up: Long threads and multiple compactions can cause the model to be less accurate. Start a new thread when possible to keep threads small and targeted.".to_string(),
     });
@@ -749,6 +734,7 @@ async fn drain_to_completed(
             &InferenceTraceContext::disabled(),
         )
         .await?;
+    let mut summary_started = false;
     loop {
         let maybe_event = stream.next().await;
         let Some(event) = maybe_event else {
@@ -767,6 +753,10 @@ async fn drain_to_completed(
             }
             Ok(ResponseEvent::RateLimits(snapshot)) => {
                 sess.update_rate_limits(turn_context, snapshot).await;
+            }
+            Ok(ResponseEvent::OutputTextDelta(_)) if !summary_started => {
+                summary_started = true;
+                send_progress(sess, turn_context, CompactionStage::WritingSummary).await;
             }
             Ok(ResponseEvent::Completed {
                 response_id,

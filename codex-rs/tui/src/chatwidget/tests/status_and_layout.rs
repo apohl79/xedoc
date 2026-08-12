@@ -2639,7 +2639,7 @@ async fn warning_event_adds_warning_history_cell() {
 async fn compaction_progress_updates_status_without_history_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);
-    handle_warning(&mut chat, "• Compacting... (model switch) summarizing 1/3");
+    handle_warning(&mut chat, "• Compacting summarizing 1/3");
 
     let cells = drain_insert_history(&mut rx);
     assert!(cells.is_empty(), "compaction progress should be transient");
@@ -2654,13 +2654,13 @@ async fn compaction_progress_updates_status_without_history_cell() {
 async fn single_part_compaction_progress_omits_part_label() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);
-    handle_warning(&mut chat, "• Compacting... (context limit) summarizing 1/1");
+    handle_warning(&mut chat, "• Compacting summarizing 1/1");
 
     let status = chat
         .bottom_pane
         .status_widget()
         .expect("status indicator should be visible");
-    assert_eq!(status.header(), "Compacting");
+    assert_eq!(status.header(), "Compacting · Summarizing 1/1");
 }
 
 #[tokio::test]
@@ -2668,7 +2668,7 @@ async fn compaction_progress_survives_other_status_headers_until_complete() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);
 
-    handle_warning(&mut chat, "• Compacting... (model switch) summarizing 1/3");
+    handle_warning(&mut chat, "• Compacting summarizing 1/3");
     // A concurrent turn header must not hide in-flight compaction progress.
     chat.set_status_header(String::from("Working"));
 
@@ -2680,7 +2680,7 @@ async fn compaction_progress_survives_other_status_headers_until_complete() {
         "Compacting part 1/3"
     );
 
-    handle_warning(&mut chat, "• Compacting... (model switch) complete ");
+    handle_warning(&mut chat, "• Compacting complete ");
 
     assert_eq!(
         chat.bottom_pane
@@ -2696,10 +2696,7 @@ async fn compaction_progress_survives_status_row_hide_requests() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);
 
-    handle_warning(
-        &mut chat,
-        "• Compacting... (model switch) summarizing history",
-    );
+    handle_warning(&mut chat, "• Compacting summarizing history");
     chat.hide_status_indicator();
 
     assert_eq!(
@@ -2707,10 +2704,10 @@ async fn compaction_progress_survives_status_row_hide_requests() {
             .status_widget()
             .expect("compaction status should remain visible")
             .header(),
-        "Compacting"
+        "Compacting · Summarizing history"
     );
 
-    handle_warning(&mut chat, "• Compacting... (model switch) complete");
+    handle_warning(&mut chat, "• Compacting complete");
     chat.hide_status_indicator();
     assert!(chat.bottom_pane.status_widget().is_none());
 }
@@ -2719,10 +2716,7 @@ async fn compaction_progress_survives_status_row_hide_requests() {
 async fn compaction_progress_status_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
-    handle_warning(
-        &mut chat,
-        "• Compacting... (requested) preparing compaction",
-    );
+    handle_warning(&mut chat, "• Compacting preparing compaction");
 
     let height = chat.desired_height(/*width*/ 80);
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))
@@ -2740,7 +2734,7 @@ async fn compaction_progress_status_snapshot() {
 async fn compaction_progress_part_status_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     handle_turn_started(&mut chat, "turn-1");
-    handle_warning(&mut chat, "• Compacting... (requested) summarizing 1/4");
+    handle_warning(&mut chat, "• Compacting summarizing 1/4");
 
     let height = chat.desired_height(/*width*/ 80);
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))

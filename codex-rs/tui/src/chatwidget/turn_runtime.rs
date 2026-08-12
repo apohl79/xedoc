@@ -29,7 +29,12 @@ impl ChatWidget {
             (total > 1 && completed > 0 && completed <= total).then_some((completed, total))
         });
         part.map_or_else(
-            || String::from("Compacting"),
+            || {
+                format!(
+                    "Compacting · {}",
+                    crate::text_formatting::capitalize_first(stage)
+                )
+            },
             |(completed, total)| format!("Compacting part {completed}/{total}"),
         )
     }

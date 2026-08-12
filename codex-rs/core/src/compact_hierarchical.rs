@@ -4,7 +4,6 @@ use std::sync::OnceLock;
 use crate::Prompt;
 use crate::client::ModelClient;
 use crate::client_common::ResponseEvent;
-use crate::compact_progress::CompactionCause;
 use crate::compact_progress::CompactionStage;
 use crate::compact_progress::send_progress;
 use crate::responses_metadata::CodexResponsesMetadata;
@@ -76,7 +75,6 @@ pub(crate) async fn summarize_history(
     base_instructions: BaseInstructions,
     responses_metadata: CodexResponsesMetadata,
     turn_state: Arc<OnceLock<String>>,
-    cause: CompactionCause,
 ) -> CodexResult<String> {
     let item_budget = compaction_item_budget(&turn_context, &base_instructions, &compaction_prompt)
         .ok_or(CodexErr::ContextWindowExceeded)?;
@@ -84,7 +82,6 @@ pub(crate) async fn summarize_history(
     send_progress(
         &sess,
         &turn_context,
-        cause,
         CompactionStage::Planning {
             chunks: map_chunks.len(),
         },
@@ -114,7 +111,6 @@ pub(crate) async fn summarize_history(
     send_progress(
         &sess,
         &turn_context,
-        cause,
         CompactionStage::Mapping {
             completed: 0,
             total: map_total,
@@ -130,7 +126,6 @@ pub(crate) async fn summarize_history(
         send_progress(
             &sess,
             &turn_context,
-            cause,
             CompactionStage::Mapping {
                 completed,
                 total: map_total,
@@ -151,7 +146,6 @@ pub(crate) async fn summarize_history(
         send_progress(
             &sess,
             &turn_context,
-            cause,
             CompactionStage::Reducing {
                 layer,
                 groups: reduction_chunks.len(),
