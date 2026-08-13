@@ -322,14 +322,46 @@ mod thread_processor_behavior_tests {
             duration_ms: None,
         };
 
-        let turns = reconstruct_thread_turns_for_turns_list(
-            &persisted_items,
-            ThreadStatus::Idle,
-            /*has_live_running_thread*/ false,
-            Some(active_turn.clone()),
-        );
+        let turns =
+            reconstruct_thread_turns_for_turns_list(&persisted_items, Some(active_turn.clone()));
 
         assert_eq!(turns.last(), Some(&active_turn));
+    }
+
+    #[test]
+    fn thread_turns_list_interrupts_stale_turn_when_a_different_turn_is_live() {
+        let stale_turn = Turn {
+            id: "stale-turn".to_string(),
+            items: Vec::new(),
+            items_view: TurnItemsView::NotLoaded,
+            error: None,
+            status: TurnStatus::InProgress,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+        };
+        let live_turn = Turn {
+            id: "live-turn".to_string(),
+            items: Vec::new(),
+            items_view: TurnItemsView::NotLoaded,
+            error: None,
+            status: TurnStatus::InProgress,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+        };
+        let expected = vec![
+            Turn {
+                status: TurnStatus::Interrupted,
+                ..stale_turn.clone()
+            },
+            live_turn.clone(),
+        ];
+        let mut turns = vec![stale_turn, live_turn];
+
+        normalize_thread_turns_status(&mut turns, Some("live-turn"));
+
+        assert_eq!(turns, expected);
     }
 
     #[test]

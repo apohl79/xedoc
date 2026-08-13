@@ -17,6 +17,8 @@ use codex_app_server_protocol::AuthMode;
 use codex_app_server_protocol::RateLimitReachedType;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
+use codex_app_server_protocol::TurnCompletedNotification;
+use codex_app_server_protocol::TurnStatus;
 use std::time::Duration;
 
 const LOCAL_DAEMON_RECONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -151,9 +153,33 @@ impl App {
                 self.primary_session_configured = Some(session.clone());
             }
             self.set_agent_model_metadata_from_session(&session);
-            if let Some(channel) = self.thread_event_channels.get(&thread_id) {
+            let active_turn_id = if let Some(channel) = self.thread_event_channels.get(&thread_id) {
                 let mut store = channel.store.lock().await;
                 store.reset_after_app_server_reconnect();
+                store.active_turn_id().map(ToOwned::to_owned)
+            } else {
+                None
+            };
+            if let Some(turn) = active_turn_id.and_then(|active_turn_id| {
+                started
+                    .turns
+                    .iter()
+                    .find(|turn| {
+                        turn.id == active_turn_id && !matches!(turn.status, TurnStatus::InProgress)
+                    })
+                    .cloned()
+            }) {
+                self.handle_server_notification_event(
+                    app_server_client,
+                    ServerNotification::TurnCompleted(TurnCompletedNotification {
+                        thread_id: thread_id.to_string(),
+                        turn,
+                    }),
+                )
+                .await;
+            }
+            if let Some(channel) = self.thread_event_channels.get(&thread_id) {
+                let mut store = channel.store.lock().await;
                 store.set_session(session, started.turns);
             }
         }

@@ -10,7 +10,13 @@ use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCMessage;
 use codex_app_server_protocol::JSONRPCResponse;
+use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::TurnStartedNotification;
+use codex_app_server_protocol::TurnStatus;
 use codex_protocol::AgentPath;
+use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::RolloutItem;
+use codex_protocol::protocol::TurnStartedEvent;
 use futures::SinkExt;
 use futures::StreamExt;
 use pretty_assertions::assert_eq;
@@ -504,6 +510,7 @@ fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
                 let codex_home = tempdir()?;
                 app.config.codex_home = codex_home.path().to_path_buf().abs();
                 app.config.sqlite_home = codex_home.path().to_path_buf();
+                let stale_turn_id = "turn-interrupted-by-restart";
                 let thread_id = ThreadId::from_string(
                     &create_fake_rollout(
                         codex_home.path(),
@@ -515,6 +522,21 @@ fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
                     )
                     .expect("create root rollout"),
                 )?;
+                codex_rollout::append_rollout_item_to_path(
+                    &rollout_path(
+                        codex_home.path(),
+                        "2026-01-01T00-00-00",
+                        &thread_id.to_string(),
+                    ),
+                    &RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                        turn_id: stale_turn_id.to_string(),
+                        trace_id: None,
+                        started_at: None,
+                        model_context_window: None,
+                        collaboration_mode_kind: Default::default(),
+                    })),
+                )
+                .await?;
                 let (mut app_server, endpoint, disconnect_tx, requests, proxy) =
                     start_reconnectable_app_server(&app.config).await?;
                 app.app_server_target = crate::AppServerTarget::LocalDaemon { endpoint };
@@ -522,8 +544,28 @@ fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
                 let started = app_server
                     .resume_thread(app.config.clone(), thread_id, app.resume_model_settings())
                     .await?;
+                let mut stale_turn = started
+                    .turns
+                    .iter()
+                    .find(|turn| turn.id == stale_turn_id)
+                    .cloned()
+                    .expect("resumed thread should include stale turn");
+                stale_turn.status = TurnStatus::InProgress;
                 app.enqueue_primary_thread_session(started.session, started.turns)
                     .await?;
+                app.chat_widget.handle_server_notification(
+                    ServerNotification::TurnStarted(TurnStartedNotification {
+                        thread_id: thread_id.to_string(),
+                        turn: stale_turn,
+                    }),
+                    /*replay_kind*/ None,
+                );
+                let channel = app
+                    .thread_event_channels
+                    .get(&thread_id)
+                    .expect("primary thread event channel");
+                channel.store.lock().await.active_turn_id = Some(stale_turn_id.to_string());
+                assert!(app.chat_widget.is_task_running_for_test());
 
                 disconnect_tx
                     .send(())
@@ -541,6 +583,13 @@ fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
                 };
                 app.handle_app_server_disconnected(&mut app_server, message)
                     .await;
+                while let Some(event) = app
+                    .active_thread_rx
+                    .as_mut()
+                    .and_then(|receiver| receiver.try_recv().ok())
+                {
+                    app.handle_thread_event_now(event);
+                }
 
                 let resume_count = requests
                     .lock()
@@ -549,6 +598,7 @@ fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
                     .filter(|method| method.as_str() == "thread/resume")
                     .count();
                 assert_eq!(resume_count, 2);
+                assert!(!app.chat_widget.is_task_running_for_test());
                 app_server.shutdown().await?;
                 proxy.await??;
                 Ok(())

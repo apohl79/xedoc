@@ -2384,11 +2384,22 @@ impl ThreadRequestProcessor {
             )));
         };
 
-        let has_live_in_progress_turn = if let Some(loaded_thread) = loaded_thread.as_ref() {
+        let agent_is_running = if let Some(loaded_thread) = loaded_thread.as_ref() {
             matches!(loaded_thread.agent_status().await, AgentStatus::Running)
         } else {
             false
         };
+        let active_turn_id = if loaded_thread.is_some() {
+            let thread_state = self.thread_state_manager.thread_state(thread_id).await;
+            let state = thread_state.lock().await;
+            state
+                .active_turn_snapshot()
+                .filter(|turn| matches!(turn.status, TurnStatus::InProgress))
+                .map(|turn| turn.id)
+        } else {
+            None
+        };
+        let has_live_in_progress_turn = agent_is_running || active_turn_id.is_some();
 
         let thread_status = self
             .thread_watch_manager
@@ -2399,6 +2410,7 @@ impl ThreadRequestProcessor {
             &mut thread,
             thread_status,
             has_live_in_progress_turn,
+            active_turn_id.as_deref(),
         );
         Ok(thread)
     }
@@ -2581,10 +2593,6 @@ impl ThreadRequestProcessor {
         // the server has to rebuild the full turn list until turn metadata is indexed
         // separately.
         let loaded_thread = self.thread_manager.get_thread(thread_uuid).await.ok();
-        let has_live_running_thread = match loaded_thread.as_ref() {
-            Some(thread) => matches!(thread.agent_status().await, AgentStatus::Running),
-            None => false,
-        };
         let active_turn = if loaded_thread.is_some() {
             // Persisted history may not yet include the currently running turn. The
             // app-server listener has already projected live turn events into ThreadState,
@@ -2597,10 +2605,6 @@ impl ThreadRequestProcessor {
         };
         build_thread_turns_page_response(
             &items,
-            self.thread_watch_manager
-                .loaded_status_for_thread(&thread_uuid.to_string())
-                .await,
-            has_live_running_thread,
             active_turn,
             ThreadTurnsPageOptions {
                 cursor: cursor.as_deref(),
@@ -2723,17 +2727,17 @@ impl ThreadRequestProcessor {
             turns.push(turn);
         }
         let loaded_thread = self.thread_manager.get_thread(thread_id).await.ok();
-        let has_live_running_thread = match loaded_thread.as_ref() {
-            Some(thread) => matches!(thread.agent_status().await, AgentStatus::Running),
-            None => false,
+        let active_turn_id = if loaded_thread.is_some() {
+            let thread_state = self.thread_state_manager.thread_state(thread_id).await;
+            let state = thread_state.lock().await;
+            state
+                .active_turn_snapshot()
+                .filter(|turn| matches!(turn.status, TurnStatus::InProgress))
+                .map(|turn| turn.id)
+        } else {
+            None
         };
-        normalize_thread_turns_status(
-            &mut turns,
-            self.thread_watch_manager
-                .loaded_status_for_thread(&thread_id.to_string())
-                .await,
-            has_live_running_thread,
-        );
+        normalize_thread_turns_status(&mut turns, active_turn_id.as_deref());
         Ok(ThreadTurnsListResponse {
             data: turns,
             next_cursor: page.next_cursor,
@@ -3347,6 +3351,7 @@ impl ThreadRequestProcessor {
                     &mut thread,
                     thread_status,
                     /*has_live_in_progress_turn*/ false,
+                    /*active_turn_id*/ None,
                 );
                 let config_snapshot = codex_thread.config_snapshot().await;
                 let (turns_backwards_cursor, items_backwards_cursor) =
@@ -3380,8 +3385,6 @@ impl ThreadRequestProcessor {
                     } else {
                         build_thread_resume_initial_turns_page(
                             response_history.get_rollout_items(),
-                            thread.status.clone(),
-                            /*has_live_running_thread*/ false,
                             /*active_turn*/ None,
                             params,
                         )
@@ -4681,17 +4684,10 @@ struct ThreadTurnsPageOptions<'a> {
 
 fn build_thread_turns_page_response(
     items: &[RolloutItem],
-    loaded_status: ThreadStatus,
-    has_live_running_thread: bool,
     active_turn: Option<Turn>,
     options: ThreadTurnsPageOptions<'_>,
 ) -> Result<ThreadTurnsListResponse, JSONRPCErrorError> {
-    let mut turns = reconstruct_thread_turns_for_turns_list(
-        items,
-        loaded_status,
-        has_live_running_thread,
-        active_turn,
-    );
+    let mut turns = reconstruct_thread_turns_for_turns_list(items, active_turn);
     apply_thread_turns_items_view(&mut turns, options.items_view);
     let page = paginate_thread_turns(turns, options.cursor, options.limit, options.sort_direction)?;
     Ok(ThreadTurnsListResponse {
@@ -4703,15 +4699,11 @@ fn build_thread_turns_page_response(
 
 pub(super) fn build_thread_resume_initial_turns_page(
     items: &[RolloutItem],
-    loaded_status: ThreadStatus,
-    has_live_running_thread: bool,
     active_turn: Option<Turn>,
     params: &ThreadResumeInitialTurnsPageParams,
 ) -> Result<codex_app_server_protocol::TurnsPage, JSONRPCErrorError> {
     build_thread_turns_page_response(
         items,
-        loaded_status,
-        has_live_running_thread,
         active_turn,
         ThreadTurnsPageOptions {
             cursor: None,
@@ -4763,33 +4755,24 @@ pub(super) fn apply_thread_turns_items_view(turns: &mut [Turn], items_view: Turn
 
 fn reconstruct_thread_turns_for_turns_list(
     items: &[RolloutItem],
-    loaded_status: ThreadStatus,
-    has_live_running_thread: bool,
     active_turn: Option<Turn>,
 ) -> Vec<Turn> {
-    let has_live_in_progress_turn = has_live_running_thread
-        || active_turn
-            .as_ref()
-            .is_some_and(|turn| matches!(turn.status, TurnStatus::InProgress));
+    let active_turn_id = active_turn
+        .as_ref()
+        .filter(|turn| matches!(turn.status, TurnStatus::InProgress))
+        .map(|turn| turn.id.as_str());
     let mut turns = build_legacy_api_turns_from_rollout_items(items);
-    normalize_thread_turns_status(&mut turns, loaded_status, has_live_in_progress_turn);
+    normalize_thread_turns_status(&mut turns, active_turn_id);
     if let Some(active_turn) = active_turn {
         merge_turn_history_with_active_turn(&mut turns, active_turn);
     }
     turns
 }
 
-pub(super) fn normalize_thread_turns_status(
-    turns: &mut [Turn],
-    loaded_status: ThreadStatus,
-    has_live_in_progress_turn: bool,
-) {
-    let status = resolve_thread_status(loaded_status, has_live_in_progress_turn);
-    if matches!(status, ThreadStatus::Active { .. }) {
-        return;
-    }
+pub(super) fn normalize_thread_turns_status(turns: &mut [Turn], active_turn_id: Option<&str>) {
     for turn in turns {
-        if matches!(turn.status, TurnStatus::InProgress) {
+        if matches!(turn.status, TurnStatus::InProgress) && Some(turn.id.as_str()) != active_turn_id
+        {
             turn.status = TurnStatus::Interrupted;
         }
     }

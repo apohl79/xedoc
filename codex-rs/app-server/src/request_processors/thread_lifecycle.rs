@@ -576,12 +576,23 @@ pub(super) async fn handle_pending_thread_resume_request(
         &mut thread,
         thread_status.clone(),
         has_live_in_progress_turn,
+        active_turn
+            .as_ref()
+            .filter(|turn| matches!(turn.status, TurnStatus::InProgress))
+            .map(|turn| turn.id.as_str()),
     );
     let token_usage_turn_id = pending
         .include_turns
         .then(|| restored_token_usage_turn_id(&pending.history_items, &thread));
     let mut initial_turns_page = if let Some(mut page) = pending.paginated_initial_turns_page.take()
     {
+        super::thread_processor::normalize_thread_turns_status(
+            &mut page.data,
+            active_turn
+                .as_ref()
+                .filter(|turn| matches!(turn.status, TurnStatus::InProgress))
+                .map(|turn| turn.id.as_str()),
+        );
         if let (Some(active_turn), Some(params)) =
             (active_turn, pending.initial_turns_page.as_ref())
         {
@@ -596,17 +607,10 @@ pub(super) async fn handle_pending_thread_resume_request(
             }
             merge_active_turn_into_page(&mut page, active_turn, params);
         }
-        super::thread_processor::normalize_thread_turns_status(
-            &mut page.data,
-            thread_status,
-            has_live_in_progress_turn,
-        );
         Some(page)
     } else if let Some(params) = pending.initial_turns_page.as_ref() {
         match super::thread_processor::build_thread_resume_initial_turns_page(
             &pending.history_items,
-            thread.status.clone(),
-            has_live_in_progress_turn,
             active_turn,
             params,
         ) {
@@ -854,13 +858,13 @@ pub(super) fn set_thread_status_and_interrupt_stale_turns(
     thread: &mut Thread,
     loaded_status: ThreadStatus,
     has_live_in_progress_turn: bool,
+    active_turn_id: Option<&str>,
 ) {
     let status = resolve_thread_status(loaded_status, has_live_in_progress_turn);
-    if !matches!(status, ThreadStatus::Active { .. }) {
-        for turn in &mut thread.turns {
-            if matches!(turn.status, TurnStatus::InProgress) {
-                turn.status = TurnStatus::Interrupted;
-            }
+    for turn in &mut thread.turns {
+        if matches!(turn.status, TurnStatus::InProgress) && Some(turn.id.as_str()) != active_turn_id
+        {
+            turn.status = TurnStatus::Interrupted;
         }
     }
     thread.status = status;
