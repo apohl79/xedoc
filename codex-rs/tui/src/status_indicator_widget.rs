@@ -335,7 +335,7 @@ fn compaction_part(header: &str) -> Option<&str> {
 
 fn compaction_stage(header: &str) -> Option<&str> {
     header
-        .strip_prefix("Compacting · ")
+        .strip_prefix("Compacting ")
         .filter(|stage| !stage.is_empty())
 }
 
@@ -492,7 +492,7 @@ mod tests {
             crate::tui::FrameRequester::test_dummy(),
             /*animations_enabled*/ false,
         );
-        w.update_header("Compacting · Summarizing history".to_string());
+        w.update_header("Compacting Summarizing history".to_string());
         w.is_paused = true;
         w.elapsed_running = Duration::ZERO;
 

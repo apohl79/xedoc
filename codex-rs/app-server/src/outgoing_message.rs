@@ -747,6 +747,7 @@ mod tests {
     use codex_app_server_protocol::AuthMode;
     use codex_app_server_protocol::CommandExecutionApprovalDecision;
     use codex_app_server_protocol::CommandExecutionRequestApprovalParams;
+    use codex_app_server_protocol::CompactionProgressNotification;
     use codex_app_server_protocol::ConfigWarningNotification;
     use codex_app_server_protocol::DynamicToolCallParams;
     use codex_app_server_protocol::FileChangeRequestApprovalParams;
@@ -907,6 +908,27 @@ mod tests {
                 "params": {
                     "summary": "Config error: using defaults",
                     "details": "error loading config: bad config",
+                },
+            }),
+            serde_json::to_value(notification)
+                .expect("ensure the notification serializes correctly"),
+            "ensure the notification serializes correctly"
+        );
+    }
+
+    #[test]
+    fn verify_compaction_progress_notification_serialization() {
+        let notification = ServerNotification::CompactionProgress(CompactionProgressNotification {
+            thread_id: "thread-1".to_string(),
+            stage: "summarizing history".to_string(),
+        });
+
+        assert_eq!(
+            json!({
+                "method": "compaction/progress",
+                "params": {
+                    "threadId": "thread-1",
+                    "stage": "summarizing history",
                 },
             }),
             serde_json::to_value(notification)

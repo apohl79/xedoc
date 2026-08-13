@@ -129,6 +129,9 @@ pub(super) fn server_notification_thread_target(
         ServerNotification::ModelSafetyBufferingUpdated(notification) => {
             Some(notification.thread_id.as_str())
         }
+        ServerNotification::CompactionProgress(notification) => {
+            Some(notification.thread_id.as_str())
+        }
         ServerNotification::TurnModerationMetadata(notification) => {
             Some(notification.thread_id.as_str())
         }

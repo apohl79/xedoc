@@ -4177,6 +4177,26 @@
       ],
       "type": "object"
     },
+    "CompactionProgressNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Transient status update for a compaction run.",
+      "properties": {
+        "stage": {
+          "description": "Current compaction lifecycle stage.",
+          "type": "string"
+        },
+        "threadId": {
+          "description": "Thread whose compaction run produced this update.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage",
+        "threadId"
+      ],
+      "title": "CompactionProgressNotification",
+      "type": "object"
+    },
     "ComputerUseRequirements": {
       "properties": {
         "allowLockedComputerUse": {
@@ -14547,6 +14567,26 @@
             "params"
           ],
           "title": "Model/safetyBuffering/updatedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "compaction/progress"
+              ],
+              "title": "Compaction/progressNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/CompactionProgressNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Compaction/progressNotification",
           "type": "object"
         },
         {

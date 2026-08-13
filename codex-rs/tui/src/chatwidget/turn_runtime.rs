@@ -31,7 +31,7 @@ impl ChatWidget {
         part.map_or_else(
             || {
                 format!(
-                    "Compacting · {}",
+                    "Compacting {}",
                     crate::text_formatting::capitalize_first(stage)
                 )
             },
@@ -515,27 +515,31 @@ impl ChatWidget {
         }
     }
 
+    pub(super) fn on_compaction_progress(&mut self, details: &str) {
+        let header = Self::compaction_status_header(details);
+        // Compaction owns the status indicator for the whole run. Terminal stages release it
+        // so the next turn header can take over again.
+        let stage = details
+            .trim()
+            .split_once(") ")
+            .map_or(details.trim(), |(_, stage)| stage)
+            .trim();
+        let run_finished = matches!(stage, "complete" | "failed");
+        if run_finished {
+            self.status_state.end_compaction_status();
+            self.set_status_header(String::from("Working"));
+        } else {
+            self.status_state.begin_compaction_status(header.clone());
+            self.set_status_header(header);
+        }
+        self.bottom_pane.ensure_status_indicator();
+        self.request_redraw();
+    }
+
     pub(super) fn on_warning(&mut self, message: impl Into<String>) {
         let message = message.into();
         if let Some(details) = message.strip_prefix(COMPACTION_PROGRESS_PREFIX) {
-            let header = Self::compaction_status_header(details);
-            // Compaction owns the status indicator for the whole run. Terminal stages release it
-            // so the next turn header can take over again.
-            let stage = details
-                .trim()
-                .split_once(") ")
-                .map_or(details.trim(), |(_, stage)| stage)
-                .trim();
-            let run_finished = matches!(stage, "complete" | "failed");
-            if run_finished {
-                self.status_state.end_compaction_status();
-                self.set_status_header(String::from("Working"));
-            } else {
-                self.status_state.begin_compaction_status(header.clone());
-                self.set_status_header(header);
-            }
-            self.bottom_pane.ensure_status_indicator();
-            self.request_redraw();
+            self.on_compaction_progress(details);
             return;
         }
         if !self.warning_display_state.should_display(&message) {

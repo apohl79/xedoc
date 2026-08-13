@@ -154,6 +154,9 @@ impl ChatWidget {
             ServerNotification::ModelSafetyBufferingUpdated(notification) => {
                 self.on_model_safety_buffering_updated(notification, replay_kind)
             }
+            ServerNotification::CompactionProgress(notification) => {
+                self.on_compaction_progress(&notification.stage)
+            }
             ServerNotification::Warning(notification) => self.on_warning(notification.message),
             ServerNotification::GuardianWarning(notification) => {
                 self.on_warning(notification.message)

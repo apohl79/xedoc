@@ -22,6 +22,7 @@ use codex_app_server_protocol::CommandExecutionRequestApprovalParams;
 use codex_app_server_protocol::CommandExecutionRequestApprovalResponse;
 use codex_app_server_protocol::CommandExecutionSource;
 use codex_app_server_protocol::CommandExecutionStatus;
+use codex_app_server_protocol::CompactionProgressNotification;
 use codex_app_server_protocol::DeprecationNoticeNotification;
 use codex_app_server_protocol::DynamicToolCallParams;
 use codex_app_server_protocol::EnvironmentConnectionNotification;
@@ -95,6 +96,7 @@ use codex_protocol::items::CollabAgentTool as CoreCollabAgentTool;
 use codex_protocol::items::TurnItem as CoreTurnItem;
 use codex_protocol::models::AdditionalPermissionProfile as CoreAdditionalPermissionProfile;
 use codex_protocol::plan_tool::UpdatePlanArgs;
+use codex_protocol::protocol::COMPACTION_PROGRESS_PREFIX;
 use codex_protocol::protocol::CodexErrorInfo as CoreCodexErrorInfo;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
@@ -270,13 +272,27 @@ pub(crate) async fn apply_bespoke_event_handling(
                 .await;
         }
         EventMsg::Warning(warning_event) => {
-            let notification = WarningNotification {
-                thread_id: Some(conversation_id.to_string()),
-                message: warning_event.message,
-            };
-            outgoing
-                .send_server_notification(ServerNotification::Warning(notification))
-                .await;
+            if let Some(stage) = warning_event
+                .message
+                .strip_prefix(COMPACTION_PROGRESS_PREFIX)
+            {
+                outgoing
+                    .send_server_notification(ServerNotification::CompactionProgress(
+                        CompactionProgressNotification {
+                            thread_id: conversation_id.to_string(),
+                            stage: stage.trim().to_string(),
+                        },
+                    ))
+                    .await;
+            } else {
+                let notification = WarningNotification {
+                    thread_id: Some(conversation_id.to_string()),
+                    message: warning_event.message,
+                };
+                outgoing
+                    .send_server_notification(ServerNotification::Warning(notification))
+                    .await;
+            }
         }
         EventMsg::GuardianWarning(warning_event) => {
             let notification = GuardianWarningNotification {
@@ -3419,6 +3435,63 @@ mod tests {
             }
             other => bail!("unexpected message: {other:?}"),
         }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn warning_prefixed_compaction_progress_uses_dedicated_notification() -> Result<()> {
+        let codex_home = TempDir::new()?;
+        let config = load_default_config_for_test(&codex_home).await;
+        let thread_manager = Arc::new(
+            codex_core::test_support::thread_manager_with_models_provider_and_home(
+                CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+                config.model_provider.clone(),
+                config.codex_home.to_path_buf(),
+                Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+            ),
+        );
+        let codex_core::NewThread {
+            thread_id: conversation_id,
+            thread: conversation,
+            ..
+        } = thread_manager.start_thread(config).await?;
+        let thread_state = new_thread_state();
+        let thread_watch_manager = ThreadWatchManager::new();
+        let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
+        let outgoing = Arc::new(OutgoingMessageSender::new(
+            tx,
+            codex_analytics::AnalyticsEventsClient::disabled(),
+        ));
+        let outgoing = ThreadScopedOutgoingMessageSender::new(
+            outgoing,
+            vec![ConnectionId(1)],
+            conversation_id,
+        );
+
+        apply_bespoke_event_handling(
+            Event {
+                id: "turn-1".to_string(),
+                msg: EventMsg::Warning(codex_protocol::protocol::WarningEvent {
+                    message: "• Compacting summarizing history".to_string(),
+                }),
+            },
+            conversation_id,
+            conversation,
+            thread_manager,
+            outgoing,
+            thread_state,
+            thread_watch_manager,
+            Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),
+            "test-provider".to_string(),
+        )
+        .await;
+
+        let notification = recv_broadcast_notification(&mut rx).await?;
+        let ServerNotification::CompactionProgress(notification) = notification else {
+            bail!("expected compaction/progress notification");
+        };
+        assert_eq!(notification.thread_id, conversation_id.to_string());
+        assert_eq!(notification.stage, "summarizing history");
         Ok(())
     }
 

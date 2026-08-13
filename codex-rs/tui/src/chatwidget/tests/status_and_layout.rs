@@ -2651,6 +2651,27 @@ async fn compaction_progress_updates_status_without_history_cell() {
 }
 
 #[tokio::test]
+async fn compaction_progress_notification_updates_status_without_warning_history() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+    chat.handle_server_notification(
+        ServerNotification::CompactionProgress(CompactionProgressNotification {
+            thread_id: "thread-1".to_string(),
+            stage: "summarizing history".to_string(),
+        }),
+        /*replay_kind*/ None,
+    );
+
+    let cells = drain_insert_history(&mut rx);
+    assert!(cells.is_empty(), "compaction progress should be transient");
+    let status = chat
+        .bottom_pane
+        .status_widget()
+        .expect("status indicator should be visible");
+    assert_eq!(status.header(), "Compacting Summarizing history");
+}
+
+#[tokio::test]
 async fn single_part_compaction_progress_omits_part_label() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);
@@ -2660,7 +2681,7 @@ async fn single_part_compaction_progress_omits_part_label() {
         .bottom_pane
         .status_widget()
         .expect("status indicator should be visible");
-    assert_eq!(status.header(), "Compacting · Summarizing 1/1");
+    assert_eq!(status.header(), "Compacting Summarizing 1/1");
 }
 
 #[tokio::test]
@@ -2704,7 +2725,7 @@ async fn compaction_progress_survives_status_row_hide_requests() {
             .status_widget()
             .expect("compaction status should remain visible")
             .header(),
-        "Compacting · Summarizing history"
+        "Compacting Summarizing history"
     );
 
     handle_warning(&mut chat, "• Compacting complete");
