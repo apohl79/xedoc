@@ -272,7 +272,7 @@ impl Renderable for StatusIndicatorWidget {
             spans.push(format!("part {part}").cl_cyan());
         } else if let Some(stage) = compaction_stage(&self.header) {
             spans.extend(shimmer_text("Compacting", motion_mode));
-            spans.push(" · ".dim());
+            spans.push(" ".into());
             spans.push(stage.cl_cyan());
         } else {
             spans.extend(shimmer_text(&self.header, motion_mode));
@@ -505,7 +505,7 @@ mod tests {
         let stage_cell = terminal
             .backend()
             .buffer()
-            .cell((/*x*/ 13, /*y*/ 0))
+            .cell((/*x*/ 11, /*y*/ 0))
             .expect("stage text cell should exist");
         let expected_color = Style::default().cl_cyan().fg.expect("cyan color");
         assert_eq!(stage_cell.fg, expected_color);

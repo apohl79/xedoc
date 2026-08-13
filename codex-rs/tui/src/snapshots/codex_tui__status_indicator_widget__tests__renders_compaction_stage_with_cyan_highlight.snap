@@ -2,4 +2,4 @@
 source: tui/src/status_indicator_widget.rs
 expression: terminal.backend()
 ---
-"Compacting · Summarizing history (0s • esc to interrupt)                        "
+"Compacting Summarizing history (0s • esc to interrupt)                          "
