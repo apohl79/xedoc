@@ -77,7 +77,8 @@ long sessions.
       {
         "slot": "contextual_user",
         "position": "supplement",
-        "text": "[post-turn] Check whether project context needs updating."
+        "text": "[post-turn] Check whether project context needs updating.",
+        "condition_shell": "test \"${PROJECT_CONTEXT_ENABLED:-0}\" = 1"
       }
     ]
   }
@@ -103,8 +104,16 @@ there is no AGENTS.md ordering concept.
 | `preamble` | `contextual_user` only | Inserted **before** AGENTS.md |
 | `supplement` | `contextual_user` only | Inserted **after** AGENTS.md |
 
-Plugin context is thread-scoped — subagents automatically inherit it.
-Content is static (no templates) and read once at plugin load time.
+Plugin context is thread-scoped — subagents automatically inherit it. Content is
+read once at plugin load time. An entry may add optional `condition_shell`: use
+syntax supported by the configured user shell (the example uses POSIX shell
+syntax). Codex runs it from the thread working directory, before
+that entry is first injected. Exit code `0` injects the entry; any nonzero exit,
+launch failure, or a five-second timeout omits it. Standard input and output are
+disabled, and the shell is non-login, so conditions must not rely on profile
+initialization. Conditions are trusted plugin code and inherit Codex's process
+environment. Because injected context is persistent, a later environment change
+does not remove an entry already present in the thread history.
 
 
 

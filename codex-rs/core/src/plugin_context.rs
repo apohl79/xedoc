@@ -1,7 +1,6 @@
-//! Built-in `ContextContributor` that injects static plugin context from
-//! `plugin.json` manifests. Unlike hooks, these instructions are permanent
-//! (regenerated every turn at zero overhead) and position-aware relative to
-//! the world-state (AGENTS.md) user message.
+//! Built-in `ContextContributor` that injects plugin context from `plugin.json`
+//! manifests. Unlike hooks, these instructions are permanent and position-aware
+//! relative to the world-state (AGENTS.md) user message.
 
 use codex_core_plugins::PluginLoadOutcome;
 use codex_core_plugins::manifest::load_plugin_manifest;
@@ -14,11 +13,19 @@ use codex_extension_api::PromptFragment;
 use codex_plugin::manifest::PluginContextSlot;
 use codex_plugin::manifest::PluginManifestContext;
 use codex_plugin::manifest::PluginThreadContextEntry;
+use codex_utils_absolute_path::AbsolutePathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::process::Command;
+use tokio::time::timeout;
+
+use crate::shell::Shell;
 
 const MAX_CONTEXT_ENTRIES: usize = 128;
 const MAX_CONTEXT_ENTRY_CHARS: usize = 8_000;
 const MAX_CONTEXT_TEXT_CHARS: usize = 32_000;
+const CONDITION_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A cache of plugin context declarations, keyed by plugin name, built once
 /// during plugin loading and shared across all threads.
@@ -77,13 +84,6 @@ impl PluginContextCache {
             .collect();
         Self::new(entries)
     }
-
-    fn fragments(&self) -> Vec<PluginThreadContextEntry> {
-        self.entries
-            .iter()
-            .flat_map(|(_, context)| context.thread.iter().cloned())
-            .collect()
-    }
 }
 
 /// Registers a `ContextContributor` that emits plugin context declarations as
@@ -91,14 +91,22 @@ impl PluginContextCache {
 pub fn register_plugin_context_contributor<C>(
     registry: &mut ExtensionRegistryBuilder<C>,
     cache: PluginContextCache,
+    shell: Arc<Shell>,
+    cwd: AbsolutePathBuf,
 ) where
     C: Send + Sync + 'static,
 {
-    registry.prompt_contributor(Arc::new(PluginManifestContextContributor { cache }));
+    registry.prompt_contributor(Arc::new(PluginManifestContextContributor {
+        cache,
+        shell,
+        cwd,
+    }));
 }
 
 struct PluginManifestContextContributor {
     cache: PluginContextCache,
+    shell: Arc<Shell>,
+    cwd: AbsolutePathBuf,
 }
 
 impl ContextContributor for PluginManifestContextContributor {
@@ -108,35 +116,72 @@ impl ContextContributor for PluginManifestContextContributor {
         _thread_store: &'a ExtensionData,
     ) -> ExtensionFuture<'a, Vec<PromptFragment>> {
         Box::pin(async move {
-            self.cache
-                .fragments()
-                .into_iter()
-                .map(|entry| {
-                    let slot = match entry.slot {
-                        PluginContextSlot::DeveloperPolicy => {
-                            codex_extension_api::PromptSlot::DeveloperPolicy
+            let mut fragments = Vec::new();
+            for (plugin_name, context) in self.cache.entries.iter() {
+                for entry in &context.thread {
+                    let Some(condition_shell) = entry.condition_shell.as_deref() else {
+                        fragments.push(Self::prompt_fragment(entry));
+                        continue;
+                    };
+                    let mut shell_args = self
+                        .shell
+                        .derive_exec_args(condition_shell, /*use_login_shell*/ false);
+                    let shell_program = shell_args.remove(0);
+                    let mut command = Command::new(shell_program);
+                    command
+                        .args(shell_args)
+                        .current_dir(self.cwd.as_path())
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .kill_on_drop(true);
+                    let condition_applies = match timeout(CONDITION_SHELL_TIMEOUT, command.status())
+                        .await
+                    {
+                        Ok(Ok(status)) => status.success(),
+                        Ok(Err(error)) => {
+                            tracing::warn!(plugin = %plugin_name, %error, "plugin context condition could not start; skipping entry");
+                            false
                         }
-                        PluginContextSlot::DeveloperCapabilities => {
-                            codex_extension_api::PromptSlot::DeveloperCapabilities
-                        }
-                        PluginContextSlot::ContextualUser => {
-                            codex_extension_api::PromptSlot::ContextualUser
-                        }
-                        PluginContextSlot::SeparateDeveloper => {
-                            codex_extension_api::PromptSlot::SeparateDeveloper
+                        Err(_) => {
+                            tracing::warn!(plugin = %plugin_name, "plugin context condition timed out; skipping entry");
+                            false
                         }
                     };
-                    let position = match entry.position {
-                        codex_plugin::manifest::PluginContextPosition::Preamble => {
-                            PluginContextPosition::Preamble
-                        }
-                        codex_plugin::manifest::PluginContextPosition::Supplement => {
-                            PluginContextPosition::Supplement
-                        }
-                    };
-                    PromptFragment::new(slot, entry.text).with_position(position)
-                })
-                .collect()
+                    if condition_applies {
+                        fragments.push(Self::prompt_fragment(entry));
+                    }
+                }
+            }
+            fragments
         })
     }
 }
+
+impl PluginManifestContextContributor {
+    fn prompt_fragment(entry: &PluginThreadContextEntry) -> PromptFragment {
+        let slot = match entry.slot {
+            PluginContextSlot::DeveloperPolicy => codex_extension_api::PromptSlot::DeveloperPolicy,
+            PluginContextSlot::DeveloperCapabilities => {
+                codex_extension_api::PromptSlot::DeveloperCapabilities
+            }
+            PluginContextSlot::ContextualUser => codex_extension_api::PromptSlot::ContextualUser,
+            PluginContextSlot::SeparateDeveloper => {
+                codex_extension_api::PromptSlot::SeparateDeveloper
+            }
+        };
+        let position = match entry.position {
+            codex_plugin::manifest::PluginContextPosition::Preamble => {
+                PluginContextPosition::Preamble
+            }
+            codex_plugin::manifest::PluginContextPosition::Supplement => {
+                PluginContextPosition::Supplement
+            }
+        };
+        PromptFragment::new(slot, entry.text.clone()).with_position(position)
+    }
+}
+
+#[cfg(test)]
+#[path = "plugin_context_tests.rs"]
+mod tests;

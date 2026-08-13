@@ -13,6 +13,7 @@ const MAX_DEFAULT_PROMPT_COUNT: usize = 3;
 const MAX_DEFAULT_PROMPT_LEN: usize = 128;
 const MAX_THREAD_CONTEXT_ENTRIES: usize = 32;
 const MAX_THREAD_CONTEXT_ENTRY_LEN: usize = 8_000;
+const MAX_THREAD_CONTEXT_CONDITION_SHELL_LEN: usize = 8_000;
 const MAX_THREAD_CONTEXT_TOTAL_LEN: usize = 32_000;
 
 pub type PluginManifest = codex_plugin::manifest::PluginManifest<AbsolutePathBuf>;
@@ -70,6 +71,8 @@ struct RawPluginThreadContextEntry {
     slot: String,
     position: String,
     text: String,
+    #[serde(default, rename = "condition_shell", alias = "conditionShell")]
+    condition_shell: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -369,10 +372,28 @@ fn convert_thread_context_entry(
         );
         return None;
     }
+    let condition_shell = raw
+        .condition_shell
+        .map(|condition| condition.trim().to_string());
+    if condition_shell.as_ref().is_some_and(String::is_empty) {
+        tracing::warn!("plugin thread context condition is empty; skipping entry");
+        return None;
+    }
+    if condition_shell
+        .as_ref()
+        .is_some_and(|condition| condition.chars().count() > MAX_THREAD_CONTEXT_CONDITION_SHELL_LEN)
+    {
+        tracing::warn!(
+            max_length = MAX_THREAD_CONTEXT_CONDITION_SHELL_LEN,
+            "plugin thread context condition is too long; skipping entry"
+        );
+        return None;
+    }
     Some(codex_plugin::manifest::PluginThreadContextEntry {
         slot,
         position,
         text,
+        condition_shell,
     })
 }
 
@@ -623,6 +644,8 @@ mod tests {
     use codex_exec_server::LOCAL_ENVIRONMENT_ID;
     use codex_plugin::PluginProvider;
     use codex_plugin::ResolvedPlugin;
+    use codex_plugin::manifest::PluginContextPosition;
+    use codex_plugin::manifest::PluginContextSlot;
     use codex_plugin::manifest::PluginManifest as GenericPluginManifest;
     use codex_plugin::manifest::PluginManifestHooks;
     use codex_plugin::manifest::PluginManifestInterface;
@@ -811,6 +834,43 @@ mod tests {
         assert_eq!(
             manifest.keywords,
             vec!["api-key".to_string(), "developer tools".to_string()]
+        );
+    }
+
+    #[test]
+    fn plugin_manifest_reads_thread_context_condition_shell() {
+        let plugin_root = PathUri::parse("file:///plugins/demo-plugin").expect("plugin root URI");
+        let manifest_path = plugin_root
+            .join(".codex-plugin/plugin.json")
+            .expect("manifest URI");
+        let manifest = super::parse_plugin_manifest_uri(
+            &plugin_root,
+            &manifest_path,
+            r#"{
+  "name": "demo-plugin",
+  "context": {
+    "thread": [{
+      "slot": "contextual_user",
+      "position": "supplement",
+      "text": "conditional context",
+      "condition_shell": "  exit 0  "
+    }]
+  }
+}"#,
+        )
+        .expect("URI manifest");
+
+        let context = manifest.paths.context.expect("thread context");
+        assert_eq!(context.thread.len(), 1);
+        assert_eq!(context.thread[0].slot, PluginContextSlot::ContextualUser);
+        assert_eq!(
+            context.thread[0].position,
+            PluginContextPosition::Supplement
+        );
+        assert_eq!(context.thread[0].text, "conditional context");
+        assert_eq!(
+            context.thread[0].condition_shell,
+            Some("exit 0".to_string())
         );
     }
 

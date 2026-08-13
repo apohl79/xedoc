@@ -1,10 +1,11 @@
 use codex_config::HooksFile;
 
-/// Static context declarations that Codex injects into every API inference request.
+/// Context declarations that Codex injects into API inference requests.
 ///
 /// Declared in `plugin.json` under the `context` key. These are read once at
 /// plugin load time and become permanent, position-aware instruction blocks
-/// in the model context — no process overhead, no per-turn re-evaluation.
+/// in the model context. Entries may optionally use a shell condition that is
+/// evaluated before their first injection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginManifestContext {
     /// Thread-scoped context entries injected by the built-in
@@ -12,7 +13,7 @@ pub struct PluginManifestContext {
     pub thread: Vec<PluginThreadContextEntry>,
 }
 
-/// One static context entry from a plugin manifest.
+/// One context entry from a plugin manifest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginThreadContextEntry {
     /// Target prompt slot — same semantics as `PromptSlot`.
@@ -21,6 +22,8 @@ pub struct PluginThreadContextEntry {
     pub position: PluginContextPosition,
     /// Literal instruction text injected verbatim.
     pub text: String,
+    /// Optional shell command that must exit successfully before injection.
+    pub condition_shell: Option<String>,
 }
 
 /// Prompt slot for plugin context injection.

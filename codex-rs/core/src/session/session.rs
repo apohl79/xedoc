@@ -1122,6 +1122,8 @@ impl Session {
                 crate::plugin_context::register_plugin_context_contributor(
                     &mut builder,
                     plugin_context_cache.clone(),
+                    Arc::new(default_shell.clone()),
+                    session_configuration.cwd().clone(),
                 );
                 builder.build()
             });
