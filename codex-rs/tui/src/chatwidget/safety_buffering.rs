@@ -53,31 +53,32 @@ impl ChatWidget {
         turn_id: &str,
         turn: &mut AppCommand,
         input_state: &mut ThreadInputState,
-    ) {
+    ) -> usize {
         let Some((submitted_turn_id, AppCommand::UserTurn { items, .. })) =
             self.safety_buffering.submitted_turn.as_ref()
         else {
-            return;
+            return 0;
         };
         let AppCommand::UserTurn {
             items: retry_items, ..
         } = turn
         else {
-            return;
+            return 0;
         };
         if submitted_turn_id != turn_id {
-            return;
+            return 0;
         }
         *retry_items = items.clone();
-        let steer_count = self
-            .safety_buffering
-            .accepted_steer_count
-            .min(input_state.pending_steers.len());
-        input_state.pending_steers.drain(..steer_count);
+        let accepted_steer_count = self.safety_buffering.accepted_steer_count;
+        let pending_steer_count = accepted_steer_count.min(input_state.pending_steers.len());
+        input_state.pending_steers.drain(..pending_steer_count);
         input_state
             .pending_steer_history_records
-            .drain(..steer_count);
-        input_state.pending_steer_compare_keys.drain(..steer_count);
+            .drain(..pending_steer_count);
+        input_state
+            .pending_steer_compare_keys
+            .drain(..pending_steer_count);
+        accepted_steer_count
     }
 
     pub(super) fn reset_safety_buffering_for_turn_start(&mut self) {

@@ -49,11 +49,12 @@ impl App {
         let mut retry_input_state = input_state
             .clone()
             .expect("thread input state should always be captured");
-        self.chat_widget.apply_safety_buffered_retry_input(
+        let copied_steer_count = self.chat_widget.apply_safety_buffered_retry_input(
             &turn_id,
             &mut turn,
             &mut retry_input_state,
         );
+        let source_user_message_offset = copied_steer_count.saturating_add(1);
 
         let AppCommand::UserTurn {
             items,
@@ -109,7 +110,7 @@ impl App {
                     ThreadItem::UserMessage { content, .. } => Some(content),
                     _ => None,
                 })
-                .skip(/*n*/ 1)
+                .skip(source_user_message_offset)
                 .flat_map(|content| {
                     std::iter::once(UserInput::Text {
                         text: "\n".to_string(),

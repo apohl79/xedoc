@@ -234,7 +234,6 @@ async fn run_safety_retry(
     } else {
         response_sequences.push(response_chunks("retry-response"));
     }
-    response_sequences.push(response_chunks("session-title-response"));
     response_sequences.push(vec![StreamingSseChunk {
         gate: None,
         body: responses::sse(vec![
@@ -254,6 +253,7 @@ async fn run_safety_retry(
             r#"
 model = "{CURRENT_MODEL}"
 model_provider = "{MODEL_PROVIDER_ID}"
+auto_session_name = false
 
 [model_providers.{MODEL_PROVIDER_ID}]
 name = "Safety retry test"
@@ -272,6 +272,7 @@ goals = true
     app.config.sqlite_home = codex_home.path().to_path_buf();
     app.config.model = Some(CURRENT_MODEL.to_string());
     app.config.model_provider_id = MODEL_PROVIDER_ID.to_string();
+    app.config.auto_session_name = false;
     app.config.model_provider = ModelProviderInfo {
         name: "Safety retry test".to_string(),
         base_url: Some(format!("{}/v1", server.uri())),
@@ -387,7 +388,7 @@ goals = true
         let source = app_server
             .thread_read(source_thread_id, /*include_turns*/ true)
             .await?;
-        assert_eq!(user_message_count(&source, committed_steer), 0);
+        assert_eq!(user_message_count(&source, committed_steer), 1);
     }
 
     app.handle_app_server_event(
@@ -596,7 +597,7 @@ goals = true
     };
     assert_eq!(user_message_count(&retry, &expected_retry_prompt), 1);
     if let Some(committed_steer) = committed_steer {
-        assert_eq!(user_message_count(&source, committed_steer), 0);
+        assert_eq!(user_message_count(&source, committed_steer), 1);
     }
     if let Some(previous_prompt) = previous_prompt {
         assert_eq!(user_message_count(&source, previous_prompt), 1);
@@ -613,7 +614,7 @@ goals = true
         .await?
         .goal
         .expect("retry goal");
-    let expected_source_tokens = 50;
+    let expected_source_tokens = if committed_steer.is_some() { 150 } else { 50 };
     assert_eq!(source_goal.objective, RETRY_GOAL);
     assert_eq!(source_goal.tokens_used, expected_source_tokens);
     assert_eq!(source_goal.time_used_seconds, 12);
@@ -672,9 +673,9 @@ goals = true
                 .any(|text| text.contains("<turn_aborted>")),
             "second safety retry should not inherit an interruption marker"
         );
-        retry_request_index + 3
-    } else {
         retry_request_index + 2
+    } else {
+        retry_request_index + 1
     };
     assert!(
         user_input_texts(&request_bodies[goal_continuation_request_index])
