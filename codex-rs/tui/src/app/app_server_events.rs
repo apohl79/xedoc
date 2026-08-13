@@ -287,7 +287,8 @@ impl App {
                 let result = if self.primary_thread_id == Some(thread_id)
                     || self.primary_thread_id.is_none()
                 {
-                    self.enqueue_primary_thread_notification(notification).await
+                    self.enqueue_primary_thread_notification(thread_id, notification)
+                        .await
                 } else {
                     self.enqueue_thread_notification(thread_id, notification)
                         .await
@@ -354,7 +355,8 @@ impl App {
 
         let result =
             if self.primary_thread_id == Some(thread_id) || self.primary_thread_id.is_none() {
-                self.enqueue_primary_thread_request(request).await
+                self.enqueue_primary_thread_request(thread_id, request)
+                    .await
             } else {
                 self.enqueue_thread_request(thread_id, request).await
             };

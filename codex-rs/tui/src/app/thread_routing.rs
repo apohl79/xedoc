@@ -1356,21 +1356,27 @@ impl App {
             self.chat_widget.emit_prompt_edit_thread_event();
         }
         let pending = std::mem::take(&mut self.pending_primary_events);
-        for pending_event in pending {
-            match pending_event {
+        for PendingPrimaryThreadEvent {
+            thread_id: target_thread_id,
+            event,
+        } in pending
+        {
+            match event {
                 ThreadBufferedEvent::Notification(notification) => {
-                    self.enqueue_thread_notification(thread_id, notification)
+                    self.enqueue_thread_notification(target_thread_id, notification)
                         .await?;
                 }
                 ThreadBufferedEvent::Request(request) => {
-                    self.enqueue_thread_request(thread_id, request).await?;
+                    self.enqueue_thread_request(target_thread_id, request)
+                        .await?;
                 }
                 ThreadBufferedEvent::HistoryEntryResponse(event) => {
-                    self.enqueue_thread_history_entry_response(thread_id, event)
+                    self.enqueue_thread_history_entry_response(target_thread_id, event)
                         .await?;
                 }
                 ThreadBufferedEvent::FeedbackSubmission(event) => {
-                    self.enqueue_thread_feedback_event(thread_id, event).await;
+                    self.enqueue_thread_feedback_event(target_thread_id, event)
+                        .await;
                 }
             }
         }
@@ -1382,27 +1388,35 @@ impl App {
 
     pub(super) async fn enqueue_primary_thread_notification(
         &mut self,
+        thread_id: ThreadId,
         notification: ServerNotification,
     ) -> Result<()> {
-        if let Some(thread_id) = self.primary_thread_id {
+        if self.primary_thread_id.is_some() {
             return self
                 .enqueue_thread_notification(thread_id, notification)
                 .await;
         }
         self.pending_primary_events
-            .push_back(ThreadBufferedEvent::Notification(notification));
+            .push_back(PendingPrimaryThreadEvent {
+                thread_id,
+                event: ThreadBufferedEvent::Notification(notification),
+            });
         Ok(())
     }
 
     pub(super) async fn enqueue_primary_thread_request(
         &mut self,
+        thread_id: ThreadId,
         request: ServerRequest,
     ) -> Result<()> {
-        if let Some(thread_id) = self.primary_thread_id {
+        if self.primary_thread_id.is_some() {
             return self.enqueue_thread_request(thread_id, request).await;
         }
         self.pending_primary_events
-            .push_back(ThreadBufferedEvent::Request(request));
+            .push_back(PendingPrimaryThreadEvent {
+                thread_id,
+                event: ThreadBufferedEvent::Request(request),
+            });
         Ok(())
     }
 

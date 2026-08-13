@@ -271,7 +271,8 @@ async fn enqueue_primary_thread_session_replays_buffered_approval_after_attach()
             .note_server_request(&approval_request),
         None
     );
-    app.enqueue_primary_thread_request(approval_request).await?;
+    app.enqueue_primary_thread_request(thread_id, approval_request)
+        .await?;
     app.enqueue_primary_thread_session(
         test_thread_session(thread_id, test_path_buf("/tmp/project")),
         Vec::new(),
@@ -311,6 +312,34 @@ async fn enqueue_primary_thread_session_replays_buffered_approval_after_attach()
     }
 
     panic!("expected approval action to submit a thread-scoped op");
+}
+
+#[tokio::test]
+async fn enqueue_primary_thread_session_discards_buffered_foreign_activity() -> Result<()> {
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let primary_thread_id = ThreadId::new();
+    let foreign_thread_id = ThreadId::new();
+    let foreign_agent_thread_id = ThreadId::new();
+
+    app.enqueue_primary_thread_notification(
+        foreign_thread_id,
+        sub_agent_activity_notification(
+            foreign_thread_id,
+            foreign_agent_thread_id,
+            codex_app_server_protocol::SubAgentActivityKind::Started,
+            Some("anthropic"),
+            Some("claude-opus-5"),
+        ),
+    )
+    .await?;
+    app.enqueue_primary_thread_session(
+        test_thread_session(primary_thread_id, test_path_buf("/tmp/project")),
+        Vec::new(),
+    )
+    .await?;
+
+    assert_eq!(app.agent_navigation.get(&foreign_agent_thread_id), None);
+    Ok(())
 }
 
 #[tokio::test]

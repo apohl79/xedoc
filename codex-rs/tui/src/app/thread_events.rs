@@ -24,6 +24,12 @@ pub(super) enum ThreadBufferedEvent {
     FeedbackSubmission(FeedbackThreadEvent),
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct PendingPrimaryThreadEvent {
+    pub(super) thread_id: ThreadId,
+    pub(super) event: ThreadBufferedEvent,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FeedbackThreadEvent {
     pub(super) category: FeedbackCategory,
