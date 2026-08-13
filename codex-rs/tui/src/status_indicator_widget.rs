@@ -270,6 +270,10 @@ impl Renderable for StatusIndicatorWidget {
             spans.extend(shimmer_text("Compacting", motion_mode));
             spans.push(" ".into());
             spans.push(format!("part {part}").cl_cyan());
+        } else if let Some(stage) = compaction_stage(&self.header) {
+            spans.extend(shimmer_text("Compacting", motion_mode));
+            spans.push(" · ".dim());
+            spans.push(stage.cl_cyan());
         } else {
             spans.extend(shimmer_text(&self.header, motion_mode));
         }
@@ -327,6 +331,12 @@ fn compaction_part(header: &str) -> Option<&str> {
         return None;
     }
     Some(part)
+}
+
+fn compaction_stage(header: &str) -> Option<&str> {
+    header
+        .strip_prefix("Compacting · ")
+        .filter(|stage| !stage.is_empty())
 }
 
 #[cfg(test)]
@@ -471,6 +481,34 @@ mod tests {
             .expect("pass text cell should exist");
         let expected_color = Style::default().cl_cyan().fg.expect("cyan color");
         assert_eq!(pass_cell.fg, expected_color);
+    }
+
+    #[test]
+    fn renders_compaction_stage_with_cyan_highlight() {
+        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
+        let tx = AppEventSender::new(tx_raw);
+        let mut w = StatusIndicatorWidget::new(
+            tx,
+            crate::tui::FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        w.update_header("Compacting · Summarizing history".to_string());
+        w.is_paused = true;
+        w.elapsed_running = Duration::ZERO;
+
+        let mut terminal = Terminal::new(TestBackend::new(80, 1)).expect("terminal");
+        terminal
+            .draw(|f| w.render(f.area(), f.buffer_mut()))
+            .expect("draw");
+        insta::assert_snapshot!(terminal.backend());
+
+        let stage_cell = terminal
+            .backend()
+            .buffer()
+            .cell((/*x*/ 13, /*y*/ 0))
+            .expect("stage text cell should exist");
+        let expected_color = Style::default().cl_cyan().fg.expect("cyan color");
+        assert_eq!(stage_cell.fg, expected_color);
     }
 
     #[test]
