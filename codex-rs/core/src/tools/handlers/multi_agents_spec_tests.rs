@@ -48,6 +48,7 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
             model_preset("hidden", /*show_in_picker*/ false),
             incompatible,
         ],
+        active_model_provider_id: "active".to_string(),
         agent_type_description: "role help".to_string(),
         expose_agent_type: true,
         hide_agent_type_model_reasoning: false,
@@ -129,6 +130,7 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
 fn spawn_agent_tool_v1_keeps_legacy_fork_context_field() {
     let tool = create_spawn_agent_tool_v1(SpawnAgentToolOptions {
         available_models: Vec::new(),
+        active_model_provider_id: "active".to_string(),
         agent_type_description: "role help".to_string(),
         expose_agent_type: true,
         hide_agent_type_model_reasoning: false,
@@ -194,6 +196,7 @@ fn spawn_agent_tool_caps_visible_model_summaries() {
             model_preset("fifth", /*show_in_picker*/ true),
             model_preset("sixth", /*show_in_picker*/ true),
         ],
+        active_model_provider_id: "active".to_string(),
         agent_type_description: "role help".to_string(),
         expose_agent_type: true,
         hide_agent_type_model_reasoning: false,
@@ -228,7 +231,7 @@ fn spawn_agent_tool_caps_reasoning_effort_value_length() {
     }];
 
     assert_eq!(
-        spawn_agent_models_description(&[model], MultiAgentVersion::V2),
+        spawn_agent_models_description(&[model], "active", MultiAgentVersion::V2),
         format!(
             "Available model overrides (optional; inherited parent model is preferred):\n- `visible-model`: visible description Reasoning efforts: {} (default). Service tiers: priority.",
             "é".repeat(MAX_REASONING_EFFORT_CHARS_IN_SPAWN_AGENT_DESCRIPTION)
@@ -240,6 +243,7 @@ fn spawn_agent_tool_caps_reasoning_effort_value_length() {
 fn spawn_agent_tool_keeps_model_controls_when_spawn_metadata_is_hidden() {
     let tool = create_spawn_agent_tool_v2(SpawnAgentToolOptions {
         available_models: vec![model_preset("visible", /*show_in_picker*/ true)],
+        active_model_provider_id: "active".to_string(),
         agent_type_description: "role help".to_string(),
         expose_agent_type: false,
         hide_agent_type_model_reasoning: true,
@@ -273,6 +277,7 @@ fn spawn_agent_tool_keeps_model_controls_when_spawn_metadata_is_hidden() {
 fn spawn_agent_tool_hides_model_controls_without_override_exposure() {
     let tool = create_spawn_agent_tool_v2(SpawnAgentToolOptions {
         available_models: vec![model_preset("visible", /*show_in_picker*/ true)],
+        active_model_provider_id: "active".to_string(),
         agent_type_description: "role help".to_string(),
         expose_agent_type: false,
         hide_agent_type_model_reasoning: true,
@@ -299,6 +304,23 @@ fn spawn_agent_tool_hides_model_controls_without_override_exposure() {
     }
     assert!(!description.contains(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE));
     assert!(!description.contains("Available model overrides"));
+}
+
+#[test]
+fn spawn_agent_tool_only_lists_active_provider_models() {
+    let mut active = model_preset("active", /*show_in_picker*/ true);
+    active.provider_id = "anthropic".to_string();
+    let mut foreign = model_preset("foreign", /*show_in_picker*/ true);
+    foreign.provider_id = "openai".to_string();
+
+    assert_eq!(
+        spawn_agent_models_description(&[active], "anthropic", MultiAgentVersion::V2),
+        spawn_agent_models_description(
+            &[model_preset("active", /*show_in_picker*/ true), foreign],
+            "anthropic",
+            MultiAgentVersion::V2,
+        )
+    );
 }
 
 #[test]

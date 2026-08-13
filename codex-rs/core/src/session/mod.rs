@@ -1565,7 +1565,13 @@ impl Session {
         updates: SessionSettingsUpdate,
     ) -> ConstraintResult<()> {
         let notify_config_contributors = !self.services.extensions.config_contributors().is_empty();
-        let (previous_config, new_config, permission_profile_changed, startup_prewarm) = {
+        let (
+            previous_config,
+            new_config,
+            permission_profile_changed,
+            startup_prewarm,
+            active_model_provider_id,
+        ) = {
             let mut state = self.state.lock().await;
             let updated = match state.session_configuration.apply(&updates) {
                 Ok(updated) => updated,
@@ -1589,6 +1595,8 @@ impl Session {
                 .original_config_do_not_use
                 .model_provider_id
                 != updated.original_config_do_not_use.model_provider_id;
+            let active_model_provider_id = model_provider_changed
+                .then(|| updated.original_config_do_not_use.model_provider_id.clone());
             let model_client = provider_changed.then(|| {
                 Self::model_client(
                     Arc::clone(&self.services.auth_manager),
@@ -1620,8 +1628,14 @@ impl Session {
                 new_config,
                 permission_profile_changed,
                 startup_prewarm,
+                active_model_provider_id,
             )
         };
+        if let Some(active_model_provider_id) = active_model_provider_id {
+            self.services
+                .models_manager
+                .prioritize_provider(&active_model_provider_id);
+        }
         if let Some(startup_prewarm) = startup_prewarm {
             startup_prewarm.abort().await;
         }

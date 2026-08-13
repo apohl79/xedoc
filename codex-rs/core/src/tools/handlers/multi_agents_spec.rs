@@ -25,6 +25,7 @@ const MAX_REASONING_EFFORT_CHARS_IN_SPAWN_AGENT_DESCRIPTION: usize = 64;
 #[derive(Debug, Clone)]
 pub struct SpawnAgentToolOptions {
     pub available_models: Vec<ModelPreset>,
+    pub active_model_provider_id: String,
     pub agent_type_description: String,
     pub expose_agent_type: bool,
     pub hide_agent_type_model_reasoning: bool,
@@ -37,6 +38,7 @@ impl Default for SpawnAgentToolOptions {
     fn default() -> Self {
         Self {
             available_models: Vec::new(),
+            active_model_provider_id: String::new(),
             agent_type_description: String::new(),
             expose_agent_type: true,
             hide_agent_type_model_reasoning: false,
@@ -66,7 +68,11 @@ impl Default for WaitAgentTimeoutOptions {
 
 pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
     let available_models_description = (!options.hide_agent_type_model_reasoning).then(|| {
-        spawn_agent_models_description(&options.available_models, options.multi_agent_version)
+        spawn_agent_models_description(
+            &options.available_models,
+            &options.active_model_provider_id,
+            options.multi_agent_version,
+        )
     });
     let inherited_model_guidance =
         (!options.hide_agent_type_model_reasoning).then_some(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE);
@@ -101,7 +107,11 @@ pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
 
 pub fn create_spawn_agent_tool_v2(options: SpawnAgentToolOptions) -> ToolSpec {
     let available_models_description = options.expose_spawn_agent_model_overrides.then(|| {
-        spawn_agent_models_description(&options.available_models, options.multi_agent_version)
+        spawn_agent_models_description(
+            &options.available_models,
+            &options.active_model_provider_id,
+            options.multi_agent_version,
+        )
     });
     let inherited_model_guidance = (options.expose_spawn_agent_model_overrides
         && !options.hide_agent_type_model_reasoning)
@@ -781,12 +791,16 @@ Note that passing `fork_turns="none"` will not pass any surrounding context to t
 
 fn spawn_agent_models_description(
     models: &[ModelPreset],
+    active_model_provider_id: &str,
     multi_agent_version: MultiAgentVersion,
 ) -> String {
     let visible_models: Vec<&ModelPreset> = models
         .iter()
         .filter(|model| model.show_in_picker)
         .filter(|model| model_supports_multi_agent_backend(model, multi_agent_version))
+        .filter(|model| {
+            model.provider_id.is_empty() || model.provider_id == active_model_provider_id
+        })
         .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
         .collect();
     if visible_models.is_empty() {

@@ -789,6 +789,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mu
                 multi_agent_v2_handler(
                     SpawnAgentHandlerV2::new(SpawnAgentToolOptions {
                         available_models: turn_context.available_models.clone(),
+                        active_model_provider_id: turn_context.config.model_provider_id.clone(),
                         agent_type_description,
                         expose_agent_type: !turn_context.config.agent_roles.is_empty(),
                         hide_agent_type_model_reasoning: hide_spawn_agent_metadata,
@@ -837,6 +838,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mu
             planned_tools.add_with_exposure(
                 SpawnAgentHandler::new(SpawnAgentToolOptions {
                     available_models: turn_context.available_models.clone(),
+                    active_model_provider_id: turn_context.config.model_provider_id.clone(),
                     agent_type_description,
                     expose_agent_type: !turn_context.config.agent_roles.is_empty(),
                     hide_agent_type_model_reasoning: false,

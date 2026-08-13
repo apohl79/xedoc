@@ -16,6 +16,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::sync::TryLockError;
@@ -208,6 +209,12 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
         self.get_model_info(model, config)
     }
 
+    /// Prioritize a configured provider when combining multi-provider catalogs.
+    ///
+    /// Single-provider managers ignore this notification. Multi-provider managers use it after a
+    /// session provider switch so duplicate model slugs resolve to the selected provider.
+    fn prioritize_provider(&self, _provider_id: &str) {}
+
     /// Refresh models if the provided ETag differs from the cached ETag.
     ///
     /// Uses `Online` strategy to fetch latest models when ETags differ.
@@ -230,17 +237,47 @@ pub type SharedModelsManager = Arc<dyn ModelsManager>;
 /// from a different provider is selected.
 #[derive(Debug)]
 pub struct MultiProviderModelsManager {
-    /// (provider_id, manager) pairs. The first entry is the primary/active provider.
+    /// (provider_id, manager) pairs in deterministic provider-id order.
     managers: Vec<(String, SharedModelsManager)>,
+    active_provider_id: StdRwLock<String>,
 }
 
 impl MultiProviderModelsManager {
     pub fn new(managers: Vec<(String, SharedModelsManager)>) -> Self {
-        Self { managers }
+        let active_provider_id = managers
+            .first()
+            .map(|(provider_id, _)| provider_id.clone())
+            .unwrap_or_default();
+        Self {
+            managers,
+            active_provider_id: StdRwLock::new(active_provider_id),
+        }
     }
 
-    fn primary_manager(&self) -> &SharedModelsManager {
-        &self.managers[0].1
+    fn prioritized_managers(&self) -> Vec<(String, SharedModelsManager)> {
+        let active_provider_id = self
+            .active_provider_id
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut managers = self.managers.clone();
+        managers.sort_by(|(left_id, _), (right_id, _)| {
+            (left_id != &*active_provider_id)
+                .cmp(&(right_id != &*active_provider_id))
+                .then_with(|| left_id.cmp(right_id))
+        });
+        managers
+    }
+
+    fn active_manager(&self) -> SharedModelsManager {
+        let active_provider_id = self
+            .active_provider_id
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.managers
+            .iter()
+            .find(|(provider_id, _)| provider_id == &*active_provider_id)
+            .map(|(_, manager)| Arc::clone(manager))
+            .unwrap_or_else(|| Arc::clone(&self.managers[0].1))
     }
 }
 
@@ -250,16 +287,17 @@ impl ModelsManager for MultiProviderModelsManager {
         refresh_strategy: RefreshStrategy,
         http_client_factory: HttpClientFactory,
     ) -> ModelsManagerFuture<'_, Vec<ModelPreset>> {
+        let managers = self.prioritized_managers();
         Box::pin(async move {
             let mut seen_slugs = std::collections::HashSet::new();
             let mut all_presets = Vec::new();
-            for (provider_id, manager) in &self.managers {
+            for (provider_id, manager) in managers {
                 for mut preset in manager
                     .list_models(refresh_strategy, http_client_factory.clone())
                     .await
                 {
                     if seen_slugs.insert(preset.model.clone()) {
-                        preset.provider_id.clone_from(provider_id);
+                        preset.provider_id.clone_from(&provider_id);
                         all_presets.push(preset);
                     }
                 }
@@ -273,9 +311,10 @@ impl ModelsManager for MultiProviderModelsManager {
         refresh_strategy: RefreshStrategy,
         http_client_factory: HttpClientFactory,
     ) -> ModelsManagerFuture<'_, ModelsResponse> {
+        let managers = self.prioritized_managers();
         Box::pin(async move {
             let mut all_models = Vec::new();
-            for (_provider_id, manager) in &self.managers {
+            for (_provider_id, manager) in managers {
                 let catalog = manager
                     .raw_model_catalog(refresh_strategy, http_client_factory.clone())
                     .await;
@@ -286,9 +325,10 @@ impl ModelsManager for MultiProviderModelsManager {
     }
 
     fn get_remote_models(&self) -> ModelsManagerFuture<'_, Vec<ModelInfo>> {
+        let managers = self.prioritized_managers();
         Box::pin(async move {
             let mut all_models = Vec::new();
-            for (_provider_id, manager) in &self.managers {
+            for (_provider_id, manager) in managers {
                 let models = manager.get_remote_models().await;
                 all_models.extend(models);
             }
@@ -298,7 +338,7 @@ impl ModelsManager for MultiProviderModelsManager {
 
     fn try_get_remote_models(&self) -> Result<Vec<ModelInfo>, TryLockError> {
         let mut all_models = Vec::new();
-        for (_provider_id, manager) in &self.managers {
+        for (_provider_id, manager) in self.prioritized_managers() {
             let models = manager.try_get_remote_models()?;
             all_models.extend(models);
         }
@@ -306,27 +346,26 @@ impl ModelsManager for MultiProviderModelsManager {
     }
 
     fn auth_manager(&self) -> Option<&AuthManager> {
-        self.primary_manager().auth_manager()
+        self.managers[0].1.auth_manager()
     }
 
     fn build_available_models(&self, remote_models: Vec<ModelInfo>) -> Vec<ModelPreset> {
-        // Fall back to the primary manager for filtering and default marking
-        self.primary_manager().build_available_models(remote_models)
+        self.active_manager().build_available_models(remote_models)
     }
 
     fn list_collaboration_modes(&self) -> Vec<CollaborationModeMask> {
-        self.primary_manager().list_collaboration_modes()
+        self.active_manager().list_collaboration_modes()
     }
 
     fn try_list_models(&self) -> Result<Vec<ModelPreset>, TryLockError> {
         let mut seen_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut all_presets = Vec::new();
-        for (provider_id, manager) in &self.managers {
+        for (provider_id, manager) in self.prioritized_managers() {
             let remote_models = manager.try_get_remote_models()?;
             let presets = manager.build_available_models(remote_models);
             for mut preset in presets {
                 if seen_slugs.insert(preset.model.clone()) {
-                    preset.provider_id = provider_id.clone();
+                    preset.provider_id.clone_from(&provider_id);
                     all_presets.push(preset);
                 }
             }
@@ -344,9 +383,24 @@ impl ModelsManager for MultiProviderModelsManager {
             .managers
             .iter()
             .find(|(id, _)| id == provider_id)
-            .map(|(_, manager)| manager)
-            .unwrap_or_else(|| self.primary_manager());
-        manager.get_model_info(model, config)
+            .map(|(_, manager)| Arc::clone(manager))
+            .unwrap_or_else(|| self.active_manager());
+        Box::pin(async move { manager.get_model_info(model, config).await })
+    }
+
+    fn prioritize_provider(&self, provider_id: &str) {
+        if self
+            .managers
+            .iter()
+            .any(|(configured_provider_id, _)| configured_provider_id == provider_id)
+        {
+            let mut active_provider_id = self
+                .active_provider_id
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            active_provider_id.clear();
+            active_provider_id.push_str(provider_id);
+        }
     }
 
     fn refresh_if_new_etag(
@@ -354,8 +408,11 @@ impl ModelsManager for MultiProviderModelsManager {
         etag: String,
         http_client_factory: HttpClientFactory,
     ) -> ModelsManagerFuture<'_, ()> {
-        let managers: Vec<SharedModelsManager> =
-            self.managers.iter().map(|(_, m)| m.clone()).collect();
+        let managers: Vec<SharedModelsManager> = self
+            .prioritized_managers()
+            .into_iter()
+            .map(|(_, manager)| manager)
+            .collect();
         Box::pin(async move {
             for manager in &managers {
                 manager

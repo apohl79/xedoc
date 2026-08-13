@@ -252,6 +252,47 @@ async fn multi_provider_list_models_tags_and_deduplicates_presets() {
 }
 
 #[tokio::test]
+async fn multi_provider_prioritizes_the_active_provider() {
+    let primary_models = ModelsResponse {
+        models: vec![remote_model(
+            "shared",
+            "Shared Primary",
+            /*priority*/ 0,
+        )],
+    };
+    let secondary_models = ModelsResponse {
+        models: vec![remote_model(
+            "shared",
+            "Shared Secondary",
+            /*priority*/ 0,
+        )],
+    };
+    let manager = MultiProviderModelsManager::new(vec![
+        (
+            "primary".to_string(),
+            Arc::new(static_manager_for_tests(primary_models)),
+        ),
+        (
+            "secondary".to_string(),
+            Arc::new(static_manager_for_tests(secondary_models)),
+        ),
+    ]);
+
+    manager.prioritize_provider("secondary");
+    let models = manager
+        .list_models(RefreshStrategy::Offline, DEFAULT_HTTP_CLIENT_FACTORY)
+        .await;
+
+    assert_eq!(
+        models
+            .into_iter()
+            .map(|model| (model.display_name, model.provider_id))
+            .collect::<Vec<_>>(),
+        vec![("Shared Secondary".to_string(), "secondary".to_string())]
+    );
+}
+
+#[tokio::test]
 async fn multi_provider_model_info_uses_the_selected_provider() {
     let primary_models = ModelsResponse {
         models: vec![remote_model(
