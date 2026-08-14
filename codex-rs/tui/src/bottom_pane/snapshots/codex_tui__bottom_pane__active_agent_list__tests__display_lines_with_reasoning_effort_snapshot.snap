@@ -1,0 +1,6 @@
+---
+source: tui/src/bottom_pane/active_agent_list_tests.rs
+expression: rendered
+---
+• Agents
+  └ □ review_stack3_61_70 Working... (9s, openai/gpt-5.6-terra/medium, ↓175k, ↑2.54k)

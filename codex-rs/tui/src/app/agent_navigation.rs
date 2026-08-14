@@ -107,6 +107,7 @@ impl AgentNavigationState {
             previous_agent_path,
             previous_model_provider_id,
             previous_model,
+            previous_reasoning_effort,
             previous_total_tokens,
             previous_is_running,
         ) = self
@@ -117,11 +118,12 @@ impl AgentNavigationState {
                     entry.agent_path.clone(),
                     entry.model_provider_id.clone(),
                     entry.model.clone(),
+                    entry.reasoning_effort.clone(),
                     entry.total_tokens,
                     entry.is_running,
                 )
             })
-            .unwrap_or((None, None, None, None, false));
+            .unwrap_or((None, None, None, None, None, false));
         self.threads.insert(
             thread_id,
             AgentPickerThreadEntry {
@@ -130,6 +132,7 @@ impl AgentNavigationState {
                 agent_path: previous_agent_path,
                 model_provider_id: previous_model_provider_id,
                 model: previous_model,
+                reasoning_effort: previous_reasoning_effort,
                 total_tokens: previous_total_tokens,
                 is_running: previous_is_running && !is_closed,
                 is_closed,
@@ -151,6 +154,7 @@ impl AgentNavigationState {
                     agent_path: None,
                     model_provider_id: None,
                     model: None,
+                    reasoning_effort: None,
                     total_tokens: None,
                     is_running: false,
                     is_closed: false,
@@ -162,6 +166,9 @@ impl AgentNavigationState {
         }
         if let Some(model) = normalized_agent_metadata(activity.model) {
             entry.model = Some(model);
+        }
+        if let Some(reasoning_effort) = activity.reasoning_effort {
+            entry.reasoning_effort = Some(reasoning_effort);
         }
         if activity.current_activity.is_some() {
             entry.current_activity = activity.current_activity;

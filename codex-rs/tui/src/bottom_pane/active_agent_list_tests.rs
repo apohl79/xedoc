@@ -92,6 +92,39 @@ fn display_lines_renders_provider_model() {
 }
 
 #[test]
+fn display_lines_with_reasoning_effort_snapshot() {
+    let now = Instant::now();
+    let mut list = ActiveAgentList::new(FrameRequester::test_dummy());
+    list.set_agents(vec![ActiveAgentEntry {
+        name: "review_stack3_61_70".to_string(),
+        started_at: now - Duration::from_secs(9),
+        provider_model: Some("openai/gpt-5.6-terra/medium".to_string()),
+        total_tokens: None,
+        token_usage: Some(TokenUsage {
+            input_tokens: 175_000,
+            output_tokens: 2_540,
+            total_tokens: 177_540,
+            ..Default::default()
+        }),
+        current_activity: None,
+    }]);
+
+    let rendered = list
+        .display_lines_at(/*width*/ 120, now)
+        .into_iter()
+        .map(|line| {
+            line.spans
+                .into_iter()
+                .map(|span| span.content)
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    insta::assert_snapshot!(rendered);
+}
+
+#[test]
 fn display_lines_renders_provider_model_and_tokens() {
     let now = Instant::now();
     let mut list = ActiveAgentList::new(FrameRequester::test_dummy());

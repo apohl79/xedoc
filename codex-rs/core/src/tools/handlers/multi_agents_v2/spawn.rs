@@ -159,6 +159,9 @@ async fn handle_spawn_agent(
                 model: agent_snapshot
                     .as_ref()
                     .map(|snapshot| snapshot.model.clone()),
+                reasoning_effort: agent_snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.reasoning_effort.clone()),
                 kind: SubAgentActivityKind::Started,
                 current_activity: Some("Working...".to_string()),
             }

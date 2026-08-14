@@ -157,6 +157,7 @@ pub(crate) async fn handle_message_string_tool(
                 agent_path: receiver_agent_path,
                 model_provider: None,
                 model: None,
+                reasoning_effort: None,
                 kind: SubAgentActivityKind::Interacted,
                 current_activity: None,
             }

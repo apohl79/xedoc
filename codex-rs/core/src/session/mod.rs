@@ -2076,6 +2076,7 @@ impl Session {
                     agent_path: child_agent_path.clone(),
                     model_provider: None,
                     model: None,
+                    reasoning_effort: None,
                     kind: codex_protocol::protocol::SubAgentActivityKind::Completed,
                     current_activity: None,
                 },

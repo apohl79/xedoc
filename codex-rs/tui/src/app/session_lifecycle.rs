@@ -246,6 +246,7 @@ impl App {
             let provider_model = active_agent_provider_model(
                 entry.model_provider_id.as_deref(),
                 entry.model.as_deref(),
+                entry.reasoning_effort.as_ref(),
             );
             agents.push(ActiveAgentEntry {
                 name,
@@ -1102,13 +1103,20 @@ impl App {
     }
 }
 
-fn active_agent_provider_model(provider: Option<&str>, model: Option<&str>) -> Option<String> {
+fn active_agent_provider_model(
+    provider: Option<&str>,
+    model: Option<&str>,
+    reasoning_effort: Option<&ReasoningEffortConfig>,
+) -> Option<String> {
     let provider = provider
         .map(str::trim)
         .filter(|provider| !provider.is_empty());
     let model = model.map(str::trim).filter(|model| !model.is_empty());
     match (provider, model) {
-        (Some(provider), Some(model)) => Some(format!("{provider}/{model}")),
+        (Some(provider), Some(model)) => Some(match reasoning_effort {
+            Some(reasoning_effort) => format!("{provider}/{model}/{reasoning_effort}"),
+            None => format!("{provider}/{model}"),
+        }),
         (Some(provider), None) => Some(provider.to_string()),
         (None, Some(model)) => Some(model.to_string()),
         (None, None) => None,
@@ -1209,6 +1217,18 @@ mod tests {
         assert_eq!(
             active_agent_display_name(thread_id, None),
             "Agent (00000000)"
+        );
+    }
+
+    #[test]
+    fn active_agent_provider_model_appends_reasoning_effort() {
+        assert_eq!(
+            active_agent_provider_model(
+                Some("openai"),
+                Some("gpt-5.6-terra"),
+                Some(&ReasoningEffortConfig::Medium)
+            ),
+            Some("openai/gpt-5.6-terra/medium".to_string())
         );
     }
 }

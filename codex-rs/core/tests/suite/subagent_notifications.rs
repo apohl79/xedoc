@@ -1109,8 +1109,55 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
 
     test.submit_turn(TURN_0_FORK_PROMPT).await?;
     let _ = seed_turn.single_request();
-    test.submit_turn(TURN_1_PROMPT).await?;
-    let _ = spawn_turn.single_request();
+    let (sandbox_policy, permission_profile) =
+        turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
+    let session_model = test.session_configured.model.clone();
+    test.codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: TURN_1_PROMPT.to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                approval_policy: Some(AskForApproval::Never),
+                sandbox_policy: Some(sandbox_policy),
+                permission_profile,
+                collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+                    mode: codex_protocol::config_types::ModeKind::Default,
+                    settings: codex_protocol::config_types::Settings {
+                        model: session_model,
+                        reasoning_effort: None,
+                        developer_instructions: None,
+                    },
+                }),
+                ..Default::default()
+            },
+        })
+        .await?;
+    let turn_id = wait_for_event_match(&test.codex, |event| match event {
+        EventMsg::TurnStarted(event) => Some(event.turn_id.clone()),
+        _ => None,
+    })
+    .await;
+    let _ = wait_for_requests(&spawn_turn).await?;
+
+    let activity_metadata = wait_for_event_match(&test.codex, |event| match event {
+        EventMsg::SubAgentActivity(activity) if activity.kind == SubAgentActivityKind::Started => {
+            Some((activity.model.clone(), activity.reasoning_effort.clone()))
+        }
+        _ => None,
+    })
+    .await;
+    assert_eq!(
+        activity_metadata,
+        (
+            Some(expected_model.to_string()),
+            Some(expected_reasoning_effort.clone())
+        )
+    );
 
     let child_request = wait_for_request_with_model(&child_request_log, expected_model).await?;
     assert!(child_request.body_contains_text(TURN_0_FORK_PROMPT));
@@ -1125,6 +1172,12 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
             json!(expected_reasoning_effort.to_string()),
         )
     );
+    wait_for_event_with_timeout(
+        &test.codex,
+        |event| matches!(event, EventMsg::TurnComplete(event) if event.turn_id == turn_id),
+        Duration::from_secs(10),
+    )
+    .await;
 
     Ok(())
 }

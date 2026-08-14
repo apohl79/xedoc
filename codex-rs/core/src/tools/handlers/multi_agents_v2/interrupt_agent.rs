@@ -80,6 +80,7 @@ async fn handle_interrupt_agent(
                 agent_path: receiver_agent_path,
                 model_provider: None,
                 model: None,
+                reasoning_effort: None,
                 kind: SubAgentActivityKind::Interrupted,
                 current_activity: None,
             }

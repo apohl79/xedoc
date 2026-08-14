@@ -404,6 +404,7 @@ impl SubAgentActivityItem {
             agent_path: self.agent_path.clone(),
             model_provider: None,
             model: None,
+            reasoning_effort: None,
             kind: self.kind,
             current_activity: self.current_activity.clone(),
         })

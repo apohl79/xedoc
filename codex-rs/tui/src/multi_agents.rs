@@ -45,6 +45,8 @@ pub(crate) struct AgentPickerThreadEntry {
     pub(crate) model_provider_id: Option<String>,
     /// Model id used by the agent thread, for example `gpt-5.5`.
     pub(crate) model: Option<String>,
+    /// Reasoning effort used by the agent thread, when reported by its activity event.
+    pub(crate) reasoning_effort: Option<ReasoningEffortConfig>,
     /// Total tokens reported for the agent thread, when available.
     pub(crate) total_tokens: Option<i64>,
     /// Whether the latest liveness refresh says the agent thread is actively working.
@@ -60,6 +62,7 @@ pub(crate) struct SubAgentActivityDisplay {
     pub(crate) agent_path: String,
     pub(crate) model_provider_id: Option<String>,
     pub(crate) model: Option<String>,
+    pub(crate) reasoning_effort: Option<ReasoningEffortConfig>,
     pub(crate) running_state_update: AgentRunningStateUpdate,
     pub(crate) current_activity: Option<String>,
 }
@@ -304,6 +307,7 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
         agent_path,
         model_provider,
         model,
+        reasoning_effort,
         current_activity,
         ..
     } = item
@@ -315,6 +319,7 @@ pub(crate) fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentAc
         agent_path: agent_path.clone(),
         model_provider_id: model_provider.clone(),
         model: model.clone(),
+        reasoning_effort: reasoning_effort.clone(),
         running_state_update: match kind {
             SubAgentActivityKind::Started => AgentRunningStateUpdate::SetRunning,
             SubAgentActivityKind::Interacted => AgentRunningStateUpdate::Preserve,
@@ -719,6 +724,7 @@ mod tests {
             agent_path: "/root/child".to_string(),
             model_provider: None,
             model: None,
+            reasoning_effort: None,
             current_activity: Some("Running tests".to_string()),
         };
 
@@ -733,6 +739,7 @@ mod tests {
                     agent_path: "/root/child".to_string(),
                     model_provider_id: None,
                     model: None,
+                    reasoning_effort: None,
                     running_state_update: AgentRunningStateUpdate::Preserve,
                     current_activity: Some("Running tests".to_string()),
                 }),
@@ -758,6 +765,7 @@ mod tests {
                 agent_path: "/root/child".to_string(),
                 model_provider: None,
                 model: None,
+                reasoning_effort: None,
                 current_activity: None,
             })
         })

@@ -473,6 +473,7 @@ supports_websockets = false
                         agent_path: Some("/root/worker".to_string()),
                         model_provider_id: None,
                         model: None,
+                        reasoning_effort: None,
                         total_tokens: None,
                         is_running: false,
                         is_closed: false,

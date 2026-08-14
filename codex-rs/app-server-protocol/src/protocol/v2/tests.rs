@@ -2814,6 +2814,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             agent_path: "/root/worker".to_string(),
             model_provider: None,
             model: None,
+            reasoning_effort: None,
             current_activity: None,
         }
     );

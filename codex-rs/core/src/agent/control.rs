@@ -353,6 +353,7 @@ impl AgentControl {
                                     agent_path: pending.agent_path,
                                     model_provider: None,
                                     model: None,
+                                    reasoning_effort: None,
                                     kind:
                                         codex_protocol::protocol::SubAgentActivityKind::Interacted,
                                     current_activity: Some(summary),

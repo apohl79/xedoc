@@ -363,6 +363,8 @@ pub enum ThreadItem {
         agent_path: String,
         model_provider: Option<String>,
         model: Option<String>,
+        #[serde(default)]
+        reasoning_effort: Option<ReasoningEffort>,
         current_activity: Option<String>,
     },
     WebSearch(WebSearchItem),
@@ -896,6 +898,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 agent_path: String::from(activity.agent_path),
                 model_provider: None,
                 model: None,
+                reasoning_effort: None,
                 current_activity: activity.current_activity,
             },
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {

@@ -19102,6 +19102,17 @@
                   "null"
                 ]
               },
+              "reasoningEffort": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ReasoningEffort"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
               "type": {
                 "enum": [
                   "subAgentActivity"

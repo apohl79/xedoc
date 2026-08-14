@@ -4371,6 +4371,8 @@ pub struct SubAgentActivityEvent {
     pub model_provider: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffortConfig>,
     pub kind: SubAgentActivityKind,
     /// Human-readable summary of what the sub-agent is currently doing.
     /// Spawn and periodic heartbeat events report a non-empty working state;

@@ -9,6 +9,7 @@ fn persisted_interacted_sub_agent_activity_has_no_transcript_cell() {
         agent_path: "/root/child".to_string(),
         model_provider: None,
         model: None,
+        reasoning_effort: None,
         current_activity: Some("Running tests".to_string()),
     };
 
