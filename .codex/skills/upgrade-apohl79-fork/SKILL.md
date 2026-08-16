@@ -22,9 +22,16 @@ that remains checked out, an updated `README.fork.md`, and an
 - Do not update, merge into, rebase, push, or otherwise move `main` or
   `main-fork`. Do not push the upgrade branch. Leave the upgrade branch
   checked out when the work stops.
-- Do not use `upstream/main` or an untagged commit as a release boundary.
+- Do not use `upstream/main` or an arbitrary untagged commit as a release
+  boundary.
   Upstream release tags must match `rust-v<major>.<minor>.<patch>` for a stable
   release or `rust-v<major>.<minor>.<patch>-alpha.<n>` for an alpha checkpoint.
+  Stable tags can be CI/CD versioning heads that are not ancestors of later
+  stable tags. Resolve a stable tag's first parent as its code boundary and
+  verify that exact commit is reachable from `upstream/main`; use the tag for
+  release identity and checkpoint naming, but do not use its version-only head
+  as the starting boundary. Alpha tags retain the exact peeled-commit rule
+  below.
 - Create each imported upstream commit as a separate merge commit. Resolve
   conflicts behaviorally and preserve every README inventory behavior.
 - Before every commit, initialize GPG when needed:
@@ -63,6 +70,9 @@ that the corresponding upstream stable tag exists.
 base_version=$(sed -n 's/^version = "\([0-9][^"]*\)"/\1/p' codex-rs/Cargo.toml | head -1)
 current_tag="rust-v${base_version}"
 git rev-parse --verify "${current_tag}^{commit}"
+current_tag_commit=$(git rev-parse "${current_tag}^{commit}")
+current_code_commit=$(git rev-parse "${current_tag_commit}^1")
+git merge-base --is-ancestor "$current_code_commit" upstream/main
 git tag --list 'rust-v*' --sort=-version:refname |
   rg '^rust-v[0-9]+\.[0-9]+\.[0-9]+$' |
   awk -v current="$current_tag" '$0 == current { exit } { print }' |
@@ -73,6 +83,17 @@ Show every tag in `/tmp/apohl79-newer-stable-tags`, recommend its first (the
 latest stable release), and ask the user which tag to use. Do not create a
 branch or begin replay until the user selects the target tag.
 
+Stable release tags are often CI/CD heads: inspect the peeled commit and its
+first parent before validating ancestry. The parent is the release's code
+boundary when it is an exact commit reachable from `upstream/main`; the tag
+head may contain only version metadata and may not be present in later release
+history. If the direct parent is not on `upstream/main`, inspect the matching
+`upstream/release/*` first-parent history and select the nearest exact commit
+that is on `upstream/main`. Record the tag head and resolved code commit; abort
+if no such match exists. This derived code boundary is allowed only because it
+comes from the selected tagged release, and must not be replaced with an
+arbitrary `upstream/main` or guessed commit.
+
 ## 2. Create or resume the isolated upgrade branch
 
 Normalize the user-selected stable tag and name the branch from its version:
@@ -81,7 +102,10 @@ Normalize the user-selected stable tag and name the branch from its version:
 target_tag=<user-selected-rust-vX.Y.Z>
 printf '%s\n' "$target_tag" | rg '^rust-v[0-9]+\.[0-9]+\.[0-9]+$'
 git rev-parse --verify "${target_tag}^{commit}"
-git merge-base --is-ancestor "$current_tag" "$target_tag"
+target_tag_commit=$(git rev-parse "${target_tag}^{commit}")
+target_code_commit=$(git rev-parse "${target_tag_commit}^1")
+git merge-base --is-ancestor "$target_code_commit" upstream/main
+git merge-base --is-ancestor "$current_code_commit" "$target_tag"
 target_release=${target_tag#rust-v}
 upgrade_branch="upgrade-${target_release}"
 ```
@@ -106,9 +130,9 @@ not represented in the inventory:
 
 ```bash
 sed -n '1,999p' README.fork.md
-git log --cherry-pick --right-only --oneline "$current_tag"...main-fork
-git diff --name-status "$current_tag"...main-fork
-git diff --name-status "$current_tag"...HEAD
+git log --cherry-pick --right-only --oneline "$current_code_commit"...main-fork
+git diff --name-status "$current_code_commit"...main-fork
+git diff --name-status "$current_code_commit"...HEAD
 ```
 
 For every fork-only behavior found in source, tests, release tooling, or the
@@ -125,44 +149,57 @@ primary files and relevant tests to verify the documented behavior still works.
 ## 4. Generate and maintain `upgrade-fork.md`
 
 Create `upgrade-fork.md` in the repository root on a new upgrade branch. It
-must contain the current tag, target tag, upgrade branch, initial cursor, and a
-chronological table of every commit in `current_tag..target_tag`. For each
-commit, list its full and short SHA, subject, associated release tag(s), and
-checkpoint status.
+must contain the current tag, target tag, their resolved code-boundary commits,
+the upgrade branch, initial cursor, and a chronological table of every commit
+in `current_code_commit..target_tag`. For each commit, list its full and short
+SHA, subject, associated release tag(s), and checkpoint status. The current
+stable tag's version-only CI/CD head is excluded by starting at its first
+parent; the target stable tag head remains in the replay range so the target
+version metadata is imported.
 
 Mark every commit that is exactly the peeled commit of an alpha tag as an alpha
 checkpoint; do not substitute its parent. Mark every tenth alpha checkpoint
-since `current_tag` as a test checkpoint, and mark all stable release-tag
+since `current_code_commit` as a test checkpoint, and mark all stable release-tag
 commits as test checkpoints. Preserve all rows on later rounds and update only
 their status, completion commit, validation result, and the current cursor.
 
-Build and check the tag mapping before writing the table:
+Build and check the tag mapping before writing the table. Stable tags whose
+CI/CD heads are not in the target ancestry map to their first-parent code
+boundary; a stable tag head that is in the range maps to the head itself. In
+both cases, retain the release tag and both commit IDs in the report:
 
 ```bash
-git rev-list --reverse "$current_tag..$target_tag" > /tmp/apohl79-replay-commits
+git rev-list --reverse "$current_code_commit..$target_tag" > /tmp/apohl79-replay-commits
 git tag --list 'rust-v*' --sort=version:refname |
   rg '^rust-v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$' |
   while read -r release_tag; do
-    release_commit=$(git rev-parse "${release_tag}^{commit}")
-    if test "$release_commit" != "$(git rev-parse "${current_tag}^{commit}")" &&
-      git merge-base --is-ancestor "$current_tag" "$release_commit" &&
-      git merge-base --is-ancestor "$release_commit" "$target_tag"; then
-      printf '%s\t%s\n' "$release_commit" "$release_tag"
+    release_head=$(git rev-parse "${release_tag}^{commit}")
+    release_code=$(git rev-parse "${release_head}^1")
+    git merge-base --is-ancestor "$release_code" upstream/main || continue
+    checkpoint_commit="$release_code"
+    if git merge-base --is-ancestor "$release_head" "$target_tag"; then
+      checkpoint_commit="$release_head"
+    fi
+    if git merge-base --is-ancestor "$current_code_commit" "$checkpoint_commit" &&
+      git merge-base --is-ancestor "$checkpoint_commit" "$target_tag"; then
+      printf '%s\t%s\t%s\t%s\n' \
+        "$checkpoint_commit" "$release_tag" "$release_head" "$release_code"
     fi
   done > /tmp/apohl79-release-checkpoints
 ```
 
-Use `git log --reverse --format='%H%x09%h%x09%s' "$current_tag..$target_tag"`
-as the authoritative commit order. Verify that each tag mapping occurs in that
-range before adding it to the report. Commit the initial report with a
+Use `git log --reverse --format='%H%x09%h%x09%s' "$current_code_commit..$target_tag"`
+as the authoritative commit order. Verify that each checkpoint commit occurs
+in that range before adding it to the report. Commit the initial report with a
 Conventional Commit subject such as `docs(upgrade): initialize <target_tag> replay`.
 
 ## 5. Replay one alpha/stable interval at a time
 
-The first cursor is `current_tag`. On a resumed upgrade, use the last completed
-alpha or stable tag recorded in `upgrade-fork.md`; verify it is reachable from
-`HEAD`. Select the next alpha or stable tag in chronological order, never skip
-one, and repeat this section until reaching `target_tag`.
+The first cursor is `current_code_commit`. On a resumed upgrade, use the last
+completed alpha or stable tag's recorded checkpoint commit from
+`upgrade-fork.md`; verify it is reachable from `HEAD`. Select the next alpha or
+stable tag in chronological order, never skip one, and repeat this section
+until reaching `target_tag`.
 
 For each interval, spawn one high-effort `gpt-luna` subagent. Give it exclusive
 responsibility for the current upgrade branch and interval, with a bounded
