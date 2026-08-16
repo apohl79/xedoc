@@ -499,14 +499,22 @@ The fork includes a local Codex skill for upgrading this fork from upstream
 OpenAI Codex release tags and a local report skill for checking upstream
 release drift.
 
-- The skill documents the fork upgrade workflow.
-- The skill includes an `openai` subagent for upstream inspection.
-- The workflow maps alpha tags to last code commits, advances the upstream-only
-  `main` track one commit at a time, and merges each corresponding upstream
-  commit into `main-fork` while preserving the inventory.
-- It runs `scripts/run-full-validation.sh` at every tenth alpha checkpoint and
-  at the target release. The script is waited on without live log monitoring;
-  failures are inspected, fixed, and rerun before replay continues.
+- The upgrade skill discovers stable upstream `rust-vX.Y.Z` tags newer than the
+  fork baseline, recommends the latest, and asks the user to select the target
+  before changing branches.
+- It creates `upgrade-<target-release>` from `main-fork` and keeps that branch
+  checked out; the workflow neither merges into nor moves `main-fork`.
+- `upgrade-fork.md` records every upstream commit from the current stable base
+  to the target, marks alpha-tag heads as sequential checkpoints, and records
+  interval completion and validation outcomes.
+- A high-effort `gpt-luna` subagent replays each alpha/stable interval one
+  upstream commit at a time, while preserving and auditing every behavior in
+  this inventory.
+- It runs `scripts/run-full-validation.sh` with `CARGO_BUILD_JOBS=2` only at
+  every tenth alpha checkpoint and each stable-release checkpoint. Failures are
+  fixed and rerun before replay continues; rebuildable development and test
+  artifacts are cleaned after every checkpoint test without deleting release
+  artifacts.
 - The upstream-changes skill lists stable upstream `rust-vX.Y.Z` releases
   between the current apohl79 fork base and the latest non-alpha OpenAI Codex
   tag.

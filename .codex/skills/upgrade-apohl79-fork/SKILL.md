@@ -1,292 +1,258 @@
 ---
 name: upgrade-apohl79-fork
-description: Upgrade the local apohl79 Codex fork from an OpenAI upstream release tag while preserving the fork-only inventory in README.fork.md on main-fork.
+description: Upgrade the local apohl79 Codex fork to a newer stable OpenAI release. Use when discovering newer upstream releases, staging a fork upgrade on an upgrade branch, replaying upstream commits through alpha and stable checkpoints, or preserving and auditing the README.fork.md inventory.
 ---
 
 # Upgrade Apohl79 Fork
 
-## Overview
-
-Use this workflow to advance `main-fork` from one requested upstream OpenAI
-Codex release tag to another while preserving the fork-local inventory in
-`README.fork.md`. Replay upstream history one commit at a time: first advance
-local `main` through the exact upstream commits, then merge that same commit
-into `main-fork` and resolve it against the inventory.
-
-`main-fork` is the durable fork branch. `feature/*` and `fix/*` branches are
-short-lived staging or review branches; do not discover, rebase, re-apply, or
-push them during a fork upgrade unless the user explicitly names them and asks
-for that extra branch work.
+Use this workflow to prepare, but not merge, an upgrade of `main-fork` to a
+newer stable OpenAI Codex release. The output is an `upgrade-<version>` branch
+that remains checked out, an updated `README.fork.md`, and an
+`upgrade-fork.md` replay record.
 
 ## Guardrails
 
-- Require a clean worktree before starting. Stop on uncommitted changes unless
-  the user explicitly asks how to handle them.
-- Require explicit current and target upstream tags from the user, such as
-  `rust-v0.144.0` and `rust-v0.145.0`. Do not guess either tag.
-- Verify remotes before fetching or pushing:
-  - `upstream` must be `openai/codex`.
-  - `origin` must be `apohl79/codex`.
-  - Stop for confirmation if the remote names or URLs differ.
-- Local `main` is an upstream-only release track. It must point exactly at the
-  current release tag before replay and advances one upstream commit at a
-  time. Do not push `main` to `origin` unless the user separately asks.
-- The replay range is `current-tag..target-tag`; do not substitute
-  `upstream/main` or an untagged commit.
-- Create backup refs before rewriting `main` or `main-fork`. Use
-  `refs/backup/apohl79-upgrade/<timestamp>/<branch>`.
-- Treat `README.fork.md` as the single source of truth for fork-only features
-  and fixes. Do not keep a second feature list in this skill.
-- Preserve every fork behavior listed in `README.fork.md`. If upstream now
-  implements equivalent behavior, verify the equivalence and update
-  `README.fork.md` to explain that the behavior is no longer fork-only.
-- Keep `README.fork.md` current when the upgrade changes which features or
-  fixes are fork-only.
-- Push rewritten history with `--force-with-lease`, never `--force`.
-- Do not delete branches or run `git reset --hard` unless the user explicitly
-  asks for that destructive operation.
-
-## Workflow
-
-1. Inspect the repository state:
-
-   ```bash
-   git status --short --branch
-   git remote -v
-   git fetch upstream --prune
-   git fetch origin --prune
-   ```
-
-2. Fetch and verify the current and target upstream tags:
-
-   ```bash
-   current_tag=<current-upstream-tag>
-   target_tag=<target-upstream-tag>
-   git fetch upstream "refs/tags/${current_tag}:refs/tags/${current_tag}"
-   git fetch upstream "refs/tags/${target_tag}:refs/tags/${target_tag}"
-   git fetch upstream --tags
-   git rev-parse --verify "$current_tag^{commit}"
-   git rev-parse --verify "$target_tag^{commit}"
-   git merge-base --is-ancestor "$current_tag" "$target_tag"
-   git switch main
-   test "$(git rev-parse HEAD)" = "$(git rev-parse "$current_tag^{commit}")"
-   ```
-
-   Stop if `main` is not exactly the current release tag. Do not reset it to
-   manufacture the baseline.
-
-3. Establish the fork preservation baseline:
-
-   ```bash
-   git switch main-fork
-   test -f README.fork.md
-   sed -n '1,240p' README.fork.md
-   git log --cherry-pick --right-only --oneline "$current_tag"...main-fork
-   git diff --name-status "$current_tag"...main-fork -- \
-     README.fork.md \
-     .gitleaksignore \
-     .codex/skills/upgrade-apohl79-fork \
-     codex-rs/config/src \
-     codex-rs/tui/src \
-     scripts
-   ```
-
-   Record the current fork-only inventory from `README.fork.md`. Use the log
-   and focused diff as evidence for conflict resolution, not as a second source
-   of truth. Stop if `README.fork.md` is missing; recreate or recover it from
-   git evidence before rewriting branches.
-
-4. Create backup refs for branches that can be rewritten:
-
-   ```bash
-   timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-   for branch in main main-fork; do
-     git show-ref --verify --quiet "refs/heads/$branch" || continue
-     git update-ref "refs/backup/apohl79-upgrade/$timestamp/$branch" "$branch"
-   done
-   ```
-
-   If the user explicitly named additional staging branches for the upgrade,
-   back up those branches too before touching them.
-
-5. Map alpha release tags to their final code commits and identify validation
-   checkpoints before replaying any code. An alpha tag commonly carries
-   release metadata; its first parent is the last code-bearing commit for that
-   alpha. Map that parent into the replay range, then checkpoint every tenth
-   discovered alpha tag and the final target tag.
-
-   ```bash
-   target_version=${target_tag#rust-v}
-   git rev-list --reverse "$current_tag..$target_tag" > /tmp/apohl79-replay-commits
-   nl -ba /tmp/apohl79-replay-commits
-   git tag --list "rust-v${target_version}-alpha.*" --sort=v:refname |
-     while read -r alpha_tag; do
-       tag_commit=$(git rev-parse "${alpha_tag}^{commit}")
-       code_commit=$(git rev-parse "${tag_commit}^1")
-       if git merge-base --is-ancestor "$code_commit" "$target_tag"; then
-         ordinal=$(nl -ba /tmp/apohl79-replay-commits |
-           awk -v commit="$code_commit" '$2 == commit { print $1 }')
-         printf '%s\t%s\t%s\n' "$alpha_tag" "$code_commit" "$ordinal"
-       fi
-     done | tee /tmp/apohl79-alpha-checkpoints
-   ```
-
-   Keep the resulting mapping with the upgrade notes. Mark every tenth row in
-   alpha-version order as a full-validation checkpoint, plus the final target
-   release commit. If an alpha tag does not map into the range, record that
-   fact and do not invent a checkpoint commit.
-
-6. Replay each upstream commit in chronological order. Advance `main` with a
-   fast-forward for the exact upstream commit, then create a separate merge on
-   `main-fork` for that same commit. This makes each conflict and its
-   fork-preservation resolution reviewable without importing the whole range
-   at once:
-
-   ```bash
-   while read -r commit; do
-     git switch main
-     git merge --ff-only "$commit"
-
-     git switch main-fork
-     git merge --no-ff --no-commit "$commit"
-
-     # Inspect the single-commit diff and resolve only with README.fork.md
-     # behavior preserved.
-     git diff --check
-     # Run the formatter/linter configured for the touched paths. Do not run
-     # compilation or tests for each replayed commit.
-     git commit -m "merge: replay upstream $(git show -s --format=%h "$commit")"
-   done < /tmp/apohl79-replay-commits
-   ```
-
-   Resolve every conflict behaviorally, not by accepting one side wholesale.
-   If the replayed upstream commit or a conflict resolution changes
-   binary-shipped code, increment `scripts/apohl79_build_number.txt` in that
-   same `main-fork` commit. Do not compile or run tests between ordinary replay
-   commits; formatting and lightweight lint/diff checks are required on each
-   commit.
-
-7. At each mapped checkpoint, run the full validation script only after the
-   checkpoint merge is committed. Start it in the background, wait solely for
-   its exit status, and inspect the log only after it ends. Do not tail, poll,
-   or otherwise monitor the script while it runs:
-
-   ```bash
-   checkpoint=<alpha-tag-or-target>
-   log="/tmp/apohl79-full-validation-${checkpoint}.log"
-   scripts/run-full-validation.sh >"$log" 2>&1 &
-   validation_pid=$!
-   wait "$validation_pid"
-   validation_status=$?
-   if test "$validation_status" -ne 0; then
-     sed -n '1,240p' "$log"
-   fi
-   ```
-
-   When validation fails, inspect the completed log, fix the issue on
-   `main-fork`, rerun the same checkpoint validation with the same no-monitor
-   rule, and continue only after it passes. Repeat this procedure until the
-   target release checkpoint passes.
-
-8. Handle explicitly supplied staging branches only if requested:
-
-   ```bash
-   git switch <branch>
-   git rebase main-fork
-   ```
-
-   Push those branches only if the user asked for branch updates. Use
-   `--force-with-lease` for rebased branches. Skip this step for ordinary fork
-   upgrades.
-
-9. Verify the final branch state:
-
-   ```bash
-   git status --short --branch
-   git log --oneline --decorate --graph --max-count=30 main main-fork
-   git diff --name-status main...main-fork -- \
-     README.fork.md \
-     .gitleaksignore \
-     .codex/skills/upgrade-apohl79-fork \
-     codex-rs/config/src \
-     codex-rs/tui/src \
-     scripts
-   ```
-
-   Confirm that `main-fork` contains the updated `main` base. Confirm that
-   every item listed in `README.fork.md` is still present or that
-   `README.fork.md` explains why upstream now covers it. Derive source searches
-   from the paths and behavior described in `README.fork.md`; do not add a
-   separate hardcoded feature checklist to this skill.
-
-10. Review the final validation result and run any targeted follow-up checks
-   required by the changed fork areas:
-
-   - For TUI `@` completion, popup rendering, status line, active task list, or
-     TUI snapshots, from `codex-rs`:
-
-     ```bash
-     cd codex-rs
-     just fmt
-     just test -p codex-tui
-     cargo insta pending-snapshots -p codex-tui
-     ```
-
-     Review and accept intended snapshot changes before pushing.
-
-   - For release helper changes, from the repository root:
-
-     ```bash
-     python3 scripts/test_apohl79_release.py
-     ```
-
-   - For config schema changes, from `codex-rs`:
-
-     ```bash
-     cd codex-rs
-     just write-config-schema
-     ```
-
-   - For dependency changes, from the repository root:
-
-     ```bash
-     just bazel-lock-update
-     just bazel-lock-check
-     ```
-
-   Run any additional repository-required checks for files changed during
-   conflict resolution.
-
-11. Push `main-fork` to apohl79:
-
-    ```bash
-    git push --force-with-lease origin main-fork
-    ```
-
-    Show the exact push command before running it. If the final `main-fork`
-    update is a fast-forward relative to `origin/main-fork`, a normal
-    `git push origin main-fork` is acceptable.
-
-## Recovery
-
-- To inspect a backup:
+- Require a clean worktree. Stop on unrelated changes; do not stash, reset, or
+  delete them without the user's explicit direction.
+- Verify `upstream` is `openai/codex` and `origin` is `apohl79/codex` before
+  fetching. Stop for confirmation if either mapping differs.
+- Treat `README.fork.md` as the complete, single source of truth for
+  fork-only features and fixes. Git history and diffs find missing inventory
+  items; they are not a competing feature list.
+- Do not update, merge into, rebase, push, or otherwise move `main` or
+  `main-fork`. Do not push the upgrade branch. Leave the upgrade branch
+  checked out when the work stops.
+- Do not use `upstream/main` or an untagged commit as a release boundary.
+  Upstream release tags must match `rust-v<major>.<minor>.<patch>` for a stable
+  release or `rust-v<major>.<minor>.<patch>-alpha.<n>` for an alpha checkpoint.
+- Create each imported upstream commit as a separate merge commit. Resolve
+  conflicts behaviorally and preserve every README inventory behavior.
+- Before every commit, initialize GPG when needed:
 
   ```bash
-  git log --oneline --decorate \
-    "refs/backup/apohl79-upgrade/<timestamp>/<branch>" --max-count=20
+  export GPG_TTY=$(tty)
+  gpg-agent --daemon 2>/dev/null || true
   ```
 
-- To restore a branch pointer from a backup, ask for explicit confirmation and
-  then update the ref:
+- Use Conventional Commit subjects. When an upstream merge or its resolution
+  changes shipped binary code, update `scripts/apohl79_build_number.txt` in
+  that same merge commit.
+- Use `CARGO_BUILD_JOBS=2` for checkpoint tests. Test only at every tenth
+  alpha checkpoint and at each stable-release checkpoint; do not test after
+  ordinary upstream commits.
+- Require a `gpt-luna` subagent with high reasoning effort for each release
+  interval. If that model or effort is unavailable, stop and ask the user for
+  a replacement; do not silently choose another model.
 
-  ```bash
-  git update-ref "refs/heads/<branch>" \
-    "refs/backup/apohl79-upgrade/<timestamp>/<branch>"
-  ```
+## 1. Discover the release boundary and ask for the target
 
-## Reporting
+Inspect the state and fetch upstream tags:
 
-Report the current and target tags, replay commit count, alpha-to-code-commit
-mapping, checkpoint results, the backup ref timestamp, the `README.fork.md`
-inventory result, any inventory updates, and the push result. Distinguish
-local-only updates from updates already pushed to `origin`.
+```bash
+git status --short --branch
+git remote -v
+git fetch upstream --prune --tags
+git fetch origin --prune
+test -f README.fork.md
+```
+
+Derive the fork's current stable base from the workspace version, then verify
+that the corresponding upstream stable tag exists.
+
+```bash
+base_version=$(sed -n 's/^version = "\([0-9][^"]*\)"/\1/p' codex-rs/Cargo.toml | head -1)
+current_tag="rust-v${base_version}"
+git rev-parse --verify "${current_tag}^{commit}"
+git tag --list 'rust-v*' --sort=-version:refname |
+  rg '^rust-v[0-9]+\.[0-9]+\.[0-9]+$' |
+  awk -v current="$current_tag" '$0 == current { exit } { print }' |
+  tee /tmp/apohl79-newer-stable-tags
+```
+
+Show every tag in `/tmp/apohl79-newer-stable-tags`, recommend its first (the
+latest stable release), and ask the user which tag to use. Do not create a
+branch or begin replay until the user selects the target tag.
+
+## 2. Create or resume the isolated upgrade branch
+
+Normalize the user-selected stable tag and name the branch from its version:
+
+```bash
+target_tag=<user-selected-rust-vX.Y.Z>
+printf '%s\n' "$target_tag" | rg '^rust-v[0-9]+\.[0-9]+\.[0-9]+$'
+git rev-parse --verify "${target_tag}^{commit}"
+git merge-base --is-ancestor "$current_tag" "$target_tag"
+target_release=${target_tag#rust-v}
+upgrade_branch="upgrade-${target_release}"
+```
+
+For a new upgrade, create the branch directly from the current `main-fork`:
+
+```bash
+git show-ref --verify --quiet "refs/heads/${upgrade_branch}" && exit 1
+git switch -c "$upgrade_branch" main-fork
+```
+
+For a resumed upgrade, switch to the existing branch only after verifying that
+its `upgrade-fork.md` names the same current and target tags and records a
+cursor that is an ancestor of `HEAD`. Do not restart a partially completed
+upgrade from `main-fork` or overwrite its notes.
+
+## 3. Audit the complete fork inventory before replay
+
+Read all of `README.fork.md`. Then compare the current stable base with both
+the fork and the new upgrade branch to identify fork-local behavior that is
+not represented in the inventory:
+
+```bash
+sed -n '1,999p' README.fork.md
+git log --cherry-pick --right-only --oneline "$current_tag"...main-fork
+git diff --name-status "$current_tag"...main-fork
+git diff --name-status "$current_tag"...HEAD
+```
+
+For every fork-only behavior found in source, tests, release tooling, or the
+fork-only history, ensure `README.fork.md` has an accurate entry with its
+behavioral contract and primary files. Remove no entry merely because a file
+was renamed; investigate it. If upstream supplies an equivalent behavior,
+verify it semantically, then revise the entry to explain that it is no longer
+fork-only. Commit inventory corrections before starting the first interval.
+
+During every later conflict resolution and before final reporting, repeat this
+audit for changed inventory areas. A heading alone is insufficient: search its
+primary files and relevant tests to verify the documented behavior still works.
+
+## 4. Generate and maintain `upgrade-fork.md`
+
+Create `upgrade-fork.md` in the repository root on a new upgrade branch. It
+must contain the current tag, target tag, upgrade branch, initial cursor, and a
+chronological table of every commit in `current_tag..target_tag`. For each
+commit, list its full and short SHA, subject, associated release tag(s), and
+checkpoint status.
+
+Mark every commit that is exactly the peeled commit of an alpha tag as an alpha
+checkpoint; do not substitute its parent. Mark every tenth alpha checkpoint
+since `current_tag` as a test checkpoint, and mark all stable release-tag
+commits as test checkpoints. Preserve all rows on later rounds and update only
+their status, completion commit, validation result, and the current cursor.
+
+Build and check the tag mapping before writing the table:
+
+```bash
+git rev-list --reverse "$current_tag..$target_tag" > /tmp/apohl79-replay-commits
+git tag --list 'rust-v*' --sort=version:refname |
+  rg '^rust-v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$' |
+  while read -r release_tag; do
+    release_commit=$(git rev-parse "${release_tag}^{commit}")
+    if test "$release_commit" != "$(git rev-parse "${current_tag}^{commit}")" &&
+      git merge-base --is-ancestor "$current_tag" "$release_commit" &&
+      git merge-base --is-ancestor "$release_commit" "$target_tag"; then
+      printf '%s\t%s\n' "$release_commit" "$release_tag"
+    fi
+  done > /tmp/apohl79-release-checkpoints
+```
+
+Use `git log --reverse --format='%H%x09%h%x09%s' "$current_tag..$target_tag"`
+as the authoritative commit order. Verify that each tag mapping occurs in that
+range before adding it to the report. Commit the initial report with a
+Conventional Commit subject such as `docs(upgrade): initialize <target_tag> replay`.
+
+## 5. Replay one alpha/stable interval at a time
+
+The first cursor is `current_tag`. On a resumed upgrade, use the last completed
+alpha or stable tag recorded in `upgrade-fork.md`; verify it is reachable from
+`HEAD`. Select the next alpha or stable tag in chronological order, never skip
+one, and repeat this section until reaching `target_tag`.
+
+For each interval, spawn one high-effort `gpt-luna` subagent. Give it exclusive
+responsibility for the current upgrade branch and interval, with a bounded
+task name. Set the subagent request's `model` to `gpt-luna` and its
+`reasoning_effort` to `high`. Use a bounded prompt equivalent to:
+
+```text
+On branch <upgrade-branch>, replay every upstream commit in <cursor>..<next-tag>
+as an individual merge commit. Preserve and update every README.fork.md inventory
+behavior, resolve conflicts semantically, format changed Rust code, and update
+upgrade-fork.md when the interval completes. Do not move, merge, rebase, or push
+main or main-fork. Do not run tests unless this interval is an assigned test
+checkpoint. Report conflicts, inventory changes, and commits created.
+```
+
+The subagent replays only its interval in chronological order:
+
+```bash
+git rev-list --reverse "$cursor..$next_tag" > /tmp/apohl79-interval-commits
+while read -r upstream_commit; do
+  git merge --no-ff --no-commit "$upstream_commit"
+
+  # Resolve conflicts from README.fork.md's behavioral contract, not by
+  # accepting either side wholesale.
+  git diff --check
+  # Run just fmt from codex-rs whenever code changed.
+  git commit -m "chore(upgrade): replay upstream $(git show -s --format=%h "$upstream_commit")"
+done < /tmp/apohl79-interval-commits
+```
+
+Review the subagent's result before continuing. Ensure each upstream commit has
+one corresponding merge commit, `git diff --check` is clean, every touched fork
+feature remains documented and working, and `upgrade-fork.md` records the
+completed interval. Commit the report update before testing so validation starts
+from a clean worktree.
+
+## 6. Test only scheduled checkpoints and clean up afterward
+
+Run the complete checkpoint validation only when `upgrade-fork.md` marks the
+newly reached interval as every tenth alpha checkpoint or a stable release.
+Use at most two Cargo compilation jobs:
+
+```bash
+checkpoint=<next-tag>
+log="/tmp/apohl79-full-validation-${checkpoint}.log"
+CARGO_BUILD_JOBS=2 scripts/run-full-validation.sh >"$log" 2>&1
+validation_status=$?
+sed -n '1,240p' "$log"
+```
+
+If validation fails, inspect the completed log, fix the issue on the upgrade
+branch, format and commit the fix, update `README.fork.md` when its behavioral
+contract changed, and rerun the same checkpoint. Do not advance to the next
+alpha or stable tag until it passes.
+
+After every checkpoint test invocation, successful or failed, remove only
+rebuildable development and test artifacts. Preserve release artifacts,
+including `codex-rs/target/release` and target-triple release directories.
+
+```bash
+(
+  cd codex-rs
+  cargo clean --profile dev
+  rm -rf target/nextest target/tmp
+)
+git status --short --branch
+```
+
+Record the validation result and the new cursor in `upgrade-fork.md` after the
+round. Do not run tests for non-checkpoint intervals.
+
+## 7. Final audit and stopping condition
+
+At the target stable release, prove that the branch contains all upstream
+commits, every inventory behavior has been checked, and no accidental branch
+movement occurred:
+
+```bash
+git merge-base --is-ancestor main-fork "$upgrade_branch"
+git merge-base --is-ancestor "$target_tag" HEAD
+git diff --check
+git status --short --branch
+git log --oneline --decorate --graph --max-count=30
+```
+
+Update `README.fork.md` for every verified fork feature and every behavior now
+provided by upstream. Update `upgrade-fork.md` with the final target status,
+all alpha/stable checkpoint outcomes, and the final inventory-audit result.
+
+Report the current and target tags, created branch, staged interval results,
+checkpoint test outcomes, README inventory changes, and a concise summary of
+the major upstream changes. Stop there: do not merge the upgrade branch into
+`main-fork`, do not push it, and leave `upgrade-<target-release>` checked out.
