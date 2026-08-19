@@ -59,14 +59,15 @@ that remains checked out, an updated `README.fork.md`, and an
   number for the effort. Reject non-numeric or out-of-range input and ask
   again. Never silently substitute an unapproved model or effort.
 - Maintain a persistent task plan for the upgrade and show overall replay
-  progress as a percentage. Compute the denominator once with
+  progress with checkpoint completion above merged-commit progress. Compute
+  the merged-commit denominator once with
   `git rev-list --count "$current_code_commit..$target_tag"`; compute the
-  numerator from unique second parents of completed first-parent replay merges,
-  not from the current interval or checkpoint count:
+  merged-commit numerator from unique second parents of completed first-parent
+  replay merges, not from the current interval or checkpoint count:
 
   ```bash
   total=$(git rev-list --count "$current_code_commit..$target_tag")
-  completed=$(git log --first-parent --merges --format='%P' \
+  merged=$(git log --first-parent --merges --format='%P' \
     "$current_code_commit..$upgrade_branch" |
     awk 'NF == 2 { print $2 }' | sort -u |
     while read -r parent; do
@@ -75,17 +76,41 @@ that remains checked out, an updated `README.fork.md`, and an
         printf '%s\n' "$parent"
       fi
     done | sort -u | wc -l | tr -d ' ')
-  percent=$((completed * 100 / total))
+  percent=$((merged * 100 / total))
+
+  # Count unique scheduled checkpoint rows in the release-checkpoint table.
+  # Count a checkpoint as passed only when the replay ledger records the
+  # complete suite as `passed (validation_status=0)`.
+  total_checkpoints=$(awk -F'|' '
+    /^## Release Checkpoints/ { in_release = 1; next }
+    /^## / && in_release { exit }
+    in_release && /^\|/ && $5 ~ /checkpoint/ && $5 !~ /Classification/ { n++ }
+    END { print n + 0 }
+  ' upgrade-fork.md)
+  passed_checkpoints=$(awk -F'|' '
+    /^## Commit Replay Ledger/ { in_ledger = 1; next }
+    /^## / && in_ledger { exit }
+    in_ledger && /^\|/ && $7 ~ /checkpoint/ && tolower($9) ~ /passed \(validation_status=0\)/ { n++ }
+    END { print n + 0 }
+  ' upgrade-fork.md)
   ```
 
   The ancestry filter excludes pre-upgrade fork merge parents that happen to
   be reachable from the branch but are not part of the selected upstream
   replay range.
 
-  Keep one task for the current interval and one task whose text includes
-  `Overall replay: <completed>/<total> (<percent>%)`. Update it after every
-  interval and validation checkpoint. Never label an interval percentage as
-  the overall upgrade percentage.
+  Keep one task for the current interval and one persistent overall task whose
+  text contains these lines in this order:
+
+  ```text
+  Checkpoints passed: <passed_checkpoints>/<total_checkpoints>
+  Merged commits: <merged>/<total> (<percent>%)
+  ```
+
+  Update both lines after every interval and validation checkpoint. Increment
+  `passed_checkpoints` only after the complete validation suite returns zero;
+  reaching a checkpoint endpoint or recording a partial result does not count.
+  Never label an interval percentage as the overall upgrade percentage.
 
 ## 1. Discover the release boundary and ask for the target
 
@@ -501,9 +526,11 @@ df -h .
 git status --short --branch
 ```
 
-Record the passing validation result and the new cursor in `upgrade-fork.md`
-after the cleanup. Do not run the complete validation suite for replay-only
-alpha intervals.
+Record exactly `passed (validation_status=0)` in the checkpoint row's
+Validation field, together with the new cursor, in `upgrade-fork.md` after the
+cleanup. Leave the result pending or failed when the suite has not returned
+zero. Do not run the complete validation suite for replay-only alpha
+intervals.
 
 ## 7. Final audit and stopping condition
 
