@@ -52,13 +52,12 @@ that remains checked out, an updated `README.fork.md`, and an
   `validation_status=0` before advancing. Run it again at the final target
   endpoint even when that endpoint is already a stable checkpoint; do not test
   after ordinary upstream commits.
-- Require a `gpt-5.6-luna` (`gpt-luna`) subagent with high reasoning effort for
-  each release interval. If the delegation API rejects the explicit model
-  override while the active runtime model is `gpt-5.6-luna`, retry the same
-  spawn with `model` omitted and `reasoning_effort: high`; omission inherits
-  the active Luna model and satisfies this requirement. Stop and ask the user
-  for a replacement only when the inherited runtime is not Luna or that
-  fallback also fails; never silently substitute another model.
+- Ask the user to choose the execution model and reasoning effort for each
+  release interval. Use those values for the interval subagent. If the
+  delegation API rejects the requested override, retry with the active
+  runtime model and effort; stop and ask the user for a replacement if that
+  fallback is unavailable. Never silently substitute an unapproved model or
+  effort.
 - Maintain a persistent task plan for the upgrade and show overall replay
   progress as a percentage. Compute the denominator once with
   `git rev-list --count "$current_code_commit..$target_tag"`; compute the
@@ -260,14 +259,13 @@ record a passing result until that command exits zero. A disk-protective stop,
 interrupt, or partial log is a failed checkpoint and must be rerun from the
 same endpoint.
 
-For each interval, spawn one high-effort `gpt-5.6-luna` subagent. Give it
-exclusive responsibility for the current upgrade branch and interval, with a
-bounded task name. First set the subagent request's `model` to `gpt-5.6-luna`
-(`gpt-luna`) and its `reasoning_effort` to `high`. If the API reports that the
-explicit override is unknown but the current runtime model is
-`gpt-5.6-luna`, retry the identical request with `model` omitted so it inherits
-Luna; record that fallback in the interval review. Use a bounded prompt
-equivalent to:
+For each interval, ask the user to choose the execution model and reasoning
+effort, then spawn one subagent with those values. Give it exclusive
+responsibility for the current upgrade branch and interval, with a bounded
+task name. If the API rejects the requested override, retry with the active
+runtime model and effort; record that fallback in the interval review. Stop
+and ask the user for a replacement if the fallback is unavailable. Use a
+bounded prompt equivalent to:
 
 ```text
 On branch <upgrade-branch>, replay every upstream commit in <cursor>..<next-tag>
