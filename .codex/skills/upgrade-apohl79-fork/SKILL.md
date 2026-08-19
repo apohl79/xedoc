@@ -52,12 +52,12 @@ that remains checked out, an updated `README.fork.md`, and an
   `validation_status=0` before advancing. Run it again at the final target
   endpoint even when that endpoint is already a stable checkpoint; do not test
   after ordinary upstream commits.
-- Ask the user to choose the execution model and reasoning effort for each
-  release interval. Use those values for the interval subagent. If the
-  delegation API rejects the requested override, retry with the active
-  runtime model and effort; stop and ask the user for a replacement if that
-  fallback is unavailable. Never silently substitute an unapproved model or
-  effort.
+- For each release interval, enumerate every execution model currently
+  available to the delegation API and every reasoning effort supported by the
+  selected model. Display both as complete numbered lists; do not show only a
+  curated subset. Require the user to enter a number for the model and a
+  number for the effort. Reject non-numeric or out-of-range input and ask
+  again. Never silently substitute an unapproved model or effort.
 - Maintain a persistent task plan for the upgrade and show overall replay
   progress as a percentage. Compute the denominator once with
   `git rev-list --count "$current_code_commit..$target_tag"`; compute the
@@ -259,13 +259,21 @@ record a passing result until that command exits zero. A disk-protective stop,
 interrupt, or partial log is a failed checkpoint and must be rerun from the
 same endpoint.
 
-For each interval, ask the user to choose the execution model and reasoning
-effort, then spawn one subagent with those values. Give it exclusive
-responsibility for the current upgrade branch and interval, with a bounded
-task name. If the API rejects the requested override, retry with the active
-runtime model and effort; record that fallback in the interval review. Stop
-and ask the user for a replacement if the fallback is unavailable. Use a
-bounded prompt equivalent to:
+For each interval, pause before spawning the subagent and query the delegation
+API for its complete current model catalog. Display every available model with
+its stable identifier as a numbered list, then prompt exactly for a model
+number. Validate that the response is a decimal integer in range; reject model
+names, blank input, and out-of-range numbers. After the model is selected,
+query the complete reasoning-effort list supported by that model, display every
+effort as a numbered list, and prompt for an effort number using the same
+validation rules. Do not assume that every model supports the same efforts.
+
+Persist the selected model identifier and effort in the interval task and
+`upgrade-fork.md` review before spawning the worker. If the delegation API
+rejects either selected value, refresh both catalogs and repeat the numbered
+selection with the user; never fall back silently to the active runtime.
+Give the subagent exclusive responsibility for the current upgrade branch and
+interval, with a bounded task name. Use a bounded prompt equivalent to:
 
 ```text
 On branch <upgrade-branch>, replay every upstream commit in <cursor>..<next-tag>
