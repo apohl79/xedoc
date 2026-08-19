@@ -44,9 +44,14 @@ that remains checked out, an updated `README.fork.md`, and an
 - Use Conventional Commit subjects. When an upstream merge or its resolution
   changes shipped binary code, update `scripts/apohl79_build_number.txt` in
   that same merge commit.
-- Use `CARGO_BUILD_JOBS=2` for checkpoint validation. Run the complete
-  validation suite at every alpha and stable checkpoint, and again at the
-  final target endpoint; do not test after ordinary upstream commits.
+- Use `CARGO_BUILD_JOBS=2` for checkpoint validation. A checkpoint is every
+  tenth alpha release (`alpha.10`, `alpha.20`, and so on; parse the numeric
+  suffix) and every stable release. Other alpha releases are replay-only
+  endpoints and must not trigger full validation. Immediately after the merge
+  that reaches a checkpoint, run `scripts/run-full-validation.sh` and require
+  `validation_status=0` before advancing. Run it again at the final target
+  endpoint even when that endpoint is already a stable checkpoint; do not test
+  after ordinary upstream commits.
 - Require a `gpt-5.6-luna` (`gpt-luna`) subagent with high reasoning effort for
   each release interval. If the delegation API rejects the explicit model
   override while the active runtime model is `gpt-5.6-luna`, retry the same
@@ -189,13 +194,15 @@ stable tag's version-only CI/CD head is excluded by starting at its first
 parent; the target stable tag head remains in the replay range so the target
 version metadata is imported.
 
-Mark an exact peeled alpha-tag commit as an alpha checkpoint when it is in the
-replay range. When a CI/CD alpha head is outside that range, mark its resolved
-mainline code-boundary commit instead and retain both IDs in the report. Keep
-one row per unique checkpoint commit while associating duplicate release tags
-with that row. Mark every alpha and stable release-tag checkpoint as a test
-checkpoint. Preserve all rows on later rounds and update only their status,
-completion commit, validation result, and the current cursor.
+Mark an exact peeled alpha-tag commit as a checkpoint only when its numeric
+suffix is divisible by ten and it is in the replay range. When a CI/CD alpha
+head is outside that range, mark its resolved mainline code-boundary commit
+instead and retain both IDs in the report. Keep one row per unique checkpoint
+commit while associating duplicate release tags with that row. Mark every
+stable release-tag checkpoint as a test checkpoint. Keep other alpha rows as
+replay-only endpoints; they must not trigger full validation. Preserve all rows
+on later rounds and update only their status, completion commit, validation
+result, and the current cursor.
 
 Build and check the tag mapping before writing the table. Release tags whose
 CI/CD heads are not in the target ancestry map to the nearest mainline commit
@@ -242,6 +249,17 @@ completed alpha or stable tag's recorded checkpoint commit from
 stable tag in chronological order, never skip one, and repeat this section
 until reaching `target_tag`.
 
+Classify the endpoint before starting the interval. It is a validation
+checkpoint when it is a stable release or an alpha release whose numeric
+suffix is divisible by ten; every other alpha endpoint is replay-only. Include
+the classification and the full endpoint SHA in the task message and task
+plan. After the endpoint merge and the clean `upgrade-fork.md` interval report
+commit, the agent must run the complete validation command in Section 6 for a
+checkpoint. Do not start the next interval, mark the checkpoint complete, or
+record a passing result until that command exits zero. A disk-protective stop,
+interrupt, or partial log is a failed checkpoint and must be rerun from the
+same endpoint.
+
 For each interval, spawn one high-effort `gpt-5.6-luna` subagent. Give it
 exclusive responsibility for the current upgrade branch and interval, with a
 bounded task name. First set the subagent request's `model` to `gpt-5.6-luna`
@@ -256,8 +274,11 @@ On branch <upgrade-branch>, replay every upstream commit in <cursor>..<next-tag>
 as an individual merge commit. Preserve and update every README.fork.md inventory
 behavior, resolve conflicts semantically, format changed Rust code, and update
 upgrade-fork.md when the interval completes. Do not move, merge, rebase, or push
-main or main-fork. Do not run tests unless this interval is an assigned test
-checkpoint. Report conflicts, inventory changes, and commits created.
+main or main-fork. Do not run tests while replaying ordinary commits. If this
+interval ends at a scheduled checkpoint, create the endpoint merge and clean
+report commit, then invoke `scripts/run-full-validation.sh` as required by
+Section 6 before reporting the interval complete. Report conflicts, inventory
+changes, and commits created.
 ```
 
 Prefer a fresh subagent task name for every interval so the task tree names the
@@ -382,11 +403,14 @@ before/after sizes, cleanup result, and `df -h .` output in the interval review
 even when Cargo reports `Removed 0 files`.
 
 Run the complete checkpoint validation automatically—do not ask the user for
-confirmation—whenever `upgrade-fork.md` marks the newly reached interval as
-an alpha or stable checkpoint, and once more at the final target endpoint.
-This validation is mandatory before advancing past the checkpoint. Start only
-after the interval report is committed, the worktree is clean, and the disk
-preflight above passes.
+confirmation—when the newly reached endpoint is a scheduled checkpoint:
+every tenth alpha release or any stable release. Do not run this suite for
+replay-only alpha endpoints. Run it once more at the final target endpoint,
+even if that endpoint is already a stable checkpoint. For every scheduled
+checkpoint, invoke the command immediately after the endpoint merge and clean
+interval-report commit; this validation is mandatory before advancing. Start
+only after the interval report is committed, the worktree is clean, and the
+disk preflight above passes.
 Use at most two Cargo compilation jobs:
 
 ```bash
@@ -472,7 +496,8 @@ git status --short --branch
 ```
 
 Record the passing validation result and the new cursor in `upgrade-fork.md`
-after the cleanup. Do not run tests for non-checkpoint intervals.
+after the cleanup. Do not run the complete validation suite for replay-only
+alpha intervals.
 
 ## 7. Final audit and stopping condition
 
