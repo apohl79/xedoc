@@ -91,6 +91,7 @@ async fn handle_spawn_agent(
         args.service_tier.as_deref(),
     )
     .await?;
+    apply_spawn_agent_delegation_override(&mut config, args.allow_delegation)?;
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
 
     let spawn_source = thread_spawn_source(
@@ -202,6 +203,7 @@ struct SpawnAgentArgs {
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     service_tier: Option<String>,
+    allow_delegation: Option<bool>,
     fork_turns: Option<String>,
     fork_context: Option<bool>,
 }

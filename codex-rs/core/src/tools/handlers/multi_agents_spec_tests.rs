@@ -75,7 +75,7 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
         .as_ref()
         .expect("spawn_agent should use object params");
     assert!(description.contains("Spawns an agent to work on the specified task."));
-    assert!(description.contains("The spawned agent will have the same tools as you"));
+    assert!(description.contains("unless `allow_delegation` is false"));
     assert!(!description.contains("max_concurrent_threads_per_session"));
     assert!(description.contains(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE));
     assert!(
@@ -115,6 +115,12 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
             .get("service_tier")
             .and_then(|schema| schema.description.as_deref()),
         Some(SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION)
+    );
+    assert_eq!(
+        properties
+            .get("allow_delegation")
+            .and_then(|schema| schema.description.as_deref()),
+        Some(SPAWN_AGENT_ALLOW_DELEGATION_DESCRIPTION)
     );
     assert_eq!(
         parameters.required.as_ref(),
@@ -182,6 +188,12 @@ fn spawn_agent_tool_v1_keeps_legacy_fork_context_field() {
             .get("service_tier")
             .and_then(|schema| schema.description.as_deref()),
         Some(SPAWN_AGENT_SERVICE_TIER_OVERRIDE_DESCRIPTION)
+    );
+    assert_eq!(
+        properties
+            .get("allow_delegation")
+            .and_then(|schema| schema.description.as_deref()),
+        Some(SPAWN_AGENT_ALLOW_DELEGATION_DESCRIPTION)
     );
 }
 

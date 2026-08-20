@@ -8,6 +8,7 @@ use crate::session::turn_context::TurnContext;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
+use codex_features::Feature;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
@@ -241,6 +242,33 @@ pub(crate) fn apply_spawn_agent_runtime_overrides(
     Ok(())
 }
 
+pub(crate) fn apply_spawn_agent_delegation_override(
+    config: &mut Config,
+    allow_delegation: Option<bool>,
+) -> Result<(), FunctionCallError> {
+    if allow_delegation != Some(false) {
+        return Ok(());
+    }
+
+    let mut features = config.features.get().clone();
+    features.disable(Feature::Collab);
+    features.disable(Feature::MultiAgentV2);
+    config.features.set(features).map_err(|err| {
+        FunctionCallError::RespondToModel(format!(
+            "spawn_agent could not disable delegation for the child: {err}"
+        ))
+    })?;
+    if config.features.enabled(Feature::Collab) || config.features.enabled(Feature::MultiAgentV2) {
+        return Err(FunctionCallError::RespondToModel(
+            "spawn_agent could not disable delegation because collaboration is required by managed configuration"
+                .to_string(),
+        ));
+    }
+
+    config.agents_enabled = false;
+    Ok(())
+}
+
 pub(crate) async fn apply_requested_spawn_agent_model_overrides(
     session: &Session,
     turn: &TurnContext,
@@ -280,7 +308,7 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
             .services
             .models_manager
             .get_model_info_for_provider(
-                selected_model_name,
+                &selected_model_name,
                 &selected_provider_id,
                 &config.to_models_manager_config(),
             )
@@ -291,7 +319,7 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
         config.model_provider = selected_provider;
         if let Some(reasoning_effort) = requested_reasoning_effort {
             validate_spawn_agent_reasoning_effort(
-                &selected_model_name,
+                selected_model_name,
                 &selected_model_info.supported_reasoning_levels,
                 &reasoning_effort,
             )?;

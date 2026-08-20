@@ -50,6 +50,7 @@ use codex_protocol::protocol::FileSystemSandboxEntry;
 use codex_protocol::protocol::FileSystemSandboxPolicy;
 use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::InterAgentCommunication;
+use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::NetworkSandboxPolicy;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
@@ -490,6 +491,67 @@ async fn multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override() {
         FunctionCallError::RespondToModel(
             "Full-history forked agents inherit the parent agent type; omit agent_type, or spawn without a full-history fork.".to_string(),
         )
+    );
+}
+
+#[tokio::test]
+async fn multi_agent_v2_spawn_disables_child_delegation_when_requested() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread((*turn.config).clone())
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.thread_id = root.thread_id;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    set_turn_config(&mut turn, config);
+    let session = Arc::new(session);
+    let turn = Arc::new(turn);
+
+    let output = SpawnAgentHandlerV2::default()
+        .handle(invocation(
+            Arc::clone(&session),
+            Arc::clone(&turn),
+            "spawn_agent",
+            function_payload(json!({
+                "message": "inspect this repo",
+                "task_name": "leaf_reviewer",
+                "fork_turns": "none",
+                "allow_delegation": false
+            })),
+        ))
+        .await
+        .expect("leaf agent should spawn");
+    let (content, _) = expect_text_output(output);
+    #[derive(Deserialize)]
+    struct SpawnAgentResult {
+        task_name: String,
+    }
+    let result: SpawnAgentResult =
+        serde_json::from_str(&content).expect("spawn_agent result should be json");
+    let child_thread_id = session
+        .services
+        .agent_control
+        .resolve_agent_reference(
+            session.thread_id,
+            &turn.session_source,
+            result.task_name.as_str(),
+        )
+        .await
+        .expect("spawned task name should resolve");
+    let child = manager
+        .get_thread(child_thread_id)
+        .await
+        .expect("spawned agent thread should exist");
+
+    assert_eq!(
+        child.multi_agent_version(),
+        Some(MultiAgentVersion::Disabled)
     );
 }
 
