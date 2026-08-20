@@ -123,13 +123,17 @@ removed when the upgrade branch is discarded.
   Upgrade Progress: <merged>/<total> commits merged - <passed_checkpoints>/<total_checkpoints> checkpoints passed - <percent_with_comma>% finished
   ```
 
-  Update this line after every interval and validation run. Format the overall
-  percentage to two decimal places using a comma decimal separator (for
-  example, `12,37%`). Increment `passed_checkpoints` once for every complete
-  validation-suite run that returns zero, including successful reruns of the
-  same checkpoint. Reaching a checkpoint endpoint or recording a partial or
-  failed result does not count. Never label an interval percentage as the
-  overall upgrade percentage.
+  After every replay-loop iteration, recompute the merged-commit numerator and
+  immediately update the persistent overall task so it includes the newly
+  created merge commit; do not defer progress updates until the interval ends.
+  After every successful complete validation run, recompute the checkpoint
+  numerator and immediately update the same task so it includes the new
+  checkpoint pass. Format the overall percentage to two decimal places using a
+  comma decimal separator (for example, `12,37%`). Increment
+  `passed_checkpoints` once for every complete validation-suite run that
+  returns zero, including successful reruns of the same checkpoint. Reaching a
+  checkpoint endpoint or recording a partial or failed result does not count.
+  Never label an interval percentage as the overall upgrade percentage.
 
 ## 1. Discover the release boundary and ask for the target
 
@@ -303,13 +307,15 @@ until reaching `target_tag`.
 Classify the endpoint before starting the interval. It is a validation
 checkpoint when it is a stable release or an alpha release whose numeric
 suffix is divisible by ten; every other alpha endpoint is replay-only. Include
-the classification and the full endpoint SHA in the task message and task
-plan. After the endpoint merge and the clean `upgrade-fork.md` interval report
-commit, the agent must run the complete validation command in Section 6 for a
-checkpoint. Do not start the next interval, mark the checkpoint complete, or
-record a passing result until that command exits zero. A disk-protective stop,
-interrupt, or partial log is a failed checkpoint and must be rerun from the
-same endpoint.
+the classification, the full endpoint SHA, and the exact number of upstream
+commits the interval applies in the task message and task plan. Compute that
+number with `git rev-list --count "$cursor..$next_tag"` before creating each
+interval task, including follow-up tasks. After the endpoint merge and the
+clean `upgrade-fork.md` interval report commit, the agent must run the complete
+validation command in Section 6 for a checkpoint. Do not start the next
+interval, mark the checkpoint complete, or record a passing result until that
+command exits zero. A disk-protective stop, interrupt, or partial log is a
+failed checkpoint and must be rerun from the same endpoint.
 
 Before the first interval only, refresh the complete model catalog from the
 CLI. `codex debug models` returns the provider catalog as JSON; `--bundled` is
@@ -339,9 +345,10 @@ interval, with a bounded task name. Use a bounded prompt equivalent to:
 
 ```text
 On branch <upgrade-branch>, replay every upstream commit in <cursor>..<next-tag>
-as an individual merge commit. Preserve and update every README.fork.md inventory
-behavior, resolve only non-incompatible conflicts semantically, format changed
-Rust code, and update
+as an individual merge commit. This interval applies <interval-commit-count>
+upstream commits. Preserve and update every README.fork.md inventory behavior,
+resolve only non-incompatible conflicts semantically, format changed Rust code,
+and update
 upgrade-fork.md when the interval completes. Do not move, merge, rebase, or push
 main or main-fork. Do not run tests while replaying ordinary commits. If this
 interval ends at a scheduled checkpoint, create the endpoint merge and clean
