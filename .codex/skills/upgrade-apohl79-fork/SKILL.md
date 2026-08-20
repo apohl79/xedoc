@@ -8,7 +8,9 @@ description: Upgrade the local apohl79 Codex fork to a newer stable OpenAI relea
 Use this workflow to prepare, but not merge, an upgrade of `main-fork` to a
 newer stable OpenAI Codex release. The output is an `upgrade-<version>` branch
 that remains checked out, an updated `README.fork.md`, and an
-`upgrade-fork.md` replay record.
+`upgrade-fork.md` replay record. The replay record is temporary and
+branch-local: it must never be merged or copied onto `main-fork`, and it is
+removed when the upgrade branch is discarded.
 
 ## Guardrails
 
@@ -229,6 +231,11 @@ SHA, subject, associated release tag(s), and checkpoint status. The current
 stable tag's version-only CI/CD head is excluded by starting at its first
 parent; the target stable tag head remains in the replay range so the target
 version metadata is imported.
+
+`upgrade-fork.md` is temporary upgrade-workflow state, not product
+documentation. Keep it only on the upgrade branch; never include it in a
+`main-fork` merge or cherry-pick. When abandoning or deleting the upgrade
+branch, remove this file with the branch rather than carrying it forward.
 
 Mark an exact peeled alpha-tag commit as a checkpoint only when its numeric
 suffix is divisible by ten and it is in the replay range. When a CI/CD alpha
@@ -611,3 +618,6 @@ Report the current and target tags, created branch, staged interval results,
 checkpoint test outcomes, README inventory changes, and a concise summary of
 the major upstream changes. Stop there: do not merge the upgrade branch into
 `main-fork`, do not push it, and leave `upgrade-<target-release>` checked out.
+If the upgrade branch is later discarded, delete its temporary
+`upgrade-fork.md` report as part of that cleanup; it must not land on
+`main-fork`.
