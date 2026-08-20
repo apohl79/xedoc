@@ -52,12 +52,20 @@ that remains checked out, an updated `README.fork.md`, and an
   `validation_status=0` before advancing. Run it again at the final target
   endpoint even when that endpoint is already a stable checkpoint; do not test
   after ordinary upstream commits.
-- For each release interval, enumerate every execution model currently
-  available to the delegation API and every reasoning effort supported by the
-  selected model. Display both as complete numbered lists; do not show only a
-  curated subset. Require the user to enter a number for the model and a
-  number for the effort. Reject non-numeric or out-of-range input and ask
-  again. Never silently substitute an unapproved model or effort.
+- Once, before the first replay interval starts, enumerate every execution
+  model currently available to the delegation API and every reasoning effort
+  supported by the selected model. Display both as complete numbered lists;
+  do not show only a curated subset. Require the user to enter a number for
+  the model and a number for the effort. Reject non-numeric or out-of-range
+  input and ask again. Never silently substitute an unapproved model or
+  effort. Persist the approved model/effort pair and reuse it autonomously for
+  every later interval; do not refresh the catalog or prompt again between
+  intervals. When the approved pair exactly matches the active runtime model
+  and effort, call `spawn_agent` without explicit `model` or
+  `reasoning_effort` overrides so the delegation API inherits the approved
+  pair. Pass explicit overrides only when the approved pair differs from the
+  active runtime pair. If an explicit delegation override is rejected, stop
+  the upgrade and report the rejection; never substitute another pair.
 - Maintain a persistent task plan for the upgrade and show overall replay
   progress with checkpoint completion above merged-commit progress. Compute
   the merged-commit denominator once with
@@ -79,8 +87,8 @@ that remains checked out, an updated `README.fork.md`, and an
   percent=$((merged * 100 / total))
 
   # Count unique scheduled checkpoint rows in the release-checkpoint table.
-  # Count a checkpoint as passed only when the replay ledger records the
-  # complete suite as `passed (validation_status=0)`.
+  # Count every successful complete-suite run, including a successful rerun
+  # at a checkpoint that was previously attempted.
   total_checkpoints=$(awk -F'|' '
     /^## Release Checkpoints/ { in_release = 1; next }
     /^## / && in_release { exit }
@@ -90,7 +98,9 @@ that remains checked out, an updated `README.fork.md`, and an
   passed_checkpoints=$(awk -F'|' '
     /^## Commit Replay Ledger/ { in_ledger = 1; next }
     /^## / && in_ledger { exit }
-    in_ledger && /^\|/ && $7 ~ /checkpoint/ && tolower($9) ~ /passed \(validation_status=0\)/ { n++ }
+    in_ledger && /^\|/ && $7 ~ /checkpoint/ {
+      n += gsub(/passed \(validation_status=0\)/, "&", $9)
+    }
     END { print n + 0 }
   ' upgrade-fork.md)
   ```
@@ -100,17 +110,19 @@ that remains checked out, an updated `README.fork.md`, and an
   replay range.
 
   Keep one task for the current interval and one persistent overall task whose
-  text contains these lines in this order:
+  text contains this single line:
 
   ```text
-  Checkpoints passed: <passed_checkpoints>/<total_checkpoints>
-  Merged commits: <merged>/<total> (<percent>%)
+  Upgrade Progress: <merged>/<total> commits merged - <passed_checkpoints>/<total_checkpoints> checkpoints passed - <percent_with_comma>% finished
   ```
 
-  Update both lines after every interval and validation checkpoint. Increment
-  `passed_checkpoints` only after the complete validation suite returns zero;
-  reaching a checkpoint endpoint or recording a partial result does not count.
-  Never label an interval percentage as the overall upgrade percentage.
+  Update this line after every interval and validation run. Format the overall
+  percentage to two decimal places using a comma decimal separator (for
+  example, `12,37%`). Increment `passed_checkpoints` once for every complete
+  validation-suite run that returns zero, including successful reruns of the
+  same checkpoint. Reaching a checkpoint endpoint or recording a partial or
+  failed result does not count. Never label an interval percentage as the
+  overall upgrade percentage.
 
 ## 1. Discover the release boundary and ask for the target
 
@@ -284,11 +296,11 @@ record a passing result until that command exits zero. A disk-protective stop,
 interrupt, or partial log is a failed checkpoint and must be rerun from the
 same endpoint.
 
-For each interval, pause before spawning the subagent and refresh the complete
-current model catalog from the CLI. `codex debug models` returns the refreshed
-provider catalog as JSON; `--bundled` is not sufficient because it omits
-configured provider models. Use this command to display only each stable model
-identifier and its supported reasoning efforts:
+Before the first interval only, refresh the complete model catalog from the
+CLI. `codex debug models` returns the provider catalog as JSON; `--bundled` is
+not sufficient because it omits configured provider models. Use this command
+to display only each stable model identifier and its supported reasoning
+efforts:
 
 ```bash
 codex debug models |
@@ -298,17 +310,15 @@ codex debug models |
 ```
 
 Require this command to exit successfully and display every returned row as a
-numbered model list. Prompt exactly for a model number. Validate that the
+numbered model list. Prompt exactly once for a model number. Validate that the
 response is a decimal integer in range; reject model names, blank input, and
 out-of-range numbers. After the model is selected, take its supported efforts
-from the same refreshed row, display every effort as a numbered list, and
-prompt for an effort number using the same validation rules. Do not assume that
-every model supports the same efforts.
-
-Persist the selected model identifier and effort in the interval task and
-`upgrade-fork.md` review before spawning the worker. If the delegation API
-rejects either selected value, refresh both catalogs and repeat the numbered
-selection with the user; never fall back silently to the active runtime.
+from the same row, display every effort as a numbered list, and prompt exactly
+once for an effort number using the same validation rules. Do not assume that
+every model supports the same efforts. Persist the selected model identifier
+and effort in the overall task and `upgrade-fork.md` review before spawning the
+first worker; subsequent interval tasks inherit this approved pair without
+user interaction.
 Give the subagent exclusive responsibility for the current upgrade branch and
 interval, with a bounded task name. Use a bounded prompt equivalent to:
 
@@ -459,10 +469,19 @@ Use at most two Cargo compilation jobs:
 ```bash
 checkpoint=<next-tag>
 log="/tmp/apohl79-full-validation-${checkpoint}.log"
+# Run to completion before interpreting any output; a partial/live log is not a result.
 CARGO_BUILD_JOBS=2 scripts/run-full-validation.sh >"$log" 2>&1
 validation_status=$?
+# Only after the process exits, inspect the complete captured log.
 sed -n '1,240p' "$log"
 ```
+
+Treat `scripts/run-full-validation.sh` as a blocking validation step. Do not
+tail, parse, or validate its output while it is running, and do not record a
+checkpoint result from a partial log or live terminal output. Wait for the
+process to exit, capture its final `validation_status`, then inspect the
+complete log and require every stage to be present before accepting the
+checkpoint.
 
 `scripts/run-full-validation.sh` must configure the host Rust target with the
 verified Codex-built V8 artifact pair through `scripts/codex_package/v8.py`
@@ -507,12 +526,14 @@ exits; never remove Cargo, Rustup, or DotSlash caches as part of this step.
 
 Require `validation_status=0` and a complete log reaching every stage,
 including support-binary builds, Cargo tests, Bazel tests, benchmark smoke,
-release binary compile, and the clean-worktree gate. If validation fails,
-inspect the completed log,
-fix the issue on the upgrade branch, format and commit the fix, update
-`README.fork.md` when its behavioral contract changed, and rerun the same
+release binary compile, and the clean-worktree gate. Validation is a blocking
+defect-discovery gate, not a report-only milestone: a failed run means the
+upgrade is incomplete. If validation fails, inspect the completed log, fix
+every reported issue on the upgrade branch, format and commit the fixes, update
+`README.fork.md` when a behavioral contract changed, and rerun the same
 checkpoint from a clean report. Do not advance to the next alpha or stable
-tag, or record the checkpoint as complete, until the full suite passes.
+tag, call the upgrade complete, or record the checkpoint as complete until the
+full suite passes.
 
 If free space approaches the local safety floor or the validation runner emits
 an interrupt while compiling, the checkpoint has failed; it is never an
@@ -538,8 +559,11 @@ df -h .
 git status --short --branch
 ```
 
-Record exactly `passed (validation_status=0)` in the checkpoint row's
-Validation field, together with the new cursor, in `upgrade-fork.md` after the
+After each successful complete validation run, append exactly
+`passed (validation_status=0)` to the checkpoint row's Validation field,
+without removing earlier successful-run markers. This preserves one marker per
+successful invocation so the progress counter includes successful reruns of
+the same checkpoint. Record the new cursor in `upgrade-fork.md` after the
 cleanup. Leave the result pending or failed when the suite has not returned
 zero. Do not run the complete validation suite for replay-only alpha
 intervals.
