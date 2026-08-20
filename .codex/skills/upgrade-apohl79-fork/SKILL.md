@@ -36,6 +36,11 @@ removed when the upgrade branch is discarded.
   exact peeled tag head only when it is actually in the replay range.
 - Create each imported upstream commit as a separate merge commit. Resolve
   conflicts behaviorally and preserve every README inventory behavior.
+- If an upstream change is behaviorally incompatible with a fork feature or
+  its documented `README.fork.md` contract, stop before creating the merge
+  commit and ask the user whether to preserve the fork behavior or adopt the
+  upstream behavior. Never silently break, remove, or choose between
+  conflicting behaviors just to complete the replay.
 - Before every commit, initialize GPG when needed:
 
   ```bash
@@ -215,7 +220,10 @@ fork-only history, ensure `README.fork.md` has an accurate entry with its
 behavioral contract and primary files. Remove no entry merely because a file
 was renamed; investigate it. If upstream supplies an equivalent behavior,
 verify it semantically, then revise the entry to explain that it is no longer
-fork-only. Commit inventory corrections before starting the first interval.
+fork-only. If the upstream behavior is incompatible with a fork behavior or
+contract, stop and ask the user which behavior to keep before changing code or
+the inventory. Commit inventory corrections only after that decision and
+before starting the first interval.
 
 During every later conflict resolution and before final reporting, repeat this
 audit for changed inventory areas. A heading alone is insufficient: search its
@@ -332,13 +340,16 @@ interval, with a bounded task name. Use a bounded prompt equivalent to:
 ```text
 On branch <upgrade-branch>, replay every upstream commit in <cursor>..<next-tag>
 as an individual merge commit. Preserve and update every README.fork.md inventory
-behavior, resolve conflicts semantically, format changed Rust code, and update
+behavior, resolve only non-incompatible conflicts semantically, format changed
+Rust code, and update
 upgrade-fork.md when the interval completes. Do not move, merge, rebase, or push
 main or main-fork. Do not run tests while replaying ordinary commits. If this
 interval ends at a scheduled checkpoint, create the endpoint merge and clean
 report commit, then invoke `scripts/run-full-validation.sh` as required by
 Section 6 before reporting the interval complete. Report conflicts, inventory
-changes, and commits created.
+changes, and commits created. If a conflict can change a fork behavior or
+documented contract, stop before committing and ask the user which behavior to
+preserve.
 ```
 
 Prefer a fresh subagent task name for every interval so the task tree names the
@@ -370,8 +381,10 @@ git rev-list --reverse "$cursor..$next_tag" > /tmp/apohl79-interval-commits
 while read -r upstream_commit; do
   # For divergent fork history, apply only this upstream commit's delta. The
   # upstream parent is the three-way merge base; using "$cursor" here makes
-  # fork-only files look deleted. Resolve any conflicts behaviorally, then
-  # stage the resulting tree and create the signed two-parent merge directly.
+  # fork-only files look deleted. Resolve only non-incompatible conflicts
+  # behaviorally; stop and ask the user before choosing between conflicting
+  # fork and upstream behavior. Then stage the resulting tree and create the
+  # signed two-parent merge directly.
   # `--write-tree` prints the tree hash first, then conflict diagnostics on
   # stdout when the merge is not clean. Capture only the first line; reading
   # that tree and checking it out materializes conflict markers for semantic
