@@ -799,6 +799,49 @@ async fn active_turn_id_for_thread_uses_snapshot_turns() {
 }
 
 #[tokio::test]
+async fn recalled_pending_steer_is_not_sent_after_active_turn_lookup() -> Result<()> {
+    let mut app = make_test_app().await;
+    let mut app_server =
+        crate::start_embedded_app_server_for_picker(app.chat_widget.config_ref()).await?;
+    let started = app_server
+        .start_thread(app.chat_widget.config_ref())
+        .await?;
+    let thread_id = started.session.thread_id;
+    app.enqueue_primary_thread_session(started.session, started.turns)
+        .await?;
+    let channel = app
+        .thread_event_channels
+        .get(&thread_id)
+        .expect("thread channel should exist");
+    channel.store.lock().await.active_turn_id = Some("turn-1".to_string());
+    let op = AppCommand::user_turn(
+        vec![UserInput::Text {
+            text: "recalled steer".to_string(),
+            text_elements: Vec::new(),
+        }],
+        test_path_buf("/tmp/project"),
+        AskForApproval::Never,
+        /*active_permission_profile*/ None,
+        "gpt-test".to_string(),
+        /*effort*/ None,
+        /*summary*/ None,
+        /*service_tier*/ None,
+        /*final_output_json_schema*/ None,
+        /*collaboration_mode*/ None,
+        /*personality*/ None,
+    )
+    .with_pending_steer_id(1);
+
+    let handled = app
+        .try_submit_active_thread_op_via_app_server(&mut app_server, thread_id, &op)
+        .await?;
+
+    assert_eq!(handled, true);
+    app_server.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn replayed_turn_complete_submits_restored_queued_follow_up() {
     let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
     let thread_id = ThreadId::new();

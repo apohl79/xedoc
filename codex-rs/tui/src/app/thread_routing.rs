@@ -622,10 +622,17 @@ impl App {
                 personality,
             } => {
                 let mut should_start_turn = true;
-                if let Some(turn_id) = self.active_turn_id_for_thread(thread_id).await {
+                let active_turn_id = self.active_turn_id_for_thread(thread_id).await;
+                if self.chat_widget.is_stale_pending_steer_op(op) {
+                    return Ok(true);
+                }
+                if let Some(turn_id) = active_turn_id {
                     let mut steer_turn_id = turn_id;
                     let mut retried_after_turn_mismatch = false;
                     loop {
+                        if self.chat_widget.is_stale_pending_steer_op(op) {
+                            return Ok(true);
+                        }
                         match app_server
                             .turn_steer(thread_id, steer_turn_id.clone(), items.to_vec())
                             .await
