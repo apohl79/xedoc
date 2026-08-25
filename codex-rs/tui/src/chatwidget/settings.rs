@@ -3,6 +3,7 @@
 use super::*;
 use crate::app_event::AppEvent;
 use crate::chatwidget::rate_limits::RATE_LIMIT_SWITCH_PROMPT_VIEW_ID;
+use codex_protocol::config_types::ServiceTier;
 
 impl ChatWidget {
     /// Set the approval policy in the widget's config copy.
@@ -483,6 +484,13 @@ impl ChatWidget {
         let effort = self.effective_reasoning_effort();
         self.bottom_pane
             .set_active_reasoning_effort(effort.as_ref());
+        let model = self.current_model().to_string();
+        let fast = self.current_service_tier() == Some(ServiceTier::Fast.request_value());
+        self.bottom_pane.set_active_turn_context(
+            &model,
+            effort.as_ref().map(|effort| effort.as_str().to_string()),
+            fast,
+        );
     }
 
     /// Refresh every UI surface that depends on the effective model, reasoning

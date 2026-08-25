@@ -4614,6 +4614,7 @@ impl ChatComposer {
             mask_char,
             textarea_right_reserve,
             /*active_turn_elapsed_seconds*/ None,
+            /*active_turn_context*/ None,
         );
     }
 
@@ -4624,6 +4625,7 @@ impl ChatComposer {
         mask_char: Option<char>,
         textarea_right_reserve: u16,
         active_turn_elapsed_seconds: Option<u64>,
+        active_turn_context: Option<(&str, Option<&str>, bool)>,
     ) {
         let [composer_rect, remote_images_rect, textarea_rect, popup_rect] =
             self.layout_areas_with_textarea_right_reserve(area, textarea_right_reserve);
@@ -4936,7 +4938,27 @@ impl ChatComposer {
                 crate::status_indicator_widget::fmt_elapsed_compact(elapsed_seconds),
                 active_turn_timer_style(),
             );
-            block = block.title_bottom(Line::from(timer).alignment(Alignment::Right));
+            let mut spans = Vec::new();
+            if let Some((model, effort, fast)) = active_turn_context {
+                spans.push(Span::styled(model, active_turn_timer_style()));
+                if let Some(effort) = effort {
+                    spans.push("─".into());
+                    spans.push(Span::styled(effort, active_turn_timer_style()));
+                }
+                if fast {
+                    spans.push("─".into());
+                    spans.push(
+                        Span::from("fast")
+                            .red()
+                            .bg(city_lights::composer_session_title_style()
+                                .bg
+                                .unwrap_or_default()),
+                    );
+                }
+                spans.push("─".into());
+            }
+            spans.push(timer);
+            block = block.title_bottom(Line::from(spans).alignment(Alignment::Right));
             if let Some(frame_requester) = &self.frame_requester {
                 frame_requester.schedule_frame_in(Duration::from_secs(/*secs*/ 1));
             }
@@ -5727,6 +5749,7 @@ mod tests {
             /*mask_char*/ None,
             /*textarea_right_reserve*/ 0,
             /*active_turn_elapsed_seconds*/ Some(5),
+            /*active_turn_context*/ Some(("gpt-5.6-terra", Some("medium"), true)),
         );
 
         let timer_row = area.height - 2;

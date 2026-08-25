@@ -215,6 +215,13 @@ struct DelayedApprovalRequest {
     features: Features,
 }
 
+#[derive(Clone)]
+struct ActiveTurnContext {
+    model: String,
+    effort: Option<String>,
+    fast: bool,
+}
+
 /// Pane displayed in the lower half of the chat UI.
 ///
 /// This is the owning container for the prompt input (`ChatComposer`) and the view stack
@@ -239,6 +246,7 @@ pub(crate) struct BottomPane {
     disable_paste_burst: bool,
     is_task_running: bool,
     active_turn_started_at: Option<Instant>,
+    active_turn_context: Option<ActiveTurnContext>,
     active_turn_running: bool,
     can_disconnect_active_turn: bool,
     esc_backtrack_hint: bool,
@@ -311,6 +319,7 @@ impl BottomPane {
             disable_paste_burst,
             is_task_running: false,
             active_turn_started_at: None,
+            active_turn_context: None,
             active_turn_running: false,
             can_disconnect_active_turn: false,
             status: None,
@@ -353,6 +362,19 @@ impl BottomPane {
         {
             self.request_redraw();
         }
+    }
+
+    pub(crate) fn set_active_turn_context(
+        &mut self,
+        model: &str,
+        effort: Option<String>,
+        fast: bool,
+    ) {
+        self.active_turn_context = Some(ActiveTurnContext {
+            model: model.to_string(),
+            effort,
+            fast,
+        });
     }
 
     /// Establishes a restored thread's effort without replaying its one-shot animation.
@@ -1881,6 +1903,7 @@ impl BottomPane {
                 active_turn_elapsed_seconds: self
                     .active_turn_started_at
                     .map(|started_at| started_at.elapsed().as_secs()),
+                active_turn_context: self.active_turn_context.as_ref(),
             }));
             flex2.push(/*flex*/ 0, composer);
             RenderableItem::Owned(Box::new(flex2))
@@ -1926,6 +1949,7 @@ struct ChatComposerRightReserveRenderable<'a> {
     composer: &'a chat_composer::ChatComposer,
     right_reserve: u16,
     active_turn_elapsed_seconds: Option<u64>,
+    active_turn_context: Option<&'a ActiveTurnContext>,
 }
 
 impl Renderable for ChatComposerRightReserveRenderable<'_> {
@@ -1937,6 +1961,13 @@ impl Renderable for ChatComposerRightReserveRenderable<'_> {
                 /*mask_char*/ None,
                 self.right_reserve,
                 self.active_turn_elapsed_seconds,
+                self.active_turn_context.map(|context| {
+                    (
+                        context.model.as_str(),
+                        context.effort.as_deref(),
+                        context.fast,
+                    )
+                }),
             );
     }
 
