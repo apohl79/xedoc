@@ -188,7 +188,7 @@ fi
 
 # --- Fast mode (green) ---
 if [ "$ENABLE_FAST_MODE" = "1" ] && [ "$fast_mode" = "true" ]; then
-    parts+=("\033[32m⚡\033[0m")
+    parts+=("🔥")
 fi
 
 # --- Vim mode (bold yellow) ---
