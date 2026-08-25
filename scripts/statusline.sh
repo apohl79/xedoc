@@ -9,11 +9,11 @@ ENABLE_DIR=${ENABLE_DIR:-1}
 # Git branch + dirty indicator (green)
 ENABLE_GIT=${ENABLE_GIT:-1}
 # Model name (magenta)
-ENABLE_MODEL=${ENABLE_MODEL:-1}
+ENABLE_MODEL=${ENABLE_MODEL:-0}
 # Reasoning effort (magenta)
-ENABLE_REASONING=${ENABLE_REASONING:-1}
+ENABLE_REASONING=${ENABLE_REASONING:-0}
 # Fast mode (green)
-ENABLE_FAST_MODE=${ENABLE_FAST_MODE:-1}
+ENABLE_FAST_MODE=${ENABLE_FAST_MODE:-0}
 # Context window usage percentage (cyan)
 ENABLE_CONTEXT=${ENABLE_CONTEXT:-1}
 # Actual token usage / context window size next to the percentage (cyan)
