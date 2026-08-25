@@ -21,6 +21,7 @@ members = [
     "install-context",
     "codex-backend-openapi-models",
     "code-mode",
+    "code-mode-client",
     "code-mode-host",
     "code-mode-protocol",
     "codex-home",
@@ -163,6 +164,7 @@ codex-cloud-config = { path = "cloud-config" }
 codex-cloud-tasks-client = { path = "cloud-tasks-client" }
 codex-cloud-tasks-mock-client = { path = "cloud-tasks-mock-client" }
 codex-code-mode = { path = "code-mode" }
+codex-code-mode-client = { path = "code-mode-client" }
 codex-code-mode-protocol = { path = "code-mode-protocol" }
 codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
@@ -527,8 +529,14 @@ ignored = [
 debug = "limited"
 incremental = true
 
+[profile.dev.package."*"]
+debug = "none"
+
 [profile.test]
 incremental = true
+
+[profile.test.package."*"]
+debug = "none"
 
 [profile.dev-small]
 inherits = "dev"

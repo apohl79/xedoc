@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "codex-app-server-test-client"
+path = "src/main.rs"
+test = false
+
 [lints]
 workspace = true
 

@@ -13,10 +13,12 @@ doctest = false
 [[bin]]
 name = "codex-windows-sandbox-setup"
 path = "src/bin/setup_main/main.rs"
+test = false
 
 [[bin]]
 name = "codex-command-runner"
 path = "src/bin/command_runner/main.rs"
+test = false
 
 [lints]
 workspace = true

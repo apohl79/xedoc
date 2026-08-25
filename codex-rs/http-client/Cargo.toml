@@ -4,6 +4,11 @@ license.workspace = true
 name = "codex-http-client"
 version.workspace = true
 
+[[bin]]
+name = "custom_ca_probe"
+path = "src/bin/custom_ca_probe.rs"
+test = false
+
 [dependencies]
 bytes = { workspace = true }
 codex-utils-rustls-provider = { workspace = true }

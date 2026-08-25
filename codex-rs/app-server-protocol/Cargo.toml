@@ -4,6 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "export"
+path = "src/bin/export.rs"
+test = false
+
+[[bin]]
+name = "write_schema_fixtures"
+path = "src/bin/write_schema_fixtures.rs"
+test = false
+
 [lib]
 name = "codex_app_server_protocol"
 path = "src/lib.rs"

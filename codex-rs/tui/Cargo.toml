@@ -8,10 +8,12 @@ autobins = false
 [[bin]]
 name = "codex-tui"
 path = "src/main.rs"
+test = false
 
 [[bin]]
 name = "md-events"
 path = "src/bin/md-events.rs"
+test = false
 
 [lib]
 name = "codex_tui"

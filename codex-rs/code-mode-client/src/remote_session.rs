@@ -25,7 +25,7 @@ use self::connection::Connection;
 use self::connection::ConnectionError;
 use self::connection::RemoteSession;
 use self::connection::SessionCleanup;
-use crate::NoopCodeModeSessionDelegate;
+use crate::noop_delegate::NoopCodeModeSessionDelegate;
 
 mod connection;
 
@@ -35,32 +35,18 @@ type ShutdownResultReceiver = watch::Receiver<Option<Result<(), String>>>;
 
 /// Creates code-mode sessions backed by one lazily spawned process host.
 pub struct ProcessOwnedCodeModeSessionProvider {
-    state: StdMutex<ProviderState>,
-}
-
-enum ProviderState {
-    OwnedProcess(Arc<OwnedProcessHost>),
-    InProcess,
+    process_host: Arc<OwnedProcessHost>,
 }
 
 impl ProcessOwnedCodeModeSessionProvider {
     pub fn with_host_program(host_program: PathBuf) -> Self {
         Self {
-            state: StdMutex::new(ProviderState::OwnedProcess(Arc::new(
-                OwnedProcessHost::new(host_program),
-            ))),
+            process_host: Arc::new(OwnedProcessHost::new(host_program)),
         }
     }
 
-    fn process_host(&self) -> Option<Arc<OwnedProcessHost>> {
-        match &*self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-        {
-            ProviderState::OwnedProcess(process_host) => Some(Arc::clone(process_host)),
-            ProviderState::InProcess => None,
-        }
+    fn process_host(&self) -> Arc<OwnedProcessHost> {
+        Arc::clone(&self.process_host)
     }
 }
 
@@ -76,27 +62,8 @@ impl CodeModeSessionProvider for ProcessOwnedCodeModeSessionProvider {
         delegate: Arc<dyn CodeModeSessionDelegate>,
     ) -> CodeModeSessionProviderFuture<'a> {
         Box::pin(async move {
-            let Some(process_host) = self.process_host() else {
-                let session: Arc<dyn CodeModeSession> =
-                    Arc::new(crate::InProcessCodeModeSession::with_delegate(delegate));
-                return Ok(session);
-            };
-
-            match process_host.connection().await {
-                Ok(_) => {}
-                Err(error) if error.host_program_not_found() => {
-                    *self
-                        .state
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                        ProviderState::InProcess;
-                    let session: Arc<dyn CodeModeSession> =
-                        Arc::new(crate::InProcessCodeModeSession::with_delegate(delegate));
-                    return Ok(session);
-                }
-                Err(error) => return Err(error.to_string()),
-            }
-            let session = ProcessOwnedCodeModeSession::with_process_host(delegate, process_host);
+            let session =
+                ProcessOwnedCodeModeSession::with_process_host(delegate, self.process_host());
             session.connection().await?;
             let session: Arc<dyn CodeModeSession> = Arc::new(session);
             Ok(session)

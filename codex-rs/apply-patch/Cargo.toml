@@ -12,6 +12,7 @@ doctest = false
 [[bin]]
 name = "apply_patch"
 path = "src/main.rs"
+test = false
 
 [lints]
 workspace = true

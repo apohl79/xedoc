@@ -4,6 +4,11 @@ license.workspace = true
 name = "codex-hooks"
 version.workspace = true
 
+[[bin]]
+name = "write_hooks_schema_fixtures"
+path = "src/bin/write_hooks_schema_fixtures.rs"
+test = false
+
 [lib]
 doctest = false
 name = "codex_hooks"

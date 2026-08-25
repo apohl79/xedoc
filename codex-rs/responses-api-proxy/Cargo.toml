@@ -12,6 +12,7 @@ doctest = false
 [[bin]]
 name = "codex-responses-api-proxy"
 path = "src/main.rs"
+test = false
 
 [lints]
 workspace = true

@@ -7,6 +7,7 @@ version.workspace = true
 [[bin]]
 name = "codex-execve-wrapper"
 path = "src/bin/main_execve_wrapper.rs"
+test = false
 
 [lints]
 workspace = true

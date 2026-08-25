@@ -11,10 +11,17 @@ path = "src/main.rs"
 [[bin]]
 name = "codex-app-server-test-notify-capture"
 path = "src/bin/notify_capture.rs"
+test = false
 
 [[bin]]
 name = "exec-server"
 path = "src/bin/exec_server.rs"
+test = false
+
+[[bin]]
+name = "test_notify_capture"
+path = "src/bin/test_notify_capture.rs"
+test = false
 
 [lib]
 name = "codex_app_server"

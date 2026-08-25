@@ -58,6 +58,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::io;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
@@ -230,7 +231,7 @@ async fn run_code_mode_turn_with_builder(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn missing_process_host_falls_back_to_in_process_code_mode() -> Result<()> {
+async fn missing_process_host_returns_spawn_error() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = responses::start_mock_server().await;
@@ -247,12 +248,36 @@ async fn missing_process_host_falls_back_to_in_process_code_mode() -> Result<()>
         run_code_mode_turn_with_builder(&server, "Run code mode", "text('fallback')", builder)
             .await?;
 
+    let output_items = custom_tool_output_items(&follow_up_mock.single_request(), "call-1");
     assert_eq!(
-        text_item(
-            &custom_tool_output_items(&follow_up_mock.single_request(), "call-1"),
-            /*index*/ 1,
-        ),
-        "fallback"
+        text_item(&output_items, /*index*/ 0),
+        format!(
+            "failed to spawn code-mode host codex-code-mode-host-does-not-exist: {}",
+            io::Error::from_raw_os_error(/*code*/ 2)
+        )
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disabled_process_host_returns_feature_error() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = responses::start_mock_server().await;
+    let (_test, follow_up_mock) =
+        run_code_mode_turn_with_config(&server, "Run code mode", "text('disabled')", |config| {
+            config
+                .features
+                .disable(Feature::CodeModeHost)
+                .expect("test config should allow disabling the code-mode host");
+        })
+        .await?;
+
+    let output_items = custom_tool_output_items(&follow_up_mock.single_request(), "call-1");
+    assert_eq!(
+        text_item(&output_items, /*index*/ 0),
+        "code mode requires the code_mode_host feature"
     );
 
     Ok(())

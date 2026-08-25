@@ -4,6 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "rmcp_test_server"
+path = "src/bin/rmcp_test_server.rs"
+test = false
+
+[[bin]]
+name = "test_stdio_server"
+path = "src/bin/test_stdio_server.rs"
+test = false
+
+[[bin]]
+name = "test_streamable_http_server"
+path = "src/bin/test_streamable_http_server.rs"
+test = false
+
 [lints]
 workspace = true
 

@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "codex-thread-manager-sample"
+path = "src/main.rs"
+test = false
+
 [lints]
 workspace = true
 

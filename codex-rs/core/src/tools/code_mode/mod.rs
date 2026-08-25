@@ -10,12 +10,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use codex_code_mode::CellId;
-use codex_code_mode::CodeModeNestedToolCall;
-use codex_code_mode::CodeModeSession;
-use codex_code_mode::CodeModeSessionProvider;
-use codex_code_mode::CodeModeToolKind;
-use codex_code_mode::RuntimeResponse;
+use codex_code_mode_protocol::CellId;
+use codex_code_mode_protocol::CodeModeNestedToolCall;
+use codex_code_mode_protocol::CodeModeSession;
+use codex_code_mode_protocol::CodeModeSessionProvider;
+use codex_code_mode_protocol::CodeModeToolKind;
+use codex_code_mode_protocol::RuntimeResponse;
 use codex_features::Feature;
 use codex_features::Features;
 use codex_protocol::models::FunctionCallOutputContentItem;
@@ -51,9 +51,10 @@ pub(crate) use execute_handler::CodeModeExecuteHandler;
 use response_adapter::into_function_call_output_content_items;
 pub(crate) use wait_handler::CodeModeWaitHandler;
 
-pub(crate) const PUBLIC_TOOL_NAME: &str = codex_code_mode::PUBLIC_TOOL_NAME;
-pub(crate) const WAIT_TOOL_NAME: &str = codex_code_mode::WAIT_TOOL_NAME;
-pub(crate) const DEFAULT_WAIT_YIELD_TIME_MS: u64 = codex_code_mode::DEFAULT_WAIT_YIELD_TIME_MS;
+pub(crate) const PUBLIC_TOOL_NAME: &str = codex_code_mode_protocol::PUBLIC_TOOL_NAME;
+pub(crate) const WAIT_TOOL_NAME: &str = codex_code_mode_protocol::WAIT_TOOL_NAME;
+pub(crate) const DEFAULT_WAIT_YIELD_TIME_MS: u64 =
+    codex_code_mode_protocol::DEFAULT_WAIT_YIELD_TIME_MS;
 const BUFFERED_EXEC_YIELD_TIME_MS: u64 = 30_000;
 
 pub(crate) fn default_exec_yield_time_override_ms(features: &Features) -> Option<u64> {
@@ -102,8 +103,8 @@ impl CodeModeService {
 
     pub(crate) async fn execute(
         &self,
-        mut request: codex_code_mode::ExecuteRequest,
-    ) -> Result<codex_code_mode::StartedCell, String> {
+        mut request: codex_code_mode_protocol::ExecuteRequest,
+    ) -> Result<codex_code_mode_protocol::StartedCell, String> {
         if request.yield_time_ms.is_none() {
             request.yield_time_ms = self.default_exec_yield_time_override_ms;
         }
@@ -112,15 +113,15 @@ impl CodeModeService {
 
     pub(crate) async fn wait(
         &self,
-        request: codex_code_mode::WaitRequest,
-    ) -> Result<codex_code_mode::WaitOutcome, String> {
+        request: codex_code_mode_protocol::WaitRequest,
+    ) -> Result<codex_code_mode_protocol::WaitOutcome, String> {
         self.session().await?.wait(request).await
     }
 
     pub(crate) async fn terminate(
         &self,
         cell_id: CellId,
-    ) -> Result<codex_code_mode::WaitOutcome, String> {
+    ) -> Result<codex_code_mode_protocol::WaitOutcome, String> {
         self.session().await?.terminate(cell_id).await
     }
 
@@ -141,7 +142,7 @@ impl CodeModeService {
         }
     }
 
-    pub(crate) fn mark_cell_ready_for_dispatch(&self, cell_id: &codex_code_mode::CellId) {
+    pub(crate) fn mark_cell_ready_for_dispatch(&self, cell_id: &codex_code_mode_protocol::CellId) {
         self.dispatch_broker.mark_cell_ready_for_dispatch(cell_id);
     }
 
@@ -377,17 +378,16 @@ fn build_freeform_tool_payload(
 
 #[cfg(test)]
 mod tests {
+    use std::io;
     use std::sync::Arc;
 
     use super::CodeModeService;
     use super::build_nested_tool_payload;
     use super::truncate_code_mode_result;
     use crate::tools::context::ToolPayload;
-    use codex_code_mode::CodeModeToolKind;
-    use codex_code_mode::ExecuteRequest;
-    use codex_code_mode::FunctionCallOutputContentItem as CodeModeOutputContentItem;
-    use codex_code_mode::ProcessOwnedCodeModeSessionProvider;
-    use codex_code_mode::RuntimeResponse;
+    use codex_code_mode_client::ProcessOwnedCodeModeSessionProvider;
+    use codex_code_mode_protocol::CodeModeToolKind;
+    use codex_code_mode_protocol::ExecuteRequest;
     use codex_features::Features;
     use codex_protocol::models::FunctionCallOutputContentItem;
     use codex_tools::ToolName;
@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_process_host_falls_back_to_in_process_session() {
+    async fn missing_process_host_returns_spawn_error() {
         let service = CodeModeService::new(
             Arc::new(ProcessOwnedCodeModeSessionProvider::with_host_program(
                 "codex-code-mode-host-does-not-exist".into(),
@@ -469,7 +469,7 @@ mod tests {
             &Features::with_defaults(),
         );
 
-        let response = service
+        let error = service
             .execute(ExecuteRequest {
                 tool_call_id: "call-1".to_string(),
                 enabled_tools: Vec::new(),
@@ -478,21 +478,15 @@ mod tests {
                 max_output_tokens: None,
             })
             .await
-            .expect("missing host should fall back to an in-process session")
-            .initial_response()
-            .await
-            .expect("read fallback response");
+            .err()
+            .expect("missing host should fail session creation");
 
         assert_eq!(
-            response,
-            RuntimeResponse::Result {
-                cell_id: codex_code_mode::CellId::new("1".to_string()),
-                content_items: vec![CodeModeOutputContentItem::InputText {
-                    text: "fallback".to_string(),
-                }],
-                error_text: None,
-            }
+            error,
+            format!(
+                "failed to spawn code-mode host codex-code-mode-host-does-not-exist: {}",
+                io::Error::from_raw_os_error(/*code*/ 2)
+            )
         );
-        service.shutdown().await.expect("shutdown service");
     }
 }
