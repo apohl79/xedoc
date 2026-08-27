@@ -4935,10 +4935,11 @@ impl ChatComposer {
         }
         let mut runtime_context_spans = Vec::new();
         if let Some((model, effort, fast)) = runtime_context {
-            runtime_context_spans.push(model.dim());
+            let context_style = city_lights::composer_runtime_context_style();
+            runtime_context_spans.push(Span::styled(model, context_style));
             if let Some(effort) = effort {
                 runtime_context_spans.push("─".into());
-                runtime_context_spans.push(effort.dim());
+                runtime_context_spans.push(Span::styled(effort, context_style));
             }
             if fast {
                 runtime_context_spans.push("─".into());
@@ -5758,14 +5759,15 @@ mod tests {
 
         let timer_row = area.height - 2;
         let timer_background = city_lights::composer_session_title_style().bg;
+        let runtime_context_foreground = city_lights::composer_runtime_context_style().fg;
         let mut text = String::new();
-        let mut dimmed_cells = String::new();
+        let mut context_color_cells = String::new();
         let mut red_cells = String::new();
         let mut background_cells = String::new();
         for x in 0..area.width {
             let cell = &buf[(x, timer_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            dimmed_cells.push(if cell.style().add_modifier.contains(Modifier::DIM) {
+            context_color_cells.push(if cell.style().fg == runtime_context_foreground {
                 '^'
             } else {
                 ' '
@@ -5784,8 +5786,8 @@ mod tests {
         while text.ends_with(' ') {
             text.pop();
         }
-        while dimmed_cells.ends_with(' ') {
-            dimmed_cells.pop();
+        while context_color_cells.ends_with(' ') {
+            context_color_cells.pop();
         }
         while red_cells.ends_with(' ') {
             red_cells.pop();
@@ -5801,7 +5803,7 @@ mod tests {
         }
 
         format!(
-            "text:       {text}\ndimmed:     {dimmed_cells}\nred:         {red_cells}\nbackground:  {background_cells}"
+            "text:          {text}\ncontext_color: {context_color_cells}\nred:           {red_cells}\nbackground:    {background_cells}"
         )
     }
 

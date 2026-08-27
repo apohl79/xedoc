@@ -17,6 +17,8 @@ use ratatui::text::Span;
 pub const CL_BG: (u8, u8, u8) = (0x1D, 0x25, 0x2C);
 /// Comments / dim text.
 pub const CL_COMMENT: (u8, u8, u8) = (0x41, 0x50, 0x5E);
+/// Muted foreground for the composer runtime context.
+pub const CL_RUNTIME_CONTEXT: (u8, u8, u8) = (0x63, 0x6A, 0x75);
 /// Slightly lighter gray used behind active Agents and Tasks headers.
 pub const CL_HEADER_BG: (u8, u8, u8) = (0x5A, 0x64, 0x6E);
 /// Dark gray used behind the composer session title.
@@ -143,6 +145,11 @@ pub fn accent_style_cl() -> Style {
 /// Style for the composer top border.
 pub fn composer_border_style() -> Style {
     Style::default().fg(rgb(CL_COMMENT))
+}
+
+/// Style for the composer model and reasoning-effort context.
+pub fn composer_runtime_context_style() -> Style {
+    Style::default().fg(rgb(CL_RUNTIME_CONTEXT))
 }
 
 /// Style for active Agents and Tasks section headers.
