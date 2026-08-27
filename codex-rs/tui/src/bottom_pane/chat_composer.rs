@@ -178,8 +178,10 @@ use crate::key_hint::has_ctrl_or_alt;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::terminal_palette::StdoutColorLevel;
 use crate::terminal_palette::best_color_for_level;
+use crate::terminal_palette::default_bg;
 use crate::terminal_palette::default_fg;
 use crate::terminal_palette::effective_stdout_color_level;
+use crate::terminal_palette::rgb_color;
 use crate::ui_consts::FOOTER_INDENT_COLS;
 use codex_message_history::HistoryBatchCursor;
 use crossterm::event::KeyCode;
@@ -335,6 +337,15 @@ const ACTIVE_TURN_TIMER_FOREGROUND_ALPHA: f32 = 0.75;
 
 fn session_name_color() -> Color {
     indexed_color(STATUSLINE_SESSION_NAME_COLOR_INDEX)
+}
+
+fn runtime_context_separator_style() -> Style {
+    runtime_context_separator_style_for(default_bg())
+}
+
+fn runtime_context_separator_style_for(terminal_background: Option<(u8, u8, u8)>) -> Style {
+    city_lights::composer_session_title_style()
+        .fg(rgb_color(terminal_background.unwrap_or(city_lights::CL_BG)))
 }
 
 fn active_turn_timer_style() -> Style {
@@ -4941,7 +4952,7 @@ impl ChatComposer {
                 city_lights::composer_model_name_style(),
             ));
             if let Some(effort) = effort {
-                runtime_context_spans.push("─".into());
+                runtime_context_spans.push(Span::styled("|", runtime_context_separator_style()));
                 runtime_context_spans.push(Span::styled(effort, context_style));
             }
             if fast {
@@ -5739,6 +5750,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn runtime_context_separator_uses_terminal_background_as_foreground() {
+        let terminal_background = (240, 241, 242);
+
+        assert_eq!(
+            runtime_context_separator_style_for(Some(terminal_background)),
+            city_lights::composer_session_title_style().fg(rgb_color(terminal_background))
+        );
+    }
+
     fn runtime_context_frame(elapsed_seconds: Option<u64>, fast: bool) -> String {
         let (tx, _rx) = unbounded_channel::<AppEvent>();
         let sender = AppEventSender::new(tx);
@@ -5764,9 +5785,11 @@ mod tests {
         let timer_background = city_lights::composer_session_title_style().bg;
         let model_name_foreground = city_lights::composer_model_name_style().fg;
         let effort_foreground = city_lights::composer_runtime_context_style().fg;
+        let pipe_foreground = runtime_context_separator_style().fg;
         let mut text = String::new();
         let mut model_name_color_cells = String::new();
         let mut effort_color_cells = String::new();
+        let mut pipe_color_cells = String::new();
         let mut red_cells = String::new();
         let mut background_cells = String::new();
         for x in 0..area.width {
@@ -5778,6 +5801,11 @@ mod tests {
                 ' '
             });
             effort_color_cells.push(if cell.style().fg == effort_foreground {
+                '^'
+            } else {
+                ' '
+            });
+            pipe_color_cells.push(if cell.style().fg == pipe_foreground {
                 '^'
             } else {
                 ' '
@@ -5802,6 +5830,9 @@ mod tests {
         while effort_color_cells.ends_with(' ') {
             effort_color_cells.pop();
         }
+        while pipe_color_cells.ends_with(' ') {
+            pipe_color_cells.pop();
+        }
         while red_cells.ends_with(' ') {
             red_cells.pop();
         }
@@ -5816,7 +5847,7 @@ mod tests {
         }
 
         format!(
-            "text:        {text}\nmodel_color: {model_name_color_cells}\neffort_color: {effort_color_cells}\nred:         {red_cells}\nbackground:  {background_cells}"
+            "text:        {text}\nmodel_color: {model_name_color_cells}\neffort_color: {effort_color_cells}\npipe_color:  {pipe_color_cells}\nred:         {red_cells}\nbackground:  {background_cells}"
         )
     }
 
