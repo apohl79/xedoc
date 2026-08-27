@@ -4936,7 +4936,10 @@ impl ChatComposer {
         let mut runtime_context_spans = Vec::new();
         if let Some((model, effort, fast)) = runtime_context {
             let context_style = city_lights::composer_runtime_context_style();
-            runtime_context_spans.push(Span::styled(model, context_style));
+            runtime_context_spans.push(Span::styled(
+                model,
+                city_lights::composer_model_name_style(),
+            ));
             if let Some(effort) = effort {
                 runtime_context_spans.push("─".into());
                 runtime_context_spans.push(Span::styled(effort, context_style));
@@ -5759,15 +5762,22 @@ mod tests {
 
         let timer_row = area.height - 2;
         let timer_background = city_lights::composer_session_title_style().bg;
-        let runtime_context_foreground = city_lights::composer_runtime_context_style().fg;
+        let model_name_foreground = city_lights::composer_model_name_style().fg;
+        let effort_foreground = city_lights::composer_runtime_context_style().fg;
         let mut text = String::new();
-        let mut context_color_cells = String::new();
+        let mut model_name_color_cells = String::new();
+        let mut effort_color_cells = String::new();
         let mut red_cells = String::new();
         let mut background_cells = String::new();
         for x in 0..area.width {
             let cell = &buf[(x, timer_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            context_color_cells.push(if cell.style().fg == runtime_context_foreground {
+            model_name_color_cells.push(if cell.style().fg == model_name_foreground {
+                '^'
+            } else {
+                ' '
+            });
+            effort_color_cells.push(if cell.style().fg == effort_foreground {
                 '^'
             } else {
                 ' '
@@ -5786,8 +5796,11 @@ mod tests {
         while text.ends_with(' ') {
             text.pop();
         }
-        while context_color_cells.ends_with(' ') {
-            context_color_cells.pop();
+        while model_name_color_cells.ends_with(' ') {
+            model_name_color_cells.pop();
+        }
+        while effort_color_cells.ends_with(' ') {
+            effort_color_cells.pop();
         }
         while red_cells.ends_with(' ') {
             red_cells.pop();
@@ -5803,7 +5816,7 @@ mod tests {
         }
 
         format!(
-            "text:          {text}\ncontext_color: {context_color_cells}\nred:           {red_cells}\nbackground:    {background_cells}"
+            "text:        {text}\nmodel_color: {model_name_color_cells}\neffort_color: {effort_color_cells}\nred:         {red_cells}\nbackground:  {background_cells}"
         )
     }
 
