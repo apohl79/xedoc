@@ -19,7 +19,15 @@ codex_rust_crate(
         "//codex-rs/cli:codex",
     ],
     integration_compile_data_extra = ["src/test_backend.rs"],
+    rustc_env_files_extra = select({
+        "//:apohl79-release-mode": ["//bazel/release:apohl79_release.env"],
+        "//conditions:default": [],
+    }),
     rustc_flags_extra = MACOS_WEBRTC_RUSTC_LINK_FLAGS,
+    stamp = select({
+        "//:apohl79-release-mode": 1,
+        "//conditions:default": 0,
+    }),
     test_data_extra = glob([
         "src/**/*.rs",
         "src/**/snapshots/**",

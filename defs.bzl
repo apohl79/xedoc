@@ -191,6 +191,8 @@ def codex_rust_crate(
         lib_data_extra = [],
         rustc_flags_extra = [],
         rustc_env = {},
+        rustc_env_files_extra = [],
+        stamp = 0,
         deps_extra = [],
         integration_compile_data_extra = [],
         integration_test_args = [],
@@ -227,6 +229,8 @@ def codex_rust_crate(
         compile_data: Non-Rust compile-time data for the library target.
         lib_data_extra: Extra runtime data for the library target.
         rustc_env: Extra rustc_env entries to merge with defaults.
+        rustc_env_files_extra: Extra rustc environment files for crate targets.
+        stamp: Workspace-status stamping mode for crate targets.
         deps_extra: Extra normal deps beyond @crates resolution.
             Typically only needed when features add additional deps.
         integration_compile_data_extra: Extra compile_data for integration tests.
@@ -317,7 +321,9 @@ def codex_rust_crate(
             edition = crate_edition,
             rustc_flags = rustc_flags_extra,
             rustc_env = rustc_env,
+            rustc_env_files = rustc_env_files_extra,
             visibility = ["//visibility:public"],
+            stamp = stamp,
         )
 
         unit_test_name = name + "-unit-tests"
@@ -383,8 +389,10 @@ def codex_rust_crate(
             crate_root = main,
             deps = all_crate_deps() + maybe_deps + deps_extra,
             edition = crate_edition,
+            rustc_env_files = rustc_env_files_extra,
             rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS,
             srcs = native.glob(["src/**/*.rs"]),
+            stamp = stamp,
             visibility = ["//visibility:public"],
         )
 

@@ -96,7 +96,7 @@ main() {
   run_stage "GitHub script tests" "${repo_root}" just test-github-scripts
   run_stage "package-builder tests" "${repo_root}" python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
   run_stage "installer tests" "${repo_root}" python3 -m unittest discover -s scripts/install -p 'test_*.py'
-  run_stage "fork release-helper tests" "${repo_root}" uv run --frozen --project scripts python scripts/test_apohl79_release.py
+  run_stage "fork release-helper tests" "${repo_root}" uv run --frozen --project scripts python -m unittest discover -s scripts -p 'test_apohl79*_release.py'
   run_stage "argument-comment Python compilation" "${repo_root}" python3 -m py_compile tools/argument-comment-lint/wrapper_common.py tools/argument-comment-lint/run.py tools/argument-comment-lint/run-prebuilt-linter.py tools/argument-comment-lint/test_wrapper_common.py
   run_stage "argument-comment Python tests" "${repo_root}" python3 -m unittest discover -s tools/argument-comment-lint -p 'test_*.py'
   run_stage "argument-comment Rust tests" "${repo_root}/tools/argument-comment-lint" env RUST_MIN_STACK=8388608 cargo test

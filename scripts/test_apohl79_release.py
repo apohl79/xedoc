@@ -457,6 +457,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
             args = argparse.Namespace(
                 archive_output=[],
+                build_system="cargo",
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,
@@ -668,6 +669,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
             args = argparse.Namespace(
                 archive_output=[archive_output],
+                build_system="cargo",
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,
@@ -765,6 +767,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
             args = argparse.Namespace(
                 archive_output=[],
+                build_system="cargo",
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,
@@ -907,6 +910,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
             args = argparse.Namespace(
                 archive_output=[],
+                build_system="cargo",
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,
@@ -1143,6 +1147,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             args = argparse.Namespace(
                 allow_dirty=True,
                 archive_output=[],
+                build_system="cargo",
                 cargo="cargo",
                 codesign_identity=None,
                 force=True,

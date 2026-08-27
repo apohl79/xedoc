@@ -87,6 +87,19 @@ common:remote --jobs=800
 # Enable pipelined compilation since we are not bound by local CPU count.
 #common:remote --@rules_rust//rust/settings:pipelined_compilation
 
+# Signed apohl79 release builds preserve the Cargo release profile while
+# allowing the configured Bazel executor/cache to compile the target graph.
+common:apohl79-release --compilation_mode=opt
+common:apohl79-release --strip=never
+common:apohl79-release --remote_download_toplevel
+common:apohl79-release --define=apohl79_release=true
+common:apohl79-release --workspace_status_command=scripts/apohl79_bazel_status.py
+common:apohl79-release --@rules_rust//rust/settings:lto=thin
+common:apohl79-release --@rules_rust//rust/settings:codegen_units=4
+common:apohl79-release --@rules_rust//rust/settings:extra_rustc_flag=-Cdebuginfo=line-tables-only
+common:apohl79-release --@rules_rust//rust/settings:extra_rustc_flag=-Csplit-debuginfo=off
+common:apohl79-release --@rules_rust//rust/settings:extra_rustc_flag=-Cstrip=none
+
 # GitHub Actions CI configs.
 common:ci --remote_download_minimal
 common:ci --keep_going

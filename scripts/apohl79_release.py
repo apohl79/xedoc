@@ -1,16 +1,19 @@
 """Build helpers for apohl79 fork release packages."""
 
 import argparse
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import textwrap
 
 from codex_package.targets import TARGET_SPECS
+from codex_package.targets import TargetSpec
 from codex_package.targets import default_target
 
 
@@ -20,6 +23,7 @@ DEFAULT_REF = "main-fork"
 DEFAULT_SUFFIX = "apohl79"
 DEFAULT_GITHUB_REPO = "apohl79/codex"
 DEFAULT_GITHUB_ACCOUNT = "apohl79"
+DEFAULT_BUILD_SYSTEM = "bazel"
 FORK_BUILD_NUMBER_RELATIVE_PATH = Path("scripts/apohl79_build_number.txt")
 FORK_BUILD_NUMBER_PATH = REPO_ROOT / FORK_BUILD_NUMBER_RELATIVE_PATH
 FORK_CARGO_BUILD_JOBS_ENV_VAR = "APOHL79_CARGO_BUILD_JOBS"
@@ -36,6 +40,18 @@ LS_REMOTE_TAG_RE = re.compile(
     r")(?:\^\{\})?$"
 )
 WORKSPACE_VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*)"[^"]+"(.*)$')
+BAZEL_RELEASE_CONFIG = "apohl79-release"
+BAZEL_RELEASE_BUNDLE = "//codex-rs:apohl79-release-binaries"
+BAZEL_PLATFORM_BY_TARGET = {
+    "aarch64-apple-darwin": "macos_arm64",
+    "x86_64-apple-darwin": "macos_amd64",
+}
+
+
+@dataclass(frozen=True)
+class ReleaseBinaries:
+    entrypoint: Path
+    code_mode_host: Path
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -94,7 +110,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--cargo",
         default="cargo",
-        help="Cargo executable to use for the release build.",
+        help="Cargo executable to use for Cargo builds and lockfile repair.",
+    )
+    parser.add_argument(
+        "--bazel",
+        default="bazel",
+        help="Bazel executable to use for the release build.",
+    )
+    parser.add_argument(
+        "--build-system",
+        choices=("bazel", "cargo"),
+        default=DEFAULT_BUILD_SYSTEM,
+        help="Build system used to compile release binaries.",
     )
     parser.add_argument(
         "--cargo-build-jobs",
@@ -148,7 +175,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Deprecated compatibility flag. Release builds now use the current "
-            "checkout directly so Cargo can reuse incremental artifacts."
+            "checkout directly so build caches can be reused."
         ),
     )
     return parser.parse_args(argv)
@@ -181,10 +208,6 @@ def build_release(args: argparse.Namespace) -> None:
 
     output_dir = resolve_repo_path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    target_dir = Path(
-        os.environ.get("CARGO_TARGET_DIR", REPO_ROOT / "codex-rs" / "target")
-    )
-    target_dir = target_dir.resolve()
 
     source_root = REPO_ROOT
     cargo_toml = source_root / "codex-rs" / "Cargo.toml"
@@ -223,48 +246,32 @@ def build_release(args: argparse.Namespace) -> None:
         target=args.target,
     )
 
-    env = os.environ.copy()
-    env["CARGO_TARGET_DIR"] = str(target_dir)
-    env["CODEX_RELEASE_VERSION"] = fork_version
-    cargo_build_jobs = resolve_cargo_build_jobs(getattr(args, "cargo_build_jobs", None))
-    if cargo_build_jobs is not None:
-        env["CARGO_BUILD_JOBS"] = cargo_build_jobs
+    build_system = getattr(args, "build_system", DEFAULT_BUILD_SYSTEM)
+    if build_system == "bazel":
+        release_binaries = build_bazel_release_binaries(
+            bazel=getattr(args, "bazel", "bazel"),
+            source_root=source_root,
+            target=args.target,
+            fork_version=fork_version,
+        )
+        release_binaries = stage_release_binaries(
+            release_binaries,
+            output_dir / ".bazel-release" / fork_version / args.target,
+        )
+    elif build_system == "cargo":
+        release_binaries = build_cargo_release_binaries(
+            cargo=args.cargo,
+            cargo_build_jobs=getattr(args, "cargo_build_jobs", None),
+            source_root=source_root,
+            spec=spec,
+            target=args.target,
+            fork_version=fork_version,
+        )
     else:
-        env.setdefault("CARGO_BUILD_JOBS", str(default_cargo_build_jobs()))
-    env.setdefault("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed")
-    env.setdefault("CARGO_NET_GIT_FETCH_WITH_CLI", "true")
+        raise RuntimeError(f"Unsupported release build system: {build_system}")
 
-    run(
-        [
-            args.cargo,
-            "build",
-            "--locked",
-            "--manifest-path",
-            str(source_root / "codex-rs" / "Cargo.toml"),
-            "--package",
-            "codex-cli",
-            "--package",
-            "codex-code-mode-host",
-            "--bins",
-            "--profile",
-            "release",
-            "--target",
-            args.target,
-        ],
-        cwd=source_root / "codex-rs",
-        env=env,
-    )
-
-    entrypoint = (
-        target_dir / spec.target / "release" / f"codex{spec.exe_suffix}"
-    ).resolve()
-    if not entrypoint.is_file():
-        raise RuntimeError(f"Built entrypoint not found: {entrypoint}")
-    code_mode_host = (
-        target_dir / spec.target / "release" / f"codex-code-mode-host{spec.exe_suffix}"
-    ).resolve()
-    if not code_mode_host.is_file():
-        raise RuntimeError(f"Built code-mode host not found: {code_mode_host}")
+    entrypoint = release_binaries.entrypoint
+    code_mode_host = release_binaries.code_mode_host
 
     signing_script = source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
     entitlements = (
@@ -350,6 +357,154 @@ def build_release(args: argparse.Namespace) -> None:
     print(f"Package directory: {package_dir}")
     for archive_output in archive_outputs:
         print(f"Archive: {archive_output}")
+
+
+def build_cargo_release_binaries(
+    *,
+    cargo: str,
+    cargo_build_jobs: int | None,
+    source_root: Path,
+    spec: TargetSpec,
+    target: str,
+    fork_version: str,
+) -> ReleaseBinaries:
+    target_dir = Path(
+        os.environ.get("CARGO_TARGET_DIR", source_root / "codex-rs" / "target")
+    ).resolve()
+    env = os.environ.copy()
+    env["CARGO_TARGET_DIR"] = str(target_dir)
+    env["CODEX_RELEASE_VERSION"] = fork_version
+    resolved_cargo_build_jobs = resolve_cargo_build_jobs(cargo_build_jobs)
+    if resolved_cargo_build_jobs is not None:
+        env["CARGO_BUILD_JOBS"] = resolved_cargo_build_jobs
+    else:
+        env.setdefault("CARGO_BUILD_JOBS", str(default_cargo_build_jobs()))
+    env.setdefault("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed")
+    env.setdefault("CARGO_NET_GIT_FETCH_WITH_CLI", "true")
+
+    run(
+        [
+            cargo,
+            "build",
+            "--locked",
+            "--manifest-path",
+            str(source_root / "codex-rs" / "Cargo.toml"),
+            "--package",
+            "codex-cli",
+            "--package",
+            "codex-code-mode-host",
+            "--bins",
+            "--profile",
+            "release",
+            "--target",
+            target,
+        ],
+        cwd=source_root / "codex-rs",
+        env=env,
+    )
+
+    return ReleaseBinaries(
+        entrypoint=require_built_file(
+            target_dir / spec.target / "release" / f"codex{spec.exe_suffix}",
+            "Built entrypoint",
+        ),
+        code_mode_host=require_built_file(
+            target_dir
+            / spec.target
+            / "release"
+            / f"codex-code-mode-host{spec.exe_suffix}",
+            "Built code-mode host",
+        ),
+    )
+
+
+def build_bazel_release_binaries(
+    *,
+    bazel: str,
+    source_root: Path,
+    target: str,
+    fork_version: str,
+) -> ReleaseBinaries:
+    options = bazel_release_options(target)
+    env = os.environ.copy()
+    env["CODEX_RELEASE_VERSION"] = fork_version
+
+    run(
+        [bazel, "build", *options, "--", BAZEL_RELEASE_BUNDLE],
+        cwd=source_root,
+        env=env,
+    )
+    execution_root = bazel_execution_root(
+        command_output([bazel, "info", "execution_root"], cwd=source_root, env=env)
+    )
+    outputs = command_output(
+        [bazel, "cquery", *options, "--output=files", "--", BAZEL_RELEASE_BUNDLE],
+        cwd=source_root,
+        env=env,
+    )
+    return resolve_bazel_release_binaries(outputs, execution_root)
+
+
+def bazel_release_options(target: str) -> list[str]:
+    try:
+        platform = BAZEL_PLATFORM_BY_TARGET[target]
+    except KeyError as err:
+        raise RuntimeError(f"No Bazel release platform for target {target}.") from err
+    return [
+        f"--config={BAZEL_RELEASE_CONFIG}",
+        f"--platforms=@llvm//platforms:{platform}",
+    ]
+
+
+def bazel_execution_root(stdout: str) -> Path:
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    if len(lines) != 1 or not Path(lines[0]).is_absolute():
+        raise RuntimeError("Bazel did not report one absolute execution root.")
+    return Path(lines[0])
+
+
+def resolve_bazel_release_binaries(
+    stdout: str,
+    execution_root: Path,
+) -> ReleaseBinaries:
+    outputs = [line.strip() for line in stdout.splitlines() if line.strip()]
+    paths = [execution_root / output for output in outputs]
+    paths_by_name = {path.name: path for path in paths}
+    expected_names = {"codex", "codex-code-mode-host"}
+    if len(outputs) != 2 or paths_by_name.keys() != expected_names:
+        raise RuntimeError(
+            "Bazel release bundle must contain exactly codex and "
+            f"codex-code-mode-host; reported {sorted(paths_by_name)}."
+        )
+    return ReleaseBinaries(
+        entrypoint=require_built_file(paths_by_name["codex"], "Bazel entrypoint"),
+        code_mode_host=require_built_file(
+            paths_by_name["codex-code-mode-host"],
+            "Bazel code-mode host",
+        ),
+    )
+
+
+def stage_release_binaries(
+    release_binaries: ReleaseBinaries,
+    staging_dir: Path,
+) -> ReleaseBinaries:
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    entrypoint = staging_dir / release_binaries.entrypoint.name
+    code_mode_host = staging_dir / release_binaries.code_mode_host.name
+    shutil.copy2(release_binaries.entrypoint, entrypoint)
+    shutil.copy2(release_binaries.code_mode_host, code_mode_host)
+    return ReleaseBinaries(
+        entrypoint=entrypoint.resolve(),
+        code_mode_host=code_mode_host.resolve(),
+    )
+
+
+def require_built_file(path: Path, description: str) -> Path:
+    path = path.resolve()
+    if not path.is_file():
+        raise RuntimeError(f"{description} not found: {path}")
+    return path
 
 
 def ensure_current_checkout_matches_ref(ref: str) -> None:
@@ -1208,6 +1363,23 @@ def resolve_repo_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return (REPO_ROOT / path).resolve()
+
+
+def command_output(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
+    print("+ " + shlex.join(command), flush=True)
+    try:
+        return subprocess.check_output(command, cwd=cwd, env=env, text=True)
+    except FileNotFoundError as err:
+        raise RuntimeError(f"Command not found: {command[0]}") from err
+    except subprocess.CalledProcessError as err:
+        raise RuntimeError(
+            f"Command failed with exit status {err.returncode}: {shlex.join(command)}"
+        ) from err
 
 
 def run(

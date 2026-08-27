@@ -74,3 +74,9 @@ exports_files([
     "workspace_root_test_launcher.bat.tpl",
     "workspace_root_test_launcher.sh.tpl",
 ])
+
+config_setting(
+    name = "apohl79-release-mode",
+    define_values = {"apohl79_release": "true"},
+    visibility = ["//visibility:public"],
+)

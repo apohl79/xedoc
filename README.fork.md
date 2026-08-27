@@ -432,14 +432,22 @@ The fork adds release helpers for building apohl79-branded packages from
   dirty builds cannot create or upload a GitHub release.
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
-- The helper builds `codex-cli` and `codex-code-mode-host` with Cargo `--locked`,
-  signs the binary, verifies the signature, and invokes the Codex package
-  builder with explicit entrypoint, code-mode host, and version.
-- Release builds preserve incremental Cargo artifacts by using the current
-  checkout and `codex-rs/target` as the default target directory.
-- The helper limits default Cargo parallelism while respecting explicit caller
-  settings through `--cargo-build-jobs`, `APOHL79_CARGO_BUILD_JOBS`, or Cargo's
-  native `CARGO_BUILD_JOBS`.
+- The helper builds `codex-cli` and `codex-code-mode-host` with Bazel by default.
+  Pass `--build-system cargo` to use the previous Cargo `--locked` path.
+- Bazel builds use the `apohl79-release` configuration, which matches the Cargo
+  release profile's optimization, ThinLTO, codegen-unit, and unstripped
+  line-table settings. Split debug info is disabled so macOS linking works on
+  Linux remote executors. A configured remote executor/cache is used
+  automatically.
+- The fork version is stamped only into the CLI and TUI Rust actions so changing
+  a release version does not invalidate cached compilation for every dependency.
+- Bazel outputs are downloaded and copied to a local staging directory before
+  codesign mutates them. Signing, verification, packaging, and publishing remain
+  local.
+- Cargo fallback builds preserve incremental artifacts by using the current
+  checkout and `codex-rs/target` as the default target directory. They limit
+  default Cargo parallelism while respecting `--cargo-build-jobs`,
+  `APOHL79_CARGO_BUILD_JOBS`, and Cargo's native `CARGO_BUILD_JOBS`.
 - The helper can auto-repair stale workspace package versions in
   `codex-rs/Cargo.lock` before a locked release build.
 - `scripts/apohl79_build_number.txt` stores the monotonically increasing fork
