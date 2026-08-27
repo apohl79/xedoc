@@ -124,6 +124,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Build system used to compile release binaries.",
     )
     parser.add_argument(
+        "--bazel-build-jobs",
+        type=positive_int_arg,
+        help=(
+            "Maximum CPU resources for Bazel's local action scheduler. Does "
+            "not change remote action concurrency."
+        ),
+    )
+    parser.add_argument(
+        "--bazel-max-heap-mb",
+        type=positive_int_arg,
+        help=(
+            "Maximum heap size in MiB for the local Bazel server. Does not "
+            "change remote executor resources."
+        ),
+    )
+    parser.add_argument(
         "--cargo-build-jobs",
         type=positive_int_arg,
         help=(
@@ -250,6 +266,8 @@ def build_release(args: argparse.Namespace) -> None:
     if build_system == "bazel":
         release_binaries = build_bazel_release_binaries(
             bazel=getattr(args, "bazel", "bazel"),
+            bazel_build_jobs=getattr(args, "bazel_build_jobs", None),
+            bazel_max_heap_mb=getattr(args, "bazel_max_heap_mb", None),
             source_root=source_root,
             target=args.target,
             fork_version=fork_version,
@@ -421,24 +439,56 @@ def build_cargo_release_binaries(
 def build_bazel_release_binaries(
     *,
     bazel: str,
+    bazel_build_jobs: int | None = None,
+    bazel_max_heap_mb: int | None = None,
     source_root: Path,
     target: str,
     fork_version: str,
 ) -> ReleaseBinaries:
     options = bazel_release_options(target)
+    startup_options = (
+        [f"--host_jvm_args=-Xmx{bazel_max_heap_mb}m"]
+        if bazel_max_heap_mb is not None
+        else []
+    )
+    local_build_options = (
+        [f"--local_resources=cpu={bazel_build_jobs}"]
+        if bazel_build_jobs is not None
+        else []
+    )
     env = os.environ.copy()
     env["CODEX_RELEASE_VERSION"] = fork_version
 
     run(
-        [bazel, "build", *options, "--", BAZEL_RELEASE_BUNDLE],
+        [
+            bazel,
+            *startup_options,
+            "build",
+            *options,
+            *local_build_options,
+            "--",
+            BAZEL_RELEASE_BUNDLE,
+        ],
         cwd=source_root,
         env=env,
     )
     execution_root = bazel_execution_root(
-        command_output([bazel, "info", "execution_root"], cwd=source_root, env=env)
+        command_output(
+            [bazel, *startup_options, "info", "execution_root"],
+            cwd=source_root,
+            env=env,
+        )
     )
     outputs = command_output(
-        [bazel, "cquery", *options, "--output=files", "--", BAZEL_RELEASE_BUNDLE],
+        [
+            bazel,
+            *startup_options,
+            "cquery",
+            *options,
+            "--output=files",
+            "--",
+            BAZEL_RELEASE_BUNDLE,
+        ],
         cwd=source_root,
         env=env,
     )

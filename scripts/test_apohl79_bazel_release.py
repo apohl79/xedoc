@@ -25,6 +25,22 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             ("bazel", "cargo"),
         )
 
+    def test_bazel_local_limits_accept_minimum_and_default_to_none(self) -> None:
+        default_args = apohl79_release.parse_args([])
+        limited_args = apohl79_release.parse_args(
+            ["--bazel-build-jobs", "1", "--bazel-max-heap-mb", "1"]
+        )
+
+        self.assertEqual(
+            (
+                default_args.bazel_build_jobs,
+                default_args.bazel_max_heap_mb,
+                limited_args.bazel_build_jobs,
+                limited_args.bazel_max_heap_mb,
+            ),
+            (None, None, 1, 1),
+        )
+
     def test_bazel_release_options_map_both_macos_targets(self) -> None:
         self.assertEqual(
             (
@@ -78,6 +94,8 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             ):
                 result = apohl79_release.build_bazel_release_binaries(
                     bazel="custom-bazel",
+                    bazel_build_jobs=4,
+                    bazel_max_heap_mb=2048,
                     source_root=source_root,
                     target="aarch64-apple-darwin",
                     fork_version="0.145.0-apohl79-92",
@@ -96,9 +114,11 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 build_command,
                 [
                     "custom-bazel",
+                    "--host_jvm_args=-Xmx2048m",
                     "build",
                     "--config=apohl79-release",
                     "--platforms=@llvm//platforms:macos_arm64",
+                    "--local_resources=cpu=4",
                     "--",
                     "//codex-rs:apohl79-release-binaries",
                 ],
@@ -108,10 +128,24 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 "0.145.0-apohl79-92",
             )
             self.assertEqual(
-                [call.args[0][:2] for call in command_output.call_args_list],
+                [call.args[0] for call in command_output.call_args_list],
                 [
-                    ["custom-bazel", "info"],
-                    ["custom-bazel", "cquery"],
+                    [
+                        "custom-bazel",
+                        "--host_jvm_args=-Xmx2048m",
+                        "info",
+                        "execution_root",
+                    ],
+                    [
+                        "custom-bazel",
+                        "--host_jvm_args=-Xmx2048m",
+                        "cquery",
+                        "--config=apohl79-release",
+                        "--platforms=@llvm//platforms:macos_arm64",
+                        "--output=files",
+                        "--",
+                        "//codex-rs:apohl79-release-binaries",
+                    ],
                 ],
             )
 

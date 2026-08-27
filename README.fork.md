@@ -439,6 +439,9 @@ The fork adds release helpers for building apohl79-branded packages from
   line-table settings. Split debug info is disabled so macOS linking works on
   Linux remote executors. A configured remote executor/cache is used
   automatically.
+- `--bazel-build-jobs` limits only Bazel's local action scheduler, without
+  changing remote action concurrency. `--bazel-max-heap-mb` caps the local
+  Bazel server JVM heap. Omitting either flag preserves the Bazel configuration.
 - The fork version is stamped only into the CLI and TUI Rust actions so changing
   a release version does not invalidate cached compilation for every dependency.
 - Bazel outputs are downloaded and copied to a local staging directory before
