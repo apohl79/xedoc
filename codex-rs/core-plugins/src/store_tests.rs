@@ -264,6 +264,40 @@ fn remote_plugin_install_metadata_follows_installed_cache_lifecycle() {
 }
 
 #[test]
+fn writing_identical_remote_plugin_id_preserves_metadata_file() {
+    let tmp = tempdir().unwrap();
+    write_plugin(tmp.path(), "sample-plugin", "sample-plugin");
+    let plugin_id = PluginId::new(
+        "sample-plugin".to_string(),
+        "openai-curated-remote".to_string(),
+    )
+    .unwrap();
+    let store = PluginStore::new(tmp.path().to_path_buf());
+    store
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("sample-plugin")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+    store
+        .write_remote_plugin_id(&plugin_id, "plugins~Plugin_sample")
+        .unwrap();
+    let metadata_path = store.remote_plugin_install_metadata_path(&plugin_id);
+    let metadata_alias = tmp.path().join("metadata-alias.json");
+    fs::hard_link(metadata_path.as_path(), &metadata_alias).unwrap();
+
+    store
+        .write_remote_plugin_id(&plugin_id, "plugins~Plugin_sample")
+        .unwrap();
+    fs::write(metadata_alias, b"metadata alias sentinel").unwrap();
+
+    assert_eq!(
+        fs::read(metadata_path.as_path()).unwrap(),
+        b"metadata alias sentinel"
+    );
+}
+
+#[test]
 fn remote_plugin_install_metadata_rejects_unsupported_schema_version() {
     let tmp = tempdir().unwrap();
     write_plugin(tmp.path(), "sample-plugin", "sample-plugin");

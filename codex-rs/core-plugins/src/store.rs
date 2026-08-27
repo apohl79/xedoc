@@ -203,6 +203,9 @@ impl PluginStore {
             ))
         })?;
         contents.push(b'\n');
+        if fs::read(path.as_path()).is_ok_and(|existing| existing == contents) {
+            return Ok(());
+        }
         let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|err| {
             PluginStoreError::io(
                 "failed to create temporary remote plugin install metadata",
