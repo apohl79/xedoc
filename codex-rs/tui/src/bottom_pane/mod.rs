@@ -216,7 +216,7 @@ struct DelayedApprovalRequest {
 }
 
 #[derive(Clone)]
-struct ActiveTurnContext {
+struct ComposerRuntimeContext {
     model: String,
     effort: Option<String>,
     fast: bool,
@@ -246,7 +246,7 @@ pub(crate) struct BottomPane {
     disable_paste_burst: bool,
     is_task_running: bool,
     active_turn_started_at: Option<Instant>,
-    active_turn_context: Option<ActiveTurnContext>,
+    runtime_context: Option<ComposerRuntimeContext>,
     active_turn_running: bool,
     can_disconnect_active_turn: bool,
     esc_backtrack_hint: bool,
@@ -319,7 +319,7 @@ impl BottomPane {
             disable_paste_burst,
             is_task_running: false,
             active_turn_started_at: None,
-            active_turn_context: None,
+            runtime_context: None,
             active_turn_running: false,
             can_disconnect_active_turn: false,
             status: None,
@@ -364,13 +364,8 @@ impl BottomPane {
         }
     }
 
-    pub(crate) fn set_active_turn_context(
-        &mut self,
-        model: &str,
-        effort: Option<String>,
-        fast: bool,
-    ) {
-        self.active_turn_context = Some(ActiveTurnContext {
+    pub(crate) fn set_runtime_context(&mut self, model: &str, effort: Option<String>, fast: bool) {
+        self.runtime_context = Some(ComposerRuntimeContext {
             model: model.to_string(),
             effort,
             fast,
@@ -1903,7 +1898,7 @@ impl BottomPane {
                 active_turn_elapsed_seconds: self
                     .active_turn_started_at
                     .map(|started_at| started_at.elapsed().as_secs()),
-                active_turn_context: self.active_turn_context.as_ref(),
+                runtime_context: self.runtime_context.as_ref(),
             }));
             flex2.push(/*flex*/ 0, composer);
             RenderableItem::Owned(Box::new(flex2))
@@ -1949,19 +1944,19 @@ struct ChatComposerRightReserveRenderable<'a> {
     composer: &'a chat_composer::ChatComposer,
     right_reserve: u16,
     active_turn_elapsed_seconds: Option<u64>,
-    active_turn_context: Option<&'a ActiveTurnContext>,
+    runtime_context: Option<&'a ComposerRuntimeContext>,
 }
 
 impl Renderable for ChatComposerRightReserveRenderable<'_> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
         self.composer
-            .render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+            .render_with_mask_and_textarea_right_reserve_and_runtime_context(
                 area,
                 buf,
                 /*mask_char*/ None,
                 self.right_reserve,
                 self.active_turn_elapsed_seconds,
-                self.active_turn_context.map(|context| {
+                self.runtime_context.map(|context| {
                     (
                         context.model.as_str(),
                         context.effort.as_deref(),

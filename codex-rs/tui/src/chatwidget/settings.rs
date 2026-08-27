@@ -486,7 +486,7 @@ impl ChatWidget {
             .set_active_reasoning_effort(effort.as_ref());
         let model = self.current_model().to_string();
         let fast = self.current_service_tier() == Some(ServiceTier::Fast.request_value());
-        self.bottom_pane.set_active_turn_context(
+        self.bottom_pane.set_runtime_context(
             &model,
             effort.as_ref().map(|effort| effort.as_str().to_string()),
             fast,

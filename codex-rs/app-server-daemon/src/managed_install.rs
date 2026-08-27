@@ -1,9 +1,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-#[cfg(unix)]
 use anyhow::Context;
-#[cfg(unix)]
 use anyhow::Result;
 #[cfg(unix)]
 use anyhow::anyhow;
@@ -11,7 +9,6 @@ use anyhow::anyhow;
 use sha2::Digest;
 #[cfg(unix)]
 use sha2::Sha256;
-#[cfg(unix)]
 use tokio::fs;
 #[cfg(unix)]
 use tokio::process::Command;
@@ -24,7 +21,6 @@ pub(crate) fn managed_codex_bin(codex_home: &Path) -> PathBuf {
         .join(managed_codex_file_name())
 }
 
-#[cfg(unix)]
 pub(crate) async fn resolved_managed_codex_bin(codex_bin: &Path) -> Result<PathBuf> {
     fs::canonicalize(codex_bin).await.with_context(|| {
         format!(

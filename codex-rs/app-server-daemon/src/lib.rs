@@ -21,6 +21,7 @@ use codex_utils_home_dir::find_codex_home;
 use managed_install::managed_codex_bin;
 #[cfg(unix)]
 use managed_install::managed_codex_version;
+use managed_install::resolved_managed_codex_bin;
 use serde::Serialize;
 use settings::DaemonSettings;
 use tokio::time::sleep;
@@ -652,8 +653,10 @@ impl Daemon {
         settings: &DaemonSettings,
         managed_codex_bin: &Path,
     ) -> Result<Option<u32>> {
-        let backend =
-            backend::pid_backend(self.backend_paths_with_bin(settings, managed_codex_bin));
+        let managed_codex_bin = resolved_managed_codex_bin(managed_codex_bin).await?;
+        let backend = backend::pid_backend(
+            self.backend_paths_with_bin(settings, managed_codex_bin.as_path()),
+        );
         backend.start().await
     }
 

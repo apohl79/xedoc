@@ -10,5 +10,5 @@ expression: normalize_snapshot_paths(terminal.backend().vt100().screen().content
 
 ╭──────────────────────────────────────╮
 │❯ Ask Codex to do anything            │
-╰────────────────────────────────────0s╯
+╰──────────────────────────────gpt-5─0s╯
   gpt-5 default · /tmp/project

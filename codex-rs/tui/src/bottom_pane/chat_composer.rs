@@ -4608,24 +4608,24 @@ impl ChatComposer {
         mask_char: Option<char>,
         textarea_right_reserve: u16,
     ) {
-        self.render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+        self.render_with_mask_and_textarea_right_reserve_and_runtime_context(
             area,
             buf,
             mask_char,
             textarea_right_reserve,
             /*active_turn_elapsed_seconds*/ None,
-            /*active_turn_context*/ None,
+            /*runtime_context*/ None,
         );
     }
 
-    pub(crate) fn render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+    pub(crate) fn render_with_mask_and_textarea_right_reserve_and_runtime_context(
         &self,
         area: Rect,
         buf: &mut Buffer,
         mask_char: Option<char>,
         textarea_right_reserve: u16,
         active_turn_elapsed_seconds: Option<u64>,
-        active_turn_context: Option<(&str, Option<&str>, bool)>,
+        runtime_context: Option<(&str, Option<&str>, bool)>,
     ) {
         let [composer_rect, remote_images_rect, textarea_rect, popup_rect] =
             self.layout_areas_with_textarea_right_reserve(area, textarea_right_reserve);
@@ -4933,35 +4933,40 @@ impl ChatComposer {
                 });
             }
         }
+        let mut runtime_context_spans = Vec::new();
+        if let Some((model, effort, fast)) = runtime_context {
+            runtime_context_spans.push(model.dim());
+            if let Some(effort) = effort {
+                runtime_context_spans.push("─".into());
+                runtime_context_spans.push(effort.dim());
+            }
+            if fast {
+                runtime_context_spans.push("─".into());
+                runtime_context_spans.push(
+                    Span::from("fast")
+                        .red()
+                        .bg(city_lights::composer_session_title_style()
+                            .bg
+                            .unwrap_or_default()),
+                );
+            }
+        }
         if let Some(elapsed_seconds) = active_turn_elapsed_seconds {
+            if !runtime_context_spans.is_empty() {
+                runtime_context_spans.push("─".into());
+            }
             let timer = Span::styled(
                 crate::status_indicator_widget::fmt_elapsed_compact(elapsed_seconds),
                 active_turn_timer_style(),
             );
-            let mut spans = Vec::new();
-            if let Some((model, effort, fast)) = active_turn_context {
-                spans.push(Span::styled(model, active_turn_timer_style()));
-                if let Some(effort) = effort {
-                    spans.push("─".into());
-                    spans.push(Span::styled(effort, active_turn_timer_style()));
-                }
-                if fast {
-                    spans.push("─".into());
-                    spans.push(
-                        Span::from("fast")
-                            .red()
-                            .bg(city_lights::composer_session_title_style()
-                                .bg
-                                .unwrap_or_default()),
-                    );
-                }
-                spans.push("─".into());
-            }
-            spans.push(timer);
-            block = block.title_bottom(Line::from(spans).alignment(Alignment::Right));
+            runtime_context_spans.push(timer);
             if let Some(frame_requester) = &self.frame_requester {
                 frame_requester.schedule_frame_in(Duration::from_secs(/*secs*/ 1));
             }
+        }
+        if !runtime_context_spans.is_empty() {
+            block =
+                block.title_bottom(Line::from(runtime_context_spans).alignment(Alignment::Right));
         }
         block.render_ref(composer_rect, buf);
         if !remote_images_rect.is_empty() {
@@ -5730,8 +5735,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn active_turn_elapsed_time_uses_timer_style_snapshot() {
+    fn runtime_context_frame(elapsed_seconds: Option<u64>, fast: bool) -> String {
         let (tx, _rx) = unbounded_channel::<AppEvent>();
         let sender = AppEventSender::new(tx);
         let composer = ChatComposer::new(
@@ -5743,23 +5747,35 @@ mod tests {
         );
         let area = Rect::new(0, 0, 40, 5);
         let mut buf = Buffer::empty(area);
-        composer.render_with_mask_and_textarea_right_reserve_and_turn_elapsed_seconds(
+        composer.render_with_mask_and_textarea_right_reserve_and_runtime_context(
             area,
             &mut buf,
             /*mask_char*/ None,
             /*textarea_right_reserve*/ 0,
-            /*active_turn_elapsed_seconds*/ Some(5),
-            /*active_turn_context*/ Some(("gpt-5.6-terra", Some("medium"), true)),
+            elapsed_seconds,
+            /*runtime_context*/ Some(("gpt-5.6-terra", Some("medium"), fast)),
         );
 
         let timer_row = area.height - 2;
         let timer_background = city_lights::composer_session_title_style().bg;
         let mut text = String::new();
-        let mut timer_background_cells = String::new();
+        let mut dimmed_cells = String::new();
+        let mut red_cells = String::new();
+        let mut background_cells = String::new();
         for x in 0..area.width {
             let cell = &buf[(x, timer_row)];
             text.push(cell.symbol().chars().next().unwrap_or(' '));
-            timer_background_cells.push(if cell.style().bg == timer_background {
+            dimmed_cells.push(if cell.style().add_modifier.contains(Modifier::DIM) {
+                '^'
+            } else {
+                ' '
+            });
+            red_cells.push(if cell.style().fg == Some(Color::Red) {
+                '^'
+            } else {
+                ' '
+            });
+            background_cells.push(if cell.style().bg == timer_background {
                 '^'
             } else {
                 ' '
@@ -5768,13 +5784,52 @@ mod tests {
         while text.ends_with(' ') {
             text.pop();
         }
-        while timer_background_cells.ends_with(' ') {
-            timer_background_cells.pop();
+        while dimmed_cells.ends_with(' ') {
+            dimmed_cells.pop();
+        }
+        while red_cells.ends_with(' ') {
+            red_cells.pop();
+        }
+        while background_cells.ends_with(' ') {
+            background_cells.pop();
+        }
+        if red_cells.is_empty() {
+            red_cells.push_str("<none>");
+        }
+        if background_cells.is_empty() {
+            background_cells.push_str("<none>");
         }
 
+        format!(
+            "text:       {text}\ndimmed:     {dimmed_cells}\nred:         {red_cells}\nbackground:  {background_cells}"
+        )
+    }
+
+    #[test]
+    fn runtime_context_is_visible_idle_and_preserves_active_styles_snapshot() {
+        let frames = [
+            (
+                "idle standard",
+                runtime_context_frame(/*elapsed_seconds*/ None, /*fast*/ false),
+            ),
+            (
+                "idle fast",
+                runtime_context_frame(/*elapsed_seconds*/ None, /*fast*/ true),
+            ),
+            (
+                "active standard",
+                runtime_context_frame(/*elapsed_seconds*/ Some(5), /*fast*/ false),
+            ),
+            (
+                "active fast",
+                runtime_context_frame(/*elapsed_seconds*/ Some(5), /*fast*/ true),
+            ),
+        ]
+        .map(|(label, frame)| format!("{label}\n{frame}"));
+
         insta::assert_snapshot!(
-            "active_turn_elapsed_time_uses_timer_style",
-            format!("text:              {text}\ntimer_background: {timer_background_cells}")
+            "runtime_context_idle_and_active_styles",
+            frames.join("\n\n")
         );
     }
 
