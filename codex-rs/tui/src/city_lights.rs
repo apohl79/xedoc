@@ -157,8 +157,9 @@ pub fn composer_model_name_style() -> Style {
 /// Style for the composer reasoning-effort context.
 pub fn composer_runtime_context_style() -> Style {
     Style::default()
-        .fg(Color::Black)
+        .fg(Color::Reset)
         .bg(rgb(CL_SESSION_TITLE_BG))
+        .dim()
 }
 
 /// Style for active Agents and Tasks section headers.

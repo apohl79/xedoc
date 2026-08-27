@@ -4929,34 +4929,41 @@ impl ChatComposer {
             .border_style(city_lights::composer_border_style());
         if let Some(session_name) = self.session_name.as_ref() {
             let available_width = composer_rect.width.saturating_sub(4) as usize;
-            if available_width > 0 {
+            if available_width >= 2 {
                 let name_color = session_name_color();
-                let title_line = Line::from(vec![Span::styled(
-                    session_name.clone(),
-                    city_lights::composer_session_title_style().fg(name_color),
-                )]);
-                let title_text =
-                    truncate_line_with_ellipsis_if_overflow(title_line, available_width);
+                let title_style = city_lights::composer_session_title_style().fg(name_color);
+                let title_line = Line::from(vec![Span::styled(session_name.clone(), title_style)]);
+                let title_text = truncate_line_with_ellipsis_if_overflow(
+                    title_line,
+                    available_width.saturating_sub(2),
+                );
+                let mut title_spans = vec![Span::styled(" ", title_style)];
+                title_spans.extend(title_text.spans);
+                title_spans.push(Span::styled(" ", title_style));
                 block = block.title(Title {
-                    content: title_text,
+                    content: Line::from(title_spans),
                     alignment: Some(Alignment::Right),
                     position: None,
                 });
             }
         }
         let mut runtime_context_spans = Vec::new();
+        let field_style = city_lights::composer_session_title_style();
         if let Some((model, effort, fast)) = runtime_context {
             let context_style = city_lights::composer_runtime_context_style();
+            runtime_context_spans.push(Span::styled(" ", field_style));
             runtime_context_spans.push(Span::styled(
                 model,
                 city_lights::composer_model_name_style(),
             ));
             if let Some(effort) = effort {
-                runtime_context_spans.push(Span::styled("|", runtime_context_separator_style()));
+                runtime_context_spans.push(Span::styled("│", runtime_context_separator_style()));
                 runtime_context_spans.push(Span::styled(effort, context_style));
             }
+            runtime_context_spans.push(Span::styled(" ", field_style));
             if fast {
                 runtime_context_spans.push("─".into());
+                runtime_context_spans.push(Span::styled(" ", field_style));
                 runtime_context_spans.push(
                     Span::from("fast")
                         .red()
@@ -4964,17 +4971,20 @@ impl ChatComposer {
                             .bg
                             .unwrap_or_default()),
                 );
+                runtime_context_spans.push(Span::styled(" ", field_style));
             }
         }
         if let Some(elapsed_seconds) = active_turn_elapsed_seconds {
             if !runtime_context_spans.is_empty() {
                 runtime_context_spans.push("─".into());
             }
+            runtime_context_spans.push(Span::styled(" ", field_style));
             let timer = Span::styled(
                 crate::status_indicator_widget::fmt_elapsed_compact(elapsed_seconds),
                 active_turn_timer_style(),
             );
             runtime_context_spans.push(timer);
+            runtime_context_spans.push(Span::styled(" ", field_style));
             if let Some(frame_requester) = &self.frame_requester {
                 frame_requester.schedule_frame_in(Duration::from_secs(/*secs*/ 1));
             }
@@ -5800,11 +5810,15 @@ mod tests {
             } else {
                 ' '
             });
-            effort_color_cells.push(if cell.style().fg == effort_foreground {
-                '^'
-            } else {
-                ' '
-            });
+            effort_color_cells.push(
+                if cell.style().fg == effort_foreground
+                    && cell.style().add_modifier.contains(Modifier::DIM)
+                {
+                    '^'
+                } else {
+                    ' '
+                },
+            );
             pipe_color_cells.push(if cell.style().fg == pipe_foreground {
                 '^'
             } else {

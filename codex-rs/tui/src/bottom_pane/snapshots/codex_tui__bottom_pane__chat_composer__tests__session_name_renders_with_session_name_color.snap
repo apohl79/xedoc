@@ -2,6 +2,6 @@
 source: tui/src/bottom_pane/chat_composer.rs
 expression: "format!(\"text:                       {text}\\nsession_name_color:         {session_name_color_cells}\\nsession_name_background: {session_name_background_cells}\")"
 ---
-text:                       ╭───────────────────────Roadmap cleanup╮
-session_name_color:                                 ^^^^^^^^^^^^^^^
-session_name_background:                         ^^^^^^^^^^^^^^^
+text:                       ╭───────────────────── Roadmap cleanup ╮
+session_name_color:                               ^^^^^^^^^^^^^^^^^
+session_name_background:                       ^^^^^^^^^^^^^^^^^
