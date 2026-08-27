@@ -12,21 +12,23 @@ use codex_app_server::INPUT_TOO_LARGE_ERROR_CODE;
 use codex_app_server::INVALID_PARAMS_ERROR_CODE;
 use codex_app_server_protocol::AdditionalContextEntry;
 use codex_app_server_protocol::AdditionalContextKind;
-use codex_app_server_protocol::ItemStartedNotification;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCNotification;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
-use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStartResponse;
+use codex_app_server_protocol::TurnSteerCancelParams;
+use codex_app_server_protocol::TurnSteerCancelResponse;
+use codex_app_server_protocol::TurnSteerCancelStatus;
 use codex_app_server_protocol::TurnSteerParams;
 use codex_app_server_protocol::TurnSteerResponse;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use core_test_support::skip_if_remote;
+use pretty_assertions::assert_eq;
 use serde_json::Value;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -232,7 +234,7 @@ async fn turn_steer_rejects_oversized_text_input() -> Result<()> {
 }
 
 #[tokio::test]
-async fn turn_steer_returns_active_turn_id() -> Result<()> {
+async fn turn_steer_can_be_canceled_while_pending() -> Result<()> {
     // TODO(anp): Remove after the active-turn fixture can run in the selected remote environment.
     skip_if_remote!(
         Ok(()),
@@ -337,33 +339,29 @@ async fn turn_steer_returns_active_turn_id() -> Result<()> {
     let steer: TurnSteerResponse = to_response::<TurnSteerResponse>(steer_resp)?;
     assert_eq!(steer.turn_id, turn.id);
 
-    timeout(DEFAULT_READ_TIMEOUT, async {
-        loop {
-            let notification = mcp
-                .read_stream_until_notification_message("item/started")
-                .await?;
-            let params = notification.params.expect("item/started params");
-            let item_started: ItemStartedNotification =
-                serde_json::from_value(params).expect("deserialize item/started notification");
-            let ThreadItem::UserMessage {
-                client_id, content, ..
-            } = item_started.item
-            else {
-                continue;
-            };
-            if client_id == Some("client-steer-message-1".to_string()) {
-                assert_eq!(
-                    content,
-                    vec![V2UserInput::Text {
-                        text: "steer".to_string(),
-                        text_elements: Vec::new(),
-                    }]
-                );
-                return Ok::<(), anyhow::Error>(());
+    for expected_status in [
+        TurnSteerCancelStatus::Canceled,
+        TurnSteerCancelStatus::NotFound,
+    ] {
+        let cancel_req = mcp
+            .send_turn_steer_cancel_request(TurnSteerCancelParams {
+                thread_id: thread.id.clone(),
+                client_user_message_id: "client-steer-message-1".to_string(),
+                expected_turn_id: turn.id.clone(),
+            })
+            .await?;
+        let cancel_resp: JSONRPCResponse = timeout(
+            DEFAULT_READ_TIMEOUT,
+            mcp.read_stream_until_response_message(RequestId::Integer(cancel_req)),
+        )
+        .await??;
+        assert_eq!(
+            to_response::<TurnSteerCancelResponse>(cancel_resp)?,
+            TurnSteerCancelResponse {
+                status: expected_status,
             }
-        }
-    })
-    .await??;
+        );
+    }
 
     let event =
         wait_for_analytics_event(&server, DEFAULT_READ_TIMEOUT, "codex_turn_steer_event").await?;
@@ -383,6 +381,30 @@ async fn turn_steer_returns_active_turn_id() -> Result<()> {
         mcp.read_stream_until_notification_message("turn/completed"),
     )
     .await??;
+
+    let requests = server
+        .received_requests()
+        .await
+        .context("failed to fetch received requests")?;
+    let response_requests = requests
+        .iter()
+        .filter(|request| request.url.path().ends_with("/responses"))
+        .collect::<Vec<_>>();
+    assert_eq!(response_requests.len(), 2);
+    let body = response_requests[1]
+        .body_json::<Value>()
+        .context("request body should be JSON")?;
+    let contains_canceled_input = body["input"].as_array().is_some_and(|input| {
+        input.iter().any(|message| {
+            message["role"] == "user"
+                && message["content"].as_array().is_some_and(|content| {
+                    content
+                        .iter()
+                        .any(|item| item["type"] == "input_text" && item["text"] == "steer")
+                })
+        })
+    });
+    assert_eq!(contains_canceled_input, false);
 
     Ok(())
 }

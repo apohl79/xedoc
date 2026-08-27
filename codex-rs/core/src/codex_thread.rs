@@ -317,6 +317,17 @@ impl CodexThread {
             .await
     }
 
+    /// Removes user input that is still pending for the expected active turn.
+    pub async fn cancel_pending_steer(
+        &self,
+        client_user_message_id: &str,
+        expected_turn_id: &str,
+    ) -> bool {
+        self.session
+            .cancel_pending_steer(client_user_message_id, expected_turn_id)
+            .await
+    }
+
     /// Injects model-visible items into the currently active turn.
     ///
     /// This is the thread-level bridge to `Session::inject_if_running` for

@@ -1275,8 +1275,10 @@ async fn restore_thread_input_state_applies_running_state_policy() {
         }),
         safety_buffering_prompt: Some(UserMessage::from("buffered prompt")),
         pending_steers: VecDeque::from([UserMessage::from("submitted to the interrupted turn")]),
+        pending_steer_ids: VecDeque::from([Some(41)]),
         pending_steer_history_records: VecDeque::from([pending_history.clone()]),
         pending_steer_compare_keys: VecDeque::new(),
+        next_pending_steer_id: 42,
         rejected_steers_queue: VecDeque::new(),
         rejected_steer_history_records: VecDeque::new(),
         queued_user_messages: VecDeque::from([UserMessage::from("already queued").into()]),
@@ -1406,6 +1408,9 @@ async fn history_recall_removes_matching_pending_steer() {
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let op = next_submit_op(&mut op_rx);
+    let pending_steer_id = op
+        .pending_steer_id()
+        .expect("queued steer should have an id");
 
     assert!(chat.bottom_pane.composer_text().is_empty());
     assert_eq!(chat.input_queue.pending_steers.len(), 1);
@@ -1416,6 +1421,71 @@ async fn history_recall_removes_matching_pending_steer() {
     assert_eq!(chat.bottom_pane.composer_text(), "adjust this queued steer");
     assert!(chat.input_queue.pending_steers.is_empty());
     assert!(chat.is_stale_pending_steer_op(&op));
+    assert_eq!(
+        op_rx.try_recv(),
+        Ok(Op::CancelPendingSteer { pending_steer_id })
+    );
+}
+
+#[tokio::test]
+async fn canceled_pending_steer_is_not_replayed_by_safety_retry() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5")).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.bottom_pane
+        .set_composer_text("original prompt".to_string(), Vec::new(), Vec::new());
+    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let mut retry_turn = next_submit_op(&mut op_rx);
+    chat.record_safety_buffering_turn("turn-1".to_string(), &retry_turn);
+    chat.on_task_started();
+
+    let mut steer_ids = Vec::new();
+    for message in ["keep this steer", "cancel this steer"] {
+        chat.bottom_pane
+            .set_composer_text(message.to_string(), Vec::new(), Vec::new());
+        chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let steer = next_submit_op(&mut op_rx);
+        let pending_steer_id = steer
+            .pending_steer_id()
+            .expect("queued steer should have an id");
+        let AppCommand::UserTurn { items, .. } = &steer else {
+            panic!("expected a user turn");
+        };
+        chat.record_safety_buffering_steer("turn-1", Some(pending_steer_id), items);
+        steer_ids.push(pending_steer_id);
+    }
+
+    chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    let canceled_steer_id = steer_ids[1];
+    assert_eq!(
+        op_rx.try_recv(),
+        Ok(Op::CancelPendingSteer {
+            pending_steer_id: canceled_steer_id,
+        })
+    );
+    chat.record_safety_buffering_steer_canceled(canceled_steer_id);
+
+    let mut input_state = chat
+        .capture_thread_input_state()
+        .expect("thread input state");
+    let copied_steer_count =
+        chat.apply_safety_buffered_retry_input("turn-1", &mut retry_turn, &mut input_state);
+    let AppCommand::UserTurn { items, .. } = retry_turn else {
+        panic!("expected a user turn");
+    };
+    let retried_message = ChatWidget::user_message_display_from_inputs(&items).message;
+
+    assert_eq!(
+        (
+            copied_steer_count,
+            retried_message,
+            input_state.pending_steers,
+        ),
+        (
+            1,
+            "original prompt\nkeep this steer".to_string(),
+            VecDeque::new()
+        )
+    );
 }
 
 #[tokio::test]

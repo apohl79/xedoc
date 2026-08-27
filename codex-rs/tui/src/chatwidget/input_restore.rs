@@ -109,7 +109,12 @@ impl ChatWidget {
                 &[],
             )
         }) {
-            self.input_queue.pending_steers.remove(index);
+            let Some(pending) = self.input_queue.pending_steers.remove(index) else {
+                return false;
+            };
+            if let Some(id) = pending.id {
+                self.submit_op(AppCommand::cancel_pending_steer(id));
+            }
             return true;
         }
 
@@ -415,6 +420,12 @@ impl ChatWidget {
                 .iter()
                 .map(|pending| pending.user_message.clone())
                 .collect(),
+            pending_steer_ids: self
+                .input_queue
+                .pending_steers
+                .iter()
+                .map(|pending| pending.id)
+                .collect(),
             pending_steer_history_records: self
                 .input_queue
                 .pending_steers
@@ -427,6 +438,7 @@ impl ChatWidget {
                 .iter()
                 .map(|pending| pending.compare_key.clone())
                 .collect(),
+            next_pending_steer_id: self.input_queue.next_pending_steer_id,
             rejected_steers_queue: self.input_queue.rejected_steers_queue.clone(),
             rejected_steer_history_records: self.input_queue.rejected_steer_history_records.clone(),
             queued_user_messages: self.input_queue.queued_user_messages.clone(),
@@ -465,6 +477,7 @@ impl ChatWidget {
                 preserve_in_flight_turn && input_state.user_turn_pending_start;
             self.input_queue.submit_pending_steers_after_interrupt =
                 preserve_in_flight_turn && input_state.submit_pending_steers_after_interrupt;
+            self.input_queue.next_pending_steer_id = input_state.next_pending_steer_id;
             self.update_collaboration_mode_indicator();
             self.refresh_model_dependent_surfaces();
             self.restore_composer_state(input_state.composer.unwrap_or_default());
@@ -474,6 +487,8 @@ impl ChatWidget {
                 UserMessageHistoryRecord::UserMessageText,
             );
             let mut pending_steer_compare_keys = input_state.pending_steer_compare_keys;
+            let mut pending_steer_ids = input_state.pending_steer_ids;
+            pending_steer_ids.resize(input_state.pending_steers.len(), None);
             let pending_steers = input_state.pending_steers;
             let mut queued_user_messages = input_state.queued_user_messages;
             let mut queued_user_message_history_records =
@@ -482,8 +497,9 @@ impl ChatWidget {
                 self.input_queue.pending_steers = pending_steers
                     .into_iter()
                     .zip(pending_steer_history_records)
-                    .map(|(user_message, history_record)| PendingSteer {
-                        id: None,
+                    .zip(pending_steer_ids)
+                    .map(|((user_message, history_record), id)| PendingSteer {
+                        id,
                         compare_key: pending_steer_compare_keys.pop_front().unwrap_or_else(|| {
                             PendingSteerCompareKey {
                                 message: user_message.text.clone(),

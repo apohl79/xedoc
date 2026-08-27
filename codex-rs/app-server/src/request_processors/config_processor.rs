@@ -273,7 +273,7 @@ impl ConfigRequestProcessor {
         Ok(ExperimentalFeatureEnablementSetResponse { enablement })
     }
 
-    async fn reload_user_config(&self) {
+    pub(crate) async fn reload_user_config(&self) {
         let next_config = match self.load_latest_config(/*fallback_cwd*/ None).await {
             Ok(config) => config,
             Err(err) => {

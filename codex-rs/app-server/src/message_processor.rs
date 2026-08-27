@@ -20,6 +20,7 @@ use crate::outgoing_message::ConnectionId;
 use crate::outgoing_message::ConnectionRequestId;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::RequestContext;
+use crate::plugin_watcher::PluginWatcher;
 use crate::request_processors::AccountRequestProcessor;
 use crate::request_processors::AppsRequestProcessor;
 use crate::request_processors::CatalogRequestProcessor;
@@ -102,6 +103,7 @@ fn deserialize_client_request(
 pub(crate) struct MessageProcessor {
     outgoing: Arc<OutgoingMessageSender>,
     models_refresh_worker: ModelsRefreshWorker,
+    plugin_watcher: Arc<PluginWatcher>,
     skills_watcher: Arc<SkillsWatcher>,
     account_processor: AccountRequestProcessor,
     apps_processor: AppsRequestProcessor,
@@ -326,10 +328,15 @@ impl MessageProcessor {
             crate::effective_plugin_change::effective_plugins_changed_callback(
                 auth_manager.clone(),
                 Arc::clone(&thread_manager),
+                outgoing.clone(),
                 config_manager.clone(),
                 config_processor.clone(),
                 request_serialization_queues.clone(),
             );
+        let plugin_watcher = PluginWatcher::new(
+            config.codex_home.as_path(),
+            Arc::clone(&on_effective_plugins_changed),
+        );
         let account_processor = AccountRequestProcessor::new(
             auth_manager.clone(),
             Arc::clone(&thread_manager),
@@ -482,6 +489,7 @@ impl MessageProcessor {
         Self {
             outgoing,
             models_refresh_worker,
+            plugin_watcher,
             skills_watcher,
             account_processor,
             apps_processor,
@@ -512,6 +520,7 @@ impl MessageProcessor {
         self.account_processor.clear_external_auth();
         self.apps_processor.shutdown();
         self.models_refresh_worker.shutdown();
+        self.plugin_watcher.shutdown();
         self.skills_watcher.shutdown();
     }
 
@@ -1278,6 +1287,11 @@ impl MessageProcessor {
             }
             ClientRequest::TurnSteer { params, .. } => {
                 self.turn_processor.turn_steer(&request_id, params).await
+            }
+            ClientRequest::TurnSteerCancel { params, .. } => {
+                self.turn_processor
+                    .turn_steer_cancel(&request_id, params)
+                    .await
             }
             ClientRequest::TurnInterrupt { params, .. } => {
                 self.turn_processor

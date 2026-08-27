@@ -4,6 +4,8 @@ use std::sync::Arc;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigEdit;
 use codex_app_server_protocol::MergeStrategy;
+use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::SkillsChangedNotification;
 use codex_core::ThreadManager;
 use codex_core_plugins::EffectivePluginsChange;
 use codex_core_plugins::remote::RemotePluginMaterialization;
@@ -14,6 +16,7 @@ use serde_json::json;
 use tracing::warn;
 
 use crate::config_manager::ConfigManager;
+use crate::outgoing_message::OutgoingMessageSender;
 use crate::request_processors::ConfigRequestProcessor;
 use crate::request_serialization::RequestSerializationAccess;
 use crate::request_serialization::RequestSerializationQueueKey;
@@ -23,6 +26,7 @@ use crate::request_serialization::RequestSerializationQueues;
 pub(crate) fn effective_plugins_changed_callback(
     auth_manager: Arc<AuthManager>,
     thread_manager: Arc<ThreadManager>,
+    outgoing: Arc<OutgoingMessageSender>,
     config_manager: ConfigManager,
     config_processor: ConfigRequestProcessor,
     request_serialization_queues: RequestSerializationQueues,
@@ -32,16 +36,23 @@ pub(crate) fn effective_plugins_changed_callback(
         thread_manager.skills_service().clear_cache();
 
         let refresh_thread_manager = Arc::clone(&thread_manager);
+        let refresh_outgoing = Arc::clone(&outgoing);
         let refresh_config_manager = config_manager.clone();
+        let refresh_config_processor = config_processor.clone();
         tokio::spawn(async move {
-            if refresh_thread_manager.list_thread_ids().await.is_empty() {
-                return;
+            if !refresh_thread_manager.list_thread_ids().await.is_empty() {
+                refresh_config_processor.reload_user_config().await;
+                crate::mcp_refresh::queue_best_effort_refresh(
+                    &refresh_thread_manager,
+                    &refresh_config_manager,
+                )
+                .await;
             }
-            crate::mcp_refresh::queue_best_effort_refresh(
-                &refresh_thread_manager,
-                &refresh_config_manager,
-            )
-            .await;
+            refresh_outgoing
+                .send_server_notification(ServerNotification::SkillsChanged(
+                    SkillsChangedNotification {},
+                ))
+                .await;
         });
 
         if change.materialized_remote_plugins.is_empty() {

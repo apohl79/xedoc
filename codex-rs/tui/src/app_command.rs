@@ -44,6 +44,9 @@ pub(crate) enum AppCommand {
         collaboration_mode: Option<CollaborationMode>,
         personality: Option<Personality>,
     },
+    CancelPendingSteer {
+        pending_steer_id: u64,
+    },
     OverrideTurnContext {
         cwd: Option<PathBuf>,
         approval_policy: Option<AskForApproval>,
@@ -154,12 +157,17 @@ impl AppCommand {
         self
     }
 
+    pub(crate) fn cancel_pending_steer(pending_steer_id: u64) -> Self {
+        Self::CancelPendingSteer { pending_steer_id }
+    }
+
     pub(crate) fn pending_steer_id(&self) -> Option<u64> {
         match self {
             Self::UserTurn {
                 pending_steer_id, ..
             } => *pending_steer_id,
             Self::Interrupt { .. }
+            | Self::CancelPendingSteer { .. }
             | Self::CleanBackgroundTerminals
             | Self::RunUserShellCommand { .. }
             | Self::OverrideTurnContext { .. }

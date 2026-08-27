@@ -222,6 +222,16 @@ impl TurnRequestProcessor {
             .map(|response| Some(response.into()))
     }
 
+    pub(crate) async fn turn_steer_cancel(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: TurnSteerCancelParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.turn_steer_cancel_inner(request_id, params)
+            .await
+            .map(|response| Some(response.into()))
+    }
+
     pub(crate) async fn turn_interrupt(
         &self,
         request_id: &ConnectionRequestId,
@@ -1029,6 +1039,39 @@ impl TurnRequestProcessor {
                 error
             })?;
         Ok(TurnSteerResponse { turn_id })
+    }
+
+    async fn turn_steer_cancel_inner(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: TurnSteerCancelParams,
+    ) -> Result<TurnSteerCancelResponse, JSONRPCErrorError> {
+        let (_, thread) = self
+            .load_thread(&params.thread_id)
+            .await
+            .inspect_err(|error| {
+                self.track_error_response(request_id, error, /*error_type*/ None);
+            })?;
+        self.ensure_direct_input_allowed(request_id, thread.as_ref())
+            .await?;
+        if params.client_user_message_id.is_empty() {
+            return Err(invalid_request("clientUserMessageId must not be empty"));
+        }
+        if params.expected_turn_id.is_empty() {
+            return Err(invalid_request("expectedTurnId must not be empty"));
+        }
+        self.outgoing
+            .record_request_turn_id(request_id, &params.expected_turn_id)
+            .await;
+        let status = if thread
+            .cancel_pending_steer(&params.client_user_message_id, &params.expected_turn_id)
+            .await
+        {
+            TurnSteerCancelStatus::Canceled
+        } else {
+            TurnSteerCancelStatus::NotFound
+        };
+        Ok(TurnSteerCancelResponse { status })
     }
 
     async fn prepare_realtime_conversation_thread(

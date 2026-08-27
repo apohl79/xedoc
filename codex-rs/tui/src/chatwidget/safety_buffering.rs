@@ -18,34 +18,51 @@ struct ActiveSafetyBuffering {
     agent_message_started: bool,
 }
 
+#[derive(Debug)]
+struct AcceptedSafetyBufferingSteer {
+    pending_steer_id: Option<u64>,
+    input: Vec<UserInput>,
+}
+
 #[derive(Debug, Default)]
 pub(super) struct SafetyBufferingState {
     submitted_turn: Option<(String, AppCommand)>,
-    accepted_steer_count: usize,
+    accepted_steers: Vec<AcceptedSafetyBufferingSteer>,
     active: Option<ActiveSafetyBuffering>,
 }
 
 impl ChatWidget {
     pub(crate) fn record_safety_buffering_turn(&mut self, turn_id: String, turn: &AppCommand) {
         self.safety_buffering.submitted_turn = Some((turn_id, turn.clone()));
-        self.safety_buffering.accepted_steer_count = 0;
+        self.safety_buffering.accepted_steers.clear();
     }
 
-    pub(crate) fn record_safety_buffering_steer(&mut self, turn_id: &str, input: &[UserInput]) {
-        let Some((submitted_turn_id, AppCommand::UserTurn { items, .. })) =
-            self.safety_buffering.submitted_turn.as_mut()
+    pub(crate) fn record_safety_buffering_steer(
+        &mut self,
+        turn_id: &str,
+        pending_steer_id: Option<u64>,
+        input: &[UserInput],
+    ) {
+        let Some((submitted_turn_id, AppCommand::UserTurn { .. })) =
+            self.safety_buffering.submitted_turn.as_ref()
         else {
             return;
         };
         if submitted_turn_id != turn_id || input.is_empty() {
             return;
         }
-        items.push(UserInput::Text {
-            text: "\n".to_string(),
-            text_elements: Vec::new(),
-        });
-        items.extend(input.iter().cloned());
-        self.safety_buffering.accepted_steer_count += 1;
+        self.safety_buffering
+            .accepted_steers
+            .push(AcceptedSafetyBufferingSteer {
+                pending_steer_id,
+                input: input.to_vec(),
+            });
+    }
+
+    pub(crate) fn record_safety_buffering_steer_canceled(&mut self, pending_steer_id: u64) {
+        self.safety_buffering
+            .accepted_steers
+            .retain(|steer| steer.pending_steer_id != Some(pending_steer_id));
     }
 
     pub(crate) fn apply_safety_buffered_retry_input(
@@ -69,12 +86,20 @@ impl ChatWidget {
             return 0;
         }
         *retry_items = items.clone();
-        let accepted_steer_count = self.safety_buffering.accepted_steer_count;
+        for steer in &self.safety_buffering.accepted_steers {
+            retry_items.push(UserInput::Text {
+                text: "\n".to_string(),
+                text_elements: Vec::new(),
+            });
+            retry_items.extend(steer.input.iter().cloned());
+        }
+        let accepted_steer_count = self.safety_buffering.accepted_steers.len();
         let pending_steer_count = accepted_steer_count.min(input_state.pending_steers.len());
         input_state.pending_steers.drain(..pending_steer_count);
         input_state
             .pending_steer_history_records
             .drain(..pending_steer_count);
+        input_state.pending_steer_ids.drain(..pending_steer_count);
         input_state
             .pending_steer_compare_keys
             .drain(..pending_steer_count);

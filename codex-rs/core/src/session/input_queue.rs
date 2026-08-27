@@ -269,6 +269,22 @@ impl TurnInputQueue {
             .iter()
             .any(|input| matches!(input, TurnInput::UserInput { .. }))
     }
+
+    pub(super) fn remove_user_input_by_client_id(&mut self, client_user_message_id: &str) -> bool {
+        let Some(index) = self.items.iter().position(|input| {
+            matches!(
+                input,
+                TurnInput::UserInput {
+                    client_id: Some(client_id),
+                    ..
+                } if client_id == client_user_message_id
+            )
+        }) else {
+            return false;
+        };
+        self.items.remove(index);
+        true
+    }
 }
 
 #[cfg(test)]
@@ -290,6 +306,30 @@ mod tests {
             content.to_string(),
             trigger_turn,
         )
+    }
+
+    #[test]
+    fn pending_steer_cancel_removes_only_the_matching_client_id() {
+        let text = |text: &str, client_id: &str| TurnInput::UserInput {
+            content: vec![UserInput::Text {
+                text: text.to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: Some(client_id.to_string()),
+        };
+        let mut queue = TurnInputQueue {
+            items: vec![
+                text("first", "id-1"),
+                text("second", "id-2"),
+                text("third", "id-3"),
+            ],
+        };
+
+        let removed = queue.remove_user_input_by_client_id("id-2");
+        assert_eq!(
+            (removed, queue.items),
+            (true, vec![text("first", "id-1"), text("third", "id-3")])
+        );
     }
 
     #[tokio::test]

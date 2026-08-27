@@ -4160,6 +4160,38 @@ impl Session {
         Ok(active_turn_id.clone())
     }
 
+    /// Removes user input that is still pending for the expected active turn.
+    ///
+    /// Returns `false` when the turn changed, the input was already consumed, or no matching
+    /// client id exists.
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub async fn cancel_pending_steer(
+        &self,
+        client_user_message_id: &str,
+        expected_turn_id: &str,
+    ) -> bool {
+        let active = self.active_turn.lock().await;
+        let Some(active_task) = active
+            .as_ref()
+            .and_then(|active_turn| active_turn.task.as_ref())
+        else {
+            return false;
+        };
+        if active_task.turn_context.sub_id != expected_turn_id {
+            return false;
+        }
+        let Some(active_turn) = active.as_ref() else {
+            return false;
+        };
+        let mut turn_state = active_turn.turn_state.lock().await;
+        turn_state
+            .pending_input
+            .remove_user_input_by_client_id(client_user_message_id)
+    }
+
     pub(crate) async fn record_memory_citation_for_turn(&self, sub_id: &str) {
         let turn_state = self
             .input_queue
