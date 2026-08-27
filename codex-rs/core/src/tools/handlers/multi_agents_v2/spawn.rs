@@ -91,7 +91,7 @@ async fn handle_spawn_agent(
         args.service_tier.as_deref(),
     )
     .await?;
-    apply_spawn_agent_delegation_override(&mut config, args.allow_delegation)?;
+    apply_spawn_agent_delegation_override(&mut config, args.allow_delegation);
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
 
     let spawn_source = thread_spawn_source(

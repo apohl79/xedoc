@@ -495,7 +495,7 @@ async fn multi_agent_v2_spawn_fork_turns_all_rejects_agent_type_override() {
 }
 
 #[tokio::test]
-async fn multi_agent_v2_spawn_disables_child_delegation_when_requested() {
+async fn multi_agent_v2_spawn_keeps_leaf_in_v2_and_disables_child_delegation() {
     let (mut session, mut turn) = make_session_and_context().await;
     let manager = thread_manager();
     let root = manager
@@ -548,10 +548,11 @@ async fn multi_agent_v2_spawn_disables_child_delegation_when_requested() {
         .get_thread(child_thread_id)
         .await
         .expect("spawned agent thread should exist");
+    let child_config = child.session.get_config().await;
 
     assert_eq!(
-        child.multi_agent_version(),
-        Some(MultiAgentVersion::Disabled)
+        (child.multi_agent_version(), child_config.agent_max_depth),
+        (Some(MultiAgentVersion::V2), 0)
     );
 }
 

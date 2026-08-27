@@ -8,7 +8,6 @@ use crate::session::turn_context::TurnContext;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
-use codex_features::Feature;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
@@ -245,28 +244,12 @@ pub(crate) fn apply_spawn_agent_runtime_overrides(
 pub(crate) fn apply_spawn_agent_delegation_override(
     config: &mut Config,
     allow_delegation: Option<bool>,
-) -> Result<(), FunctionCallError> {
-    if allow_delegation != Some(false) {
-        return Ok(());
+) {
+    if allow_delegation == Some(false) {
+        // Keep MultiAgentV2 enabled so the child retains V2 accounting and management tools.
+        // The depth limit prevents the child from spawning another agent.
+        config.agent_max_depth = 0;
     }
-
-    let mut features = config.features.get().clone();
-    features.disable(Feature::Collab);
-    features.disable(Feature::MultiAgentV2);
-    config.features.set(features).map_err(|err| {
-        FunctionCallError::RespondToModel(format!(
-            "spawn_agent could not disable delegation for the child: {err}"
-        ))
-    })?;
-    if config.features.enabled(Feature::Collab) || config.features.enabled(Feature::MultiAgentV2) {
-        return Err(FunctionCallError::RespondToModel(
-            "spawn_agent could not disable delegation because collaboration is required by managed configuration"
-                .to_string(),
-        ));
-    }
-
-    config.agents_enabled = false;
-    Ok(())
 }
 
 pub(crate) async fn apply_requested_spawn_agent_model_overrides(

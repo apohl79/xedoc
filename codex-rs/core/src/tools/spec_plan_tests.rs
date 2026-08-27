@@ -1311,6 +1311,34 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
 }
 
 #[tokio::test]
+async fn multi_agent_v2_omits_only_spawn_agent_at_the_depth_limit() {
+    let plan = probe(|turn| {
+        set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
+        update_config(turn, |config| {
+            config.agent_max_depth = 0;
+        });
+    })
+    .await;
+
+    plan.assert_visible_contains(&[MULTI_AGENT_V2_NAMESPACE]);
+    assert_eq!(
+        plan.namespace_function_names(MULTI_AGENT_V2_NAMESPACE),
+        &[
+            "followup_task".to_string(),
+            "interrupt_agent".to_string(),
+            "list_agents".to_string(),
+            "send_message".to_string(),
+            "wait_agent".to_string(),
+        ]
+    );
+    plan.assert_registered_lacks(&[
+        ToolName::namespaced(MULTI_AGENT_V2_NAMESPACE, "spawn_agent")
+            .to_string()
+            .as_str(),
+    ]);
+}
+
+#[tokio::test]
 async fn multi_agent_v2_message_schemas_are_plaintext() {
     let plan = probe(|turn| {
         set_feature(turn, Feature::MultiAgentV2, /*enabled*/ true);
