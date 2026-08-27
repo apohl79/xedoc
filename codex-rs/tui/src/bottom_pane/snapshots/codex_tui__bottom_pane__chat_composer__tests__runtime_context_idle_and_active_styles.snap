@@ -7,25 +7,25 @@ text:        ╰──────────────────gpt-5.6-te
 model_color:                    ^^^^^^^^^^^^^
 effort_color:                                  ^^^^^^
 red:         <none>
-background:  <none>
+background:                     ^^^^^^^^^^^^^ ^^^^^^
 
 idle fast
 text:        ╰─────────────gpt-5.6-terra─medium─fast╯
 model_color:               ^^^^^^^^^^^^^
 effort_color:                             ^^^^^^
 red:                                            ^^^^
-background:                                     ^^^^
+background:                ^^^^^^^^^^^^^ ^^^^^^ ^^^^
 
 active standard
 text:        ╰───────────────gpt-5.6-terra─medium─5s╯
 model_color:                 ^^^^^^^^^^^^^
 effort_color:                               ^^^^^^
 red:         <none>
-background:                                       ^^
+background:                  ^^^^^^^^^^^^^ ^^^^^^ ^^
 
 active fast
 text:        ╰──────────gpt-5.6-terra─medium─fast─5s╯
 model_color:            ^^^^^^^^^^^^^
 effort_color:                          ^^^^^^
 red:                                         ^^^^
-background:                                  ^^^^ ^^
+background:             ^^^^^^^^^^^^^ ^^^^^^ ^^^^ ^^

@@ -151,12 +151,16 @@ pub fn composer_border_style() -> Style {
 
 /// Style for the composer model name.
 pub fn composer_model_name_style() -> Style {
-    Style::default().fg(rgb(CL_MODEL_NAME))
+    Style::default()
+        .fg(rgb(CL_MODEL_NAME))
+        .bg(rgb(CL_SESSION_TITLE_BG))
 }
 
 /// Style for the composer reasoning-effort context.
 pub fn composer_runtime_context_style() -> Style {
-    Style::default().fg(rgb(CL_RUNTIME_CONTEXT))
+    Style::default()
+        .fg(Color::Black)
+        .bg(rgb(CL_SESSION_TITLE_BG))
 }
 
 /// Style for active Agents and Tasks section headers.
