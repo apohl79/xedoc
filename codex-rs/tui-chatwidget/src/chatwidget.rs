@@ -146,7 +146,7 @@ use codex_protocol::config_types::CollaborationModeMask;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::Settings;
-#[cfg(any(target_os = "windows", test, feature = "test-support"))]
+#[cfg(any(target_os = "windows", test))]
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::AgentMessageItem;
@@ -723,6 +723,7 @@ pub struct ChatWidget {
     status_line_command_last_payload: Option<String>,
     status_line_command_pending_payload: Option<String>,
     status_line_command_pending_request_id: Option<u64>,
+    status_line_command_refresh_requested: bool,
     next_status_line_command_request_id: u64,
     // Last terminal title emitted, to avoid writing duplicate OSC updates.
     pub last_terminal_title: Option<String>,

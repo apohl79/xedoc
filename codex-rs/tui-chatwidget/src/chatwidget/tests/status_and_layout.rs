@@ -3016,6 +3016,36 @@ async fn token_usage_update_refreshes_custom_status_line_payload() {
 }
 
 #[tokio::test]
+async fn completed_turn_refreshes_custom_status_line_with_an_unchanged_payload() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
+        "missing-statusline-command".to_string(),
+    ]));
+    let payload = chat.status_line_command_payload();
+    chat.status_line_command_last_payload = Some(payload.clone());
+
+    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+
+    assert_eq!(chat.status_line_command_pending_payload, Some(payload));
+}
+
+#[tokio::test]
+async fn completed_turn_refreshes_custom_status_line_after_a_pending_command() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
+    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
+        "missing-statusline-command".to_string(),
+    ]));
+    let payload = chat.status_line_command_payload();
+    chat.status_line_command_pending_payload = Some(payload.clone());
+    chat.status_line_command_pending_request_id = Some(7);
+
+    handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
+    chat.set_status_line_command_output(7, /*line*/ None);
+
+    assert_eq!(chat.status_line_command_pending_payload, Some(payload));
+}
+
+#[tokio::test]
 async fn plan_update_refreshes_custom_status_line_task_indicator() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
     chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![

@@ -3,10 +3,7 @@ use crate::app_server_session::AppServerSession;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::RequestId as AppServerRequestId;
 
-pub(super) use codex_tui_thread_state::AppServerRequestResolution;
 pub(super) use codex_tui_thread_state::PendingAppServerRequests;
-pub(super) use codex_tui_thread_state::ResolvedAppServerRequest;
-pub(super) use codex_tui_thread_state::UnsupportedAppServerRequest;
 
 impl App {
     pub(super) async fn reject_app_server_request(

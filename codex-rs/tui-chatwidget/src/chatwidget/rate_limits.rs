@@ -8,7 +8,6 @@ pub(super) const RATE_LIMIT_SWITCH_PROMPT_THRESHOLD: f64 = 90.0;
 pub(super) const RATE_LIMIT_SWITCH_PROMPT_VIEW_ID: &str = "rate-limit-switch-prompt";
 
 const RATE_LIMIT_WARNING_THRESHOLDS: [f64; 3] = [75.0, 90.0, 95.0];
-pub use codex_tui_status::rate_limit_labels::fallback_limit_label;
 pub use codex_tui_status::rate_limit_labels::get_limits_duration;
 pub use codex_tui_status::rate_limit_labels::limit_label_for_window;
 

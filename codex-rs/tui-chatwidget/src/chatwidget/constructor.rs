@@ -230,6 +230,7 @@ impl ChatWidget {
             status_line_command_last_payload: None,
             status_line_command_pending_payload: None,
             status_line_command_pending_request_id: None,
+            status_line_command_refresh_requested: false,
             next_status_line_command_request_id: 0,
             last_terminal_title: None,
             last_terminal_title_requires_action: false,

@@ -155,6 +155,7 @@ impl ChatWidget {
             self.status_line_command_last_payload = None;
             self.status_line_command_pending_payload = None;
             self.status_line_command_pending_request_id = None;
+            self.status_line_command_refresh_requested = false;
         }
         self.config.tui_status_line_command = command;
         self.refresh_status_line();

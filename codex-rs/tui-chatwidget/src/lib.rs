@@ -14,10 +14,6 @@ mod app_server_approval_conversions {
     pub use codex_tui_events::approval_conversions::*;
 }
 
-mod app_server_session {
-    pub use codex_tui_app_server_session::*;
-}
-
 mod approval_events {
     pub use codex_tui_events::approval_events::*;
 }
@@ -54,6 +50,7 @@ mod color {
     pub use codex_tui_render::color::*;
 }
 
+#[cfg(test)]
 mod custom_terminal {
     pub use codex_tui_transcript::custom_terminal::*;
 }
@@ -110,6 +107,7 @@ mod inline_visualization {
     pub use codex_tui_transcript::inline_visualization::*;
 }
 
+#[cfg(test)]
 mod insert_history {
     pub use codex_tui_transcript::insert_history::*;
 }
@@ -146,10 +144,6 @@ mod multi_agents {
     pub use codex_tui_agents::*;
 }
 
-mod pager_overlay {
-    pub use codex_tui_overlays::pager_overlay::*;
-}
-
 mod pets {
     pub use codex_tui_pet::*;
     pub use codex_tui_pet_ui::*;
@@ -181,14 +175,6 @@ mod slash_command {
 
 mod status {
     pub use codex_tui_status::status::*;
-
-    pub mod rate_limits {
-        pub use codex_tui_status::status::rate_limits::*;
-    }
-
-    pub mod remote_connection {
-        pub use codex_tui_status::status::remote_connection::*;
-    }
 }
 
 mod status_indicator_widget {
@@ -241,6 +227,7 @@ mod token_usage {
     pub use codex_tui_status::token_usage::*;
 }
 
+#[cfg(test)]
 mod tui {
     pub use codex_tui_frame::FrameRequester;
 }
@@ -253,6 +240,7 @@ mod width {
     pub use codex_tui_transcript::width::*;
 }
 
+#[cfg(any(target_os = "windows", test))]
 mod windows_sandbox {
     pub use codex_tui_platform::windows_sandbox::*;
 }

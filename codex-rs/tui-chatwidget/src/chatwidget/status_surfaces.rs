@@ -230,7 +230,8 @@ impl ChatWidget {
             return;
         };
         let payload = self.status_line_command_payload();
-        if self.status_line_command_last_payload.as_deref() == Some(payload.as_str())
+        if (!self.status_line_command_refresh_requested
+            && self.status_line_command_last_payload.as_deref() == Some(payload.as_str()))
             || self.status_line_command_pending_payload.as_deref() == Some(payload.as_str())
             || self.status_line_command_pending_request_id.is_some()
         {
@@ -242,6 +243,7 @@ impl ChatWidget {
             self.next_status_line_command_request_id.saturating_add(1);
         self.status_line_command_pending_payload = Some(payload.clone());
         self.status_line_command_pending_request_id = Some(request_id);
+        self.status_line_command_refresh_requested = false;
         let cwd = self.status_line_cwd().to_path_buf();
         let tx = self.app_event_tx.clone();
         tokio::spawn(async move {
@@ -249,6 +251,11 @@ impl ChatWidget {
                 crate::status_line_command::run_status_line_command(command, payload, cwd).await;
             tx.send(AppEvent::StatusLineCommandUpdated { request_id, line });
         });
+    }
+
+    pub(super) fn request_status_line_command_refresh_after_turn(&mut self) {
+        self.status_line_command_refresh_requested = true;
+        self.request_status_line_command_refresh();
     }
 
     pub fn set_status_line_command_output(&mut self, request_id: u64, line: Option<Line<'static>>) {
