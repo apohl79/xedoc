@@ -175,6 +175,7 @@ if [ "$ENABLE_GIT" = "1" ] && [ "$is_git_repo" = "1" ]; then
     changes=""
     [[ "$git_status" == *$'\n'* ]] && changes=${git_status#*$'\n'}
     while IFS= read -r status_line; do
+        [ -n "$status_line" ] || continue
         status=${status_line:0:2}
         case "$status" in
             "??") ((untracked += 1)) ;;
