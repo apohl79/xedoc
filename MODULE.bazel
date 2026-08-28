@@ -281,7 +281,7 @@ crate.annotation(
 
 inject_repo(crate, "bzip2")
 
-bazel_dep(name = "zlib", version = "1.3.1.bcr.8")
+bazel_dep(name = "zlib", version = "1.3.2")
 
 crate.annotation(
     crate = "libz-sys",
@@ -289,6 +289,26 @@ crate.annotation(
 )
 
 inject_repo(crate, "zlib")
+
+bazel_dep(name = "libgit2", version = "1.9.1")
+
+crate.annotation(
+    crate = "libgit2-sys",
+    gen_build_script = "off",
+    deps = ["@libgit2"],
+)
+
+inject_repo(crate, "libgit2")
+
+bazel_dep(name = "libssh2", version = "1.11.1.bcr.1")
+
+crate.annotation(
+    crate = "libssh2-sys",
+    gen_build_script = "off",
+    deps = ["@libssh2"],
+)
+
+inject_repo(crate, "libssh2")
 
 bazel_dep(name = "xz", version = "5.4.5.bcr.8")
 single_version_override(
@@ -305,7 +325,7 @@ crate.annotation(
     deps = ["@xz//:lzma"],
 )
 
-bazel_dep(name = "openssl", version = "3.5.4.bcr.0")
+bazel_dep(name = "openssl", version = "3.5.5.bcr.0")
 
 inject_repo(crate, "xz")
 
