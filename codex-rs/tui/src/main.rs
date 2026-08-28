@@ -10,6 +10,11 @@ use codex_utils_cli::CliConfigOverrides;
 use std::io::Write;
 use supports_color::Stream;
 
+const CODEX_CLI_VERSION: &str = match option_env!("CODEX_RELEASE_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<String> {
     let is_fatal = matches!(&exit_info.exit_reason, ExitReason::Fatal(_));
     let AppExitInfo {
@@ -48,6 +53,7 @@ struct TopCli {
 }
 
 fn main() -> anyhow::Result<()> {
+    codex_tui::set_codex_cli_version(CODEX_CLI_VERSION);
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
         let mut inner = top_cli.inner;

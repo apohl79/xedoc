@@ -14,7 +14,7 @@ use crate::tui::Tui;
 use crate::tui::TuiEvent;
 use crate::update_action::UpdateAction;
 use crate::updates;
-use crate::version::CODEX_CLI_VERSION;
+use crate::version::codex_cli_version;
 use color_eyre::Result;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -114,7 +114,7 @@ impl UpdatePromptScreen {
         Self {
             request_frame,
             latest_version,
-            current_version: CODEX_CLI_VERSION.to_string(),
+            current_version: codex_cli_version().to_string(),
             update_action,
             highlighted: UpdateSelection::UpdateNow,
             selection: None,

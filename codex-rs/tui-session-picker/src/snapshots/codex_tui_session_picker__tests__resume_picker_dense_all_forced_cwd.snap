@@ -1,0 +1,5 @@
+---
+source: tui-session-picker/src/lib.rs
+expression: "render_dense_row_snapshot(true, None, 48,)"
+---
+❯ 15m ago     Propose session picker redesig...

@@ -1,0 +1,26 @@
+[package]
+name = "codex-tui-agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_agents"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-app-server-protocol = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-transcript = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }

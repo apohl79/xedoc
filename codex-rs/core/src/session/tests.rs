@@ -4,7 +4,7 @@ use crate::agents_md_manager::AgentsMdManager;
 use crate::codex_thread::TryStartTurnIfIdleRejectionReason;
 use crate::config::ConfigBuilder;
 use crate::config::ConfigOverrides;
-use crate::config::test_config;
+use crate::config_test_support::test_config;
 use crate::context::ContextualUserFragment;
 use crate::environment_selection::ThreadEnvironments;
 use crate::environment_selection::TurnEnvironmentState;
@@ -1411,7 +1411,7 @@ async fn reload_user_config_layer_updates_base_and_selected_profile_layers() {
     .expect("write base user config");
     std::fs::write(&profile_config_path, "model = \"profile-old\"\n")
         .expect("write profile user config");
-    let config = ConfigBuilder::without_managed_config_for_tests()
+    let config = crate::config_test_support::config_builder_without_managed_config()
         .codex_home(codex_home.to_path_buf())
         .loader_overrides(LoaderOverrides {
             user_config_path: Some(profile_config_path.abs()),
@@ -4280,7 +4280,7 @@ fn text_block(s: &str) -> serde_json::Value {
 }
 
 async fn build_test_config(codex_home: &Path) -> Config {
-    ConfigBuilder::without_managed_config_for_tests()
+    crate::config_test_support::config_builder_without_managed_config()
         .codex_home(codex_home.to_path_buf())
         .harness_overrides(ConfigOverrides {
             model: Some("gpt-5.5".to_string()),

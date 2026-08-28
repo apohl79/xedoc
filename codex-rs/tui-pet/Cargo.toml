@@ -1,0 +1,33 @@
+[package]
+name = "codex-tui-pet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_pet"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+codex-terminal-detection = { workspace = true }
+codex-tui-frame = { workspace = true }
+crossterm = { workspace = true }
+image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
+ratatui = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serial_test = { workspace = true }
+tempfile = { workspace = true }

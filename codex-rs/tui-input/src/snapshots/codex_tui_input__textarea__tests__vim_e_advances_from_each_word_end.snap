@@ -1,0 +1,13 @@
+---
+source: tui-input/src/textarea.rs
+assertion_line: 2681
+expression: "states.join(\"\\n\\n\")"
+---
+alpha beta gamma
+         ^
+
+alpha beta gamma
+               ^
+
+alpha beta gamma
+               ^

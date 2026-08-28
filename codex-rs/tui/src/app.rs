@@ -37,7 +37,6 @@ use crate::bottom_pane::popup_consts::standard_popup_hint_line;
 use crate::chatwidget::ChatWidget;
 use crate::chatwidget::ExternalEditorState;
 use crate::chatwidget::ReplayKind;
-use crate::chatwidget::ThreadInputState;
 use crate::cwd_prompt::CwdPromptAction;
 use crate::diff_render::DiffSummary;
 use crate::exec_command::split_command_string;
@@ -84,7 +83,7 @@ use crate::transcript_reflow::TranscriptReflowState;
 use crate::tui;
 use crate::tui::TuiEvent;
 use crate::update_action::UpdateAction;
-use crate::version::CODEX_CLI_VERSION;
+use crate::version::codex_cli_version;
 use crate::workspace_command::AppServerWorkspaceCommandRunner;
 use crate::workspace_command::WorkspaceCommandRunner;
 use codex_ansi_escape::ansi_escape_line;
@@ -213,7 +212,6 @@ mod event_dispatch;
 mod history_ui;
 mod input;
 mod loaded_threads;
-mod pending_interactive_replay;
 mod pets;
 mod platform_actions;
 mod plugin_mentions;
@@ -233,7 +231,6 @@ use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;
 use self::app_server_requests::PendingAppServerRequests;
 use self::loaded_threads::find_loaded_subagent_threads_for_primary;
-use self::pending_interactive_replay::PendingInteractiveReplayState;
 use self::platform_actions::*;
 use self::side::SideParentStatus;
 use self::side::SideParentStatusChange;
@@ -1386,7 +1383,9 @@ See the Codex keymap documentation for supported actions and examples."
                         self.rebuild_transcript_after_backtrack(tui)?;
                         self.backtrack_render_pending = false;
                     }
-                    self.chat_widget.maybe_post_pending_notification(tui);
+                    if let Some(notification) = self.chat_widget.take_pending_notification() {
+                        tui.notify(notification);
+                    }
                     if self
                         .chat_widget
                         .handle_paste_burst_tick(tui.frame_requester())

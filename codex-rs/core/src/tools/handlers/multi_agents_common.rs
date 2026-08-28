@@ -1,7 +1,5 @@
 use crate::agent::role::apply_role_to_config;
 use crate::config::Config;
-use crate::config::DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
-use crate::config::HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
 use crate::function_tool::FunctionCallError;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
@@ -25,17 +23,20 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 
 /// Minimum wait timeout to prevent tight polling loops from burning CPU.
-pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 = DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
+pub(crate) const MIN_WAIT_TIMEOUT_MS: i64 =
+    crate::config::DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS;
 pub(crate) const DEFAULT_WAIT_TIMEOUT_MS: i64 = 30_000;
-pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
-pub(crate) const MAX_SPAWN_AGENT_MODEL_OVERRIDES: usize = 5;
+pub(crate) const MAX_WAIT_TIMEOUT_MS: i64 = crate::config::HARD_MAX_MULTI_AGENT_V2_TIMEOUT_MS;
+pub(crate) use codex_core_tool_specs::multi_agents_common::MAX_SPAWN_AGENT_MODEL_OVERRIDES;
+pub(crate) use codex_core_tool_specs::multi_agents_common::model_supports_multi_agent_backend;
 
-pub(crate) fn model_supports_multi_agent_backend(
-    model: &ModelPreset,
-    multi_agent_version: MultiAgentVersion,
-) -> bool {
-    multi_agent_version != MultiAgentVersion::V2
-        || model.multi_agent_version == Some(multi_agent_version)
+pub(crate) fn default_wait_agent_timeout_options()
+-> crate::tools::handlers::multi_agents_spec::WaitAgentTimeoutOptions {
+    crate::tools::handlers::multi_agents_spec::WaitAgentTimeoutOptions {
+        default_timeout_ms: DEFAULT_WAIT_TIMEOUT_MS,
+        min_timeout_ms: MIN_WAIT_TIMEOUT_MS,
+        max_timeout_ms: MAX_WAIT_TIMEOUT_MS,
+    }
 }
 
 pub(crate) fn function_arguments(payload: ToolPayload) -> Result<String, FunctionCallError> {

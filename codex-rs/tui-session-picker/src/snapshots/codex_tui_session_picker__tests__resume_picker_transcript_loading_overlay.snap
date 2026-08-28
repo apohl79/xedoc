@@ -1,0 +1,9 @@
+---
+source: tui-session-picker/src/lib.rs
+expression: snapshot
+---
+❯ Find pending threads and emails
+  -             ⌁ no cwd                          no branch
+
+  Plan raw scrollback mod     Loading transcript…
+  -             ⌁ no cwd                              branch

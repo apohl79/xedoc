@@ -1,6 +1,5 @@
 use super::*;
-use crate::config::ConfigBuilder;
-use crate::config::test_config as load_test_config;
+use crate::config_test_support::test_config as load_test_config;
 use crate::init_state_db;
 use crate::installation_id::INSTALLATION_ID_FILENAME;
 use crate::rollout::RolloutRecorder;
@@ -1488,7 +1487,7 @@ requires_openai_auth = false
         "model_provider = \"anthropic\"\nmodel_catalog_json = \"anthropic-models.json\"\n",
     )?;
 
-    let config = ConfigBuilder::without_managed_config_for_tests()
+    let config = crate::config_test_support::config_builder_without_managed_config()
         .codex_home(codex_home.path().to_path_buf())
         .fallback_cwd(Some(codex_home.path().to_path_buf()))
         .build()

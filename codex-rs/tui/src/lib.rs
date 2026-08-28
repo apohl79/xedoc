@@ -17,7 +17,7 @@ use crate::session_resume::ResumeCwdContext;
 use crate::session_resume::effective_resume_cwd_mode;
 use crate::session_resume::resolve_cwd_for_resume_or_fork;
 pub use crate::startup_error::LocalStateDbStartupError;
-use crate::version::CODEX_CLI_VERSION;
+use crate::version::codex_cli_version;
 use additional_dirs::add_dir_warning_message;
 use app::App;
 pub use app::AppExitInfo;
@@ -28,8 +28,6 @@ use codex_app_server_client::AppServerClient;
 use codex_app_server_client::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY;
 use codex_app_server_client::InProcessAppServerClient;
 use codex_app_server_client::InProcessClientStartArgs;
-use codex_app_server_client::RemoteAppServerClient;
-use codex_app_server_client::RemoteAppServerConnectArgs;
 pub use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_app_server_protocol::Account as AppServerAccount;
 use codex_app_server_protocol::AskForApproval;
@@ -60,6 +58,7 @@ use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_rollout::StateDbHandle;
 use codex_rollout::state_db;
 use codex_state::log_db;
+pub use codex_tui_transcript::set_codex_cli_version;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::canonicalize_existing_preserving_symlinks;
 use codex_utils_home_dir::find_codex_home;
@@ -96,28 +95,29 @@ mod app_event_sender;
 mod app_info;
 mod app_server_approval_conversions;
 mod app_server_session;
+pub(crate) use app_server_session::connect_remote_app_server;
 mod approval_events;
 mod ascii_animation;
 mod bottom_pane;
 mod branch_summary;
 mod chatwidget;
-mod city_lights;
+pub(crate) use codex_tui_render::city_lights;
 mod cli;
 mod clipboard_copy;
 mod clipboard_paste;
 mod collaboration_modes;
-mod color;
+pub(crate) use codex_tui_render::color;
 mod config_update;
-pub(crate) mod custom_terminal;
+pub(crate) use codex_tui_transcript::custom_terminal;
 mod pets;
-pub use custom_terminal::Terminal;
+pub use codex_tui_transcript::Terminal;
 mod auto_review_denials;
 mod cwd_prompt;
 mod debug_config;
-mod diff_model;
-mod diff_render;
-mod exec_cell;
-mod exec_command;
+pub(crate) use codex_tui_render::diff_model;
+pub(crate) use codex_tui_render::diff_render;
+pub(crate) use codex_tui_transcript::exec_cell;
+pub(crate) use codex_tui_transcript::exec_command;
 mod external_agent_config_migration;
 mod external_agent_config_migration_flow;
 mod external_agent_config_migration_model;
@@ -129,28 +129,24 @@ mod get_git_diff;
 mod git_action_directives;
 mod goal_display;
 mod goal_files;
-mod history_cell;
+pub(crate) use codex_tui_transcript::history_cell;
 mod hooks_rpc;
 mod ide_context;
-mod inline_visualization;
-pub(crate) mod insert_history;
-pub use insert_history::insert_history_lines;
-mod key_hint;
-mod keymap;
+pub(crate) use codex_tui_input::key_hint;
+pub(crate) use codex_tui_input::keymap;
+pub(crate) use codex_tui_transcript::inline_visualization;
+pub(crate) use codex_tui_transcript::insert_history;
+pub use codex_tui_transcript::insert_history_lines;
 mod keymap_setup;
-mod line_truncation;
-pub(crate) mod live_wrap;
-pub use live_wrap::RowBuilder;
+pub use codex_tui_transcript::RowBuilder;
+pub(crate) use codex_tui_transcript::line_truncation;
 mod local_chatgpt_auth;
 mod managed_new_thread_defaults;
-mod markdown;
-mod markdown_render;
-mod markdown_stream;
-mod markdown_text_merge;
+pub(crate) use codex_tui_markdown as markdown_render;
 mod mention_codec;
 mod model_catalog;
 mod model_migration;
-mod motion;
+pub(crate) use codex_tui_transcript::motion;
 mod multi_agents;
 mod notifications;
 #[cfg(any(not(debug_assertions), test))]
@@ -158,18 +154,17 @@ mod npm_registry;
 pub(crate) mod onboarding;
 mod oss_selection;
 mod pager_overlay;
-mod permission_compat;
 pub(crate) mod public_widgets;
-mod render;
+pub(crate) use codex_tui_render::render;
 mod resize_reflow_cap;
 mod resume_picker;
+pub(crate) use resume_picker::resume_source_kinds;
 mod selection_list;
 mod service_tier_resolution;
 mod session_archive_commands;
 mod session_log;
 mod session_resume;
-mod session_state;
-mod shimmer;
+pub(crate) use codex_tui_transcript::session_state;
 mod skills_helpers;
 mod slash_command;
 mod startup_error;
@@ -177,45 +172,39 @@ mod startup_hooks_review;
 mod status;
 mod status_indicator_widget;
 mod status_line_command;
-mod streaming;
-mod style;
-mod terminal_hyperlinks;
-mod terminal_palette;
-mod terminal_probe;
+pub(crate) use codex_tui_render::style;
+pub(crate) use codex_tui_render::terminal_hyperlinks;
+pub(crate) use codex_tui_render::terminal_palette;
+pub(crate) use codex_tui_render::terminal_probe;
+pub(crate) use codex_tui_transcript::streaming;
 mod terminal_title;
-mod terminal_visualization_instructions;
-mod text_formatting;
+pub(crate) use codex_tui_transcript::text_formatting;
 mod theme_picker;
-mod thread_transcript;
 mod token_usage;
-mod tooltips;
+pub(crate) use codex_tui_transcript::tooltips;
 mod transcript_reflow;
 mod tui;
-mod ui_consts;
-pub(crate) mod update_action;
-pub use update_action::UpdateAction;
+pub use codex_tui_transcript::UpdateAction;
+pub(crate) use codex_tui_transcript::update_action;
 #[cfg(not(debug_assertions))]
-pub use update_action::get_update_action;
+pub use codex_tui_transcript::update_action::get_update_action;
 mod update_prompt;
 #[cfg(any(not(debug_assertions), test))]
-mod update_versions;
+pub(crate) use codex_tui_transcript::update_versions;
 mod updates;
 #[cfg(any(not(debug_assertions), test))]
 mod updates_cache;
-mod version;
-mod width;
+pub(crate) use codex_tui_transcript::version;
+pub(crate) use codex_tui_transcript::width;
 #[cfg(any(target_os = "windows", test))]
 mod windows_sandbox;
 mod workspace_command;
 mod workspace_messages;
 
-mod wrapping;
-
-mod table_detect;
 #[cfg(test)]
-pub(crate) mod test_backend;
+pub(crate) use codex_tui_test_support as test_backend;
 #[cfg(test)]
-pub(crate) mod test_support;
+pub(crate) use codex_tui_test_support as test_support;
 
 use crate::onboarding::onboarding_screen::OnboardingScreenArgs;
 use crate::onboarding::onboarding_screen::run_onboarding_app;
@@ -403,23 +392,6 @@ pub fn remote_addr_supports_auth_token(endpoint: &RemoteAppServerEndpoint) -> bo
     }
 }
 
-pub(crate) async fn connect_remote_app_server(
-    endpoint: RemoteAppServerEndpoint,
-) -> color_eyre::Result<AppServerClient> {
-    let app_server = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
-        endpoint,
-        client_name: "codex-tui".to_string(),
-        client_version: CODEX_CLI_VERSION.to_string(),
-        experimental_api: true,
-        mcp_server_openai_form_elicitation: false,
-        opt_out_notification_methods: Vec::new(),
-        channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
-    })
-    .await
-    .wrap_err("failed to connect to remote app server")?;
-    Ok(AppServerClient::Remote(app_server))
-}
-
 #[cfg(unix)]
 async fn maybe_probe_default_daemon_socket(codex_home: &Path) -> Option<AbsolutePathBuf> {
     let socket_path = codex_app_server_client::app_server_control_socket_path(codex_home).ok()?;
@@ -573,7 +545,7 @@ where
             .unwrap_or_else(|err| panic!("cli session source should deserialize: {err}")),
         enable_codex_api_key_env: false,
         client_name: "codex-tui".to_string(),
-        client_version: CODEX_CLI_VERSION.to_string(),
+        client_version: codex_cli_version().to_string(),
         experimental_api: true,
         mcp_server_openai_form_elicitation: false,
         opt_out_notification_methods: Vec::new(),
@@ -609,17 +581,6 @@ fn session_target_from_app_server_thread(
             None
         }
     }
-}
-
-pub(crate) fn resume_source_kinds(include_non_interactive: bool) -> Vec<ThreadSourceKind> {
-    let mut source_kinds = vec![ThreadSourceKind::Cli, ThreadSourceKind::VsCode];
-    if include_non_interactive {
-        // `thread/list` treats omitted and empty `sourceKinds` as interactive-only,
-        // so include-non-interactive has to name the user-resumable non-interactive
-        // sources explicitly until the API grows an unfiltered request.
-        source_kinds.extend([ThreadSourceKind::Exec, ThreadSourceKind::AppServer]);
-    }
-    source_kinds
 }
 
 async fn lookup_session_target_by_name_with_app_server(
@@ -1136,7 +1097,7 @@ pub async fn run_main(
     let otel = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         codex_app_server_client::build_otel_provider(
             &config,
-            CODEX_CLI_VERSION,
+            codex_cli_version(),
             /*service_name_override*/ None,
             /*default_analytics_enabled*/ true,
         )

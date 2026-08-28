@@ -1,9 +1,9 @@
 mod delegate;
 mod execute_handler;
-pub(crate) mod execute_spec;
+pub(crate) use codex_core_tool_specs::execute_spec;
 mod response_adapter;
 mod wait_handler;
-pub(crate) mod wait_spec;
+pub(crate) use codex_core_tool_specs::wait_spec;
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;

@@ -16,9 +16,14 @@ use tokio::time::Instant;
 
 use tokio::time::timeout_at;
 
-#[derive(Default)]
 pub(crate) struct Handler {
     options: WaitAgentTimeoutOptions,
+}
+
+impl Default for Handler {
+    fn default() -> Self {
+        Self::new(super::super::multi_agents_common::default_wait_agent_timeout_options())
+    }
 }
 
 impl Handler {

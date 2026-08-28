@@ -1,0 +1,10 @@
+---
+source: tui-transcript/src/history_cell/tests.rs
+expression: rendered
+---
+╭─────────────────────────────────────╮
+│ >_ E47 Codex (v<version>)           │
+│                                     │
+│ model:     gpt-5   /model to change │
+│ directory: /tmp/project             │
+╰─────────────────────────────────────╯

@@ -1,0 +1,11 @@
+---
+source: tui-transcript/src/inline_visualization_tests.rs
+assertion_line: 228
+expression: snapshot_text
+---
+• Before
+  
+  Open chart visualization in the browser
+  file://<viewer-path>
+  
+  After

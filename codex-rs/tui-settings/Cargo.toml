@@ -1,0 +1,37 @@
+[package]
+name = "codex-tui-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_settings"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-config = { workspace = true }
+codex-core-config = { workspace = true }
+codex-features = { workspace = true }
+codex-models-manager = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tui-bottom-pane = { workspace = true }
+codex-tui-events = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-status = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+textwrap = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+codex-tui-bottom-pane = { workspace = true, features = ["test-support"] }
+codex-tui-frame = { workspace = true }
+dirs = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

@@ -1,0 +1,46 @@
+[package]
+name = "codex-tui-composer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_composer"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+test-support = []
+
+[dependencies]
+codex-app-server-protocol = { workspace = true }
+codex-connectors = { workspace = true }
+codex-features = { workspace = true }
+codex-file-search = { workspace = true }
+codex-message-history = { workspace = true }
+codex-plugin = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tui-completion = { workspace = true }
+codex-tui-events = { workspace = true }
+codex-tui-frame = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-transcript = { workspace = true }
+crossterm = { workspace = true }
+dirs = { workspace = true }
+image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
+rand = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+codex-tui-test-support = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }

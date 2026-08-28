@@ -1,0 +1,23 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-tool-specs"
+version.workspace = true
+
+[lib]
+name = "codex_core_tool_specs"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-code-mode-protocol = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tools = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+codex-features = { workspace = true }
+pretty_assertions = { workspace = true }

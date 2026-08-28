@@ -1,0 +1,48 @@
+[package]
+name = "codex-tui-overlays"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_overlays"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-app-server-protocol = { workspace = true }
+codex-config = { workspace = true }
+codex-features = { workspace = true }
+codex-feedback = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tui-completion = { workspace = true }
+codex-tui-composer = { workspace = true }
+codex-tui-events = { workspace = true }
+codex-tui-frame = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-transcript = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+codex-utils-fuzzy-match = { workspace = true }
+codex-utils-path-uri = { workspace = true }
+crossterm = { workspace = true }
+itertools = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+serde_json = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+textwrap = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+codex-tui-test-support = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }
+uuid = { workspace = true }

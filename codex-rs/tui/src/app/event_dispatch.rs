@@ -2238,11 +2238,15 @@ impl App {
                 }
             },
             AppEvent::StatusLineSetup {
-                items,
+                item_ids,
                 use_theme_colors,
                 command,
             } => {
-                let ids = items.iter().map(ToString::to_string).collect::<Vec<_>>();
+                let items = item_ids
+                    .iter()
+                    .filter_map(|id| id.parse::<crate::bottom_pane::StatusLineItem>().ok())
+                    .collect::<Vec<_>>();
+                let ids = item_ids;
                 let items_edit = crate::legacy_core::config::edit::status_line_items_edit(&ids);
                 let colors_edit =
                     crate::legacy_core::config::edit::status_line_use_colors_edit(use_theme_colors);
@@ -2294,8 +2298,12 @@ impl App {
             AppEvent::StatusLineSetupCancelled => {
                 self.chat_widget.cancel_status_line_setup();
             }
-            AppEvent::TerminalTitleSetup { items } => {
-                let ids = items.iter().map(ToString::to_string).collect::<Vec<_>>();
+            AppEvent::TerminalTitleSetup { item_ids } => {
+                let items = item_ids
+                    .iter()
+                    .filter_map(|id| id.parse::<crate::bottom_pane::TerminalTitleItem>().ok())
+                    .collect::<Vec<_>>();
+                let ids = item_ids;
                 let edit = crate::legacy_core::config::edit::terminal_title_items_edit(&ids);
                 let apply_result = ConfigEditsBuilder::for_config(&self.config)
                     .with_edits([edit])
@@ -2315,7 +2323,11 @@ impl App {
                     }
                 }
             }
-            AppEvent::TerminalTitleSetupPreview { items } => {
+            AppEvent::TerminalTitleSetupPreview { item_ids } => {
+                let items = item_ids
+                    .iter()
+                    .filter_map(|id| id.parse::<crate::bottom_pane::TerminalTitleItem>().ok())
+                    .collect::<Vec<_>>();
                 self.chat_widget.preview_terminal_title(items);
             }
             AppEvent::TerminalTitleSetupCancelled => {

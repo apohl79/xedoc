@@ -72,19 +72,6 @@ pub(crate) fn effective_resume_cwd_mode(
     }
 }
 
-pub(crate) async fn resolve_session_thread_id(
-    path: &Path,
-    id_str_if_uuid: Option<&str>,
-) -> Option<ThreadId> {
-    match id_str_if_uuid {
-        Some(id_str) => ThreadId::from_string(id_str).ok(),
-        None => read_rollout_resume_state(path)
-            .await
-            .ok()
-            .and_then(|state| state.thread_id),
-    }
-}
-
 pub(crate) async fn read_session_model(
     state_db_ctx: Option<&StateRuntime>,
     thread_id: ThreadId,

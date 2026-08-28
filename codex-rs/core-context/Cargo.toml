@@ -1,0 +1,37 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-context"
+version.workspace = true
+
+[lib]
+name = "codex_core_context"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+codex-context-fragments = { workspace = true }
+codex-core-skills = { workspace = true }
+codex-execpolicy = { workspace = true }
+codex-extension-api = { workspace = true }
+codex-mcp = { workspace = true }
+codex-prompts = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tools = { workspace = true }
+codex-utils-path-uri = { workspace = true }
+codex-utils-string = { workspace = true }
+indexmap = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha1 = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }

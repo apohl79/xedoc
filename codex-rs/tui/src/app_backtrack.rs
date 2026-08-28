@@ -42,6 +42,7 @@ use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnStatus;
 use codex_protocol::ThreadId;
 use codex_protocol::models::local_image_label_text;
+pub(crate) use codex_tui_transcript::replay::is_hidden_nested_review_turn;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::bail;
 use crossterm::event::KeyCode;
@@ -369,7 +370,7 @@ impl App {
         }
 
         if let Some(overlay) = &mut self.overlay {
-            overlay.handle_event(tui, event)?;
+            crate::pager_overlay::handle_event(overlay, tui, event)?;
             if overlay.is_done() {
                 self.close_transcript_overlay(tui);
                 tui.frame_requester().schedule_frame();
@@ -541,37 +542,6 @@ pub(crate) fn backtrack_fork_before_turn_id(
     }
 
     bail!("the selected prompt was not found in the persisted thread")
-}
-
-/// Returns whether a turn is the reconstructed inline-review child with duplicated prompt inputs.
-pub(crate) fn is_hidden_nested_review_turn(previous: &Turn, turn: &Turn) -> bool {
-    if previous.status != TurnStatus::Completed
-        || turn.status != TurnStatus::Interrupted
-        || turn.completed_at.is_some()
-        || !previous
-            .items
-            .iter()
-            .any(|item| matches!(item, ThreadItem::EnteredReviewMode { .. }))
-        || !previous
-            .items
-            .iter()
-            .any(|item| matches!(item, ThreadItem::ExitedReviewMode { .. }))
-    {
-        return false;
-    }
-
-    let mut user_messages = turn.items.iter().filter_map(|item| match item {
-        ThreadItem::UserMessage { content, .. } => Some(content),
-        _ => None,
-    });
-    matches!(
-        (
-            user_messages.next(),
-            user_messages.next(),
-            user_messages.next(),
-        ),
-        (Some(first), Some(second), None) if first == second
-    )
 }
 
 pub(crate) fn user_count(cells: &[Arc<dyn crate::history_cell::HistoryCell>]) -> usize {

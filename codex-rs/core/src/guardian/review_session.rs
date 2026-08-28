@@ -1254,7 +1254,7 @@ mod tests {
 
     #[tokio::test]
     async fn guardian_review_session_config_change_invalidates_cached_session() {
-        let parent_config = crate::config::test_config().await;
+        let parent_config = crate::config_test_support::test_config().await;
         let cached_spawn_config = build_guardian_review_session_config(
             &parent_config,
             /*live_network_config*/ None,
@@ -1336,7 +1336,7 @@ mod tests {
 
     #[tokio::test]
     async fn guardian_review_session_compact_scope_change_invalidates_cached_session() {
-        let parent_config = crate::config::test_config().await;
+        let parent_config = crate::config_test_support::test_config().await;
         let cached_spawn_config = build_guardian_review_session_config(
             &parent_config,
             /*live_network_config*/ None,
@@ -1371,7 +1371,7 @@ mod tests {
 
     #[tokio::test]
     async fn guardian_review_session_config_disables_hooks() {
-        let mut parent_config = crate::config::test_config().await;
+        let mut parent_config = crate::config_test_support::test_config().await;
         parent_config
             .features
             .enable(Feature::CodexHooks)
@@ -1391,7 +1391,7 @@ mod tests {
 
     #[tokio::test]
     async fn guardian_review_session_config_disables_skill_instructions() {
-        let mut parent_config = crate::config::test_config().await;
+        let mut parent_config = crate::config_test_support::test_config().await;
         parent_config.include_skill_instructions = true;
 
         let guardian_config = build_guardian_review_session_config(
@@ -1408,7 +1408,7 @@ mod tests {
 
     #[tokio::test]
     async fn guardian_review_session_config_prefers_managed_policy_and_uses_catalog_template() {
-        let mut parent_config = crate::config::test_config().await;
+        let mut parent_config = crate::config_test_support::test_config().await;
         let managed_policy = "Use the managed Guardian policy.";
         let catalog_template = "Catalog Guardian template:\n{{ tenant_policy_config }}";
         parent_config.guardian_policy_config = Some(managed_policy.to_string());
@@ -1443,7 +1443,7 @@ mod tests {
 
     #[tokio::test]
     async fn guardian_review_session_config_preserves_explicit_empty_catalog_policy() {
-        let parent_config = crate::config::test_config().await;
+        let parent_config = crate::config_test_support::test_config().await;
         let model_messages = ModelMessages {
             instructions_template: None,
             instructions_variables: None,
@@ -1482,7 +1482,7 @@ mod tests {
 
     #[tokio::test]
     async fn guardian_review_session_config_preserves_explicit_empty_catalog_template() {
-        let parent_config = crate::config::test_config().await;
+        let parent_config = crate::config_test_support::test_config().await;
         let catalog_policy = "Use the catalog Guardian policy.";
         let model_messages = ModelMessages {
             instructions_template: None,

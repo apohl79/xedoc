@@ -1,0 +1,10 @@
+---
+source: tui-bottom-pane/src/lib.rs
+expression: "render_snapshot(&pane, area)"
+---
+• Working (0s • esc to interrupt)                           
+                                                            
+╭──────────────────────────────────────────────────────────╮
+│❯ /rev                                                    │
+╰──────────────────────────────────────────────────────────╯
+  tab to queue message                   100% context left

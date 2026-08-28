@@ -1,0 +1,43 @@
+[package]
+name = "codex-tui-session-picker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_session_picker"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+codex-app-server-protocol = { workspace = true }
+codex-config = { workspace = true }
+codex-core-config = { workspace = true }
+codex-protocol = { workspace = true }
+codex-rollout = { workspace = true }
+codex-tui-app-server-session = { workspace = true }
+codex-tui-frame = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-overlays = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-status = { workspace = true }
+codex-tui-transcript = { workspace = true }
+codex-utils-path = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+codex-tui-test-support = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

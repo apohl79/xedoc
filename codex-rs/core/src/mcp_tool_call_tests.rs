@@ -1497,7 +1497,8 @@ async fn codex_apps_auth_elicitation_feature_disabled_returns_original_result() 
     let mut features = Features::with_defaults();
     features.disable(Feature::AuthElicitation);
     let mutable_turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut mutable_turn_context.config).features = ManagedFeatures::from(features);
+    Arc::make_mut(&mut mutable_turn_context.config).features =
+        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
     let manager = host_owned_codex_apps_manager(&session, &turn_context).await;
     let result = codex_apps_auth_failure_result();
     let metadata = codex_apps_auth_failure_metadata();
@@ -1523,7 +1524,8 @@ async fn codex_apps_auth_elicitation_non_host_owned_server_returns_original_resu
     let mut features = Features::with_defaults();
     features.enable(Feature::AuthElicitation);
     let turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut turn_context.config).features = ManagedFeatures::from(features);
+    Arc::make_mut(&mut turn_context.config).features =
+        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
     let result = codex_apps_auth_failure_result();
     let metadata = codex_apps_auth_failure_metadata();
     let manager = session.services.latest_mcp_runtime().manager_arc();
@@ -1550,7 +1552,8 @@ async fn codex_apps_auth_elicitation_disallowed_by_policy_returns_original_resul
     let mut features = Features::with_defaults();
     features.enable(Feature::AuthElicitation);
     let turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut turn_context.config).features = ManagedFeatures::from(features);
+    Arc::make_mut(&mut turn_context.config).features =
+        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
     turn_context
         .approval_policy
         .set(AskForApproval::Never)
@@ -1580,7 +1583,8 @@ async fn codex_apps_auth_elicitation_granular_mcp_disabled_returns_original_resu
     let mut features = Features::with_defaults();
     features.enable(Feature::AuthElicitation);
     let turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut turn_context.config).features = ManagedFeatures::from(features);
+    Arc::make_mut(&mut turn_context.config).features =
+        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
     turn_context
         .approval_policy
         .set(AskForApproval::Granular(GranularApprovalConfig {
@@ -2344,7 +2348,7 @@ async fn maybe_persist_mcp_tool_approval_reloads_session_config_for_custom_serve
         "[mcp_servers.docs]\ncommand = \"docs-server\"\n",
     )
     .expect("seed config");
-    let config = ConfigBuilder::without_managed_config_for_tests()
+    let config = crate::config_test_support::config_builder_without_managed_config()
         .codex_home(codex_home.clone().to_path_buf())
         .build()
         .await

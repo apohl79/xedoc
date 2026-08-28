@@ -2,9 +2,12 @@ use super::session::Session;
 use super::step_context::StepContext;
 use crate::connectors;
 use crate::context::ApprovalPromptContext;
+use crate::context::FileSystemContext;
+use crate::context::NetworkContext;
 use crate::context::world_state::AgentsMdState;
 use crate::context::world_state::AppsInstructionsState;
 use crate::context::world_state::CollaborationModeState;
+use crate::context::world_state::EnvironmentState;
 use crate::context::world_state::EnvironmentsInstructionsState;
 use crate::context::world_state::EnvironmentsState;
 use crate::context::world_state::PermissionsState;
@@ -13,6 +16,7 @@ use crate::context::world_state::RealtimeState;
 use crate::context::world_state::WorldState;
 use codex_extension_api::WorldStateContributionInput;
 use codex_features::Feature;
+use std::collections::BTreeMap;
 
 impl Session {
     #[tracing::instrument(name = "world_state.build", level = "info", skip_all)]
@@ -41,7 +45,12 @@ impl Session {
                 .experimental_realtime_start_instructions
                 .as_deref(),
         ));
-        world_state.add_section(AgentsMdState::new(step_context.loaded_agents_md.as_deref()));
+        world_state.add_section(AgentsMdState::new(
+            step_context
+                .loaded_agents_md
+                .as_deref()
+                .map(|loaded| loaded.contextual_user_fragment()),
+        ));
         if turn_context.config.include_permissions_instructions {
             let permission_profile = turn_context.permission_profile();
             let model_messages = turn_context.model_info.model_messages.as_ref();
@@ -74,11 +83,61 @@ impl Session {
             world_state.add_section(collaboration_mode);
         }
         if turn_context.config.include_environment_context {
-            world_state.add_section(
-                EnvironmentsState::from_turn_context_with_environments(
-                    turn_context,
-                    &step_context.environments,
+            let mut environment_contexts = step_context
+                .environments
+                .turn_environments()
+                .map(|environment| {
+                    (
+                        environment.environment_id.clone(),
+                        EnvironmentState::available(
+                            environment.cwd().clone(),
+                            environment
+                                .shell
+                                .as_ref()
+                                .map(|shell| shell.name().to_string()),
+                        ),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            for environment in step_context.environments.starting() {
+                environment_contexts
+                    .entry(environment.selection.environment_id.clone())
+                    .or_insert_with(|| {
+                        EnvironmentState::starting(environment.selection.cwd.clone())
+                    });
+            }
+            let workspace_roots = step_context
+                .environments
+                .primary()
+                .map(|environment| environment.workspace_roots())
+                .unwrap_or_default();
+            let requirements = turn_context.config.config_layer_stack.requirements();
+            let network = requirements.network.as_ref().map(|network| {
+                NetworkContext::new(
+                    network
+                        .domains
+                        .as_ref()
+                        .and_then(codex_config::NetworkDomainPermissionsToml::allowed_domains)
+                        .unwrap_or_default(),
+                    network
+                        .domains
+                        .as_ref()
+                        .and_then(codex_config::NetworkDomainPermissionsToml::denied_domains)
+                        .unwrap_or_default(),
                 )
+            });
+            world_state.add_section(
+                EnvironmentsState {
+                    environments: environment_contexts,
+                    current_date: turn_context.current_date.clone(),
+                    timezone: turn_context.timezone.clone(),
+                    network,
+                    filesystem: Some(FileSystemContext::from_permission_profile(
+                        turn_context.config.permissions.permission_profile(),
+                        workspace_roots,
+                    )),
+                    subagents: None,
+                }
                 .with_subagents(environment_subagents),
             );
         }

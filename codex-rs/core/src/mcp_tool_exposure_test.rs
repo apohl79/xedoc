@@ -13,7 +13,7 @@ use rmcp::model::Tool;
 use super::*;
 use crate::config::CONFIG_TOML_FILE;
 use crate::config::ConfigBuilder;
-use crate::config::test_config;
+use crate::config_test_support::test_config;
 use crate::connectors::AppInfo;
 use tempfile::tempdir;
 

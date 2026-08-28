@@ -13,7 +13,6 @@ use crate::tools::hook_names::HookToolName;
 use crate::tools::network_approval::NetworkApprovalSpec;
 use codex_file_system::FileSystemSandboxContext;
 use codex_network_proxy::NetworkProxy;
-use codex_protocol::approvals::ExecPolicyAmendment;
 use codex_protocol::approvals::NetworkApprovalContext;
 use codex_protocol::error::CodexErr;
 use codex_protocol::permissions::FileSystemSandboxKind;
@@ -151,44 +150,7 @@ impl PermissionRequestPayload {
     }
 }
 
-// Specifies what tool orchestrator should do with a given tool call.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExecApprovalRequirement {
-    /// No approval required for this tool call.
-    Skip {
-        /// The first attempt should skip sandboxing (e.g., when explicitly
-        /// greenlit by policy).
-        bypass_sandbox: bool,
-        /// Proposed execpolicy amendment to skip future approvals for similar commands
-        /// Only applies if the command fails to run in sandbox and codex prompts the user to run outside the sandbox.
-        proposed_execpolicy_amendment: Option<ExecPolicyAmendment>,
-    },
-    /// Approval required for this tool call.
-    NeedsApproval {
-        reason: Option<String>,
-        /// Proposed execpolicy amendment to skip future approvals for similar commands
-        /// See core/src/exec_policy.rs for more details on how proposed_execpolicy_amendment is determined.
-        proposed_execpolicy_amendment: Option<ExecPolicyAmendment>,
-    },
-    /// Execution forbidden for this tool call.
-    Forbidden { reason: String },
-}
-
-impl ExecApprovalRequirement {
-    pub fn proposed_execpolicy_amendment(&self) -> Option<&ExecPolicyAmendment> {
-        match self {
-            Self::NeedsApproval {
-                proposed_execpolicy_amendment: Some(prefix),
-                ..
-            } => Some(prefix),
-            Self::Skip {
-                proposed_execpolicy_amendment: Some(prefix),
-                ..
-            } => Some(prefix),
-            _ => None,
-        }
-    }
-}
+pub(crate) use codex_core_exec::approval::ExecApprovalRequirement;
 
 /// - Never: do not ask
 /// - OnRequest: ask unless filesystem access is unrestricted

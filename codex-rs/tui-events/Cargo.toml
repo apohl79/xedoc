@@ -1,0 +1,41 @@
+[package]
+name = "codex-tui-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_events"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+codex-app-server-protocol = { workspace = true }
+codex-config = { workspace = true }
+codex-connectors = { workspace = true }
+codex-core-config = { workspace = true }
+codex-features = { workspace = true }
+codex-file-search = { workspace = true }
+codex-message-history = { workspace = true }
+codex-plugin = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-pet = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-transcript = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+codex-utils-approval-presets = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+shlex = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+codex-utils-absolute-path = { workspace = true }
+pretty_assertions = { workspace = true }

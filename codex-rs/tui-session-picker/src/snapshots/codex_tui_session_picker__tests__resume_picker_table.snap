@@ -1,0 +1,12 @@
+---
+source: tui-session-picker/src/lib.rs
+expression: snapshot
+---
+  Fix resume picker timestamps
+  42s ago       ⌁ no cwd                          no branch
+
+❯ Investigate lazy pagination cap
+  35m ago       ⌁ no cwd                          no branch
+
+  Explain the codebase
+  2h ago        ⌁ no cwd                          no branch

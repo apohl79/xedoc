@@ -37,7 +37,6 @@ use ratatui::text::Line;
 use tokio::sync::broadcast;
 use tokio_stream::Stream;
 
-pub use self::frame_requester::FrameRequester;
 use crate::custom_terminal;
 use crate::custom_terminal::Terminal as CustomTerminal;
 use crate::insert_history::HistoryLineWrapPolicy;
@@ -52,10 +51,9 @@ use crate::tui::event_stream::TuiEventStream;
 use crate::tui::job_control::SuspendContext;
 use codex_config::types::NotificationCondition;
 use codex_config::types::NotificationMethod;
+pub use codex_tui_frame::FrameRequester;
 
 mod event_stream;
-mod frame_rate_limiter;
-mod frame_requester;
 #[cfg(unix)]
 mod job_control;
 mod keyboard_modes;
@@ -64,7 +62,7 @@ mod terminal_stderr;
 pub(crate) mod test_support;
 
 /// Target frame interval for UI redraw scheduling.
-pub(crate) const TARGET_FRAME_INTERVAL: Duration = frame_rate_limiter::MIN_FRAME_INTERVAL;
+pub(crate) const TARGET_FRAME_INTERVAL: Duration = codex_tui_frame::MIN_FRAME_INTERVAL;
 
 /// A type alias for the terminal type used in this application
 pub type Terminal = CustomTerminal<CrosstermBackend<Stdout>>;

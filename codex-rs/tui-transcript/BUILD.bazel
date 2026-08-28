@@ -1,0 +1,17 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "tui-transcript",
+    compile_data = ["tooltips.txt"] + glob([
+        "src/inline_visualization/assets/**",
+    ]),
+    crate_features = ["test-support"],
+    crate_name = "codex_tui_transcript",
+    test_data_extra = glob([
+        "src/**/*.rs",
+        "src/**/snapshots/**",
+    ]),
+    test_shard_counts = {
+        "tui-transcript-unit-tests": 4,
+    },
+)

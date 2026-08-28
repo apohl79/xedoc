@@ -9,6 +9,7 @@ members = [
     "ansi-escape",
     "async-utils",
     "app-server",
+    "app-server-jsonrpc",
     "app-server-transport",
     "app-server-daemon",
     "app-server-client",
@@ -30,6 +31,8 @@ members = [
     "cloud-tasks-client",
     "cloud-tasks-mock-client",
     "cli",
+    "cli-doctor",
+    "cli-runtime",
     "collaboration-mode-templates",
     "connectors",
     "config",
@@ -38,6 +41,12 @@ members = [
     "shell-escalation",
     "skills",
     "core",
+    "core-client",
+    "core-config",
+    "core-config-runtime",
+    "core-context",
+    "core-exec",
+    "core-tool-specs",
     "core-api",
     "core-plugins",
     "core-skills",
@@ -87,6 +96,30 @@ members = [
     "stdio-to-uds",
     "otel",
     "tui",
+    "tui-agents",
+    "tui-app-server-session",
+    "tui-bottom-pane",
+    "tui-chatwidget",
+    "tui-composer",
+    "tui-completion",
+    "tui-debug",
+    "tui-events",
+    "tui-frame",
+    "tui-hooks",
+    "tui-input",
+    "tui-markdown",
+    "tui-overlays",
+    "tui-pet",
+    "tui-pet-ui",
+    "tui-platform",
+    "tui-render",
+    "tui-session-picker",
+    "tui-settings",
+    "tui-status",
+    "tui-test-support",
+    "tui-thread-state",
+    "tui-transcript",
+    "tui-workspace",
     "tools",
     "v8-poc",
     "websocket-client",
@@ -147,6 +180,7 @@ codex-ansi-escape = { path = "ansi-escape" }
 codex-api = { path = "codex-api" }
 codex-aws-auth = { path = "aws-auth" }
 codex-app-server = { path = "app-server" }
+codex-app-server-jsonrpc = { path = "app-server-jsonrpc" }
 codex-app-server-transport = { path = "app-server-transport" }
 codex-app-server-daemon = { path = "app-server-daemon" }
 codex-app-server-client = { path = "app-server-client" }
@@ -158,6 +192,8 @@ codex-async-utils = { path = "async-utils" }
 codex-backend-client = { path = "backend-client" }
 codex-chatgpt = { path = "chatgpt" }
 codex-cli = { path = "cli" }
+codex-cli-doctor = { path = "cli-doctor" }
+codex-cli-runtime = { path = "cli-runtime" }
 codex-client = { path = "codex-client" }
 codex-collaboration-mode-templates = { path = "collaboration-mode-templates" }
 codex-cloud-config = { path = "cloud-config" }
@@ -175,6 +211,12 @@ codex-agent-extension = { path = "ext/agent" }
 codex-connectors-extension = { path = "ext/connectors" }
 codex-context-fragments = { path = "context-fragments" }
 codex-core = { path = "core" }
+codex-core-client = { path = "core-client" }
+codex-core-config = { path = "core-config" }
+codex-core-config-runtime = { path = "core-config-runtime" }
+codex-core-context = { path = "core-context" }
+codex-core-exec = { path = "core-exec" }
+codex-core-tool-specs = { path = "core-tool-specs" }
 codex-core-api = { path = "core-api" }
 codex-core-plugins = { path = "core-plugins" }
 codex-core-skills = { path = "core-skills" }
@@ -237,6 +279,30 @@ codex-test-binary-support = { path = "test-binary-support" }
 codex-thread-store = { path = "thread-store" }
 codex-tools = { path = "tools" }
 codex-tui = { path = "tui" }
+codex-tui-agents = { path = "tui-agents" }
+codex-tui-app-server-session = { path = "tui-app-server-session" }
+codex-tui-bottom-pane = { path = "tui-bottom-pane" }
+codex-tui-chatwidget = { path = "tui-chatwidget" }
+codex-tui-composer = { path = "tui-composer" }
+codex-tui-input = { path = "tui-input" }
+codex-tui-completion = { path = "tui-completion" }
+codex-tui-debug = { path = "tui-debug" }
+codex-tui-events = { path = "tui-events" }
+codex-tui-frame = { path = "tui-frame" }
+codex-tui-hooks = { path = "tui-hooks" }
+codex-tui-markdown = { path = "tui-markdown" }
+codex-tui-overlays = { path = "tui-overlays" }
+codex-tui-pet = { path = "tui-pet" }
+codex-tui-pet-ui = { path = "tui-pet-ui" }
+codex-tui-platform = { path = "tui-platform" }
+codex-tui-render = { path = "tui-render" }
+codex-tui-session-picker = { path = "tui-session-picker" }
+codex-tui-settings = { path = "tui-settings" }
+codex-tui-status = { path = "tui-status" }
+codex-tui-test-support = { path = "tui-test-support" }
+codex-tui-thread-state = { path = "tui-thread-state" }
+codex-tui-transcript = { path = "tui-transcript" }
+codex-tui-workspace = { path = "tui-workspace" }
 codex-uds = { path = "uds" }
 codex-utils-absolute-path = { path = "utils/absolute-path" }
 codex-utils-approval-presets = { path = "utils/approval-presets" }

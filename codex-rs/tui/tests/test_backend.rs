@@ -1,4 +1,1 @@
-#[path = "../src/test_backend.rs"]
-mod inner;
-
-pub use inner::VT100Backend;
+pub use codex_tui_test_support::VT100Backend;

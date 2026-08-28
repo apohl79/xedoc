@@ -1,0 +1,227 @@
+use codex_file_search::FileMatch;
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::widgets::WidgetRef;
+
+use super::candidate::Candidate;
+use super::candidate::MentionType;
+use super::candidate::SearchResult;
+use super::candidate::Selection;
+use super::filter::filtered_candidates;
+use super::render::render_popup;
+use super::search_mode::SearchMode;
+use crate::bottom_pane::popup_consts::MAX_POPUP_ROWS;
+use crate::bottom_pane::scroll_state::ScrollState;
+
+pub struct Popup {
+    query: String,
+    file_search: FileSearch,
+    candidates: Vec<Candidate>,
+    search_mode: SearchMode,
+    state: ScrollState,
+}
+
+impl Popup {
+    pub fn new(candidates: Vec<Candidate>) -> Self {
+        Self {
+            query: String::new(),
+            file_search: FileSearch::default(),
+            candidates,
+            search_mode: SearchMode::Results,
+            state: ScrollState::new(),
+        }
+    }
+
+    pub fn set_candidates(&mut self, candidates: Vec<Candidate>) {
+        self.candidates = candidates;
+        self.clamp_selection();
+    }
+
+    pub fn set_query(&mut self, query: &str) {
+        self.query = query.to_string();
+        self.file_search.set_query(query);
+        self.clamp_selection();
+    }
+
+    pub fn set_file_matches(&mut self, query: &str, matches: Vec<FileMatch>) {
+        self.file_search.set_matches(query, matches);
+        self.clamp_selection();
+    }
+
+    pub fn selected(&self) -> Option<Selection> {
+        let rows = self.rows();
+        let idx = self.state.selected_idx?;
+        rows.get(idx).map(|row| row.selection.clone())
+    }
+
+    pub fn selected_is_directory(&self) -> bool {
+        let rows = self.rows();
+        self.state
+            .selected_idx
+            .and_then(|idx| rows.get(idx))
+            .is_some_and(|row| row.mention_type == MentionType::Directory)
+    }
+
+    pub fn move_up(&mut self) {
+        let len = self.rows().len();
+        self.state.move_up_wrap(len);
+        self.state.ensure_visible(len, MAX_POPUP_ROWS.min(len));
+    }
+
+    pub fn move_down(&mut self) {
+        let len = self.rows().len();
+        self.state.move_down_wrap(len);
+        self.state.ensure_visible(len, MAX_POPUP_ROWS.min(len));
+    }
+
+    pub fn page_up(&mut self) {
+        let len = self.rows().len();
+        self.state.page_up_clamped(len, MAX_POPUP_ROWS.min(len));
+    }
+
+    pub fn page_down(&mut self) {
+        let len = self.rows().len();
+        self.state.page_down_clamped(len, MAX_POPUP_ROWS.min(len));
+    }
+
+    pub fn previous_search_mode(&mut self) {
+        self.search_mode = self.search_mode.previous();
+        self.clamp_selection();
+    }
+
+    pub fn next_search_mode(&mut self) {
+        self.search_mode = self.search_mode.next();
+        self.clamp_selection();
+    }
+
+    pub fn calculate_required_height(&self, _width: u16) -> u16 {
+        (MAX_POPUP_ROWS as u16).saturating_add(2)
+    }
+
+    fn clamp_selection(&mut self) {
+        let len = self.rows().len();
+        self.state.clamp_selection(len);
+        self.state.ensure_visible(len, MAX_POPUP_ROWS.min(len));
+    }
+
+    fn rows(&self) -> Vec<SearchResult> {
+        filtered_candidates(
+            &self.candidates,
+            &self.file_search.matches,
+            &self.query,
+            self.search_mode,
+            self.file_search.should_show_matches(),
+        )
+    }
+}
+
+impl WidgetRef for Popup {
+    fn render_ref(&self, area: Rect, buf: &mut Buffer) {
+        render_popup(
+            area,
+            buf,
+            &self.rows(),
+            &self.state,
+            self.file_search.empty_message(),
+            self.search_mode,
+        );
+    }
+}
+
+#[derive(Default)]
+struct FileSearch {
+    pending_query: String,
+    display_query: String,
+    waiting: bool,
+    matches: Vec<FileMatch>,
+}
+
+impl FileSearch {
+    fn set_query(&mut self, query: &str) {
+        if query.is_empty() {
+            self.pending_query.clear();
+            self.display_query.clear();
+            self.waiting = false;
+            self.matches.clear();
+        } else if query != self.pending_query {
+            self.pending_query = query.to_string();
+            self.waiting = true;
+        }
+    }
+
+    fn set_matches(&mut self, query: &str, matches: Vec<FileMatch>) {
+        if query != self.pending_query {
+            return;
+        }
+
+        self.display_query = query.to_string();
+        self.matches = matches;
+        self.waiting = false;
+    }
+
+    fn should_show_matches(&self) -> bool {
+        !self.matches.is_empty()
+    }
+
+    fn empty_message(&self) -> &'static str {
+        if self.waiting {
+            "loading..."
+        } else {
+            "no matches"
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codex_file_search::MatchType;
+    use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
+
+    fn file_match(index: usize) -> FileMatch {
+        FileMatch {
+            score: 1,
+            path: PathBuf::from(format!("src/file_{index:02}.rs")),
+            match_type: MatchType::File,
+            root: PathBuf::from("/tmp/repo"),
+            indices: None,
+        }
+    }
+
+    #[test]
+    fn file_matches_past_first_page_remain_selectable() {
+        let mut popup = Popup::new(Vec::new());
+        popup.set_query("file");
+        popup.set_file_matches("file", (0..(MAX_POPUP_ROWS + 2)).map(file_match).collect());
+
+        popup.page_down();
+
+        let Some(Selection::File(path)) = popup.selected() else {
+            panic!("expected selected file");
+        };
+        assert_eq!(path, PathBuf::from("src/file_08.rs"));
+        assert_eq!(popup.state.scroll_top, 1);
+    }
+
+    fn render_popup_snapshot(popup: &Popup, width: u16) -> String {
+        let area = Rect::new(0, 0, width, popup.calculate_required_height(width));
+        let mut buf = Buffer::empty(area);
+        popup.render_ref(area, &mut buf);
+        format!("{buf:?}")
+    }
+
+    #[test]
+    fn file_matches_scroll_rendered_window_snapshot() {
+        let mut popup = Popup::new(Vec::new());
+        popup.set_query("file");
+        popup.set_file_matches("file", (0..(MAX_POPUP_ROWS + 2)).map(file_match).collect());
+
+        popup.page_down();
+
+        insta::assert_snapshot!(
+            "mentions_v2_file_matches_scrolled",
+            render_popup_snapshot(&popup, /*width*/ 72)
+        );
+    }
+}

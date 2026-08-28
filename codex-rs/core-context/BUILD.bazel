@@ -1,0 +1,9 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "core-context",
+    crate_name = "codex_core_context",
+    test_data_extra = glob([
+        "src/**/snapshots/**",
+    ]),
+)

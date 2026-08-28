@@ -1,0 +1,13 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "tui-bottom-pane",
+    crate_features = ["test-support"],
+    crate_name = "codex_tui_bottom_pane",
+    test_data_extra = glob([
+        "src/**/snapshots/**",
+    ]),
+    test_shard_counts = {
+        "tui-bottom-pane-unit-tests": 4,
+    },
+)

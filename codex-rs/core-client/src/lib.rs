@@ -1,0 +1,32 @@
+#![deny(clippy::print_stdout, clippy::print_stderr)]
+
+pub mod attestation;
+pub mod client;
+pub mod client_common;
+pub mod responses_metadata;
+
+mod util;
+
+macro_rules! feedback_tags {
+    ($( $key:ident = $value:expr ),+ $(,)?) => {
+        ::tracing::info!(
+            target: "feedback_tags",
+            $( $key = ::tracing::field::debug(&$value) ),+
+        );
+    };
+}
+
+pub(crate) use feedback_tags;
+
+pub use attestation::AttestationContext;
+pub use attestation::AttestationProvider;
+pub use attestation::GenerateAttestationFuture;
+pub use client::ModelClient;
+pub use client::ModelClientSession;
+pub use client::X_CODEX_INSTALLATION_ID_HEADER;
+pub use client::X_CODEX_TURN_METADATA_HEADER;
+pub use client::X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER;
+pub use client_common::Prompt;
+pub use client_common::ResponseEvent;
+pub use client_common::ResponseStream;
+pub use responses_metadata::CodexResponsesMetadata;

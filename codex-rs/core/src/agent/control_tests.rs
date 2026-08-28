@@ -7,7 +7,6 @@ use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::config::AgentRoleConfig;
 use crate::config::Config;
-use crate::config::ConfigBuilder;
 use crate::context::ContextualUserFragment;
 use crate::context::SubagentNotification;
 use crate::init_state_db;
@@ -71,7 +70,7 @@ async fn test_config_with_cli_overrides(
         "model".to_string(),
         TomlValue::String("gpt-5.5".to_string()),
     ));
-    let config = ConfigBuilder::without_managed_config_for_tests()
+    let config = crate::config_test_support::config_builder_without_managed_config()
         .codex_home(home.path().to_path_buf())
         .cli_overrides(cli_overrides)
         .build()

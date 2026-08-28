@@ -1,0 +1,28 @@
+[package]
+name = "codex-tui-markdown"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_markdown"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-tui-render = { workspace = true }
+codex-utils-string = { workspace = true }
+dirs = { workspace = true }
+pulldown-cmark = { workspace = true }
+ratatui = { workspace = true }
+regex-lite = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }

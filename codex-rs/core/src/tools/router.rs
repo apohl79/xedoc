@@ -44,11 +44,7 @@ pub(crate) struct ToolRouterParams<'a> {
     pub(crate) dynamic_tools: &'a [DynamicToolSpec],
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ToolSuggestPresentation {
-    ListTool,
-    RecommendationContext,
-}
+pub(crate) use codex_core_tool_specs::ToolSuggestPresentation;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ToolSuggestCandidates {

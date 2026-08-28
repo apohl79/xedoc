@@ -103,6 +103,15 @@ impl SideParentStatus {
     }
 }
 
+impl From<PendingThreadInteraction> for SideParentStatus {
+    fn from(interaction: PendingThreadInteraction) -> Self {
+        match interaction {
+            PendingThreadInteraction::UserInput => Self::NeedsInput,
+            PendingThreadInteraction::Approval => Self::NeedsApproval,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

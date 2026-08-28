@@ -1,0 +1,105 @@
+[package]
+name = "codex-tui-chatwidget"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_chatwidget"
+path = "src/lib.rs"
+doctest = false
+
+[features]
+test-support = ["dep:codex-tui-test-support"]
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+codex-app-server-client = { workspace = true }
+codex-app-server-protocol = { workspace = true }
+codex-config = { workspace = true }
+codex-connectors = { workspace = true }
+codex-core-plugins = { workspace = true }
+codex-features = { workspace = true }
+codex-feedback = { workspace = true }
+codex-file-search = { workspace = true }
+codex-git-utils = { workspace = true }
+codex-models-manager = { workspace = true }
+codex-otel = { workspace = true }
+codex-plugin = { workspace = true }
+codex-protocol = { workspace = true }
+codex-terminal-detection = { workspace = true }
+codex-tui-agents = { workspace = true }
+codex-tui-app-server-session = { workspace = true }
+codex-tui-bottom-pane = { workspace = true, features = ["test-support"] }
+codex-tui-completion = { workspace = true }
+codex-tui-debug = { workspace = true }
+codex-tui-events = { workspace = true }
+codex-tui-frame = { workspace = true }
+codex-tui-hooks = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-overlays = { workspace = true }
+codex-tui-pet = { workspace = true }
+codex-tui-pet-ui = { workspace = true }
+codex-tui-platform = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-settings = { workspace = true }
+codex-tui-status = { workspace = true }
+codex-tui-test-support = { workspace = true, optional = true }
+codex-tui-transcript = { workspace = true }
+codex-tui-workspace = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+codex-utils-approval-presets = { workspace = true }
+codex-utils-cli = { workspace = true }
+codex-utils-home-dir = { workspace = true }
+codex-utils-path-uri = { workspace = true }
+codex-utils-plugins = { workspace = true }
+codex-utils-sandbox-summary = { workspace = true }
+codex-utils-sleep-inhibitor = { workspace = true }
+codex-windows-sandbox = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+derive_more = { workspace = true, features = ["is_variant"] }
+dirs = { workspace = true }
+image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
+rand = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+shlex = { workspace = true }
+strum = { workspace = true }
+tempfile = { workspace = true }
+textwrap = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tokio-stream = { workspace = true, features = ["sync"] }
+tokio-util = { workspace = true, features = ["time"] }
+toml = { workspace = true }
+tracing = { workspace = true, features = ["log"] }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+codex-mcp = { workspace = true }
+codex-shell-command = { workspace = true }
+codex-tui-bottom-pane = { workspace = true, features = ["test-support"] }
+codex-tui-composer = { workspace = true, features = ["test-support"] }
+codex-tui-platform = { workspace = true, features = ["test-support"] }
+codex-tui-status = { workspace = true, features = ["test-support"] }
+codex-tui-transcript = { workspace = true, features = ["test-support"] }
+codex-utils-cargo-bin = { workspace = true }
+futures = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+ratatui-macros = { workspace = true }
+regex-lite = { workspace = true }
+serial_test = { workspace = true }
+vt100 = { workspace = true }
+wiremock = { workspace = true }

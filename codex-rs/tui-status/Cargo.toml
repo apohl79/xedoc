@@ -1,0 +1,51 @@
+[package]
+name = "codex-tui-status"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_status"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+test-support = []
+
+[dependencies]
+chrono = { workspace = true }
+codex-ansi-escape = { workspace = true }
+codex-app-server-protocol = { workspace = true }
+codex-config = { workspace = true }
+codex-core-config = { workspace = true }
+codex-model-provider-info = { workspace = true }
+codex-protocol = { workspace = true }
+codex-shell-command = { workspace = true }
+codex-tui-events = { workspace = true }
+codex-tui-frame = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-transcript = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+codex-utils-path-uri = { workspace = true }
+codex-utils-sandbox-summary = { workspace = true }
+crossterm = { workspace = true }
+dunce = { workspace = true }
+dirs = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+serde = { workspace = true, features = ["derive"] }
+textwrap = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "process", "rt", "time"] }
+tracing = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

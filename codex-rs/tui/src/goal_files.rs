@@ -3,30 +3,20 @@
 use std::fs;
 use std::path::Path;
 
+pub(crate) use crate::app_event::GoalDraft;
 use crate::app_server_session::AppServerSession;
 use crate::bottom_pane::ChatComposer;
-use crate::bottom_pane::LocalImageAttachment;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 use codex_app_server_client::AppServerPath;
 use codex_protocol::protocol::MAX_THREAD_GOAL_OBJECTIVE_CHARS;
-use codex_protocol::user_input::TextElement;
 use uuid::Uuid;
 
 const GOAL_ATTACHMENT_DIR: &str = "attachments";
 const GOAL_FILE_PREFIX: &str = "Read the Codex goal objective file at ";
 const GOAL_FILE_SUFFIX: &str = " before continuing.";
 const GOAL_FILE_NAME: &str = "goal-objective.md";
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct GoalDraft {
-    pub(crate) objective: String,
-    pub(crate) text_elements: Vec<TextElement>,
-    pub(crate) pending_pastes: Vec<(String, String)>,
-    pub(crate) local_images: Vec<LocalImageAttachment>,
-    pub(crate) remote_image_urls: Vec<String>,
-}
 
 pub(crate) type GoalFilePath = AppServerPath;
 

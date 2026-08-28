@@ -1,0 +1,7 @@
+---
+source: tui-agents/src/lib.rs
+expression: snapshot
+---
+• Started `/root/child`
+
+• Completed `/root/child`

@@ -1,0 +1,37 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-tui-hooks"
+version.workspace = true
+
+[lib]
+name = "codex_tui_hooks"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-app-server-client = { workspace = true }
+codex-app-server-protocol = { workspace = true }
+codex-protocol = { workspace = true }
+codex-tui-events = { workspace = true }
+codex-tui-input = { workspace = true }
+codex-tui-overlays = { workspace = true }
+codex-tui-render = { workspace = true }
+codex-tui-status = { workspace = true }
+codex-tui-transcript = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
+textwrap = { workspace = true }
+unicode-width = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+codex-tui-test-support = { workspace = true }
+insta = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

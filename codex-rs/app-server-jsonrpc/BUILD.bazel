@@ -1,0 +1,9 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "app-server-jsonrpc",
+    crate_name = "codex_app_server_jsonrpc",
+    test_shard_counts = {
+        "app-server-jsonrpc-unit-tests": 4,
+    },
+)

@@ -1,12 +1,7 @@
 use crate::AppServerTarget;
 use crate::RemoteAppServerEndpoint;
+pub(crate) use codex_tui_status::status::remote_connection::RemoteConnectionStatus;
 use url::Url;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RemoteConnectionStatus {
-    pub(crate) address: String,
-    pub(crate) version: String,
-}
 
 pub(crate) fn remote_connection_status_value(
     app_server_target: &AppServerTarget,

@@ -19,12 +19,12 @@ use codex_login::default_client::create_client;
 use serde::Deserialize;
 use std::path::Path;
 
-use crate::version::CODEX_CLI_VERSION;
+use crate::version::codex_cli_version;
 
 pub(crate) use crate::updates_cache::dismiss_version;
 
 pub fn get_upgrade_version(config: &Config) -> Option<String> {
-    if !config.check_for_update_on_startup || is_source_build_version(CODEX_CLI_VERSION) {
+    if !config.check_for_update_on_startup || is_source_build_version(codex_cli_version()) {
         return None;
     }
 
@@ -47,7 +47,7 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
     }
 
     info.and_then(|info| {
-        if is_newer(&info.latest_version, CODEX_CLI_VERSION).unwrap_or(false) {
+        if is_newer(&info.latest_version, codex_cli_version()).unwrap_or(false) {
             Some(info.latest_version)
         } else {
             None
@@ -139,7 +139,7 @@ async fn fetch_latest_github_release_version(release_url: &str) -> anyhow::Resul
 /// Returns the latest version to show in a popup, if it should be shown.
 /// This respects the user's dismissal choice for the current latest version.
 pub async fn get_upgrade_version_for_popup(config: &Config) -> Option<String> {
-    if !config.check_for_update_on_startup || is_source_build_version(CODEX_CLI_VERSION) {
+    if !config.check_for_update_on_startup || is_source_build_version(codex_cli_version()) {
         return None;
     }
 
@@ -183,7 +183,7 @@ async fn get_apohl79_upgrade_version_for_popup(config: &Config) -> Option<String
     }
     let _ = tokio::fs::write(version_file, json_line).await;
     if is_dismissed
-        || !is_newer_apohl79_fork_release(&latest_version, CODEX_CLI_VERSION).unwrap_or(false)
+        || !is_newer_apohl79_fork_release(&latest_version, codex_cli_version()).unwrap_or(false)
     {
         return None;
     }

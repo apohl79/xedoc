@@ -946,7 +946,7 @@ impl App {
         };
         let status = {
             let store = channel.store.lock().await;
-            store.side_parent_pending_status()
+            store.pending_interaction().map(SideParentStatus::from)
         };
         if let Some(status) = status {
             self.set_side_parent_status(thread_id, Some(status));
@@ -1015,7 +1015,7 @@ impl App {
             (
                 notification,
                 buffered_notification,
-                guard.side_parent_pending_status(),
+                guard.pending_interaction().map(SideParentStatus::from),
                 turn_stopped,
             )
         };
@@ -1248,7 +1248,10 @@ impl App {
         let (should_send, pending_status) = {
             let mut guard = store.lock().await;
             guard.push_request(request.clone());
-            (guard.active, guard.side_parent_pending_status())
+            (
+                guard.active,
+                guard.pending_interaction().map(SideParentStatus::from),
+            )
         };
         let request_status = SideParentStatus::for_request(&request);
 

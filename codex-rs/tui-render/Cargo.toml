@@ -1,0 +1,40 @@
+[package]
+name = "codex-tui-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_tui_render"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-git-utils = { workspace = true }
+codex-terminal-detection = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+crossterm = { workspace = true }
+diffy = { workspace = true }
+dirs = { workspace = true }
+pathdiff = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-rendered-line-info"] }
+serde = { workspace = true, features = ["derive"] }
+supports-color = { workspace = true }
+syntect = "5"
+textwrap = { workspace = true }
+tracing = { workspace = true }
+two-face = { version = "0.5", default-features = false, features = ["syntect-default-onig"] }
+unicode-width = { workspace = true }
+url = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+itertools = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

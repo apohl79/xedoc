@@ -1,34 +1,26 @@
-//! Status output formatting and display adapters for the TUI.
-//!
-//! This module turns protocol-level snapshots into stable display structures used by `/status`
-//! output and footer/status-line helpers, while keeping rendering concerns out of transport-facing
-//! code.
-//!
-//! `rate_limits` is the main integration point for status-line usage-limit items: it converts raw
-//! window snapshots into local-time labels and classifies data as available, stale, or missing.
-mod account;
-mod card;
-mod format;
-mod helpers;
-mod rate_limits;
-pub(crate) mod remote_connection;
+pub(crate) use codex_tui_status::status::RateLimitSnapshotDisplay;
+pub(crate) use codex_tui_status::status::RateLimitWindowDisplay;
+pub(crate) use codex_tui_status::status::StatusAccountDisplay;
+pub(crate) use codex_tui_status::status::StatusHistoryHandle;
+pub(crate) use codex_tui_status::status::compose_agents_summary;
+pub(crate) use codex_tui_status::status::format_directory_display;
+pub(crate) use codex_tui_status::status::format_tokens_compact;
+pub(crate) use codex_tui_status::status::new_status_output_with_rate_limits_handle;
+pub(crate) use codex_tui_status::status::rate_limit_snapshot_display_for_limit;
 
-pub(crate) use account::StatusAccountDisplay;
-pub(crate) use card::StatusHistoryHandle;
 #[cfg(test)]
-pub(crate) use card::new_status_output;
+pub(crate) use codex_tui_status::status::new_status_output;
 #[cfg(test)]
-pub(crate) use card::new_status_output_with_rate_limits;
-pub(crate) use card::new_status_output_with_rate_limits_handle;
-pub(crate) use helpers::compose_agents_summary;
-pub(crate) use helpers::format_directory_display;
-pub(crate) use helpers::format_tokens_compact;
-pub(crate) use helpers::plan_type_display_name;
-pub(crate) use rate_limits::RateLimitSnapshotDisplay;
-pub(crate) use rate_limits::RateLimitWindowDisplay;
+pub(crate) use codex_tui_status::status::new_status_output_with_rate_limits;
 #[cfg(test)]
-pub(crate) use rate_limits::rate_limit_snapshot_display;
-pub(crate) use rate_limits::rate_limit_snapshot_display_for_limit;
+pub(crate) use codex_tui_status::status::rate_limit_snapshot_display;
+
+#[cfg(test)]
+pub(crate) mod rate_limits {
+    pub(crate) use codex_tui_status::status::rate_limits::*;
+}
+
+pub(crate) mod remote_connection;
 
 #[cfg(test)]
 mod tests;

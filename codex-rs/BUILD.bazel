@@ -1,4 +1,5 @@
 exports_files([
+    "Cargo.toml",
     "clippy.toml",
 ])
 

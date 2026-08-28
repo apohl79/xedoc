@@ -56,6 +56,7 @@ use insta::assert_snapshot;
 use pretty_assertions::assert_eq;
 use ratatui::prelude::*;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tempfile::TempDir;
 use unicode_width::UnicodeWidthStr;
 
@@ -127,6 +128,17 @@ fn app_server_workspace_write_profile(network_enabled: bool) -> PermissionProfil
 }
 
 async fn test_config(temp_home: &TempDir) -> Config {
+    static WORKSPACE_VERSION: OnceLock<String> = OnceLock::new();
+    let workspace_version = WORKSPACE_VERSION.get_or_init(|| {
+        let manifest: toml::Value = toml::from_str(include_str!("../../../Cargo.toml"))
+            .expect("workspace Cargo.toml should parse");
+        manifest["workspace"]["package"]["version"]
+            .as_str()
+            .expect("workspace package version should be a string")
+            .to_string()
+    });
+    crate::set_codex_cli_version(workspace_version);
+
     let mut config = ConfigBuilder::default()
         .codex_home(temp_home.path().to_path_buf())
         .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
