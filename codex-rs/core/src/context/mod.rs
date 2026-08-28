@@ -42,4 +42,3 @@ pub(crate) use codex_core_context::TurnAborted;
 pub(crate) use codex_core_context::UserInstructions;
 pub(crate) use codex_core_context::UserShellCommand;
 pub(crate) use codex_core_context::is_contextual_user_fragment;
-pub(crate) use codex_core_context::parse_visible_hook_prompt_message;

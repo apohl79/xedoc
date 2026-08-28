@@ -1881,7 +1881,9 @@ impl Session {
         };
         crate::context_manager::updates::build_settings_update_items(
             reference_context_item,
-            previous_turn_settings.as_ref(),
+            previous_turn_settings
+                .as_ref()
+                .map(|settings| settings.model.as_str()),
             current_context,
             self.features.enabled(Feature::Personality),
         )
@@ -3439,7 +3441,9 @@ impl Session {
         };
         if let Some(model_switch_message) =
             crate::context_manager::updates::build_model_instructions_update_item(
-                previous_turn_settings.as_ref(),
+                previous_turn_settings
+                    .as_ref()
+                    .map(|settings| settings.model.as_str()),
                 turn_context,
             )
         {

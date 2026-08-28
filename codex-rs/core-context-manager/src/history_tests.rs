@@ -1,9 +1,11 @@
 use super::*;
-use crate::context::UserInstructions;
-use crate::context::world_state::WorldState;
-use crate::context::world_state::WorldStateSection;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use codex_core_context::ContextualUserFragment;
+use codex_core_context::UserInstructions;
+use codex_core_context::world_state::PreviousSectionState;
+use codex_core_context::world_state::WorldState;
+use codex_core_context::world_state::WorldStateSection;
 use codex_protocol::AgentPath;
 use codex_protocol::ResponseItemId;
 use codex_protocol::models::AgentMessageInputContent;
@@ -122,19 +124,17 @@ impl WorldStateSection for TestWorldStateSection {
 
     fn render_diff(
         &self,
-        previous: crate::context::world_state::PreviousSectionState<'_, Self::Snapshot>,
-    ) -> Option<Box<dyn crate::context::ContextualUserFragment>> {
+        previous: PreviousSectionState<'_, Self::Snapshot>,
+    ) -> Option<Box<dyn ContextualUserFragment>> {
         let text = match previous {
-            crate::context::world_state::PreviousSectionState::Known(true) => return None,
-            crate::context::world_state::PreviousSectionState::Unknown => "unknown",
-            crate::context::world_state::PreviousSectionState::Absent
-            | crate::context::world_state::PreviousSectionState::Known(false) => "test",
+            PreviousSectionState::Known(true) => return None,
+            PreviousSectionState::Unknown => "unknown",
+            PreviousSectionState::Absent | PreviousSectionState::Known(false) => "test",
         };
         Some(Box::new(UserInstructions {
             directory: None,
             text: text.to_string(),
-        })
-            as Box<dyn crate::context::ContextualUserFragment>)
+        }) as Box<dyn ContextualUserFragment>)
     }
 }
 
@@ -164,7 +164,7 @@ fn world_state_baseline_deduplicates_until_history_is_replaced() {
 
 #[test]
 fn world_state_reconciles_matching_legacy_history_once() {
-    let item = crate::context::ContextualUserFragment::into(UserInstructions {
+    let item = ContextualUserFragment::into(UserInstructions {
         directory: None,
         text: "legacy".to_string(),
     });

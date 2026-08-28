@@ -1,14 +1,14 @@
-use crate::audio_preparation::estimate_audio_token_count;
-use crate::context::ContextualUserFragment;
-use crate::context::world_state::WorldState;
-use crate::context::world_state::WorldStateSnapshot;
-use crate::context_manager::normalize;
-use crate::event_mapping::has_non_contextual_dev_message_content;
-use crate::event_mapping::is_contextual_dev_message_content;
-use crate::event_mapping::is_contextual_user_message_content;
-use crate::session::turn_context::TurnContext;
+use crate::audio::estimate_audio_token_count;
+use crate::contextual_content::has_non_contextual_dev_message_content;
+use crate::contextual_content::is_contextual_dev_message_content;
+use crate::contextual_content::is_contextual_user_message_content;
+use crate::normalize;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use codex_core_context::ContextualUserFragment;
+use codex_core_context::world_state::WorldState;
+use codex_core_context::world_state::WorldStateSnapshot;
+use codex_core_turn_context::TurnContext;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
@@ -38,7 +38,7 @@ use std::sync::LazyLock;
 
 /// Transcript of thread history
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ContextManager {
+pub struct ContextManager {
     /// The oldest items are at the beginning of the vector. Snapshots share the vector until a
     /// caller needs to mutate it, avoiding deep copies for read-only history consumers.
     items: Arc<Vec<ResponseItem>>,
@@ -61,7 +61,7 @@ pub(crate) struct ContextManager {
 }
 
 impl ContextManager {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             items: Arc::new(Vec::new()),
             history_version: 0,
@@ -73,23 +73,23 @@ impl ContextManager {
         }
     }
 
-    pub(crate) fn token_info(&self) -> Option<TokenUsageInfo> {
+    pub fn token_info(&self) -> Option<TokenUsageInfo> {
         self.token_info.clone()
     }
 
-    pub(crate) fn set_token_info(&mut self, info: Option<TokenUsageInfo>) {
+    pub fn set_token_info(&mut self, info: Option<TokenUsageInfo>) {
         self.token_info = info;
     }
 
-    pub(crate) fn set_reference_context_item(&mut self, item: Option<TurnContextItem>) {
+    pub fn set_reference_context_item(&mut self, item: Option<TurnContextItem>) {
         self.reference_context_item = item;
     }
 
-    pub(crate) fn reference_context_item(&self) -> Option<TurnContextItem> {
+    pub fn reference_context_item(&self) -> Option<TurnContextItem> {
         self.reference_context_item.clone()
     }
 
-    pub(crate) fn update_world_state(
+    pub fn update_world_state(
         &mut self,
         world_state: &WorldState,
     ) -> (Vec<Box<dyn ContextualUserFragment>>, Option<WorldStateItem>) {
@@ -108,11 +108,11 @@ impl ContextManager {
         (fragments, rollout_item)
     }
 
-    pub(crate) fn set_world_state_baseline(&mut self, snapshot: WorldStateSnapshot) {
+    pub fn set_world_state_baseline(&mut self, snapshot: WorldStateSnapshot) {
         self.world_state_baseline = Some(snapshot);
     }
 
-    pub(crate) fn set_token_usage_full(&mut self, context_window: i64) {
+    pub fn set_token_usage_full(&mut self, context_window: i64) {
         match &mut self.token_info {
             Some(info) => info.fill_to_context_window(context_window),
             None => {
@@ -122,7 +122,7 @@ impl ContextManager {
     }
 
     /// `items` is ordered from oldest to newest.
-    pub(crate) fn record_items<I>(&mut self, items: I, policy: TruncationPolicy)
+    pub fn record_items<I>(&mut self, items: I, policy: TruncationPolicy)
     where
         I: IntoIterator,
         I::Item: std::ops::Deref<Target = ResponseItem>,
@@ -141,13 +141,13 @@ impl ContextManager {
     /// Returns the history prepared for sending to the model. This applies a proper
     /// normalization and drops un-suited items. Unsupported image and audio content
     /// is stripped from messages and tool outputs according to `input_modalities`.
-    pub(crate) fn for_prompt(mut self, input_modalities: &[InputModality]) -> Vec<ResponseItem> {
+    pub fn for_prompt(mut self, input_modalities: &[InputModality]) -> Vec<ResponseItem> {
         self.normalize_history(input_modalities);
         Arc::unwrap_or_clone(self.items)
     }
 
     /// Returns prompt history without opaque content that a different model cannot decrypt.
-    pub(crate) fn for_prompt_without_encrypted_content(
+    pub fn for_prompt_without_encrypted_content(
         mut self,
         input_modalities: &[InputModality],
     ) -> Vec<ResponseItem> {
@@ -158,22 +158,22 @@ impl ContextManager {
     }
 
     /// Returns raw items in the history.
-    pub(crate) fn raw_items(&self) -> &[ResponseItem] {
+    pub fn raw_items(&self) -> &[ResponseItem] {
         &self.items
     }
 
     /// Returns raw items in the history and consumes the snapshot.
-    pub(crate) fn into_raw_items(self) -> Vec<ResponseItem> {
+    pub fn into_raw_items(self) -> Vec<ResponseItem> {
         Arc::unwrap_or_clone(self.items)
     }
 
-    pub(crate) fn history_version(&self) -> u64 {
+    pub fn history_version(&self) -> u64 {
         self.history_version
     }
 
     // Estimate token usage using byte-based heuristics from the truncation helpers.
     // This is a coarse lower bound, not a tokenizer-accurate count.
-    pub(crate) fn estimate_token_count(&self, turn_context: &TurnContext) -> Option<i64> {
+    pub fn estimate_token_count(&self, turn_context: &TurnContext) -> Option<i64> {
         let model_info = &turn_context.model_info;
         let personality = turn_context.personality.or(turn_context.config.personality);
         let base_instructions = BaseInstructions {
@@ -182,7 +182,7 @@ impl ContextManager {
         self.estimate_token_count_with_base_instructions(&base_instructions)
     }
 
-    pub(crate) fn estimate_token_count_with_base_instructions(
+    pub fn estimate_token_count_with_base_instructions(
         &self,
         base_instructions: &BaseInstructions,
     ) -> Option<i64> {
@@ -198,7 +198,7 @@ impl ContextManager {
         Some(base_tokens.saturating_add(items_tokens))
     }
 
-    pub(crate) fn remove_first_item(&mut self) {
+    pub fn remove_first_item(&mut self) {
         if !self.items.is_empty() {
             // Remove the oldest item (front of the list). Items are ordered from
             // oldest → newest, so index 0 is the first entry recorded.
@@ -212,7 +212,7 @@ impl ContextManager {
         }
     }
 
-    pub(crate) fn replace(&mut self, items: Vec<ResponseItem>) {
+    pub fn replace(&mut self, items: Vec<ResponseItem>) {
         self.items = Arc::new(items);
         self.history_version = self.history_version.saturating_add(1);
         self.world_state_baseline = None;
@@ -234,7 +234,7 @@ impl ContextManager {
     /// `reference_context_item`. The surviving history no longer contains the full bundle that
     /// established the prior baseline, so future turns must fall back to full reinjection instead
     /// of diffing against stale state.
-    pub(crate) fn drop_last_n_user_turns(&mut self, num_turns: u32) {
+    pub fn drop_last_n_user_turns(&mut self, num_turns: u32) {
         if num_turns == 0 {
             return;
         }
@@ -259,11 +259,7 @@ impl ContextManager {
         self.replace(snapshot[..cut_idx].to_vec());
     }
 
-    pub(crate) fn update_token_info(
-        &mut self,
-        usage: &TokenUsage,
-        model_context_window: Option<i64>,
-    ) {
+    pub fn update_token_info(&mut self, usage: &TokenUsage, model_context_window: Option<i64>) {
         self.token_info = TokenUsageInfo::new_or_append(
             &self.token_info,
             &Some(usage.clone()),
@@ -306,7 +302,7 @@ impl ContextManager {
 
     /// When true, the server already accounted for past reasoning tokens and
     /// the client should not re-estimate them.
-    pub(crate) fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
+    pub fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
         let last_tokens = self
             .token_info
             .as_ref()
@@ -326,7 +322,7 @@ impl ContextManager {
         }
     }
 
-    pub(crate) fn estimated_tokens_after_last_model_generated_item(&self) -> i64 {
+    pub fn estimated_tokens_after_last_model_generated_item(&self) -> i64 {
         self.items_after_last_model_generated_item()
             .iter()
             .map(estimate_item_token_count)
@@ -446,7 +442,7 @@ impl ContextManager {
     }
 }
 
-pub(crate) fn truncate_function_output_payload(
+pub fn truncate_function_output_payload(
     output: &FunctionCallOutputPayload,
     policy: TruncationPolicy,
 ) -> FunctionCallOutputPayload {
@@ -536,7 +532,7 @@ fn estimate_encrypted_function_output_length(encoded_len: usize) -> usize {
 ///
 /// Ordinary items are JSON-serialized, so callers estimating many items should reuse these
 /// results instead of repeatedly estimating the full history.
-pub(crate) fn estimate_item_token_count(item: &ResponseItem) -> i64 {
+pub fn estimate_item_token_count(item: &ResponseItem) -> i64 {
     let model_visible_bytes = estimate_response_item_model_visible_bytes(item);
     approx_tokens_from_byte_count_i64(model_visible_bytes)
 }
@@ -819,7 +815,7 @@ fn is_model_generated_item(item: &ResponseItem) -> bool {
     }
 }
 
-pub(crate) fn is_user_turn_boundary(item: &ResponseItem) -> bool {
+pub fn is_user_turn_boundary(item: &ResponseItem) -> bool {
     if matches!(item, ResponseItem::AgentMessage { .. }) {
         return true;
     }
@@ -829,6 +825,22 @@ pub(crate) fn is_user_turn_boundary(item: &ResponseItem) -> bool {
 
     (role == "user" && !is_contextual_user_message_content(content))
         || (role == "assistant" && is_inter_agent_instruction_content(content))
+}
+
+/// Joins text content while ignoring non-text model input.
+pub fn content_items_to_text(content: &[ContentItem]) -> Option<String> {
+    let mut pieces = Vec::new();
+    for item in content {
+        match item {
+            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                if !text.is_empty() {
+                    pieces.push(text.as_str());
+                }
+            }
+            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+        }
+    }
+    (!pieces.is_empty()).then(|| pieces.join("\n"))
 }
 
 fn is_inter_agent_instruction_content(content: &[ContentItem]) -> bool {

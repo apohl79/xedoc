@@ -1,0 +1,30 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-realtime-context"
+version.workspace = true
+
+[lib]
+name = "codex_core_realtime_context"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+codex-core-context-manager = { workspace = true }
+codex-exec-server = { workspace = true }
+codex-git-utils = { workspace = true }
+codex-prompts = { workspace = true }
+codex-protocol = { workspace = true }
+codex-thread-store = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+codex-utils-output-truncation = { workspace = true }
+tracing = { workspace = true }
+whoami = { workspace = true }
+
+[dev-dependencies]
+core_test_support = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

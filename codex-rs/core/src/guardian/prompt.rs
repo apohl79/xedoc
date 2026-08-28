@@ -8,7 +8,7 @@ use codex_protocol::user_input::UserInput;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::compact::content_items_to_text;
+use crate::content_items_to_text;
 use crate::event_mapping::is_contextual_user_message_content;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;

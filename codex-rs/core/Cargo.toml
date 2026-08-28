@@ -39,8 +39,17 @@ codex-core-plugins = { workspace = true }
 codex-core-client = { workspace = true }
 codex-core-config = { workspace = true }
 codex-core-context = { workspace = true }
+codex-core-agent-registry = { workspace = true }
+codex-core-agent-role = { workspace = true }
+codex-core-context-manager = { workspace = true }
+codex-core-project-docs = { workspace = true }
+codex-core-realtime-context = { workspace = true }
+codex-core-response-items = { workspace = true }
+codex-core-rollout-reconstruction = { workspace = true }
+codex-core-rollout-truncation = { workspace = true }
 codex-core-exec = { workspace = true }
 codex-core-environment = { workspace = true }
+codex-core-turn-context = { workspace = true }
 codex-core-skills = { workspace = true }
 codex-core-tool-specs = { workspace = true }
 codex-core-turn-metadata = { workspace = true }

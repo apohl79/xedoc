@@ -45,9 +45,18 @@ members = [
     "core-config",
     "core-config-runtime",
     "core-context",
+    "core-agent-registry",
+    "core-agent-role",
+    "core-context-manager",
+    "core-project-docs",
+    "core-realtime-context",
+    "core-response-items",
+    "core-rollout-reconstruction",
+    "core-rollout-truncation",
     "core-exec",
     "core-tool-specs",
     "core-environment",
+    "core-turn-context",
     "core-turn-metadata",
     "core-turn-timing",
     "core-turn-diff",
@@ -219,9 +228,18 @@ codex-core-client = { path = "core-client" }
 codex-core-config = { path = "core-config" }
 codex-core-config-runtime = { path = "core-config-runtime" }
 codex-core-context = { path = "core-context" }
+codex-core-agent-registry = { path = "core-agent-registry" }
+codex-core-agent-role = { path = "core-agent-role" }
+codex-core-context-manager = { path = "core-context-manager" }
+codex-core-project-docs = { path = "core-project-docs" }
+codex-core-realtime-context = { path = "core-realtime-context" }
+codex-core-response-items = { path = "core-response-items" }
+codex-core-rollout-reconstruction = { path = "core-rollout-reconstruction" }
+codex-core-rollout-truncation = { path = "core-rollout-truncation" }
 codex-core-exec = { path = "core-exec" }
 codex-core-tool-specs = { path = "core-tool-specs" }
 codex-core-environment = { path = "core-environment" }
+codex-core-turn-context = { path = "core-turn-context" }
 codex-core-turn-metadata = { path = "core-turn-metadata" }
 codex-core-turn-timing = { path = "core-turn-timing" }
 codex-core-turn-diff = { path = "core-turn-diff" }

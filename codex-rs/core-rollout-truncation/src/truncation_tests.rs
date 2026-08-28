@@ -1,6 +1,4 @@
 use super::*;
-use crate::session::tests::build_world_state_from_turn_context;
-use crate::session::tests::make_session_and_context;
 use codex_protocol::AgentPath;
 use codex_protocol::ResponseItemId;
 use codex_protocol::models::ContentItem;
@@ -11,7 +9,6 @@ use codex_protocol::protocol::TurnCompleteEvent;
 use codex_protocol::protocol::TurnStartedEvent;
 use codex_protocol::protocol::UserMessageEvent;
 use pretty_assertions::assert_eq;
-use std::sync::Arc;
 
 fn user_msg(text: &str) -> ResponseItem {
     ResponseItem::Message {
@@ -302,49 +299,6 @@ fn truncates_rollout_from_start_applies_thread_rollback_markers() {
         /*n_from_start*/ 2,
     );
     let expected = rollout_items[..7].to_vec();
-    assert_eq!(
-        serde_json::to_value(&truncated).unwrap(),
-        serde_json::to_value(&expected).unwrap()
-    );
-}
-
-#[tokio::test]
-async fn ignores_session_prefix_messages_when_truncating_rollout_from_start() {
-    let (session, turn_context) = make_session_and_context().await;
-    let turn_context = Arc::new(turn_context);
-    let world_state = build_world_state_from_turn_context(&session, &turn_context).await;
-    let mut items = session
-        .build_initial_context_with_world_state(&turn_context, &world_state)
-        .await;
-    let feature_request = user_msg("feature request");
-    items.push(feature_request.clone());
-    items.push(assistant_msg("ack"));
-    items.push(user_msg("second question"));
-    items.push(assistant_msg("answer"));
-
-    let rollout_items: Vec<RolloutItem> = items
-        .iter()
-        .cloned()
-        .map(RolloutItem::ResponseItem)
-        .collect();
-    let feature_request_index = items
-        .iter()
-        .position(|item| item == &feature_request)
-        .expect("feature request should be present");
-    let user_message_positions = user_message_positions_in_rollout(&rollout_items);
-    let feature_request_number = user_message_positions
-        .iter()
-        .position(|index| *index == feature_request_index)
-        .expect("feature request should be a user-message boundary");
-
-    let truncated =
-        truncate_rollout_before_nth_user_message_from_start(&rollout_items, feature_request_number);
-    let expected: Vec<RolloutItem> = items[..feature_request_index]
-        .iter()
-        .cloned()
-        .map(RolloutItem::ResponseItem)
-        .collect();
-
     assert_eq!(
         serde_json::to_value(&truncated).unwrap(),
         serde_json::to_value(&expected).unwrap()

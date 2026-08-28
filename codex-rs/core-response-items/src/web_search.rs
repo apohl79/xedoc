@@ -1,20 +1,3 @@
-use super::has_non_contextual_dev_message_content;
-use super::is_contextual_dev_message_content;
-use super::parse_turn_item;
-use crate::context::ContextualUserFragment;
-use crate::context::InternalContextSource;
-use crate::context::InternalModelContextFragment;
-use codex_protocol::ResponseItemId;
-use codex_protocol::items::AgentMessageContent;
-use codex_protocol::items::HookPromptFragment;
-use codex_protocol::items::TurnItem;
-use codex_protocol::items::WebSearchItem;
-use codex_protocol::items::build_hook_prompt_message;
-use codex_protocol::models::ContentItem;
-use codex_protocol::models::DEFAULT_IMAGE_DETAIL;
-use codex_protocol::models::ReasoningItemContent;
-use codex_protocol::models::ReasoningItemReasoningSummary;
-use codex_protocol::models::ResponseItem;
 use codex_protocol::models::WebSearchAction;
 use codex_protocol::protocol::CONTEXT_WINDOW_CLOSE_TAG;
 use codex_protocol::protocol::CONTEXT_WINDOW_GUIDANCE_CLOSE_TAG;
@@ -641,5 +624,35 @@ fn parses_partial_web_search_call_without_action_as_other() {
             }
         ),
         other => panic!("expected TurnItem::WebSearch, got {other:?}"),
+    }
+}
+use codex_protocol::models::WebSearchAction;
+
+fn search_action_detail(query: &Option<String>, queries: &Option<Vec<String>>) -> String {
+    query.clone().filter(|q| !q.is_empty()).unwrap_or_else(|| {
+        let items = queries.as_ref();
+        let first = items
+            .and_then(|queries| queries.first())
+            .cloned()
+            .unwrap_or_default();
+        if items.is_some_and(|queries| queries.len() > 1) && !first.is_empty() {
+            format!("{first} ...")
+        } else {
+            first
+        }
+    })
+}
+
+pub fn web_search_action_detail(action: &WebSearchAction) -> String {
+    match action {
+        WebSearchAction::Search { query, queries } => search_action_detail(query, queries),
+        WebSearchAction::OpenPage { url } => url.clone().unwrap_or_default(),
+        WebSearchAction::FindInPage { url, pattern } => match (pattern, url) {
+            (Some(pattern), Some(url)) => format!("'{pattern}' in {url}"),
+            (Some(pattern), None) => format!("'{pattern}'"),
+            (None, Some(url)) => url.clone(),
+            (None, None) => String::new(),
+        },
+        WebSearchAction::Other => String::new(),
     }
 }

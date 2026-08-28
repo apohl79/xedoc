@@ -1,9 +1,9 @@
-use crate::context::ContextualUserFragment;
-use crate::context::ModelSwitchInstructions;
-use crate::context::MultiAgentModeInstructions;
-use crate::context::PersonalitySpecInstructions;
-use crate::session::PreviousTurnSettings;
-use crate::session::turn_context::TurnContext;
+use codex_core_context::ContextualUserFragment;
+use codex_core_context::ModelSwitchInstructions;
+use codex_core_context::MultiAgentModeInstructions;
+use codex_core_context::PersonalitySpecInstructions;
+use codex_core_turn_context::TurnContext;
+use codex_core_turn_context::effective_multi_agent_mode;
 use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::config_types::Personality;
 use codex_protocol::models::ContentItem;
@@ -15,13 +15,13 @@ fn build_multi_agent_mode_update_item(
     previous: Option<&TurnContextItem>,
     next: &TurnContext,
 ) -> Option<String> {
-    let effective_multi_agent_mode = crate::session::multi_agents::effective_multi_agent_mode(next);
+    let multi_agent_mode = effective_multi_agent_mode(next);
     let previous = previous?;
-    if previous.multi_agent_mode == effective_multi_agent_mode {
+    if previous.multi_agent_mode == multi_agent_mode {
         return None;
     }
 
-    match effective_multi_agent_mode {
+    match multi_agent_mode {
         Some(multi_agent_mode) => MultiAgentModeInstructions::from_mode(multi_agent_mode)
             .map(|instructions| instructions.render()),
         None if previous.multi_agent_mode == Some(MultiAgentMode::Proactive) => {
@@ -56,10 +56,7 @@ fn build_personality_update_item(
     }
 }
 
-pub(crate) fn personality_message_for(
-    model_info: &ModelInfo,
-    personality: Personality,
-) -> Option<String> {
+pub fn personality_message_for(model_info: &ModelInfo, personality: Personality) -> Option<String> {
     model_info
         .model_messages
         .as_ref()
@@ -67,12 +64,11 @@ pub(crate) fn personality_message_for(
         .filter(|message| !message.is_empty())
 }
 
-pub(crate) fn build_model_instructions_update_item(
-    previous_turn_settings: Option<&PreviousTurnSettings>,
+pub fn build_model_instructions_update_item(
+    previous_model: Option<&str>,
     next: &TurnContext,
 ) -> Option<String> {
-    let previous_turn_settings = previous_turn_settings?;
-    if previous_turn_settings.model == next.model_info.slug {
+    if previous_model? == next.model_info.slug {
         return None;
     }
 
@@ -84,15 +80,15 @@ pub(crate) fn build_model_instructions_update_item(
     Some(ModelSwitchInstructions::new(model_instructions).render())
 }
 
-pub(crate) fn build_developer_update_item(text_sections: Vec<String>) -> Option<ResponseItem> {
+pub fn build_developer_update_item(text_sections: Vec<String>) -> Option<ResponseItem> {
     build_text_message("developer", text_sections)
 }
 
-pub(crate) fn build_contextual_user_message(text_sections: Vec<String>) -> Option<ResponseItem> {
+pub fn build_contextual_user_message(text_sections: Vec<String>) -> Option<ResponseItem> {
     build_text_message("user", text_sections)
 }
 
-pub(crate) fn merge_contextual_fragments(
+pub fn merge_contextual_fragments(
     fragments: Vec<Box<dyn ContextualUserFragment>>,
 ) -> Vec<ResponseItem> {
     let mut messages: Vec<(&str, Vec<String>)> = Vec::with_capacity(fragments.len());
@@ -131,9 +127,9 @@ fn build_text_message(role: &str, text_sections: Vec<String>) -> Option<Response
     })
 }
 
-pub(crate) fn build_settings_update_items(
+pub fn build_settings_update_items(
     previous: Option<&TurnContextItem>,
-    previous_turn_settings: Option<&PreviousTurnSettings>,
+    previous_model: Option<&str>,
     next: &TurnContext,
     personality_feature_enabled: bool,
 ) -> Vec<ResponseItem> {
@@ -144,7 +140,7 @@ pub(crate) fn build_settings_update_items(
     let developer_update_sections = [
         // Keep model-switch instructions first so model-specific guidance is read before
         // any other context diffs on this turn.
-        build_model_instructions_update_item(previous_turn_settings, next),
+        build_model_instructions_update_item(previous_model, next),
         build_multi_agent_mode_update_item(previous, next),
         build_personality_update_item(previous, next, personality_feature_enabled),
     ]
