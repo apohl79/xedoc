@@ -3543,9 +3543,16 @@ async fn snapshot_request_shape_remote_pre_turn_compaction_strips_incoming_model
     .await?;
     let codex = harness.test().codex.clone();
 
+    let source_reasoning =
+        responses::ev_reasoning_item("reasoning-1", &["SOURCE_REASONING_SUMMARY"], &[]);
+    let source_encrypted_content = source_reasoning["item"]["encrypted_content"]
+        .as_str()
+        .expect("reasoning fixture should include encrypted content")
+        .to_string();
     let initial_turn_request_mock = responses::mount_sse_once(
         harness.server(),
         responses::sse(vec![
+            source_reasoning,
             responses::ev_assistant_message("m1", "BEFORE_SWITCH_REPLY"),
             responses::ev_completed_with_tokens("r1", /*total_tokens*/ 100_000),
         ]),
@@ -3628,6 +3635,14 @@ async fn snapshot_request_shape_remote_pre_turn_compaction_strips_incoming_model
     assert!(
         !compact_body.contains("<model_switch>"),
         "pre-turn remote compaction request should strip incoming model-switch update item"
+    );
+    assert!(
+        !compact_body.contains(&source_encrypted_content),
+        "pre-turn compaction after a model switch should not forward encrypted content from the previous model"
+    );
+    assert!(
+        compact_body.contains("SOURCE_REASONING_SUMMARY"),
+        "pre-turn compaction after a model switch should retain the prior model's readable reasoning summary"
     );
 
     let follow_up_body = post_compact_turn_request.body_json().to_string();

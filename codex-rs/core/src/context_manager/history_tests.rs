@@ -6,6 +6,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use codex_protocol::AgentPath;
 use codex_protocol::ResponseItemId;
+use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::DEFAULT_IMAGE_DETAIL;
@@ -442,6 +443,110 @@ fn for_prompt_preserves_inter_agent_assistant_messages() {
 
     assert_eq!(history.raw_items(), std::slice::from_ref(&item));
     assert_eq!(history.for_prompt(&default_input_modalities()), vec![item]);
+}
+
+#[test]
+fn for_prompt_without_encrypted_content_preserves_plaintext_context() {
+    let user = user_msg("USER");
+    let function_call = ResponseItem::FunctionCall {
+        id: None,
+        name: "shell".to_string(),
+        namespace: None,
+        arguments: "{}".to_string(),
+        call_id: "call-1".to_string(),
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let history = create_history_with_items(vec![
+        user.clone(),
+        ResponseItem::Reasoning {
+            id: None,
+            summary: vec![ReasoningItemReasoningSummary::SummaryText {
+                text: "REASONING_SUMMARY".to_string(),
+            }],
+            content: None,
+            encrypted_content: Some("OPAQUE_REASONING".to_string()),
+            internal_chat_message_metadata_passthrough: None,
+        },
+        ResponseItem::Compaction {
+            id: None,
+            encrypted_content: "OPAQUE_COMPACTION".to_string(),
+            internal_chat_message_metadata_passthrough: None,
+        },
+        ResponseItem::ContextCompaction {
+            id: None,
+            encrypted_content: Some("OPAQUE_CONTEXT_COMPACTION".to_string()),
+            internal_chat_message_metadata_passthrough: None,
+        },
+        ResponseItem::AgentMessage {
+            id: None,
+            author: "root".to_string(),
+            recipient: "worker".to_string(),
+            content: vec![
+                AgentMessageInputContent::InputText {
+                    text: "AGENT_MESSAGE".to_string(),
+                },
+                AgentMessageInputContent::EncryptedContent {
+                    encrypted_content: "OPAQUE_AGENT_MESSAGE".to_string(),
+                },
+            ],
+            internal_chat_message_metadata_passthrough: None,
+        },
+        function_call.clone(),
+        ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: "call-1".to_string(),
+            output: FunctionCallOutputPayload::from_content_items(vec![
+                FunctionCallOutputContentItem::InputText {
+                    text: "TOOL_OUTPUT".to_string(),
+                },
+                FunctionCallOutputContentItem::EncryptedContent {
+                    encrypted_content: "OPAQUE_TOOL_OUTPUT".to_string(),
+                },
+            ]),
+            internal_chat_message_metadata_passthrough: None,
+        },
+    ]);
+
+    assert_eq!(
+        history.for_prompt_without_encrypted_content(&default_input_modalities()),
+        vec![
+            user,
+            ResponseItem::Reasoning {
+                id: None,
+                summary: vec![ReasoningItemReasoningSummary::SummaryText {
+                    text: "REASONING_SUMMARY".to_string(),
+                }],
+                content: None,
+                encrypted_content: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            ResponseItem::ContextCompaction {
+                id: None,
+                encrypted_content: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            ResponseItem::AgentMessage {
+                id: None,
+                author: "root".to_string(),
+                recipient: "worker".to_string(),
+                content: vec![AgentMessageInputContent::InputText {
+                    text: "AGENT_MESSAGE".to_string(),
+                }],
+                internal_chat_message_metadata_passthrough: None,
+            },
+            function_call,
+            ResponseItem::FunctionCallOutput {
+                id: None,
+                call_id: "call-1".to_string(),
+                output: FunctionCallOutputPayload::from_content_items(vec![
+                    FunctionCallOutputContentItem::InputText {
+                        text: "TOOL_OUTPUT".to_string(),
+                    },
+                ]),
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ]
+    );
 }
 
 #[test]

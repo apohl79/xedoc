@@ -12,6 +12,7 @@ use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::collect_explicit_skill_mentions;
 use crate::compact::InitialContextInjection;
+use crate::compact::RemoteCompactionHistoryEncryption;
 use crate::compact::run_inline_auto_compact_task;
 use crate::compact::should_use_remote_compact_task;
 use crate::compact_remote::run_inline_remote_auto_compact_task;
@@ -1098,6 +1099,12 @@ async fn run_auto_compact(
     }
 
     if should_use_remote_compact_task(turn_context.provider.info()) {
+        let history_encryption = sess
+            .previous_turn_settings()
+            .await
+            .is_some_and(|previous| previous.model != turn_context.model_info.slug)
+            .then_some(RemoteCompactionHistoryEncryption::Strip)
+            .unwrap_or(RemoteCompactionHistoryEncryption::Preserve);
         if turn_context
             .config
             .features
@@ -1114,6 +1121,7 @@ async fn run_auto_compact(
                 fallback_step_context,
                 client_session,
                 initial_context_injection,
+                history_encryption,
                 reason,
                 phase,
             )
@@ -1131,6 +1139,7 @@ async fn run_auto_compact(
             fallback_step_context,
             client_session.turn_state(),
             initial_context_injection,
+            history_encryption,
             reason,
             phase,
         )

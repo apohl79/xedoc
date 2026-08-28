@@ -70,6 +70,13 @@ pub(crate) enum InitialContextInjection {
     DoNotInject,
 }
 
+/// Controls whether opaque provider-managed content can be forwarded to remote compaction.
+#[derive(Clone, Copy)]
+pub(crate) enum RemoteCompactionHistoryEncryption {
+    Preserve,
+    Strip,
+}
+
 pub(crate) async fn build_compaction_initial_context(
     sess: &Session,
     turn_context: &TurnContext,

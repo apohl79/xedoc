@@ -5,6 +5,7 @@ use super::trim_function_call_history_to_fit_context_window;
 use crate::Prompt;
 use crate::client::CompactConversationRequestSettings;
 use crate::compact::CompactionAnalyticsDetails;
+use crate::compact::RemoteCompactionHistoryEncryption;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::CompactionTurnMetadata;
 use crate::session::session::Session;
@@ -27,6 +28,7 @@ pub(super) async fn run_remote_compact_attempt(
     step_context: &Arc<StepContext>,
     turn_state: Option<Arc<OnceLock<String>>>,
     compaction_trace: &CompactionTraceContext,
+    history_encryption: RemoteCompactionHistoryEncryption,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
 ) -> CodexResult<RemoteCompactAttempt> {
@@ -57,10 +59,15 @@ pub(super) async fn run_remote_compact_attempt(
                     .saturating_sub(estimated_deleted_tokens.min(max_local_deleted_tokens))
             });
     }
-    let trace_input_history = compaction_trace
-        .is_enabled()
-        .then(|| history.raw_items().to_vec());
-    let prompt_input = history.for_prompt(&turn_context.model_info.input_modalities);
+    let prompt_input = match history_encryption {
+        RemoteCompactionHistoryEncryption::Preserve => {
+            history.for_prompt(&turn_context.model_info.input_modalities)
+        }
+        RemoteCompactionHistoryEncryption::Strip => {
+            history.for_prompt_without_encrypted_content(&turn_context.model_info.input_modalities)
+        }
+    };
+    let trace_input_history = compaction_trace.is_enabled().then(|| prompt_input.clone());
     let tool_router = built_tools(
         sess.as_ref(),
         step_context.as_ref(),

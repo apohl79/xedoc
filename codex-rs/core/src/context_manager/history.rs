@@ -9,6 +9,7 @@ use crate::event_mapping::is_contextual_user_message_content;
 use crate::session::turn_context::TurnContext;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
@@ -141,6 +142,17 @@ impl ContextManager {
     /// normalization and drops un-suited items. Unsupported image and audio content
     /// is stripped from messages and tool outputs according to `input_modalities`.
     pub(crate) fn for_prompt(mut self, input_modalities: &[InputModality]) -> Vec<ResponseItem> {
+        self.normalize_history(input_modalities);
+        Arc::unwrap_or_clone(self.items)
+    }
+
+    /// Returns prompt history without opaque content that a different model cannot decrypt.
+    pub(crate) fn for_prompt_without_encrypted_content(
+        mut self,
+        input_modalities: &[InputModality],
+    ) -> Vec<ResponseItem> {
+        self.normalize_history(input_modalities);
+        Arc::make_mut(&mut self.items).retain_mut(strip_encrypted_content);
         self.normalize_history(input_modalities);
         Arc::unwrap_or_clone(self.items)
     }
@@ -475,6 +487,36 @@ fn is_api_message(message: &ResponseItem) -> bool {
         | ResponseItem::ContextCompaction { .. } => true,
         ResponseItem::CompactionTrigger { .. } => false,
         ResponseItem::Other => false,
+    }
+}
+
+fn strip_encrypted_content(item: &mut ResponseItem) -> bool {
+    match item {
+        ResponseItem::Reasoning {
+            encrypted_content, ..
+        }
+        | ResponseItem::ContextCompaction {
+            encrypted_content, ..
+        } => {
+            *encrypted_content = None;
+            true
+        }
+        ResponseItem::Compaction { .. } => false,
+        ResponseItem::AgentMessage { content, .. } => {
+            content.retain(|part| matches!(part, AgentMessageInputContent::InputText { .. }));
+            !content.is_empty()
+        }
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => {
+            let FunctionCallOutputBody::ContentItems(items) = &mut output.body else {
+                return true;
+            };
+            items.retain(|item| {
+                !matches!(item, FunctionCallOutputContentItem::EncryptedContent { .. })
+            });
+            !items.is_empty()
+        }
+        _ => true,
     }
 }
 

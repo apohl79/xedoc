@@ -9,7 +9,8 @@ Scenario: Remote pre-turn compaction during model switch currently excludes inco
 
 ## Remote Compaction Request
 00:message/user:BEFORE_SWITCH_USER
-01:message/assistant:BEFORE_SWITCH_REPLY
+01:reasoning:summary=SOURCE_REASONING_SUMMARY:encrypted=false
+02:message/assistant:BEFORE_SWITCH_REPLY
 
 ## Remote Post-Compaction History Layout
 00:message/user:BEFORE_SWITCH_USER

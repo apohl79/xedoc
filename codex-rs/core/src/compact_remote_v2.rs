@@ -7,6 +7,7 @@ use crate::client_common::ResponseEvent;
 use crate::compact::CompactionAnalyticsAttempt;
 use crate::compact::CompactionAnalyticsDetails;
 use crate::compact::InitialContextInjection;
+use crate::compact::RemoteCompactionHistoryEncryption;
 use crate::compact::compaction_status_from_result;
 use crate::compact_model_fallback::record_model_fallback;
 use crate::compact_model_fallback::should_retry_with_current_model;
@@ -64,6 +65,7 @@ pub(crate) async fn run_inline_remote_auto_compact_task(
     fallback_step_context: Option<Arc<StepContext>>,
     client_session: &mut ModelClientSession,
     initial_context_injection: InitialContextInjection,
+    history_encryption: RemoteCompactionHistoryEncryption,
     reason: CompactionReason,
     phase: CompactionPhase,
 ) -> CodexResult<()> {
@@ -79,6 +81,7 @@ pub(crate) async fn run_inline_remote_auto_compact_task(
         fallback_step_context.as_ref(),
         Some(client_session),
         initial_context_injection,
+        history_encryption,
         compaction_metadata,
     )
     .await
@@ -111,6 +114,7 @@ pub(crate) async fn run_remote_compact_task(
         /*fallback_step_context*/ None,
         /*client_session*/ None,
         InitialContextInjection::DoNotInject,
+        RemoteCompactionHistoryEncryption::Preserve,
         compaction_metadata,
     )
     .await
@@ -122,6 +126,7 @@ async fn run_remote_compact_task_inner(
     fallback_step_context: Option<&Arc<StepContext>>,
     client_session: Option<&mut ModelClientSession>,
     initial_context_injection: InitialContextInjection,
+    history_encryption: RemoteCompactionHistoryEncryption,
     compaction_metadata: CompactionTurnMetadata,
 ) -> CodexResult<()> {
     let turn_context = &step_context.turn;
@@ -165,6 +170,7 @@ async fn run_remote_compact_task_inner(
         fallback_step_context,
         client_session,
         initial_context_injection,
+        history_encryption,
         compaction_metadata,
         &mut analytics_details,
     )
@@ -208,6 +214,7 @@ async fn run_remote_compact_task_inner_impl(
     fallback_step_context: Option<&Arc<StepContext>>,
     mut client_session: Option<&mut ModelClientSession>,
     initial_context_injection: InitialContextInjection,
+    history_encryption: RemoteCompactionHistoryEncryption,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
 ) -> CodexResult<()> {
@@ -230,6 +237,7 @@ async fn run_remote_compact_task_inner_impl(
         step_context,
         client_session.as_deref_mut(),
         &compaction_trace,
+        history_encryption,
         compaction_metadata,
         analytics_details,
     )
@@ -256,6 +264,7 @@ async fn run_remote_compact_task_inner_impl(
                 fallback_step_context,
                 client_session,
                 &fallback_compaction_trace,
+                history_encryption,
                 compaction_metadata,
                 analytics_details,
             )
