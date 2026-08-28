@@ -423,13 +423,8 @@ impl App {
         app_server: &mut AppServerSession,
         op: AppCommand,
     ) -> Result<()> {
-        let Some(thread_id) = self.active_thread_id else {
-            self.chat_widget
-                .add_error_message("No active thread is available.".to_string());
-            return Ok(());
-        };
-
-        self.submit_thread_op(app_server, thread_id, op).await
+        self.submit_app_server_op(app_server, self.active_thread_id, op)
+            .await
     }
 
     pub(super) async fn submit_thread_op(
@@ -438,7 +433,43 @@ impl App {
         thread_id: ThreadId,
         op: AppCommand,
     ) -> Result<()> {
+        self.submit_app_server_op(app_server, Some(thread_id), op)
+            .await
+    }
+
+    async fn submit_app_server_op(
+        &mut self,
+        app_server: &mut AppServerSession,
+        thread_id: Option<ThreadId>,
+        op: AppCommand,
+    ) -> Result<()> {
         crate::session_log::log_outbound_op(&op);
+
+        match &op {
+            AppCommand::ListSkills { cwds, force_reload } => {
+                self.handle_skills_list_result(
+                    app_server
+                        .skills_list(codex_app_server_protocol::SkillsListParams {
+                            cwds: cwds.clone(),
+                            force_reload: *force_reload,
+                        })
+                        .await,
+                    "failed to refresh skills",
+                );
+                return Ok(());
+            }
+            AppCommand::ReloadUserConfig => {
+                app_server.reload_user_config().await?;
+                return Ok(());
+            }
+            _ => {}
+        }
+
+        let Some(thread_id) = thread_id else {
+            self.chat_widget
+                .add_error_message("No active thread is available.".to_string());
+            return Ok(());
+        };
 
         if self
             .try_resolve_app_server_request(app_server, thread_id, &op)
@@ -769,18 +800,6 @@ impl App {
                 }
                 Ok(true)
             }
-            AppCommand::ListSkills { cwds, force_reload } => {
-                self.handle_skills_list_result(
-                    app_server
-                        .skills_list(codex_app_server_protocol::SkillsListParams {
-                            cwds: cwds.clone(),
-                            force_reload: *force_reload,
-                        })
-                        .await,
-                    "failed to refresh skills",
-                );
-                Ok(true)
-            }
             AppCommand::Compact => {
                 app_server.thread_compact_start(thread_id).await?;
                 Ok(true)
@@ -810,10 +829,6 @@ impl App {
                 app_server
                     .thread_shell_command(thread_id, command.to_string())
                     .await?;
-                Ok(true)
-            }
-            AppCommand::ReloadUserConfig => {
-                app_server.reload_user_config().await?;
                 Ok(true)
             }
             AppCommand::OverrideTurnContext { .. } => {

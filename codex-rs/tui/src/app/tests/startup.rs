@@ -181,6 +181,38 @@ async fn startup_thread_started_submits_queued_startup_input() {
 }
 
 #[tokio::test]
+async fn session_global_operations_do_not_emit_an_active_thread_error_during_startup() -> Result<()>
+{
+    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    while app_event_rx.try_recv().is_ok() {}
+
+    let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(
+        app.chat_widget.config_ref(),
+    ))
+    .await?;
+    app.submit_active_thread_op(&mut app_server, Op::reload_user_config())
+        .await?;
+    let cwd = app.chat_widget.config_ref().cwd.clone();
+    app.submit_active_thread_op(
+        &mut app_server,
+        Op::list_skills(vec![cwd.to_path_buf()], /*force_reload*/ false),
+    )
+    .await?;
+
+    let history = std::iter::from_fn(|| app_event_rx.try_recv().ok())
+        .filter_map(|event| match event {
+            AppEvent::InsertHistoryCell(cell) => {
+                Some(lines_to_single_string(&cell.display_lines(/*width*/ 80)))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("session_global_operations_during_startup", history);
+    Ok(())
+}
+
+#[tokio::test]
 async fn startup_thread_start_failure_returns_error() {
     let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
     app.pending_startup_thread_start = true;

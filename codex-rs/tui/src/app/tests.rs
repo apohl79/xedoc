@@ -1968,7 +1968,14 @@ async fn open_agent_picker_keeps_missing_threads_for_replay() -> Result<()> {
             current_activity: None,
         })
     );
-    assert_eq!(app.agent_navigation.ordered_thread_ids(), vec![thread_id]);
+    assert_eq!(
+        app.agent_navigation
+            .ordered_threads()
+            .into_iter()
+            .map(|(thread_id, _)| thread_id)
+            .collect::<Vec<_>>(),
+        vec![thread_id]
+    );
     Ok(())
 }
 
