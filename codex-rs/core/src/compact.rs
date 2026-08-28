@@ -28,6 +28,7 @@ use codex_analytics::CompactionStatus;
 use codex_analytics::CompactionStrategy;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::now_unix_seconds;
+use codex_core_context_manager::content_items_to_text;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::ContextCompactionItem;
@@ -530,25 +531,6 @@ pub(crate) fn compaction_status_from_result<T>(result: &CodexResult<T>) -> Compa
         Ok(_) => CompactionStatus::Completed,
         Err(CodexErr::Interrupted | CodexErr::TurnAborted) => CompactionStatus::Interrupted,
         Err(_) => CompactionStatus::Failed,
-    }
-}
-
-pub fn content_items_to_text(content: &[ContentItem]) -> Option<String> {
-    let mut pieces = Vec::new();
-    for item in content {
-        match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
-                if !text.is_empty() {
-                    pieces.push(text.as_str());
-                }
-            }
-            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
-        }
-    }
-    if pieces.is_empty() {
-        None
-    } else {
-        Some(pieces.join("\n"))
     }
 }
 

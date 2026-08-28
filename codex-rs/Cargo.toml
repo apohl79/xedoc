@@ -45,9 +45,40 @@ members = [
     "core-config",
     "core-config-runtime",
     "core-context",
+    "core-connectors-runtime",
+    "core-auto-compact-window",
+    "core-plugin-context",
+    "core-session-name",
+    "core-agent-registry",
+    "core-agent-role",
+    "core-subagent-activity",
+    "core-context-manager",
+    "core-project-docs",
+    "core-utils",
+    "core-realtime",
+    "core-realtime-context",
+    "core-response-items",
+    "core-rollout-reconstruction",
+    "core-rollout-truncation",
     "core-exec",
+    "core-approval-policy",
+    "core-guardian-approval",
+    "core-mcp-runtime",
+    "core-mcp-openai-file",
+    "core-mcp-skill-dependency",
+    "core-elicitation",
+    "core-time",
+    "installation-id",
     "core-tool-specs",
+    "core-tool-output",
+    "core-tool-runtime",
+    "core-environment",
+    "core-turn-context",
+    "core-turn-metadata",
+    "core-turn-timing",
+    "core-turn-diff",
     "core-api",
+    "core-plugin-marketplace",
     "core-plugins",
     "core-skills",
     "hooks",
@@ -215,9 +246,40 @@ codex-core-client = { path = "core-client" }
 codex-core-config = { path = "core-config" }
 codex-core-config-runtime = { path = "core-config-runtime" }
 codex-core-context = { path = "core-context" }
+codex-core-connectors-runtime = { path = "core-connectors-runtime" }
+codex-core-auto-compact-window = { path = "core-auto-compact-window" }
+codex-core-plugin-context = { path = "core-plugin-context" }
+codex-core-session-name = { path = "core-session-name" }
+codex-core-agent-registry = { path = "core-agent-registry" }
+codex-core-agent-role = { path = "core-agent-role" }
+codex-core-subagent-activity = { path = "core-subagent-activity" }
+codex-core-context-manager = { path = "core-context-manager" }
+codex-core-project-docs = { path = "core-project-docs" }
+codex-core-utils = { path = "core-utils" }
+codex-core-realtime = { path = "core-realtime" }
+codex-core-realtime-context = { path = "core-realtime-context" }
+codex-core-response-items = { path = "core-response-items" }
+codex-core-rollout-reconstruction = { path = "core-rollout-reconstruction" }
+codex-core-rollout-truncation = { path = "core-rollout-truncation" }
 codex-core-exec = { path = "core-exec" }
+codex-core-approval-policy = { path = "core-approval-policy" }
+codex-core-guardian-approval = { path = "core-guardian-approval" }
+codex-core-mcp-runtime = { path = "core-mcp-runtime" }
+codex-core-mcp-openai-file = { path = "core-mcp-openai-file" }
+codex-core-mcp-skill-dependency = { path = "core-mcp-skill-dependency" }
+codex-core-elicitation = { path = "core-elicitation" }
+codex-core-time = { path = "core-time" }
+codex-installation-id = { path = "installation-id" }
 codex-core-tool-specs = { path = "core-tool-specs" }
+codex-core-tool-output = { path = "core-tool-output" }
+codex-core-tool-runtime = { path = "core-tool-runtime" }
+codex-core-environment = { path = "core-environment" }
+codex-core-turn-context = { path = "core-turn-context" }
+codex-core-turn-metadata = { path = "core-turn-metadata" }
+codex-core-turn-timing = { path = "core-turn-timing" }
+codex-core-turn-diff = { path = "core-turn-diff" }
 codex-core-api = { path = "core-api" }
+codex-core-plugin-marketplace = { path = "core-plugin-marketplace" }
 codex-core-plugins = { path = "core-plugins" }
 codex-core-skills = { path = "core-skills" }
 codex-exec = { path = "exec" }

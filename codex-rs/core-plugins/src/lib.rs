@@ -1,38 +1,32 @@
 mod app_mcp_routing;
-mod command_migration;
 mod discoverable;
-pub mod installed_marketplaces;
 pub mod loader;
 mod manager;
-pub mod manifest;
-pub mod marketplace;
-pub mod marketplace_add;
-mod marketplace_policy;
-pub mod marketplace_remove;
-pub mod marketplace_upgrade;
-mod npm_source;
-mod plugin_bundle_archive;
 mod provider;
 pub mod remote;
 pub mod remote_bundle;
 pub mod remote_legacy;
 pub mod startup_sync;
-pub mod store;
 #[cfg(test)]
 mod test_support;
 pub mod toggles;
 mod tool_suggest_metadata;
 
-pub const OPENAI_CURATED_MARKETPLACE_NAME: &str = "openai-curated";
-pub const OPENAI_API_CURATED_MARKETPLACE_NAME: &str = "openai-api-curated";
-pub const OPENAI_BUNDLED_MARKETPLACE_NAME: &str = "openai-bundled";
-pub(crate) const OPENAI_BUNDLED_ALPHA_MARKETPLACE_NAME: &str = "openai-bundled-alpha";
-pub(crate) const OPENAI_PRIMARY_RUNTIME_MARKETPLACE_NAME: &str = "openai-primary-runtime";
-
-pub fn is_openai_curated_marketplace_name(marketplace_name: &str) -> bool {
-    marketplace_name == OPENAI_CURATED_MARKETPLACE_NAME
-        || marketplace_name == OPENAI_API_CURATED_MARKETPLACE_NAME
-}
+pub use codex_core_plugin_marketplace::OPENAI_API_CURATED_MARKETPLACE_NAME;
+pub use codex_core_plugin_marketplace::OPENAI_BUNDLED_MARKETPLACE_NAME;
+pub use codex_core_plugin_marketplace::OPENAI_CURATED_MARKETPLACE_NAME;
+pub(crate) use codex_core_plugin_marketplace::command_migration;
+pub use codex_core_plugin_marketplace::installed_marketplaces;
+pub use codex_core_plugin_marketplace::is_openai_curated_marketplace_name;
+pub use codex_core_plugin_marketplace::manifest;
+pub use codex_core_plugin_marketplace::marketplace;
+pub use codex_core_plugin_marketplace::marketplace_add;
+pub(crate) use codex_core_plugin_marketplace::marketplace_policy;
+pub use codex_core_plugin_marketplace::marketplace_remove;
+pub use codex_core_plugin_marketplace::marketplace_upgrade;
+pub(crate) use codex_core_plugin_marketplace::npm_source;
+pub(crate) use codex_core_plugin_marketplace::plugin_bundle_archive;
+pub use codex_core_plugin_marketplace::store;
 
 pub type LoadedPlugin = codex_plugin::LoadedPlugin<codex_config::McpServerConfig>;
 pub type PluginLoadOutcome = codex_plugin::PluginLoadOutcome<codex_config::McpServerConfig>;

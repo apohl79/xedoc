@@ -1,0 +1,33 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-approval-policy"
+version.workspace = true
+
+[lib]
+name = "codex_core_approval_policy"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-apply-patch = { workspace = true }
+codex-config = { workspace = true }
+codex-execpolicy = { workspace = true }
+codex-mcp = { workspace = true }
+codex-network-proxy = { workspace = true }
+codex-protocol = { workspace = true }
+codex-rmcp-client = { workspace = true }
+codex-sandboxing = { workspace = true }
+codex-shell-command = { workspace = true }
+codex-utils-path-uri = { workspace = true }
+rmcp = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+codex-utils-absolute-path = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

@@ -17,8 +17,8 @@ pub(crate) use codex_core_client::responses_metadata;
 mod responses_retry;
 pub(crate) mod session;
 pub use codex_core_client::CodexResponsesMetadata;
+pub use codex_core_turn_metadata::detached_memory_responses_metadata;
 pub use session::SteerInputError;
-pub use turn_metadata::detached_memory_responses_metadata;
 mod codex_thread;
 mod compact_hierarchical;
 mod compact_model_fallback;
@@ -49,7 +49,13 @@ pub mod context;
 mod context_manager;
 mod current_time;
 mod elicitation;
-mod environment_selection;
+pub(crate) mod environment_selection {
+    pub(crate) use codex_core_environment::StartingTurnEnvironment;
+    pub(crate) use codex_core_environment::ThreadEnvironments;
+    pub(crate) use codex_core_environment::TurnEnvironmentSnapshot;
+    pub(crate) use codex_core_environment::TurnEnvironmentState;
+    pub(crate) use codex_core_environment::default_thread_environment_selections;
+}
 pub mod exec;
 pub mod exec_env;
 mod exec_policy;
@@ -68,7 +74,6 @@ pub use mcp::McpManager;
 mod original_image_detail;
 pub use codex_mcp::CodexAppsToolsCache;
 pub use codex_mcp::SandboxState;
-mod mcp_openai_file;
 mod mcp_tool_call;
 pub(crate) mod mention_syntax;
 pub(crate) mod utils;
@@ -88,7 +93,10 @@ pub(crate) mod mentions {
     pub(crate) use crate::plugins::collect_explicit_plugin_mentions;
     pub(crate) use crate::plugins::collect_tool_mentions_from_messages;
 }
-mod sandbox_tags;
+mod sandbox_tags {
+    pub(crate) use codex_core_turn_metadata::permission_profile_policy_tag;
+    pub(crate) use codex_core_turn_metadata::permission_profile_sandbox_tag;
+}
 pub mod sandboxing;
 mod session_prefix;
 mod session_startup_prewarm;
@@ -113,8 +121,8 @@ pub use codex_protocol::config_types::ModelProviderAuthInfo;
 mod event_mapping;
 pub use codex_prompts as review_prompts;
 mod thread_manager;
-pub(crate) mod web_search;
 pub(crate) mod windows_sandbox_read_grants;
+pub use codex_core_response_items::web_search_action_detail;
 pub use thread_manager::ForkSnapshot;
 pub use thread_manager::NewThread;
 pub use thread_manager::StartThreadOptions;
@@ -123,7 +131,6 @@ pub use thread_manager::ThreadShutdownReport;
 pub use thread_manager::build_models_manager;
 pub use thread_manager::local_agent_graph_store_from_state_db;
 pub use thread_manager::thread_store_from_config;
-pub use web_search::web_search_action_detail;
 pub use windows_sandbox_read_grants::grant_read_root_non_elevated;
 #[deprecated(note = "use ThreadManager")]
 pub type ConversationManager = ThreadManager;
@@ -140,8 +147,13 @@ mod rollout;
 mod rollout_budget;
 pub(crate) mod safety;
 mod session_rollout_init_error;
-pub mod shell;
-pub(crate) mod shell_snapshot;
+pub mod shell {
+    pub use codex_core_environment::shell::*;
+}
+pub(crate) mod shell_snapshot {
+    pub(crate) use codex_core_environment::ShellSnapshot;
+    pub(crate) use codex_core_environment::ShellSnapshotFile;
+}
 pub mod spawn;
 pub(crate) mod state_db_bridge;
 pub use state_db_bridge::StateDbHandle;
@@ -150,8 +162,13 @@ mod thread_rollout_truncation;
 pub use thread_rollout_truncation::truncate_rollout_after_turn_id;
 pub use thread_rollout_truncation::truncate_rollout_before_turn_id;
 mod tools;
-pub(crate) mod turn_diff_tracker;
-mod turn_metadata;
+pub(crate) mod turn_diff_tracker {
+    pub(crate) use codex_core_turn_diff::TurnDiffTracker;
+}
+mod turn_metadata {
+    pub(crate) use codex_core_turn_metadata::McpTurnMetadataContext;
+    pub(crate) use codex_core_turn_metadata::TurnMetadataState;
+}
 mod turn_timing;
 pub use rollout::ARCHIVED_SESSIONS_SUBDIR;
 pub use rollout::Cursor;
@@ -180,7 +197,12 @@ mod function_tool;
 mod state;
 mod tasks;
 mod user_shell_command;
-pub mod util;
+pub mod util {
+    pub use codex_core_utils::backoff;
+    pub(crate) use codex_core_utils::error_or_panic;
+    pub use codex_core_utils::normalize_thread_name;
+}
+pub use codex_core_utils::feedback_tags;
 
 pub use codex_core_client::AttestationContext;
 pub use codex_core_client::AttestationProvider;
@@ -192,8 +214,8 @@ pub use codex_core_client::ResponseEvent;
 pub use codex_core_client::ResponseStream;
 pub use codex_core_client::X_CODEX_INSTALLATION_ID_HEADER;
 pub use codex_core_client::X_CODEX_TURN_METADATA_HEADER;
+pub use codex_core_context_manager::content_items_to_text;
 pub use codex_prompts::REVIEW_PROMPT;
-pub use compact::content_items_to_text;
 pub use current_time::SleepFuture;
 pub use current_time::TimeFuture;
 pub use current_time::TimeProvider;

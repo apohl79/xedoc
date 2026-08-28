@@ -232,6 +232,8 @@ pub(crate) use self::input_queue::InputQueueActivity;
 pub(crate) use self::input_queue::TurnInput;
 pub(crate) use self::input_queue::TurnInputQueue;
 pub use self::mcp_runtime::McpRuntimeSnapshot;
+#[cfg(test)]
+pub(crate) use self::mcp_runtime::new_uninitialized_mcp_runtime_snapshot_for_test;
 use self::review::spawn_review_thread;
 use self::session::AppServerClientMetadata;
 use self::session::Session;
@@ -1881,7 +1883,9 @@ impl Session {
         };
         crate::context_manager::updates::build_settings_update_items(
             reference_context_item,
-            previous_turn_settings.as_ref(),
+            previous_turn_settings
+                .as_ref()
+                .map(|settings| settings.model.as_str()),
             current_context,
             self.features.enabled(Feature::Personality),
         )
@@ -3439,7 +3443,9 @@ impl Session {
         };
         if let Some(model_switch_message) =
             crate::context_manager::updates::build_model_instructions_update_item(
-                previous_turn_settings.as_ref(),
+                previous_turn_settings
+                    .as_ref()
+                    .map(|settings| settings.model.as_str()),
                 turn_context,
             )
         {

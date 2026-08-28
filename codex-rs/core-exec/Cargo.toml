@@ -17,8 +17,10 @@ arc-swap = { workspace = true }
 async-channel = { workspace = true }
 codex-config = { workspace = true }
 codex-core-config = { workspace = true }
+codex-core-environment = { workspace = true }
 codex-exec-server = { workspace = true }
 codex-file-system = { workspace = true }
+codex-install-context = { workspace = true }
 codex-execpolicy = { workspace = true }
 codex-network-proxy = { workspace = true }
 codex-otel = { workspace = true }
@@ -27,6 +29,7 @@ codex-sandboxing = { workspace = true }
 codex-shell-command = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 codex-utils-path-uri = { workspace = true }
+codex-utils-output-truncation = { workspace = true }
 codex-utils-pty = { workspace = true }
 libc = { workspace = true }
 shlex = { workspace = true }
@@ -37,6 +40,8 @@ tokio = { workspace = true, features = [
     "process",
     "rt-multi-thread",
     "signal",
+    "sync",
+    "time",
 ] }
 tokio-util = { workspace = true, features = ["rt"] }
 tracing = { workspace = true, features = ["log"] }

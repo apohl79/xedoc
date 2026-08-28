@@ -44,22 +44,23 @@ use crate::shell::ShellType;
 use crate::tools::network_approval::DeferredNetworkApproval;
 
 mod async_watcher;
-mod errors;
-mod head_tail_buffer;
-mod process;
 mod process_manager;
-mod process_state;
 
 pub(crate) fn set_deterministic_process_ids_for_tests(enabled: bool) {
     process_manager::set_deterministic_process_ids_for_tests(enabled);
 }
 
-pub(crate) use errors::UnifiedExecError;
-pub(crate) use process::NoopSpawnLifecycle;
+pub(crate) use codex_core_exec::unified_exec::HeadTailBuffer;
+pub(crate) use codex_core_exec::unified_exec::NoopSpawnLifecycle;
+pub(crate) use codex_core_exec::unified_exec::OutputBuffer;
+pub(crate) use codex_core_exec::unified_exec::OutputHandles;
 #[cfg(unix)]
-pub(crate) use process::SpawnLifecycle;
-pub(crate) use process::SpawnLifecycleHandle;
-pub(crate) use process::UnifiedExecProcess;
+pub(crate) use codex_core_exec::unified_exec::SpawnLifecycle;
+pub(crate) use codex_core_exec::unified_exec::SpawnLifecycleHandle;
+pub(crate) use codex_core_exec::unified_exec::UNIFIED_EXEC_OUTPUT_MAX_BYTES;
+pub(crate) use codex_core_exec::unified_exec::UnifiedExecError;
+pub(crate) use codex_core_exec::unified_exec::UnifiedExecProcess;
+pub(crate) use codex_core_exec::unified_exec::format_output_omission_marker;
 
 pub(crate) const MIN_YIELD_TIME_MS: u64 = 250;
 pub(crate) const WINDOWS_INITIAL_EXEC_YIELD_TIME_FLOOR_MS: u64 = 2_000;
@@ -68,8 +69,6 @@ pub(crate) use codex_core_config::config::MIN_EMPTY_YIELD_TIME_MS;
 pub(crate) const MAX_YIELD_TIME_MS: u64 = 30_000;
 pub(crate) use codex_core_config::config::DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS;
 pub(crate) const DEFAULT_MAX_OUTPUT_TOKENS: usize = 10_000;
-pub(crate) const UNIFIED_EXEC_OUTPUT_MAX_BYTES: usize = 1024 * 1024; // 1 MiB
-pub(crate) const UNIFIED_EXEC_OUTPUT_MAX_TOKENS: usize = UNIFIED_EXEC_OUTPUT_MAX_BYTES / 4;
 pub(crate) const MAX_UNIFIED_EXEC_PROCESSES: usize = 64;
 
 pub(crate) struct UnifiedExecContext {
@@ -178,10 +177,6 @@ pub(crate) fn resolve_max_tokens(max_tokens: Option<usize>) -> usize {
     max_tokens.unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS)
 }
 
-pub(crate) fn format_output_omission_marker(omitted_bytes: usize) -> String {
-    format!("... {omitted_bytes} bytes omitted ...")
-}
-
 pub(crate) fn generate_chunk_id() -> String {
     let mut rng = rng();
     (0..6)
@@ -189,10 +184,6 @@ pub(crate) fn generate_chunk_id() -> String {
         .collect()
 }
 
-#[cfg(test)]
-#[cfg(unix)]
-#[path = "process_tests.rs"]
-mod process_tests;
 #[cfg(test)]
 #[cfg(unix)]
 #[path = "mod_tests.rs"]

@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-rollout-truncation"
+version.workspace = true
+
+[lib]
+name = "codex_core_rollout_truncation"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-app-server-protocol = { workspace = true }
+codex-core-context-manager = { workspace = true }
+codex-core-response-items = { workspace = true }
+codex-protocol = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json = { workspace = true }

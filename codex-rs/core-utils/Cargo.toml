@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-utils"
+version.workspace = true
+
+[lib]
+name = "codex_core_utils"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rand = { workspace = true }
+tracing = { workspace = true, features = ["log"] }
+
+[dev-dependencies]
+codex-feedback = { workspace = true }
+codex-login = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -1,0 +1,15 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-elicitation"
+version.workspace = true
+
+[lib]
+name = "codex_core_elicitation"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio = { workspace = true }

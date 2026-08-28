@@ -1,0 +1,6 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "core-response-items",
+    crate_name = "codex_core_response_items",
+)

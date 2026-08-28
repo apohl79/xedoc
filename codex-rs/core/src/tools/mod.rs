@@ -26,7 +26,7 @@ use codex_tools::ToolName;
 use codex_utils_output_truncation::TruncationPolicy;
 use codex_utils_output_truncation::formatted_truncate_text;
 use codex_utils_output_truncation::truncate_text;
-pub use router::ToolRouter;
+pub(crate) use router::ToolRouter;
 
 // Telemetry preview limits: keep log events smaller than model budgets.
 pub(crate) const TELEMETRY_PREVIEW_MAX_BYTES: usize = 2 * 1024; // 2 KiB

@@ -1,4 +1,4 @@
-use super::head_tail_buffer::HeadTailBuffer;
+use super::HeadTailBuffer;
 use super::*;
 use crate::codex_thread::BackgroundTerminalInfo;
 use crate::environment_selection::TurnEnvironmentState;
@@ -9,8 +9,8 @@ use crate::session::session::Session;
 use crate::session::tests::make_session_and_context;
 use crate::session::turn_context::TurnContext;
 use crate::tools::context::ExecCommandToolOutput;
+use crate::unified_exec::OutputHandles;
 use crate::unified_exec::WriteStdinRequest;
-use crate::unified_exec::process::OutputHandles;
 use codex_exec_server::ExecProcess;
 use codex_exec_server::ExecProcessEventReceiver;
 use codex_exec_server::ExecProcessFuture;
@@ -807,7 +807,7 @@ async fn unified_exec_uses_remote_exec_server_when_configured() -> anyhow::Resul
     process.write(b"printf 'remote-unified-exec\\n'\n").await?;
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let crate::unified_exec::process::OutputHandles {
+    let crate::unified_exec::OutputHandles {
         output_buffer,
         output_notify,
         output_closed,

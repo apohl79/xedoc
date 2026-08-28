@@ -2720,19 +2720,47 @@ dependencies = [
  "codex-config",
  "codex-connectors",
  "codex-context-fragments",
+ "codex-core-agent-registry",
+ "codex-core-agent-role",
+ "codex-core-approval-policy",
+ "codex-core-auto-compact-window",
  "codex-core-client",
  "codex-core-config",
+ "codex-core-connectors-runtime",
  "codex-core-context",
+ "codex-core-context-manager",
+ "codex-core-elicitation",
+ "codex-core-environment",
  "codex-core-exec",
+ "codex-core-guardian-approval",
+ "codex-core-mcp-openai-file",
+ "codex-core-mcp-runtime",
+ "codex-core-mcp-skill-dependency",
+ "codex-core-plugin-context",
  "codex-core-plugins",
+ "codex-core-project-docs",
+ "codex-core-realtime",
+ "codex-core-realtime-context",
+ "codex-core-response-items",
+ "codex-core-rollout-reconstruction",
+ "codex-core-rollout-truncation",
+ "codex-core-session-name",
  "codex-core-skills",
+ "codex-core-subagent-activity",
+ "codex-core-time",
+ "codex-core-tool-output",
+ "codex-core-tool-runtime",
  "codex-core-tool-specs",
+ "codex-core-turn-context",
+ "codex-core-turn-diff",
+ "codex-core-turn-metadata",
+ "codex-core-turn-timing",
+ "codex-core-utils",
  "codex-exec-server",
  "codex-execpolicy",
  "codex-extension-api",
  "codex-extension-items",
  "codex-features",
- "codex-feedback",
  "codex-file-system",
  "codex-git-utils",
  "codex-home",
@@ -2740,6 +2768,7 @@ dependencies = [
  "codex-http-client",
  "codex-image-generation-extension",
  "codex-install-context",
+ "codex-installation-id",
  "codex-login",
  "codex-mcp",
  "codex-memories-read",
@@ -2828,6 +2857,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-core-agent-registry"
+version = "0.145.0"
+dependencies = [
+ "codex-otel",
+ "codex-protocol",
+ "pretty_assertions",
+ "rand 0.9.3",
+]
+
+[[package]]
+name = "codex-core-agent-role"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "codex-config",
+ "codex-core-config",
+ "codex-core-plugins",
+ "codex-core-skills",
+ "codex-exec-server",
+ "codex-utils-absolute-path",
+ "pretty_assertions",
+ "tempfile",
+ "tokio",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
 name = "codex-core-api"
 version = "0.145.0"
 dependencies = [
@@ -2846,6 +2903,38 @@ dependencies = [
  "codex-models-manager",
  "codex-protocol",
  "codex-utils-absolute-path",
+]
+
+[[package]]
+name = "codex-core-approval-policy"
+version = "0.145.0"
+dependencies = [
+ "codex-apply-patch",
+ "codex-config",
+ "codex-execpolicy",
+ "codex-mcp",
+ "codex-network-proxy",
+ "codex-protocol",
+ "codex-rmcp-client",
+ "codex-sandboxing",
+ "codex-shell-command",
+ "codex-utils-absolute-path",
+ "codex-utils-path-uri",
+ "pretty_assertions",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "codex-core-auto-compact-window"
+version = "0.145.0"
+dependencies = [
+ "codex-protocol",
+ "pretty_assertions",
+ "uuid",
 ]
 
 [[package]]
@@ -2953,6 +3042,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-core-connectors-runtime"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "codex-config",
+ "codex-connectors",
+ "codex-core-config",
+ "codex-core-mcp-runtime",
+ "codex-core-plugin-context",
+ "codex-core-plugins",
+ "codex-exec-server",
+ "codex-features",
+ "codex-login",
+ "codex-mcp",
+ "codex-protocol",
+ "codex-tools",
+ "pretty_assertions",
+ "rmcp",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "codex-core-context"
 version = "0.145.0"
 dependencies = [
@@ -2980,6 +3095,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-core-context-manager"
+version = "0.145.0"
+dependencies = [
+ "base64 0.22.1",
+ "codex-core-context",
+ "codex-core-turn-context",
+ "codex-protocol",
+ "codex-utils-absolute-path",
+ "codex-utils-cache",
+ "codex-utils-image",
+ "codex-utils-output-truncation",
+ "image",
+ "pretty_assertions",
+ "regex-lite",
+ "serde_json",
+ "symphonia",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "codex-core-elicitation"
+version = "0.145.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
+name = "codex-core-environment"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "async-channel",
+ "codex-exec-server",
+ "codex-otel",
+ "codex-protocol",
+ "codex-rollout",
+ "codex-shell-command",
+ "codex-utils-absolute-path",
+ "codex-utils-path-uri",
+ "codex-utils-pty",
+ "core_test_support",
+ "futures",
+ "libc",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "codex-core-exec"
 version = "0.145.0"
 dependencies = [
@@ -2988,15 +3160,18 @@ dependencies = [
  "async-channel",
  "codex-config",
  "codex-core-config",
+ "codex-core-environment",
  "codex-exec-server",
  "codex-execpolicy",
  "codex-file-system",
+ "codex-install-context",
  "codex-network-proxy",
  "codex-otel",
  "codex-protocol",
  "codex-sandboxing",
  "codex-shell-command",
  "codex-utils-absolute-path",
+ "codex-utils-output-truncation",
  "codex-utils-path-uri",
  "codex-utils-pty",
  "codex-windows-sandbox",
@@ -3015,6 +3190,141 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-core-guardian-approval"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "codex-analytics",
+ "codex-core-context-manager",
+ "codex-core-exec",
+ "codex-otel",
+ "codex-protocol",
+ "codex-shell-command",
+ "codex-utils-absolute-path",
+ "codex-utils-output-truncation",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "codex-core-mcp-openai-file"
+version = "0.145.0"
+dependencies = [
+ "codex-api",
+ "codex-core-environment",
+ "codex-exec-server",
+ "codex-http-client",
+ "codex-login",
+ "codex-model-provider",
+ "codex-utils-absolute-path",
+ "codex-utils-path-uri",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
+name = "codex-core-mcp-runtime"
+version = "0.145.0"
+dependencies = [
+ "codex-config",
+ "codex-connectors",
+ "codex-core-approval-policy",
+ "codex-core-config",
+ "codex-core-plugins",
+ "codex-exec-server",
+ "codex-extension-api",
+ "codex-login",
+ "codex-mcp",
+ "codex-otel",
+ "codex-plugin",
+ "codex-protocol",
+ "pretty_assertions",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-test",
+ "url",
+]
+
+[[package]]
+name = "codex-core-mcp-skill-dependency"
+version = "0.145.0"
+dependencies = [
+ "codex-config",
+ "codex-core-skills",
+ "tracing",
+]
+
+[[package]]
+name = "codex-core-plugin-context"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "codex-config",
+ "codex-connectors",
+ "codex-core-config",
+ "codex-core-context",
+ "codex-core-plugins",
+ "codex-core-skills",
+ "codex-login",
+ "codex-mcp",
+ "codex-plugin",
+ "codex-protocol",
+ "codex-tools",
+ "codex-utils-plugins",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "codex-core-plugin-marketplace"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "codex-app-server-protocol",
+ "codex-config",
+ "codex-exec-server",
+ "codex-git-utils",
+ "codex-plugin",
+ "codex-protocol",
+ "codex-utils-absolute-path",
+ "codex-utils-path",
+ "codex-utils-path-uri",
+ "codex-utils-plugins",
+ "dirs",
+ "flate2",
+ "libc",
+ "pretty_assertions",
+ "regex",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-test",
+ "url",
+ "which 8.0.0",
+ "wiremock",
+]
+
+[[package]]
 name = "codex-core-plugins"
 version = "0.145.0"
 dependencies = [
@@ -3024,6 +3334,7 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-config",
  "codex-connectors",
+ "codex-core-plugin-marketplace",
  "codex-core-skills",
  "codex-exec-server",
  "codex-git-utils",
@@ -3065,6 +3376,121 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-core-project-docs"
+version = "0.145.0"
+dependencies = [
+ "codex-config",
+ "codex-core-config",
+ "codex-core-context",
+ "codex-core-environment",
+ "codex-exec-server",
+ "codex-extension-api",
+ "codex-features",
+ "codex-file-system",
+ "codex-protocol",
+ "codex-utils-absolute-path",
+ "codex-utils-path-uri",
+ "core_test_support",
+ "futures",
+ "pretty_assertions",
+ "tempfile",
+ "tokio",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
+name = "codex-core-realtime"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "base64 0.22.1",
+ "codex-api",
+ "codex-core-client",
+ "codex-core-realtime-context",
+ "codex-login",
+ "codex-protocol",
+ "codex-utils-output-truncation",
+ "codex-utils-string",
+ "http 1.4.0",
+ "pretty_assertions",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "codex-core-realtime-context"
+version = "0.145.0"
+dependencies = [
+ "chrono",
+ "codex-core-context-manager",
+ "codex-exec-server",
+ "codex-git-utils",
+ "codex-prompts",
+ "codex-protocol",
+ "codex-thread-store",
+ "codex-utils-absolute-path",
+ "codex-utils-output-truncation",
+ "core_test_support",
+ "pretty_assertions",
+ "tempfile",
+ "tracing",
+ "whoami 1.6.1",
+]
+
+[[package]]
+name = "codex-core-response-items"
+version = "0.145.0"
+dependencies = [
+ "codex-core-context",
+ "codex-core-context-manager",
+ "codex-memories-read",
+ "codex-protocol",
+ "codex-rollout",
+ "codex-utils-stream-parser",
+ "pretty_assertions",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "codex-core-rollout-reconstruction"
+version = "0.145.0"
+dependencies = [
+ "codex-core-context",
+ "codex-core-context-manager",
+ "codex-protocol",
+ "codex-utils-output-truncation",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "codex-core-rollout-truncation"
+version = "0.145.0"
+dependencies = [
+ "codex-app-server-protocol",
+ "codex-core-context-manager",
+ "codex-core-response-items",
+ "codex-protocol",
+ "pretty_assertions",
+ "serde_json",
+]
+
+[[package]]
+name = "codex-core-session-name"
+version = "0.145.0"
+dependencies = [
+ "codex-model-provider-info",
+ "codex-protocol",
+ "pretty_assertions",
+]
+
+[[package]]
 name = "codex-core-skills"
 version = "0.145.0"
 dependencies = [
@@ -3099,6 +3525,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-core-subagent-activity"
+version = "0.145.0"
+dependencies = [
+ "codex-protocol",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-core-time"
+version = "0.145.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "codex-core-config",
+ "codex-features",
+ "codex-protocol",
+ "tokio",
+]
+
+[[package]]
+name = "codex-core-tool-output"
+version = "0.145.0"
+dependencies = [
+ "codex-core-context-manager",
+ "codex-core-exec",
+ "codex-protocol",
+ "codex-tools",
+ "codex-utils-output-truncation",
+ "codex-utils-string",
+ "pretty_assertions",
+ "regex-lite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "codex-core-tool-runtime"
+version = "0.145.0"
+dependencies = [
+ "bm25",
+ "codex-core-tool-output",
+ "codex-core-tool-specs",
+ "codex-core-turn-context",
+ "codex-core-turn-diff",
+ "codex-protocol",
+ "codex-tools",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "codex-core-tool-specs"
 version = "0.145.0"
 dependencies = [
@@ -3109,6 +3590,86 @@ dependencies = [
  "pretty_assertions",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "codex-core-turn-context"
+version = "0.145.0"
+dependencies = [
+ "codex-config",
+ "codex-core-config",
+ "codex-core-environment",
+ "codex-core-skills",
+ "codex-core-turn-metadata",
+ "codex-core-turn-timing",
+ "codex-extension-api",
+ "codex-features",
+ "codex-file-system",
+ "codex-login",
+ "codex-model-provider",
+ "codex-models-manager",
+ "codex-network-proxy",
+ "codex-otel",
+ "codex-protocol",
+ "codex-sandboxing",
+ "codex-tools",
+ "codex-utils-absolute-path",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "codex-core-turn-diff"
+version = "0.145.0"
+dependencies = [
+ "codex-apply-patch",
+ "codex-exec-server",
+ "codex-git-utils",
+ "codex-utils-path-uri",
+ "pretty_assertions",
+ "sha1 0.10.6",
+ "similar",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "codex-core-turn-metadata"
+version = "0.145.0"
+dependencies = [
+ "codex-analytics",
+ "codex-core-client",
+ "codex-git-utils",
+ "codex-protocol",
+ "codex-sandboxing",
+ "codex-utils-absolute-path",
+ "core_test_support",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "codex-core-turn-timing"
+version = "0.145.0"
+dependencies = [
+ "codex-analytics",
+ "codex-core-client",
+ "codex-protocol",
+ "pretty_assertions",
+ "tokio",
+]
+
+[[package]]
+name = "codex-core-utils"
+version = "0.145.0"
+dependencies = [
+ "codex-feedback",
+ "codex-login",
+ "rand 0.9.3",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3378,9 +3939,11 @@ version = "0.145.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "codex-exec-server",
  "codex-file-system",
  "codex-protocol",
  "codex-utils-absolute-path",
+ "codex-utils-path",
  "codex-utils-path-uri",
  "futures",
  "gix",
@@ -3389,6 +3952,7 @@ dependencies = [
  "regex",
  "schemars 0.8.22",
  "serde",
+ "serde_json",
  "similar",
  "tempfile",
  "thiserror 2.0.18",
@@ -3528,6 +4092,17 @@ dependencies = [
  "codex-utils-home-dir",
  "pretty_assertions",
  "tempfile",
+]
+
+[[package]]
+name = "codex-installation-id"
+version = "0.145.0"
+dependencies = [
+ "codex-utils-absolute-path",
+ "pretty_assertions",
+ "tempfile",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

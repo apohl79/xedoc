@@ -1,0 +1,19 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-session-name"
+version.workspace = true
+
+[lib]
+name = "codex_core_session_name"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-model-provider-info = { workspace = true }
+codex-protocol = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

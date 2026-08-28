@@ -1,0 +1,17 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-mcp-skill-dependency"
+version.workspace = true
+
+[lib]
+name = "codex_core_mcp_skill_dependency"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-config = { workspace = true }
+codex-core-skills = { workspace = true }
+tracing = { workspace = true }
