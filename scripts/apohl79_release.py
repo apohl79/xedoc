@@ -42,6 +42,8 @@ LS_REMOTE_TAG_RE = re.compile(
 WORKSPACE_VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*)"[^"]+"(.*)$')
 BAZEL_RELEASE_CONFIG = "apohl79-release"
 BAZEL_RELEASE_BUNDLE = "//codex-rs:apohl79-release-binaries"
+BAZEL_RELEASE_STARTUP_OPTIONS = ["--noexperimental_remote_repo_contents_cache"]
+BAZEL_RELEASE_CACHE_OPTIONS = ["--repo_contents_cache="]
 BAZEL_PLATFORM_BY_TARGET = {
     "aarch64-apple-darwin": "macos_arm64",
     "x86_64-apple-darwin": "macos_amd64",
@@ -446,11 +448,14 @@ def build_bazel_release_binaries(
     fork_version: str,
 ) -> ReleaseBinaries:
     options = bazel_release_options(target)
-    startup_options = (
-        [f"--host_jvm_args=-Xmx{bazel_max_heap_mb}m"]
-        if bazel_max_heap_mb is not None
-        else []
-    )
+    startup_options = [
+        *BAZEL_RELEASE_STARTUP_OPTIONS,
+        *(
+            [f"--host_jvm_args=-Xmx{bazel_max_heap_mb}m"]
+            if bazel_max_heap_mb is not None
+            else []
+        ),
+    ]
     local_build_options = (
         [f"--local_resources=cpu={bazel_build_jobs}"]
         if bazel_build_jobs is not None
@@ -464,6 +469,7 @@ def build_bazel_release_binaries(
             bazel,
             *startup_options,
             "build",
+            *BAZEL_RELEASE_CACHE_OPTIONS,
             *options,
             *local_build_options,
             "--",
@@ -474,7 +480,13 @@ def build_bazel_release_binaries(
     )
     execution_root = bazel_execution_root(
         command_output(
-            [bazel, *startup_options, "info", "execution_root"],
+            [
+                bazel,
+                *startup_options,
+                "info",
+                *BAZEL_RELEASE_CACHE_OPTIONS,
+                "execution_root",
+            ],
             cwd=source_root,
             env=env,
         )
@@ -484,6 +496,7 @@ def build_bazel_release_binaries(
             bazel,
             *startup_options,
             "cquery",
+            *BAZEL_RELEASE_CACHE_OPTIONS,
             *options,
             "--output=files",
             "--",

@@ -6,7 +6,7 @@
 
 # Project directory basename (blue)
 ENABLE_DIR=${ENABLE_DIR:-1}
-# Git branch + dirty indicator (green)
+# Git branch, divergence, and worktree changes
 ENABLE_GIT=${ENABLE_GIT:-1}
 # Model name (magenta)
 ENABLE_MODEL=${ENABLE_MODEL:-0}
@@ -154,20 +154,70 @@ if [ "$ENABLE_DIR" = "1" ]; then
     fi
 fi
 
-# --- Git info (green) ---
+# --- Git info ---
 if [ "$ENABLE_GIT" = "1" ] && [ "$is_git_repo" = "1" ]; then
-    git_status=$(git -C "$cwd" --no-optional-locks status --porcelain=v1 --branch -uno 2>/dev/null)
+    git_status=$(git -C "$cwd" --no-optional-locks status --porcelain=v1 --branch 2>/dev/null)
     first_git_status_line=${git_status%%$'\n'*}
     branch=${first_git_status_line#'## '}
     branch=${branch%%...*}
     branch=${branch%% \[*}
     [ "$branch" = "HEAD (no branch)" ] && branch="HEAD"
-    if [ "$git_status" != "$first_git_status_line" ]; then
-        dirty="*"
-    else
-        dirty=""
+
+    ahead=0
+    behind=0
+    [[ "$first_git_status_line" =~ \[ahead\ ([0-9]+) ]] && ahead=${BASH_REMATCH[1]}
+    [[ "$first_git_status_line" =~ behind\ ([0-9]+) ]] && behind=${BASH_REMATCH[1]}
+
+    staged=0
+    unstaged=0
+    untracked=0
+    conflicted=0
+    changes=""
+    [[ "$git_status" == *$'\n'* ]] && changes=${git_status#*$'\n'}
+    while IFS= read -r status_line; do
+        status=${status_line:0:2}
+        case "$status" in
+            "??") ((untracked += 1)) ;;
+            "!!") ;;
+            AA|AU|DD|DU|UA|UD|UU) ((conflicted += 1)) ;;
+            *)
+                [ "${status:0:1}" != " " ] && ((staged += 1))
+                [ "${status:1:1}" != " " ] && ((unstaged += 1))
+                ;;
+        esac
+    done <<< "$changes"
+
+    stashes=$(git -C "$cwd" rev-list --walk-reflogs --count refs/stash 2>/dev/null || printf '0')
+    [[ "$stashes" =~ ^[0-9]+$ ]] || stashes=0
+
+    action=""
+    if git -C "$cwd" rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        action="merge"
+    elif git -C "$cwd" rev-parse -q --verify CHERRY_PICK_HEAD >/dev/null 2>&1; then
+        action="cherry-pick"
+    elif git -C "$cwd" rev-parse -q --verify REVERT_HEAD >/dev/null 2>&1; then
+        action="revert"
+    elif [ -d "$git_dir/rebase-merge" ] || [ -d "$git_dir/rebase-apply" ]; then
+        action="rebase"
     fi
-    git_info="${branch}${dirty}"
+
+    clean="\033[38;5;76m"
+    modified="\033[38;5;178m"
+    untracked_color="\033[38;5;39m"
+    conflicted_color="\033[38;5;196m"
+    reset="\033[0m"
+    git_parts=("${clean}${branch}${reset}")
+    divergence=""
+    [ "$behind" -gt 0 ] && divergence+="${clean}⇣${behind}${reset}"
+    [ "$ahead" -gt 0 ] && divergence+="${clean}⇡${ahead}${reset}"
+    [ -n "$divergence" ] && git_parts+=("$divergence")
+    [ "$stashes" -gt 0 ] && git_parts+=("${clean}*${stashes}${reset}")
+    [ -n "$action" ] && git_parts+=("${conflicted_color}${action}${reset}")
+    [ "$conflicted" -gt 0 ] && git_parts+=("${conflicted_color}~${conflicted}${reset}")
+    [ "$staged" -gt 0 ] && git_parts+=("${modified}+${staged}${reset}")
+    [ "$unstaged" -gt 0 ] && git_parts+=("${modified}!${unstaged}${reset}")
+    [ "$untracked" -gt 0 ] && git_parts+=("${untracked_color}?${untracked}${reset}")
+    git_info=$(IFS=' '; printf '%s' "${git_parts[*]}")
     [ -n "$git_info" ] && parts+=("\033[32m${git_info}\033[0m")
 fi
 

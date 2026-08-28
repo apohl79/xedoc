@@ -114,8 +114,10 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 build_command,
                 [
                     "custom-bazel",
+                    "--noexperimental_remote_repo_contents_cache",
                     "--host_jvm_args=-Xmx2048m",
                     "build",
+                    "--repo_contents_cache=",
                     "--config=apohl79-release",
                     "--platforms=@llvm//platforms:macos_arm64",
                     "--local_resources=cpu=4",
@@ -132,14 +134,18 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 [
                     [
                         "custom-bazel",
+                        "--noexperimental_remote_repo_contents_cache",
                         "--host_jvm_args=-Xmx2048m",
                         "info",
+                        "--repo_contents_cache=",
                         "execution_root",
                     ],
                     [
                         "custom-bazel",
+                        "--noexperimental_remote_repo_contents_cache",
                         "--host_jvm_args=-Xmx2048m",
                         "cquery",
+                        "--repo_contents_cache=",
                         "--config=apohl79-release",
                         "--platforms=@llvm//platforms:macos_arm64",
                         "--output=files",
