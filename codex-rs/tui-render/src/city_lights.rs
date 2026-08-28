@@ -19,8 +19,6 @@ pub const CL_BG: (u8, u8, u8) = (0x1D, 0x25, 0x2C);
 pub const CL_COMMENT: (u8, u8, u8) = (0x41, 0x50, 0x5E);
 /// Muted teal foreground for the composer model name.
 pub const CL_MODEL_NAME: (u8, u8, u8) = (0x58, 0x87, 0x92);
-/// Muted foreground for the remaining composer runtime context.
-pub const CL_RUNTIME_CONTEXT: (u8, u8, u8) = (0x63, 0x6A, 0x75);
 /// Slightly lighter gray used behind active Agents and Tasks headers.
 pub const CL_HEADER_BG: (u8, u8, u8) = (0x5A, 0x64, 0x6E);
 /// Dark gray used behind the composer session title.
@@ -159,8 +157,9 @@ pub fn composer_model_name_style() -> Style {
 /// Style for the composer reasoning-effort context.
 pub fn composer_runtime_context_style() -> Style {
     Style::default()
-        .fg(Color::Black)
+        .fg(Color::Reset)
         .bg(rgb(CL_SESSION_TITLE_BG))
+        .dim()
 }
 
 /// Style for active Agents and Tasks section headers.
