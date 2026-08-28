@@ -5,9 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use crate::StateDbHandle;
-use crate::rollout::list::find_thread_path_by_id_str;
-use crate::session::turn_context::TurnEnvironment;
+use crate::TurnEnvironment;
 use crate::shell::Shell;
 use crate::shell::ShellType;
 use crate::shell::get_shell;
@@ -17,6 +15,8 @@ use anyhow::anyhow;
 use anyhow::bail;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
+use codex_rollout::find_thread_path_by_id_str;
+use codex_rollout::state_db::StateDbHandle;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::fs;
 use tokio::process::Command;
@@ -25,7 +25,7 @@ use tracing::Instrument;
 use tracing::info_span;
 
 #[derive(Clone)]
-pub(crate) struct ShellSnapshot {
+pub struct ShellSnapshot {
     config: Option<Arc<ShellSnapshotConfig>>,
 }
 
@@ -36,7 +36,7 @@ struct ShellSnapshotConfig {
     state_db: Option<StateDbHandle>,
 }
 
-pub(crate) struct ShellSnapshotFile {
+pub struct ShellSnapshotFile {
     path: AbsolutePathBuf,
 }
 
@@ -46,7 +46,7 @@ const SNAPSHOT_DIR: &str = "shell_snapshots";
 const EXCLUDED_EXPORT_VARS: &[&str] = &["PWD", "OLDPWD"];
 
 impl ShellSnapshot {
-    pub(crate) fn new(
+    pub fn new(
         codex_home: AbsolutePathBuf,
         session_id: ThreadId,
         session_telemetry: SessionTelemetry,
@@ -62,14 +62,11 @@ impl ShellSnapshot {
         }
     }
 
-    pub(crate) fn disabled() -> Self {
+    pub fn disabled() -> Self {
         Self { config: None }
     }
 
-    pub(crate) async fn build(
-        self,
-        environment: TurnEnvironment,
-    ) -> Option<Arc<ShellSnapshotFile>> {
+    pub async fn build(self, environment: TurnEnvironment) -> Option<Arc<ShellSnapshotFile>> {
         let config = self.config.as_ref()?;
         if environment.environment.is_remote() {
             return None;
@@ -179,7 +176,7 @@ impl ShellSnapshot {
 }
 
 impl ShellSnapshotFile {
-    pub(crate) fn path(&self) -> AbsolutePathBuf {
+    pub fn path(&self) -> AbsolutePathBuf {
         self.path.clone()
     }
 }

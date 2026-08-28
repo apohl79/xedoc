@@ -14,7 +14,7 @@ use super::TurnProfilePhase;
 use super::TurnProfileState;
 use super::TurnTimingState;
 use super::response_item_records_turn_ttft;
-use crate::ResponseEvent;
+use codex_core_client::ResponseEvent;
 
 #[tokio::test]
 async fn turn_timing_state_records_ttft_only_once_per_turn() {

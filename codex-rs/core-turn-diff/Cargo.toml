@@ -1,0 +1,25 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-turn-diff"
+version.workspace = true
+
+[lib]
+name = "codex_core_turn_diff"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-apply-patch = { workspace = true }
+sha1 = { workspace = true }
+similar = { workspace = true }
+
+[dev-dependencies]
+codex-exec-server = { workspace = true }
+codex-git-utils = { workspace = true }
+codex-utils-path-uri = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

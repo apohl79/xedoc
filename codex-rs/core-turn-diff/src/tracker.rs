@@ -78,10 +78,12 @@ impl Default for TurnDiffTracker {
 }
 
 impl TurnDiffTracker {
+    /// Creates an empty tracker for the current turn.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Creates a tracker with environment-specific display roots.
     pub fn with_environment_display_roots(
         display_roots: impl IntoIterator<Item = (String, PathBuf)>,
     ) -> Self {
@@ -90,6 +92,7 @@ impl TurnDiffTracker {
         tracker
     }
 
+    /// Applies an exact patch delta to the tracked turn diff.
     pub fn track_delta(&mut self, environment_id: &str, delta: &AppliedPatchDelta) {
         if !self.valid {
             return;
@@ -106,17 +109,20 @@ impl TurnDiffTracker {
         self.refresh_unified_diff();
     }
 
+    /// Clears tracked output after an inexact patch delta.
     pub fn invalidate(&mut self) {
         self.valid = false;
         self.rendered_diffs.clear();
         self.unified_diff = None;
     }
 
+    /// Returns the current unified diff when an exact diff is available.
     pub fn get_unified_diff(&self) -> Option<String> {
         self.unified_diff.clone()
     }
 
-    pub(crate) fn has_unified_diff(&self) -> bool {
+    /// Reports whether an exact unified diff is available.
+    pub fn has_unified_diff(&self) -> bool {
         self.unified_diff.is_some()
     }
 
@@ -400,5 +406,5 @@ fn git_blob_sha1_hex_bytes(data: &[u8]) -> Output<sha1::Sha1> {
 }
 
 #[cfg(test)]
-#[path = "turn_diff_tracker_tests.rs"]
+#[path = "tracker_tests.rs"]
 mod tests;

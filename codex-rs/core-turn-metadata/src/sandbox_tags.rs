@@ -5,7 +5,7 @@ use codex_sandboxing::get_platform_sandbox;
 use codex_sandboxing::policy_transforms::should_require_platform_sandbox;
 use std::path::Path;
 
-pub(crate) fn permission_profile_sandbox_tag(
+pub fn permission_profile_sandbox_tag(
     profile: &PermissionProfile,
     windows_sandbox_level: WindowsSandboxLevel,
     enforce_managed_network: bool,
@@ -37,10 +37,7 @@ pub(crate) fn permission_profile_sandbox_tag(
         .unwrap_or("none")
 }
 
-pub(crate) fn permission_profile_policy_tag(
-    profile: &PermissionProfile,
-    cwd: &Path,
-) -> &'static str {
+pub fn permission_profile_policy_tag(profile: &PermissionProfile, cwd: &Path) -> &'static str {
     match profile {
         PermissionProfile::Disabled => "danger-full-access",
         PermissionProfile::External { .. } => "external-sandbox",

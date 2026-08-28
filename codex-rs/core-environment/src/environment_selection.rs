@@ -22,11 +22,11 @@ use futures::future::BoxFuture;
 use futures::future::Shared;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::session::turn_context::TurnEnvironment;
+use crate::TurnEnvironment;
 use crate::shell::Shell;
 use crate::shell_snapshot::ShellSnapshot;
 
-pub(crate) fn default_thread_environment_selections(
+pub fn default_thread_environment_selections(
     environment_manager: &EnvironmentManager,
     cwd: &AbsolutePathBuf,
     workspace_roots: &[AbsolutePathBuf],
@@ -55,8 +55,8 @@ struct SelectedTurnEnvironment {
 }
 
 #[derive(Clone)]
-pub(crate) struct StartingTurnEnvironment {
-    pub(crate) selection: TurnEnvironmentSelection,
+pub struct StartingTurnEnvironment {
+    pub selection: TurnEnvironmentSelection,
     resolution: TurnEnvironmentResolution,
 }
 
@@ -71,12 +71,12 @@ impl fmt::Debug for StartingTurnEnvironment {
 }
 
 impl StartingTurnEnvironment {
-    pub(crate) async fn wait_until_ready(&self) -> Result<(), Arc<ExecServerError>> {
+    pub async fn wait_until_ready(&self) -> Result<(), Arc<ExecServerError>> {
         self.resolution.clone().await.map(|_| ())
     }
 }
 
-pub(crate) struct ThreadEnvironments {
+pub struct ThreadEnvironments {
     environment_manager: Arc<EnvironmentManager>,
     local_shell: Shell,
     shell_snapshot: ShellSnapshot,
@@ -86,7 +86,7 @@ pub(crate) struct ThreadEnvironments {
 }
 
 impl ThreadEnvironments {
-    pub(crate) fn new(
+    pub fn new(
         environment_manager: Arc<EnvironmentManager>,
         local_shell: Shell,
         shell_snapshot: ShellSnapshot,
@@ -123,7 +123,7 @@ impl ThreadEnvironments {
         }
     }
 
-    pub(crate) fn update_selections(&self, environments: &[TurnEnvironmentSelection]) {
+    pub fn update_selections(&self, environments: &[TurnEnvironmentSelection]) {
         let previous = self.environments.load();
         let mut seen_environment_ids = HashSet::with_capacity(environments.len());
         let mut next = Vec::with_capacity(environments.len());
@@ -241,7 +241,7 @@ impl ThreadEnvironments {
         Some(Arc::new(AbortOnDropHandle::new(task)))
     }
 
-    pub(crate) fn start_connection_event_forwarding(&self, tx_event: Sender<Event>) {
+    pub fn start_connection_event_forwarding(&self, tx_event: Sender<Event>) {
         let tx_event = self.connection_event_tx.get_or_init(|| tx_event);
         let current = self.environments.load_full();
         let environments = current
@@ -313,7 +313,7 @@ impl ThreadEnvironments {
     }
 
     #[tracing::instrument(name = "environments.snapshot", skip_all)]
-    pub(crate) async fn snapshot(&self) -> TurnEnvironmentSnapshot {
+    pub async fn snapshot(&self) -> TurnEnvironmentSnapshot {
         let selected = self.environments.load_full();
         let mut environments = Vec::with_capacity(selected.len());
         for environment in selected.iter() {
@@ -335,13 +335,13 @@ impl ThreadEnvironments {
         TurnEnvironmentSnapshot { environments }
     }
 
-    pub(crate) fn environment_manager(&self) -> Arc<EnvironmentManager> {
+    pub fn environment_manager(&self) -> Arc<EnvironmentManager> {
         Arc::clone(&self.environment_manager)
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum TurnEnvironmentState {
+pub enum TurnEnvironmentState {
     Ready(TurnEnvironment),
     Starting(StartingTurnEnvironment),
 }
@@ -366,14 +366,14 @@ impl TurnEnvironmentState {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct TurnEnvironmentSnapshot {
+pub struct TurnEnvironmentSnapshot {
     // Keep ready and starting environments in their original selection order.
-    pub(crate) environments: Vec<TurnEnvironmentState>,
+    pub environments: Vec<TurnEnvironmentState>,
 }
 
 impl TurnEnvironmentSnapshot {
     /// Promotes completed startup work without adopting newer thread selections.
-    pub(crate) fn refresh_readiness(&self) -> Self {
+    pub fn refresh_readiness(&self) -> Self {
         let environments = self
             .environments
             .iter()
@@ -392,7 +392,7 @@ impl TurnEnvironmentSnapshot {
         Self { environments }
     }
 
-    pub(crate) fn turn_environments(&self) -> impl Iterator<Item = &TurnEnvironment> {
+    pub fn turn_environments(&self) -> impl Iterator<Item = &TurnEnvironment> {
         self.environments.iter().filter_map(|environment| {
             let TurnEnvironmentState::Ready(environment) = environment else {
                 return None;
@@ -401,7 +401,7 @@ impl TurnEnvironmentSnapshot {
         })
     }
 
-    pub(crate) fn starting(&self) -> impl Iterator<Item = &StartingTurnEnvironment> {
+    pub fn starting(&self) -> impl Iterator<Item = &StartingTurnEnvironment> {
         self.environments.iter().filter_map(|environment| {
             let TurnEnvironmentState::Starting(environment) = environment else {
                 return None;
@@ -411,7 +411,7 @@ impl TurnEnvironmentSnapshot {
     }
 
     /// Maps each captured environment to its exact ready handle, or `None` when it was starting.
-    pub(crate) fn captured_environments(&self) -> HashMap<String, Option<Arc<Environment>>> {
+    pub fn captured_environments(&self) -> HashMap<String, Option<Arc<Environment>>> {
         self.turn_environments()
             .map(|environment| {
                 (
@@ -426,33 +426,33 @@ impl TurnEnvironmentSnapshot {
             .collect()
     }
 
-    pub(crate) fn primary(&self) -> Option<&TurnEnvironment> {
+    pub fn primary(&self) -> Option<&TurnEnvironment> {
         self.turn_environments().next()
     }
 
-    pub(crate) fn local(&self) -> Option<&TurnEnvironment> {
+    pub fn local(&self) -> Option<&TurnEnvironment> {
         self.turn_environments()
             .find(|environment| !environment.environment.is_remote())
     }
 
     #[cfg(test)]
-    pub(crate) fn primary_environment(&self) -> Option<Arc<codex_exec_server::Environment>> {
+    pub fn primary_environment(&self) -> Option<Arc<codex_exec_server::Environment>> {
         self.primary()
             .map(|environment| Arc::clone(&environment.environment))
     }
 
-    pub(crate) fn to_selections(&self) -> Vec<TurnEnvironmentSelection> {
+    pub fn to_selections(&self) -> Vec<TurnEnvironmentSelection> {
         self.turn_environments()
             .map(TurnEnvironment::selection)
             .collect()
     }
 
-    pub(crate) fn primary_filesystem(&self) -> Option<Arc<dyn ExecutorFileSystem>> {
+    pub fn primary_filesystem(&self) -> Option<Arc<dyn ExecutorFileSystem>> {
         self.primary()
             .map(|environment| environment.environment.get_filesystem())
     }
 
-    pub(crate) fn single_local_environment(&self) -> Option<&TurnEnvironment> {
+    pub fn single_local_environment(&self) -> Option<&TurnEnvironment> {
         if self.starting().next().is_some() {
             return None;
         }
@@ -465,7 +465,7 @@ impl TurnEnvironmentSnapshot {
         (!environment.environment.is_remote()).then_some(environment)
     }
 
-    pub(crate) fn single_local_environment_cwd(&self) -> Option<AbsolutePathBuf> {
+    pub fn single_local_environment_cwd(&self) -> Option<AbsolutePathBuf> {
         // TODO(anp): Migrate local-environment consumers to PathUri so this compatibility
         // conversion can be removed.
         self.single_local_environment()?.cwd().to_abs_path().ok()

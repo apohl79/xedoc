@@ -8,8 +8,8 @@ pub use codex_shell_command::shell_detect::ShellType;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Shell {
-    pub(crate) shell_type: ShellType,
-    pub(crate) shell_path: PathBuf,
+    pub shell_type: ShellType,
+    pub shell_path: PathBuf,
 }
 
 impl Shell {
@@ -59,7 +59,7 @@ impl From<DetectedShell> for Shell {
 }
 
 impl Shell {
-    pub(crate) fn from_environment_shell_info(shell_info: ShellInfo) -> anyhow::Result<Self> {
+    pub fn from_environment_shell_info(shell_info: ShellInfo) -> anyhow::Result<Self> {
         let shell_type = match shell_info.name.as_str() {
             "zsh" => ShellType::Zsh,
             "bash" => ShellType::Bash,

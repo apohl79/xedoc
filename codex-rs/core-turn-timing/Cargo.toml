@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-turn-timing"
+version.workspace = true
+
+[lib]
+name = "codex_core_turn_timing"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-analytics = { workspace = true }
+codex-core-client = { workspace = true }
+codex-protocol = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

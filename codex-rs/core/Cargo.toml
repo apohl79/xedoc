@@ -40,8 +40,12 @@ codex-core-client = { workspace = true }
 codex-core-config = { workspace = true }
 codex-core-context = { workspace = true }
 codex-core-exec = { workspace = true }
+codex-core-environment = { workspace = true }
 codex-core-skills = { workspace = true }
 codex-core-tool-specs = { workspace = true }
+codex-core-turn-metadata = { workspace = true }
+codex-core-turn-timing = { workspace = true }
+codex-core-turn-diff = { workspace = true }
 codex-exec-server = { workspace = true }
 codex-extension-api = { workspace = true }
 codex-extension-items = { workspace = true }

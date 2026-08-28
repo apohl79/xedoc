@@ -1,6 +1,6 @@
 use super::*;
 use crate::environment_selection::TurnEnvironmentSnapshot;
-use crate::shell_snapshot::ShellSnapshotFile;
+pub(crate) use codex_core_environment::TurnEnvironment;
 use codex_core_skills::HostSkillsSnapshot;
 use codex_file_system::FileSystemSandboxContext;
 use codex_model_provider::SharedModelProvider;
@@ -12,14 +12,9 @@ use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::ThreadHistoryMode;
-use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_sandboxing::compatibility_sandbox_policy_for_permission_profile;
 use codex_sandboxing::policy_transforms::effective_file_system_sandbox_policy;
 use codex_sandboxing::policy_transforms::effective_network_sandbox_policy;
-use codex_utils_path_uri::PathUri;
-use futures::FutureExt;
-use futures::future::BoxFuture;
-use futures::future::Shared;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tracing::instrument;
@@ -36,75 +31,6 @@ impl TurnSkillsContext {
             snapshot,
             implicit_invocation_seen_skills: Arc::new(Mutex::new(HashSet::new())),
         }
-    }
-}
-
-pub(crate) type ShellSnapshotTask = Shared<BoxFuture<'static, Option<Arc<ShellSnapshotFile>>>>;
-
-#[derive(Clone)]
-pub(crate) struct TurnEnvironment {
-    pub(crate) environment_id: String,
-    pub(crate) environment: Arc<Environment>,
-    cwd: PathUri,
-    workspace_roots: Vec<PathUri>,
-    pub(crate) shell: Option<shell::Shell>,
-    pub(crate) shell_snapshot: ShellSnapshotTask,
-}
-
-impl TurnEnvironment {
-    pub(crate) fn new(
-        environment_id: String,
-        environment: Arc<Environment>,
-        cwd: PathUri,
-        workspace_roots: Vec<PathUri>,
-        shell: Option<shell::Shell>,
-    ) -> Self {
-        Self {
-            environment_id,
-            environment,
-            cwd,
-            workspace_roots,
-            shell,
-            shell_snapshot: futures::future::ready(None).boxed().shared(),
-        }
-    }
-
-    pub(crate) fn shell_snapshot(&self, cwd: &AbsolutePathBuf) -> Option<AbsolutePathBuf> {
-        if self.cwd != PathUri::from_abs_path(cwd) {
-            return None;
-        }
-        self.shell_snapshot
-            .peek()?
-            .as_deref()
-            .map(ShellSnapshotFile::path)
-    }
-
-    pub(crate) fn cwd(&self) -> &PathUri {
-        &self.cwd
-    }
-
-    pub(crate) fn workspace_roots(&self) -> &[PathUri] {
-        &self.workspace_roots
-    }
-
-    pub(crate) fn selection(&self) -> TurnEnvironmentSelection {
-        TurnEnvironmentSelection {
-            environment_id: self.environment_id.clone(),
-            cwd: self.cwd.clone(),
-            workspace_roots: self.workspace_roots.clone(),
-        }
-    }
-}
-
-impl std::fmt::Debug for TurnEnvironment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TurnEnvironment")
-            .field("environment_id", &self.environment_id)
-            .field("environment", &self.environment)
-            .field("cwd", &self.cwd)
-            .field("workspace_roots", &self.workspace_roots)
-            .field("shell", &self.shell)
-            .finish_non_exhaustive()
     }
 }
 

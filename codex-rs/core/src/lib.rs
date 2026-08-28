@@ -17,8 +17,8 @@ pub(crate) use codex_core_client::responses_metadata;
 mod responses_retry;
 pub(crate) mod session;
 pub use codex_core_client::CodexResponsesMetadata;
+pub use codex_core_turn_metadata::detached_memory_responses_metadata;
 pub use session::SteerInputError;
-pub use turn_metadata::detached_memory_responses_metadata;
 mod codex_thread;
 mod compact_hierarchical;
 mod compact_model_fallback;
@@ -49,7 +49,13 @@ pub mod context;
 mod context_manager;
 mod current_time;
 mod elicitation;
-mod environment_selection;
+pub(crate) mod environment_selection {
+    pub(crate) use codex_core_environment::StartingTurnEnvironment;
+    pub(crate) use codex_core_environment::ThreadEnvironments;
+    pub(crate) use codex_core_environment::TurnEnvironmentSnapshot;
+    pub(crate) use codex_core_environment::TurnEnvironmentState;
+    pub(crate) use codex_core_environment::default_thread_environment_selections;
+}
 pub mod exec;
 pub mod exec_env;
 mod exec_policy;
@@ -88,7 +94,10 @@ pub(crate) mod mentions {
     pub(crate) use crate::plugins::collect_explicit_plugin_mentions;
     pub(crate) use crate::plugins::collect_tool_mentions_from_messages;
 }
-mod sandbox_tags;
+mod sandbox_tags {
+    pub(crate) use codex_core_turn_metadata::permission_profile_policy_tag;
+    pub(crate) use codex_core_turn_metadata::permission_profile_sandbox_tag;
+}
 pub mod sandboxing;
 mod session_prefix;
 mod session_startup_prewarm;
@@ -140,8 +149,13 @@ mod rollout;
 mod rollout_budget;
 pub(crate) mod safety;
 mod session_rollout_init_error;
-pub mod shell;
-pub(crate) mod shell_snapshot;
+pub mod shell {
+    pub use codex_core_environment::shell::*;
+}
+pub(crate) mod shell_snapshot {
+    pub(crate) use codex_core_environment::ShellSnapshot;
+    pub(crate) use codex_core_environment::ShellSnapshotFile;
+}
 pub mod spawn;
 pub(crate) mod state_db_bridge;
 pub use state_db_bridge::StateDbHandle;
@@ -150,8 +164,13 @@ mod thread_rollout_truncation;
 pub use thread_rollout_truncation::truncate_rollout_after_turn_id;
 pub use thread_rollout_truncation::truncate_rollout_before_turn_id;
 mod tools;
-pub(crate) mod turn_diff_tracker;
-mod turn_metadata;
+pub(crate) mod turn_diff_tracker {
+    pub(crate) use codex_core_turn_diff::TurnDiffTracker;
+}
+mod turn_metadata {
+    pub(crate) use codex_core_turn_metadata::McpTurnMetadataContext;
+    pub(crate) use codex_core_turn_metadata::TurnMetadataState;
+}
 mod turn_timing;
 pub use rollout::ARCHIVED_SESSIONS_SUBDIR;
 pub use rollout::Cursor;

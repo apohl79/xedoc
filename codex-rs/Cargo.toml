@@ -47,6 +47,10 @@ members = [
     "core-context",
     "core-exec",
     "core-tool-specs",
+    "core-environment",
+    "core-turn-metadata",
+    "core-turn-timing",
+    "core-turn-diff",
     "core-api",
     "core-plugins",
     "core-skills",
@@ -217,6 +221,10 @@ codex-core-config-runtime = { path = "core-config-runtime" }
 codex-core-context = { path = "core-context" }
 codex-core-exec = { path = "core-exec" }
 codex-core-tool-specs = { path = "core-tool-specs" }
+codex-core-environment = { path = "core-environment" }
+codex-core-turn-metadata = { path = "core-turn-metadata" }
+codex-core-turn-timing = { path = "core-turn-timing" }
+codex-core-turn-diff = { path = "core-turn-diff" }
 codex-core-api = { path = "core-api" }
 codex-core-plugins = { path = "core-plugins" }
 codex-core-skills = { path = "core-skills" }

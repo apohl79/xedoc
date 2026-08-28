@@ -9,13 +9,13 @@ use std::sync::atomic::Ordering;
 use serde_json::Value;
 use tokio::task::JoinHandle;
 
-use crate::responses_metadata::CodexResponsesMetadata;
-use crate::responses_metadata::CodexResponsesRequestKind;
-use crate::responses_metadata::TurnMetadataWorkspace;
-use crate::responses_metadata::filter_extra_metadata;
-use crate::responses_metadata::subagent_header_value;
-use crate::responses_metadata::subagent_metadata_kind;
-use crate::sandbox_tags::permission_profile_sandbox_tag;
+use crate::permission_profile_sandbox_tag;
+use codex_core_client::responses_metadata::CodexResponsesMetadata;
+use codex_core_client::responses_metadata::CodexResponsesRequestKind;
+use codex_core_client::responses_metadata::TurnMetadataWorkspace;
+use codex_core_client::responses_metadata::filter_extra_metadata;
+use codex_core_client::responses_metadata::subagent_header_value;
+use codex_core_client::responses_metadata::subagent_metadata_kind;
 use codex_git_utils::get_git_remote_urls_assume_git_repo;
 use codex_git_utils::get_git_repo_root;
 use codex_git_utils::get_has_changes;
@@ -33,9 +33,9 @@ const REASONING_EFFORT_KEY: &str = "reasoning_effort";
 const USER_INPUT_REQUESTED_DURING_TURN_KEY: &str = "user_input_requested_during_turn";
 const WORKSPACE_KIND_KEY: &str = "workspace_kind";
 
-pub(crate) struct McpTurnMetadataContext<'a> {
-    pub(crate) model: &'a str,
-    pub(crate) reasoning_effort: Option<ReasoningEffortConfig>,
+pub struct McpTurnMetadataContext<'a> {
+    pub model: &'a str,
+    pub reasoning_effort: Option<ReasoningEffortConfig>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -83,7 +83,7 @@ pub async fn detached_memory_responses_metadata(
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct TurnMetadataState {
+pub struct TurnMetadataState {
     cwd: AbsolutePathBuf,
     repo_root: Option<String>,
     session_id: String,
@@ -104,7 +104,7 @@ pub(crate) struct TurnMetadataState {
 
 impl TurnMetadataState {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         session_id: String,
         thread_id: String,
         forked_from_thread_id: Option<ThreadId>,
@@ -146,7 +146,7 @@ impl TurnMetadataState {
         }
     }
 
-    pub(crate) fn current_meta_value_for_mcp_request(
+    pub fn current_meta_value_for_mcp_request(
         &self,
         context: McpTurnMetadataContext<'_>,
     ) -> Option<serde_json::Value> {
@@ -184,7 +184,7 @@ impl TurnMetadataState {
         Some(Value::Object(metadata))
     }
 
-    pub(crate) fn to_responses_metadata(
+    pub fn to_responses_metadata(
         &self,
         installation_id: String,
         window_id: String,
@@ -198,12 +198,12 @@ impl TurnMetadataState {
         }
     }
 
-    pub(crate) fn mark_user_input_requested_during_turn(&self) {
+    pub fn mark_user_input_requested_during_turn(&self) {
         self.user_input_requested_during_turn
             .store(true, Ordering::Relaxed);
     }
 
-    pub(crate) fn set_responsesapi_client_metadata(
+    pub fn set_responsesapi_client_metadata(
         &self,
         responsesapi_client_metadata: HashMap<String, String>,
     ) {
@@ -214,7 +214,7 @@ impl TurnMetadataState {
             filter_extra_metadata(responsesapi_client_metadata);
     }
 
-    pub(crate) fn workspace_kind(&self) -> Option<String> {
+    pub fn workspace_kind(&self) -> Option<String> {
         self.responsesapi_client_metadata
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -262,14 +262,14 @@ impl TurnMetadataState {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    pub(crate) fn set_turn_started_at_unix_ms(&self, turn_started_at_unix_ms: i64) {
+    pub fn set_turn_started_at_unix_ms(&self, turn_started_at_unix_ms: i64) {
         *self
             .turn_started_at_unix_ms
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(turn_started_at_unix_ms);
     }
 
-    pub(crate) fn spawn_git_enrichment_task(&self) {
+    pub fn spawn_git_enrichment_task(&self) {
         if self.repo_root.is_none() {
             return;
         }
@@ -302,7 +302,7 @@ impl TurnMetadataState {
         }));
     }
 
-    pub(crate) fn cancel_git_enrichment_task(&self) {
+    pub fn cancel_git_enrichment_task(&self) {
         let mut task_guard = self
             .enrichment_task
             .lock()
