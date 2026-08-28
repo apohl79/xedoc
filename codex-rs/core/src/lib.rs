@@ -74,7 +74,6 @@ pub use mcp::McpManager;
 mod original_image_detail;
 pub use codex_mcp::CodexAppsToolsCache;
 pub use codex_mcp::SandboxState;
-mod mcp_openai_file;
 mod mcp_tool_call;
 pub(crate) mod mention_syntax;
 pub(crate) mod utils;
@@ -198,7 +197,12 @@ mod function_tool;
 mod state;
 mod tasks;
 mod user_shell_command;
-pub mod util;
+pub mod util {
+    pub use codex_core_utils::backoff;
+    pub(crate) use codex_core_utils::error_or_panic;
+    pub use codex_core_utils::normalize_thread_name;
+}
+pub use codex_core_utils::feedback_tags;
 
 pub use codex_core_client::AttestationContext;
 pub use codex_core_client::AttestationProvider;

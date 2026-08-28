@@ -14,7 +14,10 @@ workspace = true
 [dependencies]
 codex-core-context = { workspace = true }
 codex-core-context-manager = { workspace = true }
+codex-memories-read = { workspace = true }
 codex-protocol = { workspace = true }
+codex-rollout = { workspace = true }
+codex-utils-stream-parser = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 

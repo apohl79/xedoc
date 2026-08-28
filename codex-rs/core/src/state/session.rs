@@ -8,14 +8,14 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use super::AdditionalContextStore;
-use super::auto_compact_window::AutoCompactWindow;
-use super::auto_compact_window::AutoCompactWindowIds;
-use super::auto_compact_window::AutoCompactWindowSnapshot;
 use crate::context_manager::ContextManager;
 use crate::session::PreviousTurnSettings;
 use crate::session::session::SessionConfiguration;
 use crate::session::time_reminder::CurrentTimeReminderState;
 use crate::session_startup_prewarm::SessionStartupPrewarmHandle;
+use codex_core_auto_compact_window::AutoCompactWindow;
+use codex_core_auto_compact_window::AutoCompactWindowIds;
+use codex_core_auto_compact_window::AutoCompactWindowSnapshot;
 use codex_protocol::protocol::RateLimitSnapshot;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageInfo;

@@ -33,7 +33,10 @@ ts-rs = { workspace = true, features = [
 walkdir = { workspace = true }
 
 [dev-dependencies]
+codex-exec-server = { workspace = true }
+codex-utils-path = { workspace = true }
 pretty_assertions = { workspace = true }
+serde_json = { workspace = true }
 
 [lib]
 doctest = false

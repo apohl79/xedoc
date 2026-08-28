@@ -265,7 +265,7 @@ impl StepContext {
             environments,
             Vec::new(),
             /*executor_capability_discovery*/ None,
-            crate::session::McpRuntimeSnapshot::new_uninitialized_for_test(&turn.config),
+            crate::session::new_uninitialized_mcp_runtime_snapshot_for_test(&turn.config),
             /*loaded_agents_md*/ None,
         ))
     }
@@ -5572,7 +5572,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
     ));
     let network_approval = Arc::new(NetworkApprovalService::default());
     let mcp_runtime_snapshot =
-        crate::session::McpRuntimeSnapshot::new_uninitialized_for_test(config.as_ref());
+        crate::session::new_uninitialized_mcp_runtime_snapshot_for_test(config.as_ref());
     let mcp_runtime = Arc::new(codex_mcp::McpRuntime::new(
         mcp_runtime_snapshot.manager_arc(),
     ));
@@ -7730,7 +7730,7 @@ where
     ));
     let network_approval = Arc::new(NetworkApprovalService::default());
     let mcp_runtime_snapshot =
-        crate::session::McpRuntimeSnapshot::new_uninitialized_for_test(config.as_ref());
+        crate::session::new_uninitialized_mcp_runtime_snapshot_for_test(config.as_ref());
     let mcp_runtime = Arc::new(codex_mcp::McpRuntime::new(
         mcp_runtime_snapshot.manager_arc(),
     ));

@@ -43,3 +43,7 @@ pub use info::local_git_branches;
 pub use info::recent_commits;
 pub use info::resolve_root_git_project_for_trust;
 pub use platform::create_symlink;
+
+#[cfg(test)]
+#[path = "git_info_tests.rs"]
+mod git_info_tests;

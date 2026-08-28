@@ -13,7 +13,6 @@ use crate::memory_usage::emit_metric_for_tool_read;
 use crate::memory_usage::shell_script_for_invocation;
 use crate::sandbox_tags::permission_profile_policy_tag;
 use crate::sandbox_tags::permission_profile_sandbox_tag;
-use crate::session::turn_context::TurnContext;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
@@ -23,13 +22,14 @@ use crate::tools::handlers::multi_agents_spec::MULTI_AGENT_V1_NAMESPACE;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::lifecycle::notify_tool_finish;
 use crate::tools::lifecycle::notify_tool_start;
+use crate::tools::router::ToolDispatcher;
 use crate::tools::tool_dispatch_trace::ToolDispatchTrace;
 use crate::util::error_or_panic;
+pub(crate) use codex_core_tool_runtime::ToolArgumentDiffConsumer;
 use codex_extension_api::ToolCallOutcome;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::parse_command::ParsedCommand;
-use codex_protocol::protocol::EventMsg;
 use codex_rollout::state_db;
 use codex_shell_command::parse_command::parse_shell_script;
 use codex_tools::ToolName;
@@ -40,6 +40,7 @@ use serde_json::Value;
 use tracing::instrument;
 
 pub(crate) type ToolTelemetryTags = Vec<(&'static str, String)>;
+pub(crate) type AnyToolResult = codex_core_tool_runtime::AnyToolResult<PostToolUsePayload>;
 
 pub use codex_tools::ToolExecutor;
 pub use codex_tools::ToolExposure;
@@ -144,45 +145,6 @@ pub(crate) trait CoreToolRuntime: ToolExecutor<ToolInvocation> {
     /// Creates an optional consumer for streamed tool argument diffs.
     fn create_diff_consumer(&self) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
         None
-    }
-}
-
-/// Consumes streamed argument diffs for a tool call and emits protocol events
-/// derived from partial tool input.
-pub(crate) trait ToolArgumentDiffConsumer: Send {
-    /// Consume the next argument diff for a tool call.
-    fn consume_diff(&mut self, turn: &TurnContext, call_id: String, diff: &str)
-    -> Option<EventMsg>;
-
-    /// Finish consuming argument diffs before the tool call completes.
-    fn finish(&mut self) -> Result<Option<EventMsg>, FunctionCallError> {
-        Ok(None)
-    }
-}
-
-pub(crate) struct AnyToolResult {
-    pub(crate) call_id: String,
-    pub(crate) payload: ToolPayload,
-    pub(crate) result: Box<dyn ToolOutput>,
-    pub(crate) post_tool_use_payload: Option<PostToolUsePayload>,
-}
-
-impl AnyToolResult {
-    pub(crate) fn into_response(self) -> ResponseInputItem {
-        let Self {
-            call_id,
-            payload,
-            result,
-            ..
-        } = self;
-        result.to_response_item(&call_id, &payload)
-    }
-
-    pub(crate) fn code_mode_result(self) -> serde_json::Value {
-        let Self {
-            payload, result, ..
-        } = self;
-        result.code_mode_result(&payload)
     }
 }
 
@@ -363,14 +325,12 @@ impl ToolRegistry {
         self.tools.get(name).map(Arc::clone)
     }
 
-    #[cfg(test)]
     pub(crate) fn tool_names_for_test(&self) -> Vec<ToolName> {
         let mut names = self.tools.keys().cloned().collect::<Vec<_>>();
         names.sort();
         names
     }
 
-    #[cfg(test)]
     pub(crate) fn tool_exposure(&self, name: &ToolName) -> Option<ToolExposure> {
         self.tools.get(name).map(|tool| tool.exposure())
     }
@@ -677,6 +637,43 @@ impl ToolRegistry {
                 Err(err)
             }
         }
+    }
+}
+
+impl ToolDispatcher<crate::session::session::Session, crate::session::step_context::StepContext>
+    for ToolRegistry
+{
+    type PostToolUsePayload = PostToolUsePayload;
+
+    fn create_diff_consumer(
+        &self,
+        tool_name: &ToolName,
+    ) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
+        self.create_diff_consumer(tool_name)
+    }
+
+    fn supports_parallel_tool_calls(&self, tool_name: &ToolName) -> Option<bool> {
+        self.supports_parallel_tool_calls(tool_name)
+    }
+
+    fn waits_for_runtime_cancellation(&self, tool_name: &ToolName) -> Option<bool> {
+        self.waits_for_runtime_cancellation(tool_name)
+    }
+
+    fn dispatch_any_with_terminal_outcome<'a>(
+        &'a self,
+        invocation: ToolInvocation,
+        terminal_outcome_reached: Option<Arc<AtomicBool>>,
+    ) -> BoxFuture<'a, Result<AnyToolResult, FunctionCallError>> {
+        Box::pin(self.dispatch_any_with_terminal_outcome(invocation, terminal_outcome_reached))
+    }
+
+    fn tool_names_for_test(&self) -> Vec<ToolName> {
+        self.tool_names_for_test()
+    }
+
+    fn tool_exposure_for_test(&self, tool_name: &ToolName) -> Option<ToolExposure> {
+        self.tool_exposure(tool_name)
     }
 }
 

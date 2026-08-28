@@ -36,7 +36,6 @@ pub(crate) use codex_core_context::RolloutBudgetContext;
 pub(crate) use codex_core_context::SkillInstructions;
 pub(crate) use codex_core_context::SubagentNotification;
 pub(crate) use codex_core_context::TokenBudgetContext;
-pub(crate) use codex_core_context::TokenBudgetRemainingContext;
 pub(crate) use codex_core_context::TokenBudgetReminder;
 pub(crate) use codex_core_context::TurnAborted;
 pub(crate) use codex_core_context::UserInstructions;

@@ -232,6 +232,8 @@ pub(crate) use self::input_queue::InputQueueActivity;
 pub(crate) use self::input_queue::TurnInput;
 pub(crate) use self::input_queue::TurnInputQueue;
 pub use self::mcp_runtime::McpRuntimeSnapshot;
+#[cfg(test)]
+pub(crate) use self::mcp_runtime::new_uninitialized_mcp_runtime_snapshot_for_test;
 use self::review::spawn_review_thread;
 use self::session::AppServerClientMetadata;
 use self::session::Session;

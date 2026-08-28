@@ -1,0 +1,19 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-core-auto-compact-window"
+version.workspace = true
+
+[lib]
+name = "codex_core_auto_compact_window"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-protocol = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

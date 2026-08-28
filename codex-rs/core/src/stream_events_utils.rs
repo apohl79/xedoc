@@ -5,7 +5,7 @@ use codex_extension_api::ExtensionData;
 use codex_protocol::ResponseItemId;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::items::TurnItem;
-use codex_utils_stream_parser::strip_citations;
+use codex_protocol::memory_citation::MemoryCitation;
 use tokio_util::sync::CancellationToken;
 
 use crate::function_tool::FunctionCallError;
@@ -14,63 +14,25 @@ use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::router::ToolRouter;
-use codex_memories_read::citations::parse_memory_citation;
-use codex_memories_read::citations::thread_ids_from_memory_citation;
+use codex_core_response_items::completed_item_defers_mailbox_delivery_to_next_turn;
+pub(crate) use codex_core_response_items::last_assistant_message_from_item;
+pub(crate) use codex_core_response_items::raw_assistant_output_text_from_item;
+use codex_core_response_items::record_stage1_output_usage_and_detect_memory_citation;
+use codex_core_response_items::record_stage1_output_usage_for_memory_citation;
+use codex_core_response_items::response_input_to_response_item;
+use codex_core_response_items::response_item_may_include_external_context;
+use codex_core_response_items::sanitize_agent_message;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result;
-use codex_protocol::memory_citation::MemoryCitation;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
-use codex_rollout::state_db;
-use codex_utils_stream_parser::strip_proposed_plan_blocks;
 use futures::Future;
 use tracing::debug;
 use tracing::instrument;
 use tracing::warn;
-
-fn strip_hidden_assistant_markup(text: &str, plan_mode: bool) -> String {
-    let (without_citations, _) = strip_citations(text);
-    if plan_mode {
-        strip_proposed_plan_blocks(&without_citations)
-    } else {
-        without_citations
-    }
-}
-
-fn strip_hidden_assistant_markup_and_parse_memory_citation(
-    text: &str,
-    plan_mode: bool,
-) -> (
-    String,
-    Option<codex_protocol::memory_citation::MemoryCitation>,
-) {
-    let (without_citations, citations) = strip_citations(text);
-    let visible_text = if plan_mode {
-        strip_proposed_plan_blocks(&without_citations)
-    } else {
-        without_citations
-    };
-    (visible_text, parse_memory_citation(citations))
-}
-
-pub(crate) fn raw_assistant_output_text_from_item(item: &ResponseItem) -> Option<String> {
-    if let ResponseItem::Message { role, content, .. } = item
-        && role == "assistant"
-    {
-        let combined = content
-            .iter()
-            .filter_map(|ci| match ci {
-                codex_protocol::models::ContentItem::OutputText { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<String>();
-        return Some(combined);
-    }
-    None
-}
 
 /// Persist a completed model response item and record any cited memory usage.
 pub(crate) async fn record_completed_response_item(
@@ -128,15 +90,6 @@ pub(crate) async fn record_completed_response_item_with_finalized_facts(
     }
 }
 
-fn response_item_may_include_external_context(item: &ResponseItem) -> bool {
-    matches!(
-        item,
-        ResponseItem::ToolSearchCall { .. }
-            | ResponseItem::ToolSearchOutput { .. }
-            | ResponseItem::WebSearchCall { .. }
-    )
-}
-
 pub(crate) async fn mark_thread_memory_mode_polluted_if_external_context(
     sess: &Session,
     turn_context: &TurnContext,
@@ -147,42 +100,12 @@ pub(crate) async fn mark_thread_memory_mode_polluted_if_external_context(
     {
         return;
     }
-    state_db::mark_thread_memory_mode_polluted(
+    codex_rollout::state_db::mark_thread_memory_mode_polluted(
         sess.services.state_db.as_deref(),
         sess.thread_id,
         "record_completed_response_item",
     )
     .await;
-}
-
-async fn record_stage1_output_usage_and_detect_memory_citation(
-    state_db_ctx: Option<&state_db::StateDbHandle>,
-    item: &ResponseItem,
-) -> bool {
-    let Some(raw_text) = raw_assistant_output_text_from_item(item) else {
-        return false;
-    };
-
-    let (_, citations) = strip_citations(&raw_text);
-    let Some(memory_citation) = parse_memory_citation(citations) else {
-        return false;
-    };
-    record_stage1_output_usage_for_memory_citation(state_db_ctx, &memory_citation).await
-}
-
-async fn record_stage1_output_usage_for_memory_citation(
-    state_db_ctx: Option<&state_db::StateDbHandle>,
-    memory_citation: &MemoryCitation,
-) -> bool {
-    let thread_ids = thread_ids_from_memory_citation(memory_citation);
-    if thread_ids.is_empty() {
-        return true;
-    }
-
-    if let Some(db) = state_db_ctx {
-        let _ = db.memories().record_stage1_output_usage(&thread_ids).await;
-    }
-    true
 }
 
 /// Handle a completed output item from the model stream, recording it and
@@ -446,103 +369,7 @@ pub(crate) async fn finalize_turn_item(
     if let TurnItemContributorPolicy::Run(turn_store) = contributor_policy {
         apply_turn_item_contributors(sess, turn_store, turn_item).await;
     }
-    if let TurnItem::AgentMessage(agent_message) = &mut *turn_item {
-        let combined = agent_message
-            .content
-            .iter()
-            .map(|entry| match entry {
-                codex_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
-            })
-            .collect::<String>();
-        let (stripped, memory_citation) =
-            strip_hidden_assistant_markup_and_parse_memory_citation(&combined, plan_mode);
-        agent_message.content =
-            vec![codex_protocol::items::AgentMessageContent::Text { text: stripped }];
-        if agent_message.memory_citation.is_none() {
-            agent_message.memory_citation = memory_citation;
-        }
-    }
-}
-
-pub(crate) fn last_assistant_message_from_item(
-    item: &ResponseItem,
-    plan_mode: bool,
-) -> Option<String> {
-    if let Some(combined) = raw_assistant_output_text_from_item(item) {
-        if combined.is_empty() {
-            return None;
-        }
-        let stripped = strip_hidden_assistant_markup(&combined, plan_mode);
-        if stripped.trim().is_empty() {
-            return None;
-        }
-        return Some(stripped);
-    }
-    None
-}
-
-fn completed_item_defers_mailbox_delivery_to_next_turn(
-    item: &ResponseItem,
-    plan_mode: bool,
-) -> bool {
-    match item {
-        ResponseItem::Message { role, phase, .. } => {
-            if role != "assistant" || matches!(phase, Some(MessagePhase::Commentary)) {
-                return false;
-            }
-            // Treat `None` like final-answer text so untagged providers default
-            // to the safer "defer mailbox mail" behavior.
-            last_assistant_message_from_item(item, plan_mode).is_some()
-        }
-        _ => false,
-    }
-}
-
-pub(crate) fn response_input_to_response_item(input: &ResponseInputItem) -> Option<ResponseItem> {
-    match input {
-        ResponseInputItem::FunctionCallOutput { call_id, output } => {
-            Some(ResponseItem::FunctionCallOutput {
-                id: None,
-                call_id: call_id.clone(),
-                output: output.clone(),
-                internal_chat_message_metadata_passthrough: None,
-            })
-        }
-        ResponseInputItem::CustomToolCallOutput {
-            call_id,
-            name,
-            output,
-        } => Some(ResponseItem::CustomToolCallOutput {
-            id: None,
-            call_id: call_id.clone(),
-            name: name.clone(),
-            output: output.clone(),
-            internal_chat_message_metadata_passthrough: None,
-        }),
-        ResponseInputItem::McpToolCallOutput { call_id, output } => {
-            let output = output.as_function_call_output_payload();
-            Some(ResponseItem::FunctionCallOutput {
-                id: None,
-                call_id: call_id.clone(),
-                output,
-                internal_chat_message_metadata_passthrough: None,
-            })
-        }
-        ResponseInputItem::ToolSearchOutput {
-            call_id,
-            status,
-            execution,
-            tools,
-        } => Some(ResponseItem::ToolSearchOutput {
-            id: None,
-            call_id: Some(call_id.clone()),
-            status: status.clone(),
-            execution: execution.clone(),
-            tools: tools.clone(),
-            internal_chat_message_metadata_passthrough: None,
-        }),
-        _ => None,
-    }
+    sanitize_agent_message(turn_item, plan_mode);
 }
 
 #[cfg(test)]

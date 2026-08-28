@@ -17,15 +17,16 @@ codex-core-context = { workspace = true }
 codex-core-turn-context = { workspace = true }
 codex-protocol = { workspace = true }
 codex-utils-cache = { workspace = true }
+codex-utils-image = { workspace = true }
 codex-utils-output-truncation = { workspace = true }
+image = { workspace = true }
+serde_json = { workspace = true }
 symphonia = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-uuid = { workspace = true }
+uuid = { workspace = true, features = ["v5"] }
 
 [dev-dependencies]
 codex-utils-absolute-path = { workspace = true }
-image = { workspace = true }
 pretty_assertions = { workspace = true }
 regex-lite = { workspace = true }
-serde_json = { workspace = true }

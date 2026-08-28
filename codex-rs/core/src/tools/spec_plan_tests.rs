@@ -685,7 +685,7 @@ async fn environment_tools_follow_the_step_context() {
         environments,
         Vec::new(),
         /*executor_capability_discovery*/ None,
-        crate::session::McpRuntimeSnapshot::new_uninitialized_for_test(&turn.config),
+        crate::session::new_uninitialized_mcp_runtime_snapshot_for_test(&turn.config),
         /*loaded_agents_md*/ None,
     ));
 

@@ -5,6 +5,7 @@
 mod audio;
 mod contextual_content;
 mod history;
+mod image;
 mod normalize;
 pub mod updates;
 
@@ -18,3 +19,4 @@ pub use history::content_items_to_text;
 pub use history::estimate_item_token_count;
 pub use history::is_user_turn_boundary;
 pub use history::truncate_function_output_payload;
+pub use image::prepare_image_response_items;
