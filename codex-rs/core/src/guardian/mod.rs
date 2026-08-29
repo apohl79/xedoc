@@ -27,8 +27,6 @@ pub(crate) use codex_core_guardian_approval::AUTO_REVIEW_DENIAL_WINDOW_SIZE;
 pub(crate) use codex_core_guardian_approval::GuardianAssessment;
 pub(crate) use codex_core_guardian_approval::GuardianRejectionCircuitBreaker;
 pub(crate) use codex_core_guardian_approval::GuardianRejectionCircuitBreakerAction;
-pub(crate) use codex_core_guardian_approval::MAX_CONSECUTIVE_GUARDIAN_DENIALS_PER_TURN;
-pub(crate) use codex_core_guardian_approval::MAX_RECENT_AUTO_REVIEW_DENIALS_PER_TURN;
 pub(crate) use codex_protocol::protocol::GuardianAssessmentOutcome;
 pub(crate) use review::guardian_timeout_message;
 pub(crate) use review::is_guardian_reviewer_source;
@@ -48,11 +46,6 @@ pub(crate) const GUARDIAN_REVIEW_TIMEOUT: Duration = Duration::from_secs(90);
 pub(crate) const GUARDIAN_REVIEWER_NAME: &str = "guardian";
 pub(crate) const AUTO_REVIEW_DENIED_ACTION_APPROVAL_DEVELOPER_PREFIX: &str =
     "The user has manually approved a specific action that was previously `Rejected`.";
-const GUARDIAN_MAX_MESSAGE_TRANSCRIPT_TOKENS: usize = 10_000;
-const GUARDIAN_MAX_TOOL_TRANSCRIPT_TOKENS: usize = 10_000;
-const GUARDIAN_MAX_MESSAGE_ENTRY_TOKENS: usize = 2_000;
-const GUARDIAN_MAX_TOOL_ENTRY_TOKENS: usize = 1_000;
-const GUARDIAN_RECENT_ENTRY_LIMIT: usize = 40;
 
 #[cfg(test)]
 use approval_request::format_guardian_action_pretty;

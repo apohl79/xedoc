@@ -50,9 +50,9 @@ mod context_manager;
 mod current_time;
 mod elicitation;
 pub(crate) mod environment_selection {
-    pub(crate) use codex_core_environment::StartingTurnEnvironment;
     pub(crate) use codex_core_environment::ThreadEnvironments;
     pub(crate) use codex_core_environment::TurnEnvironmentSnapshot;
+    #[cfg(test)]
     pub(crate) use codex_core_environment::TurnEnvironmentState;
     pub(crate) use codex_core_environment::default_thread_environment_selections;
 }
@@ -106,7 +106,6 @@ pub(crate) use skills::SkillMetadata;
 pub(crate) use skills::SkillsService;
 pub(crate) use skills::build_available_skills;
 pub(crate) use skills::build_skill_injections;
-pub(crate) use skills::build_skill_name_counts;
 pub(crate) use skills::collect_explicit_skill_mentions;
 pub(crate) use skills::default_skill_metadata_budget;
 pub(crate) use skills::injection;
@@ -152,7 +151,6 @@ pub mod shell {
 }
 pub(crate) mod shell_snapshot {
     pub(crate) use codex_core_environment::ShellSnapshot;
-    pub(crate) use codex_core_environment::ShellSnapshotFile;
 }
 pub mod spawn;
 pub(crate) mod state_db_bridge;

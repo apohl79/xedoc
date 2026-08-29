@@ -12,8 +12,6 @@ use crate::guardian::new_guardian_review_id;
 use crate::guardian::review_approval_request;
 use crate::guardian::routes_approval_to_guardian_with_reviewer;
 use crate::hook_runtime::run_permission_request_hooks;
-#[cfg(test)]
-use crate::mcp_tool_approval_templates::RenderedMcpToolApprovalParam;
 use crate::mcp_tool_approval_templates::render_mcp_tool_approval_template;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
@@ -31,21 +29,16 @@ use codex_connectors::AppToolPolicy;
 use codex_connectors::AppToolPolicyEvaluator;
 use codex_connectors::AppToolPolicyInput;
 pub(crate) use codex_core_approval_policy::MCP_TOOL_APPROVAL_ACCEPT;
-#[cfg(test)]
-use codex_core_approval_policy::MCP_TOOL_APPROVAL_ACCEPT_AND_REMEMBER;
 pub(crate) use codex_core_approval_policy::MCP_TOOL_APPROVAL_ACCEPT_FOR_SESSION;
-#[cfg(test)]
-use codex_core_approval_policy::MCP_TOOL_APPROVAL_CANCEL;
 pub(crate) use codex_core_approval_policy::MCP_TOOL_APPROVAL_DECLINE_SYNTHETIC;
 pub(crate) use codex_core_approval_policy::MCP_TOOL_APPROVAL_QUESTION_ID_PREFIX;
 use codex_core_approval_policy::McpToolApprovalDecision;
 use codex_core_approval_policy::McpToolApprovalElicitationRequest;
 use codex_core_approval_policy::McpToolApprovalKey;
 pub(crate) use codex_core_approval_policy::McpToolApprovalMetadata;
+#[cfg(test)]
 use codex_core_approval_policy::McpToolApprovalPromptOptions;
 use codex_core_approval_policy::build_mcp_tool_approval_display_params;
-#[cfg(test)]
-use codex_core_approval_policy::build_mcp_tool_approval_elicitation_meta;
 use codex_core_approval_policy::build_mcp_tool_approval_elicitation_request;
 use codex_core_approval_policy::build_mcp_tool_approval_question;
 pub(crate) use codex_core_approval_policy::is_mcp_tool_approval_question_id;
@@ -54,10 +47,6 @@ use codex_core_approval_policy::normalize_approval_decision_for_mode;
 use codex_core_approval_policy::parse_mcp_tool_approval_elicitation_response;
 use codex_core_approval_policy::parse_mcp_tool_approval_response;
 use codex_core_approval_policy::persistent_mcp_tool_approval_key;
-#[cfg(test)]
-use codex_core_approval_policy::request_user_input_response_from_elicitation_content;
-#[cfg(test)]
-use codex_core_approval_policy::requires_mcp_tool_approval;
 use codex_core_approval_policy::requires_mcp_tool_approval_for_mode;
 use codex_core_approval_policy::session_mcp_tool_approval_key;
 use codex_core_mcp_openai_file::OpenAiFileUploadContext;
@@ -81,42 +70,10 @@ use codex_protocol::items::McpToolCallItem;
 use codex_protocol::items::McpToolCallStatus;
 use codex_protocol::items::TurnItem;
 use codex_protocol::mcp::CallToolResult;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::APPROVAL_KIND_KEY as MCP_TOOL_APPROVAL_KIND_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::APPROVAL_KIND_MCP_TOOL_CALL as MCP_TOOL_APPROVAL_KIND_MCP_TOOL_CALL;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::CONNECTOR_DESCRIPTION_KEY as MCP_TOOL_APPROVAL_CONNECTOR_DESCRIPTION_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::CONNECTOR_ID_KEY as MCP_TOOL_APPROVAL_CONNECTOR_ID_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::CONNECTOR_NAME_KEY as MCP_TOOL_APPROVAL_CONNECTOR_NAME_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::PERSIST_ALWAYS as MCP_TOOL_APPROVAL_PERSIST_ALWAYS;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::PERSIST_KEY as MCP_TOOL_APPROVAL_PERSIST_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::PERSIST_SESSION as MCP_TOOL_APPROVAL_PERSIST_SESSION;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::SOURCE_CONNECTOR as MCP_TOOL_APPROVAL_SOURCE_CONNECTOR;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::SOURCE_KEY as MCP_TOOL_APPROVAL_SOURCE_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::TOOL_DESCRIPTION_KEY as MCP_TOOL_APPROVAL_TOOL_DESCRIPTION_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::TOOL_PARAMS_DISPLAY_KEY as MCP_TOOL_APPROVAL_TOOL_PARAMS_DISPLAY_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::TOOL_PARAMS_KEY as MCP_TOOL_APPROVAL_TOOL_PARAMS_KEY;
-#[cfg(test)]
-use codex_protocol::mcp_approval_meta::TOOL_TITLE_KEY as MCP_TOOL_APPROVAL_TOOL_TITLE_KEY;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::McpInvocation;
 use codex_protocol::protocol::ReviewDecision;
-#[cfg(test)]
-use codex_protocol::request_user_input::RequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputArgs;
-#[cfg(test)]
-use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_rmcp_client::ElicitationAction;
 #[cfg(test)]
 use codex_rmcp_client::ElicitationResponse;

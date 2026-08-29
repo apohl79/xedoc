@@ -6,8 +6,6 @@ use codex_thread_store::ThreadSortKey;
 use dirs::home_dir;
 use tracing::warn;
 
-pub(crate) use codex_core_realtime_context::truncate_realtime_text_to_token_budget;
-
 pub(crate) async fn build_realtime_startup_context(
     sess: &Session,
     budget_tokens: usize,

@@ -8,12 +8,16 @@ pub(crate) use codex_core_guardian_approval::BUNDLED_GUARDIAN_POLICY_TEMPLATE;
 pub(crate) use codex_core_guardian_approval::GuardianPromptItems;
 pub(crate) use codex_core_guardian_approval::GuardianPromptMode;
 pub(crate) use codex_core_guardian_approval::GuardianTranscriptCursor;
+#[cfg(test)]
 pub(crate) use codex_core_guardian_approval::GuardianTranscriptEntry;
+#[cfg(test)]
 pub(crate) use codex_core_guardian_approval::GuardianTranscriptEntryKind;
+#[cfg(test)]
 pub(crate) use codex_core_guardian_approval::collect_guardian_transcript_entries;
 pub(crate) use codex_core_guardian_approval::guardian_output_schema;
 pub(crate) use codex_core_guardian_approval::guardian_policy_prompt_with_config_and_template;
 pub(crate) use codex_core_guardian_approval::parse_guardian_assessment;
+#[cfg(test)]
 pub(crate) use codex_core_guardian_approval::render_guardian_transcript_entries;
 
 use super::GuardianApprovalRequest;
