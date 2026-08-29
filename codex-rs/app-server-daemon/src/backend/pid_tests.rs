@@ -4,8 +4,6 @@ use std::time::Duration;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
-use codex_app_server_transport::REMOTE_CONTROL_DISABLED_ENV_VAR;
-
 use super::PidBackend;
 use super::PidCommandKind;
 use super::PidFileState;
@@ -23,11 +21,7 @@ async fn locked_empty_pid_file_is_treated_as_active_reservation() {
     tokio::fs::write(&pid_file, "")
         .await
         .expect("write pid file");
-    let backend = PidBackend::new(
-        temp_dir.path().join("codex"),
-        pid_file.clone(),
-        /*remote_control_enabled*/ false,
-    );
+    let backend = PidBackend::new(temp_dir.path().join("codex"), pid_file.clone());
     let reservation = tokio::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -51,11 +45,7 @@ async fn unlocked_empty_pid_file_is_treated_as_stale_reservation() {
     tokio::fs::write(&pid_file, "")
         .await
         .expect("write pid file");
-    let backend = PidBackend::new(
-        temp_dir.path().join("codex"),
-        pid_file.clone(),
-        /*remote_control_enabled*/ false,
-    );
+    let backend = PidBackend::new(temp_dir.path().join("codex"), pid_file.clone());
 
     assert_eq!(
         backend.read_pid_file_state().await.expect("read pid"),
@@ -71,11 +61,7 @@ async fn stop_waits_for_live_reservation_to_resolve() {
     tokio::fs::write(&pid_file, "")
         .await
         .expect("write pid file");
-    let backend = PidBackend::new(
-        temp_dir.path().join("codex"),
-        pid_file.clone(),
-        /*remote_control_enabled*/ false,
-    );
+    let backend = PidBackend::new(temp_dir.path().join("codex"), pid_file.clone());
     let reservation = tokio::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -103,11 +89,7 @@ async fn start_retries_stale_empty_pid_file_under_its_own_lock() {
     tokio::fs::write(&pid_file, "")
         .await
         .expect("write pid file");
-    let backend = PidBackend::new(
-        temp_dir.path().join("missing-codex"),
-        pid_file,
-        /*remote_control_enabled*/ false,
-    );
+    let backend = PidBackend::new(temp_dir.path().join("missing-codex"), pid_file);
 
     let err = backend.start().await.expect_err("start");
     assert!(
@@ -120,11 +102,7 @@ async fn start_retries_stale_empty_pid_file_under_its_own_lock() {
 async fn stale_record_cleanup_preserves_replacement_record() {
     let temp_dir = TempDir::new().expect("temp dir");
     let pid_file = temp_dir.path().join("app-server.pid");
-    let backend = PidBackend::new(
-        temp_dir.path().join("codex"),
-        pid_file.clone(),
-        /*remote_control_enabled*/ false,
-    );
+    let backend = PidBackend::new(temp_dir.path().join("codex"), pid_file.clone());
     let stale = PidRecord {
         pid: 1,
         process_start_time: "old".to_string(),
@@ -171,11 +149,7 @@ async fn stop_reaps_untracked_app_server_child() {
     )
     .await
     .expect("write pid file");
-    let backend = PidBackend::new(
-        temp_dir.path().join("codex"),
-        pid_file.clone(),
-        /*remote_control_enabled*/ false,
-    );
+    let backend = PidBackend::new(temp_dir.path().join("codex"), pid_file.clone());
 
     let result = tokio::time::timeout(Duration::from_secs(2), backend.stop()).await;
     if matches!(child.try_wait(), Ok(None)) {
@@ -200,38 +174,6 @@ fn update_loop_uses_hidden_app_server_subcommand() {
     assert_eq!(
         backend.command_args(),
         vec!["app-server", "daemon", "pid-update-loop"]
-    );
-}
-
-#[test]
-fn app_server_remote_control_uses_runtime_flag() {
-    let backend = PidBackend::new(
-        "codex".into(),
-        "app-server.pid".into(),
-        /*remote_control_enabled*/ true,
-    );
-
-    assert_eq!(
-        backend.command_args(),
-        vec!["app-server", "--remote-control", "--listen", "unix://"]
-    );
-}
-
-#[test]
-fn app_server_disabled_remote_control_uses_compatible_args_and_runtime_env() {
-    let backend = PidBackend::new(
-        "codex".into(),
-        "app-server.pid".into(),
-        /*remote_control_enabled*/ false,
-    );
-
-    assert_eq!(
-        backend.command_args(),
-        vec!["app-server", "--listen", "unix://"]
-    );
-    assert_eq!(
-        backend.command_env(),
-        Some((REMOTE_CONTROL_DISABLED_ENV_VAR, "1"))
     );
 }
 

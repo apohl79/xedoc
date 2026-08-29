@@ -241,17 +241,6 @@ fn render_debug_config_lines(
         ));
     }
 
-    if let Some(allow_remote_control) = requirements_toml.allow_remote_control {
-        requirement_lines.push(requirement_line(
-            "allow_remote_control",
-            allow_remote_control.to_string(),
-            requirements
-                .allow_remote_control
-                .as_ref()
-                .map(|sourced| &sourced.source),
-        ));
-    }
-
     if requirements_toml.guardian_policy_config.is_some() {
         requirement_lines.push(requirement_line(
             "guardian_policy_config",
@@ -797,10 +786,6 @@ interrupt_message = false
                 /*value*/ false,
                 RequirementSource::LegacyManagedConfigTomlFromMdm,
             )),
-            allow_remote_control: Some(Sourced::new(
-                /*value*/ false,
-                RequirementSource::LegacyManagedConfigTomlFromMdm,
-            )),
             feature_requirements: Some(Sourced::new(
                 FeatureRequirementsToml {
                     entries: BTreeMap::from([("guardian_approval".to_string(), true)]),
@@ -842,7 +827,6 @@ interrupt_message = false
             allowed_web_search_modes: Some(vec![WebSearchModeRequirement::Cached]),
             allow_managed_hooks_only: Some(true),
             allow_appshots: Some(false),
-            allow_remote_control: Some(false),
             computer_use: None,
             windows: None,
             guardian_policy_config: Some("Use the managed guardian policy.".to_string()),
@@ -914,9 +898,6 @@ interrupt_message = false
         )));
         assert!(rendered.contains(&format!(
             "allow_appshots: false (source: {requirements_source})"
-        )));
-        assert!(rendered.contains(&format!(
-            "allow_remote_control: false (source: {requirements_source})"
         )));
         assert!(rendered.contains(&format!(
             "guardian_policy_config: configured (source: {requirements_source})"
@@ -1210,7 +1191,6 @@ approval_policy = "never"
             allowed_web_search_modes: Some(Vec::new()),
             allow_managed_hooks_only: None,
             allow_appshots: None,
-            allow_remote_control: None,
             computer_use: None,
             windows: None,
             guardian_policy_config: None,

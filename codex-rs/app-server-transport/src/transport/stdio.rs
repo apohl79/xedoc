@@ -5,9 +5,6 @@ use super::forward_incoming_message;
 use super::next_connection_id;
 use super::serialize_outgoing_message;
 use crate::outgoing_message::QueuedOutgoingMessage;
-use codex_app_server_protocol::InitializeParams;
-use codex_app_server_protocol::JSONRPCMessage;
-use codex_app_server_protocol::JSONRPCRequest;
 use std::io::ErrorKind;
 use std::io::Result as IoResult;
 use tokio::io;
@@ -15,7 +12,6 @@ use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tracing::debug;
 use tracing::error;
@@ -24,7 +20,6 @@ use tracing::info;
 pub async fn start_stdio_connection(
     transport_event_tx: mpsc::Sender<TransportEvent>,
     stdio_handles: &mut Vec<JoinHandle<()>>,
-    initialize_client_name_tx: oneshot::Sender<String>,
 ) -> IoResult<()> {
     let connection_id = next_connection_id();
     let (writer_tx, mut writer_rx) = mpsc::channel::<QueuedOutgoingMessage>(CHANNEL_CAPACITY);
@@ -44,16 +39,10 @@ pub async fn start_stdio_connection(
         let stdin = io::stdin();
         let reader = BufReader::new(stdin);
         let mut lines = reader.lines();
-        let mut initialize_client_name_tx = Some(initialize_client_name_tx);
 
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => {
-                    if let Some(client_name) = stdio_initialize_client_name(&line)
-                        && let Some(initialize_client_name_tx) = initialize_client_name_tx.take()
-                    {
-                        let _ = initialize_client_name_tx.send(client_name);
-                    }
                     if !forward_incoming_message(
                         &transport_event_tx_for_reader,
                         &writer_tx_for_reader,
@@ -98,16 +87,4 @@ pub async fn start_stdio_connection(
     }));
 
     Ok(())
-}
-
-fn stdio_initialize_client_name(line: &str) -> Option<String> {
-    let message = serde_json::from_str::<JSONRPCMessage>(line).ok()?;
-    let JSONRPCMessage::Request(JSONRPCRequest { method, params, .. }) = message else {
-        return None;
-    };
-    if method != "initialize" {
-        return None;
-    }
-    let params = serde_json::from_value::<InitializeParams>(params?).ok()?;
-    Some(params.client_info.name)
 }

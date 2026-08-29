@@ -46,7 +46,6 @@ mod plugin_share;
 mod plugin_uninstall;
 mod process_exec;
 mod realtime_conversation;
-mod remote_control;
 #[cfg(debug_assertions)]
 mod remote_thread_store;
 mod request_permissions;

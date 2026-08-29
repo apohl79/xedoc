@@ -9,7 +9,6 @@ use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 #[cfg(unix)]
-use codex_app_server_transport::REMOTE_CONTROL_DISABLED_ENV_VAR;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::fs;
@@ -70,20 +69,18 @@ enum PidFileState {
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(not(unix), allow(dead_code))]
 enum PidCommandKind {
-    AppServer { remote_control_enabled: bool },
+    AppServer,
     UpdateLoop,
 }
 
 impl PidBackend {
-    pub(crate) fn new(codex_bin: PathBuf, pid_file: PathBuf, remote_control_enabled: bool) -> Self {
+    pub(crate) fn new(codex_bin: PathBuf, pid_file: PathBuf) -> Self {
         let lock_file = pid_file.with_extension("pid.lock");
         Self {
             codex_bin,
             pid_file,
             lock_file,
-            command_kind: PidCommandKind::AppServer {
-                remote_control_enabled,
-            },
+            command_kind: PidCommandKind::AppServer,
         }
     }
 
@@ -166,9 +163,6 @@ impl PidBackend {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::from(stderr_log.into_std().await));
-        if let Some((key, value)) = self.command_env() {
-            command.env(key, value);
-        }
 
         #[cfg(unix)]
         {
@@ -412,39 +406,21 @@ impl PidBackend {
     #[cfg(unix)]
     fn command_args(&self) -> Vec<&'static str> {
         match self.command_kind {
-            PidCommandKind::AppServer {
-                remote_control_enabled: true,
-            } => vec!["app-server", "--remote-control", "--listen", "unix://"],
-            PidCommandKind::AppServer {
-                remote_control_enabled: false,
-            } => vec!["app-server", "--listen", "unix://"],
+            PidCommandKind::AppServer => vec!["app-server", "--listen", "unix://"],
             PidCommandKind::UpdateLoop => vec!["app-server", "daemon", "pid-update-loop"],
-        }
-    }
-
-    #[cfg(unix)]
-    fn command_env(&self) -> Option<(&'static str, &'static str)> {
-        match self.command_kind {
-            PidCommandKind::AppServer {
-                remote_control_enabled: false,
-            } => Some((REMOTE_CONTROL_DISABLED_ENV_VAR, "1")),
-            PidCommandKind::AppServer {
-                remote_control_enabled: true,
-            }
-            | PidCommandKind::UpdateLoop => None,
         }
     }
 
     fn terminate_process(&self, pid: u32) -> Result<()> {
         match self.command_kind {
-            PidCommandKind::AppServer { .. } => terminate_process(pid),
+            PidCommandKind::AppServer => terminate_process(pid),
             PidCommandKind::UpdateLoop => terminate_process(pid),
         }
     }
 
     fn force_terminate_process(&self, pid: u32) -> Result<()> {
         match self.command_kind {
-            PidCommandKind::AppServer { .. } => force_terminate_process(pid),
+            PidCommandKind::AppServer => force_terminate_process(pid),
             PidCommandKind::UpdateLoop => force_terminate_process_group(pid),
         }
     }

@@ -34,8 +34,6 @@ use crate::outgoing_message::QueuedOutgoingMessage;
 use crate::transport::CHANNEL_CAPACITY;
 use crate::transport::ConnectionState;
 use crate::transport::OutboundConnectionState;
-use crate::transport::RemoteControlPolicy;
-use crate::transport::RemoteControlStartConfig;
 use crate::transport::TransportEvent;
 use crate::transport::acquire_app_server_startup_lock;
 use crate::transport::app_server_startup_lock_path;
@@ -43,13 +41,11 @@ use crate::transport::auth::policy_from_settings;
 use crate::transport::prepare_control_socket_path;
 use crate::transport::route_outgoing_envelope;
 use crate::transport::start_control_socket_acceptor;
-use crate::transport::start_remote_control;
 use crate::transport::start_stdio_connection;
 use crate::transport::start_websocket_acceptor;
 use codex_analytics::AppServerRpcTransport;
 use codex_app_server_protocol::ConfigWarningNotification;
 use codex_app_server_protocol::JSONRPCMessage;
-use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::TextPosition as AppTextPosition;
 use codex_app_server_protocol::TextRange as AppTextRange;
 use codex_config::ConfigLayerSource;
@@ -64,7 +60,6 @@ use codex_protocol::protocol::SessionSource;
 use codex_rollout::state_db as rollout_state_db;
 use codex_state::log_db;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
@@ -119,12 +114,10 @@ pub(crate) use codex_app_server_jsonrpc::server_request_error;
 pub use crate::error_code::INPUT_TOO_LARGE_ERROR_CODE;
 pub use crate::error_code::INVALID_PARAMS_ERROR_CODE;
 pub use crate::transport::AppServerTransport;
-pub use crate::transport::RemoteControlStartupMode;
 pub use crate::transport::app_server_control_socket_path;
 pub use crate::transport::auth::AppServerWebsocketAuthArgs;
 pub use crate::transport::auth::AppServerWebsocketAuthSettings;
 pub use crate::transport::auth::WebsocketAuthCliMode;
-pub use crate::transport::take_remote_control_disabled_env;
 
 const LOG_FORMAT_ENV_VAR: &str = "LOG_FORMAT";
 const OTEL_SERVICE_NAME: &str = "codex-app-server";
@@ -431,7 +424,6 @@ pub enum PluginStartupTasks {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppServerRuntimeOptions {
     pub plugin_startup_tasks: PluginStartupTasks,
-    pub remote_control_startup_mode: RemoteControlStartupMode,
     pub install_shutdown_signal_handler: bool,
 }
 
@@ -439,7 +431,6 @@ impl Default for AppServerRuntimeOptions {
     fn default() -> Self {
         Self {
             plugin_startup_tasks: PluginStartupTasks::Start,
-            remote_control_startup_mode: RemoteControlStartupMode::ResolvePersisted,
             install_shutdown_signal_handler: true,
         }
     }
@@ -634,28 +625,6 @@ pub async fn run_main_with_transport_options(
             None => error!("{}", warning.summary),
         }
     }
-    let remote_control_policy = if config
-        .config_layer_stack
-        .requirements()
-        .allow_remote_control
-        .as_ref()
-        .is_some_and(|requirement| !requirement.value)
-    {
-        RemoteControlPolicy::DisabledByRequirements
-    } else {
-        RemoteControlPolicy::Allowed
-    };
-    let remote_control_startup_mode = runtime_options.remote_control_startup_mode;
-    let remote_control_explicitly_requested =
-        remote_control_startup_mode == RemoteControlStartupMode::EnabledEphemeral;
-    if remote_control_explicitly_requested
-        && remote_control_policy == RemoteControlPolicy::DisabledByRequirements
-    {
-        return Err(std::io::Error::new(
-            ErrorKind::InvalidInput,
-            "remote control is disabled by managed requirements",
-        ));
-    }
     let installation_id = resolve_installation_id(&config.codex_home).await?;
     let transport_shutdown_token = CancellationToken::new();
     let mut transport_accept_handles = Vec::<JoinHandle<()>>::new();
@@ -664,18 +633,10 @@ pub async fn run_main_with_transport_options(
     let shutdown_when_no_connections = single_client_mode;
     let graceful_signal_restart_enabled =
         runtime_options.install_shutdown_signal_handler && !single_client_mode;
-    let mut app_server_client_name_rx = None;
-
     match &transport {
         AppServerTransport::Stdio => {
-            let (stdio_client_name_tx, stdio_client_name_rx) = oneshot::channel::<String>();
-            app_server_client_name_rx = Some(stdio_client_name_rx);
-            start_stdio_connection(
-                transport_event_tx.clone(),
-                &mut transport_accept_handles,
-                stdio_client_name_tx,
-            )
-            .await?;
+            start_stdio_connection(transport_event_tx.clone(), &mut transport_accept_handles)
+                .await?;
         }
         AppServerTransport::UnixSocket { socket_path } => {
             let accept_handle = start_control_socket_acceptor(
@@ -703,70 +664,12 @@ pub async fn run_main_with_transport_options(
     let auth_manager =
         AuthManager::shared_from_config(&config, /*enable_codex_api_key_env*/ false).await;
 
-    let remote_control_enabled = remote_control_policy == RemoteControlPolicy::Allowed
-        && remote_control_explicitly_requested
-        && state_db.is_some();
-    if remote_control_explicitly_requested && state_db.is_none() {
-        error!("remote control disabled because sqlite state db is unavailable");
-    }
-    let no_local_transport = transport_accept_handles.is_empty();
-    if no_local_transport
-        && remote_control_startup_mode != RemoteControlStartupMode::ResolvePersisted
-        && !remote_control_enabled
-    {
+    if transport_accept_handles.is_empty() {
         return Err(std::io::Error::new(
             ErrorKind::InvalidInput,
-            if remote_control_policy == RemoteControlPolicy::DisabledByRequirements {
-                "no transport configured; remote control disabled by managed requirements"
-            } else if remote_control_explicitly_requested && state_db.is_none() {
-                "no transport configured; remote control disabled because sqlite state db is unavailable"
-            } else {
-                "no transport configured; use --listen or enable remote control"
-            },
+            "no transport configured; use --listen",
         ));
     }
-
-    let (remote_control_accept_handle, remote_control_handle) = start_remote_control(
-        RemoteControlStartConfig {
-            remote_control_url: config.chatgpt_base_url.clone(),
-            installation_id: installation_id.clone(),
-            policy: remote_control_policy,
-        },
-        state_db.clone(),
-        auth_manager.clone(),
-        transport_event_tx.clone(),
-        transport_shutdown_token.clone(),
-        app_server_client_name_rx,
-        remote_control_startup_mode,
-    )
-    .await?;
-    if no_local_transport
-        && remote_control_startup_mode == RemoteControlStartupMode::ResolvePersisted
-    {
-        let persisted_enabled = match remote_control_handle
-            .resolve_persisted_preference(/*app_server_client_name*/ None)
-            .await
-        {
-            Ok(persisted_enabled) => persisted_enabled,
-            Err(err) => {
-                warn!("failed to resolve persisted remote control preference: {err}");
-                false
-            }
-        };
-        if !persisted_enabled {
-            transport_shutdown_token.cancel();
-            let _ = remote_control_accept_handle.await;
-            return Err(std::io::Error::new(
-                ErrorKind::InvalidInput,
-                if remote_control_policy == RemoteControlPolicy::DisabledByRequirements {
-                    "no transport configured; remote control disabled by managed requirements"
-                } else {
-                    "no transport configured; use --listen or enable remote control"
-                },
-            ));
-        }
-    }
-    transport_accept_handles.push(remote_control_accept_handle);
 
     let outbound_handle = tokio::spawn(async move {
         let mut outbound_connections = HashMap::<ConnectionId, OutboundConnectionState>::new();
@@ -831,7 +734,6 @@ pub async fn run_main_with_transport_options(
             outgoing_tx,
             analytics_events_client.clone(),
         ));
-        let initialize_notification_sender = outgoing_message_sender.clone();
         let outbound_control_tx = outbound_control_tx;
         let processor = Arc::new(MessageProcessor::new(MessageProcessorArgs {
             outgoing: outgoing_message_sender,
@@ -847,15 +749,12 @@ pub async fn run_main_with_transport_options(
             auth_manager,
             installation_id,
             rpc_transport: analytics_rpc_transport(&transport),
-            remote_control_handle: Some(remote_control_handle.clone()),
             plugin_startup_tasks: runtime_options.plugin_startup_tasks,
         }));
         let mut thread_created_rx = processor.thread_created_receiver();
         let mut running_turn_count_rx = processor.subscribe_running_assistant_turn_count();
         let mut connections = HashMap::<ConnectionId, ConnectionState>::new();
         let mut connection_cleanup_tasks = ConnectionCleanupTasks::new();
-        let mut remote_control_status_rx = remote_control_handle.status_receiver();
-        let mut remote_control_status = remote_control_status_rx.borrow().clone();
         let transport_shutdown_token = transport_shutdown_token.clone();
         async move {
             let mut listen_for_threads = true;
@@ -1005,14 +904,6 @@ pub async fn run_main_with_transport_options(
                                                     connection_id,
                                                 )
                                                 .await;
-                                            initialize_notification_sender
-                                                .send_server_notification_to_connections(
-                                                    &[connection_id],
-                                                    ServerNotification::RemoteControlStatusChanged(
-                                                        remote_control_status.clone(),
-                                                    ),
-                                                )
-                                                .await;
                                             processor
                                                 .connection_initialized(
                                                     connection_id,
@@ -1052,20 +943,6 @@ pub async fn run_main_with_transport_options(
                         }
                     }
                     _ = connection_cleanup_tasks.reap_next() => {}
-                    changed = remote_control_status_rx.changed() => {
-                        if changed.is_err() {
-                            continue;
-                        }
-                        let status = remote_control_status_rx.borrow().clone();
-                        if remote_control_status == status {
-                            continue;
-                        }
-                        remote_control_status = status.clone();
-                        let notification = ServerNotification::RemoteControlStatusChanged(status);
-                        initialize_notification_sender
-                            .send_server_notification(notification)
-                            .await;
-                    }
                     created = thread_created_rx.recv(), if listen_for_threads => {
                         match created {
                             Ok(thread_id) => {

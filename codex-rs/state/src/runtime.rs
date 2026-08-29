@@ -51,7 +51,6 @@ mod goals;
 mod logs;
 mod memories;
 mod recovery;
-mod remote_control;
 #[cfg(test)]
 pub(crate) mod test_support;
 mod threads;
@@ -67,7 +66,6 @@ pub use recovery::is_sqlite_corruption_error;
 pub use recovery::runtime_db_path_for_corruption_error;
 pub use recovery::sqlite_error_detail_is_corruption;
 pub use recovery::sqlite_error_detail_is_lock;
-pub use remote_control::RemoteControlEnrollmentRecord;
 pub use threads::ThreadFilterOptions;
 
 // "Partition" is the retained-log-content bucket we cap at 10 MiB:

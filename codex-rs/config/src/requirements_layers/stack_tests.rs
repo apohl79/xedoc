@@ -66,7 +66,6 @@ fn top_level_values_use_toml_priority() {
 allowed_approval_policies = ["on-request"]
 allowed_sandbox_modes = ["workspace-write"]
 default_permissions = ":workspace"
-allow_remote_control = true
 
 [allowed_permission_profiles]
 ":read-only" = true
@@ -80,7 +79,6 @@ allow_remote_control = true
 allowed_approval_policies = ["never"]
 allowed_sandbox_modes = ["read-only"]
 default_permissions = ":read-only"
-allow_remote_control = false
 
 [allowed_permission_profiles]
 ":danger-full-access" = false
@@ -98,7 +96,6 @@ allow_remote_control = false
 allowed_approval_policies = ["never"]
 allowed_sandbox_modes = ["read-only"]
 default_permissions = ":read-only"
-allow_remote_control = false
 
 [allowed_permission_profiles]
 ":danger-full-access" = false
@@ -181,7 +178,6 @@ fn composition_strategy_applies_to_non_cloud_layers() {
                 format!(
                     r#"
 allowed_approval_policies = ["on-request"]
-allow_remote_control = true
 
 [features]
 shared = false
@@ -201,7 +197,6 @@ deny_read = [{low_path:?}]
                 format!(
                     r#"
 allowed_approval_policies = ["never"]
-allow_remote_control = false
 
 [features]
 shared = true
@@ -226,7 +221,6 @@ deny_read = [{high_path:?}]
         expected_requirements(format!(
             r#"
 allowed_approval_policies = ["never"]
-allow_remote_control = false
 
 [features]
 shared = true
@@ -251,10 +245,6 @@ deny_read = [{high_path:?}, {low_path:?}]
             vec![AskForApproval::Never],
             mdm_source.clone()
         ))
-    );
-    assert_eq!(
-        composed.allow_remote_control,
-        Some(Sourced::new(/*value*/ false, mdm_source))
     );
 }
 

@@ -173,7 +173,6 @@ pub fn server_notification_thread_target(
         | ServerNotification::AccountRateLimitsUpdated(_)
         | ServerNotification::EnvironmentConnected(_)
         | ServerNotification::EnvironmentDisconnected(_)
-        | ServerNotification::RemoteControlStatusChanged(_)
         | ServerNotification::DeprecationNotice(_)
         | ServerNotification::ConfigWarning(_)
         | ServerNotification::FuzzyFileSearchSessionUpdated(_)
