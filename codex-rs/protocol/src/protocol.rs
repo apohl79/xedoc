@@ -34,7 +34,6 @@ use crate::dynamic_tools::DynamicToolSpec;
 use crate::items::TurnItem;
 use crate::mcp::CallToolResult;
 use crate::mcp::RequestId;
-use crate::memory_citation::MemoryCitation;
 use crate::models::ActivePermissionProfile;
 use crate::models::AgentMessageInputContent;
 use crate::models::BaseInstructions;
@@ -650,12 +649,6 @@ pub enum Op {
     /// to generate a summary which will be returned as an AgentMessage event.
     Compact,
 
-    /// Set whether the thread remains eligible for memory generation.
-    ///
-    /// This persists thread-level memory mode metadata without involving the
-    /// model.
-    SetThreadMemoryMode { mode: ThreadMemoryMode },
-
     /// Request Codex to drop the last N user turns from in-memory context.
     ///
     /// This does not attempt to revert local filesystem changes. Clients are
@@ -680,13 +673,6 @@ pub enum Op {
         /// The raw command string after '!'
         command: String,
     },
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum ThreadMemoryMode {
-    Enabled,
-    Disabled,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS)]
@@ -889,7 +875,6 @@ impl Op {
             Self::RefreshMcpServers { .. } => "refresh_mcp_servers",
             Self::ReloadUserConfig => "reload_user_config",
             Self::Compact => "compact",
-            Self::SetThreadMemoryMode { .. } => "set_thread_memory_mode",
             Self::ThreadRollback { .. } => "thread_rollback",
             Self::Review { .. } => "review",
             Self::ApproveGuardianDeniedAction { .. } => "approve_guardian_denied_action",
@@ -2331,8 +2316,6 @@ pub struct AgentMessageEvent {
     pub message: String,
     #[serde(default)]
     pub phase: Option<MessagePhase>,
-    #[serde(default)]
-    pub memory_citation: Option<MemoryCitation>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema, TS)]
@@ -3132,8 +3115,6 @@ pub struct SessionMeta {
     /// Capability roots selected for this thread by the hosting platform.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selected_capability_roots: Vec<SelectedCapabilityRoot>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_mode: Option<String>,
     #[serde(default)]
     pub history_mode: ThreadHistoryMode,
     /// Exclusive prefix of another paginated rollout inherited by this thread.
@@ -3173,7 +3154,6 @@ impl Default for SessionMeta {
             base_instructions: None,
             dynamic_tools: None,
             selected_capability_roots: Vec::new(),
-            memory_mode: None,
             history_mode: ThreadHistoryMode::default(),
             history_base: None,
             subagent_history_start_ordinal: None,

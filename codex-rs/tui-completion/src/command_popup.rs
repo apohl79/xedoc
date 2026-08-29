@@ -376,7 +376,6 @@ mod tests {
             cmds,
             vec![
                 "model".to_string(),
-                "memories".to_string(),
                 "mention".to_string(),
                 "mcp".to_string()
             ]

@@ -1747,7 +1747,6 @@ fn completed_legacy_event_history_is_not_mid_turn() {
         RolloutItem::EventMsg(EventMsg::AgentMessage(AgentMessageEvent {
             message: "done".to_string(),
             phase: None,
-            memory_citation: None,
         })),
     ]);
 

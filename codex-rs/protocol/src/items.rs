@@ -3,7 +3,6 @@ use crate::ResponseItemId;
 use crate::ThreadId;
 use crate::dynamic_tools::DynamicToolCallOutputContentItem;
 use crate::mcp::CallToolResult;
-use crate::memory_citation::MemoryCitation;
 use crate::models::ContentItem;
 use crate::models::ImageDetail;
 use crate::models::MessagePhase;
@@ -129,9 +128,6 @@ pub struct AgentMessageItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub phase: Option<MessagePhase>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub memory_citation: Option<MemoryCitation>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema)]

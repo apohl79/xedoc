@@ -5,7 +5,6 @@ use codex_extension_api::ExtensionData;
 use codex_protocol::ResponseItemId;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::items::TurnItem;
-use codex_protocol::memory_citation::MemoryCitation;
 use tokio_util::sync::CancellationToken;
 
 use crate::function_tool::FunctionCallError;
@@ -17,10 +16,7 @@ use crate::tools::router::ToolRouter;
 use codex_core_response_items::completed_item_defers_mailbox_delivery_to_next_turn;
 pub(crate) use codex_core_response_items::last_assistant_message_from_item;
 pub(crate) use codex_core_response_items::raw_assistant_output_text_from_item;
-use codex_core_response_items::record_stage1_output_usage_and_detect_memory_citation;
-use codex_core_response_items::record_stage1_output_usage_for_memory_citation;
 use codex_core_response_items::response_input_to_response_item;
-use codex_core_response_items::response_item_may_include_external_context;
 use codex_core_response_items::sanitize_agent_message;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result;
@@ -34,7 +30,7 @@ use tracing::debug;
 use tracing::instrument;
 use tracing::warn;
 
-/// Persist a completed model response item and record any cited memory usage.
+/// Persist a completed model response item.
 pub(crate) async fn record_completed_response_item(
     sess: &Session,
     turn_context: &TurnContext,
@@ -71,41 +67,6 @@ pub(crate) async fn record_completed_response_item_with_finalized_facts(
             .defer_mailbox_delivery_to_next_turn(&sess.active_turn, &turn_context.sub_id)
             .await;
     }
-    mark_thread_memory_mode_polluted_if_external_context(sess, turn_context, item).await;
-    let has_memory_citation = if let Some(memory_citation) =
-        finalized_facts.and_then(|facts| facts.memory_citation.as_ref())
-    {
-        record_stage1_output_usage_for_memory_citation(
-            sess.services.state_db.as_ref(),
-            memory_citation,
-        )
-        .await
-    } else {
-        record_stage1_output_usage_and_detect_memory_citation(sess.services.state_db.as_ref(), item)
-            .await
-    };
-    if has_memory_citation {
-        sess.record_memory_citation_for_turn(&turn_context.sub_id)
-            .await;
-    }
-}
-
-pub(crate) async fn mark_thread_memory_mode_polluted_if_external_context(
-    sess: &Session,
-    turn_context: &TurnContext,
-    item: &ResponseItem,
-) {
-    if !turn_context.config.memories.disable_on_external_context
-        || !response_item_may_include_external_context(item)
-    {
-        return;
-    }
-    codex_rollout::state_db::mark_thread_memory_mode_polluted(
-        sess.services.state_db.as_deref(),
-        sess.thread_id,
-        "record_completed_response_item",
-    )
-    .await;
 }
 
 /// Handle a completed output item from the model stream, recording it and
@@ -157,7 +118,6 @@ pub(crate) struct FinalizedTurnItem {
 
 #[derive(Clone, Default)]
 pub(crate) struct FinalizedTurnItemFacts {
-    pub(crate) memory_citation: Option<MemoryCitation>,
     pub(crate) last_agent_message: Option<String>,
     pub(crate) defers_mailbox_delivery_to_next_turn: bool,
 }
@@ -170,36 +130,30 @@ pub(crate) async fn finalize_non_tool_response_item(
 ) -> Option<FinalizedTurnItem> {
     let turn_item =
         handle_non_tool_response_item(sess, contributor_policy, item, plan_mode).await?;
-    let (memory_citation, last_agent_message, defers_mailbox_delivery_to_next_turn) =
-        match &turn_item {
-            TurnItem::AgentMessage(agent_message) => {
-                let combined = agent_message
-                    .content
-                    .iter()
-                    .map(|entry| match entry {
-                        codex_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
-                    })
-                    .collect::<String>();
-                let last_agent_message = if combined.trim().is_empty() {
-                    None
-                } else {
-                    Some(combined)
-                };
-                let defers_mailbox_delivery_to_next_turn =
-                    !matches!(agent_message.phase, Some(MessagePhase::Commentary))
-                        && last_agent_message.is_some();
-                (
-                    agent_message.memory_citation.clone(),
-                    last_agent_message,
-                    defers_mailbox_delivery_to_next_turn,
-                )
-            }
-            _ => (None, None, false),
-        };
+    let (last_agent_message, defers_mailbox_delivery_to_next_turn) = match &turn_item {
+        TurnItem::AgentMessage(agent_message) => {
+            let combined = agent_message
+                .content
+                .iter()
+                .map(|entry| match entry {
+                    codex_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
+                })
+                .collect::<String>();
+            let last_agent_message = if combined.trim().is_empty() {
+                None
+            } else {
+                Some(combined)
+            };
+            let defers_mailbox_delivery_to_next_turn =
+                !matches!(agent_message.phase, Some(MessagePhase::Commentary))
+                    && last_agent_message.is_some();
+            (last_agent_message, defers_mailbox_delivery_to_next_turn)
+        }
+        _ => (None, false),
+    };
     Some(FinalizedTurnItem {
         turn_item,
         facts: FinalizedTurnItemFacts {
-            memory_citation,
             last_agent_message,
             defers_mailbox_delivery_to_next_turn,
         },

@@ -85,14 +85,6 @@ pub type ProviderAccountResult = std::result::Result<ProviderAccountState, Provi
 /// require a backend-specific model ID.
 pub const DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL: &str = "codex-auto-review";
 
-/// Default model used for memory extraction when a provider does not require a
-/// backend-specific model ID.
-pub const DEFAULT_MEMORY_EXTRACTION_PREFERRED_MODEL: &str = "gpt-5.6-luna";
-
-/// Default model used for memory consolidation when a provider does not require
-/// a backend-specific model ID.
-pub const DEFAULT_MEMORY_CONSOLIDATION_PREFERRED_MODEL: &str = "gpt-5.6-terra";
-
 /// Runtime provider abstraction used by model execution.
 ///
 /// Implementations own provider-specific behavior for a model backend. The
@@ -112,20 +104,6 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
     /// Providers that require backend-specific model IDs should override this.
     fn approval_review_preferred_model(&self) -> &'static str {
         DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL
-    }
-
-    /// Returns the preferred model used for memory extraction.
-    ///
-    /// Providers that require backend-specific model IDs should override this.
-    fn memory_extraction_preferred_model(&self) -> &'static str {
-        DEFAULT_MEMORY_EXTRACTION_PREFERRED_MODEL
-    }
-
-    /// Returns the preferred model used for memory consolidation.
-    ///
-    /// Providers that require backend-specific model IDs should override this.
-    fn memory_consolidation_preferred_model(&self) -> &'static str {
-        DEFAULT_MEMORY_CONSOLIDATION_PREFERRED_MODEL
     }
 
     /// Returns the provider-scoped auth manager, when this provider uses one.

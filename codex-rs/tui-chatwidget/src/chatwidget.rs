@@ -176,7 +176,6 @@ use ratatui::widgets::Widget;
 use ratatui::widgets::Wrap;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
-use tracing::warn;
 
 const DEFAULT_MODEL_DISPLAY_NAME: &str = "loading";
 const MULTI_AGENT_ENABLE_TITLE: &str = "Enable subagents?";
@@ -184,11 +183,6 @@ const MULTI_AGENT_ENABLE_YES: &str = "Yes, enable";
 const MULTI_AGENT_ENABLE_NO: &str = "Not now";
 const MULTI_AGENT_ENABLE_NOTICE: &str = "Subagents will be enabled in the next session.";
 const TRUSTED_ACCESS_FOR_CYBER_VERIFICATION_WARNING: &str = "Your conversations have multiple flags for possible cybersecurity risk. Responses may take longer because extra safety checks are on. To get authorized for security work, join the Trusted Access for Cyber program: https://chatgpt.com/cyber";
-const MEMORIES_DOC_URL: &str = "https://developers.openai.com/codex/memories";
-const MEMORIES_ENABLE_TITLE: &str = "Enable memories?";
-const MEMORIES_ENABLE_YES: &str = "Yes, enable";
-const MEMORIES_ENABLE_NO: &str = "Not now";
-const MEMORIES_ENABLE_NOTICE: &str = "Memories will be enabled in the next session.";
 const PLAN_MODE_REASONING_SCOPE_TITLE: &str = "Apply reasoning change";
 const PLAN_MODE_REASONING_SCOPE_PLAN_ONLY: &str = "Apply to Plan mode override";
 const PLAN_MODE_REASONING_SCOPE_ALL_MODES: &str = "Apply to global default and Plan mode override";
@@ -271,7 +265,6 @@ use crate::bottom_pane::InputResult;
 use crate::bottom_pane::LocalImageAttachment;
 use crate::bottom_pane::McpElicitationApprovalRequest;
 use crate::bottom_pane::McpServerElicitationFormRequest;
-use crate::bottom_pane::MemoriesSettingsView;
 use crate::bottom_pane::MentionBinding;
 use crate::bottom_pane::PermissionsApprovalRequest;
 use crate::bottom_pane::QUIT_SHORTCUT_TIMEOUT;
@@ -946,62 +939,6 @@ impl ChatWidget {
         });
     }
 
-    pub fn open_memories_popup(&mut self) {
-        if !self.config.features.enabled(Feature::MemoryTool) {
-            self.open_memories_enable_prompt();
-            return;
-        }
-
-        let view = MemoriesSettingsView::new(
-            self.config.memories.use_memories,
-            self.config.memories.generate_memories,
-            self.app_event_tx.clone(),
-            self.bottom_pane.list_keymap(),
-        );
-        self.bottom_pane.show_view(Box::new(view));
-    }
-
-    pub fn open_memories_enable_prompt(&mut self) {
-        let items = vec![
-            SelectionItem {
-                name: MEMORIES_ENABLE_YES.to_string(),
-                description: Some(
-                    "Save the setting now. You will need a new session to use it.".to_string(),
-                ),
-                actions: vec![Box::new(|tx| {
-                    tx.send(AppEvent::UpdateFeatureFlags {
-                        updates: vec![(Feature::MemoryTool, true)],
-                    });
-                })],
-                dismiss_on_select: true,
-                ..Default::default()
-            },
-            SelectionItem {
-                name: MEMORIES_ENABLE_NO.to_string(),
-                description: Some("Keep memories disabled.".to_string()),
-                dismiss_on_select: true,
-                ..Default::default()
-            },
-        ];
-
-        self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some(MEMORIES_ENABLE_TITLE.to_string()),
-            subtitle: Some("Memories are currently disabled in your config.".to_string()),
-            footer_note: Some(Line::from(vec![
-                "Learn more: ".dim(),
-                MEMORIES_DOC_URL.cl_cyan().underlined(),
-            ])),
-            footer_hint: Some(standard_popup_hint_line()),
-            items,
-            ..Default::default()
-        });
-    }
-
-    pub fn set_memory_settings(&mut self, use_memories: bool, generate_memories: bool) {
-        self.config.memories.use_memories = use_memories;
-        self.config.memories.generate_memories = generate_memories;
-    }
-
     pub fn set_auto_session_name(&mut self, enabled: bool) {
         self.config.auto_session_name = enabled;
     }
@@ -1353,13 +1290,6 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    pub fn add_memories_enable_notice(&mut self) {
-        self.add_to_history(history_cell::new_warning_event(
-            MEMORIES_ENABLE_NOTICE.to_string(),
-        ));
-        self.request_redraw();
-    }
-
     pub fn add_plain_history_lines(&mut self, lines: Vec<Line<'static>>) {
         self.add_boxed_history(Box::new(PlainHistoryCell::new(lines)));
         self.request_redraw();
@@ -1373,11 +1303,6 @@ impl ChatWidget {
     pub fn add_error_message(&mut self, message: String) {
         self.add_to_history(history_cell::new_error_event(message));
         self.request_redraw();
-    }
-
-    fn add_app_server_stub_message(&mut self, feature: &str) {
-        warn!(feature, "stubbed unsupported TUI feature");
-        self.add_error_message(format!("{feature}: {TUI_STUB_MESSAGE}"));
     }
 
     fn rename_confirmation_cell(name: &str, thread_id: Option<ThreadId>) -> PlainHistoryCell {
@@ -1692,7 +1617,6 @@ impl ChatWidget {
     pub fn sync_plugin_mentions_config(&mut self, config: &Config) {
         self.config.features = config.features.clone();
         self.config.config_layer_stack = config.config_layer_stack.clone();
-        self.config.memories = config.memories.clone();
         self.config.terminal_resize_reflow = config.terminal_resize_reflow;
         self.sync_mentions_v2_enabled();
     }

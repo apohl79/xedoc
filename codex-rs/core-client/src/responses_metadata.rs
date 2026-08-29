@@ -116,7 +116,6 @@ pub enum CodexResponsesRequestKind {
     Turn,
     Prewarm,
     Compaction(CompactionTurnMetadata),
-    Memory,
     SessionName,
 }
 
@@ -126,16 +125,12 @@ impl CodexResponsesRequestKind {
             CodexResponsesRequestKind::Turn => ("turn", None),
             CodexResponsesRequestKind::Prewarm => ("prewarm", None),
             CodexResponsesRequestKind::Compaction(metadata) => ("compaction", Some(metadata)),
-            CodexResponsesRequestKind::Memory => ("memory", None),
             CodexResponsesRequestKind::SessionName => ("session_name", None),
         }
     }
 
     fn has_turn_identity(self) -> bool {
-        !matches!(
-            self,
-            CodexResponsesRequestKind::Memory | CodexResponsesRequestKind::SessionName
-        )
+        !matches!(self, CodexResponsesRequestKind::SessionName)
     }
 }
 

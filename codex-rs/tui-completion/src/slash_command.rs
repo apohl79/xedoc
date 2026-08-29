@@ -20,7 +20,6 @@ pub enum SlashCommand {
     Experimental,
     #[strum(to_string = "approve")]
     AutoReview,
-    Memories,
     Skills,
     Hooks,
     Review,
@@ -61,11 +60,6 @@ pub enum SlashCommand {
     TestApproval,
     #[strum(serialize = "subagents")]
     MultiAgents,
-    // Debugging commands.
-    #[strum(serialize = "debug-m-drop")]
-    MemoryDrop,
-    #[strum(serialize = "debug-m-update")]
-    MemoryUpdate,
 }
 
 impl SlashCommand {
@@ -97,8 +91,6 @@ impl SlashCommand {
             SlashCommand::Theme => "choose a syntax highlighting theme",
             SlashCommand::Ps => "list background terminals",
             SlashCommand::Stop => "stop all background terminals",
-            SlashCommand::MemoryDrop => "DO NOT USE",
-            SlashCommand::MemoryUpdate => "DO NOT USE",
             SlashCommand::Model => "choose what model and reasoning effort to use",
             SlashCommand::Ide => {
                 "include current selection, open files, and other context from your IDE"
@@ -115,7 +107,6 @@ impl SlashCommand {
             SlashCommand::Vim => "toggle Vim mode for the composer",
             SlashCommand::Experimental => "toggle experimental features",
             SlashCommand::AutoReview => "approve one retry of a recent auto-review denial",
-            SlashCommand::Memories => "configure memory use and generation",
             SlashCommand::Mcp => "list configured MCP tools; use /mcp verbose for details",
             SlashCommand::Plugins => "browse plugins",
             SlashCommand::Logout => "log out of Codex",
@@ -173,13 +164,10 @@ impl SlashCommand {
             | SlashCommand::Keymap
             | SlashCommand::Vim
             | SlashCommand::Experimental
-            | SlashCommand::Memories
             | SlashCommand::Review
             | SlashCommand::Plan
             | SlashCommand::Clear
-            | SlashCommand::Logout
-            | SlashCommand::MemoryDrop
-            | SlashCommand::MemoryUpdate => false,
+            | SlashCommand::Logout => false,
             SlashCommand::Diff
             | SlashCommand::Resume
             | SlashCommand::Model

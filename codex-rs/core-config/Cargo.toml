@@ -27,7 +27,6 @@ codex-http-client = { workspace = true }
 codex-install-context = { workspace = true }
 codex-login = { workspace = true }
 codex-mcp = { workspace = true }
-codex-memories-read = { workspace = true }
 codex-model-provider-info = { workspace = true }
 codex-models-manager = { workspace = true }
 codex-network-proxy = { workspace = true }

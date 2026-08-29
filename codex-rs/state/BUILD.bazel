@@ -5,7 +5,6 @@ codex_rust_crate(
     compile_data = glob([
         "goals_migrations/**",
         "logs_migrations/**",
-        "memory_migrations/**",
         "migrations/**",
         "thread_history_migrations/**",
     ]),

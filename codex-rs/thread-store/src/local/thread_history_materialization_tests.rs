@@ -17,7 +17,6 @@ use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadHistoryMode;
-use codex_protocol::protocol::ThreadMemoryMode;
 use codex_protocol::protocol::TurnCompleteEvent;
 use codex_protocol::protocol::TurnStartedEvent;
 use codex_rollout::RolloutRecorder;
@@ -69,7 +68,6 @@ async fn paginated_live_append_materializes_turn_items_and_state() {
                             text: "done".to_string(),
                         }],
                         phase: None,
-                        memory_citation: None,
                     }),
                 ),
                 turn_completed("turn-1"),
@@ -943,7 +941,6 @@ async fn create_paginated_subagent_thread(
             metadata: ThreadPersistenceMetadata {
                 cwd: Some(std::env::current_dir().expect("cwd")),
                 model_provider: "test-provider".to_string(),
-                memory_mode: ThreadMemoryMode::Enabled,
             },
         })
         .await
@@ -988,7 +985,6 @@ fn agent_message(id: &str, phase: MessagePhase) -> TurnItem {
             text: id.to_string(),
         }],
         phase: Some(phase),
-        memory_citation: None,
     })
 }
 

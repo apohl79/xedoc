@@ -4167,11 +4167,6 @@ async fn attach_thread_persistence(session: &mut Session) -> PathBuf {
             metadata: ThreadPersistenceMetadata {
                 cwd: Some(config.cwd.to_path_buf()),
                 model_provider: config.model_provider_id.clone(),
-                memory_mode: if config.memories.generate_memories {
-                    ThreadMemoryMode::Enabled
-                } else {
-                    ThreadMemoryMode::Disabled
-                },
             },
         },
     )
@@ -7087,11 +7082,6 @@ async fn shutdown_complete_does_not_append_to_thread_store_after_shutdown() {
             metadata: ThreadPersistenceMetadata {
                 cwd: Some(config.cwd.to_path_buf()),
                 model_provider: config.model_provider_id.clone(),
-                memory_mode: if config.memories.generate_memories {
-                    ThreadMemoryMode::Enabled
-                } else {
-                    ThreadMemoryMode::Disabled
-                },
             },
         },
     )
@@ -7165,11 +7155,6 @@ async fn submission_loop_channel_close_runs_full_thread_teardown() {
             metadata: ThreadPersistenceMetadata {
                 cwd: Some(config.cwd.to_path_buf()),
                 model_provider: config.model_provider_id.clone(),
-                memory_mode: if config.memories.generate_memories {
-                    ThreadMemoryMode::Enabled
-                } else {
-                    ThreadMemoryMode::Disabled
-                },
             },
         },
     )
@@ -9398,11 +9383,6 @@ async fn attach_in_memory_thread_store(
             metadata: ThreadPersistenceMetadata {
                 cwd: Some(config.cwd.to_path_buf()),
                 model_provider: config.model_provider_id.clone(),
-                memory_mode: if config.memories.generate_memories {
-                    ThreadMemoryMode::Enabled
-                } else {
-                    ThreadMemoryMode::Disabled
-                },
             },
         },
     )

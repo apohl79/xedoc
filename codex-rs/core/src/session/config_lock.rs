@@ -3,7 +3,6 @@ use codex_config::config_toml::ConfigLockfileToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::OrchestratorFeatureToml;
 use codex_config::config_toml::OrchestratorToml;
-use codex_config::types::MemoriesToml;
 use codex_features::CurrentTimeReminderConfigToml;
 use codex_features::Feature;
 use codex_features::FeatureToml;
@@ -170,11 +169,6 @@ fn save_config_resolved_fields(
         current_time_reminder.enabled = Some(config.features.enabled(Feature::CurrentTimeReminder));
         features.current_time_reminder = Some(FeatureToml::Config(current_time_reminder));
     }
-    lock_config.memories = Some(resolved_config_to_toml::<MemoriesToml>(
-        &config.memories,
-        "memories",
-    )?);
-
     let agents = lock_config.agents.get_or_insert_with(Default::default);
     agents.enabled = Some(config.agents_enabled);
     agents.max_concurrent_threads_per_session = config.agent_max_threads;
@@ -290,7 +284,6 @@ mod tests {
                 .as_ref()
                 .is_none_or(|debug| debug.config_lockfile.is_none())
         );
-        assert!(lock.memories.is_some());
         let features = lock
             .features
             .as_ref()

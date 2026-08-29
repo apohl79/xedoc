@@ -421,24 +421,6 @@ fn build_ws_client_metadata_includes_window_lineage_and_turn_metadata() {
 }
 
 #[tokio::test]
-async fn summarize_memories_returns_empty_for_empty_input() {
-    let client = test_model_client(SessionSource::Cli);
-    let model_info = test_model_info();
-    let session_telemetry = test_session_telemetry();
-
-    let output = client
-        .summarize_memories(
-            Vec::new(),
-            &model_info,
-            /*effort*/ None,
-            &session_telemetry,
-        )
-        .await
-        .expect("empty summarize request should succeed");
-    assert_eq!(output.len(), 0);
-}
-
-#[tokio::test]
 async fn bedrock_unauthorized_error_uses_provider_mapping() {
     let provider = create_model_provider(
         ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None),

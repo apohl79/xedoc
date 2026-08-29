@@ -11,8 +11,6 @@ use codex_exec::Command as ExecCommand;
 use codex_exec::ReviewArgs;
 use codex_execpolicy::ExecPolicyCheckCommand;
 use codex_responses_api_proxy::Args as ResponsesApiProxyArgs;
-use codex_state::StateRuntime;
-use codex_state::memories_db_path;
 use codex_tui::AppExitInfo;
 use codex_tui::Cli as TuiCli;
 use codex_tui::ExitReason;
@@ -79,7 +77,6 @@ use codex_home::CodexHomeUserInstructionsProvider;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_login::read_codex_access_token_from_env;
-use codex_memories_write::clear_memory_roots_contents;
 use codex_models_manager::bundled_models_response;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_protocol::protocol::AskForApproval;
@@ -219,10 +216,6 @@ enum DebugSubcommand {
 
     /// Render the model-visible prompt input list as JSON.
     PromptInput(DebugPromptInputCommand),
-
-    /// Internal: reset local memory state for a fresh start.
-    #[clap(hide = true)]
-    ClearMemories,
 }
 
 #[derive(Debug, Parser)]
@@ -1405,14 +1398,6 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 )
                 .await?;
             }
-            DebugSubcommand::ClearMemories => {
-                reject_remote_mode_for_subcommand(
-                    root_remote.as_deref(),
-                    root_remote_auth_token_env.as_deref(),
-                    "debug clear-memories",
-                )?;
-                run_debug_clear_memories_command(&root_config_overrides).await?;
-            }
         },
         Some(Subcommand::Execpolicy(ExecpolicyCommand { sub })) => match sub {
             ExecpolicySubcommand::Check(cmd) => {
@@ -1869,38 +1854,6 @@ async fn run_debug_models_command(
 
     serde_json::to_writer(std::io::stdout(), &catalog)?;
     println!();
-    Ok(())
-}
-
-async fn run_debug_clear_memories_command(
-    root_config_overrides: &CliConfigOverrides,
-) -> anyhow::Result<()> {
-    let cli_kv_overrides = root_config_overrides
-        .parse_overrides()
-        .map_err(anyhow::Error::msg)?;
-    let config = ConfigBuilder::default()
-        .cli_overrides(cli_kv_overrides)
-        .build()
-        .await?;
-
-    let memories_path = memories_db_path(config.sqlite_home.as_path());
-    let cleared_memories_db =
-        StateRuntime::clear_memory_data_in_sqlite_home(config.sqlite_home.as_path()).await?;
-
-    clear_memory_roots_contents(&config.codex_home).await?;
-
-    let mut message = if cleared_memories_db {
-        format!("Cleared memory state from {}.", memories_path.display())
-    } else {
-        format!("No memories db found at {}.", memories_path.display())
-    };
-    message.push_str(&format!(
-        " Cleared memory directories under {}.",
-        config.codex_home.display()
-    ));
-
-    println!("{message}");
-
     Ok(())
 }
 

@@ -381,7 +381,6 @@ impl MessageProcessor {
             config_warnings,
         );
         let turn_processor = TurnRequestProcessor::new(
-            auth_manager.clone(),
             Arc::clone(&thread_manager),
             outgoing.clone(),
             analytics_events_client.clone(),
@@ -963,10 +962,6 @@ impl MessageProcessor {
                     .thread_settings_update(&request_id, params)
                     .await
             }
-            ClientRequest::ThreadMemoryModeSet { params, .. } => {
-                self.thread_processor.thread_memory_mode_set(params).await
-            }
-            ClientRequest::MemoryReset { .. } => self.thread_processor.memory_reset().await,
             ClientRequest::ThreadUnarchive { params, .. } => {
                 self.thread_processor
                     .thread_unarchive(request_id.clone(), params)

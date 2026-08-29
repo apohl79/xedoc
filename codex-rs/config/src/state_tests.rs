@@ -13,8 +13,8 @@ fn origins_use_canonical_key_aliases() {
         ConfigLayerSource::SessionFlags,
         toml::from_str(
             r#"
-[memories]
-no_memories_if_mcp_or_web_search = true
+[agents]
+max_threads = 4
 "#,
         )
         .expect("config TOML should parse"),
@@ -30,11 +30,11 @@ no_memories_if_mcp_or_web_search = true
     let origins = stack.origins();
 
     assert_eq!(
-        origins.get("memories.disable_on_external_context"),
+        origins.get("agents.max_concurrent_threads_per_session"),
         Some(&metadata)
     );
     assert!(
-        !origins.contains_key("memories.no_memories_if_mcp_or_web_search"),
+        !origins.contains_key("agents.max_threads"),
         "legacy key should be canonicalized before origin recording"
     );
 }

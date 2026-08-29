@@ -297,7 +297,6 @@ impl ThreadGoalRequestProcessor {
             /*builder*/ None,
             &[],
             /*archived_only*/ None,
-            /*new_thread_memory_mode*/ None,
         )
         .await;
         Ok(())

@@ -86,49 +86,8 @@ fn fixed_guardian_parent_session_id() -> ThreadId {
         .expect("fixed parent session id should be a valid UUID")
 }
 
-const GUARDIAN_MEMORY_CONTEXT_PROBE: &str = "guardian memory context probe";
 const GUARDIAN_SKILL_NAME: &str = "guardian-context-probe";
 const GUARDIAN_SKILL_BODY_PROBE: &str = "guardian skill body probe";
-
-// The memories extension depends on codex-core, so this probe verifies the nested Guardian config
-// at request assembly without introducing a circular test dependency.
-struct GuardianMemoryContextEnabled(bool);
-
-struct GuardianMemoryContextProbe;
-
-impl codex_extension_api::ThreadLifecycleContributor<Config> for GuardianMemoryContextProbe {
-    fn on_thread_start<'a>(
-        &'a self,
-        input: codex_extension_api::ThreadStartInput<'a, Config>,
-    ) -> codex_extension_api::ExtensionFuture<'a, ()> {
-        Box::pin(async move {
-            input.thread_store.insert(GuardianMemoryContextEnabled(
-                input.config.memories.use_memories,
-            ));
-        })
-    }
-}
-
-impl codex_extension_api::ContextContributor for GuardianMemoryContextProbe {
-    fn contribute_thread_context<'a>(
-        &'a self,
-        _session_store: &'a codex_extension_api::ExtensionData,
-        thread_store: &'a codex_extension_api::ExtensionData,
-    ) -> codex_extension_api::ExtensionFuture<'a, Vec<codex_extension_api::PromptFragment>> {
-        Box::pin(async move {
-            if thread_store
-                .get::<GuardianMemoryContextEnabled>()
-                .is_some_and(|enabled| enabled.0)
-            {
-                vec![codex_extension_api::PromptFragment::developer_policy(
-                    GUARDIAN_MEMORY_CONTEXT_PROBE,
-                )]
-            } else {
-                Vec::new()
-            }
-        })
-    }
-}
 
 #[test]
 fn guardian_rejection_circuit_breaker_interrupts_after_three_consecutive_denials() {
@@ -1653,11 +1612,6 @@ async fn guardian_review_request_layout_matches_model_visible_request_snapshot()
     let mut config = (*turn.config).clone();
     config.cwd = temp_cwd.abs();
     config.model_provider.base_url = Some(format!("{}/v1", server.uri()));
-    config.memories.use_memories = true;
-    config
-        .features
-        .enable(Feature::MemoryTool)
-        .expect("memory tool feature is configurable");
     let config = Arc::new(config);
     let models_manager = test_support::models_manager_with_provider(
         config.codex_home.to_path_buf(),
@@ -1665,11 +1619,6 @@ async fn guardian_review_request_layout_matches_model_visible_request_snapshot()
         config.model_provider.clone(),
     );
     session.services.models_manager = models_manager;
-    let memory_extension = Arc::new(GuardianMemoryContextProbe);
-    let mut extensions = codex_extension_api::ExtensionRegistryBuilder::<Config>::new();
-    extensions.thread_lifecycle_contributor(memory_extension.clone());
-    extensions.prompt_contributor(memory_extension);
-    session.services.extensions = Arc::new(extensions.build());
 
     let skill_dir = config
         .codex_home
@@ -1764,10 +1713,6 @@ async fn guardian_review_request_layout_matches_model_visible_request_snapshot()
     assert!(
         !request.body_contains_text(GUARDIAN_SKILL_BODY_PROBE),
         "guardian request should not inject a skill body from its generated review prompt"
-    );
-    assert!(
-        !request.body_contains_text(GUARDIAN_MEMORY_CONTEXT_PROBE),
-        "guardian request should not include memory context"
     );
     assert_eq!(
         request_body.pointer("/text/format/strict"),
@@ -3020,7 +2965,7 @@ async fn guardian_review_session_config_uses_live_network_proxy_state() {
 }
 
 #[tokio::test]
-async fn guardian_review_session_config_disables_mcp_plugins_and_memories() {
+async fn guardian_review_session_config_disables_mcp_plugins() {
     let mut parent_config = test_config().await;
     let server: McpServerConfig =
         toml::from_str("command = \"docs-server\"").expect("deserialize MCP server");
@@ -3032,8 +2977,6 @@ async fn guardian_review_session_config_disables_mcp_plugins_and_memories() {
         .features
         .enable(Feature::Plugins)
         .expect("plugins feature is configurable");
-    parent_config.memories.use_memories = true;
-    parent_config.memories.dedicated_tools = true;
 
     let guardian_config = build_guardian_review_session_config_for_test(
         &parent_config,
@@ -3046,8 +2989,6 @@ async fn guardian_review_session_config_disables_mcp_plugins_and_memories() {
 
     assert!(guardian_config.mcp_servers.get().is_empty());
     assert!(!guardian_config.features.enabled(Feature::Plugins));
-    assert!(!guardian_config.memories.use_memories);
-    assert!(!guardian_config.memories.dedicated_tools);
 }
 
 #[tokio::test]

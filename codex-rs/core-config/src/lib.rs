@@ -36,8 +36,4 @@ impl codex_rollout::RolloutConfigView for config::Config {
     fn model_provider_id(&self) -> &str {
         self.model_provider_id.as_str()
     }
-
-    fn generate_memories(&self) -> bool {
-        self.memories.generate_memories
-    }
 }

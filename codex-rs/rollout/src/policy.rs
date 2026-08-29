@@ -58,30 +58,6 @@ pub fn should_persist_response_item(item: &ResponseItem) -> bool {
     }
 }
 
-/// Whether a `ResponseItem` should be persisted for the memories.
-#[inline]
-pub fn should_persist_response_item_for_memories(item: &ResponseItem) -> bool {
-    match item {
-        ResponseItem::Message { role, .. } => role != "developer",
-        ResponseItem::AgentMessage { .. }
-        | ResponseItem::LocalShellCall { .. }
-        | ResponseItem::FunctionCall { .. }
-        | ResponseItem::ToolSearchCall { .. }
-        | ResponseItem::FunctionCallOutput { .. }
-        | ResponseItem::ToolSearchOutput { .. }
-        | ResponseItem::CustomToolCall { .. }
-        | ResponseItem::CustomToolCallOutput { .. }
-        | ResponseItem::WebSearchCall { .. } => true,
-        ResponseItem::AdditionalTools { .. }
-        | ResponseItem::Reasoning { .. }
-        | ResponseItem::ImageGenerationCall { .. }
-        | ResponseItem::Compaction { .. }
-        | ResponseItem::CompactionTrigger { .. }
-        | ResponseItem::ContextCompaction { .. }
-        | ResponseItem::Other => false,
-    }
-}
-
 /// Whether an `EventMsg` should be persisted in rollout files.
 #[inline]
 pub fn should_persist_event_msg(ev: &EventMsg, history_mode: ThreadHistoryMode) -> bool {

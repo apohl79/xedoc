@@ -2253,7 +2253,6 @@ async fn thread_resume_token_usage_replay_ignores_stale_interrupted_tail_turn() 
             "payload": serde_json::to_value(EventMsg::AgentMessage(AgentMessageEvent {
                 message: "Still running".to_string(),
                 phase: None,
-                memory_citation: None,
             }))?,
         })
         .to_string(),
@@ -2344,7 +2343,6 @@ async fn thread_resume_token_usage_replay_can_belong_to_interrupted_turn() -> Re
             "payload": serde_json::to_value(EventMsg::AgentMessage(AgentMessageEvent {
                 message: "Interrupted after usage".to_string(),
                 phase: None,
-                memory_citation: None,
             }))?,
         })
         .to_string(),
@@ -2545,7 +2543,6 @@ stream_max_retries = 0
         base_instructions: None,
         dynamic_tools: None,
         selected_capability_roots: Vec::new(),
-        memory_mode: None,
         history_mode: Default::default(),
         history_base: None,
         subagent_history_start_ordinal: None,
@@ -2680,7 +2677,6 @@ async fn thread_resume_and_read_interrupt_incomplete_rollout_turn_when_thread_is
             "payload": serde_json::to_value(EventMsg::AgentMessage(AgentMessageEvent {
                 message: "Still running".to_string(),
                 phase: None,
-                memory_citation: None,
             }))?,
         })
         .to_string(),

@@ -51,7 +51,6 @@ async fn extract_metadata_from_rollout_uses_session_meta() {
         base_instructions: None,
         dynamic_tools: None,
         selected_capability_roots: Vec::new(),
-        memory_mode: None,
         history_mode: ThreadHistoryMode::Paginated,
         history_base: None,
         subagent_history_start_ordinal: None,
@@ -82,7 +81,6 @@ async fn extract_metadata_from_rollout_uses_session_meta() {
     expected.recency_at = expected.updated_at;
 
     assert_eq!(outcome.metadata, expected);
-    assert_eq!(outcome.memory_mode, None);
     assert_eq!(outcome.parse_errors, 0);
 }
 
@@ -120,80 +118,6 @@ async fn extract_metadata_from_rollout_rejects_unknown_history_mode() {
             .await
             .is_err()
     );
-}
-
-#[tokio::test]
-async fn extract_metadata_from_rollout_returns_latest_memory_mode() {
-    let dir = tempdir().expect("tempdir");
-    let uuid = Uuid::new_v4();
-    let id = ThreadId::from_string(&uuid.to_string()).expect("thread id");
-    let path = dir
-        .path()
-        .join(format!("rollout-2026-01-27T12-34-56-{uuid}.jsonl"));
-
-    let session_meta = SessionMeta {
-        session_id: id.into(),
-        id,
-        forked_from_id: None,
-        parent_thread_id: None,
-        timestamp: "2026-01-27T12:34:56Z".to_string(),
-        cwd: dir.path().to_path_buf(),
-        originator: "cli".to_string(),
-        cli_version: "0.0.0".to_string(),
-        source: SessionSource::default(),
-        thread_source: None,
-        agent_path: None,
-        agent_nickname: None,
-        agent_role: None,
-        model_provider: Some("openai".to_string()),
-        base_instructions: None,
-        dynamic_tools: None,
-        selected_capability_roots: Vec::new(),
-        memory_mode: None,
-        history_mode: Default::default(),
-        history_base: None,
-        subagent_history_start_ordinal: None,
-        multi_agent_version: None,
-        context_window: None,
-    };
-    let polluted_meta = SessionMeta {
-        memory_mode: Some("polluted".to_string()),
-        multi_agent_version: None,
-        ..session_meta.clone()
-    };
-    let lines = vec![
-        RolloutLine {
-            timestamp: "2026-01-27T12:34:56Z".to_string(),
-            ordinal: None,
-            item: RolloutItem::SessionMeta(SessionMetaLine {
-                meta: session_meta,
-                git: None,
-            }),
-        },
-        RolloutLine {
-            timestamp: "2026-01-27T12:35:00Z".to_string(),
-            ordinal: None,
-            item: RolloutItem::SessionMeta(SessionMetaLine {
-                meta: polluted_meta,
-                git: None,
-            }),
-        },
-    ];
-    let mut file = File::create(&path).expect("create rollout");
-    for line in lines {
-        writeln!(
-            file,
-            "{}",
-            serde_json::to_string(&line).expect("serialize rollout line")
-        )
-        .expect("write rollout line");
-    }
-
-    let outcome = extract_metadata_from_rollout(&path, "openai")
-        .await
-        .expect("extract");
-
-    assert_eq!(outcome.memory_mode.as_deref(), Some("polluted"));
 }
 
 #[test]
@@ -346,52 +270,6 @@ async fn backfill_sessions_preserves_existing_git_branch_and_fills_missing_git_f
 }
 
 #[tokio::test]
-async fn backfill_sessions_preserves_existing_paginated_memory_mode() {
-    let dir = tempdir().expect("tempdir");
-    let codex_home = dir.path().to_path_buf();
-    let thread_uuid = Uuid::new_v4();
-    let rollout_path = write_rollout_in_sessions_with_cwd(
-        codex_home.as_path(),
-        "2026-01-27T12-34-56",
-        "2026-01-27T12:34:56Z",
-        thread_uuid,
-        codex_home.clone(),
-        /*git*/ None,
-        ThreadHistoryMode::Paginated,
-    );
-
-    let runtime = codex_state::StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-        .await
-        .expect("initialize runtime");
-    let thread_id = ThreadId::from_string(&thread_uuid.to_string()).expect("thread id");
-    let existing = extract_metadata_from_rollout(&rollout_path, "test-provider")
-        .await
-        .expect("extract")
-        .metadata;
-    runtime
-        .upsert_thread(&existing)
-        .await
-        .expect("existing metadata upsert");
-    assert!(
-        runtime
-            .set_thread_memory_mode(thread_id, "disabled")
-            .await
-            .expect("disable memory mode")
-    );
-
-    backfill_sessions(runtime.as_ref(), codex_home.as_path(), "test-provider").await;
-
-    assert_eq!(
-        runtime
-            .get_thread_memory_mode(thread_id)
-            .await
-            .expect("get memory mode")
-            .as_deref(),
-        Some("disabled")
-    );
-}
-
-#[tokio::test]
 async fn backfill_sessions_normalizes_cwd_before_upsert() {
     let dir = tempdir().expect("tempdir");
     let codex_home = dir.path().to_path_buf();
@@ -473,7 +351,6 @@ fn write_rollout_in_sessions_with_cwd(
         base_instructions: None,
         dynamic_tools: None,
         selected_capability_roots: Vec::new(),
-        memory_mode: None,
         history_mode,
         history_base: None,
         subagent_history_start_ordinal: None,

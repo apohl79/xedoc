@@ -1091,23 +1091,9 @@ impl App {
             AppEvent::UpdateFeatureFlags { updates } => {
                 self.update_feature_flags(app_server, updates).await;
             }
-            AppEvent::UpdateMemorySettings {
-                use_memories,
-                generate_memories,
-            } => {
-                self.update_memory_settings_with_app_server(
-                    app_server,
-                    use_memories,
-                    generate_memories,
-                )
-                .await;
-            }
             AppEvent::UpdateAutoSessionNameSetting { enabled } => {
                 self.update_auto_session_name_setting_with_app_server(app_server, enabled)
                     .await;
-            }
-            AppEvent::ResetMemories => {
-                self.reset_memories_with_app_server(app_server).await;
             }
             AppEvent::UpdateRateLimitSwitchPromptHidden(hidden) => {
                 self.chat_widget.set_rate_limit_switch_prompt_hidden(hidden);

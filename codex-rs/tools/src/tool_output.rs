@@ -18,12 +18,6 @@ pub trait ToolOutput: Send {
 
     fn success_for_logging(&self) -> bool;
 
-    /// Whether this output contains external context that should disable memory generation when
-    /// `memories.disable_on_external_context` is enabled.
-    fn contains_external_context(&self) -> bool {
-        false
-    }
-
     fn to_response_item(&self, call_id: &str, payload: &ToolPayload) -> ResponseInputItem;
 
     /// Returns the tool call id exposed to `PostToolUse` hooks for this output.
@@ -64,10 +58,6 @@ where
         (**self).success_for_logging()
     }
 
-    fn contains_external_context(&self) -> bool {
-        (**self).contains_external_context()
-    }
-
     fn to_response_item(&self, call_id: &str, payload: &ToolPayload) -> ResponseInputItem {
         (**self).to_response_item(call_id, payload)
     }
@@ -93,7 +83,6 @@ where
 pub struct JsonToolOutput {
     value: JsonValue,
     success: Option<bool>,
-    contains_external_context: bool,
 }
 
 impl JsonToolOutput {
@@ -101,21 +90,11 @@ impl JsonToolOutput {
         Self {
             value,
             success: Some(true),
-            contains_external_context: false,
         }
     }
 
     pub fn with_success(value: JsonValue, success: Option<bool>) -> Self {
-        Self {
-            value,
-            success,
-            contains_external_context: false,
-        }
-    }
-
-    pub fn with_external_context(mut self) -> Self {
-        self.contains_external_context = true;
-        self
+        Self { value, success }
     }
 }
 
@@ -126,10 +105,6 @@ impl ToolOutput for JsonToolOutput {
 
     fn success_for_logging(&self) -> bool {
         self.success.unwrap_or(true)
-    }
-
-    fn contains_external_context(&self) -> bool {
-        self.contains_external_context
     }
 
     fn to_response_item(&self, call_id: &str, payload: &ToolPayload) -> ResponseInputItem {

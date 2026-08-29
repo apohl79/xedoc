@@ -128,7 +128,7 @@ stream_max_retries = 0
     std::fs::write(
         project_config_dir.join("config.toml"),
         r#"[features]
-memories = true
+mentions_v2 = true
 "#,
     )?;
 
@@ -157,12 +157,12 @@ memories = true
         .await?;
 
     let actual = read_response::<ExperimentalFeatureListResponse>(&mut mcp, request_id).await?;
-    let memories = actual
+    let mentions_v2 = actual
         .data
         .iter()
-        .find(|feature| feature.name == "memories")
-        .expect("memories feature should be present");
-    assert!(memories.enabled);
+        .find(|feature| feature.name == "mentions_v2")
+        .expect("mentions_v2 feature should be present");
+    assert!(mentions_v2.enabled);
 
     Ok(())
 }
@@ -248,7 +248,7 @@ async fn experimental_feature_enablement_set_does_not_override_user_config() -> 
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join("config.toml"),
-        "[features]\nmemories = false\n",
+        "[features]\nauth_elicitation = false\n",
     )?;
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
@@ -259,13 +259,13 @@ async fn experimental_feature_enablement_set_does_not_override_user_config() -> 
 
     let actual = set_experimental_feature_enablement(
         &mut mcp,
-        BTreeMap::from([("memories".to_string(), true)]),
+        BTreeMap::from([("auth_elicitation".to_string(), true)]),
     )
     .await?;
     assert_eq!(
         actual,
         ExperimentalFeatureEnablementSetResponse {
-            enablement: BTreeMap::from([("memories".to_string(), true)]),
+            enablement: BTreeMap::from([("auth_elicitation".to_string(), true)]),
         }
     );
 
@@ -275,7 +275,7 @@ async fn experimental_feature_enablement_set_does_not_override_user_config() -> 
         config
             .additional
             .get("features")
-            .and_then(|features| features.get("memories")),
+            .and_then(|features| features.get("auth_elicitation")),
         Some(&json!(false))
     );
 
@@ -301,7 +301,6 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
         &mut mcp,
         BTreeMap::from([
             ("auth_elicitation".to_string(), true),
-            ("memories".to_string(), true),
             ("remote_plugin".to_string(), true),
             ("tool_suggest".to_string(), false),
         ]),
@@ -313,7 +312,6 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
         ExperimentalFeatureEnablementSetResponse {
             enablement: BTreeMap::from([
                 ("auth_elicitation".to_string(), true),
-                ("memories".to_string(), true),
                 ("remote_plugin".to_string(), true),
                 ("tool_suggest".to_string(), false),
             ]),
@@ -334,13 +332,6 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
             .additional
             .get("features")
             .and_then(|features| features.get("auth_elicitation")),
-        Some(&json!(true))
-    );
-    assert_eq!(
-        config
-            .additional
-            .get("features")
-            .and_then(|features| features.get("memories")),
         Some(&json!(true))
     );
     assert_eq!(

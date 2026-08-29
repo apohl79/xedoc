@@ -110,7 +110,7 @@ impl LiveWriterLocks {
 /// Process-scoped configuration for local thread storage.
 ///
 /// This describes where local storage lives. New-thread rollout metadata such
-/// as cwd, provider, and memory mode is supplied when live persistence is opened.
+/// as cwd and provider is supplied when live persistence is opened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalThreadStoreConfig {
     pub codex_home: PathBuf,
@@ -423,7 +423,6 @@ mod tests {
     use codex_protocol::protocol::SandboxPolicy;
     use codex_protocol::protocol::SessionSource;
     use codex_protocol::protocol::ThreadHistoryMode;
-    use codex_protocol::protocol::ThreadMemoryMode;
     use codex_protocol::protocol::TurnCompleteEvent;
     use codex_protocol::protocol::TurnContextItem;
     use codex_protocol::protocol::TurnStartedEvent;
@@ -679,7 +678,6 @@ mod tests {
                 RolloutItem::EventMsg(EventMsg::AgentMessage(AgentMessageEvent {
                     message: "commentary".to_string(),
                     phase: Some(MessagePhase::Commentary),
-                    memory_citation: None,
                 })),
                 RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
                     id: None,
@@ -754,46 +752,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn live_thread_memory_mode_update_before_rollout_materializes_keeps_history_mode() {
-        let home = TempDir::new().expect("temp dir");
-        let config = test_config(home.path());
-        let runtime = codex_state::StateRuntime::init(
-            config.sqlite_home.clone(),
-            config.default_model_provider_id.clone(),
-        )
-        .await
-        .expect("state db should initialize");
-        let store = Arc::new(LocalThreadStore::new(config, Some(runtime.clone())));
-        let thread_id = ThreadId::default();
-        let live_thread = LiveThread::create(store.clone(), create_thread_params(thread_id))
-            .await
-            .expect("create live thread");
-
-        live_thread
-            .update_memory_mode(ThreadMemoryMode::Disabled, /*include_archived*/ false)
-            .await
-            .expect("update memory mode");
-
-        assert_eq!(
-            runtime
-                .get_thread(thread_id)
-                .await
-                .expect("sqlite metadata read")
-                .expect("sqlite metadata")
-                .history_mode,
-            ThreadHistoryMode::Legacy
-        );
-        assert_eq!(
-            runtime
-                .get_thread_memory_mode(thread_id)
-                .await
-                .expect("thread memory mode should be readable")
-                .as_deref(),
-            Some("disabled")
-        );
-    }
-
-    #[tokio::test]
     async fn live_thread_shutdown_with_buffered_items_materializes_before_metadata_read() {
         let home = TempDir::new().expect("temp dir");
         let config = test_config(home.path());
@@ -864,7 +822,6 @@ mod tests {
                 metadata: ThreadPersistenceMetadata {
                     cwd: Some(home.path().to_path_buf()),
                     model_provider: "different-provider".to_string(),
-                    memory_mode: ThreadMemoryMode::Enabled,
                 },
             },
         )
@@ -919,7 +876,6 @@ mod tests {
                 metadata: ThreadPersistenceMetadata {
                     cwd: Some(home.path().to_path_buf()),
                     model_provider: "different-provider".to_string(),
-                    memory_mode: ThreadMemoryMode::Enabled,
                 },
             },
         )
@@ -1130,7 +1086,6 @@ mod tests {
                 metadata: ThreadPersistenceMetadata {
                     cwd: None,
                     model_provider: "test-provider".to_string(),
-                    memory_mode: ThreadMemoryMode::Enabled,
                 },
             })
             .await
@@ -1506,7 +1461,6 @@ mod tests {
         ThreadPersistenceMetadata {
             cwd: Some(std::env::current_dir().expect("cwd")),
             model_provider: "test-provider".to_string(),
-            memory_mode: ThreadMemoryMode::Enabled,
         }
     }
 

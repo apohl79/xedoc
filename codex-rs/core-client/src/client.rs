@@ -36,11 +36,7 @@ use codex_api::AuthProvider;
 use codex_api::CompactClient as ApiCompactClient;
 use codex_api::CompactionInput as ApiCompactionInput;
 use codex_api::Compression;
-use codex_api::MemoriesClient as ApiMemoriesClient;
-use codex_api::MemorySummarizeInput as ApiMemorySummarizeInput;
-use codex_api::MemorySummarizeOutput as ApiMemorySummarizeOutput;
 use codex_api::Provider as ApiProvider;
-use codex_api::RawMemory as ApiRawMemory;
 use codex_api::RealtimeCallClient as ApiRealtimeCallClient;
 use codex_api::RealtimeSessionConfig as ApiRealtimeSessionConfig;
 use codex_api::Reasoning;
@@ -147,7 +143,6 @@ const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 // `/responses/compact` is unary, so the timeout covers the full response rather than one idle
 // period between stream events.
 const COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER: u32 = 4;
-const MEMORIES_SUMMARIZE_ENDPOINT: &str = "/memories/trace_summarize";
 #[doc(hidden)]
 pub const WEBSOCKET_CONNECT_TIMEOUT: Duration =
     Duration::from_millis(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);
@@ -630,57 +625,6 @@ impl ModelClient {
             call_id: response.call_id,
             sideband_headers,
         })
-    }
-
-    /// Builds memory summaries for each provided normalized raw memory.
-    ///
-    /// This is a unary call (no streaming) to `/v1/memories/trace_summarize`.
-    ///
-    /// The model selection, reasoning effort, and telemetry context are passed explicitly to keep
-    /// `ModelClient` session-scoped.
-    pub async fn summarize_memories(
-        &self,
-        raw_memories: Vec<ApiRawMemory>,
-        model_info: &ModelInfo,
-        effort: Option<ReasoningEffortConfig>,
-        session_telemetry: &SessionTelemetry,
-    ) -> Result<Vec<ApiMemorySummarizeOutput>> {
-        if raw_memories.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let client_setup = self.current_client_setup().await?;
-        let transport =
-            self.build_api_transport(&client_setup.api_provider, MEMORIES_SUMMARIZE_ENDPOINT)?;
-        let request_telemetry = Self::build_request_telemetry(
-            session_telemetry,
-            AuthRequestTelemetryContext::new(
-                client_setup.api_auth.as_ref(),
-                client_setup.agent_identity_telemetry.clone(),
-                PendingUnauthorizedRetry::default(),
-            ),
-            RequestRouteTelemetry::for_endpoint(MEMORIES_SUMMARIZE_ENDPOINT),
-        );
-        let client =
-            ApiMemoriesClient::new(transport, client_setup.api_provider, client_setup.api_auth)
-                .with_telemetry(Some(request_telemetry));
-
-        let payload = ApiMemorySummarizeInput {
-            model: model_info.slug.clone(),
-            raw_memories,
-            reasoning: effort
-                .map(reasoning_effort_for_request)
-                .map(|effort| Reasoning {
-                    effort: Some(effort),
-                    summary: None,
-                    context: None,
-                }),
-        };
-
-        client
-            .summarize_input(&payload, self.build_subagent_headers())
-            .await
-            .map_err(|error| self.state.provider.map_api_error(error))
     }
 
     fn build_subagent_headers(&self) -> ApiHeaderMap {

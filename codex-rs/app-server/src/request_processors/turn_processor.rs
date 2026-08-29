@@ -4,7 +4,6 @@ use codex_agent_extension::AgentRun;
 use codex_agent_extension::AgentRunner;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
-use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AdditionalContextEntry as CoreAdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind as CoreAdditionalContextKind;
 use codex_protocol::protocol::MultiAgentVersion;
@@ -85,7 +84,6 @@ fn validate_response_item_image_urls(items: &[ResponseItem]) -> Result<(), JSONR
 #[derive(Clone)]
 pub(crate) struct TurnRequestProcessor {
     agent_runner: AgentRunner,
-    auth_manager: Arc<AuthManager>,
     thread_manager: Arc<ThreadManager>,
     outgoing: Arc<OutgoingMessageSender>,
     analytics_events_client: AnalyticsEventsClient,
@@ -141,7 +139,6 @@ struct ThreadSettingsBuildParams {
 impl TurnRequestProcessor {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        auth_manager: Arc<AuthManager>,
         thread_manager: Arc<ThreadManager>,
         outgoing: Arc<OutgoingMessageSender>,
         analytics_events_client: AnalyticsEventsClient,
@@ -157,7 +154,6 @@ impl TurnRequestProcessor {
         let agent_runner = AgentRunner::new(Arc::downgrade(&thread_manager));
         Self {
             agent_runner,
-            auth_manager,
             thread_manager,
             outgoing,
             analytics_events_client,
@@ -489,12 +485,12 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<TurnStartResponse, JSONRPCErrorError> {
-        let (thread_id, thread) =
-            self.load_thread(&params.thread_id)
-                .await
-                .inspect_err(|error| {
-                    self.track_error_response(&request_id, error, /*error_type*/ None);
-                })?;
+        let (_, thread) = self
+            .load_thread(&params.thread_id)
+            .await
+            .inspect_err(|error| {
+                self.track_error_response(&request_id, error, /*error_type*/ None);
+            })?;
         self.ensure_direct_input_allowed(&request_id, thread.as_ref())
             .await?;
         if let Err(error) = Self::validate_v2_input_limit(&params.input) {
@@ -537,7 +533,6 @@ impl TurnRequestProcessor {
             .collect();
         let client_user_message_id = params.client_user_message_id;
         let additional_context = map_additional_context(params.additional_context);
-        let turn_has_input = !mapped_items.is_empty();
         let cwd = resolve_request_cwd(params.cwd)?;
         let environments = self
             .build_environment_override(
@@ -567,14 +562,6 @@ impl TurnRequestProcessor {
                 },
             )
             .await?;
-        let parent_permission_profile_override =
-            thread_settings.permission_profile.clone().or_else(|| {
-                thread_settings
-                    .sandbox_policy
-                    .as_ref()
-                    .map(PermissionProfile::from_legacy_sandbox_policy)
-            });
-
         // Start the turn by submitting the user input. Return its submission id as turn_id.
         let turn_op = Op::UserInput {
             items: mapped_items,
@@ -595,21 +582,6 @@ impl TurnRequestProcessor {
                 self.track_error_response(&request_id, &error, /*error_type*/ None);
                 error
             })?;
-
-        if turn_has_input {
-            let config_snapshot = thread.config_snapshot().await;
-            let parent_permission_profile =
-                parent_permission_profile_override.unwrap_or(config_snapshot.permission_profile);
-            codex_memories_write::start_memories_startup_task(
-                Arc::clone(&self.thread_manager),
-                Arc::clone(&self.auth_manager),
-                thread_id,
-                Arc::clone(&thread),
-                thread.config().await,
-                parent_permission_profile,
-                &config_snapshot.session_source,
-            );
-        }
 
         self.outgoing
             .record_request_turn_id(&request_id, &turn_id)

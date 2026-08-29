@@ -3,7 +3,6 @@ use crate::LOGS_DB_FILENAME;
 use crate::LogEntry;
 use crate::LogQuery;
 use crate::LogRow;
-use crate::MEMORIES_DB_FILENAME;
 use crate::STATE_DB_FILENAME;
 use crate::SortKey;
 use crate::SqliteConfig;
@@ -15,7 +14,6 @@ use crate::apply_rollout_item;
 use crate::migrations::repair_legacy_state_migration_versions;
 use crate::migrations::runtime_goals_migrator;
 use crate::migrations::runtime_logs_migrator;
-use crate::migrations::runtime_memories_migrator;
 use crate::migrations::runtime_state_migrator;
 use crate::migrations::runtime_thread_history_migrator;
 use crate::model::ThreadRow;
@@ -49,7 +47,6 @@ use tracing::warn;
 mod backfill;
 mod goals;
 mod logs;
-mod memories;
 mod recovery;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -59,7 +56,6 @@ pub use goals::GoalAccountingMode;
 pub use goals::GoalAccountingOutcome;
 pub use goals::GoalStore;
 pub use goals::GoalUpdate;
-pub use memories::MemoryStore;
 pub use recovery::RuntimeDbBackup;
 pub use recovery::backup_runtime_db_for_fresh_start;
 pub use recovery::is_sqlite_corruption_error;
@@ -116,14 +112,6 @@ const GOALS_DB: RuntimeDbSpec = RuntimeDbSpec {
     migrate_phase: "migrate_goals",
 };
 
-const MEMORIES_DB: RuntimeDbSpec = RuntimeDbSpec {
-    label: "memories DB",
-    filename: MEMORIES_DB_FILENAME,
-    kind: DbKind::Memories,
-    open_phase: "open_memories",
-    migrate_phase: "migrate_memories",
-};
-
 const THREAD_HISTORY_DB: RuntimeDbSpec = RuntimeDbSpec {
     label: "thread history DB",
     filename: THREAD_HISTORY_DB_FILENAME,
@@ -132,8 +120,7 @@ const THREAD_HISTORY_DB: RuntimeDbSpec = RuntimeDbSpec {
     migrate_phase: "migrate_thread_history",
 };
 
-const RUNTIME_DBS: [RuntimeDbSpec; 5] =
-    [STATE_DB, LOGS_DB, GOALS_DB, MEMORIES_DB, THREAD_HISTORY_DB];
+const RUNTIME_DBS: [RuntimeDbSpec; 4] = [STATE_DB, LOGS_DB, GOALS_DB, THREAD_HISTORY_DB];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeDbPath {
@@ -148,7 +135,6 @@ pub struct StateRuntime {
     pool: Arc<sqlx::SqlitePool>,
     logs_pool: Arc<sqlx::SqlitePool>,
     thread_goals: GoalStore,
-    memories: MemoryStore,
     thread_updated_at_millis: Arc<AtomicI64>,
     thread_recency_at_millis: Arc<AtomicI64>,
 }
@@ -187,11 +173,9 @@ impl StateRuntime {
         let state_migrator = runtime_state_migrator();
         let logs_migrator = runtime_logs_migrator();
         let goals_migrator = runtime_goals_migrator();
-        let memories_migrator = runtime_memories_migrator();
         let state_path = STATE_DB.path(codex_home.as_path());
         let logs_path = LOGS_DB.path(codex_home.as_path());
         let goals_path = GOALS_DB.path(codex_home.as_path());
-        let memories_path = MEMORIES_DB.path(codex_home.as_path());
         let pool = match open_state_sqlite(
             &sqlite,
             &state_path,
@@ -230,24 +214,6 @@ impl StateRuntime {
                 return Err(err);
             }
         };
-        let memories_pool = match open_memories_sqlite(
-            &sqlite,
-            &memories_path,
-            &memories_migrator,
-            telemetry_override,
-        )
-        .await
-        {
-            Ok(db) => Arc::new(db),
-            Err(err) => {
-                warn!(
-                    "failed to open memories db at {}: {err}",
-                    memories_path.display()
-                );
-                close_sqlite_pools(&[pool.as_ref(), logs_pool.as_ref(), goals_pool.as_ref()]).await;
-                return Err(err);
-            }
-        };
         let started = Instant::now();
         let backfill_state_result = ensure_backfill_state_row_in_pool(pool.as_ref()).await;
         crate::telemetry::record_init_result(
@@ -258,13 +224,7 @@ impl StateRuntime {
             &backfill_state_result,
         );
         if let Err(err) = backfill_state_result {
-            close_sqlite_pools(&[
-                pool.as_ref(),
-                logs_pool.as_ref(),
-                goals_pool.as_ref(),
-                memories_pool.as_ref(),
-            ])
-            .await;
+            close_sqlite_pools(&[pool.as_ref(), logs_pool.as_ref(), goals_pool.as_ref()]).await;
             return Err(err);
         }
         let started = Instant::now();
@@ -286,13 +246,8 @@ impl StateRuntime {
             match thread_timestamp_millis_result {
                 Ok(value) => value,
                 Err(err) => {
-                    close_sqlite_pools(&[
-                        pool.as_ref(),
-                        logs_pool.as_ref(),
-                        goals_pool.as_ref(),
-                        memories_pool.as_ref(),
-                    ])
-                    .await;
+                    close_sqlite_pools(&[pool.as_ref(), logs_pool.as_ref(), goals_pool.as_ref()])
+                        .await;
                     return Err(err);
                 }
             };
@@ -300,7 +255,6 @@ impl StateRuntime {
         let thread_recency_at_millis = thread_recency_at_millis.unwrap_or(0);
         let runtime = Arc::new(Self {
             thread_goals: GoalStore::new(Arc::clone(&goals_pool)),
-            memories: MemoryStore::new(Arc::clone(&memories_pool), Arc::clone(&pool)),
             pool,
             logs_pool,
             codex_home,
@@ -326,36 +280,11 @@ impl StateRuntime {
         &self.thread_goals
     }
 
-    pub fn memories(&self) -> &MemoryStore {
-        &self.memories
-    }
-
     /// Close all SQLite pools and wait for outstanding pool workers to exit.
     pub async fn close(&self) {
-        self.memories.close().await;
         self.thread_goals.close().await;
         self.logs_pool.close().await;
         self.pool.close().await;
-    }
-
-    pub async fn clear_memory_data_in_sqlite_home(sqlite_home: &Path) -> anyhow::Result<bool> {
-        let sqlite = SqliteConfig::from_sqlite_home(AbsolutePathBuf::try_from(sqlite_home)?);
-        let memories_path = MEMORIES_DB.path(sqlite_home);
-        if !tokio::fs::try_exists(&memories_path).await? {
-            return Ok(false);
-        }
-
-        let memories_migrator = runtime_memories_migrator();
-        let pool = open_memories_sqlite(
-            &sqlite,
-            &memories_path,
-            &memories_migrator,
-            /*telemetry_override*/ None,
-        )
-        .await?;
-        memories::clear_memory_data_in_pool(&pool).await?;
-        pool.close().await;
-        Ok(true)
     }
 }
 
@@ -393,15 +322,6 @@ async fn open_goals_sqlite(
     telemetry_override: Option<&dyn DbTelemetry>,
 ) -> anyhow::Result<SqlitePool> {
     open_sqlite(sqlite, path, migrator, GOALS_DB, telemetry_override).await
-}
-
-async fn open_memories_sqlite(
-    sqlite: &SqliteConfig,
-    path: &Path,
-    migrator: &Migrator,
-    telemetry_override: Option<&dyn DbTelemetry>,
-) -> anyhow::Result<SqlitePool> {
-    open_sqlite(sqlite, path, migrator, MEMORIES_DB, telemetry_override).await
 }
 
 /// Open and migrate the rebuildable paginated thread-history database.
@@ -511,14 +431,6 @@ pub fn goals_db_filename() -> String {
 
 pub fn goals_db_path(codex_home: &Path) -> PathBuf {
     GOALS_DB.path(codex_home)
-}
-
-pub fn memories_db_filename() -> String {
-    MEMORIES_DB.filename.to_string()
-}
-
-pub fn memories_db_path(codex_home: &Path) -> PathBuf {
-    MEMORIES_DB.path(codex_home)
 }
 
 pub fn thread_history_db_filename() -> String {
@@ -731,8 +643,6 @@ mod tests {
             "migrate_logs",
             "open_goals",
             "migrate_goals",
-            "open_memories",
-            "migrate_memories",
             "ensure_backfill_state",
             "post_init_query",
         ]

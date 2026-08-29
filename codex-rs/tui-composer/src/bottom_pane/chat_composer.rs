@@ -423,7 +423,6 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
                 | SlashCommand::Vim
                 | SlashCommand::Keymap
                 | SlashCommand::Experimental
-                | SlashCommand::Memories
                 | SlashCommand::Quit
                 | SlashCommand::Exit
                 | SlashCommand::Logout
@@ -441,8 +440,6 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
                 | SlashCommand::Theme
                 | SlashCommand::Ps
                 | SlashCommand::Stop
-                | SlashCommand::MemoryDrop
-                | SlashCommand::MemoryUpdate
                 | SlashCommand::Mcp
                 | SlashCommand::Plugins
                 | SlashCommand::Rollout

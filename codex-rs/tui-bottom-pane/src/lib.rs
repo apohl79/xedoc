@@ -119,7 +119,6 @@ pub use codex_tui_overlays::bottom_pane::ListSelectionView;
 pub use codex_tui_overlays::bottom_pane::McpElicitationApprovalRequest;
 pub use codex_tui_overlays::bottom_pane::McpServerElicitationFormRequest;
 pub use codex_tui_overlays::bottom_pane::McpServerElicitationOverlay;
-pub use codex_tui_overlays::bottom_pane::MemoriesSettingsView;
 pub use codex_tui_overlays::bottom_pane::OnSelectionChangedCallback;
 pub use codex_tui_overlays::bottom_pane::PermissionsApprovalRequest;
 pub use codex_tui_overlays::bottom_pane::RequestUserInputOverlay;

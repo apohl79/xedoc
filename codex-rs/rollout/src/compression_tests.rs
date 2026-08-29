@@ -314,7 +314,6 @@ async fn resume_materializes_compressed_rollout_path() -> anyhow::Result<()> {
         sqlite_home: home.path().to_path_buf(),
         cwd: home.path().to_path_buf(),
         model_provider_id: "test-provider".to_string(),
-        generate_memories: true,
     };
     let uuid = Uuid::from_u128(3);
     let thread_id = ThreadId::from_string(&uuid.to_string())?;
@@ -604,7 +603,6 @@ fn write_rollout(path: &std::path::Path, thread_id: ThreadId, message: &str) -> 
             base_instructions: None,
             dynamic_tools: None,
             selected_capability_roots: Vec::new(),
-            memory_mode: None,
             history_mode: Default::default(),
             history_base: None,
             subagent_history_start_ordinal: None,

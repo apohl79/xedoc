@@ -148,8 +148,6 @@ Example with notification opt-out:
 - `thread/searchOccurrences` — experimental; find literal, case-insensitive matches in visible user messages and summary-selected final assistant messages within one paginated thread.
 - `thread/metadata/update` — patch stored thread metadata in sqlite; currently supports updating persisted `gitInfo` fields and returns the refreshed `thread`.
 - `thread/settings/update` — experimental; queue a partial update to a loaded thread’s next-turn settings without starting a turn or adding transcript items. Omitted fields leave settings unchanged; `serviceTier: null` clears the tier; deprecated `multiAgentMode` is ignored, while Ultra reasoning effort enables proactive multi-agent behavior; `sandboxPolicy` and `permissions` cannot be combined. Returns `{}` when the update is accepted and emits `thread/settings/updated` with the full effective settings only if they actually change. `turn/start` settings overrides emit the same notification when they change the stored settings.
-- `thread/memoryMode/set` — experimental; set a thread’s persisted memory eligibility to `"enabled"` or `"disabled"` for either a loaded thread or a stored rollout; returns `{}` on success.
-- `memory/reset` — experimental; clear the current `CODEX_HOME/memories` directory and reset persisted memory stage data in sqlite while preserving existing thread memory modes; returns `{}` on success.
 - `thread/goal/set` — create or update the single persisted goal for a materialized thread; returns the current goal and emits `thread/goal/updated`.
 - `thread/goal/get` — fetch the current persisted goal for a materialized thread; returns `goal: null` when no goal exists.
 - `thread/goal/clear` — clear the current persisted goal for a materialized thread; returns whether a goal was removed and emits `thread/goal/cleared` when state changes.
@@ -584,23 +582,6 @@ Use `thread/metadata/update` to patch sqlite-backed metadata for a thread withou
         "gitInfo": null
     }
 } }
-```
-
-Experimental: use `thread/memoryMode/set` to change whether a thread remains eligible for future memory generation.
-
-```json
-{ "method": "thread/memoryMode/set", "id": 26, "params": {
-    "threadId": "thr_123",
-    "mode": "disabled"
-} }
-{ "id": 26, "result": {} }
-```
-
-Experimental: use `memory/reset` to clear local memory artifacts and sqlite-backed memory stage data for the current Codex home. This preserves existing thread memory modes; use `thread/memoryMode/set` separately when a thread's future memory eligibility should change.
-
-```json
-{ "method": "memory/reset", "id": 27 }
-{ "id": 27, "result": {} }
 ```
 
 ### Example: Set and update a thread goal

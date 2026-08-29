@@ -9,7 +9,6 @@ expression: commands
 /vim - toggle Vim mode for the composer
 /experimental - toggle experimental features
 /approve - approve one retry of a recent auto-review denial
-/memories - configure memory use and generation
 /skills - use skills to improve how Codex performs specific tasks
 /hooks - view and manage lifecycle hooks
 /review - review my current changes and find issues

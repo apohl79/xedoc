@@ -9,4 +9,3 @@ pub use sandbox_tags::permission_profile_policy_tag;
 pub use sandbox_tags::permission_profile_sandbox_tag;
 pub use turn_metadata::McpTurnMetadataContext;
 pub use turn_metadata::TurnMetadataState;
-pub use turn_metadata::detached_memory_responses_metadata;

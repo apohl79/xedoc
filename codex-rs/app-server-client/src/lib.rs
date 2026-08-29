@@ -1180,7 +1180,6 @@ mod tests {
                 id: "item".to_string(),
                 text: text.to_string(),
                 phase: None,
-                memory_citation: None,
             },
         })
     }
@@ -2145,7 +2144,6 @@ mod tests {
                             id: "item".to_string(),
                             text: "hello".to_string(),
                             phase: None,
-                            memory_citation: None,
                         },
                     }
                 )

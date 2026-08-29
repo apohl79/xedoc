@@ -369,7 +369,6 @@ use codex_protocol::protocol::SessionConfiguredEvent;
 use codex_protocol::protocol::SessionNetworkProxyRuntime;
 use codex_protocol::protocol::StreamErrorEvent;
 use codex_protocol::protocol::Submission;
-use codex_protocol::protocol::ThreadMemoryMode;
 use codex_protocol::protocol::TokenCountEvent;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageInfo;
@@ -1123,13 +1122,6 @@ impl Session {
 
     pub(crate) fn live_thread(&self) -> Option<&LiveThread> {
         self.services.live_thread.as_ref()
-    }
-
-    pub(crate) async fn set_thread_memory_mode(
-        self: &Arc<Self>,
-        mode: ThreadMemoryMode,
-    ) -> anyhow::Result<()> {
-        handlers::persist_thread_memory_mode_update(self, mode).await
     }
 
     /// Flush rollout writes and return the final durability-barrier result.
@@ -4110,17 +4102,6 @@ impl Session {
         turn_state
             .pending_input
             .remove_user_input_by_client_id(client_user_message_id)
-    }
-
-    pub(crate) async fn record_memory_citation_for_turn(&self, sub_id: &str) {
-        let turn_state = self
-            .input_queue
-            .turn_state_for_sub_id(&self.active_turn, sub_id)
-            .await;
-        let Some(turn_state) = turn_state else {
-            return;
-        };
-        turn_state.lock().await.has_memory_citation = true;
     }
 
     pub async fn interrupt_task(self: &Arc<Self>) {
