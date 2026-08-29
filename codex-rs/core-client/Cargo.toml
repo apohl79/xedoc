@@ -23,7 +23,6 @@ codex-model-provider-info = { workspace = true }
 codex-otel = { workspace = true }
 codex-protocol = { workspace = true }
 codex-response-debug-context = { workspace = true }
-codex-rollout-trace = { workspace = true }
 codex-tools = { workspace = true }
 codex-utils-output-truncation = { workspace = true }
 codex-utils-string = { workspace = true }

@@ -14,24 +14,17 @@ use crate::session::turn::built_tools;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ResponseItem;
-use codex_rollout_trace::CompactionTraceContext;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
-
-pub(super) struct RemoteCompactAttempt {
-    pub(super) new_history: Vec<ResponseItem>,
-    pub(super) trace_input_history: Option<Vec<ResponseItem>>,
-}
 
 pub(super) async fn run_remote_compact_attempt(
     sess: &Arc<Session>,
     step_context: &Arc<StepContext>,
     turn_state: Option<Arc<OnceLock<String>>>,
-    compaction_trace: &CompactionTraceContext,
     history_encryption: RemoteCompactionHistoryEncryption,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
-) -> CodexResult<RemoteCompactAttempt> {
+) -> CodexResult<Vec<ResponseItem>> {
     let turn_context = &step_context.turn;
     let mut history = sess.clone_history().await;
     let base_instructions = sess.get_base_instructions().await;
@@ -67,7 +60,6 @@ pub(super) async fn run_remote_compact_attempt(
             history.for_prompt_without_encrypted_content(&turn_context.model_info.input_modalities)
         }
     };
-    let trace_input_history = compaction_trace.is_enabled().then(|| prompt_input.clone());
     let tool_router = built_tools(
         sess.as_ref(),
         step_context.as_ref(),
@@ -88,8 +80,7 @@ pub(super) async fn run_remote_compact_attempt(
         window_id,
         CodexResponsesRequestKind::Compaction(compaction_metadata),
     );
-    let new_history = sess
-        .services
+    sess.services
         .model_client
         .load()
         .compact_conversation_history(
@@ -106,12 +97,7 @@ pub(super) async fn run_remote_compact_attempt(
                 },
             },
             &turn_context.session_telemetry,
-            compaction_trace,
             &responses_metadata,
         )
-        .await?;
-    Ok(RemoteCompactAttempt {
-        new_history,
-        trace_input_history,
-    })
+        .await
 }

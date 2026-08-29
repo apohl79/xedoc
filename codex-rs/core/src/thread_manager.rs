@@ -1698,9 +1698,6 @@ impl ThreadManagerState {
         let user_instructions = self
             .user_instructions_for_spawn(&session_source, parent_thread_id, forked_from_thread_id)
             .await;
-        let parent_rollout_thread_trace = self
-            .parent_rollout_thread_trace_for_source(&session_source, &initial_history)
-            .await;
         let tracked_session_source = session_source.clone();
         let multi_agent_version = self
             .initial_multi_agent_version_for_spawn(
@@ -1744,7 +1741,6 @@ impl ThreadManagerState {
             metrics_service_name,
             inherited_environments,
             inherited_exec_policy,
-            parent_rollout_thread_trace,
             user_shell_override,
             parent_trace,
             environment_selections: environments,
@@ -1812,36 +1808,6 @@ impl ThreadManagerState {
 
     pub(crate) fn notify_thread_created(&self, thread_id: ThreadId) {
         let _ = self.thread_created_tx.send(thread_id);
-    }
-
-    async fn parent_rollout_thread_trace_for_source(
-        &self,
-        session_source: &SessionSource,
-        initial_history: &InitialHistory,
-    ) -> codex_rollout_trace::ThreadTraceContext {
-        // A fresh v2 child belongs to the same rollout tree as its parent, so
-        // session startup derives its child trace from the parent's thread
-        // context. Resumed children already have a prior `ThreadStarted` event
-        // for this thread id; deriving a child trace during resume would write
-        // that start event again and make the bundle unreplayable.
-        let SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-            parent_thread_id, ..
-        }) = session_source
-        else {
-            return codex_rollout_trace::ThreadTraceContext::disabled();
-        };
-        if matches!(initial_history, InitialHistory::Resumed(_)) {
-            return codex_rollout_trace::ThreadTraceContext::disabled();
-        }
-        // Parent lookup can fail if the parent was closed or released between
-        // spawn preparation and session construction. Tracing is diagnostic, so
-        // that race should not block child creation; the child simply starts
-        // without a parent rollout trace.
-        self.get_thread(*parent_thread_id)
-            .await
-            .ok()
-            .map(|thread| thread.session.services.rollout_thread_trace.clone())
-            .unwrap_or_else(codex_rollout_trace::ThreadTraceContext::disabled)
     }
 }
 

@@ -335,7 +335,6 @@ async fn handle_approved_mcp_tool_call(
         let result = execute_mcp_tool_call(
             sess,
             step_context,
-            call_id,
             &invocation,
             arguments_value.clone(),
             request_meta,
@@ -393,7 +392,6 @@ async fn handle_approved_mcp_tool_call(
 async fn execute_mcp_tool_call(
     sess: &Session,
     step_context: &StepContext,
-    call_id: &str,
     invocation: &McpInvocation,
     arguments: Option<JsonValue>,
     request_meta: Option<JsonValue>,
@@ -409,11 +407,6 @@ async fn execute_mcp_tool_call(
     )
     .await
     .map_err(|e| format!("failed to build MCP tool request metadata: {e:#}"))?;
-    let mcp_call_trace = sess
-        .services
-        .rollout_thread_trace
-        .start_mcp_call_trace(call_id);
-    let request_meta = mcp_call_trace.add_request_meta(request_meta);
     let result = manager
         .call_tool(
             &invocation.server,

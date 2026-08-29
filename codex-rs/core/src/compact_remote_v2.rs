@@ -41,8 +41,6 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TruncationPolicy;
 use codex_protocol::protocol::TurnStartedEvent;
-use codex_rollout_trace::CompactionCheckpointTracePayload;
-use codex_rollout_trace::InferenceTraceContext;
 use codex_utils_output_truncation::approx_token_count;
 use codex_utils_output_truncation::truncate_text;
 use futures::StreamExt;
@@ -220,13 +218,6 @@ async fn run_remote_compact_task_inner_impl(
 ) -> CodexResult<()> {
     let turn_context = &step_context.turn;
     let context_compaction_item = ContextCompactionItem::new();
-    let compaction_id = context_compaction_item.id.clone();
-    let compaction_trace = sess.services.rollout_thread_trace.compaction_trace_context(
-        turn_context.sub_id.as_str(),
-        compaction_id.as_str(),
-        turn_context.model_info.slug.as_str(),
-        turn_context.provider.info().name.as_str(),
-    );
     let compaction_item = TurnItem::ContextCompaction(context_compaction_item);
     sess.emit_turn_item_started(turn_context, &compaction_item)
         .await;
@@ -236,7 +227,6 @@ async fn run_remote_compact_task_inner_impl(
         sess,
         step_context,
         client_session.as_deref_mut(),
-        &compaction_trace,
         history_encryption,
         compaction_metadata,
         analytics_details,
@@ -252,18 +242,10 @@ async fn run_remote_compact_task_inner_impl(
                 return Err(error);
             }
             let fallback_turn_context = &fallback_step_context.turn;
-            let fallback_compaction_trace =
-                sess.services.rollout_thread_trace.compaction_trace_context(
-                    fallback_turn_context.sub_id.as_str(),
-                    compaction_id.as_str(),
-                    fallback_turn_context.model_info.slug.as_str(),
-                    fallback_turn_context.provider.info().name.as_str(),
-                );
             let fallback_result = run_remote_compact_v2_attempt(
                 sess,
                 fallback_step_context,
                 client_session,
-                &fallback_compaction_trace,
                 history_encryption,
                 compaction_metadata,
                 analytics_details,
@@ -284,7 +266,6 @@ async fn run_remote_compact_task_inner_impl(
         }
     };
     let RemoteCompactV2Attempt {
-        trace_input_history,
         prompt_input,
         compaction_output,
         token_usage,
@@ -323,12 +304,6 @@ async fn run_remote_compact_task_inner_impl(
         previous_window_id: new_window_ids.previous_window_id.map(|id| id.to_string()),
         window_id: Some(new_window_ids.window_id.to_string()),
     };
-    if let Some(trace_input_history) = trace_input_history.as_deref() {
-        compaction_trace.record_installed(&CompactionCheckpointTracePayload {
-            input_history: trace_input_history,
-            replacement_history: &new_history,
-        });
-    }
     sess.replace_compacted_history(
         compaction_turn_context.as_ref(),
         new_history,
@@ -373,7 +348,6 @@ async fn run_remote_compaction_request_v2(
                 turn_context.reasoning_summary,
                 turn_context.config.service_tier.clone(),
                 responses_metadata,
-                &InferenceTraceContext::disabled(),
             )
             .await
         {

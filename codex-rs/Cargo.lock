@@ -2154,7 +2154,6 @@ dependencies = [
  "codex-protocol",
  "codex-responses-api-proxy",
  "codex-rmcp-client",
- "codex-rollout-trace",
  "codex-sandboxing",
  "codex-state",
  "codex-stdio-to-uds",
@@ -2392,7 +2391,6 @@ dependencies = [
  "codex-response-debug-context",
  "codex-rmcp-client",
  "codex-rollout",
- "codex-rollout-trace",
  "codex-sandboxing",
  "codex-shell-command",
  "codex-shell-escalation",
@@ -2561,7 +2559,6 @@ dependencies = [
  "codex-otel",
  "codex-protocol",
  "codex-response-debug-context",
- "codex-rollout-trace",
  "codex-tools",
  "codex-utils-output-truncation",
  "codex-utils-string",
@@ -3844,7 +3841,6 @@ dependencies = [
  "codex-otel",
  "codex-protocol",
  "codex-rollout",
- "codex-rollout-trace",
  "codex-secrets",
  "codex-state",
  "codex-terminal-detection",
@@ -4191,22 +4187,6 @@ dependencies = [
  "tracing",
  "uuid",
  "zstd",
-]
-
-[[package]]
-name = "codex-rollout-trace"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "codex-code-mode-protocol",
- "codex-protocol",
- "http 1.4.0",
- "pretty_assertions",
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
- "uuid",
 ]
 
 [[package]]

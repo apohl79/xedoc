@@ -23,7 +23,6 @@ use crate::tools::hook_names::HookToolName;
 use crate::tools::lifecycle::notify_tool_finish;
 use crate::tools::lifecycle::notify_tool_start;
 use crate::tools::router::ToolDispatcher;
-use crate::tools::tool_dispatch_trace::ToolDispatchTrace;
 use crate::util::error_or_panic;
 pub(crate) use codex_core_tool_runtime::ToolArgumentDiffConsumer;
 use codex_extension_api::ToolCallOutcome;
@@ -391,7 +390,6 @@ impl ToolRegistry {
             }
         }
 
-        let dispatch_trace = ToolDispatchTrace::start(&invocation);
         let tool = match self.tool(&tool_name) {
             Some(tool) => tool,
             None => {
@@ -408,7 +406,6 @@ impl ToolRegistry {
                     /*extra_trace_fields*/ &[],
                 );
                 let err = FunctionCallError::RespondToModel(message);
-                dispatch_trace.record_failed(&err);
                 return Err(err);
             }
         };
@@ -439,7 +436,6 @@ impl ToolRegistry {
                 &extra_trace_fields,
             );
             let err = FunctionCallError::Fatal(message);
-            dispatch_trace.record_failed(&err);
             return Err(err);
         }
 
@@ -457,7 +453,6 @@ impl ToolRegistry {
             {
                 PreToolUseHookResult::Blocked(message) => {
                     let err = FunctionCallError::RespondToModel(message);
-                    dispatch_trace.record_failed(&err);
                     notify_tool_finish_if_unclaimed(
                         &invocation,
                         terminal_outcome_reached.as_deref(),
@@ -473,7 +468,6 @@ impl ToolRegistry {
                         invocation = updated_invocation;
                     }
                     Err(err) => {
-                        dispatch_trace.record_failed(&err);
                         notify_tool_finish_if_unclaimed(
                             &invocation,
                             terminal_outcome_reached.as_deref(),
@@ -610,7 +604,6 @@ impl ToolRegistry {
                             "PostToolUse hook blocked the tool result".to_string()
                         });
                         let err = FunctionCallError::RespondToModel(message);
-                        dispatch_trace.record_failed(&err);
                         return Err(err);
                     }
                     if let Some(feedback_message) = outcome.feedback_message {
@@ -623,18 +616,9 @@ impl ToolRegistry {
                         });
                     }
                 }
-                dispatch_trace.record_completed(
-                    &invocation,
-                    &result.call_id,
-                    &result.payload,
-                    result.result.as_ref(),
-                );
                 Ok(result)
             }
-            Err(err) => {
-                dispatch_trace.record_failed(&err);
-                Err(err)
-            }
+            Err(err) => Err(err),
         }
     }
 }

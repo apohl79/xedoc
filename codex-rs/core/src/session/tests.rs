@@ -5356,7 +5356,6 @@ async fn session_new_fails_when_zsh_fork_enabled_without_packaged_zsh() {
             codex_thread_store::LocalThreadStoreConfig::from_config(config.as_ref()),
             /*state_db*/ None,
         )),
-        codex_rollout_trace::ThreadTraceContext::disabled(),
         /*external_time_provider*/ None,
         Some(config.multi_agent_version_from_features()),
     )
@@ -5510,7 +5509,6 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
             legacy_notify_argv: config.notify.clone(),
             ..HooksConfig::default()
         })),
-        rollout_thread_trace: codex_rollout_trace::ThreadTraceContext::disabled(),
         user_shell: Arc::new(default_user_shell()),
         show_raw_agent_reasoning: config.show_raw_agent_reasoning,
         exec_policy,
@@ -5738,7 +5736,6 @@ async fn make_session_with_config_and_rx(
             codex_thread_store::LocalThreadStoreConfig::from_config(config.as_ref()),
             /*state_db*/ None,
         )),
-        codex_rollout_trace::ThreadTraceContext::disabled(),
         /*external_time_provider*/ None,
         Some(config.multi_agent_version_from_features()),
     )
@@ -5850,7 +5847,6 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
                 .expect("state db should initialize"),
             ),
         )),
-        codex_rollout_trace::ThreadTraceContext::disabled(),
         /*external_time_provider*/ None,
         Some(config.multi_agent_version_from_features()),
     )
@@ -7660,7 +7656,6 @@ where
             legacy_notify_argv: config.notify.clone(),
             ..HooksConfig::default()
         })),
-        rollout_thread_trace: codex_rollout_trace::ThreadTraceContext::disabled(),
         user_shell: Arc::new(default_user_shell()),
         show_raw_agent_reasoning: config.show_raw_agent_reasoning,
         exec_policy,

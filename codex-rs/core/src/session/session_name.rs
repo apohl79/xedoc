@@ -10,7 +10,6 @@ use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
-use codex_rollout_trace::InferenceTraceContext;
 use futures::StreamExt;
 use tracing::debug;
 
@@ -115,7 +114,6 @@ impl Session {
                 turn_context.reasoning_summary,
                 turn_context.config.service_tier.clone(),
                 &responses_metadata,
-                &InferenceTraceContext::disabled(),
             )
             .await?;
         let mut generated = String::new();

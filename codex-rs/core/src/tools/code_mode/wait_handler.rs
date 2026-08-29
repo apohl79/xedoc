@@ -102,9 +102,6 @@ impl CodeModeWaitHandler {
                         codex_code_mode_protocol::RuntimeResponse::Yielded { .. }
                     )
                 {
-                    // Only a live-cell wait can close a CodeCell. A missing
-                    // cell is still an ordinary `wait` tool result, but there
-                    // is no runtime object for the reducer to complete.
                     let runtime_cell_id = match response {
                         codex_code_mode_protocol::RuntimeResponse::Yielded { cell_id, .. }
                         | codex_code_mode_protocol::RuntimeResponse::Terminated {
@@ -114,14 +111,6 @@ impl CodeModeWaitHandler {
                             cell_id
                         }
                     };
-                    exec.session
-                        .services
-                        .rollout_thread_trace
-                        .code_cell_trace_context(
-                            exec.turn.sub_id.as_str(),
-                            runtime_cell_id.as_str(),
-                        )
-                        .record_ended(response);
                     exec.session
                         .services
                         .code_mode_service

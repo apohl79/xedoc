@@ -53,17 +53,6 @@ impl CodeModeExecuteHandler {
             .await
             .map_err(FunctionCallError::RespondToModel)?;
         let cell_id = started_cell.cell_id.clone();
-        let runtime_cell_id = cell_id.to_string();
-        let code_cell_trace = exec
-            .session
-            .services
-            .rollout_thread_trace
-            .start_code_cell_trace(
-                exec.turn.sub_id.as_str(),
-                runtime_cell_id.as_str(),
-                call_id.as_str(),
-                args.code.as_str(),
-            );
         exec.session
             .services
             .code_mode_service
@@ -72,17 +61,10 @@ impl CodeModeExecuteHandler {
             .initial_response()
             .await
             .map_err(FunctionCallError::RespondToModel)?;
-        // Record the raw runtime boundary. The model-visible custom-tool output
-        // is produced by `handle_runtime_response` and later linked through
-        // `CodeCell.output_item_ids` in the reduced trace.
-        code_cell_trace.record_initial_response(&response);
-        // Yielded cells keep running, so terminal lifecycle is only emitted
-        // here when the first response also ended the runtime.
         if !matches!(
             response,
             codex_code_mode_protocol::RuntimeResponse::Yielded { .. }
         ) {
-            code_cell_trace.record_ended(&response);
             exec.session
                 .services
                 .code_mode_service

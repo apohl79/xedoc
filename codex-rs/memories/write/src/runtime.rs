@@ -32,7 +32,6 @@ use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::user_input::UserInput;
-use codex_rollout_trace::InferenceTraceContext;
 use codex_state::StateRuntime;
 use codex_terminal_detection::user_agent;
 use futures::StreamExt;
@@ -285,7 +284,6 @@ impl MemoryStartupContext {
                 context.reasoning_summary,
                 context.service_tier.clone(),
                 &responses_metadata,
-                &InferenceTraceContext::disabled(),
             )
             .await?;
 

@@ -14,8 +14,6 @@ use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::subagent_header_value;
 use crate::responses_metadata::subagent_metadata_kind;
 use codex_api::AgentIdentityTelemetry;
-use codex_api::ApiError;
-use codex_api::ResponseEvent;
 use codex_api::TransportError;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
@@ -24,7 +22,6 @@ use codex_login::AuthKeyringBackendKind;
 use codex_login::AuthManager;
 use codex_login::auth::AgentIdentityAuthPolicy;
 use codex_model_provider::BearerAuthProvider;
-use codex_model_provider::SharedModelProvider;
 use codex_model_provider::create_model_provider;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
@@ -39,27 +36,12 @@ use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
-use codex_rollout_trace::CompactionTraceContext;
-use codex_rollout_trace::ExecutionStatus;
-use codex_rollout_trace::InferenceTraceAttempt;
-use codex_rollout_trace::InferenceTraceContext;
-use codex_rollout_trace::RawTraceEventPayload;
-use codex_rollout_trace::RolloutTrace;
-use codex_rollout_trace::TraceWriter;
-use codex_rollout_trace::replay_bundle;
-use futures::StreamExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
-use std::collections::VecDeque;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::task::Context;
-use std::task::Poll;
-use std::time::Duration;
 use tempfile::TempDir;
-use tokio::sync::Notify;
 use wiremock::Mock;
 use wiremock::MockServer;
 use wiremock::ResponseTemplate;
@@ -198,7 +180,6 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
                 service_tier: None,
             },
             &test_session_telemetry(),
-            &CompactionTraceContext::disabled(),
             &responses_metadata,
         )
         .await?;
@@ -229,10 +210,6 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
     );
 
     Ok(())
-}
-
-fn test_model_provider() -> SharedModelProvider {
-    test_model_client(SessionSource::Cli).state.provider.clone()
 }
 
 fn test_responses_metadata_for_client(
@@ -350,93 +327,6 @@ async fn chatgpt_auth_manager(
     )
 }
 
-fn started_inference_attempt(temp: &TempDir) -> anyhow::Result<InferenceTraceAttempt> {
-    let writer = Arc::new(TraceWriter::create(
-        temp.path(),
-        "trace-1".to_string(),
-        "rollout-1".to_string(),
-        "thread-root".to_string(),
-    )?);
-    writer.append(RawTraceEventPayload::ThreadStarted {
-        thread_id: "thread-root".to_string(),
-        agent_path: "/root".to_string(),
-        metadata_payload: None,
-    })?;
-    writer.append(RawTraceEventPayload::CodexTurnStarted {
-        codex_turn_id: "turn-1".to_string(),
-        thread_id: "thread-root".to_string(),
-    })?;
-
-    let inference_trace = InferenceTraceContext::enabled(
-        writer,
-        "thread-root".to_string(),
-        "turn-1".to_string(),
-        "gpt-test".to_string(),
-        "test-provider".to_string(),
-    );
-    let attempt = inference_trace.start_attempt();
-    attempt.record_started(&json!({
-        "model": "gpt-test",
-        "input": [{
-            "type": "message",
-            "role": "user",
-            "content": [{"type": "input_text", "text": "hello"}]
-        }],
-    }));
-    Ok(attempt)
-}
-
-fn output_message(id: &str, text: &str) -> ResponseItem {
-    ResponseItem::Message {
-        id: Some(codex_protocol::ResponseItemId::with_suffix("msg", id)),
-        role: "assistant".to_string(),
-        content: vec![ContentItem::OutputText {
-            text: text.to_string(),
-        }],
-        phase: None,
-        internal_chat_message_metadata_passthrough: None,
-    }
-}
-
-async fn replay_until_cancelled(temp: &TempDir) -> anyhow::Result<RolloutTrace> {
-    let mut rollout = replay_bundle(temp.path())?;
-    for _ in 0..50 {
-        let inference = rollout
-            .inference_calls
-            .values()
-            .next()
-            .expect("inference should be reduced");
-        if inference.execution.status == ExecutionStatus::Cancelled {
-            return Ok(rollout);
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        rollout = replay_bundle(temp.path())?;
-    }
-    Ok(rollout)
-}
-
-struct NotifyAfterEventStream {
-    events: VecDeque<ResponseEvent>,
-    yielded: usize,
-    notify_after: usize,
-    notify: Arc<Notify>,
-}
-
-impl futures::Stream for NotifyAfterEventStream {
-    type Item = std::result::Result<ResponseEvent, ApiError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let Some(event) = self.events.pop_front() else {
-            return Poll::Pending;
-        };
-        self.yielded += 1;
-        if self.yielded == self.notify_after {
-            self.notify.notify_one();
-        }
-        Poll::Ready(Some(Ok(event)))
-    }
-}
-
 #[test]
 fn build_subagent_headers_sets_other_subagent_label() {
     let client = test_model_client(SessionSource::SubAgent(SubAgentSource::Other(
@@ -549,53 +439,6 @@ async fn summarize_memories_returns_empty_for_empty_input() {
 }
 
 #[tokio::test]
-async fn dropped_response_stream_traces_cancelled_partial_output() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
-    let attempt = started_inference_attempt(&temp)?;
-
-    // The provider has produced one complete output item, but no terminal
-    // response.completed event. The harness has enough information to keep this
-    // item in history, so the trace should preserve it when the stream is
-    // abandoned.
-    let item = output_message("1", "partial answer");
-    let api_stream = futures::stream::iter([Ok(ResponseEvent::OutputItemDone(item))])
-        .chain(futures::stream::pending());
-    let (mut stream, _) = super::map_response_events(
-        /*upstream_request_id*/ None,
-        api_stream,
-        test_session_telemetry(),
-        attempt,
-        test_model_provider(),
-    );
-
-    let observed = stream
-        .next()
-        .await
-        .expect("mapped stream should yield output item")?;
-    assert!(matches!(observed, ResponseEvent::OutputItemDone(_)));
-
-    // Dropping the consumer is how turn interruption/preemption stops polling
-    // the provider stream. The mapper task observes that drop asynchronously
-    // and records cancellation using the output items it has already seen.
-    drop(stream);
-
-    // Cancellation is recorded by the mapper task after Drop wakes it, so the
-    // replay may need a short wait before the terminal event appears on disk.
-    let rollout = replay_until_cancelled(&temp).await?;
-    let inference = rollout
-        .inference_calls
-        .values()
-        .next()
-        .expect("inference should be reduced");
-
-    assert_eq!(inference.execution.status, ExecutionStatus::Cancelled);
-    assert_eq!(inference.response_item_ids.len(), 1);
-    assert_eq!(rollout.raw_payloads.len(), 2);
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn bedrock_unauthorized_error_uses_provider_mapping() {
     let provider = create_model_provider(
         ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None),
@@ -626,56 +469,6 @@ async fn bedrock_unauthorized_error_uses_provider_mapping() {
             "Amazon Bedrock rejected the request because its AWS signature has expired. Refresh your AWS credentials and retry. If `AWS_BEARER_TOKEN_BEDROCK` is set, update or unset it, then restart Codex, url: {url}"
         )
     );
-}
-
-#[tokio::test]
-async fn dropped_backpressured_response_stream_traces_cancelled_partial_output()
--> anyhow::Result<()> {
-    let temp = TempDir::new()?;
-    let attempt = started_inference_attempt(&temp)?;
-    let backpressured_item_yielded = Arc::new(Notify::new());
-    let mut events = VecDeque::new();
-    for _ in 0..super::RESPONSE_STREAM_CHANNEL_CAPACITY {
-        events.push_back(ResponseEvent::Created);
-    }
-    events.push_back(ResponseEvent::OutputItemDone(output_message(
-        "1",
-        "partial answer",
-    )));
-    let api_stream = NotifyAfterEventStream {
-        events,
-        yielded: 0,
-        notify_after: super::RESPONSE_STREAM_CHANNEL_CAPACITY + 1,
-        notify: Arc::clone(&backpressured_item_yielded),
-    };
-
-    let (stream, _) = super::map_response_events(
-        /*upstream_request_id*/ None,
-        api_stream,
-        test_session_telemetry(),
-        attempt,
-        test_model_provider(),
-    );
-
-    // Fill the mapper channel with non-terminal events, then yield one output
-    // item. The mapper has observed that item and is blocked trying to send it
-    // downstream, so dropping the consumer covers the send-failure path rather
-    // than the `consumer_dropped` select branch.
-    backpressured_item_yielded.notified().await;
-    drop(stream);
-
-    let rollout = replay_until_cancelled(&temp).await?;
-    let inference = rollout
-        .inference_calls
-        .values()
-        .next()
-        .expect("inference should be reduced");
-
-    assert_eq!(inference.execution.status, ExecutionStatus::Cancelled);
-    assert_eq!(inference.response_item_ids.len(), 1);
-    assert_eq!(rollout.raw_payloads.len(), 2);
-
-    Ok(())
 }
 
 #[test]

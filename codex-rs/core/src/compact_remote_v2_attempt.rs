@@ -17,12 +17,10 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::RawResponseCompletedEvent;
 use codex_protocol::protocol::TokenUsage;
-use codex_rollout_trace::CompactionTraceContext;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub(super) struct RemoteCompactV2Attempt {
-    pub(super) trace_input_history: Option<Vec<ResponseItem>>,
     pub(super) prompt_input: Vec<ResponseItem>,
     pub(super) compaction_output: ResponseItem,
     pub(super) token_usage: Option<TokenUsage>,
@@ -34,7 +32,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
     sess: &Arc<Session>,
     step_context: &Arc<StepContext>,
     client_session: Option<&mut ModelClientSession>,
-    compaction_trace: &CompactionTraceContext,
     history_encryption: RemoteCompactionHistoryEncryption,
     compaction_metadata: CompactionTurnMetadata,
     analytics_details: &mut CompactionAnalyticsDetails,
@@ -75,7 +72,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
             history.for_prompt_without_encrypted_content(&turn_context.model_info.input_modalities)
         }
     };
-    let trace_input_history = compaction_trace.is_enabled().then(|| input.clone());
     let tool_router = built_tools(
         sess.as_ref(),
         step_context.as_ref(),
@@ -98,12 +94,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
         window_id,
         CodexResponsesRequestKind::Compaction(compaction_metadata),
     );
-    let trace_attempt = compaction_trace.start_attempt(&serde_json::json!({
-        "model": turn_context.model_info.slug.as_str(),
-        "instructions": prompt.base_instructions.text.as_str(),
-        "input": &prompt.input,
-        "parallel_tool_calls": prompt.parallel_tool_calls,
-    }));
     let mut owned_client_session = None;
     let client_session = match client_session {
         Some(client_session) => client_session,
@@ -116,17 +106,12 @@ pub(super) async fn run_remote_compact_v2_attempt(
         &prompt,
         &responses_metadata,
     )
-    .await;
-    trace_attempt.record_result(
-        compaction_output_result
-            .as_ref()
-            .map(|output| std::slice::from_ref(&output.compaction_output)),
-    );
+    .await?;
     let RemoteCompactionV2Output {
         compaction_output,
         response_id,
         token_usage,
-    } = compaction_output_result?;
+    } = compaction_output_result;
     // TODO: Emit this before compaction output validation so malformed completed
     // responses still surface their raw upstream usage.
     sess.send_event(
@@ -140,7 +125,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
     let mut prompt_input = prompt.input;
     prompt_input.pop();
     Ok(RemoteCompactV2Attempt {
-        trace_input_history,
         prompt_input,
         compaction_output,
         token_usage,

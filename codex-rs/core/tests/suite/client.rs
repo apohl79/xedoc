@@ -1539,7 +1539,6 @@ async fn send_request_with_provider(provider: ModelProviderInfo) {
             summary.unwrap_or(ReasoningSummary::Auto),
             /*service_tier*/ None,
             &responses_metadata,
-            &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
         .expect("responses stream to start");
@@ -3054,7 +3053,6 @@ async fn azure_responses_request_includes_store_and_prefixed_item_ids() {
             summary.unwrap_or(ReasoningSummary::Auto),
             /*service_tier*/ None,
             &responses_metadata,
-            &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
         .expect("responses stream to start");

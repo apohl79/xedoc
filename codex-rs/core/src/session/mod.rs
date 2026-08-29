@@ -140,9 +140,6 @@ use codex_protocol::request_user_input::RequestUserInputArgs;
 use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_rmcp_client::ElicitationResponse;
 use codex_rollout::state_db;
-use codex_rollout_trace::AgentResultTracePayload;
-use codex_rollout_trace::ThreadStartedTraceMetadata;
-use codex_rollout_trace::ThreadTraceContext;
 use codex_sandboxing::policy_transforms::intersect_permission_profiles;
 use codex_shell_command::parse_command::parse_command;
 use codex_terminal_detection::user_agent;
@@ -427,11 +424,6 @@ pub(crate) struct SessionSpawnArgs {
     pub(crate) metrics_service_name: Option<String>,
     pub(crate) inherited_exec_policy: Option<Arc<ExecPolicyManager>>,
     pub(crate) inherited_environments: Option<TurnEnvironmentSnapshot>,
-    /// Parent rollout trace used only to derive fresh spawned child traces.
-    ///
-    /// Root sessions and non-thread-spawn subagents pass a disabled context;
-    /// `Session::new` creates the root trace itself when rollout tracing is enabled.
-    pub(crate) parent_rollout_thread_trace: ThreadTraceContext,
     pub(crate) user_shell_override: Option<shell::Shell>,
     pub(crate) parent_trace: Option<W3cTraceContext>,
     pub(crate) environment_selections: Vec<TurnEnvironmentSelection>,
@@ -519,7 +511,6 @@ impl Session {
             user_shell_override,
             inherited_exec_policy,
             inherited_environments,
-            parent_rollout_thread_trace,
             parent_trace: _,
             environment_selections,
             thread_extension_init,
@@ -714,7 +705,6 @@ impl Session {
             inherited_environments,
             analytics_events_client,
             thread_store,
-            parent_rollout_thread_trace,
             external_time_provider,
             multi_agent_version,
         ))
@@ -1879,12 +1869,6 @@ impl Session {
                 .await
                 .replace(error.clone());
         }
-        self.services
-            .rollout_thread_trace
-            .record_codex_turn_event(&turn_context.sub_id, &legacy_source);
-        self.services
-            .rollout_thread_trace
-            .record_tool_call_event(turn_context.sub_id.clone(), &legacy_source);
         let event = Event {
             id: turn_context.sub_id.clone(),
             msg,
@@ -1899,9 +1883,6 @@ impl Session {
 
         let show_raw_agent_reasoning = self.show_raw_agent_reasoning();
         for legacy in legacy_source.as_legacy_events(show_raw_agent_reasoning) {
-            self.services
-                .rollout_thread_trace
-                .record_tool_call_event(turn_context.sub_id.clone(), &legacy);
             let legacy_event = Event {
                 id: turn_context.sub_id.clone(),
                 msg: legacy,
@@ -1965,19 +1946,13 @@ impl Session {
             .agent_control
             .stop_sub_agent_activity_tracking(*parent_thread_id, self.thread_id);
 
-        self.forward_child_completion_to_parent(
-            turn_context,
-            *parent_thread_id,
-            child_agent_path,
-            status,
-        )
-        .await;
+        self.forward_child_completion_to_parent(*parent_thread_id, child_agent_path, status)
+            .await;
     }
 
     /// Sends the standard completion envelope from a spawned MultiAgentV2 child to its parent.
     async fn forward_child_completion_to_parent(
         &self,
-        turn_context: &TurnContext,
         parent_thread_id: ThreadId,
         child_agent_path: &codex_protocol::AgentPath,
         status: AgentStatus,
@@ -1997,13 +1972,6 @@ impl Session {
         ) else {
             return;
         };
-        // `communication` owns the message. Keep a second copy only when the
-        // recorder will actually need it after parent delivery succeeds.
-        let trace_message = self
-            .services
-            .rollout_thread_trace
-            .is_enabled()
-            .then(|| message.clone());
         let child_cost = {
             let state = self.state.lock().await;
             state.cost_tracker.available_cost_usd()
@@ -2049,19 +2017,6 @@ impl Session {
                 },
             )
             .await;
-        if let Some(message) = trace_message {
-            self.services
-                .rollout_thread_trace
-                .record_agent_result_interaction(
-                    turn_context.sub_id.as_str(),
-                    parent_thread_id,
-                    &AgentResultTracePayload {
-                        child_agent_path: child_agent_path.as_str(),
-                        message: &message,
-                        status: &status,
-                    },
-                );
-        }
     }
 
     async fn maybe_mirror_event_text_to_realtime(&self, msg: &EventMsg) {
@@ -2142,9 +2097,6 @@ impl Session {
             let rollout_items = vec![RolloutItem::EventMsg(event.msg.clone())];
             self.persist_rollout_items(&rollout_items).await;
         }
-        self.services
-            .rollout_thread_trace
-            .record_protocol_event(&event.msg);
         self.deliver_event_raw(event).await;
     }
 
