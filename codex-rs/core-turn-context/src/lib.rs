@@ -226,18 +226,6 @@ impl TurnContext {
             })
     }
 
-    /// Whether Codex Apps are enabled for the current authentication state.
-    pub fn apps_enabled(&self) -> bool {
-        let uses_codex_backend = self
-            .auth_manager
-            .as_deref()
-            .is_some_and(AuthManager::current_auth_uses_codex_backend);
-        self.config
-            .features
-            .apps_enabled_for_auth(uses_codex_backend)
-            && self.config.orchestrator_mcp_enabled
-    }
-
     /// Clones this turn with model-specific settings.
     pub async fn with_model(&self, model: String, models_manager: &SharedModelsManager) -> Self {
         let mut config = (*self.config).clone();

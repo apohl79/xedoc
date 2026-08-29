@@ -3,18 +3,12 @@
 use std::collections::HashMap;
 
 use codex_config::types::AppToolApproval;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_protocol::approvals::ElicitationRequest;
 use codex_protocol::mcp_approval_meta::APPROVAL_KIND_KEY as MCP_TOOL_APPROVAL_KIND_KEY;
 use codex_protocol::mcp_approval_meta::APPROVAL_KIND_MCP_TOOL_CALL as MCP_TOOL_APPROVAL_KIND_MCP_TOOL_CALL;
-use codex_protocol::mcp_approval_meta::CONNECTOR_DESCRIPTION_KEY as MCP_TOOL_APPROVAL_CONNECTOR_DESCRIPTION_KEY;
-use codex_protocol::mcp_approval_meta::CONNECTOR_ID_KEY as MCP_TOOL_APPROVAL_CONNECTOR_ID_KEY;
-use codex_protocol::mcp_approval_meta::CONNECTOR_NAME_KEY as MCP_TOOL_APPROVAL_CONNECTOR_NAME_KEY;
 use codex_protocol::mcp_approval_meta::PERSIST_ALWAYS as MCP_TOOL_APPROVAL_PERSIST_ALWAYS;
 use codex_protocol::mcp_approval_meta::PERSIST_KEY as MCP_TOOL_APPROVAL_PERSIST_KEY;
 use codex_protocol::mcp_approval_meta::PERSIST_SESSION as MCP_TOOL_APPROVAL_PERSIST_SESSION;
-use codex_protocol::mcp_approval_meta::SOURCE_CONNECTOR as MCP_TOOL_APPROVAL_SOURCE_CONNECTOR;
-use codex_protocol::mcp_approval_meta::SOURCE_KEY as MCP_TOOL_APPROVAL_SOURCE_KEY;
 use codex_protocol::mcp_approval_meta::TOOL_DESCRIPTION_KEY as MCP_TOOL_APPROVAL_TOOL_DESCRIPTION_KEY;
 use codex_protocol::mcp_approval_meta::TOOL_PARAMS_DISPLAY_KEY as MCP_TOOL_APPROVAL_TOOL_PARAMS_DISPLAY_KEY;
 use codex_protocol::mcp_approval_meta::TOOL_PARAMS_KEY as MCP_TOOL_APPROVAL_TOOL_PARAMS_KEY;
@@ -75,10 +69,6 @@ pub struct McpToolApprovalMetadata {
     pub tool_description: Option<String>,
     /// Resource URI rendered by a Codex App tool.
     pub mcp_app_resource_uri: Option<String>,
-    /// Codex App request metadata supplied by the MCP server.
-    pub codex_apps_meta: Option<serde_json::Map<String, Value>>,
-    /// Optional file-input fields accepted by an OpenAI MCP tool.
-    pub openai_file_input_optional_fields: Option<HashMap<String, Vec<String>>>,
 }
 
 /// Options controlling MCP tool approval prompt persistence choices.
@@ -129,9 +119,6 @@ pub fn session_mcp_tool_approval_key(
     }
 
     let connector_id = metadata.and_then(|metadata| metadata.connector_id.clone());
-    if invocation.server == CODEX_APPS_MCP_SERVER_NAME && connector_id.is_none() {
-        return None;
-    }
 
     Some(McpToolApprovalKey {
         server: invocation.server.clone(),
@@ -254,13 +241,7 @@ fn build_mcp_tool_approval_fallback_message(
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .map(ToString::to_string)
-        .unwrap_or_else(|| {
-            if server == CODEX_APPS_MCP_SERVER_NAME {
-                "this app".to_string()
-            } else {
-                format!("the {server} MCP server")
-            }
-        });
+        .unwrap_or_else(|| format!("the {server} MCP server"));
     format!("Allow {actor} to run tool \"{tool_name}\"?")
 }
 
@@ -276,7 +257,6 @@ pub fn build_mcp_tool_approval_elicitation_request(
 
     ElicitationRequest::Form {
         meta: build_mcp_tool_approval_elicitation_meta(
-            request.server,
             request.metadata,
             request.tool_params,
             request.tool_params_display,
@@ -293,7 +273,6 @@ pub fn build_mcp_tool_approval_elicitation_request(
 /// Builds the metadata attached to an MCP-native approval elicitation.
 #[doc(hidden)]
 pub fn build_mcp_tool_approval_elicitation_meta(
-    server: &str,
     metadata: Option<&McpToolApprovalMetadata>,
     tool_params: Option<&Value>,
     tool_params_display: Option<&[RenderedMcpToolApprovalParam]>,
@@ -343,34 +322,6 @@ pub fn build_mcp_tool_approval_elicitation_meta(
                 MCP_TOOL_APPROVAL_TOOL_DESCRIPTION_KEY.to_string(),
                 Value::String(tool_description.clone()),
             );
-        }
-        if server == CODEX_APPS_MCP_SERVER_NAME
-            && (metadata.connector_id.is_some()
-                || metadata.connector_name.is_some()
-                || metadata.connector_description.is_some())
-        {
-            meta.insert(
-                MCP_TOOL_APPROVAL_SOURCE_KEY.to_string(),
-                Value::String(MCP_TOOL_APPROVAL_SOURCE_CONNECTOR.to_string()),
-            );
-            if let Some(connector_id) = metadata.connector_id.as_deref() {
-                meta.insert(
-                    MCP_TOOL_APPROVAL_CONNECTOR_ID_KEY.to_string(),
-                    Value::String(connector_id.to_string()),
-                );
-            }
-            if let Some(connector_name) = metadata.connector_name.as_ref() {
-                meta.insert(
-                    MCP_TOOL_APPROVAL_CONNECTOR_NAME_KEY.to_string(),
-                    Value::String(connector_name.clone()),
-                );
-            }
-            if let Some(connector_description) = metadata.connector_description.as_ref() {
-                meta.insert(
-                    MCP_TOOL_APPROVAL_CONNECTOR_DESCRIPTION_KEY.to_string(),
-                    Value::String(connector_description.clone()),
-                );
-            }
         }
     }
     if let Some(tool_params) = tool_params {

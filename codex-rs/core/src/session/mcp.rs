@@ -173,10 +173,9 @@ impl Session {
                 .config()
                 .mcp_server_catalog
                 .has_same_servers(&mcp_config.mcp_server_catalog)
-            && current.config().connector_snapshot == mcp_config.connector_snapshot
         {
             // Selected roots are only an input to the MCP projection. When they change but the
-            // projected servers and connectors do not, advance the input key without
+            // projected servers do not, advance the input key without
             // replacing the live manager and restarting its processes.
             let runtime = Arc::new(McpRuntimeSnapshot::new(
                 Arc::new(current.config().clone()),
@@ -420,7 +419,7 @@ impl Session {
         } = mcp_projection;
         let mcp_config = Arc::new(mcp_config);
         let tool_plugin_provenance = codex_mcp::tool_plugin_provenance(&mcp_config);
-        let mcp_servers = effective_mcp_servers(&mcp_config, auth.as_ref());
+        let mcp_servers = effective_mcp_servers(&mcp_config);
         let environment_manager = self.services.turn_environments.environment_manager();
         // TODO(anp): Migrate MCP runtime cwd plumbing to PathUri so foreign environment cwd
         // values can be used without falling back to the legacy host cwd.
@@ -442,9 +441,6 @@ impl Session {
             cancellation_token
         };
         let current_runtime = self.services.latest_mcp_runtime();
-        let codex_apps_auth_manager =
-            codex_mcp::host_owned_codex_apps_enabled(&mcp_config, auth.as_ref())
-                .then(|| Arc::clone(&self.services.auth_manager));
         let refreshed_manager = McpConnectionManager::new(
             &mcp_servers,
             mcp_config.mcp_oauth_credentials_store_mode,
@@ -455,10 +451,7 @@ impl Session {
             mcp_startup_cancellation_token,
             turn_context.permission_profile(),
             mcp_runtime_context.clone(),
-            mcp_config.codex_home.clone(),
-            self.services.mcp_manager.codex_apps_tools_cache(),
             self.services.mcp_manager.tool_catalog_cache(),
-            connector_runtime_context_key(auth.as_ref()),
             mcp_config.prefix_mcp_tool_names,
             mcp_config.client_elicitation_capability.clone(),
             self.services
@@ -466,7 +459,6 @@ impl Session {
                 .load(std::sync::atomic::Ordering::Relaxed),
             tool_plugin_provenance,
             auth.as_ref(),
-            codex_apps_auth_manager,
             elicitation_reviewer,
             Some(self.mcp_elicitation_lifecycle()),
             current_runtime.manager().elicitation_router(),
@@ -700,14 +692,9 @@ async fn review_guardian_mcp_elicitation(
         return Ok(None);
     };
 
-    let approvals_reviewer = crate::connectors::mcp_approvals_reviewer(
-        turn_context.config.as_ref(),
-        request.server_name.as_str(),
-        elicitation_connector_id(&request.elicitation),
-    );
     if !crate::guardian::routes_approval_to_guardian_with_reviewer(
         turn_context.as_ref(),
-        approvals_reviewer,
+        turn_context.config.approvals_reviewer,
     ) {
         return Ok(None);
     }
@@ -822,12 +809,6 @@ fn guardian_elicitation_review_request(
             annotations: None,
         },
     ))
-}
-
-fn elicitation_connector_id(elicitation: &Elicitation) -> Option<&str> {
-    elicitation
-        .meta()
-        .and_then(|meta| metadata_str(meta, MCP_ELICITATION_CONNECTOR_ID_KEY))
 }
 
 fn meta_requests_approval_request(meta: &Option<Meta>) -> bool {

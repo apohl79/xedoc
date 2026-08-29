@@ -200,7 +200,6 @@ enabled = true
     assert!(full_valid.manifest_name.is_some());
     assert!(!full_valid.skill_roots.is_empty());
     assert!(!full_valid.mcp_servers.is_empty());
-    assert!(!full_valid.apps.is_empty());
 
     let hooks_only_valid = hooks_only
         .iter()
@@ -209,7 +208,6 @@ enabled = true
     assert_eq!(hooks_only_valid.manifest_name, None);
     assert!(hooks_only_valid.skill_roots.is_empty());
     assert!(hooks_only_valid.mcp_servers.is_empty());
-    assert!(hooks_only_valid.apps.is_empty());
 }
 
 #[test]

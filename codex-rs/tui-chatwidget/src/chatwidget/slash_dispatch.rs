@@ -486,9 +486,6 @@ impl ChatWidget {
             SlashCommand::Mcp => {
                 self.add_mcp_output(McpServerStatusDetail::ToolsAndAuthOnly);
             }
-            SlashCommand::Apps => {
-                self.add_connectors_output();
-            }
             SlashCommand::Plugins => {
                 self.add_plugins_output();
             }
@@ -1046,7 +1043,6 @@ impl ChatWidget {
 
         BuiltinCommandFlags {
             collaboration_modes_enabled: self.collaboration_modes_enabled(),
-            connectors_enabled: self.connectors_enabled(),
             plugins_command_enabled: self.config.features.enabled(Feature::Plugins),
             token_activity_command_enabled: self.has_codex_backend_auth,
             goal_command_enabled: self.config.features.enabled(Feature::Goals),
@@ -1079,7 +1075,6 @@ impl ChatWidget {
             | SlashCommand::MemoryDrop
             | SlashCommand::MemoryUpdate
             | SlashCommand::Mcp
-            | SlashCommand::Apps
             | SlashCommand::Plugins
             | SlashCommand::Rollout
             | SlashCommand::Copy

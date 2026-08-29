@@ -401,7 +401,7 @@ discoverables = [{ type = "plugin", id = "sample@openai-curated" }]
             ),
             has_skills: true,
             mcp_server_names: vec!["sample-docs".to_string()],
-            app_connector_ids: vec!["connector_calendar".to_string()],
+            app_connector_ids: Vec::new(),
         }]
     );
 }

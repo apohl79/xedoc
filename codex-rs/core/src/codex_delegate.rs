@@ -45,7 +45,6 @@ use crate::mcp_tool_call::McpToolApprovalMetadata;
 use crate::mcp_tool_call::build_guardian_mcp_tool_review_request;
 use crate::mcp_tool_call::is_mcp_tool_approval_question_id;
 use crate::mcp_tool_call::lookup_mcp_tool_metadata;
-use crate::mcp_tool_call::mcp_approvals_reviewer;
 use crate::session::SUBMISSION_CHANNEL_CAPACITY;
 use crate::session::SessionIo;
 use crate::session::SessionSpawnArgs;
@@ -371,13 +370,10 @@ async fn forward_events(
                         // Runtime refreshes are published before a request step is captured, so
                         // the child runtime at call begin is the one executing this invocation.
                         // Cache its metadata now; the later approval event has only a call ID.
-                        let metadata = if let Some(turn_context) =
-                            session.turn_context_for_sub_id(&id).await
+                        let metadata = if session.turn_context_for_sub_id(&id).await.is_some()
                         {
                             let mcp = session.services.latest_mcp_runtime();
                             lookup_mcp_tool_metadata(
-                                session.as_ref(),
-                                turn_context.as_ref(),
                                 mcp.manager(),
                                 &event.invocation.server,
                                 &event.invocation.tool,
@@ -743,8 +739,7 @@ async fn maybe_auto_review_mcp_request_user_input(
         .cloned()?;
     let invocation = pending.invocation;
     let metadata = pending.metadata;
-    let approvals_reviewer =
-        mcp_approvals_reviewer(parent_ctx, &invocation.server, metadata.as_ref());
+    let approvals_reviewer = parent_ctx.config.approvals_reviewer;
     if !routes_approval_to_guardian_with_reviewer(parent_ctx, approvals_reviewer) {
         return None;
     }

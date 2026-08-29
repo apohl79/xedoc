@@ -81,7 +81,6 @@ use crate::token_usage::TokenUsageInfo;
 use crate::version::codex_cli_version;
 use codex_app_server_protocol::AddCreditsNudgeCreditType;
 use codex_app_server_protocol::AddCreditsNudgeEmailStatus;
-use codex_app_server_protocol::AppSummary;
 use codex_app_server_protocol::CodexErrorInfo as AppServerCodexErrorInfo;
 use codex_app_server_protocol::CollabAgentTool;
 use codex_app_server_protocol::CollabAgentToolCallStatus;
@@ -123,7 +122,6 @@ use codex_config::ConstraintResult;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::Notifications;
 use codex_config::types::WindowsSandboxModeToml;
-use codex_connectors::AppInfo;
 use codex_features::FEATURES;
 use codex_features::Feature;
 #[cfg(test)]
@@ -200,7 +198,6 @@ const MEMORIES_ENABLE_NOTICE: &str = "Memories will be enabled in the next sessi
 const PLAN_MODE_REASONING_SCOPE_TITLE: &str = "Apply reasoning change";
 const PLAN_MODE_REASONING_SCOPE_PLAN_ONLY: &str = "Apply to Plan mode override";
 const PLAN_MODE_REASONING_SCOPE_ALL_MODES: &str = "Apply to global default and Plan mode override";
-const CONNECTORS_SELECTION_VIEW_ID: &str = "connectors-selection";
 const PET_SELECTION_LOADING_VIEW_ID: &str = "pet-selection-loading";
 const AMBIENT_PET_WRAP_GAP_COLUMNS: u16 = 2;
 const TUI_STUB_MESSAGE: &str = "Not available in TUI yet.";
@@ -331,9 +328,7 @@ use crate::text_formatting::truncate_text;
 use codex_tui_frame::FrameRequester;
 use codex_tui_status::status::remote_connection::RemoteConnectionStatus;
 mod command_lifecycle;
-mod connectors;
 mod constructor;
-use self::connectors::ConnectorsState;
 mod exec_state;
 use self::exec_state::RunningCommand;
 use self::exec_state::UnifiedExecProcessSummary;
@@ -369,12 +364,9 @@ mod interaction;
 mod skills;
 mod slash_dispatch;
 use self::skills::collect_tool_mentions;
-use self::skills::find_app_mentions;
 use self::skills::find_skill_mentions_with_tool_mentions;
-use self::skills::is_app_mentionable;
 mod plugin_catalog;
 mod plugins;
-use self::plugins::PluginInstallAuthFlowState;
 use self::plugins::PluginListFetchState;
 use self::plugins::PluginsCacheState;
 mod plan_implementation;
@@ -623,15 +615,12 @@ pub struct ChatWidget {
     mcp_startup_pending_next_round: HashMap<String, McpStartupStatus>,
     /// Tracks whether the buffered next round has seen any `Starting` update yet.
     mcp_startup_pending_next_round_saw_starting: bool,
-    connectors: ConnectorsState,
     ide_context: IdeContextState,
     plugins_cache: PluginsCacheState,
     plugins_fetch_state: PluginListFetchState,
     plugin_remote_sections_loading: bool,
     plugin_remote_sections_loaded: bool,
     plugin_remote_section_errors: Vec<crate::app_event::PluginRemoteSectionError>,
-    plugin_install_apps_needing_auth: Vec<AppSummary>,
-    plugin_install_auth_flow: Option<PluginInstallAuthFlowState>,
     plugins_active_tab_id: Option<String>,
     newly_installed_marketplace_tab_id: Option<String>,
     // Queue of interruptive UI events deferred during an active write cycle
@@ -984,16 +973,6 @@ impl ChatWidget {
             self.turn_lifecycle.last_turn_id.clone(),
             self.app_event_tx.clone(),
             include_logs,
-        );
-        self.bottom_pane.show_view(Box::new(view));
-        self.request_redraw();
-    }
-
-    pub fn open_app_link_view(&mut self, params: crate::bottom_pane::AppLinkViewParams) {
-        let view = crate::bottom_pane::AppLinkView::new_with_keymap(
-            params,
-            self.app_event_tx.clone(),
-            self.bottom_pane.list_keymap(),
         );
         self.bottom_pane.show_view(Box::new(view));
         self.request_redraw();

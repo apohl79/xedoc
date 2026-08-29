@@ -121,7 +121,6 @@ impl McpRequestProcessor {
             timeout_secs,
         } = params;
 
-        let auth = self.auth_manager.auth().await;
         let (mcp_config, runtime_context) = match thread_id.as_deref() {
             Some(thread_id) => {
                 let (_, thread) = self.load_thread(thread_id).await?;
@@ -142,7 +141,7 @@ impl McpRequestProcessor {
                 (mcp_config, runtime_context)
             }
         };
-        let effective_servers = codex_mcp::effective_mcp_servers(&mcp_config, auth.as_ref());
+        let effective_servers = codex_mcp::effective_mcp_servers(&mcp_config);
         let Some(server) = effective_servers
             .get(&name)
             .and_then(codex_mcp::EffectiveMcpServer::configured_config)
@@ -316,7 +315,6 @@ impl McpRequestProcessor {
             auth.as_ref(),
             request_id,
             runtime_context,
-            mcp_manager.codex_apps_tools_cache(),
             mcp_manager.tool_catalog_cache(),
             detail,
         )
@@ -410,7 +408,6 @@ impl McpRequestProcessor {
         let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
         let mcp_manager = self.thread_manager.mcp_manager();
         let mcp_config = mcp_manager.runtime_config(&config).await;
-        let codex_apps_tools_cache = mcp_manager.codex_apps_tools_cache();
         let tool_catalog_cache = mcp_manager.tool_catalog_cache();
         let auth = self.auth_manager.auth().await;
         let environment_manager = self.thread_manager.environment_manager();
@@ -426,7 +423,6 @@ impl McpRequestProcessor {
                 &mcp_config,
                 auth.as_ref(),
                 runtime_context,
-                codex_apps_tools_cache,
                 tool_catalog_cache,
                 &server,
                 &uri,

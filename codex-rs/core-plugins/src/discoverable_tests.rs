@@ -268,8 +268,8 @@ source = "/tmp/{marketplace_name}"
             "Plugin that includes skills, MCP servers, and app connectors".to_string(),
         ),
         has_skills: true,
-        mcp_server_names: Vec::new(),
-        app_connector_ids: vec!["connector_sample".to_string()],
+        mcp_server_names: vec!["sample-docs".to_string()],
+        app_connector_ids: Vec::new(),
     };
     assert_eq!(chatgpt_projection, vec![expected.clone()]);
 
@@ -280,14 +280,7 @@ source = "/tmp/{marketplace_name}"
         /*auth*/ None,
     )
     .await;
-    assert_eq!(
-        api_key_projection,
-        vec![ToolSuggestDiscoverablePlugin {
-            mcp_server_names: vec!["sample-docs".to_string()],
-            app_connector_ids: Vec::new(),
-            ..expected
-        }]
-    );
+    assert_eq!(api_key_projection, vec![expected]);
 }
 
 #[tokio::test]
@@ -307,7 +300,7 @@ async fn reprojects_cached_skill_availability_for_current_config() {
         ),
         has_skills: true,
         mcp_server_names: vec!["sample-docs".to_string()],
-        app_connector_ids: vec!["connector_calendar".to_string()],
+        app_connector_ids: Vec::new(),
     };
     let initial = list_discoverable_plugins(
         &plugins_manager,
@@ -370,7 +363,7 @@ async fn does_not_advertise_skills_when_skill_loading_fails() {
             ),
             has_skills: false,
             mcp_server_names: vec!["sample-docs".to_string()],
-            app_connector_ids: vec!["connector_calendar".to_string()],
+            app_connector_ids: Vec::new(),
         }]
     );
 }
@@ -399,7 +392,7 @@ async fn clear_cache_invalidates_cached_tool_suggest_metadata() {
         description: Some("Before reload".to_string()),
         has_skills: true,
         mcp_server_names: vec!["sample-docs".to_string()],
-        app_connector_ids: vec!["connector_calendar".to_string()],
+        app_connector_ids: Vec::new(),
     }];
     let initial = list_discoverable_plugins(&plugins_manager, input.clone(), /*auth*/ None).await;
     assert_eq!(initial, expected_cached);
@@ -506,7 +499,7 @@ async fn normalizes_description() {
             description: Some("Plugin with extra spacing".to_string()),
             has_skills: true,
             mcp_server_names: vec!["sample-docs".to_string()],
-            app_connector_ids: vec!["connector_calendar".to_string()],
+            app_connector_ids: Vec::new(),
         }]
     );
 }
@@ -644,12 +637,12 @@ async fn does_not_reload_marketplace_per_plugin() {
     let logs = String::from_utf8(buffer.lock().expect("buffer lock").clone())
         .expect("utf8 logs")
         .replace('\\', "/");
-    assert_eq!(logs.matches("ignoring interface.defaultPrompt").count(), 8);
-    assert_eq!(logs.matches("gmail/.codex-plugin/plugin.json").count(), 4);
+    assert_eq!(logs.matches("ignoring interface.defaultPrompt").count(), 6);
+    assert_eq!(logs.matches("gmail/.codex-plugin/plugin.json").count(), 3);
     assert_eq!(
         logs.matches("openai-developers/.codex-plugin/plugin.json")
             .count(),
-        4
+        3
     );
 }
 

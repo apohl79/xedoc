@@ -1,11 +1,9 @@
 use super::session::Session;
 use super::step_context::StepContext;
-use crate::connectors;
 use crate::context::ApprovalPromptContext;
 use crate::context::FileSystemContext;
 use crate::context::NetworkContext;
 use crate::context::world_state::AgentsMdState;
-use crate::context::world_state::AppsInstructionsState;
 use crate::context::world_state::CollaborationModeState;
 use crate::context::world_state::EnvironmentState;
 use crate::context::world_state::EnvironmentsInstructionsState;
@@ -148,19 +146,6 @@ impl Session {
                     .features
                     .enabled(Feature::DeferredExecutor),
         ));
-        let apps_available =
-            if turn_context.config.include_apps_instructions && turn_context.apps_enabled() {
-                let tools = step_context.mcp_tools().await;
-                connectors::with_app_enabled_state(
-                    connectors::accessible_connectors_from_mcp_tools(tools),
-                    &turn_context.config,
-                )
-                .into_iter()
-                .any(|connector| connector.is_accessible && connector.is_enabled)
-            } else {
-                false
-            };
-        world_state.add_section(AppsInstructionsState::new(apps_available));
         world_state.add_section(PluginsInstructionsState::new(
             step_context.mcp.plugins_available(),
         ));

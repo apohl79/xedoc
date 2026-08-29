@@ -146,20 +146,20 @@ async fn replayed_user_messages_seed_composer_history() {
     );
     replay_mention(
         "user-2",
-        "use $google-calendar",
-        "Google Calendar",
-        "app://google_calendar",
+        "use $other",
+        "Other Plugin",
+        "plugin://other@test",
     );
     drain_insert_history(&mut rx);
 
     chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-    assert_eq!(chat.bottom_pane.composer_text(), "use $google-calendar");
+    assert_eq!(chat.bottom_pane.composer_text(), "use $other");
     assert_eq!(
         chat.bottom_pane.take_mention_bindings(),
         vec![MentionBinding {
             sigil: '$',
-            mention: "google-calendar".to_string(),
-            path: "app://google_calendar".to_string(),
+            mention: "other".to_string(),
+            path: "plugin://other@test".to_string(),
         }]
     );
 
@@ -191,7 +191,7 @@ async fn replayed_user_messages_seed_composer_history() {
     chat.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
     chat.handle_history_entry_response(response(
         next_lookup_offset(),
-        "use [$google-calendar](app://google_calendar)",
+        "use [$other](plugin://other@test)",
     ));
 
     assert_eq!(next_lookup_offset(), 1);

@@ -1963,10 +1963,8 @@ dependencies = [
  "codex-app-server-transport",
  "codex-arg0",
  "codex-backend-client",
- "codex-chatgpt",
  "codex-cloud-config",
  "codex-config",
- "codex-connectors",
  "codex-core",
  "codex-core-plugins",
  "codex-exec-server",
@@ -2301,27 +2299,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-chatgpt"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "clap",
- "codex-connectors",
- "codex-core",
- "codex-git-utils",
- "codex-login",
- "codex-model-provider",
- "codex-plugin",
- "codex-utils-cargo-bin",
- "codex-utils-cli",
- "pretty_assertions",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "codex-cli"
 version = "0.145.0"
 dependencies = [
@@ -2407,7 +2384,6 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-app-server-test-client",
  "codex-arg0",
- "codex-chatgpt",
  "codex-cli-doctor",
  "codex-config",
  "codex-core",
@@ -2599,41 +2575,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-connectors"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "arc-swap",
- "codex-config",
- "codex-login",
- "codex-otel",
- "codex-plugin",
- "codex-protocol",
- "indexmap 2.14.0",
- "pretty_assertions",
- "serde",
- "serde_json",
- "sha1 0.10.6",
- "tempfile",
- "tokio",
- "tracing",
- "urlencoding",
-]
-
-[[package]]
-name = "codex-connectors-extension"
-version = "0.145.0"
-dependencies = [
- "codex-connectors",
- "codex-core-plugins",
- "codex-plugin",
- "codex-utils-path-uri",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
 name = "codex-context-fragments"
 version = "0.145.0"
 dependencies = [
@@ -2663,7 +2604,6 @@ dependencies = [
  "codex-code-mode-client",
  "codex-code-mode-protocol",
  "codex-config",
- "codex-connectors",
  "codex-context-fragments",
  "codex-core-agent-registry",
  "codex-core-agent-role",
@@ -2671,14 +2611,12 @@ dependencies = [
  "codex-core-auto-compact-window",
  "codex-core-client",
  "codex-core-config",
- "codex-core-connectors-runtime",
  "codex-core-context",
  "codex-core-context-manager",
  "codex-core-elicitation",
  "codex-core-environment",
  "codex-core-exec",
  "codex-core-guardian-approval",
- "codex-core-mcp-openai-file",
  "codex-core-mcp-runtime",
  "codex-core-mcp-skill-dependency",
  "codex-core-plugin-context",
@@ -2926,7 +2864,6 @@ dependencies = [
  "assert_matches",
  "base64 0.22.1",
  "codex-config",
- "codex-connectors",
  "codex-core-config-runtime",
  "codex-core-plugins",
  "codex-core-skills",
@@ -2983,32 +2920,6 @@ dependencies = [
  "pretty_assertions",
  "tempfile",
  "toml 0.9.11+spec-1.1.0",
- "tracing",
-]
-
-[[package]]
-name = "codex-core-connectors-runtime"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "codex-config",
- "codex-connectors",
- "codex-core-config",
- "codex-core-mcp-runtime",
- "codex-core-plugin-context",
- "codex-core-plugins",
- "codex-exec-server",
- "codex-features",
- "codex-login",
- "codex-mcp",
- "codex-protocol",
- "codex-tools",
- "pretty_assertions",
- "rmcp",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
  "tracing",
 ]
 
@@ -3155,30 +3066,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-core-mcp-openai-file"
-version = "0.145.0"
-dependencies = [
- "codex-api",
- "codex-core-environment",
- "codex-exec-server",
- "codex-http-client",
- "codex-login",
- "codex-model-provider",
- "codex-utils-absolute-path",
- "codex-utils-path-uri",
- "pretty_assertions",
- "serde_json",
- "tempfile",
- "tokio",
- "wiremock",
-]
-
-[[package]]
 name = "codex-core-mcp-runtime"
 version = "0.145.0"
 dependencies = [
  "codex-config",
- "codex-connectors",
  "codex-core-approval-policy",
  "codex-core-config",
  "codex-core-plugins",
@@ -3212,7 +3103,6 @@ version = "0.145.0"
 dependencies = [
  "anyhow",
  "codex-config",
- "codex-connectors",
  "codex-core-config",
  "codex-core-context",
  "codex-core-plugins",
@@ -3278,7 +3168,6 @@ dependencies = [
  "codex-analytics",
  "codex-app-server-protocol",
  "codex-config",
- "codex-connectors",
  "codex-core-plugin-marketplace",
  "codex-core-skills",
  "codex-exec-server",
@@ -4150,7 +4039,6 @@ dependencies = [
  "codex-api",
  "codex-async-utils",
  "codex-config",
- "codex-connectors",
  "codex-exec-server",
  "codex-login",
  "codex-model-provider",
@@ -4181,14 +4069,11 @@ name = "codex-mcp-extension"
 version = "0.145.0"
 dependencies = [
  "codex-config",
- "codex-connectors",
- "codex-connectors-extension",
  "codex-core",
  "codex-core-plugins",
  "codex-exec-server",
  "codex-extension-api",
  "codex-features",
- "codex-login",
  "codex-mcp",
  "codex-plugin",
  "codex-protocol",
@@ -4868,7 +4753,6 @@ name = "codex-tools"
 version = "0.145.0"
 dependencies = [
  "codex-code-mode-protocol",
- "codex-connectors",
  "codex-extension-items",
  "codex-features",
  "codex-file-system",
@@ -4906,7 +4790,6 @@ dependencies = [
  "codex-cli",
  "codex-cloud-config",
  "codex-config",
- "codex-connectors",
  "codex-core-plugins",
  "codex-exec-server",
  "codex-features",
@@ -5107,7 +4990,6 @@ dependencies = [
  "codex-app-server-client",
  "codex-app-server-protocol",
  "codex-config",
- "codex-connectors",
  "codex-core-plugins",
  "codex-features",
  "codex-feedback",
@@ -5209,7 +5091,6 @@ name = "codex-tui-composer"
 version = "0.145.0"
 dependencies = [
  "codex-app-server-protocol",
- "codex-connectors",
  "codex-features",
  "codex-file-search",
  "codex-message-history",
@@ -5260,7 +5141,6 @@ dependencies = [
  "chrono",
  "codex-app-server-protocol",
  "codex-config",
- "codex-connectors",
  "codex-core-config",
  "codex-features",
  "codex-file-search",

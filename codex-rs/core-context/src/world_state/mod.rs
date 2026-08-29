@@ -1,5 +1,4 @@
 mod agents_md;
-mod apps_instructions;
 mod collaboration_mode;
 mod environment;
 mod environments_instructions;
@@ -26,7 +25,6 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 pub use agents_md::AgentsMdState;
-pub use apps_instructions::AppsInstructionsState;
 pub use collaboration_mode::CollaborationModeState;
 pub use environment::EnvironmentState;
 pub use environment::EnvironmentsState;

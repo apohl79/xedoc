@@ -1,8 +1,6 @@
 //! MCP tool request metadata construction.
 
 use codex_core_approval_policy::McpToolApprovalMetadata;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
-use codex_mcp::MCP_TOOL_CODEX_APPS_META_KEY;
 use serde_json::Value;
 
 const MCP_TOOL_PLUGIN_ID_META_KEY: &str = "plugin_id";
@@ -13,8 +11,6 @@ const MCP_TOOL_THREAD_ID_META_KEY: &str = "threadId";
 pub fn build_mcp_tool_call_request_meta(
     turn_metadata_header: &str,
     turn_metadata: Option<Value>,
-    server: &str,
-    call_id: &str,
     metadata: Option<&McpToolApprovalMetadata>,
 ) -> Option<Value> {
     let mut request_meta = serde_json::Map::new();
@@ -23,16 +19,6 @@ pub fn build_mcp_tool_call_request_meta(
         request_meta.insert(turn_metadata_header.to_string(), turn_metadata);
     }
 
-    if server == CODEX_APPS_MCP_SERVER_NAME {
-        let mut codex_apps_meta = metadata
-            .and_then(|metadata| metadata.codex_apps_meta.clone())
-            .unwrap_or_default();
-        codex_apps_meta.insert("call_id".to_string(), Value::String(call_id.to_string()));
-        request_meta.insert(
-            MCP_TOOL_CODEX_APPS_META_KEY.to_string(),
-            Value::Object(codex_apps_meta),
-        );
-    }
     if let Some(plugin_id) = metadata.and_then(|metadata| metadata.plugin_id.as_ref()) {
         request_meta.insert(
             MCP_TOOL_PLUGIN_ID_META_KEY.to_string(),

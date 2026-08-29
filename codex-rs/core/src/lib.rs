@@ -6,7 +6,6 @@
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
 mod apply_patch;
-mod apps;
 mod audio_preparation;
 pub(crate) use codex_core_client::client;
 pub(crate) use codex_core_client::client_common;
@@ -44,7 +43,6 @@ pub use codex_core_config::config;
 mod config_requirements_exec_policy_tests;
 #[cfg(test)]
 mod config_test_support;
-pub mod connectors;
 pub mod context;
 mod context_manager;
 mod current_time;
@@ -72,7 +70,6 @@ mod mcp_tool_exposure;
 mod network_policy_decision;
 pub use mcp::McpManager;
 mod original_image_detail;
-pub use codex_mcp::CodexAppsToolsCache;
 pub use codex_mcp::SandboxState;
 mod mcp_tool_call;
 pub(crate) mod mention_syntax;
@@ -87,11 +84,7 @@ pub(crate) mod prompt_debug;
 #[doc(hidden)]
 pub use prompt_debug::build_prompt_input;
 pub(crate) mod mentions {
-    pub(crate) use crate::plugins::build_connector_slug_counts;
-    pub(crate) use crate::plugins::build_skill_name_counts;
-    pub(crate) use crate::plugins::collect_explicit_app_ids;
     pub(crate) use crate::plugins::collect_explicit_plugin_mentions;
-    pub(crate) use crate::plugins::collect_tool_mentions_from_messages;
 }
 mod sandbox_tags {
     pub(crate) use codex_core_turn_metadata::permission_profile_policy_tag;
@@ -109,7 +102,6 @@ pub(crate) use skills::build_skill_injections;
 pub(crate) use skills::build_skill_name_counts;
 pub(crate) use skills::collect_explicit_skill_mentions;
 pub(crate) use skills::default_skill_metadata_budget;
-pub(crate) use skills::injection;
 pub(crate) use skills::maybe_emit_implicit_skill_invocation;
 pub(crate) use skills::skills_load_input_from_config;
 mod stream_events_utils;

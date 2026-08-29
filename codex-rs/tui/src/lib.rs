@@ -92,7 +92,6 @@ mod app_backtrack;
 mod app_command;
 mod app_event;
 mod app_event_sender;
-mod app_info;
 mod app_server_approval_conversions;
 mod app_server_session;
 pub(crate) use app_server_session::connect_remote_app_server;

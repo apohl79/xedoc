@@ -5,7 +5,6 @@ use similar::TextDiff;
 use std::sync::OnceLock;
 
 use crate::responses::ResponsesRequest;
-use codex_protocol::protocol::APPS_INSTRUCTIONS_OPEN_TAG;
 use codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG;
 use codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG;
 
@@ -372,9 +371,6 @@ fn canonicalize_snapshot_text(text: &str) -> String {
     if text.starts_with("<permissions instructions>") {
         return "<PERMISSIONS_INSTRUCTIONS>".to_string();
     }
-    if text.starts_with(APPS_INSTRUCTIONS_OPEN_TAG) {
-        return "<APPS_INSTRUCTIONS>".to_string();
-    }
     if text.starts_with(SKILLS_INSTRUCTIONS_OPEN_TAG) {
         return "<SKILLS_INSTRUCTIONS>".to_string();
     }
@@ -426,8 +422,7 @@ fn canonicalize_snapshot_text(text: &str) -> String {
 }
 
 fn is_capability_instruction_text(text: &str) -> bool {
-    text.starts_with(APPS_INSTRUCTIONS_OPEN_TAG)
-        || text.starts_with(SKILLS_INSTRUCTIONS_OPEN_TAG)
+    text.starts_with(SKILLS_INSTRUCTIONS_OPEN_TAG)
         || text.starts_with(PLUGINS_INSTRUCTIONS_OPEN_TAG)
 }
 
@@ -543,10 +538,6 @@ mod tests {
             "content": [
                 {
                     "type": "input_text",
-                    "text": "<apps_instructions>\n## Apps\nbody\n</apps_instructions>"
-                },
-                {
-                    "type": "input_text",
                     "text": "<skills_instructions>\n## Skills\nbody\n</skills_instructions>"
                 },
                 {
@@ -563,7 +554,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "00:message/developer[3]:\n    [01] <APPS_INSTRUCTIONS>\n    [02] <SKILLS_INSTRUCTIONS>\n    [03] <PLUGINS_INSTRUCTIONS>"
+            "00:message/developer[2]:\n    [01] <SKILLS_INSTRUCTIONS>\n    [02] <PLUGINS_INSTRUCTIONS>"
         );
     }
 

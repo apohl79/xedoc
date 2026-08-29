@@ -12,7 +12,6 @@ pub use codex_tui_input::QueuedInputAction;
 pub use codex_tui_input::textarea;
 
 mod action_required_title;
-mod app_link_view;
 pub mod approval_overlay;
 pub mod bottom_pane_view;
 pub mod custom_prompt_view;
@@ -32,10 +31,6 @@ mod title_setup;
 
 pub use action_required_title::ACTION_REQUIRED_PREVIEW_PREFIX;
 pub use action_required_title::build_action_required_title_text;
-pub use app_link_view::AppLinkElicitationTarget;
-pub use app_link_view::AppLinkSuggestionType;
-pub use app_link_view::AppLinkView;
-pub use app_link_view::AppLinkViewParams;
 pub use approval_overlay::ApplyPatchApprovalRequest;
 pub use approval_overlay::ApprovalOverlay;
 pub use approval_overlay::ApprovalRequest;

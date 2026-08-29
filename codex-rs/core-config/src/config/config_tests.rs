@@ -6248,39 +6248,6 @@ pane = { selected = "console", expanded = false }
 }
 
 #[tokio::test]
-async fn to_mcp_config_preserves_apps_feature_from_config() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let mut config = Config::load_from_base_config_with_overrides(
-        ConfigToml::default(),
-        ConfigOverrides::default(),
-        codex_home.abs(),
-    )
-    .await?;
-    let plugins_manager = PluginsManager::new(codex_home.path().to_path_buf());
-
-    config
-        .features
-        .enable(Feature::Apps)
-        .expect("Apps should be enableable in tests");
-    config.apps_mcp_product_sku = Some("tpp".to_string());
-    let mcp_config = config.to_mcp_config(&plugins_manager).await;
-    assert!(mcp_config.apps_enabled);
-    assert!(!mcp_config.openai_developer_docs_enabled);
-    assert_eq!(mcp_config.apps_mcp_product_sku.as_deref(), Some("tpp"));
-
-    let _ = config.features.disable(Feature::Apps);
-    let mcp_config = config.to_mcp_config(&plugins_manager).await;
-    assert!(!mcp_config.apps_enabled);
-
-    let _ = config.features.enable(Feature::Apps);
-    let mcp_config = config.to_mcp_config(&plugins_manager).await;
-    assert!(mcp_config.apps_enabled);
-    assert!(!mcp_config.openai_developer_docs_enabled);
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn to_mcp_config_flows_mcp_tool_prefix_from_feature() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let mut config = Config::load_from_base_config_with_overrides(
@@ -9714,27 +9681,6 @@ allow_login_shell = false
 }
 
 #[tokio::test]
-async fn config_loads_apps_mcp_product_sku_from_toml() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let toml = r#"
-model = "gpt-5.4"
-apps_mcp_product_sku = "tpp"
-"#;
-    let cfg: ConfigToml =
-        toml::from_str(toml).expect("TOML deserialization should succeed for apps MCP SKU");
-
-    let config = Config::load_from_base_config_with_overrides(
-        cfg,
-        ConfigOverrides::default(),
-        codex_home.abs(),
-    )
-    .await?;
-
-    assert_eq!(config.apps_mcp_product_sku.as_deref(), Some("tpp"));
-    Ok(())
-}
-
-#[tokio::test]
 async fn config_loads_orchestrator_settings_from_toml() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let cfg: ConfigToml = toml::from_str(
@@ -10437,7 +10383,6 @@ async fn prompt_instruction_blocks_can_be_disabled_from_config() -> std::io::Res
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
         r#"include_permissions_instructions = false
-include_apps_instructions = false
 include_collaboration_mode_instructions = false
 include_environment_context = false
 
@@ -10453,7 +10398,6 @@ include_instructions = false
         .await?;
 
     assert!(!config.include_permissions_instructions);
-    assert!(!config.include_apps_instructions);
     assert!(!config.include_collaboration_mode_instructions);
     assert!(!config.include_skill_instructions);
     assert!(!config.include_environment_context);

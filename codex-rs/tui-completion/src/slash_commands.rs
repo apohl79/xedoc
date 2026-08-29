@@ -56,7 +56,6 @@ impl SlashCommandItem {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BuiltinCommandFlags {
     pub collaboration_modes_enabled: bool,
-    pub connectors_enabled: bool,
     pub plugins_command_enabled: bool,
     pub token_activity_command_enabled: bool,
     pub service_tier_commands_enabled: bool,
@@ -72,7 +71,6 @@ pub fn builtins_for_input(flags: BuiltinCommandFlags) -> Vec<(&'static str, Slas
         .into_iter()
         .filter(|(_, cmd)| flags.allow_elevate_sandbox || *cmd != SlashCommand::ElevateSandbox)
         .filter(|(_, cmd)| flags.collaboration_modes_enabled || *cmd != SlashCommand::Plan)
-        .filter(|(_, cmd)| flags.connectors_enabled || *cmd != SlashCommand::Apps)
         .filter(|(_, cmd)| flags.plugins_command_enabled || *cmd != SlashCommand::Plugins)
         .filter(|(_, cmd)| flags.token_activity_command_enabled || *cmd != SlashCommand::Usage)
         .filter(|(_, cmd)| flags.goal_command_enabled || *cmd != SlashCommand::Goal)
@@ -165,7 +163,6 @@ mod tests {
     fn all_enabled_flags() -> BuiltinCommandFlags {
         BuiltinCommandFlags {
             collaboration_modes_enabled: true,
-            connectors_enabled: true,
             plugins_command_enabled: true,
             token_activity_command_enabled: true,
             service_tier_commands_enabled: true,

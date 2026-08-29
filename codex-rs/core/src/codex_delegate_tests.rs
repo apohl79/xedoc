@@ -3,7 +3,6 @@ use crate::environment_selection::TurnEnvironmentState;
 use crate::mcp_tool_call::MCP_TOOL_APPROVAL_DECLINE_SYNTHETIC;
 use crate::mcp_tool_call::MCP_TOOL_APPROVAL_QUESTION_ID_PREFIX;
 use async_channel::bounded;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::models::NetworkPermissions;
 use codex_protocol::models::ResponseItem;
@@ -503,7 +502,7 @@ async fn delegated_mcp_user_reviewer_returns_none_without_metadata() {
         "call-1".to_string(),
         PendingMcpInvocation {
             invocation: McpInvocation {
-                server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+                server: "playwright".to_string(),
                 tool: "dangerous_tool".to_string(),
                 arguments: None,
             },

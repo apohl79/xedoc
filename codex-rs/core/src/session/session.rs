@@ -792,7 +792,7 @@ impl Session {
                 )
                 .await;
             let mcp_config = &mcp_projection.config;
-            let mcp_servers = codex_mcp::effective_mcp_servers(mcp_config, auth.as_ref());
+            let mcp_servers = codex_mcp::effective_mcp_servers(mcp_config);
             let tool_plugin_provenance = codex_mcp::tool_plugin_provenance(mcp_config);
             (auth, mcp_projection, mcp_servers, tool_plugin_provenance)
         }
@@ -1266,9 +1266,6 @@ impl Session {
                 *cancel_guard = cancel_token.clone();
                 cancel_token
             };
-            let codex_apps_auth_manager =
-                codex_mcp::host_owned_codex_apps_enabled(&mcp_projection.config, auth)
-                    .then(|| Arc::clone(&sess.services.auth_manager));
             let mcp_connection_manager = McpConnectionManager::new(
                 &mcp_servers,
                 config.mcp_oauth_credentials_store_mode,
@@ -1279,10 +1276,7 @@ impl Session {
                 mcp_startup_cancellation_token,
                 session_configuration.permission_profile(),
                 mcp_runtime_context.clone(),
-                config.codex_home.to_path_buf(),
-                sess.services.mcp_manager.codex_apps_tools_cache(),
                 sess.services.mcp_manager.tool_catalog_cache(),
-                connector_runtime_context_key(auth),
                 config.prefix_mcp_tool_names(),
                 mcp_projection
                     .config
@@ -1293,7 +1287,6 @@ impl Session {
                     .load(std::sync::atomic::Ordering::Relaxed),
                 tool_plugin_provenance,
                 auth,
-                codex_apps_auth_manager,
                 Some(sess.mcp_elicitation_reviewer()),
                 Some(sess.mcp_elicitation_lifecycle()),
                 codex_mcp::ElicitationRequestRouter::default(),

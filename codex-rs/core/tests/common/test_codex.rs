@@ -629,7 +629,6 @@ impl TestCodexBuilder {
             &config,
             auth_manager.clone(),
             codex_core::build_models_manager(&config, auth_manager),
-            codex_core::CodexAppsToolsCache::default(),
             SessionSource::Exec,
             Arc::clone(&environment_manager),
             Arc::clone(&self.extensions),
@@ -1239,13 +1238,21 @@ fn function_call_output<'a>(bodies: &'a [Value], call_id: &str) -> &'a Value {
         .expect(&missing_output)
 }
 
+pub fn configure_search_capable_model(config: &mut Config) {
+    let mut model_catalog = bundled_models_response().expect("bundled models.json should parse");
+    let model = model_catalog
+        .models
+        .iter_mut()
+        .find(|model| model.slug == "gpt-5.4")
+        .expect("gpt-5.4 exists in bundled models.json");
+    config.model = Some("gpt-5.4".to_string());
+    model.supports_search_tool = true;
+    config.model_catalog = Some(model_catalog);
+}
+
 pub fn test_codex() -> TestCodexBuilder {
     TestCodexBuilder {
         config_mutators: vec![Box::new(|config| {
-            config
-                .features
-                .disable(Feature::Apps)
-                .expect("test config should allow Apps override");
             // Snapshot tests opt in explicitly; avoid spawning login shells for every test.
             config
                 .features

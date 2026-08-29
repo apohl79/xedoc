@@ -3,7 +3,6 @@
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
 mod approved_command_prefix_saved;
-mod apps_instructions;
 mod available_plugins_instructions;
 mod available_skills_instructions;
 mod contextual_user_message;
@@ -37,7 +36,6 @@ mod user_shell_command;
 pub mod world_state;
 
 pub use approved_command_prefix_saved::ApprovedCommandPrefixSaved;
-pub use apps_instructions::AppsInstructions;
 pub use available_plugins_instructions::AvailablePluginsInstructions;
 pub use available_skills_instructions::AvailableSkillsInstructions;
 pub use codex_context_fragments::AdditionalContextDeveloperFragment;

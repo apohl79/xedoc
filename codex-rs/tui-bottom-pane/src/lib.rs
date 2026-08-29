@@ -52,7 +52,6 @@ use std::path::PathBuf;
 use crate::active_agent_list::ActiveAgentList;
 use crate::active_task_list::ActiveTaskList;
 use crate::app_event::AppEvent;
-use crate::app_event::ConnectorsSnapshot;
 use crate::app_event::HistoryLookupResponse;
 use crate::app_event_sender::AppEventSender;
 use crate::key_hint::KeyBinding;
@@ -111,10 +110,6 @@ pub use codex_tui_hooks::browser::HooksBrowserView;
 pub use codex_tui_input::LocalImageAttachment;
 pub use codex_tui_input::MentionBinding;
 pub use codex_tui_input::QueuedInputAction;
-pub use codex_tui_overlays::bottom_pane::AppLinkElicitationTarget;
-pub use codex_tui_overlays::bottom_pane::AppLinkSuggestionType;
-pub use codex_tui_overlays::bottom_pane::AppLinkView;
-pub use codex_tui_overlays::bottom_pane::AppLinkViewParams;
 pub use codex_tui_overlays::bottom_pane::ApplyPatchApprovalRequest;
 pub use codex_tui_overlays::bottom_pane::ApprovalOverlay;
 pub use codex_tui_overlays::bottom_pane::ApprovalRequest;
@@ -361,11 +356,6 @@ impl BottomPane {
         self.composer.set_active_reasoning_effort_baseline(effort);
     }
 
-    pub fn set_connectors_snapshot(&mut self, snapshot: Option<ConnectorsSnapshot>) {
-        self.composer.set_connector_mentions(snapshot);
-        self.request_redraw();
-    }
-
     pub fn set_plugin_mentions(&mut self, plugins: Option<Vec<PluginCapabilitySummary>>) {
         self.composer.set_plugin_mentions(plugins);
         self.request_redraw();
@@ -432,10 +422,6 @@ impl BottomPane {
     pub fn set_collaboration_modes_enabled(&mut self, enabled: bool) {
         self.composer.set_collaboration_modes_enabled(enabled);
         self.request_redraw();
-    }
-
-    pub fn set_connectors_enabled(&mut self, enabled: bool) {
-        self.composer.set_connectors_enabled(enabled);
     }
 
     #[cfg(target_os = "windows")]
@@ -1554,61 +1540,6 @@ impl BottomPane {
         } else {
             request
         };
-
-        if let Some(tool_suggestion) = request.tool_suggestion()
-            && let Some(install_url) = tool_suggestion.install_url.clone()
-        {
-            let suggestion_type = match tool_suggestion.suggest_type {
-                mcp_server_elicitation::ToolSuggestionType::Install => {
-                    AppLinkSuggestionType::Install
-                }
-                mcp_server_elicitation::ToolSuggestionType::Enable => AppLinkSuggestionType::Enable,
-            };
-            let is_installed = matches!(
-                tool_suggestion.suggest_type,
-                mcp_server_elicitation::ToolSuggestionType::Enable
-            );
-            let view = AppLinkView::new_with_keymap(
-                AppLinkViewParams {
-                    app_id: tool_suggestion.tool_id.clone(),
-                    title: tool_suggestion.tool_name.clone(),
-                    description: None,
-                    instructions: match suggestion_type {
-                        AppLinkSuggestionType::Install => {
-                            "Install this app in your browser, then return here.".to_string()
-                        }
-                        AppLinkSuggestionType::Enable => {
-                            "Enable this app to use it for the current request.".to_string()
-                        }
-                        AppLinkSuggestionType::Auth => unreachable!(
-                            "auth uses URL mode elicitation, not tool suggestion forms"
-                        ),
-                        AppLinkSuggestionType::ExternalAction => unreachable!(
-                            "external actions use URL mode elicitation, not tool suggestion forms"
-                        ),
-                    },
-                    url: install_url,
-                    is_installed,
-                    is_enabled: false,
-                    suggest_reason: Some(tool_suggestion.suggest_reason.clone()),
-                    suggestion_type: Some(suggestion_type),
-                    elicitation_target: Some(AppLinkElicitationTarget {
-                        thread_id: request.thread_id(),
-                        server_name: request.server_name().to_string(),
-                        request_id: request.request_id().clone(),
-                    }),
-                },
-                self.app_event_tx.clone(),
-                self.keymap.list.clone(),
-            );
-            self.pause_status_timer_for_modal();
-            self.set_composer_input_enabled(
-                /*enabled*/ false,
-                Some("Respond to the tool suggestion to continue.".to_string()),
-            );
-            self.push_view(Box::new(view));
-            return;
-        }
 
         let modal = McpServerElicitationOverlay::new_with_keymap(
             request,

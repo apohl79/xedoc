@@ -15,9 +15,6 @@ use tokio::process::ChildStdout;
 
 use anyhow::Context;
 use anyhow::ensure;
-use codex_app_server_protocol::AppsInstalledParams;
-use codex_app_server_protocol::AppsListParams;
-use codex_app_server_protocol::AppsReadParams;
 use codex_app_server_protocol::CancelLoginAccountParams;
 use codex_app_server_protocol::ClientInfo;
 use codex_app_server_protocol::ClientNotification;
@@ -756,27 +753,6 @@ impl TestAppServer {
         let params = Some(serde_json::to_value(params)?);
         self.send_request("remoteControl/client/revoke", params)
             .await
-    }
-
-    /// Send an `app/list` JSON-RPC request.
-    pub async fn send_apps_list_request(&mut self, params: AppsListParams) -> anyhow::Result<i64> {
-        let params = Some(serde_json::to_value(params)?);
-        self.send_request("app/list", params).await
-    }
-
-    /// Send an `app/installed` JSON-RPC request.
-    pub async fn send_apps_installed_request(
-        &mut self,
-        params: AppsInstalledParams,
-    ) -> anyhow::Result<i64> {
-        let params = Some(serde_json::to_value(params)?);
-        self.send_request("app/installed", params).await
-    }
-
-    /// Send an `app/read` JSON-RPC request.
-    pub async fn send_apps_read_request(&mut self, params: AppsReadParams) -> anyhow::Result<i64> {
-        let params = Some(serde_json::to_value(params)?);
-        self.send_request("app/read", params).await
     }
 
     /// Send an `mcpServer/resource/read` JSON-RPC request.

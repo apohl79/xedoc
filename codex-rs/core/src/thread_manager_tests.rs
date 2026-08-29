@@ -594,15 +594,31 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .push(selected_root.id.clone());
-                let mut server = codex_mcp::codex_apps_mcp_server_config(
-                    "https://selected.invalid",
-                    /*apps_mcp_product_sku*/ None,
-                    /*originator*/ None,
-                );
                 let CapabilityRootLocation::Environment { environment_id, .. } =
                     &selected_root.location;
-                server.environment_id = environment_id.clone();
-                server.enabled = false;
+                let server = codex_config::types::McpServerConfig {
+                    auth: Default::default(),
+                    transport: codex_config::McpServerTransportConfig::StreamableHttp {
+                        url: "https://selected.invalid".to_string(),
+                        bearer_token_env_var: None,
+                        http_headers: None,
+                        env_http_headers: None,
+                    },
+                    environment_id: environment_id.clone(),
+                    enabled: false,
+                    required: false,
+                    supports_parallel_tool_calls: false,
+                    disabled_reason: None,
+                    startup_timeout_sec: None,
+                    tool_timeout_sec: None,
+                    default_tools_approval_mode: None,
+                    enabled_tools: None,
+                    disabled_tools: None,
+                    scopes: None,
+                    oauth: None,
+                    oauth_resource: None,
+                    tools: std::collections::HashMap::new(),
+                };
                 let plugin_id = selected_root.id;
                 vec![codex_extension_api::McpServerContribution::SelectedPlugin {
                     name: plugin_id.clone(),
@@ -619,10 +635,6 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
     let mut config = test_config().await;
     config.codex_home = temp_dir.path().join("codex-home").abs();
     config.cwd = config.codex_home.abs();
-    config
-        .features
-        .enable(Feature::Apps)
-        .expect("test config should allow apps");
     std::fs::create_dir_all(&config.codex_home).expect("create codex home");
 
     let lifecycle_observed = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -640,7 +652,6 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         Arc::new(extensions.build()),
@@ -765,21 +776,6 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
         selected_servers(&second_resolved.config),
         std::collections::BTreeMap::from([("selected-b".to_string(), "env-b".to_string())])
     );
-    let codex_apps_server = codex_mcp::configured_mcp_servers(&first_resolved.config)
-        .remove(codex_mcp::CODEX_APPS_MCP_SERVER_NAME)
-        .expect("Codex Apps server should be configured");
-    let codex_apps_headers = match codex_apps_server.transport {
-        codex_config::McpServerTransportConfig::StreamableHttp { http_headers, .. } => http_headers,
-        codex_config::McpServerTransportConfig::Stdio { .. } => {
-            panic!("Codex Apps server should use streamable HTTP")
-        }
-    };
-    assert_eq!(
-        codex_apps_headers
-            .expect("Codex Apps headers should be configured")
-            .get("originator"),
-        Some(&"codex_work_desktop".to_string())
-    );
 }
 
 #[tokio::test]
@@ -863,7 +859,6 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1006,7 +1001,6 @@ async fn explicit_installation_id_skips_codex_home_file() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1049,7 +1043,6 @@ async fn resume_active_thread_from_rollout_returns_running_thread() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1111,7 +1104,6 @@ async fn resume_stopped_thread_from_rollout_spawns_new_thread() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1180,7 +1172,6 @@ async fn resume_stopped_thread_from_rollout_preserves_thread_source() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1274,7 +1265,6 @@ async fn subtree_listing_uses_injected_graph_store_without_state_db() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1321,7 +1311,6 @@ async fn rollout_path_resume_and_fork_read_history_through_thread_store() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1432,7 +1421,6 @@ async fn new_uses_active_provider_for_model_refresh() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1575,7 +1563,6 @@ async fn injected_models_manager_controls_refresh_policy() {
         &config,
         auth_manager,
         models_manager,
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Custom("test-embedder".to_string()),
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1825,7 +1812,6 @@ async fn interrupted_fork_snapshot_does_not_synthesize_turn_id_for_legacy_histor
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -1937,7 +1923,6 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),
@@ -2040,7 +2025,6 @@ async fn interrupted_fork_snapshot_uses_persisted_mid_turn_history_without_live_
         &config,
         auth_manager.clone(),
         build_models_manager(&config, auth_manager.clone()),
-        crate::CodexAppsToolsCache::default(),
         SessionSource::Exec,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
         empty_extension_registry(),

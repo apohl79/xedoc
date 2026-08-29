@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 mod executor;
 mod host;
-mod orchestrator;
 
 use codex_core_skills::HostSkillsSnapshot;
 use codex_exec_server::ExecutorCapabilityDiscoverySnapshot;
@@ -21,7 +20,6 @@ use crate::catalog::SkillSearchResult;
 
 pub use executor::ExecutorSkillProvider;
 pub use host::HostSkillProvider;
-pub use orchestrator::OrchestratorSkillProvider;
 
 #[derive(Clone, Debug)]
 pub struct SkillListQuery {

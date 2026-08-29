@@ -1,6 +1,5 @@
 use super::*;
 use crate::config::ConfigBuilder;
-use crate::config::ManagedFeatures;
 use crate::environment_selection::TurnEnvironmentState;
 use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
@@ -11,20 +10,14 @@ use crate::test_support::models_manager_with_provider;
 use crate::tools::hook_names::HookToolName;
 use codex_config::CONFIG_TOML_FILE;
 use codex_config::config_toml::ConfigToml;
-use codex_config::types::AppConfig;
-use codex_config::types::AppToolConfig;
-use codex_config::types::AppToolsConfig;
 use codex_config::types::ApprovalsReviewer;
-use codex_config::types::AppsConfigToml;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerToolConfig;
-use codex_features::Features;
 use codex_hooks::Hooks;
 use codex_hooks::HooksConfig;
 use codex_model_provider::create_model_provider;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;
-use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::GranularApprovalConfig;
 use codex_protocol::protocol::McpInvocation;
 use codex_protocol::protocol::SessionSource;
@@ -49,7 +42,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::tempdir;
-use tokio_util::sync::CancellationToken;
 
 fn annotations(
     read_only: Option<bool>,
@@ -83,8 +75,6 @@ fn approval_metadata(
         tool_title: tool_title.map(str::to_string),
         tool_description: tool_description.map(str::to_string),
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     }
 }
 
@@ -110,16 +100,6 @@ fn write_sample_plugin_mcp(codex_home: &std::path::Path) {
 }"#,
     )
     .expect("write plugin mcp config");
-}
-
-fn prompt_options(
-    allow_session_remember: bool,
-    allow_persistent_approval: bool,
-) -> McpToolApprovalPromptOptions {
-    McpToolApprovalPromptOptions {
-        allow_session_remember,
-        allow_persistent_approval,
-    }
 }
 
 #[tokio::test]
@@ -161,7 +141,6 @@ async fn execute_mcp_tool_call_records_replayable_correlation() -> anyhow::Resul
         },
         /*rewritten_arguments*/ None,
         /*metadata*/ None,
-        /*request_meta*/ None,
     )
     .await;
     assert!(
@@ -345,334 +324,10 @@ async fn mcp_sandbox_cwd_is_none_for_unselected_server_environment() -> anyhow::
     Ok(())
 }
 
-#[tokio::test]
-async fn mcp_tool_call_item_includes_app_identity() {
-    let (session, turn_context, rx_event) = make_session_and_context_with_rx().await;
-
-    notify_mcp_tool_call_started(
-        &session,
-        &turn_context,
-        "call-plugin",
-        McpInvocation {
-            server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
-            tool: "echo".to_string(),
-            arguments: None,
-        },
-        McpToolCallItemMetadata {
-            connector_id: Some("asdk_app_0123456789abcdef0123456789abcdef".to_string()),
-            link_id: Some("link_fedcba9876543210fedcba9876543210".to_string()),
-            mcp_app_resource_uri: None,
-            app_name: Some("Calendar".to_string()),
-            action_name: Some("create_event".to_string()),
-            plugin_id: Some("sample@test".to_string()),
-        },
-    )
-    .await;
-
-    let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx_event.recv())
-        .await
-        .expect("tool call item timed out")
-        .expect("tool call item event");
-    let EventMsg::ItemStarted(item_started) = event.msg else {
-        panic!("expected ItemStarted event");
-    };
-    let TurnItem::McpToolCall(item) = item_started.item else {
-        panic!("expected MCP tool call item");
-    };
-
-    assert_eq!(
-        item.connector_id.as_deref(),
-        Some("asdk_app_0123456789abcdef0123456789abcdef")
-    );
-    assert_eq!(
-        item.link_id.as_deref(),
-        Some("link_fedcba9876543210fedcba9876543210")
-    );
-    assert_eq!(item.plugin_id.as_deref(), Some("sample@test"));
-    assert_eq!(item.app_name.as_deref(), Some("Calendar"));
-    assert_eq!(item.action_name.as_deref(), Some("create_event"));
-}
-
-fn codex_apps_auth_failure_result() -> CallToolResult {
-    CallToolResult {
-        content: vec![serde_json::json!({
-            "type": "text",
-            "text": "Connector reauthentication required",
-        })],
-        structured_content: None,
-        is_error: Some(true),
-        meta: Some(serde_json::json!({
-            MCP_TOOL_CODEX_APPS_META_KEY: {
-                "connector_auth_failure": {
-                    "is_auth_failure": true,
-                    "auth_reason": "reauthentication_required",
-                    "connector_id": "connector_calendar",
-                    "connector_name": "Untrusted Calendar",
-                    "link_id": "link_123",
-                    "error_code": "UNAUTHORIZED",
-                    "error_http_status_code": 401,
-                    "error_action": "TRIGGER_REAUTHENTICATION",
-                },
-            },
-        })),
-    }
-}
-
-fn codex_apps_auth_failure_metadata() -> McpToolApprovalMetadata {
-    approval_metadata(
-        Some("connector_calendar"),
-        Some("Google Calendar"),
-        Some("Manage events and schedules."),
-        Some("Create Event"),
-        Some("Create a calendar event."),
-    )
-}
-
-async fn host_owned_codex_apps_manager(
-    session: &Session,
-    turn_context: &TurnContext,
-) -> Arc<codex_mcp::McpConnectionManager> {
-    let auth = session.services.auth_manager.auth().await;
-    let startup_cancellation_token = CancellationToken::new();
-    startup_cancellation_token.cancel();
-    let mcp_servers = HashMap::from([(
-        CODEX_APPS_MCP_SERVER_NAME.to_string(),
-        codex_mcp::EffectiveMcpServer::configured(codex_mcp::codex_apps_mcp_server_config(
-            "https://chatgpt.com",
-            /*apps_mcp_product_sku*/ None,
-            Some(&turn_context.originator),
-        )),
-    )]);
-    let manager = codex_mcp::McpConnectionManager::new(
-        &mcp_servers,
-        turn_context.config.mcp_oauth_credentials_store_mode,
-        turn_context.config.auth_keyring_backend_kind(),
-        &turn_context.approval_policy,
-        turn_context.sub_id.clone(),
-        /*tx_event*/ None,
-        startup_cancellation_token,
-        turn_context.permission_profile(),
-        codex_mcp::McpRuntimeContext::new(
-            session.services.turn_environments.environment_manager(),
-            {
-                #[allow(deprecated)]
-                turn_context.cwd.to_path_buf()
-            },
-        ),
-        turn_context.config.codex_home.to_path_buf(),
-        session.services.mcp_manager.codex_apps_tools_cache(),
-        session.services.mcp_manager.tool_catalog_cache(),
-        codex_connectors::connector_runtime_context_key(auth.as_ref()),
-        turn_context.config.prefix_mcp_tool_names(),
-        rmcp::model::ElicitationCapability::default(),
-        /*supports_openai_form_elicitation*/ false,
-        codex_mcp::ToolPluginProvenance::default(),
-        auth.as_ref(),
-        /*codex_apps_auth_manager*/ None,
-        /*elicitation_reviewer*/ None,
-        /*elicitation_lifecycle*/ None,
-        codex_mcp::ElicitationRequestRouter::default(),
-    )
-    .await;
-    Arc::new(manager)
-}
-
-#[tokio::test]
-async fn codex_apps_auth_elicitation_feature_disabled_returns_original_result() {
-    let (session, mut turn_context, rx_event) = make_session_and_context_with_rx().await;
-    let mut features = Features::with_defaults();
-    features.disable(Feature::AuthElicitation);
-    let mutable_turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut mutable_turn_context.config).features =
-        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
-    let manager = host_owned_codex_apps_manager(&session, &turn_context).await;
-    let result = codex_apps_auth_failure_result();
-    let metadata = codex_apps_auth_failure_metadata();
-
-    let returned = maybe_request_codex_apps_auth_elicitation(
-        &session,
-        &turn_context,
-        manager.as_ref(),
-        "call_123",
-        CODEX_APPS_MCP_SERVER_NAME,
-        Some(&metadata),
-        result.clone(),
-    )
-    .await;
-
-    assert_eq!(returned, result);
-    assert!(rx_event.try_recv().is_err());
-}
-
-#[tokio::test]
-async fn codex_apps_auth_elicitation_non_host_owned_server_returns_original_result() {
-    let (session, mut turn_context, rx_event) = make_session_and_context_with_rx().await;
-    let mut features = Features::with_defaults();
-    features.enable(Feature::AuthElicitation);
-    let turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut turn_context.config).features =
-        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
-    let result = codex_apps_auth_failure_result();
-    let metadata = codex_apps_auth_failure_metadata();
-    let manager = session.services.latest_mcp_runtime().manager_arc();
-
-    let returned = maybe_request_codex_apps_auth_elicitation(
-        &session,
-        turn_context,
-        manager.as_ref(),
-        "call_123",
-        CODEX_APPS_MCP_SERVER_NAME,
-        Some(&metadata),
-        result.clone(),
-    )
-    .await;
-
-    assert_eq!(returned, result);
-    assert!(rx_event.try_recv().is_err());
-}
-
-#[tokio::test]
-async fn codex_apps_auth_elicitation_disallowed_by_policy_returns_original_result() {
-    let (session, mut turn_context, rx_event) = make_session_and_context_with_rx().await;
-    let manager = host_owned_codex_apps_manager(&session, &turn_context).await;
-    let mut features = Features::with_defaults();
-    features.enable(Feature::AuthElicitation);
-    let turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut turn_context.config).features =
-        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
-    turn_context
-        .approval_policy
-        .set(AskForApproval::Never)
-        .expect("test setup should allow updating approval policy");
-    let result = codex_apps_auth_failure_result();
-    let metadata = codex_apps_auth_failure_metadata();
-
-    let returned = maybe_request_codex_apps_auth_elicitation(
-        &session,
-        turn_context,
-        manager.as_ref(),
-        "call_123",
-        CODEX_APPS_MCP_SERVER_NAME,
-        Some(&metadata),
-        result.clone(),
-    )
-    .await;
-
-    assert_eq!(returned, result);
-    assert!(rx_event.try_recv().is_err());
-}
-
-#[tokio::test]
-async fn codex_apps_auth_elicitation_granular_mcp_disabled_returns_original_result() {
-    let (session, mut turn_context, rx_event) = make_session_and_context_with_rx().await;
-    let manager = host_owned_codex_apps_manager(&session, &turn_context).await;
-    let mut features = Features::with_defaults();
-    features.enable(Feature::AuthElicitation);
-    let turn_context = Arc::get_mut(&mut turn_context).expect("single turn context ref");
-    Arc::make_mut(&mut turn_context.config).features =
-        ManagedFeatures::from_configured(features, None).expect("unconstrained test features");
-    turn_context
-        .approval_policy
-        .set(AskForApproval::Granular(GranularApprovalConfig {
-            sandbox_approval: true,
-            rules: true,
-            skill_approval: true,
-            request_permissions: true,
-            mcp_elicitations: false,
-        }))
-        .expect("test setup should allow updating approval policy");
-    let result = codex_apps_auth_failure_result();
-    let metadata = codex_apps_auth_failure_metadata();
-
-    let returned = maybe_request_codex_apps_auth_elicitation(
-        &session,
-        turn_context,
-        manager.as_ref(),
-        "call_123",
-        CODEX_APPS_MCP_SERVER_NAME,
-        Some(&metadata),
-        result.clone(),
-    )
-    .await;
-
-    assert_eq!(returned, result);
-    assert!(rx_event.try_recv().is_err());
-}
-
-#[tokio::test]
-async fn codex_apps_auth_elicitation_enabled_by_default_requests_elicitation() {
-    let (session, turn_context, rx_event) = make_session_and_context_with_rx().await;
-    let manager = host_owned_codex_apps_manager(&session, &turn_context).await;
-    *session.active_turn.lock().await = Some(ActiveTurn::default());
-    let result = codex_apps_auth_failure_result();
-    let metadata = codex_apps_auth_failure_metadata();
-
-    let request_task = tokio::spawn({
-        let session = Arc::clone(&session);
-        let turn_context = Arc::clone(&turn_context);
-        let manager = Arc::clone(&manager);
-        async move {
-            maybe_request_codex_apps_auth_elicitation(
-                &session,
-                &turn_context,
-                manager.as_ref(),
-                "call_123",
-                CODEX_APPS_MCP_SERVER_NAME,
-                Some(&metadata),
-                result,
-            )
-            .await
-        }
-    });
-
-    let request = loop {
-        let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx_event.recv())
-            .await
-            .expect("elicitation event timed out")
-            .expect("expected elicitation event");
-        if let EventMsg::ElicitationRequest(request) = event.msg {
-            break request;
-        }
-    };
-    assert_eq!(request.server_name, CODEX_APPS_MCP_SERVER_NAME);
-    assert_eq!(
-        request.id,
-        codex_protocol::mcp::RequestId::String("codex_apps_auth_call_123".to_string())
-    );
-    assert!(matches!(
-        request.request,
-        codex_protocol::approvals::ElicitationRequest::Url { .. }
-    ));
-
-    session
-        .resolve_elicitation(
-            CODEX_APPS_MCP_SERVER_NAME.to_string(),
-            rmcp::model::RequestId::String("codex_apps_auth_call_123".into()),
-            ElicitationResponse {
-                action: ElicitationAction::Accept,
-                content: None,
-                meta: None,
-            },
-        )
-        .await
-        .expect("elicitation should resolve");
-    let returned = tokio::time::timeout(std::time::Duration::from_secs(1), request_task)
-        .await
-        .expect("auth elicitation task timed out")
-        .expect("auth elicitation task failed");
-    assert_eq!(
-        returned.content,
-        vec![serde_json::json!({
-            "type": "text",
-            "text": "Authentication for Google Calendar was requested and accepted. Retry this tool call now.",
-        })]
-    );
-}
-
 #[test]
 fn guardian_mcp_review_request_includes_invocation_metadata() {
     let invocation = McpInvocation {
-        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        server: "playwright".to_string(),
         tool: "browser_navigate".to_string(),
         arguments: Some(serde_json::json!({
             "url": "https://example.com",
@@ -693,7 +348,7 @@ fn guardian_mcp_review_request_includes_invocation_metadata() {
         request,
         GuardianApprovalRequest::McpToolCall {
             id: "call-1".to_string(),
-            server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+            server: "playwright".to_string(),
             tool_name: "browser_navigate".to_string(),
             arguments: Some(serde_json::json!({
                 "url": "https://example.com",
@@ -727,8 +382,6 @@ fn guardian_mcp_review_request_includes_annotations_when_present() {
         tool_title: None,
         tool_description: None,
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     let request = build_guardian_mcp_tool_review_request("call-1", &invocation, Some(&metadata));
@@ -819,51 +472,6 @@ fn guardian_review_decision_maps_to_mcp_tool_decision() {
         mcp_tool_approval_decision_from_guardian(ReviewDecision::Abort),
         McpToolApprovalDecision::Decline { message: None }
     );
-}
-
-#[tokio::test]
-async fn persist_codex_app_tool_approval_writes_tool_override() {
-    let tmp = tempdir().expect("tempdir");
-    let config = ConfigBuilder::default()
-        .codex_home(tmp.path().to_path_buf())
-        .build()
-        .await
-        .expect("load config");
-
-    persist_codex_app_tool_approval(&config, "calendar", "calendar/list_events")
-        .await
-        .expect("persist approval");
-
-    let contents = std::fs::read_to_string(tmp.path().join(CONFIG_TOML_FILE)).expect("read config");
-    let parsed: ConfigToml = toml::from_str(&contents).expect("parse config");
-
-    assert_eq!(
-        parsed.apps,
-        Some(AppsConfigToml {
-            default: None,
-            apps: HashMap::from([(
-                "calendar".to_string(),
-                AppConfig {
-                    enabled: true,
-                    approvals_reviewer: None,
-                    destructive_enabled: None,
-                    open_world_enabled: None,
-                    default_tools_approval_mode: None,
-                    default_tools_enabled: None,
-                    tools: Some(AppToolsConfig {
-                        tools: HashMap::from([(
-                            "calendar/list_events".to_string(),
-                            AppToolConfig {
-                                enabled: None,
-                                approval_mode: Some(AppToolApproval::Approve),
-                            },
-                        )]),
-                    }),
-                },
-            )]),
-        })
-    );
-    assert!(contents.contains("[apps.calendar.tools.\"calendar/list_events\"]"));
 }
 
 #[tokio::test]
@@ -1029,45 +637,6 @@ approval_mode = "approve"
         custom_mcp_tool_approval_mode(&session, &turn_context, "sample", "search").await,
         AppToolApproval::Approve
     );
-}
-
-#[tokio::test]
-async fn maybe_persist_mcp_tool_approval_reloads_session_config() {
-    let (session, turn_context) = make_session_and_context().await;
-    let codex_home = session.codex_home().await;
-    std::fs::create_dir_all(&codex_home).expect("create codex home");
-    let key = McpToolApprovalKey {
-        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
-        connector_id: Some("calendar".to_string()),
-        tool_name: "calendar/list_events".to_string(),
-    };
-
-    maybe_persist_mcp_tool_approval(&session, &turn_context, key.clone()).await;
-
-    let config = session.get_config().await;
-    let apps_toml = config
-        .config_layer_stack
-        .effective_config()
-        .as_table()
-        .and_then(|table| table.get("apps"))
-        .cloned()
-        .expect("apps table");
-    let apps = AppsConfigToml::deserialize(apps_toml).expect("deserialize apps config");
-    let tool = apps
-        .apps
-        .get("calendar")
-        .and_then(|app| app.tools.as_ref())
-        .and_then(|tools| tools.tools.get("calendar/list_events"))
-        .expect("calendar/list_events tool config exists");
-
-    assert_eq!(
-        tool,
-        &AppToolConfig {
-            enabled: None,
-            approval_mode: Some(AppToolApproval::Approve),
-        }
-    );
-    assert_eq!(mcp_tool_approval_is_remembered(&session, &key).await, true);
 }
 
 #[tokio::test]
@@ -1248,8 +817,6 @@ async fn approve_mode_skips_when_annotations_do_not_require_approval() {
         tool_title: Some("Read Only Tool".to_string()),
         tool_description: None,
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     let decision = maybe_request_mcp_tool_approval(
@@ -1324,8 +891,6 @@ async fn guardian_mode_skips_auto_when_annotations_do_not_require_approval() {
         tool_title: Some("Read Only Tool".to_string()),
         tool_description: None,
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     let decision = maybe_request_mcp_tool_approval(
@@ -1383,8 +948,6 @@ async fn permission_request_hook_allows_mcp_tool_call() {
         tool_title: Some("Create entities".to_string()),
         tool_description: None,
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     let decision = maybe_request_mcp_tool_approval(
@@ -1521,8 +1084,6 @@ async fn permission_request_hook_runs_after_remembered_mcp_approval() {
         tool_title: Some("Create entities".to_string()),
         tool_description: None,
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
     let remembered_key =
         session_mcp_tool_approval_key(&invocation, Some(&metadata), AppToolApproval::Auto)
@@ -1610,8 +1171,6 @@ async fn guardian_mode_mcp_denial_returns_rationale_message() {
         tool_title: Some("Dangerous Tool".to_string()),
         tool_description: Some("Reads calendar data.".to_string()),
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     let decision = maybe_request_mcp_tool_approval(
@@ -1666,8 +1225,6 @@ async fn prompt_mode_waits_for_approval_when_annotations_do_not_require_approval
         tool_title: Some("Read Only Tool".to_string()),
         tool_description: None,
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     let mut approval_task = {
@@ -1708,7 +1265,7 @@ async fn full_access_mode_skips_mcp_tool_approval_for_all_approval_modes() {
     let session = Arc::new(session);
     let turn_context = Arc::new(turn_context);
     let invocation = McpInvocation {
-        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        server: "playwright".to_string(),
         tool: "dangerous_tool".to_string(),
         arguments: Some(serde_json::json!({ "id": 1 })),
     };
@@ -1723,8 +1280,6 @@ async fn full_access_mode_skips_mcp_tool_approval_for_all_approval_modes() {
         tool_title: Some("Dangerous Tool".to_string()),
         tool_description: Some("Performs a risky action.".to_string()),
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     for approval_mode in [
@@ -1763,7 +1318,7 @@ async fn approve_mode_skips_guardian_in_every_permission_mode() {
         .await;
 
     let invocation = McpInvocation {
-        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        server: "playwright".to_string(),
         tool: "dangerous_tool".to_string(),
         arguments: Some(serde_json::json!({ "id": 1 })),
     };
@@ -1778,8 +1333,6 @@ async fn approve_mode_skips_guardian_in_every_permission_mode() {
         tool_title: Some("Dangerous Tool".to_string()),
         tool_description: Some("Performs a risky action.".to_string()),
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     };
 
     for approval_policy in [

@@ -16,11 +16,6 @@ pub use runtime::SandboxState;
 pub use tool_catalog_cache::McpToolCatalogCache;
 pub use tools::ToolInfo;
 
-/// Backward-compatible name for the shared Codex Apps tools runtime.
-pub type CodexAppsToolsCache = codex_connectors::ConnectorRuntimeManager<ToolInfo>;
-/// Backward-compatible name for the Codex Apps runtime context key.
-pub type CodexAppsToolsCacheKey = codex_connectors::ConnectorRuntimeContextKey;
-
 pub use catalog::McpCatalogBuilder;
 pub use catalog::McpPluginAttribution;
 pub use catalog::McpServerConflict;
@@ -30,28 +25,13 @@ pub use catalog::McpServerSource;
 pub use catalog::ResolvedMcpCatalog;
 pub use catalog::ResolvedMcpServer;
 
-pub use mcp::CODEX_APPS_MCP_SERVER_NAME;
 pub use mcp::McpConfig;
 pub use mcp::ToolPluginProvenance;
 pub use server::EffectiveMcpServer;
 
-pub use auth_elicitation::CodexAppsAuthElicitation;
-pub use auth_elicitation::CodexAppsAuthElicitationPlan;
-pub use auth_elicitation::CodexAppsConnectorAuthFailure;
-pub use auth_elicitation::MCP_TOOL_CODEX_APPS_META_KEY;
-pub use auth_elicitation::auth_elicitation_completed_result;
-pub use auth_elicitation::auth_elicitation_id;
-pub use auth_elicitation::build_auth_elicitation;
-pub use auth_elicitation::build_auth_elicitation_plan;
-pub use auth_elicitation::connector_auth_failure_from_tool_result;
-/// Backward-compatible name for the Codex Apps runtime context key builder.
-pub use codex_connectors::connector_runtime_context_key as codex_apps_tools_cache_key;
-pub use mcp::codex_apps_mcp_server_config;
 pub use mcp::configured_mcp_servers;
 pub use mcp::effective_mcp_servers;
 pub use mcp::effective_mcp_servers_from_configured;
-pub use mcp::host_owned_codex_apps_enabled;
-pub use mcp::hosted_plugin_runtime_mcp_server_config;
 pub use mcp::tool_plugin_provenance;
 pub use plugin_config::PluginMcpConfigParseOutcome;
 pub use plugin_config::PluginMcpServerParseError;
@@ -76,14 +56,11 @@ pub use mcp::oauth_login_support_with_http_client;
 pub use mcp::resolve_oauth_scopes;
 pub use mcp::should_retry_without_scopes;
 
-pub use codex_apps::declared_openai_file_input_param_names;
 pub use mcp::McpPermissionPromptAutoApproveContext;
 pub use mcp::mcp_permission_prompt_is_auto_approved;
 pub use mcp::qualified_mcp_tool_name_prefix;
 
-pub(crate) mod auth_elicitation;
 mod catalog;
-pub(crate) mod codex_apps;
 pub(crate) mod connection_manager;
 pub(crate) mod elicitation;
 pub(crate) mod mcp;

@@ -6,8 +6,6 @@ pub(crate) use codex_core_context::AdditionalContextDeveloperFragment;
 pub(crate) use codex_core_context::AdditionalContextUserFragment;
 pub use codex_core_context::ApprovalPromptContext;
 pub(crate) use codex_core_context::ApprovedCommandPrefixSaved;
-#[cfg(test)]
-pub(crate) use codex_core_context::AppsInstructions;
 pub(crate) use codex_core_context::AutoCompactFallbackPrompt;
 #[cfg(test)]
 pub(crate) use codex_core_context::AvailablePluginsInstructions;

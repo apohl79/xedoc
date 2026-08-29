@@ -9,7 +9,6 @@ use codex_extension_api::ToolName;
 use codex_extension_api::ToolOutput;
 use codex_extension_api::ToolSpec;
 use codex_extension_api::parse_tool_input_schema;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::McpResourceClient;
 use codex_tools::ResponsesApiNamespace;
 use codex_tools::ResponsesApiNamespaceTool;
@@ -32,6 +31,7 @@ mod read;
 mod schema;
 
 const SKILLS_NAMESPACE: &str = "skills";
+const ORCHESTRATOR_SKILL_AUTHORITY_LABEL: &str = "codex_apps";
 const MAX_HANDLE_BYTES: usize = 2_048;
 
 pub(crate) fn skill_tools(
@@ -95,7 +95,10 @@ enum SkillToolAuthority {
 impl SkillToolAuthority {
     fn from_authority(authority: &SkillAuthority) -> Option<Self> {
         if authority
-            != &SkillAuthority::new(SkillSourceKind::Orchestrator, CODEX_APPS_MCP_SERVER_NAME)
+            != &SkillAuthority::new(
+                SkillSourceKind::Orchestrator,
+                ORCHESTRATOR_SKILL_AUTHORITY_LABEL,
+            )
         {
             return None;
         }
@@ -104,9 +107,10 @@ impl SkillToolAuthority {
 
     fn into_authority(self) -> SkillAuthority {
         match self {
-            Self::Orchestrator => {
-                SkillAuthority::new(SkillSourceKind::Orchestrator, CODEX_APPS_MCP_SERVER_NAME)
-            }
+            Self::Orchestrator => SkillAuthority::new(
+                SkillSourceKind::Orchestrator,
+                ORCHESTRATOR_SKILL_AUTHORITY_LABEL,
+            ),
         }
     }
 }

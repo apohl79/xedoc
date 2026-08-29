@@ -31,7 +31,6 @@ struct ContributionSummary {
 struct PackageSummary {
     plugin_id: String,
     plugin_display_name: String,
-    connector_ids: Vec<String>,
 }
 
 #[tokio::test]
@@ -102,7 +101,7 @@ command = "expected-command"
 }
 
 #[tokio::test]
-async fn selected_plugin_package_is_contributed_without_servers_or_connectors() -> TestResult {
+async fn selected_plugin_package_is_contributed_without_servers() -> TestResult {
     let codex_home = tempfile::tempdir()?;
     let plugin_root = tempfile::tempdir()?;
     std::fs::create_dir_all(plugin_root.path().join(".codex-plugin"))?;
@@ -126,7 +125,6 @@ async fn selected_plugin_package_is_contributed_without_servers_or_connectors() 
         let McpServerContribution::SelectedPluginPackage {
             plugin_id,
             plugin_display_name,
-            connector_ids,
         } = contribution
         else {
             return None;
@@ -134,7 +132,6 @@ async fn selected_plugin_package_is_contributed_without_servers_or_connectors() 
         Some(PackageSummary {
             plugin_id,
             plugin_display_name,
-            connector_ids,
         })
     });
 
@@ -143,7 +140,6 @@ async fn selected_plugin_package_is_contributed_without_servers_or_connectors() 
         Some(PackageSummary {
             plugin_id: "selected-root".to_string(),
             plugin_display_name: "Skill Only".to_string(),
-            connector_ids: Vec::new(),
         })
     );
     Ok(())

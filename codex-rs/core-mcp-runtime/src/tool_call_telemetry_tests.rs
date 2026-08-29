@@ -90,32 +90,6 @@ fn mcp_call_metric_outcome_reports_server_tool_error_codes() {
 }
 
 #[test]
-fn mcp_call_metric_outcome_reads_auth_error_code_from_meta() {
-    let result = CallToolResult {
-        content: Vec::new(),
-        structured_content: None,
-        is_error: Some(true),
-        meta: Some(serde_json::json!({
-            MCP_TOOL_CODEX_APPS_META_KEY: {
-                "connector_auth_failure": {
-                    "is_auth_failure": true,
-                    "error_code": "UNAUTHORIZED",
-                },
-            },
-        })),
-    };
-
-    assert_eq!(
-        mcp_call_metric_outcome(&Ok(result)),
-        McpCallMetricOutcome {
-            status: "error",
-            error_type: Some(MCP_CALL_ERROR_TYPE_TOOL_RESULT),
-            error_code: Some("UNAUTHORIZED".to_string()),
-        }
-    );
-}
-
-#[test]
 fn mcp_call_metric_outcome_bounds_and_sanitizes_error_code() {
     let raw_error_code = format!("BAD CODE {}", "x".repeat(300));
     let result = Ok(metric_call_tool_result(
@@ -330,7 +304,7 @@ async fn mcp_tool_call_span_records_error_type_and_error_code() {
         &"session-123",
         "turn-123",
         McpToolCallSpanFields {
-            server_name: CODEX_APPS_MCP_SERVER_NAME,
+            server_name: "codex_apps",
             tool_name: "calendar_search",
             call_id: "call-123",
             server_origin: Some("https://chatgpt.com/api/codex/ps/mcp"),

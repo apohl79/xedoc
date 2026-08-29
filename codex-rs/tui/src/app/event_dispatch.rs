@@ -504,29 +504,6 @@ impl App {
                 ));
                 tui.frame_requester().schedule_frame();
             }
-            AppEvent::OpenAppLink {
-                app_id,
-                title,
-                description,
-                instructions,
-                url,
-                is_installed,
-                is_enabled,
-            } => {
-                self.chat_widget
-                    .open_app_link_view(crate::bottom_pane::AppLinkViewParams {
-                        app_id,
-                        title,
-                        description,
-                        instructions,
-                        url,
-                        is_installed,
-                        is_enabled,
-                        suggest_reason: None,
-                        suggestion_type: None,
-                        elicitation_target: None,
-                    });
-            }
             AppEvent::OpenUrlInBrowser { url } => {
                 self.open_url_in_browser(url);
             }
@@ -556,21 +533,6 @@ impl App {
             }
             AppEvent::ConfiguredPetLoaded { pet_id, result } => {
                 self.handle_configured_pet_loaded(tui, pet_id, result);
-            }
-            AppEvent::RefreshConnectors { force_refetch } => {
-                self.chat_widget.refresh_connectors(force_refetch);
-            }
-            AppEvent::FetchConnectorsList { force_refetch } => {
-                self.fetch_connectors_list(app_server, force_refetch);
-            }
-            AppEvent::PluginInstallAuthAdvance { refresh_connectors } => {
-                if refresh_connectors {
-                    self.chat_widget.refresh_connectors(/*force_refetch*/ true);
-                }
-                self.chat_widget.advance_plugin_install_auth_flow();
-            }
-            AppEvent::PluginInstallAuthAbandon => {
-                self.chat_widget.abandon_plugin_install_auth_flow();
             }
             AppEvent::FetchPluginsList { cwd } => {
                 self.fetch_plugins_list(app_server, cwd);
@@ -1066,9 +1028,6 @@ impl App {
             }
             AppEvent::CommitPendingUsageOutputAfterStreamShutdown => {
                 self.insert_pending_usage_output_after_stream_shutdown(tui);
-            }
-            AppEvent::ConnectorsLoaded { result, is_final } => {
-                self.chat_widget.on_connectors_loaded(result, is_final);
             }
             AppEvent::UpdateReasoningEffort(effort) => {
                 self.on_update_reasoning_effort(effort.clone());
@@ -2075,41 +2034,6 @@ impl App {
                         let path_display = path.display();
                         self.chat_widget.add_error_message(format!(
                             "Failed to update skill config for {path_display}: {err}"
-                        ));
-                    }
-                }
-            }
-            AppEvent::SetAppEnabled { id, enabled } => {
-                let edits = if enabled {
-                    vec![
-                        crate::config_update::clear_config_value(
-                            crate::config_update::app_scoped_key_path(&id, "enabled"),
-                        ),
-                        crate::config_update::clear_config_value(
-                            crate::config_update::app_scoped_key_path(&id, "disabled_reason"),
-                        ),
-                    ]
-                } else {
-                    vec![
-                        crate::config_update::replace_config_value(
-                            crate::config_update::app_scoped_key_path(&id, "enabled"),
-                            serde_json::json!(false),
-                        ),
-                        crate::config_update::replace_config_value(
-                            crate::config_update::app_scoped_key_path(&id, "disabled_reason"),
-                            serde_json::json!("user"),
-                        ),
-                    ]
-                };
-                match crate::config_update::write_config_batch(app_server.request_handle(), edits)
-                    .await
-                {
-                    Ok(_) => {
-                        self.chat_widget.update_connector_enabled(&id, enabled);
-                    }
-                    Err(err) => {
-                        self.chat_widget.add_error_message(format!(
-                            "Failed to update app config for {id}: {err}"
                         ));
                     }
                 }

@@ -1,5 +1,3 @@
-use crate::app_mcp_routing::apply_app_mcp_routing_policy;
-use crate::loader::plugin_app_declarations_from_value;
 use crate::store::PLUGINS_CACHE_DIR;
 use crate::store::PluginStore;
 use codex_app_server_protocol::JSONRPCErrorError;
@@ -25,7 +23,6 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -1245,29 +1242,17 @@ async fn build_remote_plugin_detail(
             enabled: !disabled_skill_names.contains(&skill.name),
         })
         .collect();
-    let mut app_declarations = plugin
-        .release
-        .app_manifest
-        .as_ref()
-        .map(plugin_app_declarations_from_value)
-        .unwrap_or_else(|| app_declarations_from_remote_app_ids(&plugin.release.app_ids));
-    let mut mcp_servers = plugin
-        .release
-        .mcp_servers
-        .iter()
-        .map(|server| (server.key.clone(), ()))
-        .collect::<HashMap<_, _>>();
-    apply_app_mcp_routing_policy(
-        &mut app_declarations,
-        &mut mcp_servers,
-        Some(auth.api_auth_mode()),
-        /*plugin_active*/ true,
-    );
+    let app_declarations = app_declarations_from_remote_app_ids(&plugin.release.app_ids);
     let app_ids = app_connector_ids_from_declarations(&app_declarations)
         .into_iter()
         .map(|app_id| app_id.0)
         .collect();
-    let mut mcp_servers = mcp_servers.into_keys().collect::<Vec<_>>();
+    let mut mcp_servers = plugin
+        .release
+        .mcp_servers
+        .iter()
+        .map(|server| server.key.clone())
+        .collect::<Vec<_>>();
     mcp_servers.sort_unstable();
     mcp_servers.dedup();
 
@@ -1373,12 +1358,7 @@ pub async fn resolve_remote_plugin_uninstall_target(
             plugin.id
         ))
     })?;
-    let app_declarations = plugin
-        .release
-        .app_manifest
-        .as_ref()
-        .map(plugin_app_declarations_from_value)
-        .unwrap_or_else(|| app_declarations_from_remote_app_ids(&plugin.release.app_ids));
+    let app_declarations = app_declarations_from_remote_app_ids(&plugin.release.app_ids);
     let mut mcp_server_names = plugin
         .release
         .mcp_servers

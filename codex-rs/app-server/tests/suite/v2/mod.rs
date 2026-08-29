@@ -1,8 +1,5 @@
 mod account;
 mod analytics;
-mod app_installed;
-mod app_list;
-mod app_read;
 mod attestation;
 mod auto_env;
 mod auto_session_name;
@@ -35,8 +32,6 @@ mod initialize;
 mod marketplace_add;
 mod marketplace_remove;
 mod marketplace_upgrade;
-mod mcp_resource;
-mod mcp_server_elicitation;
 mod mcp_server_status;
 mod mcp_tool;
 mod memory_reset;
@@ -54,7 +49,6 @@ mod process_exec;
 mod rate_limit_reset_credits;
 mod rate_limits;
 mod realtime_conversation;
-mod recommended_plugins;
 mod remote_control;
 #[cfg(debug_assertions)]
 mod remote_thread_store;
@@ -64,7 +58,6 @@ mod request_validation;
 mod review;
 mod safety_check_downgrade;
 #[cfg(not(target_os = "windows"))]
-mod selected_capability_stack;
 mod selected_environment;
 #[cfg(not(target_os = "windows"))]
 mod session_end;

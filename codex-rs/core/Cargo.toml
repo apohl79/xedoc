@@ -32,14 +32,12 @@ codex-apply-patch = { workspace = true }
 codex-async-utils = { workspace = true }
 codex-code-mode-client = { workspace = true }
 codex-code-mode-protocol = { workspace = true }
-codex-connectors = { workspace = true }
 codex-context-fragments = { workspace = true }
 codex-config = { workspace = true }
 codex-core-plugins = { workspace = true }
 codex-core-client = { workspace = true }
 codex-core-config = { workspace = true }
 codex-core-context = { workspace = true }
-codex-core-connectors-runtime = { workspace = true }
 codex-core-auto-compact-window = { workspace = true }
 codex-core-plugin-context = { workspace = true }
 codex-core-session-name = { workspace = true }
@@ -57,7 +55,6 @@ codex-core-exec = { workspace = true }
 codex-core-approval-policy = { workspace = true }
 codex-core-guardian-approval = { workspace = true }
 codex-core-mcp-runtime = { workspace = true }
-codex-core-mcp-openai-file = { workspace = true }
 codex-core-mcp-skill-dependency = { workspace = true }
 codex-core-elicitation = { workspace = true }
 codex-core-time = { workspace = true }

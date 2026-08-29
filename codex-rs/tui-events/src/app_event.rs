@@ -30,7 +30,6 @@ use codex_app_server_protocol::PluginReadResponse;
 use codex_app_server_protocol::PluginUninstallResponse;
 use codex_app_server_protocol::SkillsListResponse;
 use codex_app_server_protocol::ThreadGoalStatus;
-use codex_connectors::AppInfo;
 use codex_file_search::FileMatch;
 use codex_message_history::HistoryBatchCursor;
 use codex_protocol::ThreadId;
@@ -113,12 +112,6 @@ pub enum ConsolidationScrollbackReflow {
 pub enum WindowsSandboxEnableMode {
     Elevated,
     Legacy,
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-pub struct ConnectorsSnapshot {
-    pub connectors: Vec<AppInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -427,25 +420,8 @@ pub enum AppEvent {
         result: Result<AddCreditsNudgeEmailStatus, String>,
     },
 
-    /// Result of prefetching connectors.
-    ConnectorsLoaded {
-        result: Result<ConnectorsSnapshot, String>,
-        is_final: bool,
-    },
-
     /// Result of computing a `/diff` command.
     DiffResult(String),
-
-    /// Open the app link view in the bottom pane.
-    OpenAppLink {
-        app_id: String,
-        title: String,
-        description: Option<String>,
-        instructions: String,
-        url: String,
-        is_installed: bool,
-        is_enabled: bool,
-    },
 
     /// Open the provided URL in the user's browser.
     OpenUrlInBrowser {
@@ -487,16 +463,6 @@ pub enum AppEvent {
     ConfiguredPetLoaded {
         pet_id: String,
         result: Result<Option<codex_tui_pet::AmbientPet>, String>,
-    },
-
-    /// Refresh app connector state and mention bindings.
-    RefreshConnectors {
-        force_refetch: bool,
-    },
-
-    /// Fetch app connector state from the app server after the widget accepts a refresh request.
-    FetchConnectorsList {
-        force_refetch: bool,
     },
 
     /// Fetch plugin marketplace state for the provided working directory.
@@ -679,14 +645,6 @@ pub enum AppEvent {
     PluginMentionsLoaded {
         plugins: Option<Vec<PluginCapabilitySummary>>,
     },
-
-    /// Advance the post-install plugin app-auth flow.
-    PluginInstallAuthAdvance {
-        refresh_connectors: bool,
-    },
-
-    /// Abandon the post-install plugin app-auth flow.
-    PluginInstallAuthAbandon,
 
     /// Fetch MCP inventory via app-server RPCs and render it into history.
     FetchMcpInventory {
@@ -967,12 +925,6 @@ pub enum AppEvent {
     /// Enable or disable a skill by path.
     SetSkillEnabled {
         path: AbsolutePathBuf,
-        enabled: bool,
-    },
-
-    /// Enable or disable an app by connector ID.
-    SetAppEnabled {
-        id: String,
         enabled: bool,
     },
 

@@ -1,12 +1,10 @@
 use super::LoadedPlugin;
 use super::PluginLoadOutcome;
-use crate::app_mcp_routing::apply_app_mcp_routing_policy;
 use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;
 use crate::is_openai_curated_marketplace_name;
 use crate::loader::PluginHookLoadOutcome;
 use crate::loader::configured_curated_plugin_ids_from_codex_home;
 use crate::loader::curated_plugin_cache_version;
-use crate::loader::load_plugin_apps_from_manifest;
 use crate::loader::load_plugin_hooks;
 use crate::loader::load_plugin_hooks_from_layer_stack;
 use crate::loader::load_plugin_mcp_servers_from_manifest;
@@ -77,7 +75,6 @@ use codex_plugin::PluginCapabilitySummary;
 use codex_plugin::PluginId;
 use codex_plugin::PluginIdError;
 use codex_plugin::PluginTelemetryMetadata;
-use codex_plugin::app_connector_ids_from_declarations;
 use codex_plugin::prompt_safe_plugin_description;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::protocol::HookEventName;
@@ -569,7 +566,7 @@ impl PluginsManager {
             remote_global_catalog_active,
         );
         if !force_reload && let Some(plugins) = self.cached_loaded_plugins(&cache_key) {
-            return self.resolve_loaded_plugins_for_auth(plugins);
+            return PluginLoadOutcome::from_plugins(plugins);
         }
 
         let Ok(_load_permit) = self.loaded_plugins_load_semaphore.acquire().await else {
@@ -577,7 +574,7 @@ impl PluginsManager {
             return PluginLoadOutcome::default();
         };
         if !force_reload && let Some(plugins) = self.cached_loaded_plugins(&cache_key) {
-            return self.resolve_loaded_plugins_for_auth(plugins);
+            return PluginLoadOutcome::from_plugins(plugins);
         }
         let cache_generation = self.loaded_plugins_cache_generation();
         let plugin_skill_snapshots = PluginSkillSnapshots::for_plugin_load();
@@ -598,20 +595,6 @@ impl PluginsManager {
             plugins.clone(),
             plugin_skill_snapshots,
         );
-        self.resolve_loaded_plugins_for_auth(plugins)
-    }
-
-    fn resolve_loaded_plugins_for_auth(&self, mut plugins: Vec<LoadedPlugin>) -> PluginLoadOutcome {
-        let auth_mode = self.auth_mode();
-        for plugin in &mut plugins {
-            let plugin_active = plugin.is_active();
-            apply_app_mcp_routing_policy(
-                &mut plugin.apps,
-                &mut plugin.mcp_servers,
-                auth_mode,
-                plugin_active,
-            );
-        }
         PluginLoadOutcome::from_plugins(plugins)
     }
 
@@ -677,7 +660,7 @@ impl PluginsManager {
             Arc::clone(&self.skill_root_scan_slots),
         )
         .await;
-        self.resolve_loaded_plugins_for_auth(plugins)
+        PluginLoadOutcome::from_plugins(plugins)
     }
 
     /// Resolve plugin hooks for a config layer stack without loading other plugin capabilities.
@@ -1720,7 +1703,7 @@ impl PluginsManager {
                 Arc::clone(&self.skill_root_scan_slots),
             )
             .await?;
-        Ok(fragment.project(skill_config_rules, self.auth_mode()))
+        Ok(fragment.project(skill_config_rules))
     }
 
     pub async fn read_plugin_for_config(
@@ -1913,33 +1896,12 @@ impl PluginsManager {
                 event_name: hook.event_name,
             })
             .collect();
-        let auth_mode = self.auth_mode();
-        let mut app_declarations =
-            load_plugin_apps_from_manifest(source_path.as_path(), &manifest.paths).await;
-        let mut mcp_servers = load_plugin_mcp_servers_from_manifest(
+        let mcp_servers = load_plugin_mcp_servers_from_manifest(
             source_path.as_path(),
             &manifest.paths,
             /*plugin_policy*/ None,
         )
         .await;
-        if auth_mode.is_some() {
-            apply_app_mcp_routing_policy(
-                &mut app_declarations,
-                &mut mcp_servers,
-                auth_mode,
-                /*plugin_active*/ true,
-            );
-        }
-        let apps = app_connector_ids_from_declarations(&app_declarations);
-        let mut seen_app_connector_ids = HashSet::new();
-        let mut app_category_by_id = HashMap::new();
-        for app in &app_declarations {
-            if seen_app_connector_ids.insert(app.connector_id.0.as_str())
-                && let Some(category) = &app.category
-            {
-                app_category_by_id.insert(app.connector_id.0.clone(), category.clone());
-            }
-        }
         let mut mcp_server_names = mcp_servers.into_keys().collect::<Vec<_>>();
         mcp_server_names.sort_unstable();
         mcp_server_names.dedup();
@@ -1958,8 +1920,8 @@ impl PluginsManager {
             skills: resolved_skills.skills,
             disabled_skill_paths: resolved_skills.disabled_skill_paths,
             hooks,
-            apps,
-            app_category_by_id,
+            apps: Vec::new(),
+            app_category_by_id: HashMap::new(),
             mcp_server_names,
             details_unavailable_reason: None,
         })

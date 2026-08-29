@@ -1226,7 +1226,6 @@ mod tests {
     use super::*;
     use crate::app::test_support::app_enabled_in_effective_config;
     use crate::app::test_support::make_test_app;
-    use crate::legacy_core::config::edit::ConfigEdit;
     use crate::test_support::PathBufExt;
     use codex_config::ConfigLayerEntry;
     use codex_config::ConfigLayerStack;
@@ -1499,45 +1498,6 @@ mod tests {
             app.resume_model_settings(),
             crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig
         );
-    }
-
-    #[tokio::test]
-    async fn refresh_in_memory_config_from_disk_loads_latest_apps_state() -> Result<()> {
-        let mut app = make_test_app().await;
-        let codex_home = tempdir()?;
-        app.config.codex_home = codex_home.path().to_path_buf().abs();
-        let app_id = "unit_test_refresh_in_memory_config_connector".to_string();
-
-        assert_eq!(app_enabled_in_effective_config(&app.config, &app_id), None);
-
-        ConfigEditsBuilder::for_config(&app.config)
-            .with_edits([
-                ConfigEdit::SetPath {
-                    segments: vec!["apps".to_string(), app_id.clone(), "enabled".to_string()],
-                    value: false.into(),
-                },
-                ConfigEdit::SetPath {
-                    segments: vec![
-                        "apps".to_string(),
-                        app_id.clone(),
-                        "disabled_reason".to_string(),
-                    ],
-                    value: "user".into(),
-                },
-            ])
-            .apply()
-            .await
-            .expect("persist app toggle");
-
-        assert_eq!(app_enabled_in_effective_config(&app.config, &app_id), None);
-
-        app.refresh_in_memory_config_from_disk().await?;
-
-        assert_eq!(
-            app_enabled_in_effective_config(&app.config, &app_id),
-            Some(false)
-        );
-        Ok(())
     }
 
     // Regression coverage for `/new` and `/clear`: cloud requirements

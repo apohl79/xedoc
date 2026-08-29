@@ -1,4 +1,3 @@
-use codex_connectors::AppInfo;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -17,7 +16,6 @@ pub struct ToolSearchSourceInfo {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DiscoverableToolType {
-    Connector,
     Plugin,
 }
 
@@ -30,43 +28,26 @@ pub enum DiscoverableToolAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DiscoverableTool {
-    Connector(Box<AppInfo>),
     Plugin(Box<DiscoverablePluginInfo>),
 }
 
 impl DiscoverableTool {
     pub fn tool_type(&self) -> DiscoverableToolType {
         match self {
-            Self::Connector(_) => DiscoverableToolType::Connector,
             Self::Plugin(_) => DiscoverableToolType::Plugin,
         }
     }
 
     pub fn id(&self) -> &str {
         match self {
-            Self::Connector(connector) => connector.id.as_str(),
             Self::Plugin(plugin) => plugin.id.as_str(),
         }
     }
 
     pub fn name(&self) -> &str {
         match self {
-            Self::Connector(connector) => connector.name.as_str(),
             Self::Plugin(plugin) => plugin.name.as_str(),
         }
-    }
-
-    pub fn install_url(&self) -> Option<&str> {
-        match self {
-            Self::Connector(connector) => connector.install_url.as_deref(),
-            Self::Plugin(_) => None,
-        }
-    }
-}
-
-impl From<AppInfo> for DiscoverableTool {
-    fn from(value: AppInfo) -> Self {
-        Self::Connector(Box::new(value))
     }
 }
 
@@ -123,15 +104,6 @@ pub fn collect_request_plugin_install_entries(
     discoverable_tools
         .iter()
         .map(|tool| match tool {
-            DiscoverableTool::Connector(connector) => RequestPluginInstallEntry {
-                id: connector.id.clone(),
-                name: connector.name.clone(),
-                description: connector.description.clone(),
-                tool_type: DiscoverableToolType::Connector,
-                has_skills: false,
-                mcp_server_names: Vec::new(),
-                app_connector_ids: Vec::new(),
-            },
             DiscoverableTool::Plugin(plugin) => RequestPluginInstallEntry {
                 id: plugin.id.clone(),
                 name: plugin.name.clone(),

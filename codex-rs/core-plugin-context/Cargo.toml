@@ -14,7 +14,6 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 codex-config = { workspace = true }
-codex-connectors = { workspace = true }
 codex-core-config = { workspace = true }
 codex-core-context = { workspace = true }
 codex-core-plugins = { workspace = true }

@@ -2,9 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use codex_config::McpServerConfig;
-use codex_connectors::ConnectorRuntimeManager;
-use codex_connectors::ConnectorSnapshot;
-use codex_connectors::PluginConnectorSource;
 use codex_core_config::config::Config;
 use codex_core_plugins::PluginsManager;
 use codex_exec_server::ExecutorCapabilityDiscoverySnapshot;
@@ -13,21 +10,14 @@ use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::McpServerContribution;
 use codex_extension_api::McpServerContributionContext;
-use codex_login::CodexAuth;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::EffectiveMcpServer;
 use codex_mcp::McpConfig;
 use codex_mcp::McpPluginAttribution;
 use codex_mcp::McpServerRegistration;
 use codex_mcp::McpToolCatalogCache;
-use codex_mcp::ToolInfo;
-use codex_mcp::codex_apps_mcp_server_config;
 use codex_mcp::configured_mcp_servers;
 use codex_mcp::effective_mcp_servers;
-use codex_plugin::AppConnectorId;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
-
-const LEGACY_CODEX_APPS_REGISTRATION_ID: &str = "legacy_codex_apps";
 
 /// MCP configuration and capability availability derived from the same inputs.
 pub struct McpRuntimeProjection {
@@ -55,7 +45,6 @@ enum OrderedMcpOverlay {
 pub struct McpManager {
     plugins_manager: Arc<PluginsManager>,
     extensions: Arc<ExtensionRegistry<Config>>,
-    codex_apps_tools_cache: ConnectorRuntimeManager<ToolInfo>,
     tool_catalog_cache: McpToolCatalogCache,
 }
 
@@ -64,7 +53,6 @@ impl McpManager {
         Self::new_with_extensions(
             plugins_manager,
             codex_extension_api::empty_extension_registry(),
-            ConnectorRuntimeManager::default(),
         )
     }
 
@@ -72,36 +60,23 @@ impl McpManager {
     pub fn new_with_extensions(
         plugins_manager: Arc<PluginsManager>,
         extensions: Arc<ExtensionRegistry<Config>>,
-        codex_apps_tools_cache: ConnectorRuntimeManager<ToolInfo>,
     ) -> Self {
         Self {
             plugins_manager,
             extensions,
-            codex_apps_tools_cache,
             tool_catalog_cache: McpToolCatalogCache::default(),
         }
-    }
-
-    pub fn codex_apps_tools_cache(&self) -> ConnectorRuntimeManager<ToolInfo> {
-        self.codex_apps_tools_cache.clone()
     }
 
     pub fn tool_catalog_cache(&self) -> McpToolCatalogCache {
         self.tool_catalog_cache.clone()
     }
 
-    /// Returns the MCP config after applying compatibility built-ins and
-    /// runtime-only extension overlays.
+    /// Returns the MCP config after applying runtime-only extension overlays.
     pub async fn runtime_config(&self, config: &Config) -> McpConfig {
-        self.runtime_config_with_context(
-            McpServerContributionContext::global(config),
-            // Threadless discovery and control-plane paths have no effective thread
-            // originator; active-thread tool calls use runtime_config_for_step below.
-            /*originator*/
-            None,
-        )
-        .await
-        .config
+        self.runtime_config_with_context(McpServerContributionContext::global(config))
+            .await
+            .config
     }
 
     #[tracing::instrument(name = "mcp.runtime_config.project_for_step", skip_all)]
@@ -114,28 +89,23 @@ impl McpManager {
         ready_selected_capability_roots: &[SelectedCapabilityRoot],
         executor_capability_discovery: Option<&ExecutorCapabilityDiscoverySnapshot>,
     ) -> McpRuntimeProjection {
-        self.runtime_config_with_context(
-            McpServerContributionContext::for_step(
-                config,
-                thread_init,
-                thread_store,
-                originator,
-                ready_selected_capability_roots,
-                executor_capability_discovery,
-            ),
-            Some(originator),
-        )
+        self.runtime_config_with_context(McpServerContributionContext::for_step(
+            config,
+            thread_init,
+            thread_store,
+            originator,
+            ready_selected_capability_roots,
+            executor_capability_discovery,
+        ))
         .await
     }
 
     async fn runtime_config_with_context(
         &self,
         context: McpServerContributionContext<'_, Config>,
-        originator: Option<&str>,
     ) -> McpRuntimeProjection {
         let config = context.config();
         let mut selected_plugin_available = false;
-        let mut selected_plugin_connector_sources = Vec::new();
         let mut selected_plugin_registrations = Vec::new();
         let mut overlays = Vec::new();
         // A contributor can emit multiple ordered actions, so order each action globally rather
@@ -166,21 +136,8 @@ impl McpManager {
                             *config,
                         ),
                     ),
-                    McpServerContribution::SelectedPluginPackage {
-                        plugin_id,
-                        plugin_display_name,
-                        connector_ids,
-                    } => {
+                    McpServerContribution::SelectedPluginPackage { .. } => {
                         selected_plugin_available = true;
-                        if !connector_ids.is_empty() {
-                            selected_plugin_connector_sources.push(
-                                PluginConnectorSource::from_connector_ids(
-                                    plugin_id,
-                                    plugin_display_name,
-                                    connector_ids.into_iter().map(AppConnectorId),
-                                ),
-                            );
-                        }
                     }
                     McpServerContribution::Remove { name } => {
                         overlays.push(OrderedMcpOverlay::Remove {
@@ -203,22 +160,6 @@ impl McpManager {
         let mut mcp_config = config
             .to_mcp_config_with_loaded_plugins(&loaded_plugins, selected_plugin_registrations);
         let mut catalog = mcp_config.mcp_server_catalog.to_builder();
-        if mcp_config.apps_enabled {
-            catalog.register(McpServerRegistration::from_compatibility(
-                CODEX_APPS_MCP_SERVER_NAME.to_string(),
-                LEGACY_CODEX_APPS_REGISTRATION_ID,
-                codex_apps_mcp_server_config(
-                    &mcp_config.chatgpt_base_url,
-                    mcp_config.apps_mcp_product_sku.as_deref(),
-                    originator,
-                ),
-            ));
-        } else {
-            catalog.remove_compatibility(
-                CODEX_APPS_MCP_SERVER_NAME.to_string(),
-                LEGACY_CODEX_APPS_REGISTRATION_ID,
-            );
-        }
 
         for overlay in overlays {
             match overlay {
@@ -250,12 +191,6 @@ impl McpManager {
             );
         }
         mcp_config.mcp_server_catalog = catalog;
-        mcp_config.connector_snapshot =
-            mcp_config
-                .connector_snapshot
-                .merged_with(&ConnectorSnapshot::from_plugin_sources(
-                    selected_plugin_connector_sources,
-                ));
         McpRuntimeProjection {
             config: mcp_config,
             plugins_available,
@@ -274,13 +209,9 @@ impl McpManager {
         configured_mcp_servers(&mcp_config)
     }
 
-    /// Returns runtime servers after auth gating and compatibility built-ins.
-    pub async fn effective_servers(
-        &self,
-        config: &Config,
-        auth: Option<&CodexAuth>,
-    ) -> HashMap<String, EffectiveMcpServer> {
+    /// Returns runtime servers after auth gating.
+    pub async fn effective_servers(&self, config: &Config) -> HashMap<String, EffectiveMcpServer> {
         let mcp_config = self.runtime_config(config).await;
-        effective_mcp_servers(&mcp_config, auth)
+        effective_mcp_servers(&mcp_config)
     }
 }

@@ -1,4 +1,3 @@
-use codex_connectors::AppInfo;
 use codex_protocol::approvals::ElicitationRequest;
 use serde::Deserialize;
 use serde::Serialize;
@@ -41,8 +40,6 @@ pub struct RequestPluginInstallMeta<'a> {
     pub tool_id: &'a str,
     pub tool_name: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub install_url: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_plugin_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_connector_ids: Option<&'a [String]>,
@@ -67,31 +64,11 @@ pub fn build_request_plugin_install_elicitation_request(
     }
 }
 
-pub fn all_requested_connectors_picked_up(
-    expected_connector_ids: &[String],
-    accessible_connectors: &[AppInfo],
-) -> bool {
-    expected_connector_ids.iter().all(|connector_id| {
-        verified_connector_install_completed(connector_id, accessible_connectors)
-    })
-}
-
-pub fn verified_connector_install_completed(
-    tool_id: &str,
-    accessible_connectors: &[AppInfo],
-) -> bool {
-    accessible_connectors
-        .iter()
-        .find(|connector| connector.id == tool_id)
-        .is_some_and(|connector| connector.is_accessible)
-}
-
 fn build_request_plugin_install_meta<'a>(
     suggest_reason: &'a str,
     tool: &'a DiscoverableTool,
 ) -> RequestPluginInstallMeta<'a> {
     let (tool_type, remote_plugin_id, app_connector_ids) = match tool {
-        DiscoverableTool::Connector(_) => (DiscoverableToolType::Connector, None, None),
         DiscoverableTool::Plugin(plugin) => (
             DiscoverableToolType::Plugin,
             plugin.remote_plugin_id.as_deref(),
@@ -106,7 +83,6 @@ fn build_request_plugin_install_meta<'a>(
         suggest_reason,
         tool_id: tool.id(),
         tool_name: tool.name(),
-        install_url: tool.install_url(),
         remote_plugin_id,
         app_connector_ids,
     }

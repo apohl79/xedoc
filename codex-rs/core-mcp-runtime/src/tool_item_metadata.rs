@@ -1,9 +1,6 @@
 //! MCP tool-call item metadata projection.
 
 use codex_core_approval_policy::McpToolApprovalMetadata;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
-
-const MCP_TOOL_RESOURCE_URI_META_KEY: &str = "resource_uri";
 
 /// Identity metadata attached to one MCP tool-call lifecycle item.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,26 +23,14 @@ pub struct McpToolCallItemMetadata {
 impl McpToolCallItemMetadata {
     /// Projects approved MCP tool metadata into lifecycle-item identity fields.
     #[doc(hidden)]
-    pub fn from_tool_metadata(server: &str, metadata: Option<&McpToolApprovalMetadata>) -> Self {
-        let trusted_mcp_app_metadata = if server == CODEX_APPS_MCP_SERVER_NAME {
-            metadata
-        } else {
-            None
-        };
+    pub fn from_tool_metadata(metadata: Option<&McpToolApprovalMetadata>) -> Self {
         Self {
-            connector_id: trusted_mcp_app_metadata
-                .and_then(|metadata| metadata.connector_id.clone()),
-            link_id: trusted_mcp_app_metadata.and_then(|metadata| metadata.link_id.clone()),
+            connector_id: None,
+            link_id: None,
             mcp_app_resource_uri: metadata
                 .and_then(|metadata| metadata.mcp_app_resource_uri.clone()),
-            app_name: trusted_mcp_app_metadata.and_then(|metadata| metadata.connector_name.clone()),
-            action_name: trusted_mcp_app_metadata
-                .and_then(|metadata| metadata.codex_apps_meta.as_ref())
-                .and_then(|meta| meta.get(MCP_TOOL_RESOURCE_URI_META_KEY))
-                .and_then(serde_json::Value::as_str)
-                .and_then(|resource_uri| resource_uri.trim_matches('/').rsplit('/').next())
-                .filter(|action_name| !action_name.is_empty())
-                .map(str::to_string),
+            app_name: None,
+            action_name: None,
             plugin_id: metadata.and_then(|metadata| metadata.plugin_id.clone()),
         }
     }

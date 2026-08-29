@@ -1,5 +1,3 @@
-use crate::app_mcp_routing::apply_app_mcp_routing_policy;
-use crate::app_mcp_routing::apps_route_available;
 use crate::command_migration::migrated_command_skills_root;
 use crate::is_openai_curated_marketplace_name;
 use crate::manifest::PluginManifest;
@@ -23,8 +21,6 @@ use codex_config::HooksFile;
 use codex_config::types::McpServerConfig;
 use codex_config::types::PluginConfig;
 use codex_config::types::PluginMcpServerConfig;
-use codex_connectors::parse_plugin_app_config;
-use codex_connectors::parse_plugin_app_config_value;
 use codex_core_skills::PluginSkillSnapshots;
 use codex_core_skills::config_rules::resolve_disabled_skill_paths;
 use codex_core_skills::config_rules::skill_config_rules_from_stack;
@@ -32,21 +28,17 @@ use codex_core_skills::loader::SkillRoot;
 use codex_core_skills::loader::load_skills_from_roots;
 use codex_exec_server::LOCAL_FS;
 use codex_mcp::parse_plugin_mcp_config;
-use codex_plugin::AppDeclaration;
 use codex_plugin::LoadedPlugin;
 use codex_plugin::PluginCapabilitySummary;
 use codex_plugin::PluginHookSource;
 use codex_plugin::PluginId;
 use codex_plugin::PluginIdError;
-use codex_plugin::app_connector_ids_from_declarations;
-use codex_protocol::auth::AuthMode;
 use codex_protocol::protocol::Product;
 use codex_protocol::protocol::SkillScope;
 use codex_skills::SkillConfigRules;
 use codex_skills::SkillMetadata;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_plugins::find_plugin_manifest_path;
-use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -61,7 +53,6 @@ use tracing::warn;
 const DEFAULT_SKILLS_DIR_NAME: &str = "skills";
 const DEFAULT_HOOKS_CONFIG_FILE: &str = "hooks/hooks.json";
 const DEFAULT_MCP_CONFIG_FILE: &str = ".mcp.json";
-const DEFAULT_APP_CONFIG_FILE: &str = ".app.json";
 const CONFIG_TOML_FILE: &str = "config.toml";
 const CURATED_PLUGIN_CACHE_VERSION_SHA_PREFIX_LEN: usize = 8;
 
@@ -838,7 +829,6 @@ async fn load_plugin(
                 Some(&plugin.mcp_servers),
             )
             .await;
-            loaded_plugin.apps = load_plugin_apps(plugin_root.as_path()).await;
         }
         PluginLoadScope::HooksOnly => {}
     }
@@ -1043,57 +1033,6 @@ fn default_mcp_config_paths(plugin_root: &Path) -> Vec<AbsolutePathBuf> {
     paths
 }
 
-pub async fn load_plugin_apps(plugin_root: &Path) -> Vec<AppDeclaration> {
-    if let Some(manifest) = load_plugin_manifest(plugin_root) {
-        return load_plugin_apps_from_manifest(plugin_root, &manifest.paths).await;
-    }
-    load_apps_from_paths(plugin_root, default_app_config_paths(plugin_root)).await
-}
-
-pub(crate) async fn load_plugin_apps_from_manifest(
-    plugin_root: &Path,
-    manifest_paths: &PluginManifestPaths,
-) -> Vec<AppDeclaration> {
-    load_apps_from_paths(
-        plugin_root,
-        plugin_app_config_paths(plugin_root, manifest_paths),
-    )
-    .await
-}
-
-pub fn plugin_app_declarations_from_value(value: &JsonValue) -> Vec<AppDeclaration> {
-    let Ok(mut apps) = parse_plugin_app_config_value(value.clone()) else {
-        return Vec::new();
-    };
-    apps.retain(|app| !app.connector_id.0.trim().is_empty());
-    let mut seen_connector_ids = HashSet::new();
-    apps.retain(|app| seen_connector_ids.insert(app.connector_id.0.clone()));
-    apps
-}
-
-fn plugin_app_config_paths(
-    plugin_root: &Path,
-    manifest_paths: &PluginManifestPaths,
-) -> Vec<AbsolutePathBuf> {
-    if let Some(path) = &manifest_paths.apps {
-        return vec![path.clone()];
-    }
-    default_app_config_paths(plugin_root)
-}
-
-fn default_app_config_paths(plugin_root: &Path) -> Vec<AbsolutePathBuf> {
-    let mut paths = Vec::new();
-    let default_path = plugin_root.join(DEFAULT_APP_CONFIG_FILE);
-    if default_path.is_file()
-        && let Ok(default_path) = AbsolutePathBuf::try_from(default_path)
-    {
-        paths.push(default_path);
-    }
-    paths.sort_unstable_by(|left, right| left.as_path().cmp(right.as_path()));
-    paths.dedup_by(|left, right| left.as_path() == right.as_path());
-    paths
-}
-
 // Discover plugin-bundled hooks from manifest `hooks` entries when present
 // (path, paths, inline object, or inline objects), otherwise from the default
 // `hooks/hooks.json` file.
@@ -1204,41 +1143,6 @@ fn append_plugin_hook_file(
     });
 }
 
-async fn load_apps_from_paths(
-    plugin_root: &Path,
-    app_config_paths: Vec<AbsolutePathBuf>,
-) -> Vec<AppDeclaration> {
-    let mut app_declarations = Vec::new();
-    for app_config_path in app_config_paths {
-        let Ok(contents) = tokio::fs::read_to_string(app_config_path.as_path()).await else {
-            continue;
-        };
-        let declarations = match parse_plugin_app_config(&contents) {
-            Ok(declarations) => declarations,
-            Err(err) => {
-                warn!(
-                    path = %app_config_path.display(),
-                    "failed to parse plugin app config: {err}"
-                );
-                continue;
-            }
-        };
-
-        app_declarations.extend(declarations.into_iter().filter(|app| {
-            if app.connector_id.0.trim().is_empty() {
-                warn!(
-                    plugin = %plugin_root.display(),
-                    "plugin app config is missing an app id"
-                );
-                false
-            } else {
-                true
-            }
-        }));
-    }
-    app_declarations
-}
-
 pub async fn plugin_capability_summary_from_root(
     plugin_id: &PluginId,
     plugin_root: &AbsolutePathBuf,
@@ -1258,43 +1162,17 @@ pub async fn plugin_capability_summary_from_root(
     mcp_server_names.sort_unstable();
     mcp_server_names.dedup();
 
-    let app_declarations = load_apps_from_paths(
-        plugin_root.as_path(),
-        plugin_app_config_paths(plugin_root.as_path(), manifest_paths),
-    )
-    .await;
-    let app_connector_ids = app_connector_ids_from_declarations(&app_declarations);
-
     Some(PluginCapabilitySummary {
         config_name: plugin_id.as_key(),
         display_name: plugin_id.plugin_name.clone(),
         description: None,
         has_skills,
         mcp_server_names,
-        app_connector_ids,
+        app_connector_ids: Vec::new(),
     })
 }
 
-pub async fn load_plugin_mcp_servers(
-    plugin_root: &Path,
-    auth_mode: Option<AuthMode>,
-) -> HashMap<String, McpServerConfig> {
-    let mut mcp_servers = load_declared_plugin_mcp_servers(plugin_root).await;
-    if !apps_route_available(auth_mode) || mcp_servers.is_empty() {
-        return mcp_servers;
-    }
-
-    let mut app_declarations = load_plugin_apps(plugin_root).await;
-    apply_app_mcp_routing_policy(
-        &mut app_declarations,
-        &mut mcp_servers,
-        auth_mode,
-        /*plugin_active*/ true,
-    );
-    mcp_servers
-}
-
-async fn load_declared_plugin_mcp_servers(plugin_root: &Path) -> HashMap<String, McpServerConfig> {
+pub async fn load_plugin_mcp_servers(plugin_root: &Path) -> HashMap<String, McpServerConfig> {
     let Some(manifest) = load_plugin_manifest(plugin_root) else {
         return HashMap::new();
     };

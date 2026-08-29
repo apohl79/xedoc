@@ -24,8 +24,6 @@ fn approval_metadata() -> McpToolApprovalMetadata {
         tool_title: Some("Create Event".to_string()),
         tool_description: Some("Create a calendar event.".to_string()),
         mcp_app_resource_uri: None,
-        codex_apps_meta: None,
-        openai_file_input_optional_fields: None,
     }
 }
 
@@ -37,68 +35,10 @@ fn custom_mcp_tool_request_meta_includes_turn_metadata() {
         build_mcp_tool_call_request_meta(
             TURN_METADATA_HEADER,
             Some(turn_metadata.clone()),
-            "custom_server",
-            "call-custom",
             /*metadata*/ None,
         ),
         Some(serde_json::json!({
             TURN_METADATA_HEADER: turn_metadata,
-        }))
-    );
-}
-
-#[test]
-fn codex_apps_tool_request_meta_merges_existing_app_metadata() {
-    let turn_metadata = turn_metadata();
-    let mut metadata = approval_metadata();
-    metadata.codex_apps_meta = Some(
-        serde_json::json!({
-            "resource_uri": "connector://calendar/tools/calendar_create_event",
-            "contains_mcp_source": true,
-            "connector_id": "calendar",
-        })
-        .as_object()
-        .cloned()
-        .expect("_codex_apps metadata should be an object"),
-    );
-
-    assert_eq!(
-        build_mcp_tool_call_request_meta(
-            TURN_METADATA_HEADER,
-            Some(turn_metadata.clone()),
-            CODEX_APPS_MCP_SERVER_NAME,
-            "call_abc123xyz789",
-            Some(&metadata),
-        ),
-        Some(serde_json::json!({
-            TURN_METADATA_HEADER: turn_metadata,
-            MCP_TOOL_CODEX_APPS_META_KEY: {
-                "call_id": "call_abc123xyz789",
-                "resource_uri": "connector://calendar/tools/calendar_create_event",
-                "contains_mcp_source": true,
-                "connector_id": "calendar",
-            },
-        }))
-    );
-}
-
-#[test]
-fn codex_apps_tool_request_meta_includes_call_id_without_app_metadata() {
-    let turn_metadata = turn_metadata();
-
-    assert_eq!(
-        build_mcp_tool_call_request_meta(
-            TURN_METADATA_HEADER,
-            Some(turn_metadata.clone()),
-            CODEX_APPS_MCP_SERVER_NAME,
-            "call_abc123xyz789",
-            /*metadata*/ None,
-        ),
-        Some(serde_json::json!({
-            TURN_METADATA_HEADER: turn_metadata,
-            MCP_TOOL_CODEX_APPS_META_KEY: {
-                "call_id": "call_abc123xyz789",
-            },
         }))
     );
 }
@@ -113,8 +53,6 @@ fn plugin_mcp_tool_request_meta_includes_plugin_id() {
         build_mcp_tool_call_request_meta(
             TURN_METADATA_HEADER,
             Some(turn_metadata.clone()),
-            "sample",
-            "call-plugin",
             Some(&metadata),
         ),
         Some(serde_json::json!({

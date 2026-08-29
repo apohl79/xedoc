@@ -18,7 +18,6 @@ pub use extension::install_with_providers;
 pub use extension::install_with_providers_and_metrics;
 pub use provider::ExecutorSkillProvider;
 pub use provider::HostSkillProvider;
-pub use provider::OrchestratorSkillProvider;
 pub use provider::SkillProvider;
 pub use sources::SkillProviderSource;
 pub use sources::SkillProviders;

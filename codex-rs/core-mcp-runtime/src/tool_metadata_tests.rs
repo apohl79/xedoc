@@ -30,17 +30,3 @@ fn mcp_app_resource_uri_reads_known_tool_meta_keys() {
         Some("ui://widget/output-template.html".to_string())
     );
 }
-
-#[test]
-fn openai_file_params_are_only_honored_for_codex_apps() {
-    let params = HashMap::from([("file".to_string(), Vec::new())]);
-
-    assert_eq!(
-        openai_file_input_optional_fields_for_server(CODEX_APPS_MCP_SERVER_NAME, &params),
-        Some(params.clone())
-    );
-    assert_eq!(
-        openai_file_input_optional_fields_for_server("minimaltest", &params),
-        None
-    );
-}

@@ -112,11 +112,10 @@ pub enum McpServerContribution {
         selection_order: usize,
         config: Box<McpServerConfig>,
     },
-    /// Records a plugin selected for this thread and any connector IDs it declares.
+    /// Records a plugin selected for this thread.
     SelectedPluginPackage {
         plugin_id: String,
         plugin_display_name: String,
-        connector_ids: Vec<String>,
     },
     /// Removes a named MCP server.
     Remove { name: String },

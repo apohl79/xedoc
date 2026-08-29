@@ -16,8 +16,6 @@ workspace = true
 codex-core = { workspace = true }
 codex-core-plugins = { workspace = true }
 codex-config = { workspace = true }
-codex-connectors = { workspace = true }
-codex-connectors-extension = { workspace = true }
 codex-exec-server = { workspace = true }
 codex-extension-api = { workspace = true }
 codex-features = { workspace = true }
@@ -32,7 +30,6 @@ tracing = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
-codex-login = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

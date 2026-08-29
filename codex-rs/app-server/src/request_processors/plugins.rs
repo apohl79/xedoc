@@ -35,7 +35,6 @@ pub(crate) struct PluginRequestProcessor {
     outgoing: Arc<OutgoingMessageSender>,
     analytics_events_client: AnalyticsEventsClient,
     config_manager: ConfigManager,
-    workspace_settings_cache: Arc<workspace_settings::WorkspaceSettingsCache>,
     on_effective_plugins_changed:
         Arc<dyn Fn(codex_core_plugins::EffectivePluginsChange) + Send + Sync>,
 }
@@ -363,7 +362,6 @@ impl PluginRequestProcessor {
         outgoing: Arc<OutgoingMessageSender>,
         analytics_events_client: AnalyticsEventsClient,
         config_manager: ConfigManager,
-        workspace_settings_cache: Arc<workspace_settings::WorkspaceSettingsCache>,
         on_effective_plugins_changed: Arc<
             dyn Fn(codex_core_plugins::EffectivePluginsChange) + Send + Sync,
         >,
@@ -374,7 +372,6 @@ impl PluginRequestProcessor {
             outgoing,
             analytics_events_client,
             config_manager,
-            workspace_settings_cache,
             on_effective_plugins_changed,
         }
     }
@@ -503,28 +500,6 @@ impl PluginRequestProcessor {
             .map_err(|err| internal_error(format!("failed to reload config: {err}")))
     }
 
-    async fn workspace_codex_plugins_enabled(
-        &self,
-        config: &Config,
-        auth: Option<&CodexAuth>,
-    ) -> bool {
-        match workspace_settings::codex_plugins_enabled_for_workspace(
-            config,
-            auth,
-            Some(&self.workspace_settings_cache),
-        )
-        .await
-        {
-            Ok(enabled) => enabled,
-            Err(err) => {
-                warn!(
-                    "failed to fetch workspace Codex plugins setting; allowing Codex plugins: {err:#}"
-                );
-                true
-            }
-        }
-    }
-
     async fn plugin_list_response(
         &self,
         params: PluginListParams,
@@ -551,12 +526,6 @@ impl PluginRequestProcessor {
             return Ok(empty_response());
         }
         let auth = self.auth_manager.auth().await;
-        if !self
-            .workspace_codex_plugins_enabled(&config, auth.as_ref())
-            .await
-        {
-            return Ok(empty_response());
-        }
         let auth_mode = auth.as_ref().map(CodexAuth::api_auth_mode);
         plugins_manager.set_auth_mode(auth_mode);
         let plugins_input = config.plugins_config_input();
@@ -801,12 +770,6 @@ impl PluginRequestProcessor {
             return Ok(empty_response());
         }
         let auth = self.auth_manager.auth().await;
-        if !self
-            .workspace_codex_plugins_enabled(&config, auth.as_ref())
-            .await
-        {
-            return Ok(empty_response());
-        }
         plugins_manager.set_auth_mode(auth.as_ref().map(CodexAuth::api_auth_mode));
 
         let plugins_input = config.plugins_config_input();
@@ -1063,12 +1026,6 @@ impl PluginRequestProcessor {
                     }
                     None => None,
                 };
-                let app_summaries = load_plugin_app_summaries(
-                    &config,
-                    &outcome.plugin.apps,
-                    &outcome.plugin.app_category_by_id,
-                )
-                .await;
                 let visible_skills = outcome
                     .plugin
                     .skills
@@ -1116,7 +1073,6 @@ impl PluginRequestProcessor {
                             event_name: hook.event_name.into(),
                         })
                         .collect(),
-                    apps: app_summaries,
                     app_templates: Vec::new(),
                     mcp_servers: outcome.plugin.mcp_server_names,
                     scheduled_tasks: None,
@@ -1142,20 +1098,7 @@ impl PluginRequestProcessor {
                 .map_err(|err| {
                     remote_plugin_catalog_error_to_jsonrpc(err, "read remote plugin details")
                 })?;
-                let plugin_apps = remote_detail
-                    .app_ids
-                    .iter()
-                    .cloned()
-                    .map(codex_plugin::AppConnectorId)
-                    .collect::<Vec<_>>();
-                let app_category_by_id = remote_detail
-                    .app_manifest
-                    .as_ref()
-                    .map(plugin_app_category_by_id_from_value)
-                    .unwrap_or_default();
-                let app_summaries =
-                    load_plugin_app_summaries(&config, &plugin_apps, &app_category_by_id).await;
-                remote_plugin_detail_to_info(remote_detail, app_summaries)
+                remote_plugin_detail_to_info(remote_detail)
             }
         };
 
@@ -1434,16 +1377,6 @@ impl PluginRequestProcessor {
         };
         let config_cwd = marketplace_path.as_path().parent().map(Path::to_path_buf);
         let config = self.load_latest_config(config_cwd.clone()).await?;
-        let auth = self.auth_manager.auth().await;
-
-        if !self
-            .workspace_codex_plugins_enabled(&config, auth.as_ref())
-            .await
-        {
-            return Err(invalid_request(
-                "Codex plugins are disabled for this workspace",
-            ));
-        }
 
         let plugins_manager = self.thread_manager.plugins_manager();
         let marketplace_display = marketplace_path.display().to_string();
@@ -1479,31 +1412,14 @@ impl PluginRequestProcessor {
 
         self.on_effective_plugins_changed();
 
-        let plugin_mcp_servers = load_plugin_mcp_servers(
-            result.installed_path.as_path(),
-            auth.as_ref().map(CodexAuth::auth_mode),
-        )
-        .await;
+        let plugin_mcp_servers = load_plugin_mcp_servers(result.installed_path.as_path()).await;
         if !plugin_mcp_servers.is_empty() {
             self.start_plugin_mcp_oauth_logins(&config, plugin_mcp_servers)
                 .await;
         }
 
-        let plugin_app_declarations = load_plugin_apps(result.installed_path.as_path()).await;
-        let plugin_apps =
-            codex_plugin::app_connector_ids_from_declarations(&plugin_app_declarations);
-        let apps_needing_auth = self
-            .plugin_apps_needing_auth_for_install(
-                &config,
-                auth.as_ref().is_some_and(CodexAuth::is_chatgpt_auth),
-                &result.plugin_id.as_key(),
-                &plugin_apps,
-            )
-            .await;
-
         Ok(PluginInstallResponse {
             auth_policy: result.auth_policy.into(),
-            apps_needing_auth,
         })
     }
 
@@ -1617,7 +1533,7 @@ impl PluginRequestProcessor {
         // Cache first so a backend install cannot succeed when local materialization fails.
         // If this backend call fails, the cache entry is harmless because remote installed state
         // is still backend-gated.
-        let install_result = codex_core_plugins::remote::install_remote_plugin(
+        codex_core_plugins::remote::install_remote_plugin(
             &remote_plugin_service_config,
             auth.as_ref(),
             &actual_remote_marketplace_name,
@@ -1656,70 +1572,14 @@ impl PluginRequestProcessor {
         self.analytics_events_client
             .track_plugin_installed(plugin_metadata);
 
-        let plugin_mcp_servers = load_plugin_mcp_servers(
-            result.installed_path.as_path(),
-            auth.as_ref().map(CodexAuth::auth_mode),
-        )
-        .await;
+        let plugin_mcp_servers = load_plugin_mcp_servers(result.installed_path.as_path()).await;
         if !plugin_mcp_servers.is_empty() {
             self.start_plugin_mcp_oauth_logins(&config, plugin_mcp_servers)
                 .await;
         }
 
-        let is_chatgpt_auth = auth.as_ref().is_some_and(CodexAuth::is_chatgpt_auth);
-        let apps_needing_auth = if let Some(app_ids_needing_auth) =
-            install_result.app_ids_needing_auth
-        {
-            if app_ids_needing_auth.is_empty()
-                || !config.features.apps_enabled_for_auth(is_chatgpt_auth)
-            {
-                Vec::new()
-            } else {
-                let plugin_apps = app_ids_needing_auth
-                    .into_iter()
-                    .map(codex_plugin::AppConnectorId)
-                    .collect::<Vec<_>>();
-                let app_category_by_id = remote_detail
-                    .app_manifest
-                    .as_ref()
-                    .map(plugin_app_category_by_id_from_value)
-                    .unwrap_or_default();
-                let all_connectors = connectors::list_cached_all_connectors(&config, &[])
-                    .await
-                    .unwrap_or_default();
-                connectors::connectors_for_plugin_apps(all_connectors, &plugin_apps)
-                    .into_iter()
-                    .map(|connector| {
-                        let category = app_category_by_id
-                            .get(&connector.id)
-                            .cloned()
-                            .or_else(|| connector.category());
-                        AppSummary {
-                            category,
-                            id: connector.id,
-                            name: connector.name,
-                            description: connector.description,
-                            install_url: connector.install_url,
-                        }
-                    })
-                    .collect()
-            }
-        } else {
-            let plugin_app_declarations = load_plugin_apps(result.installed_path.as_path()).await;
-            let plugin_apps =
-                codex_plugin::app_connector_ids_from_declarations(&plugin_app_declarations);
-            self.plugin_apps_needing_auth_for_install(
-                &config,
-                is_chatgpt_auth,
-                &result.plugin_id.as_key(),
-                &plugin_apps,
-            )
-            .await
-        };
-
         Ok(PluginInstallResponse {
             auth_policy: remote_detail.summary.auth_policy,
-            apps_needing_auth,
         })
     }
 
@@ -1757,71 +1617,6 @@ impl PluginRequestProcessor {
             error_type.to_string(),
             sub_error_type,
         );
-    }
-
-    async fn plugin_apps_needing_auth_for_install(
-        &self,
-        config: &Config,
-        is_chatgpt_auth: bool,
-        plugin_id: &str,
-        plugin_apps: &[codex_plugin::AppConnectorId],
-    ) -> Vec<AppSummary> {
-        if plugin_apps.is_empty() || !config.features.apps_enabled_for_auth(is_chatgpt_auth) {
-            return Vec::new();
-        }
-
-        let environment_manager = self.thread_manager.environment_manager();
-        let (all_connectors_result, accessible_connectors_result) = tokio::join!(
-            connectors::list_all_connectors_with_options(config, /*force_refetch*/ false, &[]),
-            connectors::list_accessible_connectors_from_mcp_tools_with_mcp_manager(
-                config,
-                /*force_refetch*/ true,
-                Arc::clone(&environment_manager),
-                self.thread_manager.mcp_manager(),
-            ),
-        );
-
-        let all_connectors = match all_connectors_result {
-            Ok(connectors) => connectors,
-            Err(err) => {
-                warn!(
-                    plugin = plugin_id,
-                    "failed to load app metadata after plugin install: {err:#}"
-                );
-                connectors::list_cached_all_connectors(config, &[])
-                    .await
-                    .unwrap_or_default()
-            }
-        };
-        let all_connectors = connectors::connectors_for_plugin_apps(all_connectors, plugin_apps);
-        let (accessible_connectors, codex_apps_ready) = match accessible_connectors_result {
-            Ok(status) => (status.connectors, status.codex_apps_ready),
-            Err(err) => {
-                warn!(
-                    plugin = plugin_id,
-                    "failed to load accessible apps after plugin install: {err:#}"
-                );
-                (
-                    connectors::list_cached_accessible_connectors_from_mcp_tools(config)
-                        .await
-                        .unwrap_or_default(),
-                    false,
-                )
-            }
-        };
-        if !codex_apps_ready {
-            warn!(
-                plugin = plugin_id,
-                "codex_apps MCP not ready after plugin install; skipping appsNeedingAuth check"
-            );
-        }
-
-        plugin_apps_needing_auth(
-            &all_connectors,
-            &accessible_connectors,
-            plugin_apps,
-            codex_apps_ready,
-        )
     }
 
     async fn start_plugin_mcp_oauth_logins(
@@ -2065,97 +1860,6 @@ impl PluginRequestProcessor {
     }
 }
 
-async fn load_plugin_app_summaries(
-    config: &Config,
-    plugin_apps: &[codex_plugin::AppConnectorId],
-    app_category_by_id: &HashMap<String, String>,
-) -> Vec<AppSummary> {
-    if plugin_apps.is_empty() {
-        return Vec::new();
-    }
-
-    let connectors = match connectors::list_all_connectors_with_options(
-        config,
-        /*force_refetch*/ false,
-        &[],
-    )
-    .await
-    {
-        Ok(connectors) => connectors,
-        Err(err) => {
-            warn!("failed to load app metadata for plugin/read: {err:#}");
-            connectors::list_cached_all_connectors(config, &[])
-                .await
-                .unwrap_or_default()
-        }
-    };
-
-    let plugin_connectors = connectors::connectors_for_plugin_apps(connectors, plugin_apps);
-
-    plugin_connectors
-        .into_iter()
-        .map(|connector| {
-            let category = app_category_by_id
-                .get(&connector.id)
-                .cloned()
-                .or_else(|| connector.category());
-            AppSummary {
-                id: connector.id,
-                name: connector.name,
-                description: connector.description,
-                install_url: connector.install_url,
-                category,
-            }
-        })
-        .collect()
-}
-
-fn plugin_app_category_by_id_from_value(value: &serde_json::Value) -> HashMap<String, String> {
-    codex_core_plugins::loader::plugin_app_declarations_from_value(value)
-        .into_iter()
-        .filter_map(|app| app.category.map(|category| (app.connector_id.0, category)))
-        .collect()
-}
-
-fn plugin_apps_needing_auth(
-    all_connectors: &[AppInfo],
-    accessible_connectors: &[AppInfo],
-    plugin_apps: &[codex_plugin::AppConnectorId],
-    codex_apps_ready: bool,
-) -> Vec<AppSummary> {
-    if !codex_apps_ready {
-        return Vec::new();
-    }
-
-    let accessible_ids = accessible_connectors
-        .iter()
-        .map(|connector| connector.id.as_str())
-        .collect::<HashSet<_>>();
-    let plugin_app_ids = plugin_apps
-        .iter()
-        .map(|connector_id| connector_id.0.as_str())
-        .collect::<HashSet<_>>();
-
-    all_connectors
-        .iter()
-        .filter(|connector| {
-            plugin_app_ids.contains(connector.id.as_str())
-                && !accessible_ids.contains(connector.id.as_str())
-        })
-        .cloned()
-        .map(|connector| {
-            let category = connector.category();
-            AppSummary {
-                category,
-                id: connector.id,
-                name: connector.name,
-                description: connector.description,
-                install_url: connector.install_url,
-            }
-        })
-        .collect()
-}
-
 fn remote_marketplace_to_info(marketplace: RemoteMarketplace) -> PluginMarketplaceEntry {
     PluginMarketplaceEntry {
         name: marketplace.name,
@@ -2231,10 +1935,7 @@ fn remote_plugin_share_discoverability_to_info(
     }
 }
 
-fn remote_plugin_detail_to_info(
-    detail: RemoteCatalogPluginDetail,
-    apps: Vec<AppSummary>,
-) -> PluginDetail {
+fn remote_plugin_detail_to_info(detail: RemoteCatalogPluginDetail) -> PluginDetail {
     let app_templates = detail
         .app_templates
         .into_iter()
@@ -2277,7 +1978,6 @@ fn remote_plugin_detail_to_info(
             })
             .collect(),
         hooks: Vec::new(),
-        apps,
         app_templates,
         mcp_servers: detail.mcp_servers,
         scheduled_tasks: detail.scheduled_tasks,

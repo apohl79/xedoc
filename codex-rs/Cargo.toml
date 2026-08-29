@@ -31,7 +31,6 @@ members = [
     "cli-doctor",
     "cli-runtime",
     "collaboration-mode-templates",
-    "connectors",
     "config",
     "context-fragments",
     "shell-command",
@@ -42,7 +41,6 @@ members = [
     "core-config",
     "core-config-runtime",
     "core-context",
-    "core-connectors-runtime",
     "core-auto-compact-window",
     "core-plugin-context",
     "core-session-name",
@@ -61,7 +59,6 @@ members = [
     "core-approval-policy",
     "core-guardian-approval",
     "core-mcp-runtime",
-    "core-mcp-openai-file",
     "core-mcp-skill-dependency",
     "core-elicitation",
     "core-time",
@@ -87,7 +84,6 @@ members = [
     "exec-server",
     "execpolicy",
     "ext/agent",
-    "ext/connectors",
     "ext/extension-api",
     "ext/goal",
     "ext/guardian",
@@ -218,7 +214,6 @@ codex-apply-patch = { path = "apply-patch" }
 codex-arg0 = { path = "arg0" }
 codex-async-utils = { path = "async-utils" }
 codex-backend-client = { path = "backend-client" }
-codex-chatgpt = { path = "chatgpt" }
 codex-cli = { path = "cli" }
 codex-cli-doctor = { path = "cli-doctor" }
 codex-cli-runtime = { path = "cli-runtime" }
@@ -232,16 +227,13 @@ codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
 codex-websocket-client = { path = "websocket-client" }
 codex-config = { path = "config" }
-codex-connectors = { path = "connectors" }
 codex-agent-extension = { path = "ext/agent" }
-codex-connectors-extension = { path = "ext/connectors" }
 codex-context-fragments = { path = "context-fragments" }
 codex-core = { path = "core" }
 codex-core-client = { path = "core-client" }
 codex-core-config = { path = "core-config" }
 codex-core-config-runtime = { path = "core-config-runtime" }
 codex-core-context = { path = "core-context" }
-codex-core-connectors-runtime = { path = "core-connectors-runtime" }
 codex-core-auto-compact-window = { path = "core-auto-compact-window" }
 codex-core-plugin-context = { path = "core-plugin-context" }
 codex-core-session-name = { path = "core-session-name" }
@@ -260,7 +252,6 @@ codex-core-exec = { path = "core-exec" }
 codex-core-approval-policy = { path = "core-approval-policy" }
 codex-core-guardian-approval = { path = "core-guardian-approval" }
 codex-core-mcp-runtime = { path = "core-mcp-runtime" }
-codex-core-mcp-openai-file = { path = "core-mcp-openai-file" }
 codex-core-mcp-skill-dependency = { path = "core-mcp-skill-dependency" }
 codex-core-elicitation = { path = "core-elicitation" }
 codex-core-time = { path = "core-time" }
