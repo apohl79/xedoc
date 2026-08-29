@@ -81,8 +81,6 @@ pub struct TurnContext {
     pub sub_id: String,
     /// Workspace-internal trace identifier.
     pub trace_id: Option<String>,
-    /// Workspace-internal realtime state.
-    pub realtime_active: bool,
     /// Effective configuration for this turn.
     pub config: Arc<Config>,
     /// Workspace-internal authentication manager.
@@ -267,7 +265,6 @@ impl TurnContext {
         Self {
             sub_id: self.sub_id.clone(),
             trace_id: self.trace_id.clone(),
-            realtime_active: self.realtime_active,
             config: Arc::new(config),
             auth_manager: self.auth_manager.clone(),
             model_info: model_info.clone(),
@@ -380,7 +377,6 @@ impl TurnContext {
             collaboration_mode: Some(self.collaboration_mode()),
             multi_agent_version: Some(self.multi_agent_version),
             multi_agent_mode: effective_multi_agent_mode(self),
-            realtime_active: Some(self.realtime_active),
             effort: self.reasoning_effort.clone(),
             summary: ReasoningSummaryConfig::Auto,
         }

@@ -138,7 +138,7 @@ impl ThreadEventStore {
         }
 
         // These notifications are either handled before routing or ignored by ChatWidget on
-        // replay. In particular, raw response items and realtime audio can carry large payloads,
+        // replay. In particular, raw response items and streamed output can carry large payloads,
         // so cloning them into every thread's replay buffer only retains data the TUI cannot use.
         if matches!(
             notification.as_ref(),
@@ -146,11 +146,6 @@ impl ThreadEventStore {
                 | ServerNotification::FileChangePatchUpdated(_)
                 | ServerNotification::ServerRequestResolved(_)
                 | ServerNotification::McpToolCallProgress(_)
-                | ServerNotification::ThreadRealtimeItemAdded(_)
-                | ServerNotification::ThreadRealtimeOutputAudioDelta(_)
-                | ServerNotification::ThreadRealtimeSdp(_)
-                | ServerNotification::ThreadRealtimeTranscriptDelta(_)
-                | ServerNotification::ThreadRealtimeTranscriptDone(_)
                 | ServerNotification::CommandExecOutputDelta(_)
                 | ServerNotification::ProcessOutputDelta(_)
                 | ServerNotification::ProcessExited(_)
@@ -375,8 +370,6 @@ mod tests {
     use codex_app_server_protocol::HookStartedNotification;
     use codex_app_server_protocol::McpToolCallProgressNotification;
     use codex_app_server_protocol::RequestId as AppServerRequestId;
-    use codex_app_server_protocol::ThreadRealtimeAudioChunk;
-    use codex_app_server_protocol::ThreadRealtimeOutputAudioDeltaNotification;
     use codex_app_server_protocol::TurnCompletedNotification;
     use codex_app_server_protocol::TurnStartedNotification;
     use codex_protocol::models::PermissionProfile;
@@ -603,18 +596,6 @@ mod tests {
                     turn_id: "turn-1".to_string(),
                     item_id: "mcp-1".to_string(),
                     message: large_payload.clone(),
-                },
-            ));
-            store.push_notification_ref(&ServerNotification::ThreadRealtimeOutputAudioDelta(
-                ThreadRealtimeOutputAudioDeltaNotification {
-                    thread_id: thread_id.to_string(),
-                    audio: ThreadRealtimeAudioChunk {
-                        data: large_payload.clone(),
-                        sample_rate: 24_000,
-                        num_channels: 1,
-                        samples_per_channel: None,
-                        item_id: None,
-                    },
                 },
             ));
         }

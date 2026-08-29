@@ -141,7 +141,6 @@ impl Session {
         TurnContext {
             sub_id,
             trace_id: current_span_trace_id(),
-            realtime_active: false,
             config: per_turn_config,
             auth_manager: auth_manager_for_context,
             model_info,
@@ -378,7 +377,6 @@ impl Session {
             sub_id,
             skills_snapshot,
         );
-        turn_context.realtime_active = self.conversation.running_state().await.is_some();
 
         if let Some(final_schema) = final_output_json_schema {
             turn_context.final_output_json_schema = final_schema;

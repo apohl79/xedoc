@@ -37,8 +37,6 @@ use codex_api::CompactClient as ApiCompactClient;
 use codex_api::CompactionInput as ApiCompactionInput;
 use codex_api::Compression;
 use codex_api::Provider as ApiProvider;
-use codex_api::RealtimeCallClient as ApiRealtimeCallClient;
-use codex_api::RealtimeSessionConfig as ApiRealtimeSessionConfig;
 use codex_api::Reasoning;
 use codex_api::ReasoningContext;
 use codex_api::RequestTelemetry;
@@ -137,7 +135,6 @@ const WS_REQUEST_HEADER_RESPONSES_LITE_CLIENT_METADATA_KEY: &str =
 const RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE: &str = "responses_websockets=2026-02-06";
 const X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str =
     "x-openai-internal-codex-responses-lite";
-const REALTIME_CALLS_ENDPOINT: &str = "/realtime/calls";
 const RESPONSES_ENDPOINT: &str = "/responses";
 const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 // `/responses/compact` is unary, so the timeout covers the full response rather than one idle
@@ -355,28 +352,6 @@ enum WebsocketStreamOutcome {
     FallbackToHttp,
 }
 
-/// Result of opening a WebRTC Realtime call.
-///
-/// The SDP answer goes back to the client. The call id and auth headers stay on the server so the
-/// ordinary Realtime WebSocket machinery can join the same in-progress call as a sideband
-/// controller.
-pub struct RealtimeWebrtcCallStart {
-    pub sdp: String,
-    pub call_id: String,
-    pub sideband_headers: ApiHeaderMap,
-}
-
-/// Reuses the API-auth material that created the WebRTC call for the sideband WebSocket join.
-///
-/// API-key sessions send that API bearer. ChatGPT-auth sessions send their bearer plus account id;
-/// transceiver is responsible for accepting that same call-create identity on the direct
-/// `api.openai.com` sideband path.
-fn sideband_websocket_auth_headers(api_auth: &dyn AuthProvider) -> ApiHeaderMap {
-    let mut headers = ApiHeaderMap::new();
-    api_auth.add_auth_headers(&mut headers);
-    headers
-}
-
 impl ModelClient {
     #[allow(clippy::too_many_arguments)]
     /// Creates a new session-scoped `ModelClient`.
@@ -582,33 +557,6 @@ impl ModelClient {
             )
             .await
             .map_err(|error| self.state.provider.map_api_error(error))
-    }
-
-    pub async fn create_realtime_call_with_headers(
-        &self,
-        sdp: String,
-        session_config: ApiRealtimeSessionConfig,
-        extra_headers: ApiHeaderMap,
-        api_provider_override: Option<ApiProvider>,
-    ) -> Result<RealtimeWebrtcCallStart> {
-        // Create the media call over HTTP first, then retain matching auth so realtime can attach
-        // the server-side control WebSocket to the call id from that HTTP response.
-        let client_setup = self.current_client_setup().await?;
-        let mut sideband_headers = extra_headers.clone();
-        sideband_headers.extend(sideband_websocket_auth_headers(
-            client_setup.api_auth.as_ref(),
-        ));
-        let api_provider = api_provider_override.unwrap_or(client_setup.api_provider);
-        let transport = self.build_api_transport(&api_provider, REALTIME_CALLS_ENDPOINT)?;
-        let response = ApiRealtimeCallClient::new(transport, api_provider, client_setup.api_auth)
-            .create_with_session_and_headers(sdp, session_config, extra_headers)
-            .await
-            .map_err(|error| self.state.provider.map_api_error(error))?;
-        Ok(RealtimeWebrtcCallStart {
-            sdp: response.sdp,
-            call_id: response.call_id,
-            sideband_headers,
-        })
     }
 
     fn build_subagent_headers(&self) -> ApiHeaderMap {

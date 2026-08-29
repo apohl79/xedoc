@@ -1,13 +1,7 @@
-use crate::realtime_conversation::handle_audio as handle_realtime_conversation_audio;
-use crate::realtime_conversation::handle_close as handle_realtime_conversation_close;
-use crate::realtime_conversation::handle_speech as handle_realtime_conversation_speech;
-use crate::realtime_conversation::handle_start as handle_realtime_conversation_start;
-use crate::realtime_conversation::handle_text as handle_realtime_conversation_text;
 use async_channel::Receiver;
 use codex_otel::set_parent_from_w3c_trace_context;
 use codex_protocol::protocol::Submission;
 use tracing::Instrument;
-use tracing::debug_span;
 use tracing::info_span;
 
 use crate::session::SteerInputError;
@@ -30,8 +24,6 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::protocol::McpServerRefreshConfig;
 use codex_protocol::protocol::Op;
-use codex_protocol::protocol::RealtimeConversationListVoicesResponseEvent;
-use codex_protocol::protocol::RealtimeVoicesList;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::ReviewRequest;
 use codex_protocol::protocol::RolloutItem;
@@ -61,18 +53,6 @@ pub async fn interrupt(sess: &Arc<Session>) {
 
 pub async fn clean_background_terminals(sess: &Arc<Session>) {
     sess.close_unified_exec_processes().await;
-}
-
-pub async fn realtime_conversation_list_voices(sess: &Session, sub_id: String) {
-    sess.send_event_raw(Event {
-        id: sub_id,
-        msg: EventMsg::RealtimeConversationListVoicesResponse(
-            RealtimeConversationListVoicesResponseEvent {
-                voices: RealtimeVoicesList::builtin(),
-            },
-        ),
-    })
-    .await;
 }
 
 pub async fn user_input_or_turn(
@@ -569,7 +549,6 @@ async fn shutdown_session_runtime(sess: &Arc<Session>) {
     if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
         startup_prewarm.abort().await;
     }
-    let _ = sess.conversation.shutdown().await;
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
     sess.services
         .unified_exec_manager
@@ -690,41 +669,6 @@ pub(super) async fn submission_loop(
                     clean_background_terminals(&sess).await;
                     false
                 }
-                Op::RealtimeConversationStart(params) => {
-                    if let Err(err) =
-                        handle_realtime_conversation_start(&sess, sub.id.clone(), params).await
-                    {
-                        sess.send_event_raw(Event {
-                            id: sub.id.clone(),
-                            msg: EventMsg::Error(ErrorEvent {
-                                message: err.to_string(),
-                                codex_error_info: Some(CodexErrorInfo::Other),
-                            }),
-                        })
-                        .await;
-                    }
-                    false
-                }
-                Op::RealtimeConversationAudio(params) => {
-                    handle_realtime_conversation_audio(&sess, sub.id.clone(), params).await;
-                    false
-                }
-                Op::RealtimeConversationText(params) => {
-                    handle_realtime_conversation_text(&sess, sub.id.clone(), params).await;
-                    false
-                }
-                Op::RealtimeConversationSpeech(params) => {
-                    handle_realtime_conversation_speech(&sess, sub.id.clone(), params).await;
-                    false
-                }
-                Op::RealtimeConversationClose => {
-                    handle_realtime_conversation_close(&sess, sub.id.clone()).await;
-                    false
-                }
-                Op::RealtimeConversationListVoices => {
-                    realtime_conversation_list_voices(&sess, sub.id.clone()).await;
-                    false
-                }
                 Op::UserInput { .. } => {
                     user_input_or_turn(&sess, sub.id.clone(), sub.op, sub.client_user_message_id)
                         .await;
@@ -825,22 +769,12 @@ pub(super) async fn submission_loop(
 pub(super) fn submission_dispatch_span(sub: &Submission) -> tracing::Span {
     let op_name = sub.op.kind();
     let span_name = format!("op.dispatch.{op_name}");
-    let dispatch_span = match &sub.op {
-        Op::RealtimeConversationAudio(_) => {
-            debug_span!(
-                "submission_dispatch",
-                otel.name = span_name.as_str(),
-                submission.id = sub.id.as_str(),
-                codex.op = op_name
-            )
-        }
-        _ => info_span!(
-            "submission_dispatch",
-            otel.name = span_name.as_str(),
-            submission.id = sub.id.as_str(),
-            codex.op = op_name
-        ),
-    };
+    let dispatch_span = info_span!(
+        "submission_dispatch",
+        otel.name = span_name.as_str(),
+        submission.id = sub.id.as_str(),
+        codex.op = op_name
+    );
     if let Some(trace) = sub.trace.as_ref()
         && !set_parent_from_w3c_trace_context(&dispatch_span, trace)
     {

@@ -171,11 +171,6 @@ Example with notification opt-out:
 - `turn/steer` — add user input to an already in-flight regular turn without starting a new turn; returns the active `turnId` that accepted the input. `clientUserMessageId` is optional; when supplied, the corresponding `userMessage` item echoes it as `clientId`. Review and manual compaction turns reject `turn/steer`.
 - `turn/steer/cancel` — remove a `turn/steer` user message that is still pending, identified by its required `clientUserMessageId`; returns `status: "canceled"` or `status: "notFound"` when the message was already consumed or the expected turn is no longer active.
 - `turn/interrupt` — request cancellation of an in-flight turn by `(thread_id, turn_id)`; success is an empty `{}` response and the turn finishes with `status: "interrupted"`.
-- `thread/realtime/start` — start a thread-scoped realtime session (experimental); pass `outputModality: "text"` or `outputModality: "audio"` to choose model output, optionally pass `model` and `version` to override configured realtime selection for this session only, pass `includeStartupContext: false` to omit Codex's generated startup context, and optionally pass `initialItems` to seed V3 with complete role-bearing text messages at session creation. Version `"v1"` uses legacy Bidi `conversation.handoff.*`, `"v2"` uses the Realtime Voice API, and `"v3"` preserves V1 Codex Voice behavior while using Frameless Bidi `delegation.*`. For V3 automatic Codex text, `codexResponseHandoffMode` accepts `"thinking"` (the default; all output uses channel-less thinking appends), `"commentary"` (all output uses the commentary channel), or `"bemTags"` (the raw BEM envelope selects the API channel: BEM `analysis` and `commentary` use `commentary`, while BEM `final` and unparsable output use `speakable`). The BEM envelope remains in the appended text for the frontend model to interpret. V1 and V2 ignore this setting. V3 handoffs do not prepend the legacy `"Agent Final Message"` label. Pass `clientManagedHandoffs: true` to disable automatic Codex response delivery so only the client's explicit append calls produce handoffs. Pass `codexResponsesAsItems: true` to send automatic Codex responses as realtime conversation items instead, and optionally pass `codexResponseItemPrefix` to prepend experiment instructions to those items. Returns `{}` and streams `thread/realtime/*` notifications. Omit `transport` for the websocket transport, or pass `{ "type": "webrtc", "sdp": "..." }` to create a Bidi WebRTC session from a browser-generated SDP offer; the remote answer SDP is emitted as `thread/realtime/sdp`. Conversation `version: "v2"` requests remain unsupported for WebRTC.
-- `thread/realtime/appendAudio` — append an input audio chunk to the active realtime session (experimental); returns `{}`.
-- `thread/realtime/appendText` — append text input to the active realtime session with a required `role` of `user`, `developer`, or `assistant` (experimental); returns `{}`. Older clients that omit `role` default to `user`.
-- `thread/realtime/appendSpeech` — append text that the realtime model should speak to the user (experimental); returns `{}`.
-- `thread/realtime/stop` — stop the active realtime session for the thread (experimental); returns `{}`.
 - `review/start` — kick off Codex’s automated reviewer for a thread; responds like `turn/start`. Inline reviews emit `item/started`/`item/completed` notifications with `enteredReviewMode` and `exitedReviewMode` items, plus a final assistant `agentMessage` containing the review. Detached reviews stream ordinary turn items on the new review thread.
 - `command/exec` — run a single command under the server sandbox without starting a thread/turn (handy for utilities and validation).
 - `command/exec/write` — write base64-decoded stdin bytes to a running `command/exec` session or close stdin; returns `{}`.
@@ -856,110 +851,6 @@ Use `thread/inject_items` to append prebuilt Responses API items to a loaded thr
 { "id": 36, "result": {} }
 ```
 
-### Example: Start realtime with WebRTC
-
-Use `thread/realtime/start` with `transport.type: "webrtc"` when a browser or webview owns the `RTCPeerConnection` and app-server should create the server-side realtime session. The transport `sdp` must be the offer SDP produced by `RTCPeerConnection.createOffer()`, not a hand-written or minimal SDP string.
-
-The offer should include the media sections the client wants to negotiate. For the standard realtime UI flow, create the audio track/transceiver and the `oai-events` data channel before calling `createOffer()`:
-
-```javascript
-const pc = new RTCPeerConnection();
-
-audioElement.autoplay = true;
-pc.ontrack = (event) => {
-  audioElement.srcObject = event.streams[0];
-};
-
-const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-pc.addTrack(mediaStream.getAudioTracks()[0], mediaStream);
-pc.createDataChannel("oai-events");
-
-const offer = await pc.createOffer();
-await pc.setLocalDescription(offer);
-```
-
-Then send `offer.sdp` to app-server. Core uses `experimental_realtime_ws_backend_prompt` for the backend instructions and the thread conversation id as the default Realtime API session identifier. This `realtimeSessionId` value refers to the upstream Realtime API session, not a Codex session/thread-group id. The start response is `{}`; the remote answer SDP arrives later as `thread/realtime/sdp` and should be passed to `setRemoteDescription()`:
-
-```json
-{ "method": "thread/realtime/start", "id": 40, "params": {
-    "threadId": "thr_123",
-    "outputModality": "audio",
-    "prompt": "You are on a call.",
-    "realtimeSessionId": null,
-    "transport": { "type": "webrtc", "sdp": "v=0\r\no=..." }
-} }
-{ "id": 40, "result": {} }
-{ "method": "thread/realtime/sdp", "params": {
-    "threadId": "thr_123",
-    "sdp": "v=0\r\no=..."
-} }
-```
-
-Omit `prompt` to use Codex's default realtime backend prompt. Send `prompt: null` or
-`prompt: ""` when the session should start without that default backend prompt.
-Clients may also pass `model` on `thread/realtime/start` to select a
-different realtime session configuration without changing thread or user config.
-Clients may pass `version` to select the realtime protocol for this session
-only. WebRTC uses AVAS and supports legacy Bidi `"v1"` or Frameless Bidi
-`"v3"`; Realtime Voice `"v2"` is rejected for WebRTC.
-Pass `includeStartupContext: false` to skip Codex's startup context for this
-session while still using the selected backend prompt.
-For V3, clients may pass `initialItems` to seed the session with complete text
-messages before live input begins:
-
-```json
-{
-  "initialItems": [
-    {
-      "role": "developer",
-      "text": "Relevant user memory: prefers concise technical answers."
-    },
-    {
-      "role": "user",
-      "text": "Continue from the prior discussion."
-    }
-  ]
-}
-```
-
-Each item requires a `role` of `"user"`, `"developer"`, or `"assistant"` and a
-`text` string. Core serializes these as Frameless Bidi `session.initial_items`
-during the initial session bootstrap (including WebRTC call creation).
-Requests are limited to 128 items, 8,192 estimated text tokens per item, and
-8,192 estimated text tokens across all items.
-Omitting `initialItems`, or passing an empty list, preserves the previous
-session payload and startup behavior. V1 and V2 reject non-empty
-`initialItems`.
-Pass `clientManagedHandoffs: true` to suppress automatic Codex response handoffs
-and items. The client can then choose which updates to deliver with
-`thread/realtime/appendText` or `thread/realtime/appendSpeech`.
-Pass `codexResponsesAsItems: true` to inject automatic Codex responses with
-`conversation.item.create` instead of the protocol's default speakable output
-path. When using that mode, `codexResponseItemPrefix` can prepend short
-experiment instructions to each automatic Codex response item. Omit
-`codexResponsesAsItems`, or pass `false`, to preserve the default speakable
-behavior. In V3, automatic handoffs default to
-`codexResponseHandoffMode: "thinking"`, which omits the context append `channel`
-for every automatic response. Pass `"commentary"` to route every response to
-commentary, or `"bemTags"` to route BEM commentary tags to `commentary`, final
-tags to `speakable`, and analysis tags to `commentary`. Unparsable BEM output
-falls back to `speakable`. BEM routing reads the raw envelope and preserves it
-in the appended text for the frontend model. This
-setting has no effect on V1 or V2. V3 handoffs never prepend the legacy `"Agent Final Message"` label. Older
-clients may continue to send the removed `codexResponseHandoffPrefix` field; the
-server ignores unknown request fields.
-Call
-`thread/realtime/appendText` to append app-provided realtime text items, or
-`thread/realtime/appendSpeech` when the app decides a realtime update should be
-spoken.
-
-```javascript
-await pc.setRemoteDescription({
-  type: "answer",
-  sdp: notification.params.sdp,
-});
-```
-
 ### Example: Interrupt an active turn
 
 You can cancel a running Turn with `turn/interrupt`.
@@ -1350,8 +1241,6 @@ All filesystem paths in this section must be absolute.
 
 Event notifications are the server-initiated event stream for thread lifecycles, turn lifecycles, and the items within them. After you start or resume a thread, keep reading stdout for `thread/started`, `thread/archived`, `thread/unarchived`, `thread/closed`, `turn/*`, and `item/*` notifications.
 
-Thread realtime uses a separate thread-scoped notification surface. `thread/realtime/*` notifications are ephemeral transport events, not `ThreadItem`s, and are not returned by `thread/read`, `thread/resume`, or `thread/fork`.
-
 Recoverable configuration and initialization warnings use the existing `configWarning` notification: `{ summary, details?, path?, range? }`. App-server may emit it during initialization for config parsing and related setup diagnostics, or to the requesting connection during `thread/start` when that thread's exec-policy rules fail to parse.
 
 Generic runtime warnings use the `warning` notification: `{ threadId?, message }`. App-server emits this for non-fatal warnings from the core event stream, including cases where not all enabled skills are included in the model-visible skills list for a session.
@@ -1376,20 +1265,6 @@ The fuzzy file search session API emits per-query notifications:
 
 - `fuzzyFileSearch/sessionUpdated` — `{ sessionId, query, files }` with the current matching files for the active query.
 - `fuzzyFileSearch/sessionCompleted` — `{ sessionId, query }` once indexing/matching for that query has completed.
-
-### Thread realtime events (experimental)
-
-The thread realtime API emits thread-scoped notifications for session lifecycle and streaming media:
-
-- `thread/realtime/started` — `{ threadId, realtimeSessionId }` once realtime starts for the thread (experimental). `realtimeSessionId` is the upstream Realtime API session identifier, not a Codex session/thread-group id.
-- `thread/realtime/itemAdded` — `{ threadId, item }` for raw non-audio realtime items that do not have a dedicated typed app-server notification, including `handoff_request` (experimental). `item` is forwarded as raw JSON while the upstream websocket item schema remains unstable.
-- `thread/realtime/transcript/delta` — `{ threadId, role, delta }` for live realtime transcript deltas (experimental).
-- `thread/realtime/transcript/done` — `{ threadId, role, text }` when realtime emits the final full text for a transcript part (experimental).
-- `thread/realtime/outputAudio/delta` — `{ threadId, audio }` for streamed output audio chunks (experimental). `audio` uses camelCase fields (`data`, `sampleRate`, `numChannels`, `samplesPerChannel`).
-- `thread/realtime/error` — `{ threadId, message }` when realtime encounters a transport or backend error (experimental).
-- `thread/realtime/closed` — `{ threadId, reason }` when the realtime transport closes (experimental).
-
-Because audio is intentionally separate from `ThreadItem`, clients can opt out of `thread/realtime/outputAudio/delta` independently with `optOutNotificationMethods`.
 
 ### MCP server startup events
 

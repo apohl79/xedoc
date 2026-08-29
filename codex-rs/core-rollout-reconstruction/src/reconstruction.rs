@@ -28,7 +28,6 @@ pub struct RolloutReconstruction {
 pub struct ReconstructedTurnSettings {
     pub model: String,
     pub comp_hash: Option<String>,
-    pub realtime_active: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -248,7 +247,6 @@ pub fn reconstruct_history_from_rollout(
                     active_segment.previous_turn_settings = Some(ReconstructedTurnSettings {
                         model: ctx.model.clone(),
                         comp_hash: ctx.comp_hash.clone(),
-                        realtime_active: ctx.realtime_active,
                     });
                     if matches!(
                         active_segment.reference_context_item,

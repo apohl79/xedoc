@@ -35,8 +35,8 @@ pub enum ModelContextScanProgress {
 /// persist that marker for real user turns; older rollouts without it conservatively scan to the
 /// beginning. A raw `role=user` response item is not sufficient because contextual user fragments
 /// use that role but do not count as turn boundaries during reconstruction. The compaction restores
-/// model-visible items; the turn context restores previous settings (`model`, `comp_hash`, and
-/// `realtime_active`) and the reference baseline.
+/// model-visible items; the turn context restores previous settings (`model` and `comp_hash`)
+/// and the reference baseline.
 ///
 /// These paginated shapes disable the bounded cutoff:
 ///

@@ -1062,7 +1062,6 @@ mod thread_processor_behavior_tests {
                     collaboration_mode: None,
                     multi_agent_version: None,
                     multi_agent_mode: None,
-                    realtime_active: None,
                     effort: Some(ReasoningEffort::High),
                     summary: ReasoningSummary::Auto,
                 }),

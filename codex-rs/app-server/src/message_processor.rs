@@ -1122,34 +1122,6 @@ impl MessageProcessor {
                     .turn_interrupt(&request_id, params)
                     .await
             }
-            ClientRequest::ThreadRealtimeStart { params, .. } => {
-                self.turn_processor
-                    .thread_realtime_start(&request_id, params)
-                    .await
-            }
-            ClientRequest::ThreadRealtimeAppendAudio { params, .. } => {
-                self.turn_processor
-                    .thread_realtime_append_audio(&request_id, params)
-                    .await
-            }
-            ClientRequest::ThreadRealtimeAppendText { params, .. } => {
-                self.turn_processor
-                    .thread_realtime_append_text(&request_id, params)
-                    .await
-            }
-            ClientRequest::ThreadRealtimeAppendSpeech { params, .. } => {
-                self.turn_processor
-                    .thread_realtime_append_speech(&request_id, params)
-                    .await
-            }
-            ClientRequest::ThreadRealtimeStop { params, .. } => {
-                self.turn_processor
-                    .thread_realtime_stop(&request_id, params)
-                    .await
-            }
-            ClientRequest::ThreadRealtimeListVoices { params: _, .. } => {
-                self.turn_processor.thread_realtime_list_voices().await
-            }
             ClientRequest::ReviewStart { params, .. } => {
                 self.turn_processor.review_start(&request_id, params).await
             }

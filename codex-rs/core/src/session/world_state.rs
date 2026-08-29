@@ -10,7 +10,6 @@ use crate::context::world_state::EnvironmentsInstructionsState;
 use crate::context::world_state::EnvironmentsState;
 use crate::context::world_state::PermissionsState;
 use crate::context::world_state::PluginsInstructionsState;
-use crate::context::world_state::RealtimeState;
 use crate::context::world_state::WorldState;
 use codex_extension_api::WorldStateContributionInput;
 use codex_features::Feature;
@@ -36,13 +35,6 @@ impl Session {
             String::new()
         };
         let mut world_state = WorldState::default();
-        world_state.add_section(RealtimeState::new(
-            turn_context.realtime_active,
-            turn_context
-                .config
-                .experimental_realtime_start_instructions
-                .as_deref(),
-        ));
         world_state.add_section(AgentsMdState::new(
             step_context
                 .loaded_agents_md

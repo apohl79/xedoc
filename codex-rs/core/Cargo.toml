@@ -46,8 +46,6 @@ codex-core-agent-role = { workspace = true }
 codex-core-subagent-activity = { workspace = true }
 codex-core-context-manager = { workspace = true }
 codex-core-project-docs = { workspace = true }
-codex-core-realtime = { workspace = true }
-codex-core-realtime-context = { workspace = true }
 codex-core-response-items = { workspace = true }
 codex-core-rollout-reconstruction = { workspace = true }
 codex-core-rollout-truncation = { workspace = true }

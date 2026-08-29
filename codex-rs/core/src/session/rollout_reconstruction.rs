@@ -19,7 +19,6 @@ impl From<codex_core_rollout_reconstruction::ReconstructedTurnSettings> for Prev
         Self {
             model: settings.model,
             comp_hash: settings.comp_hash,
-            realtime_active: settings.realtime_active,
         }
     }
 }

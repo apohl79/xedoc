@@ -119,7 +119,6 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::CompactedItem;
-use codex_protocol::protocol::ConversationAudioParams;
 use codex_protocol::protocol::CreditsSnapshot;
 use codex_protocol::protocol::GranularApprovalConfig;
 use codex_protocol::protocol::InitialHistory;
@@ -128,10 +127,6 @@ use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::NetworkApprovalProtocol;
 use codex_protocol::protocol::RateLimitSnapshot;
 use codex_protocol::protocol::RateLimitWindow;
-use codex_protocol::protocol::RealtimeAudioFrame;
-use codex_protocol::protocol::RealtimeConversationListVoicesResponseEvent;
-use codex_protocol::protocol::RealtimeVoice;
-use codex_protocol::protocol::RealtimeVoicesList;
 use codex_protocol::protocol::ResumedHistory;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionMeta;
@@ -3100,7 +3095,6 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
         collaboration_mode: Some(turn_context.collaboration_mode()),
         multi_agent_version: None,
         multi_agent_mode: None,
-        realtime_active: Some(turn_context.realtime_active),
         effort: turn_context.reasoning_effort.clone(),
         summary: codex_protocol::config_types::ReasoningSummary::Auto,
     };
@@ -3152,7 +3146,6 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
         Some(PreviousTurnSettings {
             model: previous_model.to_string(),
             comp_hash: None,
-            realtime_active: Some(turn_context.realtime_active),
         })
     );
     assert_eq!(history.raw_items(), &[]);
@@ -3195,7 +3188,6 @@ async fn thread_rollback_drops_last_turn_from_history() {
     sess.set_previous_turn_settings(Some(PreviousTurnSettings {
         model: "stale-model".to_string(),
         comp_hash: None,
-        realtime_active: Some(tc.realtime_active),
     }))
     .await;
     {
@@ -3382,7 +3374,6 @@ async fn thread_rollback_recomputes_previous_turn_settings_and_reference_context
     sess.set_previous_turn_settings(Some(PreviousTurnSettings {
         model: "stale-model".to_string(),
         comp_hash: None,
-        realtime_active: None,
     }))
     .await;
 
@@ -3399,7 +3390,6 @@ async fn thread_rollback_recomputes_previous_turn_settings_and_reference_context
         Some(PreviousTurnSettings {
             model: tc.model_info.slug.clone(),
             comp_hash: None,
-            realtime_active: Some(tc.realtime_active),
         })
     );
     assert_eq!(
@@ -5581,7 +5571,6 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         features: config.features.clone(),
         multi_agent_version: OnceLock::from(config.multi_agent_version_from_features()),
         pending_mcp_server_refresh_config: Mutex::new(None),
-        conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
         input_queue: super::input_queue::InputQueue::new(),
         services,
@@ -6540,31 +6529,6 @@ fn submission_dispatch_span_prefers_submission_trace_context() {
 }
 
 #[test]
-fn submission_dispatch_span_uses_debug_for_realtime_audio() {
-    let _trace_test_context = install_test_tracing("codex-core-tests");
-
-    let dispatch_span = submission_dispatch_span(&Submission {
-        id: "sub-1".into(),
-        op: Op::RealtimeConversationAudio(ConversationAudioParams {
-            frame: RealtimeAudioFrame {
-                data: "ZmFrZQ==".into(),
-                sample_rate: 16_000,
-                num_channels: 1,
-                samples_per_channel: Some(160),
-                item_id: None,
-            },
-        }),
-        client_user_message_id: None,
-        trace: None,
-    });
-
-    assert_eq!(
-        dispatch_span.metadata().expect("span metadata").level(),
-        &tracing::Level::DEBUG
-    );
-}
-
-#[test]
 fn op_kind_for_input_and_context_ops() {
     assert_eq!(
         Op::UserInput {
@@ -7457,7 +7421,6 @@ where
         features: config.features.clone(),
         multi_agent_version: OnceLock::from(config.multi_agent_version_from_features()),
         pending_mcp_server_refresh_config: Mutex::new(None),
-        conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
         input_queue: super::input_queue::InputQueue::new(),
         services,
@@ -8028,70 +7991,6 @@ async fn record_context_update_items(
     history.raw_items()[previous_len..].to_vec()
 }
 
-#[tokio::test]
-async fn record_context_updates_emits_realtime_start_when_session_becomes_live() {
-    let (session, previous_context) = make_session_and_context().await;
-    let previous_context = Arc::new(previous_context);
-    let mut current_context = previous_context
-        .with_model(
-            previous_context.model_info.slug.clone(),
-            &session.services.models_manager,
-        )
-        .await;
-    current_context.realtime_active = true;
-
-    let update_items =
-        record_context_update_items(&session, previous_context, current_context).await;
-
-    let developer_texts = developer_input_texts(&update_items);
-    assert!(
-        developer_texts
-            .iter()
-            .any(|text| text.contains("<realtime_conversation>")),
-        "expected a realtime start update, got {developer_texts:?}"
-    );
-}
-
-#[tokio::test]
-async fn record_context_updates_emits_realtime_end_when_session_stops_being_live() {
-    let (session, mut previous_context) = make_session_and_context().await;
-    previous_context.realtime_active = true;
-    let mut current_context = previous_context
-        .with_model(
-            previous_context.model_info.slug.clone(),
-            &session.services.models_manager,
-        )
-        .await;
-    current_context.realtime_active = false;
-
-    let update_items =
-        record_context_update_items(&session, Arc::new(previous_context), current_context).await;
-
-    let developer_texts = developer_input_texts(&update_items);
-    assert!(
-        developer_texts
-            .iter()
-            .any(|text| text.contains("Reason: inactive")),
-        "expected a realtime end update, got {developer_texts:?}"
-    );
-}
-
-#[tokio::test]
-async fn build_initial_context_describes_active_realtime_state() {
-    let (session, mut turn_context) = make_session_and_context().await;
-    turn_context.realtime_active = true;
-    let turn_context = Arc::new(turn_context);
-
-    let initial_context = build_initial_context(&session, &turn_context).await;
-    let developer_texts = developer_input_texts(&initial_context);
-    assert!(
-        developer_texts
-            .iter()
-            .any(|text| text.contains("<realtime_conversation>")),
-        "expected initial context to describe active realtime state, got {developer_texts:?}"
-    );
-}
-
 async fn make_multi_agent_v2_usage_hint_test_session(
     enable_multi_agent_v2: bool,
 ) -> (Arc<Session>, Arc<TurnContext>) {
@@ -8595,30 +8494,6 @@ async fn build_initial_context_emits_thread_start_skill_warning_on_repeated_buil
     ));
 }
 
-#[tokio::test]
-async fn build_initial_context_restates_realtime_start_when_reference_context_is_missing() {
-    let (session, mut turn_context) = make_session_and_context().await;
-    turn_context.realtime_active = true;
-    let previous_turn_settings = PreviousTurnSettings {
-        model: turn_context.model_info.slug.clone(),
-        comp_hash: None,
-        realtime_active: Some(true),
-    };
-
-    session
-        .set_previous_turn_settings(Some(previous_turn_settings))
-        .await;
-    let turn_context = Arc::new(turn_context);
-    let initial_context = build_initial_context(&session, &turn_context).await;
-    let developer_texts = developer_input_texts(&initial_context);
-    assert!(
-        developer_texts
-            .iter()
-            .any(|text| text.contains("<realtime_conversation>")),
-        "expected initial context to restate active realtime when the reference context is missing, got {developer_texts:?}"
-    );
-}
-
 fn file_system_policy_with_unreadable_glob(turn_context: &TurnContext) -> FileSystemSandboxPolicy {
     #[allow(deprecated)]
     let mut policy = FileSystemSandboxPolicy::from_legacy_sandbox_policy_for_cwd(
@@ -8870,7 +8745,6 @@ async fn build_initial_context_prepends_model_switch_message() {
     let previous_turn_settings = PreviousTurnSettings {
         model: "previous-regular-model".to_string(),
         comp_hash: None,
-        realtime_active: None,
     };
 
     session
@@ -8924,7 +8798,6 @@ async fn record_context_updates_and_set_reference_context_item_persists_full_rei
         .set_previous_turn_settings(Some(PreviousTurnSettings {
             model: previous_context.model_info.slug.clone(),
             comp_hash: None,
-            realtime_active: Some(previous_context.realtime_active),
         }))
         .await;
     let turn_context = Arc::new(turn_context);
@@ -8981,51 +8854,6 @@ async fn run_user_shell_command_does_not_set_reference_context_item() {
     assert!(
         session.reference_context_item().await.is_none(),
         "standalone shell tasks should not mutate previous context"
-    );
-}
-
-#[tokio::test]
-async fn realtime_conversation_list_voices_emits_builtin_list() {
-    let (session, _turn_context, rx) = make_session_and_context_with_rx().await;
-
-    handlers::realtime_conversation_list_voices(&session, "sub-id".to_string()).await;
-
-    let event = rx.recv().await.expect("event");
-    let voices = match event.msg {
-        EventMsg::RealtimeConversationListVoicesResponse(
-            RealtimeConversationListVoicesResponseEvent { voices },
-        ) => voices,
-        msg => panic!("expected list voices response, got {msg:?}"),
-    };
-    assert_eq!(
-        voices,
-        RealtimeVoicesList {
-            v1: vec![
-                RealtimeVoice::Juniper,
-                RealtimeVoice::Maple,
-                RealtimeVoice::Spruce,
-                RealtimeVoice::Ember,
-                RealtimeVoice::Vale,
-                RealtimeVoice::Breeze,
-                RealtimeVoice::Arbor,
-                RealtimeVoice::Sol,
-                RealtimeVoice::Cove,
-            ],
-            v2: vec![
-                RealtimeVoice::Alloy,
-                RealtimeVoice::Ash,
-                RealtimeVoice::Ballad,
-                RealtimeVoice::Coral,
-                RealtimeVoice::Echo,
-                RealtimeVoice::Sage,
-                RealtimeVoice::Shimmer,
-                RealtimeVoice::Verse,
-                RealtimeVoice::Marin,
-                RealtimeVoice::Cedar,
-            ],
-            default_v1: RealtimeVoice::Cove,
-            default_v2: RealtimeVoice::Marin,
-        },
     );
 }
 

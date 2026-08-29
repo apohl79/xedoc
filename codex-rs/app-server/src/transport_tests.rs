@@ -3,8 +3,7 @@ use codex_app_server_protocol::ConfigWarningNotification;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerNotificationEnvelope;
-use codex_app_server_protocol::ThreadRealtimeStartedNotification;
-use codex_protocol::protocol::RealtimeConversationVersion;
+use codex_app_server_protocol::TurnModerationMetadataNotification;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
 use serde_json::json;
@@ -15,11 +14,11 @@ fn absolute_path(path: &str) -> AbsolutePathBuf {
     AbsolutePathBuf::from_absolute_path(path).expect("absolute path")
 }
 
-fn thread_realtime_started_notification() -> ServerNotification {
-    ServerNotification::ThreadRealtimeStarted(ThreadRealtimeStartedNotification {
+fn turn_moderation_metadata_notification() -> ServerNotification {
+    ServerNotification::TurnModerationMetadata(TurnModerationMetadataNotification {
         thread_id: "thread-1".to_string(),
-        realtime_session_id: None,
-        version: RealtimeConversationVersion::V1,
+        turn_id: "turn-1".to_string(),
+        metadata: json!({}),
     })
 }
 
@@ -181,7 +180,7 @@ async fn experimental_notifications_are_dropped_without_capability() {
         &mut connections,
         OutgoingEnvelope::ToConnection {
             connection_id,
-            message: app_server_notification(thread_realtime_started_notification()),
+            message: app_server_notification(turn_moderation_metadata_notification()),
             write_complete_tx: None,
         },
     )
@@ -214,7 +213,7 @@ async fn experimental_notifications_are_preserved_with_capability() {
         &mut connections,
         OutgoingEnvelope::ToConnection {
             connection_id,
-            message: app_server_notification(thread_realtime_started_notification()),
+            message: app_server_notification(turn_moderation_metadata_notification()),
             write_complete_tx: None,
         },
     )
@@ -227,7 +226,7 @@ async fn experimental_notifications_are_preserved_with_capability() {
     assert!(matches!(
         message.message,
         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
-            notification: ServerNotification::ThreadRealtimeStarted(_),
+            notification: ServerNotification::TurnModerationMetadata(_),
             ..
         })
     ));

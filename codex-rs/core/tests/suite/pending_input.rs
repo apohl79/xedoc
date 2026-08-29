@@ -13,6 +13,8 @@ use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::protocol::AskForApproval;
+use codex_protocol::protocol::CodexErrorInfo;
+use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::protocol::Op;
@@ -223,11 +225,17 @@ async fn submit_queue_only_agent_mail(codex: &CodexThread, text: &str) {
         .await
         .expect("submit queue-only agent mail");
     codex
-        .submit(Op::RealtimeConversationListVoices)
+        .submit(Op::ThreadRollback { num_turns: 0 })
         .await
-        .expect("submit list-voices barrier");
+        .expect("submit rollback barrier");
     wait_for_event(codex, |event| {
-        matches!(event, EventMsg::RealtimeConversationListVoicesResponse(_))
+        matches!(
+            event,
+            EventMsg::Error(ErrorEvent {
+                codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+                ..
+            })
+        )
     })
     .await;
 }

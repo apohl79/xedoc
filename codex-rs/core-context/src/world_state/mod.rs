@@ -4,7 +4,6 @@ mod environment;
 mod environments_instructions;
 mod permissions;
 mod plugins_instructions;
-mod realtime;
 #[cfg(test)]
 mod test_support;
 
@@ -31,7 +30,6 @@ pub use environment::EnvironmentsState;
 pub use environments_instructions::EnvironmentsInstructionsState;
 pub use permissions::PermissionsState;
 pub use plugins_instructions::PluginsInstructionsState;
-pub use realtime::RealtimeState;
 
 trait ErasedWorldStateSection: Send + Sync {
     fn snapshot(&self) -> Option<Value>;

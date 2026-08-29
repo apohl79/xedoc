@@ -197,14 +197,6 @@ impl ChatWidget {
             | ServerNotification::TurnModerationMetadata(_)
             | ServerNotification::FuzzyFileSearchSessionUpdated(_)
             | ServerNotification::FuzzyFileSearchSessionCompleted(_)
-            | ServerNotification::ThreadRealtimeStarted(_)
-            | ServerNotification::ThreadRealtimeItemAdded(_)
-            | ServerNotification::ThreadRealtimeOutputAudioDelta(_)
-            | ServerNotification::ThreadRealtimeError(_)
-            | ServerNotification::ThreadRealtimeClosed(_)
-            | ServerNotification::ThreadRealtimeSdp(_)
-            | ServerNotification::ThreadRealtimeTranscriptDelta(_)
-            | ServerNotification::ThreadRealtimeTranscriptDone(_)
             | ServerNotification::AccountLoginCompleted(_) => {}
             ServerNotification::ContextCompacted(_) => {}
         }

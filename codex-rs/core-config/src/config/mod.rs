@@ -23,8 +23,6 @@ use codex_config::config_toml::ConfigLockfileToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::DEFAULT_PROJECT_DOC_MAX_BYTES;
 use codex_config::config_toml::ProjectConfig;
-use codex_config::config_toml::RealtimeAudioConfig;
-use codex_config::config_toml::RealtimeConfig;
 use codex_config::config_toml::ThreadStoreToml;
 use codex_config::config_toml::validate_model_providers;
 use codex_config::loader::load_config_layers_state;
@@ -939,35 +937,6 @@ pub struct Config {
     /// Whether Codex-owned clients should respect host system proxy settings.
     pub respect_system_proxy: bool,
 
-    /// Machine-local realtime audio device preferences used by realtime voice.
-    pub realtime_audio: RealtimeAudioConfig,
-
-    /// Experimental / do not use. Overrides only the realtime conversation
-    /// websocket transport base URL (the `Op::RealtimeConversation`
-    /// `/v1/realtime`
-    /// connection) without changing normal provider HTTP requests.
-    pub experimental_realtime_ws_base_url: Option<String>,
-    /// Experimental / do not use. Overrides only the WebRTC realtime call
-    /// creation base URL.
-    pub experimental_realtime_webrtc_call_base_url: Option<String>,
-    /// Experimental / do not use. Selects the realtime websocket model/snapshot
-    /// used for the `Op::RealtimeConversation` connection.
-    pub experimental_realtime_ws_model: Option<String>,
-    /// Experimental / do not use. Realtime websocket session selection.
-    /// `version` controls v1/v2 and `type` controls conversational/transcription.
-    pub realtime: RealtimeConfig,
-    /// Experimental / do not use. Overrides only the realtime conversation
-    /// websocket transport instructions (the `Op::RealtimeConversation`
-    /// `/ws` session.update instructions) without changing normal prompts.
-    pub experimental_realtime_ws_backend_prompt: Option<String>,
-    /// Experimental / do not use. Replaces the synthesized realtime startup
-    /// context appended to websocket session instructions. An empty string
-    /// disables startup context injection entirely.
-    pub experimental_realtime_ws_startup_context: Option<String>,
-    /// Experimental / do not use. Replaces the built-in realtime start
-    /// instructions inserted into developer messages when realtime becomes
-    /// active.
-    pub experimental_realtime_start_instructions: Option<String>,
     /// Experimental / do not use. When set, app-server fetches thread-scoped
     /// config from a remote service at this endpoint.
     pub experimental_thread_config_endpoint: Option<String>,
@@ -3992,30 +3961,6 @@ impl Config {
                 .chatgpt_base_url
                 .unwrap_or("https://chatgpt.com/backend-api/".to_string()),
             respect_system_proxy,
-            realtime_audio: cfg
-                .audio
-                .map_or_else(RealtimeAudioConfig::default, |audio| RealtimeAudioConfig {
-                    microphone: audio.microphone,
-                    speaker: audio.speaker,
-                }),
-            experimental_realtime_ws_base_url: cfg.experimental_realtime_ws_base_url,
-            experimental_realtime_webrtc_call_base_url: cfg
-                .experimental_realtime_webrtc_call_base_url,
-            experimental_realtime_ws_model: cfg.experimental_realtime_ws_model,
-            realtime: cfg
-                .realtime
-                .map_or_else(RealtimeConfig::default, |realtime| {
-                    let defaults = RealtimeConfig::default();
-                    RealtimeConfig {
-                        version: realtime.version.unwrap_or(defaults.version),
-                        session_type: realtime.session_type.unwrap_or(defaults.session_type),
-                        transport: realtime.transport.unwrap_or(defaults.transport),
-                        voice: realtime.voice,
-                    }
-                }),
-            experimental_realtime_ws_backend_prompt: cfg.experimental_realtime_ws_backend_prompt,
-            experimental_realtime_ws_startup_context: cfg.experimental_realtime_ws_startup_context,
-            experimental_realtime_start_instructions: cfg.experimental_realtime_start_instructions,
             experimental_thread_config_endpoint: cfg.experimental_thread_config_endpoint,
             experimental_thread_store: thread_store_config(cfg.experimental_thread_store),
             forced_chatgpt_workspace_id,

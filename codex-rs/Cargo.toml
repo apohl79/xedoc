@@ -45,8 +45,6 @@ members = [
     "core-context-manager",
     "core-project-docs",
     "core-utils",
-    "core-realtime",
-    "core-realtime-context",
     "core-response-items",
     "core-rollout-reconstruction",
     "core-rollout-truncation",
@@ -226,8 +224,6 @@ codex-core-subagent-activity = { path = "core-subagent-activity" }
 codex-core-context-manager = { path = "core-context-manager" }
 codex-core-project-docs = { path = "core-project-docs" }
 codex-core-utils = { path = "core-utils" }
-codex-core-realtime = { path = "core-realtime" }
-codex-core-realtime-context = { path = "core-realtime-context" }
 codex-core-response-items = { path = "core-response-items" }
 codex-core-rollout-reconstruction = { path = "core-rollout-reconstruction" }
 codex-core-rollout-truncation = { path = "core-rollout-truncation" }

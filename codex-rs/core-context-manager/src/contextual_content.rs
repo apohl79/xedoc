@@ -6,7 +6,6 @@ use codex_protocol::protocol::CONTEXT_WINDOW_OPEN_TAG;
 use codex_protocol::protocol::ENVIRONMENTS_INSTRUCTIONS_OPEN_TAG;
 use codex_protocol::protocol::MULTI_AGENT_MODE_OPEN_TAG;
 use codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG;
-use codex_protocol::protocol::REALTIME_CONVERSATION_OPEN_TAG;
 use codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG;
 
 const CONTEXTUAL_DEVELOPER_PREFIXES: &[&str] = &[
@@ -16,7 +15,6 @@ const CONTEXTUAL_DEVELOPER_PREFIXES: &[&str] = &[
     MULTI_AGENT_MODE_OPEN_TAG,
     ENVIRONMENTS_INSTRUCTIONS_OPEN_TAG,
     PLUGINS_INSTRUCTIONS_OPEN_TAG,
-    REALTIME_CONVERSATION_OPEN_TAG,
     SKILLS_INSTRUCTIONS_OPEN_TAG,
     "<personality_spec>",
     "<token_budget>",

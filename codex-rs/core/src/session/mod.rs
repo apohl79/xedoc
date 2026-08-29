@@ -37,7 +37,6 @@ use crate::exec_policy::ExecPolicyManager;
 use crate::exec_policy::default_policy_path;
 use crate::image_preparation::prepare_response_items as prepare_image_response_items;
 use crate::parse_turn_item;
-use crate::realtime_conversation::RealtimeConversationManager;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnEnvironment;
 use crate::session_prefix::format_inter_agent_completion_message;
@@ -235,8 +234,6 @@ use self::session::SessionConfiguration;
 pub(crate) use self::session::SessionSettingsUpdate;
 #[cfg(test)]
 use self::turn::AssistantMessageStreamParsers;
-use self::turn::agent_message_text;
-use self::turn::realtime_text_for_event;
 use self::turn_context::TurnContext;
 use self::turn_context::TurnSkillsContext;
 #[cfg(test)]
@@ -286,13 +283,11 @@ impl SteerInputError {
 /// Conceptually this is the same role that `previous_model` used to fill, but
 /// it can carry other prior-turn settings that matter when constructing
 /// sensible state-change diffs or full-context reinjection, such as model
-/// switches, compaction compatibility, or detecting a prior
-/// `realtime_active -> false` transition.
+/// switches or compaction compatibility.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PreviousTurnSettings {
     pub(crate) model: String,
     pub(crate) comp_hash: Option<String>,
-    pub(crate) realtime_active: Option<bool>,
 }
 
 #[cfg(test)]
@@ -1146,25 +1141,6 @@ impl Session {
         format!("auto-compact-{id}")
     }
 
-    pub(crate) async fn route_realtime_text_input(self: &Arc<Self>, text: String) {
-        handlers::user_input_or_turn_inner(
-            self,
-            Uuid::now_v7().to_string(),
-            Op::UserInput {
-                items: vec![UserInput::Text {
-                    text,
-                    text_elements: Vec::new(),
-                }],
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: Default::default(),
-            },
-            /*client_user_message_id*/ None,
-        )
-        .await;
-    }
-
     pub(crate) async fn get_total_token_usage(&self) -> i64 {
         let state = self.state.lock().await;
         state.get_total_token_usage(state.server_reasoning_included())
@@ -1860,10 +1836,6 @@ impl Session {
         self.send_event_raw(event).await;
         self.maybe_notify_parent_of_terminal_turn(turn_context, &legacy_source)
             .await;
-        self.maybe_mirror_event_text_to_realtime(&legacy_source)
-            .await;
-        self.maybe_clear_realtime_handoff_for_event(&legacy_source)
-            .await;
 
         let show_raw_agent_reasoning = self.show_raw_agent_reasoning();
         for legacy in legacy_source.as_legacy_events(show_raw_agent_reasoning) {
@@ -2001,60 +1973,6 @@ impl Session {
                 },
             )
             .await;
-    }
-
-    async fn maybe_mirror_event_text_to_realtime(&self, msg: &EventMsg) {
-        if self.conversation.running_state().await.is_none() {
-            return;
-        }
-        match msg {
-            EventMsg::ItemStarted(event) => {
-                if let TurnItem::AgentMessage(item) = &event.item {
-                    self.conversation
-                        .register_handoff_stream_item(
-                            item.id.clone(),
-                            item.phase.clone(),
-                            agent_message_text(item),
-                        )
-                        .await;
-                }
-                return;
-            }
-            EventMsg::AgentMessageContentDelta(event) => {
-                if let Err(err) = self
-                    .conversation
-                    .stream_handoff_delta(&event.item_id, event.delta.clone())
-                    .await
-                {
-                    debug!("failed to stream event text to realtime conversation: {err}");
-                }
-                return;
-            }
-            EventMsg::ItemCompleted(event) => {
-                if let TurnItem::AgentMessage(item) = &event.item
-                    && self.conversation.finish_handoff_stream_item(&item.id).await
-                {
-                    return;
-                }
-            }
-            _ => {}
-        }
-        let Some((text, phase)) = realtime_text_for_event(msg) else {
-            return;
-        };
-        if let Err(err) = self.conversation.handoff_out(text, phase).await {
-            debug!("failed to mirror event text to realtime conversation: {err}");
-        }
-    }
-
-    async fn maybe_clear_realtime_handoff_for_event(&self, msg: &EventMsg) {
-        if !matches!(msg, EventMsg::TurnComplete(_)) {
-            return;
-        }
-        if let Err(err) = self.conversation.handoff_complete().await {
-            debug!("failed to finalize realtime handoff output: {err}");
-        }
-        self.conversation.clear_active_handoff().await;
     }
 
     pub(crate) async fn send_event_raw(&self, event: Event) {

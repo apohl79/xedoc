@@ -1759,14 +1759,12 @@ version = "0.145.0"
 dependencies = [
  "anyhow",
  "assert_matches",
- "async-channel",
  "base64 0.22.1",
  "bytes",
  "chrono",
  "codex-client",
  "codex-http-client",
  "codex-protocol",
- "codex-utils-rustls-provider",
  "codex-websocket-client",
  "eventsource-stream",
  "futures",
@@ -2342,8 +2340,6 @@ dependencies = [
  "codex-core-plugin-context",
  "codex-core-plugins",
  "codex-core-project-docs",
- "codex-core-realtime",
- "codex-core-realtime-context",
  "codex-core-response-items",
  "codex-core-rollout-reconstruction",
  "codex-core-rollout-truncation",
@@ -2923,48 +2919,6 @@ dependencies = [
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
-]
-
-[[package]]
-name = "codex-core-realtime"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "base64 0.22.1",
- "codex-api",
- "codex-core-client",
- "codex-core-realtime-context",
- "codex-login",
- "codex-protocol",
- "codex-utils-output-truncation",
- "codex-utils-string",
- "http 1.4.0",
- "pretty_assertions",
- "serde_json",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "codex-core-realtime-context"
-version = "0.145.0"
-dependencies = [
- "chrono",
- "codex-core-context-manager",
- "codex-exec-server",
- "codex-git-utils",
- "codex-prompts",
- "codex-protocol",
- "codex-thread-store",
- "codex-utils-absolute-path",
- "codex-utils-output-truncation",
- "core_test_support",
- "pretty_assertions",
- "tempfile",
- "tracing",
- "whoami 1.6.1",
 ]
 
 [[package]]
