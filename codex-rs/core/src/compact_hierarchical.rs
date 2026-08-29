@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use crate::Prompt;
 use crate::client::ModelClient;
 use crate::client_common::ResponseEvent;
+use crate::compact::without_reasoning_items;
 use crate::compact_progress::CompactionStage;
 use crate::compact_progress::send_progress;
 use crate::responses_metadata::CodexResponsesMetadata;
@@ -78,7 +79,7 @@ pub(crate) async fn summarize_history(
 ) -> CodexResult<String> {
     let item_budget = compaction_item_budget(&turn_context, &base_instructions, &compaction_prompt)
         .ok_or(CodexErr::ContextWindowExceeded)?;
-    let map_chunks = chunk_history(&history, item_budget);
+    let map_chunks = chunk_history(&without_reasoning_items(history), item_budget);
     send_progress(
         &sess,
         &turn_context,
