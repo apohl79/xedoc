@@ -486,10 +486,8 @@ async fn warm_plugins_and_skills_for_session_init(
 impl Session {
     pub(super) fn model_client(
         auth_manager: Arc<AuthManager>,
-        thread_id: ThreadId,
         session_configuration: &SessionConfiguration,
         config: &Config,
-        attestation_provider: Option<Arc<dyn AttestationProvider>>,
     ) -> ModelClient {
         ModelClient::new(
             Some(auth_manager),
@@ -498,7 +496,6 @@ impl Session {
             } else {
                 AgentIdentityAuthPolicy::JwtOnly
             },
-            thread_id,
             session_configuration.provider.clone(),
             session_configuration.session_source.clone(),
             session_configuration.originator.clone(),
@@ -516,7 +513,6 @@ impl Session {
             config
                 .features
                 .enabled(Feature::ConcurrentReasoningSummaries),
-            attestation_provider,
             config.http_client_factory(),
         )
         .with_prompt_cache_key_override(
@@ -569,7 +565,6 @@ impl Session {
         analytics_events_client: Option<AnalyticsEventsClient>,
         thread_store: Arc<dyn ThreadStore>,
         parent_rollout_thread_trace: ThreadTraceContext,
-        attestation_provider: Option<Arc<dyn AttestationProvider>>,
         external_time_provider: Option<Arc<dyn TimeProvider>>,
         multi_agent_version: Option<MultiAgentVersion>,
     ) -> anyhow::Result<Arc<Self>> {
@@ -1184,14 +1179,11 @@ impl Session {
                 state_db: state_db_ctx.clone(),
                 live_thread: live_thread_init.as_ref().cloned(),
                 thread_store: Arc::clone(&thread_store),
-                attestation_provider: attestation_provider.clone(),
                 time_provider,
                 model_client: arc_swap::ArcSwap::from_pointee(Self::model_client(
                     Arc::clone(&auth_manager),
-                    thread_id,
                     &session_configuration,
                     config.as_ref(),
-                    attestation_provider,
                 )),
                 code_mode_service: crate::tools::code_mode::CodeModeService::new(
                     Arc::clone(&code_mode_session_provider),

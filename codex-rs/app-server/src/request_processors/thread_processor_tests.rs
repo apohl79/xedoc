@@ -1355,9 +1355,7 @@ mod thread_processor_behavior_tests {
         let connection = ConnectionId(1);
         let (cancel_tx, cancel_rx) = oneshot::channel();
 
-        manager
-            .connection_initialized(connection, ConnectionCapabilities::default())
-            .await;
+        manager.connection_initialized(connection).await;
         manager
             .try_ensure_connection_subscribed(
                 thread_id, connection, /*experimental_raw_events*/ false,
@@ -1401,12 +1399,8 @@ mod thread_processor_behavior_tests {
         let connection_b = ConnectionId(2);
         let (cancel_tx, mut cancel_rx) = oneshot::channel();
 
-        manager
-            .connection_initialized(connection_a, ConnectionCapabilities::default())
-            .await;
-        manager
-            .connection_initialized(connection_b, ConnectionCapabilities::default())
-            .await;
+        manager.connection_initialized(connection_a).await;
+        manager.connection_initialized(connection_b).await;
         manager
             .try_ensure_connection_subscribed(
                 thread_id,
@@ -1450,12 +1444,8 @@ mod thread_processor_behavior_tests {
         let connection_a = ConnectionId(1);
         let connection_b = ConnectionId(2);
 
-        manager
-            .connection_initialized(connection_a, ConnectionCapabilities::default())
-            .await;
-        manager
-            .connection_initialized(connection_b, ConnectionCapabilities::default())
-            .await;
+        manager.connection_initialized(connection_a).await;
+        manager.connection_initialized(connection_b).await;
         manager
             .try_ensure_connection_subscribed(
                 thread_id,
@@ -1499,9 +1489,7 @@ mod thread_processor_behavior_tests {
         let manager = ThreadStateManager::new();
         let thread_id = ThreadId::from_string("ba62fd70-2ec2-4b1b-9d94-355694332dd2")?;
         let connection = ConnectionId(1);
-        manager
-            .connection_initialized(connection, ConnectionCapabilities::default())
-            .await;
+        manager.connection_initialized(connection).await;
 
         let wait_for_subscriber = manager.wait_for_thread_subscriber(thread_id);
         let attach_connection = async {
@@ -1525,9 +1513,7 @@ mod thread_processor_behavior_tests {
         let thread_id = ThreadId::from_string("ad7f0408-99b8-4f6e-a46f-bd0eec433370")?;
         let connection = ConnectionId(1);
 
-        manager
-            .connection_initialized(connection, ConnectionCapabilities::default())
-            .await;
+        manager.connection_initialized(connection).await;
         let threads_to_unload = manager.remove_connection(connection).await;
         assert_eq!(threads_to_unload, Vec::<ThreadId>::new());
 
@@ -1540,81 +1526,6 @@ mod thread_processor_behavior_tests {
                 .is_none()
         );
         assert!(!manager.has_subscribers(thread_id).await);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn first_attestation_capable_connection_for_thread_only_uses_thread_subscribers()
-    -> Result<()> {
-        let manager = ThreadStateManager::new();
-        let thread_id = ThreadId::from_string("dfbd9a95-2f44-470a-8bd8-1cfc04efc243")?;
-        let other_thread_id = ThreadId::from_string("6c9a74e4-5e59-479e-90bf-5c5798bb50aa")?;
-        let unrelated_supported_connection = ConnectionId(1);
-        let earlier_supported_connection = ConnectionId(2);
-        let later_supported_connection = ConnectionId(3);
-        let unsupported_connection = ConnectionId(4);
-
-        manager
-            .connection_initialized(
-                unrelated_supported_connection,
-                ConnectionCapabilities {
-                    request_attestation: true,
-                },
-            )
-            .await;
-        manager
-            .connection_initialized(
-                earlier_supported_connection,
-                ConnectionCapabilities {
-                    request_attestation: true,
-                },
-            )
-            .await;
-        manager
-            .connection_initialized(
-                later_supported_connection,
-                ConnectionCapabilities {
-                    request_attestation: true,
-                },
-            )
-            .await;
-        manager
-            .connection_initialized(unsupported_connection, ConnectionCapabilities::default())
-            .await;
-
-        assert!(
-            manager
-                .try_add_connection_to_thread(other_thread_id, unrelated_supported_connection)
-                .await
-        );
-        assert!(
-            manager
-                .try_add_connection_to_thread(thread_id, later_supported_connection)
-                .await
-        );
-        assert!(
-            manager
-                .try_add_connection_to_thread(thread_id, earlier_supported_connection)
-                .await
-        );
-        assert!(
-            manager
-                .try_add_connection_to_thread(thread_id, unsupported_connection)
-                .await
-        );
-
-        assert_eq!(
-            manager
-                .first_attestation_capable_connection_for_thread(thread_id)
-                .await,
-            Some(earlier_supported_connection)
-        );
-        assert_eq!(
-            manager
-                .first_attestation_capable_connection_for_thread(other_thread_id)
-                .await,
-            Some(unrelated_supported_connection)
-        );
         Ok(())
     }
 }

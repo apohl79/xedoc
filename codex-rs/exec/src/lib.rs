@@ -1688,15 +1688,6 @@ async fn handle_server_request(
             )
             .await
         }
-        ServerRequest::AttestationGenerate { request_id, .. } => {
-            reject_server_request(
-                client,
-                request_id,
-                &method,
-                "attestation generation is not supported in exec mode".to_string(),
-            )
-            .await
-        }
         ServerRequest::CurrentTimeRead { request_id, .. } => {
             reject_server_request(
                 client,

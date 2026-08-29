@@ -4,7 +4,6 @@ use std::sync::atomic::AtomicBool;
 use crate::SkillsService;
 use crate::agent::AgentControl;
 use crate::agents_md_manager::AgentsMdManager;
-use crate::attestation::AttestationProvider;
 use crate::client::ModelClient;
 use crate::config::NetworkProxyAuditMetadata;
 use crate::config::StartedNetworkProxy;
@@ -92,7 +91,6 @@ pub(crate) struct SessionServices {
     pub(crate) state_db: Option<StateDbHandle>,
     pub(crate) live_thread: Option<LiveThread>,
     pub(crate) thread_store: Arc<dyn ThreadStore>,
-    pub(crate) attestation_provider: Option<Arc<dyn AttestationProvider>>,
     pub(crate) time_provider: Arc<dyn TimeProvider>,
     /// Session-scoped model client shared across turns.
     pub(crate) model_client: ArcSwap<ModelClient>,

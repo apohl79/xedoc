@@ -1,7 +1,6 @@
 mod shared;
 
 mod account;
-mod attestation;
 mod collaboration_mode;
 mod command_exec;
 mod config;
@@ -25,7 +24,6 @@ mod turn;
 mod windows_sandbox;
 
 pub use account::*;
-pub use attestation::*;
 pub use collaboration_mode::*;
 pub use command_exec::*;
 pub use config::*;

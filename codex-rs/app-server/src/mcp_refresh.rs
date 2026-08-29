@@ -250,7 +250,6 @@ mod tests {
                 Arc::clone(&thread_store),
                 codex_core::local_agent_graph_store_from_state_db(Some(&state_db)),
                 "11111111-1111-4111-8111-111111111111".to_string(),
-                /*attestation_provider*/ None,
                 /*external_time_provider*/ None,
             )
         });

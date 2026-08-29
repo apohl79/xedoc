@@ -124,7 +124,6 @@ async fn responses_stream_includes_subagent_header_on_review() {
     let client = ModelClient::new(
         /*auth_manager*/ None,
         AgentIdentityAuthPolicy::JwtOnly,
-        thread_id,
         provider.clone(),
         session_source.clone(),
         "test_originator".to_string(),
@@ -134,7 +133,6 @@ async fn responses_stream_includes_subagent_header_on_review() {
         /*beta_features_header*/ None,
         /*item_ids_enabled*/ false,
         /*concurrent_reasoning_summaries_enabled*/ false,
-        /*attestation_provider*/ None,
         config.http_client_factory(),
     );
     let responses_metadata = test_turn_responses_metadata(&client, thread_id, &session_source);
@@ -262,7 +260,6 @@ async fn responses_stream_includes_subagent_header_on_other() {
     let client = ModelClient::new(
         /*auth_manager*/ None,
         AgentIdentityAuthPolicy::JwtOnly,
-        thread_id,
         provider.clone(),
         session_source.clone(),
         "test_originator".to_string(),
@@ -272,7 +269,6 @@ async fn responses_stream_includes_subagent_header_on_other() {
         /*beta_features_header*/ None,
         /*item_ids_enabled*/ false,
         /*concurrent_reasoning_summaries_enabled*/ false,
-        /*attestation_provider*/ None,
         config.http_client_factory(),
     );
     let responses_metadata = test_turn_responses_metadata(&client, thread_id, &session_source);
@@ -385,7 +381,6 @@ async fn responses_respects_model_info_overrides_from_config() {
     let client = ModelClient::new(
         /*auth_manager*/ None,
         AgentIdentityAuthPolicy::JwtOnly,
-        thread_id,
         provider.clone(),
         session_source.clone(),
         "test_originator".to_string(),
@@ -395,7 +390,6 @@ async fn responses_respects_model_info_overrides_from_config() {
         /*beta_features_header*/ None,
         /*item_ids_enabled*/ false,
         /*concurrent_reasoning_summaries_enabled*/ false,
-        /*attestation_provider*/ None,
         config.http_client_factory(),
     );
     let responses_metadata = test_turn_responses_metadata(&client, thread_id, &session_source);

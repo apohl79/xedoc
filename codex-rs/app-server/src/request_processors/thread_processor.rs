@@ -3006,13 +3006,9 @@ impl ThreadRequestProcessor {
         self.thread_manager.subscribe_thread_created()
     }
 
-    pub(crate) async fn connection_initialized(
-        &self,
-        connection_id: ConnectionId,
-        capabilities: ConnectionCapabilities,
-    ) {
+    pub(crate) async fn connection_initialized(&self, connection_id: ConnectionId) {
         self.thread_state_manager
-            .connection_initialized(connection_id, capabilities)
+            .connection_initialized(connection_id)
             .await;
     }
 

@@ -9,9 +9,6 @@ use super::X_CODEX_PARENT_THREAD_ID_HEADER;
 use super::X_CODEX_TURN_METADATA_HEADER;
 use super::X_CODEX_WINDOW_ID_HEADER;
 use super::X_OPENAI_SUBAGENT_HEADER;
-use crate::AttestationContext;
-use crate::AttestationProvider;
-use crate::GenerateAttestationFuture;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::responses_metadata::subagent_header_value;
@@ -25,12 +22,10 @@ use codex_http_client::OutboundProxyPolicy;
 use codex_login::AuthCredentialsStoreMode;
 use codex_login::AuthKeyringBackendKind;
 use codex_login::AuthManager;
-use codex_login::CodexAuth;
 use codex_login::auth::AgentIdentityAuthPolicy;
 use codex_model_provider::BearerAuthProvider;
 use codex_model_provider::SharedModelProvider;
 use codex_model_provider::create_model_provider;
-use codex_model_provider_info::CHATGPT_CODEX_BASE_URL;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_model_provider_info::create_oss_provider_with_base_url;
@@ -74,7 +69,6 @@ use wiremock::matchers::path;
 #[derive(Clone, Copy)]
 enum TestCodexResponsesRequestKind {
     Turn,
-    WebsocketConnection,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -90,7 +84,6 @@ fn test_responses_metadata(
 ) -> CodexResponsesMetadata {
     let request_kind = match request_kind {
         TestCodexResponsesRequestKind::Turn => Some(CodexResponsesRequestKind::Turn),
-        TestCodexResponsesRequestKind::WebsocketConnection => None,
     };
     CodexResponsesMetadata {
         turn_id: request_kind.and(turn_id.map(ToString::to_string)),
@@ -111,18 +104,10 @@ const TEST_CHATGPT_ID_TOKEN: &str = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWF
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
 
 fn test_model_client(session_source: SessionSource) -> ModelClient {
-    test_model_client_with_thread_id(ThreadId::new(), session_source)
-}
-
-fn test_model_client_with_thread_id(
-    thread_id: ThreadId,
-    session_source: SessionSource,
-) -> ModelClient {
     let provider = create_oss_provider_with_base_url("https://example.com/v1", WireApi::Responses);
     ModelClient::new(
         /*auth_manager*/ None,
         AgentIdentityAuthPolicy::JwtOnly,
-        thread_id,
         provider,
         session_source,
         "test_originator".to_string(),
@@ -132,7 +117,6 @@ fn test_model_client_with_thread_id(
         /*beta_features_header*/ None,
         /*item_ids_enabled*/ false,
         /*concurrent_reasoning_summaries_enabled*/ false,
-        /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     )
 }
@@ -168,7 +152,6 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
     let client = ModelClient::new(
         Some(auth_manager),
         AgentIdentityAuthPolicy::ChatGptAuth,
-        thread_id,
         provider,
         SessionSource::Cli,
         "test_originator".to_string(),
@@ -178,7 +161,6 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
         /*beta_features_header*/ None,
         /*item_ids_enabled*/ false,
         /*concurrent_reasoning_summaries_enabled*/ false,
-        /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     );
     let prompt = Prompt {
@@ -198,8 +180,9 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
     };
     let responses_metadata = test_responses_metadata_for_client(
         &client,
+        thread_id,
         /*turn_id*/ None,
-        format!("{}:0", client.state.thread_id),
+        format!("{thread_id}:0"),
         /*parent_thread_id*/ None,
         TestCodexResponsesRequestKind::Turn,
     );
@@ -254,12 +237,13 @@ fn test_model_provider() -> SharedModelProvider {
 
 fn test_responses_metadata_for_client(
     client: &ModelClient,
+    thread_id: ThreadId,
     turn_id: Option<&str>,
     window_id: String,
     parent_thread_id: Option<ThreadId>,
     request_kind: TestCodexResponsesRequestKind,
 ) -> CodexResponsesMetadata {
-    let thread_id = client.state.thread_id.to_string();
+    let thread_id = thread_id.to_string();
     test_responses_metadata(
         TEST_INSTALLATION_ID,
         &thread_id,
@@ -492,10 +476,11 @@ fn build_ws_client_metadata_includes_window_lineage_and_turn_metadata() {
         agent_role: None,
     }));
 
-    let thread_id = client.state.thread_id.to_string();
+    let thread_id = ThreadId::new();
     let expected_window_id = format!("{thread_id}:1");
     let responses_metadata = test_responses_metadata_for_client(
         &client,
+        thread_id,
         Some("turn-123"),
         expected_window_id.clone(),
         Some(parent_thread_id),
@@ -504,6 +489,7 @@ fn build_ws_client_metadata_includes_window_lineage_and_turn_metadata() {
     let client_metadata =
         client.build_ws_client_metadata(&responses_metadata, /*use_responses_lite*/ false);
     let parent_thread_id = parent_thread_id.to_string();
+    let thread_id = thread_id.to_string();
     let turn_metadata: serde_json::Value = serde_json::from_str(
         client_metadata
             .get(X_CODEX_TURN_METADATA_HEADER)
@@ -728,118 +714,4 @@ fn auth_request_telemetry_context_tracks_agent_identity_ids() {
             task_id: "task-run-context".to_string(),
         })
     );
-}
-
-fn model_client_with_counting_attestation(
-    include_attestation: bool,
-) -> (ModelClient, Arc<AtomicUsize>) {
-    #[derive(Debug)]
-    struct CountingAttestationProvider {
-        calls: Arc<AtomicUsize>,
-    }
-
-    impl AttestationProvider for CountingAttestationProvider {
-        fn header_for_request(
-            &self,
-            _context: AttestationContext,
-        ) -> GenerateAttestationFuture<'_> {
-            let calls = self.calls.clone();
-            Box::pin(async move {
-                let call = calls.fetch_add(1, Ordering::Relaxed) + 1;
-                Some(http::HeaderValue::from_bytes(format!("v1.header-{call}").as_bytes()).unwrap())
-            })
-        }
-    }
-
-    let attestation_calls = Arc::new(AtomicUsize::new(0));
-    let (auth_manager, provider) = if include_attestation {
-        (
-            Some(AuthManager::from_auth_for_testing(
-                CodexAuth::create_dummy_chatgpt_auth_for_testing(),
-            )),
-            ModelProviderInfo::create_openai_provider(Some(CHATGPT_CODEX_BASE_URL.to_string())),
-        )
-    } else {
-        (
-            None,
-            create_oss_provider_with_base_url("https://example.com/v1", WireApi::Responses),
-        )
-    };
-    let model_client = ModelClient::new(
-        auth_manager,
-        AgentIdentityAuthPolicy::JwtOnly,
-        ThreadId::new(),
-        provider,
-        SessionSource::Exec,
-        "test_originator".to_string(),
-        /*model_verbosity*/ None,
-        /*enable_request_compression*/ false,
-        /*include_timing_metrics*/ false,
-        /*beta_features_header*/ None,
-        /*item_ids_enabled*/ false,
-        /*concurrent_reasoning_summaries_enabled*/ false,
-        Some(Arc::new(CountingAttestationProvider {
-            calls: attestation_calls.clone(),
-        })),
-        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
-    );
-    (model_client, attestation_calls)
-}
-
-#[tokio::test]
-async fn websocket_handshake_includes_attestation_for_chatgpt_codex_responses() {
-    let (model_client, attestation_calls) =
-        model_client_with_counting_attestation(/*include_attestation*/ true);
-    let responses_metadata = test_responses_metadata_for_client(
-        &model_client,
-        /*turn_id*/ None,
-        format!("{}:0", model_client.state.thread_id),
-        /*parent_thread_id*/ None,
-        TestCodexResponsesRequestKind::WebsocketConnection,
-    );
-
-    let headers = model_client
-        .build_websocket_headers(&responses_metadata)
-        .await;
-
-    assert_eq!(
-        headers
-            .get(crate::attestation::X_OAI_ATTESTATION_HEADER)
-            .and_then(|value| value.to_str().ok()),
-        Some("v1.header-1"),
-    );
-    assert_eq!(attestation_calls.load(Ordering::Relaxed), 1);
-}
-
-#[tokio::test]
-async fn non_chatgpt_codex_endpoints_omit_attestation_generation() {
-    let (model_client, attestation_calls) =
-        model_client_with_counting_attestation(/*include_attestation*/ false);
-    let mut response_headers = http::HeaderMap::new();
-
-    if let Some(header_value) = model_client.generate_attestation_header_for().await {
-        response_headers.insert(crate::attestation::X_OAI_ATTESTATION_HEADER, header_value);
-    }
-    let mut compaction_headers = http::HeaderMap::new();
-    if let Some(header_value) = model_client.generate_attestation_header_for().await {
-        compaction_headers.insert(crate::attestation::X_OAI_ATTESTATION_HEADER, header_value);
-    }
-    let mut realtime_headers = http::HeaderMap::new();
-    if let Some(header_value) = model_client.generate_attestation_header_for().await {
-        realtime_headers.insert(crate::attestation::X_OAI_ATTESTATION_HEADER, header_value);
-    }
-
-    assert_eq!(
-        response_headers.get(crate::attestation::X_OAI_ATTESTATION_HEADER),
-        None,
-    );
-    assert_eq!(
-        compaction_headers.get(crate::attestation::X_OAI_ATTESTATION_HEADER),
-        None,
-    );
-    assert_eq!(
-        realtime_headers.get(crate::attestation::X_OAI_ATTESTATION_HEADER),
-        None,
-    );
-    assert_eq!(attestation_calls.load(Ordering::Relaxed), 0);
 }

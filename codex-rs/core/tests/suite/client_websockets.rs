@@ -2383,7 +2383,6 @@ async fn websocket_harness_with_provider_options(
     let client = ModelClient::new(
         /*auth_manager*/ None,
         AgentIdentityAuthPolicy::JwtOnly,
-        thread_id,
         provider.clone(),
         SessionSource::Exec,
         "test_originator".to_string(),
@@ -2396,7 +2395,6 @@ async fn websocket_harness_with_provider_options(
         config
             .features
             .enabled(Feature::ConcurrentReasoningSummaries),
-        /*attestation_provider*/ None,
         http_client_factory,
     );
 

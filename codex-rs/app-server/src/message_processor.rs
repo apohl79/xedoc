@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 
-use crate::attestation::app_server_attestation_provider;
 use crate::config_manager::ConfigManager;
 use crate::connection_rpc_gate::ConnectionRpcGate;
 use crate::current_time::app_server_time_provider;
@@ -40,7 +39,6 @@ use crate::request_serialization::QueuedInitializedRequest;
 use crate::request_serialization::RequestSerializationQueueKey;
 use crate::request_serialization::RequestSerializationQueues;
 use crate::skills_watcher::SkillsWatcher;
-use crate::thread_state::ConnectionCapabilities;
 use crate::thread_state::ThreadStateManager;
 use crate::transport::AppServerTransport;
 use codex_analytics::AnalyticsEventsClient;
@@ -128,7 +126,6 @@ pub(crate) struct InitializedConnectionSessionState {
     pub(crate) opted_out_notification_methods: HashSet<String>,
     pub(crate) app_server_client_name: String,
     pub(crate) client_version: String,
-    pub(crate) request_attestation: bool,
     pub(crate) supports_openai_form_elicitation: bool,
 }
 
@@ -173,12 +170,6 @@ impl ConnectionSessionState {
         self.initialized
             .get()
             .map(|session| session.client_version.as_str())
-    }
-
-    pub(crate) fn request_attestation(&self) -> bool {
-        self.initialized
-            .get()
-            .is_some_and(|session| session.request_attestation)
     }
 
     pub(crate) fn supports_openai_form_elicitation(&self) -> bool {
@@ -274,10 +265,6 @@ impl MessageProcessor {
                 Arc::clone(&thread_store),
                 codex_core::local_agent_graph_store_from_state_db(state_db.as_ref()),
                 installation_id,
-                Some(app_server_attestation_provider(
-                    outgoing.clone(),
-                    thread_state_manager.clone(),
-                )),
                 Some(app_server_time_provider(
                     outgoing.clone(),
                     thread_state_manager.clone(),
@@ -607,18 +594,9 @@ impl MessageProcessor {
             .await;
     }
 
-    pub(crate) async fn connection_initialized(
-        &self,
-        connection_id: ConnectionId,
-        request_attestation: bool,
-    ) {
+    pub(crate) async fn connection_initialized(&self, connection_id: ConnectionId) {
         self.thread_processor
-            .connection_initialized(
-                connection_id,
-                ConnectionCapabilities {
-                    request_attestation,
-                },
-            )
+            .connection_initialized(connection_id)
             .await;
     }
 
@@ -727,12 +705,7 @@ impl MessageProcessor {
                 .await?;
             if connection_initialized {
                 self.thread_processor
-                    .connection_initialized(
-                        connection_id,
-                        ConnectionCapabilities {
-                            request_attestation: session.request_attestation(),
-                        },
-                    )
+                    .connection_initialized(connection_id)
                     .await;
             }
             return Ok(());

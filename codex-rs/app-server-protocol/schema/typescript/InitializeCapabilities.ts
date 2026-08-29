@@ -11,10 +11,6 @@ export type InitializeCapabilities = {
  */
 experimentalApi: boolean,
 /**
- * Opt into `attestation/generate` requests for upstream `x-oai-attestation`.
- */
-requestAttestation: boolean,
-/**
  * Allow downstream MCP servers to request OpenAI extended form elicitations.
  */
 mcpServerOpenaiFormElicitation?: boolean,

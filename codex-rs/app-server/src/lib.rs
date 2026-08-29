@@ -75,7 +75,6 @@ const SQLITE_RECOVERY_CONFIG_WARNING_SUMMARY: &str = "Codex rebuilt its local da
 
 mod analytics_utils;
 mod app_server_tracing;
-mod attestation;
 mod auth_mode;
 mod auto_session_name;
 mod bespoke_event_handling;
@@ -905,12 +904,7 @@ pub async fn run_main_with_transport_options(
                                                 )
                                                 .await;
                                             processor
-                                                .connection_initialized(
-                                                    connection_id,
-                                                    connection_state
-                                                        .session
-                                                        .request_attestation(),
-                                                )
+                                                .connection_initialized(connection_id)
                                                 .await;
                                             connection_state
                                                 .outbound_initialized

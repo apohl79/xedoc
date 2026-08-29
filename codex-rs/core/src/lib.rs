@@ -35,7 +35,6 @@ pub use codex_thread::TryStartTurnIfIdleRejectionReason;
 pub use session::turn_context::TurnContext;
 mod agent;
 mod agent_communication;
-pub(crate) use codex_core_client::attestation;
 mod codex_delegate;
 mod command_canonicalization;
 pub use codex_core_config::config;
@@ -195,9 +194,6 @@ pub mod util {
     pub use codex_core_utils::normalize_thread_name;
 }
 
-pub use codex_core_client::AttestationContext;
-pub use codex_core_client::AttestationProvider;
-pub use codex_core_client::GenerateAttestationFuture;
 pub use codex_core_client::ModelClient;
 pub use codex_core_client::ModelClientSession;
 pub use codex_core_client::Prompt;

@@ -1503,7 +1503,6 @@ async fn send_request_with_provider(provider: ModelProviderInfo) {
             "unused-api-key",
         ))),
         AgentIdentityAuthPolicy::JwtOnly,
-        thread_id,
         provider,
         SessionSource::Exec,
         "test_originator".to_string(),
@@ -1516,7 +1515,6 @@ async fn send_request_with_provider(provider: ModelProviderInfo) {
         config
             .features
             .enabled(Feature::ConcurrentReasoningSummaries),
-        /*attestation_provider*/ None,
         config.http_client_factory(),
     );
     let responses_metadata = test_turn_responses_metadata(&client, thread_id);
@@ -1755,7 +1753,6 @@ async fn prefers_apikey_when_config_prefers_apikey_even_with_chatgpt_tokens() {
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         installation_id,
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
     let NewThread { thread: codex, .. } = thread_manager
@@ -2942,7 +2939,6 @@ async fn azure_responses_request_includes_store_and_prefixed_item_ids() {
     let client = ModelClient::new(
         /*auth_manager*/ None,
         AgentIdentityAuthPolicy::JwtOnly,
-        thread_id,
         provider.clone(),
         SessionSource::Exec,
         "test_originator".to_string(),
@@ -2952,7 +2948,6 @@ async fn azure_responses_request_includes_store_and_prefixed_item_ids() {
         /*beta_features_header*/ None,
         /*item_ids_enabled*/ false,
         /*concurrent_reasoning_summaries_enabled*/ false,
-        /*attestation_provider*/ None,
         config.http_client_factory(),
     );
     let responses_metadata = test_turn_responses_metadata(&client, thread_id);

@@ -2819,7 +2819,6 @@ async fn resume_thread_subagent_restores_stored_metadata() {
         thread_store.clone(),
         /*agent_graph_store*/ None,
         uuid::Uuid::new_v4().to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
     let control = manager.agent_control();

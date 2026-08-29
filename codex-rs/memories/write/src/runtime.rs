@@ -252,7 +252,6 @@ impl MemoryStartupContext {
         let model_client = ModelClient::new(
             Some(Arc::clone(&self.auth_manager)),
             AgentIdentityAuthPolicy::JwtOnly,
-            self.thread_id,
             config.model_provider.clone(),
             session_source.clone(),
             config_snapshot.originator,
@@ -262,7 +261,6 @@ impl MemoryStartupContext {
             /*beta_features_header*/ None,
             config.features.enabled(Feature::ItemIds),
             /*concurrent_reasoning_summaries_enabled*/ false,
-            /*attestation_provider*/ None,
             config.http_client_factory(),
         );
 

@@ -74,7 +74,6 @@ use codex_login::default_client::build_default_reqwest_client_for_route;
 use codex_otel::SessionTelemetry;
 use codex_otel::current_span_w3c_trace_context;
 
-use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
 use codex_protocol::models::ContentItem;
@@ -107,9 +106,6 @@ use tracing::instrument;
 use tracing::trace;
 use tracing::warn;
 
-use crate::attestation::AttestationContext;
-use crate::attestation::AttestationProvider;
-use crate::attestation::X_OAI_ATTESTATION_HEADER;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
@@ -191,7 +187,6 @@ fn session_telemetry_for_request(
 /// configuration is per turn and is passed explicitly to streaming/unary methods.
 #[derive(Debug)]
 struct ModelClientState {
-    thread_id: ThreadId,
     provider: SharedModelProvider,
     session_source: SessionSource,
     originator: String,
@@ -201,8 +196,6 @@ struct ModelClientState {
     beta_features_header: Option<String>,
     item_ids_enabled: bool,
     concurrent_reasoning_summaries_enabled: bool,
-    include_attestation: bool,
-    attestation_provider: Option<Arc<dyn AttestationProvider>>,
     disable_websockets: AtomicBool,
     agent_identity_session_fallback: AgentIdentitySessionFallback,
     cached_websocket_session: StdMutex<WebsocketSession>,
@@ -405,7 +398,6 @@ impl ModelClient {
     pub fn new(
         auth_manager: Option<Arc<AuthManager>>,
         agent_identity_policy: AgentIdentityAuthPolicy,
-        thread_id: ThreadId,
         provider_info: ModelProviderInfo,
         session_source: SessionSource,
         originator: String,
@@ -415,14 +407,11 @@ impl ModelClient {
         beta_features_header: Option<String>,
         item_ids_enabled: bool,
         concurrent_reasoning_summaries_enabled: bool,
-        attestation_provider: Option<Arc<dyn AttestationProvider>>,
         http_client_factory: HttpClientFactory,
     ) -> Self {
         let model_provider = create_model_provider(provider_info, auth_manager);
-        let include_attestation = model_provider.supports_attestation();
         Self {
             state: Arc::new(ModelClientState {
-                thread_id,
                 provider: model_provider,
                 session_source,
                 originator,
@@ -432,8 +421,6 @@ impl ModelClient {
                 beta_features_header,
                 item_ids_enabled,
                 concurrent_reasoning_summaries_enabled,
-                include_attestation,
-                attestation_provider,
                 disable_websockets: AtomicBool::new(false),
                 agent_identity_session_fallback: AgentIdentitySessionFallback::default(),
                 cached_websocket_session: StdMutex::new(WebsocketSession::default()),
@@ -604,9 +591,6 @@ impl ModelClient {
             Some(responses_metadata.session_id.to_string()),
             Some(responses_metadata.thread_id.to_string()),
         ));
-        if let Some(header_value) = self.generate_attestation_header_for().await {
-            extra_headers.insert(X_OAI_ATTESTATION_HEADER, header_value);
-        }
         add_responses_lite_header(&mut extra_headers, model_info.use_responses_lite);
         let compact_request_timeout = client_setup
             .api_provider
@@ -633,15 +617,12 @@ impl ModelClient {
         &self,
         sdp: String,
         session_config: ApiRealtimeSessionConfig,
-        mut extra_headers: ApiHeaderMap,
+        extra_headers: ApiHeaderMap,
         api_provider_override: Option<ApiProvider>,
     ) -> Result<RealtimeWebrtcCallStart> {
         // Create the media call over HTTP first, then retain matching auth so realtime can attach
         // the server-side control WebSocket to the call id from that HTTP response.
         let client_setup = self.current_client_setup().await?;
-        if let Some(header_value) = self.generate_attestation_header_for().await {
-            extra_headers.insert(X_OAI_ATTESTATION_HEADER, header_value);
-        }
         let mut sideband_headers = extra_headers.clone();
         sideband_headers.extend(sideband_websocket_auth_headers(
             client_setup.api_auth.as_ref(),
@@ -760,20 +741,6 @@ impl ModelClient {
             );
         }
         client_metadata
-    }
-
-    async fn generate_attestation_header_for(&self) -> Option<HeaderValue> {
-        if !self.state.include_attestation {
-            return None;
-        }
-
-        self.state
-            .attestation_provider
-            .as_ref()?
-            .header_for_request(AttestationContext {
-                thread_id: self.state.thread_id,
-            })
-            .await
     }
 
     /// Builds request telemetry for unary API calls (e.g., Compact endpoint).
@@ -1052,9 +1019,6 @@ impl ModelClient {
             Some(responses_metadata.thread_id.to_string()),
         ));
         headers.extend(self.build_responses_compatibility_headers(responses_metadata));
-        if let Some(header_value) = self.generate_attestation_header_for().await {
-            headers.insert(X_OAI_ATTESTATION_HEADER, header_value);
-        }
         headers.insert(
             OPENAI_BETA_HEADER,
             HeaderValue::from_static(RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE),
@@ -1116,9 +1080,6 @@ impl ModelClientSession {
                     self.client
                         .build_responses_compatibility_headers(responses_metadata),
                 );
-                if let Some(header_value) = self.client.generate_attestation_header_for().await {
-                    headers.insert(X_OAI_ATTESTATION_HEADER, header_value);
-                }
                 add_responses_lite_header(&mut headers, use_responses_lite);
                 headers
             },

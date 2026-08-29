@@ -47,9 +47,6 @@ pub struct InitializeCapabilities {
     /// Opt into receiving experimental API methods and fields.
     #[serde(default)]
     pub experimental_api: bool,
-    /// Opt into `attestation/generate` requests for upstream `x-oai-attestation`.
-    #[serde(default)]
-    pub request_attestation: bool,
     /// Allow downstream MCP servers to request OpenAI extended form elicitations.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mcp_server_openai_form_elicitation: bool,

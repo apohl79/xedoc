@@ -1421,12 +1421,6 @@ server_request_definitions! {
         response: v2::ChatgptAuthTokensRefreshResponse,
     },
 
-    /// Generate a fresh upstream attestation result on demand.
-    AttestationGenerate => "attestation/generate" {
-        params: v2::AttestationGenerateParams,
-        response: v2::AttestationGenerateResponse,
-    },
-
     #[experimental("currentTime/read")]
     /// Read the current time from an external clock owned by the client.
     CurrentTimeRead => "currentTime/read" {
@@ -2093,7 +2087,6 @@ mod tests {
                 },
                 capabilities: Some(v1::InitializeCapabilities {
                     experimental_api: true,
-                    request_attestation: true,
                     mcp_server_openai_form_elicitation: true,
                     opt_out_notification_methods: Some(vec![
                         "thread/started".to_string(),
@@ -2115,7 +2108,6 @@ mod tests {
                     },
                     "capabilities": {
                         "experimentalApi": true,
-                        "requestAttestation": true,
                         "mcpServerOpenaiFormElicitation": true,
                         "optOutNotificationMethods": [
                             "thread/started",
@@ -2142,7 +2134,6 @@ mod tests {
                 },
                 "capabilities": {
                     "experimentalApi": true,
-                    "requestAttestation": true,
                     "mcpServerOpenaiFormElicitation": true,
                     "optOutNotificationMethods": [
                         "thread/started",
@@ -2164,7 +2155,6 @@ mod tests {
                     },
                     capabilities: Some(v1::InitializeCapabilities {
                         experimental_api: true,
-                        request_attestation: true,
                         mcp_server_openai_form_elicitation: true,
                         opt_out_notification_methods: Some(vec![
                             "thread/started".to_string(),
@@ -2279,28 +2269,6 @@ mod tests {
             }),
             serde_json::to_value(&request)?,
         );
-        Ok(())
-    }
-
-    #[test]
-    fn serialize_attestation_generate_request() -> Result<()> {
-        let params = v2::AttestationGenerateParams {};
-        let request = ServerRequest::AttestationGenerate {
-            request_id: RequestId::Integer(9),
-            params: params.clone(),
-        };
-        assert_eq!(
-            json!({
-                "method": "attestation/generate",
-                "id": 9,
-                "params": {}
-            }),
-            serde_json::to_value(&request)?,
-        );
-
-        let payload = ServerRequestPayload::AttestationGenerate(params);
-        assert_eq!(request.id(), &RequestId::Integer(9));
-        assert_eq!(payload.request_with_id(RequestId::Integer(9)), request);
         Ok(())
     }
 

@@ -20,8 +20,6 @@ export type { ApprovalsReviewer } from "./ApprovalsReviewer";
 export type { AppsConfig } from "./AppsConfig";
 export type { AppsDefaultConfig } from "./AppsDefaultConfig";
 export type { AskForApproval } from "./AskForApproval";
-export type { AttestationGenerateParams } from "./AttestationGenerateParams";
-export type { AttestationGenerateResponse } from "./AttestationGenerateResponse";
 export type { AutoReviewDecisionSource } from "./AutoReviewDecisionSource";
 export type { ByteRange } from "./ByteRange";
 export type { CancelLoginAccountParams } from "./CancelLoginAccountParams";

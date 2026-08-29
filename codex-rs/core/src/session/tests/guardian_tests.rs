@@ -759,7 +759,6 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         supports_openai_form_elicitation: false,
         analytics_events_client: None,
         thread_store,
-        attestation_provider: None,
         external_time_provider: None,
         inherited_multi_agent_version: None,
     })

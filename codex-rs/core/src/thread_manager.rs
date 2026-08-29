@@ -1,6 +1,5 @@
 use crate::SkillsService;
 use crate::agent::AgentControl;
-use crate::attestation::AttestationProvider;
 use crate::codex_thread::CodexThread;
 use crate::config::Config;
 use crate::config::ThreadStoreConfig;
@@ -273,7 +272,6 @@ pub(crate) struct ThreadManagerState {
     user_instructions_provider: Arc<dyn UserInstructionsProvider>,
     thread_store: Arc<dyn ThreadStore>,
     agent_graph_store: Option<Arc<dyn AgentGraphStore>>,
-    attestation_provider: Option<Arc<dyn AttestationProvider>>,
     external_time_provider: Option<Arc<dyn TimeProvider>>,
     session_source: SessionSource,
     installation_id: String,
@@ -400,7 +398,6 @@ impl ThreadManager {
         thread_store: Arc<dyn ThreadStore>,
         agent_graph_store: Option<Arc<dyn AgentGraphStore>>,
         installation_id: String,
-        attestation_provider: Option<Arc<dyn AttestationProvider>>,
         external_time_provider: Option<Arc<dyn TimeProvider>>,
     ) -> Self {
         let codex_home = config.codex_home.clone();
@@ -438,7 +435,6 @@ impl ThreadManager {
                 user_instructions_provider,
                 thread_store,
                 agent_graph_store,
-                attestation_provider,
                 external_time_provider,
                 auth_manager,
                 session_source,
@@ -556,7 +552,6 @@ impl ThreadManager {
                 ),
                 thread_store,
                 agent_graph_store,
-                attestation_provider: None,
                 external_time_provider: None,
                 auth_manager,
                 session_source: SessionSource::Exec,
@@ -1757,7 +1752,6 @@ impl ThreadManagerState {
             supports_openai_form_elicitation,
             analytics_events_client: self.analytics_events_client.clone(),
             thread_store: Arc::clone(&self.thread_store),
-            attestation_provider: self.attestation_provider.clone(),
             external_time_provider: self.external_time_provider.clone(),
             inherited_multi_agent_version: multi_agent_version,
         }))

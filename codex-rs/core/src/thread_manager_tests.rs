@@ -660,7 +660,6 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors() 
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
     let selected_root_init = |id: &str, environment_id: &str| {
@@ -867,7 +866,6 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
     let selected_cwd =
@@ -1009,7 +1007,6 @@ async fn explicit_installation_id_skips_codex_home_file() {
         thread_store,
         local_agent_graph_store_from_state_db(state_db.as_ref()),
         installation_id.clone(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1051,7 +1048,6 @@ async fn resume_active_thread_from_rollout_returns_running_thread() {
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1112,7 +1108,6 @@ async fn resume_stopped_thread_from_rollout_spawns_new_thread() {
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1180,7 +1175,6 @@ async fn resume_stopped_thread_from_rollout_preserves_thread_source() {
         thread_store,
         local_agent_graph_store_from_state_db(state_db.as_ref()),
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1273,7 +1267,6 @@ async fn subtree_listing_uses_injected_graph_store_without_state_db() {
         thread_store_from_config(&config, /*state_db*/ None),
         Some(agent_graph_store),
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1319,7 +1312,6 @@ async fn rollout_path_resume_and_fork_read_history_through_thread_store() {
         thread_store.clone(),
         local_agent_graph_store_from_state_db(state_db.as_ref()),
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1429,7 +1421,6 @@ async fn new_uses_active_provider_for_model_refresh() {
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1571,7 +1562,6 @@ async fn injected_models_manager_controls_refresh_policy() {
         thread_store_from_config(&config, /*state_db*/ None),
         /*agent_graph_store*/ None,
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1820,7 +1810,6 @@ async fn interrupted_fork_snapshot_does_not_synthesize_turn_id_for_legacy_histor
         thread_store_from_config(&config, state_db.clone()),
         local_agent_graph_store_from_state_db(state_db.as_ref()),
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -1931,7 +1920,6 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
         thread_store_from_config(&config, state_db.clone()),
         local_agent_graph_store_from_state_db(state_db.as_ref()),
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 
@@ -2033,7 +2021,6 @@ async fn interrupted_fork_snapshot_uses_persisted_mid_turn_history_without_live_
         thread_store_from_config(&config, state_db.clone()),
         local_agent_graph_store_from_state_db(state_db.as_ref()),
         TEST_INSTALLATION_ID.to_string(),
-        /*attestation_provider*/ None,
         /*external_time_provider*/ None,
     );
 

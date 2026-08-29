@@ -16,7 +16,6 @@ use crate::agent::agent_status_from_event;
 use crate::agent::status::is_final;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
-use crate::attestation::AttestationProvider;
 use crate::audio_preparation::prepare_response_items as prepare_audio_response_items;
 use crate::build_available_skills;
 use crate::compact;
@@ -442,7 +441,6 @@ pub(crate) struct SessionSpawnArgs {
     pub(crate) supports_openai_form_elicitation: bool,
     pub(crate) analytics_events_client: Option<AnalyticsEventsClient>,
     pub(crate) thread_store: Arc<dyn ThreadStore>,
-    pub(crate) attestation_provider: Option<Arc<dyn AttestationProvider>>,
     pub(crate) external_time_provider: Option<Arc<dyn TimeProvider>>,
     pub(crate) inherited_multi_agent_version: Option<MultiAgentVersion>,
 }
@@ -530,7 +528,6 @@ impl Session {
             supports_openai_form_elicitation,
             analytics_events_client,
             thread_store,
-            attestation_provider,
             external_time_provider,
             inherited_multi_agent_version,
         } = args;
@@ -721,7 +718,6 @@ impl Session {
             analytics_events_client,
             thread_store,
             parent_rollout_thread_trace,
-            attestation_provider,
             external_time_provider,
             multi_agent_version,
         ))
@@ -1574,10 +1570,8 @@ impl Session {
             let model_client = provider_changed.then(|| {
                 Self::model_client(
                     Arc::clone(&self.services.auth_manager),
-                    self.thread_id,
                     &updated,
                     updated.original_config_do_not_use.as_ref(),
-                    self.services.attestation_provider.clone(),
                 )
             });
             let startup_prewarm = provider_changed

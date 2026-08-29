@@ -1,6 +1,5 @@
 mod account;
 mod analytics;
-mod attestation;
 mod auto_env;
 mod auto_session_name;
 mod client_metadata;
