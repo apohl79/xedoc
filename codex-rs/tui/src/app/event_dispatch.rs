@@ -926,32 +926,6 @@ impl App {
                     failed_scan,
                 );
             }
-            AppEvent::OpenFeedbackNote {
-                category,
-                include_logs,
-            } => {
-                self.chat_widget.open_feedback_note(category, include_logs);
-            }
-            AppEvent::OpenFeedbackConsent { category } => {
-                self.chat_widget.open_feedback_consent(category);
-            }
-            AppEvent::SubmitFeedback {
-                category,
-                reason,
-                turn_id,
-                include_logs,
-            } => {
-                self.submit_feedback(app_server, category, reason, turn_id, include_logs);
-            }
-            AppEvent::FeedbackSubmitted {
-                origin_thread_id,
-                category,
-                include_logs,
-                result,
-            } => {
-                self.handle_feedback_submitted(origin_thread_id, category, include_logs, result)
-                    .await;
-            }
             AppEvent::LaunchExternalEditor => {
                 if self.chat_widget.external_editor_state() == ExternalEditorState::Active {
                     self.launch_external_editor(tui).await;

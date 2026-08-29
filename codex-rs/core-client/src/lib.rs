@@ -7,17 +7,6 @@ pub mod responses_metadata;
 
 mod util;
 
-macro_rules! feedback_tags {
-    ($( $key:ident = $value:expr ),+ $(,)?) => {
-        ::tracing::info!(
-            target: "feedback_tags",
-            $( $key = ::tracing::field::debug(&$value) ),+
-        );
-    };
-}
-
-pub(crate) use feedback_tags;
-
 pub use attestation::AttestationContext;
 pub use attestation::AttestationProvider;
 pub use attestation::GenerateAttestationFuture;

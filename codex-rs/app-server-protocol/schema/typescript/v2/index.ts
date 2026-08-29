@@ -92,8 +92,6 @@ export type { ExperimentalFeatureEnablementSetResponse } from "./ExperimentalFea
 export type { ExperimentalFeatureListParams } from "./ExperimentalFeatureListParams";
 export type { ExperimentalFeatureListResponse } from "./ExperimentalFeatureListResponse";
 export type { ExperimentalFeatureStage } from "./ExperimentalFeatureStage";
-export type { FeedbackUploadParams } from "./FeedbackUploadParams";
-export type { FeedbackUploadResponse } from "./FeedbackUploadResponse";
 export type { FileChangeApprovalDecision } from "./FileChangeApprovalDecision";
 export type { FileChangeOutputDeltaNotification } from "./FileChangeOutputDeltaNotification";
 export type { FileChangePatchUpdatedNotification } from "./FileChangePatchUpdatedNotification";

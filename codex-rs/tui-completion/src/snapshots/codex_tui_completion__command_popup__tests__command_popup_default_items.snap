@@ -36,7 +36,6 @@ expression: commands
 /mcp - list configured MCP tools; use /mcp verbose for details
 /logout - log out of Codex
 /exit - exit Codex
-/feedback - send logs to maintainers
 /rollout - print the rollout file path
 /ps - list background terminals
 /stop - stop all background terminals

@@ -15,8 +15,3 @@ workspace = true
 [dependencies]
 rand = { workspace = true }
 tracing = { workspace = true, features = ["log"] }
-
-[dev-dependencies]
-codex-feedback = { workspace = true }
-codex-login = { workspace = true }
-tracing-subscriber = { workspace = true }

@@ -412,8 +412,7 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
     args.is_empty()
         && matches!(
             command,
-            SlashCommand::Feedback
-                | SlashCommand::New
+            SlashCommand::New
                 | SlashCommand::Clear
                 | SlashCommand::Resume
                 | SlashCommand::App
@@ -12253,7 +12252,7 @@ mod tests {
             "'/re' should activate slash popup via prefix match"
         );
 
-        // Case 3: fuzzy match "/ac" (subsequence of /compact and /feedback)
+        // Case 3: fuzzy match "/ac" (subsequence of /compact)
         composer.set_text_content("/ac".to_string(), Vec::new(), Vec::new());
         assert!(
             matches!(composer.popups.active, ActivePopup::Command(_)),

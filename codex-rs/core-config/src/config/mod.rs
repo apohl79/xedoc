@@ -1079,10 +1079,6 @@ pub struct Config {
     /// Voluntarily left as Optional because the default value might depend on the client.
     pub analytics_enabled: Option<bool>,
 
-    /// When `false`, disables feedback collection across Codex product surfaces.
-    /// Defaults to `true`.
-    pub feedback_enabled: bool,
-
     /// Configured discoverable tools for tool suggestions.
     pub tool_suggest: ToolSuggestConfig,
 
@@ -4159,11 +4155,6 @@ impl Config {
             disable_paste_burst: cfg.disable_paste_burst.unwrap_or(false),
             auto_session_name: cfg.auto_session_name.unwrap_or(true),
             analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
-            feedback_enabled: cfg
-                .feedback
-                .as_ref()
-                .and_then(|feedback| feedback.enabled)
-                .unwrap_or(true),
             tool_suggest,
             tui_notifications: cfg
                 .tui

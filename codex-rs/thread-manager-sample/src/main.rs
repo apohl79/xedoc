@@ -302,7 +302,6 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         disable_paste_burst: false,
         auto_session_name: true,
         analytics_enabled: Some(false),
-        feedback_enabled: false,
         tool_suggest: ToolSuggestConfig::default(),
         otel: OtelConfig::default(),
     };

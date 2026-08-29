@@ -1028,16 +1028,6 @@
         }
       ]
     },
-    "FeedbackConfigToml": {
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "description": "When `false`, disables the feedback flow across Codex product surfaces.",
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
     "FileSystemAccessMode": {
       "description": "Access mode for a filesystem entry.\n\nWhen two equally specific entries target the same path, we compare these by conflict precedence rather than by capability breadth: `deny` beats `write`, and `write` beats `read`.",
       "oneOf": [
@@ -5269,14 +5259,6 @@
         }
       },
       "type": "object"
-    },
-    "feedback": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/FeedbackConfigToml"
-        }
-      ],
-      "description": "When `false`, disables feedback collection across Codex product surfaces. Defaults to `true`."
     },
     "file_opener": {
       "allOf": [

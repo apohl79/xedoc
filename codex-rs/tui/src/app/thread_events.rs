@@ -1,4 +1,3 @@
-pub(super) use codex_tui_thread_state::FeedbackThreadEvent;
 pub(super) use codex_tui_thread_state::PendingPrimaryThreadEvent;
 pub(super) use codex_tui_thread_state::PendingThreadInteraction;
 pub(super) use codex_tui_thread_state::ThreadBufferedEvent;

@@ -6,34 +6,6 @@ use tracing::error;
 const INITIAL_DELAY_MS: u64 = 200;
 const BACKOFF_FACTOR: f64 = 2.0;
 
-/// Emit structured feedback metadata as key/value pairs.
-///
-/// This logs a tracing event with `target: "feedback_tags"`. If
-/// `codex_feedback::CodexFeedback::metadata_layer()` is installed, these fields are captured and
-/// later attached as tags when feedback is uploaded.
-///
-/// Values are wrapped with [`tracing::field::DebugValue`], so the expression only needs to
-/// implement [`std::fmt::Debug`].
-///
-/// Example:
-///
-/// ```rust
-/// let provider_id = "openai";
-/// let request_id = "req-123";
-///
-/// codex_core::feedback_tags!(model = "gpt-5", cached = true);
-/// codex_core::feedback_tags!(provider = provider_id, request_id = request_id);
-/// ```
-#[macro_export]
-macro_rules! feedback_tags {
-    ($( $key:ident = $value:expr ),+ $(,)?) => {
-        ::tracing::info!(
-            target: "feedback_tags",
-            $( $key = ::tracing::field::debug(&$value) ),+
-        );
-    };
-}
-
 pub fn backoff(attempt: u64) -> Duration {
     let exp = BACKOFF_FACTOR.powi(attempt.saturating_sub(1) as i32);
     let base = (INITIAL_DELAY_MS as f64 * exp) as u64;

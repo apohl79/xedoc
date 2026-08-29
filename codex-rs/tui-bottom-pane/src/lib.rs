@@ -115,7 +115,6 @@ pub use codex_tui_overlays::bottom_pane::ApprovalOverlay;
 pub use codex_tui_overlays::bottom_pane::ApprovalRequest;
 pub use codex_tui_overlays::bottom_pane::ColumnWidthMode;
 pub use codex_tui_overlays::bottom_pane::ExecApprovalRequest;
-pub use codex_tui_overlays::bottom_pane::FeedbackAudience;
 pub use codex_tui_overlays::bottom_pane::ListSelectionView;
 pub use codex_tui_overlays::bottom_pane::McpElicitationApprovalRequest;
 pub use codex_tui_overlays::bottom_pane::McpServerElicitationFormRequest;
@@ -138,11 +137,6 @@ pub use codex_tui_overlays::bottom_pane::TerminalTitleItem;
 pub use codex_tui_overlays::bottom_pane::TerminalTitleSetupView;
 pub use codex_tui_overlays::bottom_pane::build_action_required_title_text;
 pub use codex_tui_overlays::bottom_pane::custom_prompt_view;
-pub use codex_tui_overlays::bottom_pane::feedback_classification;
-pub use codex_tui_overlays::bottom_pane::feedback_disabled_params;
-pub use codex_tui_overlays::bottom_pane::feedback_selection_params;
-pub use codex_tui_overlays::bottom_pane::feedback_success_cell;
-pub use codex_tui_overlays::bottom_pane::feedback_upload_consent_params;
 pub use codex_tui_overlays::bottom_pane::format_requested_permissions_rule;
 pub use codex_tui_overlays::bottom_pane::popup_content_width;
 #[cfg(any(test, feature = "test-support"))]
@@ -153,7 +147,6 @@ use slash_commands::ServiceTierCommand;
 mod pending_thread_approvals;
 pub use codex_tui_completion::popup_consts;
 mod unified_exec_footer;
-pub use codex_tui_overlays::bottom_pane::FeedbackNoteView;
 pub use codex_tui_overlays::bottom_pane::SelectionTab;
 
 /// How long the "press again to quit" hint stays visible.

@@ -194,7 +194,6 @@ pub mod util {
     pub(crate) use codex_core_utils::error_or_panic;
     pub use codex_core_utils::normalize_thread_name;
 }
-pub use codex_core_utils::feedback_tags;
 
 pub use codex_core_client::AttestationContext;
 pub use codex_core_client::AttestationProvider;

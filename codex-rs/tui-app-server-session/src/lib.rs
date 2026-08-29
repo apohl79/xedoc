@@ -113,7 +113,6 @@ use codex_protocol::openai_models::ModelServiceTier;
 use codex_protocol::openai_models::ModelUpgrade;
 use codex_protocol::openai_models::ReasoningEffortPreset;
 use codex_protocol::protocol::SubAgentSource;
-use codex_tui_bottom_pane::FeedbackAudience;
 pub use codex_tui_events::AppServerStartedThread;
 use codex_tui_settings::service_tier_resolution;
 use codex_tui_status::status::StatusAccountDisplay;
@@ -190,7 +189,6 @@ pub struct AppServerBootstrap {
     pub status_account_display: Option<StatusAccountDisplay>,
     pub plan_type: Option<codex_protocol::account::PlanType>,
     pub default_model: String,
-    pub feedback_audience: FeedbackAudience,
     pub has_chatgpt_account: bool,
     pub available_models: Vec<ModelPreset>,
 }
@@ -371,32 +369,16 @@ impl AppServerSession {
         self.default_model = Some(default_model.clone());
         self.available_models = available_models.clone();
 
-        let (
-            account_email,
-            auth_mode,
-            status_account_display,
-            plan_type,
-            feedback_audience,
-            has_chatgpt_account,
-        ) = match account.account {
-            Some(Account::ApiKey {}) => (
-                None,
-                Some(TelemetryAuthMode::ApiKey),
-                Some(StatusAccountDisplay::ApiKey),
-                None,
-                FeedbackAudience::External,
-                false,
-            ),
-            Some(Account::Chatgpt { email, plan_type }) => {
-                let feedback_audience = if email
-                    .as_deref()
-                    .is_some_and(|email| email.ends_with("@openai.com"))
-                {
-                    FeedbackAudience::OpenAiEmployee
-                } else {
-                    FeedbackAudience::External
-                };
-                (
+        let (account_email, auth_mode, status_account_display, plan_type, has_chatgpt_account) =
+            match account.account {
+                Some(Account::ApiKey {}) => (
+                    None,
+                    Some(TelemetryAuthMode::ApiKey),
+                    Some(StatusAccountDisplay::ApiKey),
+                    None,
+                    false,
+                ),
+                Some(Account::Chatgpt { email, plan_type }) => (
                     email.clone(),
                     Some(TelemetryAuthMode::Chatgpt),
                     Some(StatusAccountDisplay::ChatGpt {
@@ -404,15 +386,11 @@ impl AppServerSession {
                         plan: Some(plan_type_display_name(plan_type)),
                     }),
                     Some(plan_type),
-                    feedback_audience,
                     true,
-                )
-            }
-            Some(Account::AmazonBedrock { .. }) => {
-                (None, None, None, None, FeedbackAudience::External, false)
-            }
-            None => (None, None, None, None, FeedbackAudience::External, false),
-        };
+                ),
+                Some(Account::AmazonBedrock { .. }) => (None, None, None, None, false),
+                None => (None, None, None, None, false),
+            };
         Ok(AppServerBootstrap {
             duration: started_at.elapsed(),
             account_email,
@@ -420,7 +398,6 @@ impl AppServerSession {
             status_account_display,
             plan_type,
             default_model,
-            feedback_audience,
             has_chatgpt_account,
             available_models,
         })
@@ -1873,7 +1850,6 @@ mod tests {
             loader_overrides: LoaderOverrides::default(),
             strict_config: false,
             cloud_config_bundle: CloudConfigBundleLoader::default(),
-            feedback: codex_feedback::CodexFeedback::new(),
             log_db: None,
             state_db: Some(state_db),
             environment_manager: Arc::new(EnvironmentManager::default_for_tests()),

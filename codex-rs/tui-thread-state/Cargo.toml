@@ -16,7 +16,6 @@ workspace = true
 codex-app-server-protocol = { workspace = true }
 codex-protocol = { workspace = true }
 codex-tui-app-server-session = { workspace = true }
-codex-tui-bottom-pane = { workspace = true }
 codex-tui-chatwidget = { workspace = true }
 codex-tui-events = { workspace = true }
 codex-tui-transcript = { workspace = true }

@@ -483,7 +483,6 @@ pub struct ChatWidgetInit {
     pub has_chatgpt_account: bool,
     pub has_codex_backend_auth: bool,
     pub model_catalog: Arc<ModelCatalog>,
-    pub feedback: codex_feedback::CodexFeedback,
     pub is_first_run: bool,
     pub status_account_display: Option<StatusAccountDisplay>,
     pub runtime_model_provider_base_url: Option<String>,
@@ -668,8 +667,6 @@ pub struct ChatWidget {
     // Runtime metrics accumulated across delta snapshots for the active turn.
     turn_runtime_metrics: RuntimeMetricsSummary,
     last_rendered_width: std::cell::Cell<Option<usize>>,
-    // Feedback sink for /feedback
-    feedback: codex_feedback::CodexFeedback,
     // Current session rollout path (if known)
     current_rollout_path: Option<PathBuf>,
     // Current working directory (if known)
@@ -922,29 +919,6 @@ impl ChatWidget {
         }
     }
 
-    pub fn open_feedback_note(
-        &mut self,
-        category: crate::app_event::FeedbackCategory,
-        include_logs: bool,
-    ) {
-        self.show_feedback_note(category, include_logs);
-    }
-
-    fn show_feedback_note(
-        &mut self,
-        category: crate::app_event::FeedbackCategory,
-        include_logs: bool,
-    ) {
-        let view = crate::bottom_pane::FeedbackNoteView::new(
-            category,
-            self.turn_lifecycle.last_turn_id.clone(),
-            self.app_event_tx.clone(),
-            include_logs,
-        );
-        self.bottom_pane.show_view(Box::new(view));
-        self.request_redraw();
-    }
-
     pub fn dismiss_app_server_request(&mut self, request: &ResolvedAppServerRequest) {
         // A remotely resolved request must not remain user-actionable. It may be
         // materialized in the bottom pane or still deferred behind active streaming.
@@ -953,27 +927,6 @@ impl ChatWidget {
         if removed_deferred || removed_visible {
             self.request_redraw();
         }
-    }
-
-    pub fn open_feedback_consent(&mut self, category: crate::app_event::FeedbackCategory) {
-        let snapshot = self.feedback.snapshot(self.thread_id);
-        #[cfg(target_os = "windows")]
-        let include_windows_sandbox_log =
-            codex_windows_sandbox::current_log_file_path_for_codex_home(&self.config.codex_home)
-                .is_file();
-        #[cfg(not(target_os = "windows"))]
-        let include_windows_sandbox_log = false;
-        let params = crate::bottom_pane::feedback_upload_consent_params(
-            self.app_event_tx.clone(),
-            category,
-            self.current_rollout_path.clone(),
-            self.thread_id
-                .map(|thread_id| format!("auto-review-rollout-{thread_id}.jsonl")),
-            include_windows_sandbox_log,
-            snapshot.feedback_diagnostics(),
-        );
-        self.bottom_pane.show_selection_view(params);
-        self.request_redraw();
     }
 
     pub fn open_multi_agent_enable_prompt(&mut self) {
