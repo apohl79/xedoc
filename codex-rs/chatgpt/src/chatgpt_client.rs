@@ -11,14 +11,6 @@ use std::time::Duration;
 const OAI_PRODUCT_SKU_HEADER: &str = "OAI-Product-Sku";
 const CODEX_PRODUCT_SKU: &str = "codex";
 
-/// Make a GET request to the ChatGPT backend API.
-pub(crate) async fn chatgpt_get_request<T: DeserializeOwned>(
-    config: &Config,
-    path: String,
-) -> anyhow::Result<T> {
-    chatgpt_get_request_with_timeout(config, path, /*timeout*/ None).await
-}
-
 pub(crate) async fn chatgpt_get_request_with_timeout<T: DeserializeOwned>(
     config: &Config,
     path: String,

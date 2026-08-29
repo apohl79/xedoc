@@ -144,7 +144,6 @@ mod npm_registry;
 pub(crate) mod onboarding;
 mod oss_selection;
 mod pager_overlay;
-pub(crate) mod public_widgets;
 pub(crate) use codex_tui_render::render;
 mod resize_reflow_cap;
 mod resume_picker;
@@ -195,8 +194,6 @@ use crate::tui::Tui;
 pub use cli::Cli;
 use codex_arg0::Arg0DispatchPaths;
 pub use markdown_render::render_markdown_text;
-pub use public_widgets::composer_input::ComposerAction;
-pub use public_widgets::composer_input::ComposerInput;
 // (tests access modules directly within the crate)
 
 const TUI_LOG_FILE_NAME: &str = "codex-tui.log";
