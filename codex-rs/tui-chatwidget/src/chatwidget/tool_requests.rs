@@ -299,10 +299,6 @@ impl ChatWidget {
         });
         self.bottom_pane
             .push_approval_request(request, &self.config.features);
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
         self.request_redraw();
     }
 
@@ -320,10 +316,6 @@ impl ChatWidget {
         });
         self.bottom_pane
             .push_approval_request(request, &self.config.features);
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
         self.request_redraw();
         self.notify(Notification::EditApprovalRequested {
             cwd: self.config.cwd.to_path_buf(),
@@ -377,20 +369,12 @@ impl ChatWidget {
                 }
             }
         }
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
         self.request_redraw();
     }
 
     pub fn push_approval_request(&mut self, request: ApprovalRequest) {
         self.bottom_pane
             .push_approval_request(request, &self.config.features);
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
         self.request_redraw();
     }
 
@@ -400,10 +384,6 @@ impl ChatWidget {
     ) {
         self.bottom_pane
             .push_mcp_server_elicitation_request(request);
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
         self.request_redraw();
     }
 
@@ -418,10 +398,6 @@ impl ChatWidget {
         };
         self.notify(Notification::PlanModePrompt { title });
         self.bottom_pane.push_user_input_request(ev);
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
         self.request_redraw();
     }
 
@@ -437,10 +413,6 @@ impl ChatWidget {
         });
         self.bottom_pane
             .push_approval_request(request, &self.config.features);
-        self.set_ambient_pet_notification(
-            crate::pets::PetNotificationKind::Waiting,
-            /*body*/ None,
-        );
         self.request_redraw();
     }
 }

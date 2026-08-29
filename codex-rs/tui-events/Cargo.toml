@@ -23,7 +23,6 @@ codex-message-history = { workspace = true }
 codex-plugin = { workspace = true }
 codex-protocol = { workspace = true }
 codex-tui-input = { workspace = true }
-codex-tui-pet = { workspace = true }
 codex-tui-render = { workspace = true }
 codex-tui-transcript = { workspace = true }
 codex-utils-absolute-path = { workspace = true }

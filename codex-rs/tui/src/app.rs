@@ -165,7 +165,6 @@ use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
 use ratatui::backend::Backend;
-use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
@@ -202,7 +201,6 @@ mod event_dispatch;
 mod history_ui;
 mod input;
 mod loaded_threads;
-mod pets;
 mod platform_actions;
 mod plugin_mentions;
 mod replay_filter;
@@ -1283,18 +1281,13 @@ See the Codex keymap documentation for supported actions and examples."
         if let Err(err) = app_server.shutdown().await {
             tracing::warn!(error = %err, "failed to shut down embedded app server");
         }
-        let clear_pet_result = tui.clear_ambient_pet_image();
         let clear_result = tui.terminal.clear();
         let exit_reason = match exit_reason_result {
             Ok(exit_reason) => {
-                clear_pet_result?;
                 clear_result?;
                 exit_reason
             }
             Err(err) => {
-                if let Err(clear_pet_err) = clear_pet_result {
-                    tracing::warn!(error = %clear_pet_err, "failed to clear ambient pet image");
-                }
                 if let Err(clear_err) = clear_result {
                     tracing::warn!(error = %clear_err, "failed to clear terminal UI");
                 }
@@ -1357,31 +1350,7 @@ See the Codex keymap documentation for supported actions and examples."
                     }
                     // Allow widgets to process any pending timers before rendering.
                     self.chat_widget.pre_draw_tick();
-                    let rendered_area = self.render_chat_widget_frame(tui)?;
-                    if self.chat_widget.ambient_pet_image_enabled() {
-                        let terminal_size = tui.terminal.size()?;
-                        let ambient_pet_area = Rect::new(
-                            /*x*/ 0,
-                            /*y*/ 0,
-                            terminal_size.width,
-                            terminal_size.height,
-                        );
-                        if let Err(err) = tui.draw_ambient_pet_image(
-                            self.chat_widget
-                                .ambient_pet_draw(ambient_pet_area, rendered_area.bottom()),
-                        ) {
-                            self.handle_ambient_pet_image_render_error(tui, err)?;
-                        }
-                    }
-                    if let Some(request) = self.chat_widget.pet_picker_preview_draw() {
-                        if let Err(err) = tui.draw_pet_picker_preview_image(Some(request)) {
-                            self.handle_pet_picker_preview_image_render_error(tui, err)?;
-                        }
-                    } else if self.chat_widget.should_clear_pet_picker_preview_image()
-                        && let Err(err) = tui.draw_pet_picker_preview_image(/*request*/ None)
-                    {
-                        self.handle_pet_picker_preview_image_render_error(tui, err)?;
-                    }
+                    self.render_chat_widget_frame(tui)?;
                     if self.chat_widget.external_editor_state() == ExternalEditorState::Requested {
                         self.chat_widget
                             .set_external_editor_state(ExternalEditorState::Active);
@@ -1394,7 +1363,6 @@ See the Codex keymap documentation for supported actions and examples."
     }
 
     pub(super) fn show_shutdown_feedback(&mut self, tui: &mut tui::Tui) -> Result<()> {
-        self.disable_ambient_pet_before_shutdown(tui)?;
         self.chat_widget.show_shutdown_in_progress();
         self.handle_draw_pre_render(tui)?;
         self.chat_widget.pre_draw_tick();
@@ -1402,13 +1370,11 @@ See the Codex keymap documentation for supported actions and examples."
         Ok(())
     }
 
-    fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui) -> Result<Rect> {
+    fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui) -> Result<()> {
         let width = tui.terminal.size()?.width;
         self.with_chat_widget_frame(width, |desired_height, chat_widget| {
-            let mut rendered_area = Rect::default();
             tui.draw_with_resize_reflow(desired_height, |frame| {
                 let area = frame.area();
-                rendered_area = area;
                 chat_widget.render(area, frame.buffer);
                 self.chat_widget.note_rendered_width(area.width);
                 if let Some((x, y)) = chat_widget.cursor_pos(area) {
@@ -1416,7 +1382,7 @@ See the Codex keymap documentation for supported actions and examples."
                     frame.set_cursor_position((x, y));
                 }
             })?;
-            Ok(rendered_area)
+            Ok(())
         })
     }
 

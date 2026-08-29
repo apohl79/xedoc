@@ -140,11 +140,6 @@ mod multi_agents {
     pub use codex_tui_agents::*;
 }
 
-mod pets {
-    pub use codex_tui_pet::*;
-    pub use codex_tui_pet_ui::*;
-}
-
 mod render {
     pub use codex_tui_render::render::*;
 }

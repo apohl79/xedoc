@@ -322,38 +322,6 @@ pub enum AppEvent {
         thread_id: ThreadId,
     },
 
-    /// Persist a pet selection and reload the ambient pet.
-    PetSelected {
-        pet_id: String,
-    },
-
-    /// Persist terminal pets as disabled and remove the ambient pet.
-    PetDisabled,
-
-    /// Start loading the side preview for the pet picker.
-    PetPreviewRequested {
-        pet_id: String,
-    },
-
-    /// Result of loading the side preview for the pet picker.
-    PetPreviewLoaded {
-        request_id: u64,
-        result: Result<codex_tui_pet::AmbientPet, String>,
-    },
-
-    /// Result of loading the selected ambient pet before config persistence.
-    PetSelectionLoaded {
-        request_id: u64,
-        pet_id: String,
-        result: Result<Option<codex_tui_pet::AmbientPet>, String>,
-    },
-
-    /// Result of restoring the configured ambient pet during startup.
-    ConfiguredPetLoaded {
-        pet_id: String,
-        result: Result<Option<codex_tui_pet::AmbientPet>, String>,
-    },
-
     /// Fetch plugin marketplace state for the provided working directory.
     FetchPluginsList {
         cwd: PathBuf,

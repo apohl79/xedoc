@@ -127,8 +127,6 @@ members = [
     "tui-input",
     "tui-markdown",
     "tui-overlays",
-    "tui-pet",
-    "tui-pet-ui",
     "tui-platform",
     "tui-render",
     "tui-session-picker",
@@ -329,8 +327,6 @@ codex-tui-frame = { path = "tui-frame" }
 codex-tui-hooks = { path = "tui-hooks" }
 codex-tui-markdown = { path = "tui-markdown" }
 codex-tui-overlays = { path = "tui-overlays" }
-codex-tui-pet = { path = "tui-pet" }
-codex-tui-pet-ui = { path = "tui-pet-ui" }
 codex-tui-platform = { path = "tui-platform" }
 codex-tui-render = { path = "tui-render" }
 codex-tui-session-picker = { path = "tui-session-picker" }

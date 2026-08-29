@@ -1697,7 +1697,7 @@ impl BottomPane {
         self.composer.prepare_inline_args_submission(record_history)
     }
 
-    fn as_renderable(&'_ self) -> RenderableItem<'_> {
+    pub fn as_renderable(&'_ self) -> RenderableItem<'_> {
         self.as_renderable_with_composer_right_reserve(/*composer_right_reserve*/ 0)
     }
 

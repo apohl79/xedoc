@@ -5,7 +5,6 @@ pub use super::super::dependency_test_support::render_bottom_popup;
 pub use super::super::dependency_test_support::set_active_cell;
 pub use super::super::dependency_test_support::set_chatgpt_auth;
 pub use super::super::dependency_test_support::set_fast_mode_test_catalog;
-pub(super) use super::super::dependency_test_support::test_config;
 pub(super) use super::super::dependency_test_support::test_model_catalog;
 pub(super) use super::super::dependency_test_support::test_session_telemetry;
 use super::*;

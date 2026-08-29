@@ -100,9 +100,8 @@ mod cli;
 #[cfg(target_os = "windows")]
 mod clipboard_paste;
 mod config_update;
-pub(crate) use codex_tui_transcript::custom_terminal;
-mod pets;
 pub use codex_tui_transcript::Terminal;
+pub(crate) use codex_tui_transcript::custom_terminal;
 mod cwd_prompt;
 #[cfg(test)]
 pub(crate) use codex_tui_render::diff_model;

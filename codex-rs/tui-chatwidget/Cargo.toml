@@ -41,8 +41,6 @@ codex-tui-frame = { workspace = true }
 codex-tui-hooks = { workspace = true }
 codex-tui-input = { workspace = true }
 codex-tui-overlays = { workspace = true }
-codex-tui-pet = { workspace = true }
-codex-tui-pet-ui = { workspace = true }
 codex-tui-platform = { workspace = true }
 codex-tui-render = { workspace = true }
 codex-tui-settings = { workspace = true }

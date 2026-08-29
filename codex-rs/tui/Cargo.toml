@@ -65,8 +65,6 @@ codex-tui-completion = { workspace = true }
 codex-tui-debug = { workspace = true }
 codex-tui-markdown = { workspace = true }
 codex-tui-overlays = { workspace = true }
-codex-tui-pet = { workspace = true }
-codex-tui-pet-ui = { workspace = true }
 codex-tui-platform = { workspace = true }
 codex-tui-render = { workspace = true }
 codex-tui-session-picker = { workspace = true }
