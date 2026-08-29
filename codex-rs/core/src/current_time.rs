@@ -1,4 +1,5 @@
 pub use codex_core_time::SleepFuture;
+#[cfg(test)]
 pub(crate) use codex_core_time::SystemTimeProvider;
 pub use codex_core_time::TimeFuture;
 pub use codex_core_time::TimeProvider;

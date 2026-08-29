@@ -28,12 +28,6 @@ use codex_utils_output_truncation::formatted_truncate_text;
 use codex_utils_output_truncation::truncate_text;
 pub(crate) use router::ToolRouter;
 
-// Telemetry preview limits: keep log events smaller than model budgets.
-pub(crate) const TELEMETRY_PREVIEW_MAX_BYTES: usize = 2 * 1024; // 2 KiB
-pub(crate) const TELEMETRY_PREVIEW_MAX_LINES: usize = 64; // lines
-pub(crate) const TELEMETRY_PREVIEW_TRUNCATION_NOTICE: &str =
-    "[... telemetry preview truncated ...]";
-
 /// Legacy boundaries such as hook payloads, telemetry tags, and Responses tool
 /// names still require a single flattened string. Keep comparisons and sorting
 /// on `ToolName` itself; use this only when crossing those boundaries.

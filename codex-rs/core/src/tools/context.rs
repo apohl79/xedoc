@@ -18,5 +18,4 @@ pub(crate) use codex_core_tool_runtime::SharedTurnDiffTracker;
 pub use codex_core_tool_runtime::ToolCallSource;
 pub use codex_core_tool_runtime::ToolOutput;
 pub use codex_core_tool_runtime::ToolPayload;
-pub use codex_core_tool_runtime::ToolSearchOutput;
 pub use codex_core_tool_runtime::boxed_tool_output;

@@ -5,7 +5,6 @@ use crate::function_tool::FunctionCallError;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::tools::handlers::ToolSearchHandlerCache;
-use crate::tools::registry::AnyToolResult;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::ToolRegistry;
 use crate::tools::spec_plan::build_tool_router;

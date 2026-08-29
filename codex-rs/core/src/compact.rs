@@ -28,6 +28,7 @@ use codex_analytics::CompactionStatus;
 use codex_analytics::CompactionStrategy;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::now_unix_seconds;
+#[cfg(test)]
 use codex_core_context_manager::content_items_to_text;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
