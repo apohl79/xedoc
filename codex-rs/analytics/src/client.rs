@@ -1,6 +1,4 @@
 use crate::events::AppServerRpcTransport;
-use crate::events::GuardianReviewAnalyticsResult;
-use crate::events::GuardianReviewTrackContext;
 use crate::events::TrackEventRequest;
 use crate::events::TrackEventsRequest;
 use crate::events::current_runtime_metadata;
@@ -242,17 +240,6 @@ impl AnalyticsEventsClient {
         self.record_fact(AnalyticsFact::Custom(
             CustomAnalyticsFact::SubAgentThreadStarted(input),
         ));
-    }
-
-    pub fn track_guardian_review(
-        &self,
-        tracking: &GuardianReviewTrackContext,
-        result: GuardianReviewAnalyticsResult,
-        completed_at_ms: u64,
-    ) {
-        self.record_fact(AnalyticsFact::Custom(CustomAnalyticsFact::GuardianReview(
-            Box::new(tracking.event_params(result, completed_at_ms)),
-        )));
     }
 
     pub fn track_app_mentioned(&self, tracking: TrackEventsContext, mentions: Vec<AppInvocation>) {
@@ -545,8 +532,6 @@ impl AnalyticsEventsClient {
                 | ServerNotification::TurnDiffUpdated(_)
                 | ServerNotification::ItemStarted(_)
                 | ServerNotification::ItemCompleted(_)
-                | ServerNotification::ItemGuardianApprovalReviewStarted(_)
-                | ServerNotification::ItemGuardianApprovalReviewCompleted(_)
         ) {
             return;
         }

@@ -230,7 +230,6 @@ impl RequestRouteTelemetry {
 pub struct ModelClient {
     state: Arc<ModelClientState>,
     agent_identity_policy: AgentIdentityAuthPolicy,
-    prompt_cache_key_override: Option<String>,
     http_client_factory: HttpClientFactory,
 }
 
@@ -417,23 +416,8 @@ impl ModelClient {
                 cached_websocket_session: StdMutex::new(WebsocketSession::default()),
             }),
             agent_identity_policy,
-            prompt_cache_key_override: None,
             http_client_factory,
         }
-    }
-
-    pub fn with_prompt_cache_key_override(
-        mut self,
-        prompt_cache_key_override: Option<String>,
-    ) -> Self {
-        self.prompt_cache_key_override = prompt_cache_key_override;
-        self
-    }
-
-    fn prompt_cache_key(&self, responses_metadata: &CodexResponsesMetadata) -> String {
-        self.prompt_cache_key_override
-            .clone()
-            .unwrap_or_else(|| responses_metadata.session_id.clone())
     }
 
     /// Creates a fresh turn-scoped streaming session.
@@ -779,7 +763,7 @@ impl ModelClient {
             &prompt.output_schema,
             prompt.output_schema_strict,
         );
-        let prompt_cache_key = Some(self.prompt_cache_key(responses_metadata));
+        let prompt_cache_key = Some(responses_metadata.session_id.clone());
         let service_tier = model_info.service_tier_for_request(service_tier);
         let request = ResponsesApiRequest {
             model: model_info.slug.clone(),

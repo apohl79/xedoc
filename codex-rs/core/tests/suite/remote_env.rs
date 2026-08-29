@@ -2,7 +2,6 @@ use anyhow::Context;
 use anyhow::Result;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use codex_config::types::ApprovalsReviewer;
 use codex_core::compact::SUMMARIZATION_PROMPT;
 use codex_core::config::Constrained;
 use codex_exec_server::CopyOptions;
@@ -131,7 +130,6 @@ async fn submit_turn_with_approval_and_environments(
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(turn_environment_selections),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(SandboxPolicy::new_read_only_policy()),
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
                     mode: codex_protocol::config_types::ModeKind::Default,
@@ -1455,7 +1453,6 @@ async fn remote_request_permissions_grant_unblocks_later_remote_exec() -> Result
     let mut builder = test_codex().with_config(|config| {
         config.use_experimental_unified_exec_tool = true;
         config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
-        config.approvals_reviewer = ApprovalsReviewer::User;
         config
             .features
             .enable(Feature::UnifiedExec)
@@ -1503,7 +1500,6 @@ async fn remote_request_permissions_grant_unblocks_later_remote_exec() -> Result
     let approved_response = RequestPermissionsResponse {
         permissions: expected_permissions.clone(),
         scope: PermissionGrantScope::Turn,
-        strict_auto_review: false,
     };
     let command = format!(
         "printf 'remote-request-permissions-ok' > {relative_target_path} && cat {relative_target_path}"
@@ -1747,7 +1743,6 @@ async fn apply_patch_approvals_are_remembered_per_environment() -> Result<()> {
     let server = start_mock_server().await;
     let mut builder = test_codex().with_config(|config| {
         config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
-        config.approvals_reviewer = ApprovalsReviewer::User;
     });
     let test = builder.build_with_remote_and_local_env(&server).await?;
     let local_cwd = TempDir::new()?;

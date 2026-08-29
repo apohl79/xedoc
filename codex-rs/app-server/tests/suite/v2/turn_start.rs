@@ -2731,7 +2731,6 @@ async fn turn_start_explicit_local_environment_updates_legacy_cwd_between_turns(
             cwd: Some(first_cwd.clone()),
             runtime_workspace_roots: None,
             approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
-            approvals_reviewer: None,
             sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::WorkspaceWrite {
                 writable_roots: vec![first_cwd.try_into()?],
                 network_access: false,
@@ -2782,7 +2781,6 @@ async fn turn_start_explicit_local_environment_updates_legacy_cwd_between_turns(
             cwd: None,
             runtime_workspace_roots: None,
             approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
-            approvals_reviewer: None,
             sandbox_policy: None,
             permissions: None,
             model: Some("mock-model".to_string()),

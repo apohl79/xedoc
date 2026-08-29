@@ -4,7 +4,6 @@ use anyhow::Result;
 use codex_core::config::Constrained;
 use codex_core::sandboxing::SandboxPermissions;
 use codex_features::Feature;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::models::AdditionalPermissionProfile as PermissionProfile;
 use codex_protocol::models::FileSystemPermissions;
 use codex_protocol::models::PermissionProfile as CorePermissionProfile;
@@ -186,7 +185,6 @@ async fn submit_turn(
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
@@ -484,7 +482,6 @@ async fn request_permissions_tool_is_auto_denied_when_granular_request_permissio
         RequestPermissionsResponse {
             permissions: RequestPermissionProfile::default(),
             scope: PermissionGrantScope::Turn,
-            strict_auto_review: false,
         }
     );
 
@@ -1136,7 +1133,6 @@ async fn request_permissions_grants_apply_to_later_exec_command_calls() -> Resul
             response: RequestPermissionsResponse {
                 permissions: normalized_requested_permissions.clone(),
                 scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
             },
         })
         .await?;
@@ -1254,7 +1250,6 @@ async fn request_permissions_preapprove_explicit_exec_permissions_outside_on_req
             response: RequestPermissionsResponse {
                 permissions: normalized_requested_permissions,
                 scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
             },
         })
         .await?;
@@ -1371,7 +1366,6 @@ async fn request_permissions_grants_apply_to_later_shell_command_calls() -> Resu
             response: RequestPermissionsResponse {
                 permissions: normalized_requested_permissions.clone(),
                 scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
             },
         })
         .await?;
@@ -1484,7 +1478,6 @@ async fn request_permissions_grants_apply_to_later_shell_command_calls_without_i
             response: RequestPermissionsResponse {
                 permissions: normalized_requested_permissions.clone(),
                 scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
             },
         })
         .await?;
@@ -1634,7 +1627,6 @@ async fn partial_request_permissions_grants_do_not_preapprove_new_permissions() 
             response: RequestPermissionsResponse {
                 permissions: granted_permissions.clone(),
                 scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
             },
         })
         .await?;
@@ -1765,7 +1757,6 @@ async fn request_permissions_grants_do_not_carry_across_turns() -> Result<()> {
             response: RequestPermissionsResponse {
                 permissions: normalized_requested_permissions,
                 scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
             },
         })
         .await?;
@@ -1886,7 +1877,6 @@ async fn request_permissions_session_grants_carry_across_turns() -> Result<()> {
             response: RequestPermissionsResponse {
                 permissions: normalized_requested_permissions,
                 scope: PermissionGrantScope::Session,
-                strict_auto_review: false,
             },
         })
         .await?;

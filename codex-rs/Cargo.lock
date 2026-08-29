@@ -1815,7 +1815,6 @@ dependencies = [
  "codex-file-watcher",
  "codex-git-utils",
  "codex-goal-extension",
- "codex-guardian",
  "codex-home",
  "codex-hooks",
  "codex-http-client",
@@ -2338,7 +2337,6 @@ dependencies = [
  "codex-core-elicitation",
  "codex-core-environment",
  "codex-core-exec",
- "codex-core-guardian-approval",
  "codex-core-mcp-runtime",
  "codex-core-mcp-skill-dependency",
  "codex-core-plugin-context",
@@ -2757,26 +2755,6 @@ dependencies = [
  "toml 0.9.11+spec-1.1.0",
  "tracing",
  "which 8.0.0",
-]
-
-[[package]]
-name = "codex-core-guardian-approval"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "codex-analytics",
- "codex-core-context-manager",
- "codex-core-exec",
- "codex-otel",
- "codex-protocol",
- "codex-shell-command",
- "codex-utils-absolute-path",
- "codex-utils-output-truncation",
- "opentelemetry",
- "opentelemetry_sdk",
- "pretty_assertions",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -3480,15 +3458,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "codex-guardian"
-version = "0.145.0"
-dependencies = [
- "codex-core",
- "codex-extension-api",
- "codex-protocol",
 ]
 
 [[package]]

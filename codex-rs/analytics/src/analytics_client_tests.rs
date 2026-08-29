@@ -21,12 +21,6 @@ use crate::events::CodexRuntimeMetadata;
 use crate::events::CodexToolItemEventBase;
 use crate::events::CodexTurnEventRequest;
 use crate::events::FinalApprovalOutcome;
-use crate::events::GuardianApprovalRequestSource;
-use crate::events::GuardianReviewDecision;
-use crate::events::GuardianReviewEventParams;
-use crate::events::GuardianReviewFailureReason;
-use crate::events::GuardianReviewTerminalStatus;
-use crate::events::GuardianReviewedAction;
 use crate::events::ReviewResolution;
 use crate::events::ReviewStatus;
 use crate::events::ReviewSubjectKind;
@@ -85,7 +79,6 @@ use crate::facts::TurnTokenUsageFact;
 use crate::reducer::AnalyticsReducer;
 use crate::reducer::normalize_path_for_skill_id;
 use crate::reducer::skill_id_for_local_skill;
-use codex_app_server_protocol::ApprovalsReviewer as AppServerApprovalsReviewer;
 use codex_app_server_protocol::AskForApproval as AppServerAskForApproval;
 use codex_app_server_protocol::ClientInfo;
 use codex_app_server_protocol::ClientRequest;
@@ -100,15 +93,10 @@ use codex_app_server_protocol::CommandExecutionRequestApprovalResponse;
 use codex_app_server_protocol::CommandExecutionSource;
 use codex_app_server_protocol::CommandExecutionStatus;
 use codex_app_server_protocol::DynamicToolCallStatus;
-use codex_app_server_protocol::GuardianApprovalReview;
-use codex_app_server_protocol::GuardianApprovalReviewAction;
-use codex_app_server_protocol::GuardianApprovalReviewStatus;
-use codex_app_server_protocol::GuardianCommandSource as AppServerGuardianCommandSource;
 use codex_app_server_protocol::ImageGenerationItem;
 use codex_app_server_protocol::InitializeCapabilities;
 use codex_app_server_protocol::InitializeParams;
 use codex_app_server_protocol::ItemCompletedNotification;
-use codex_app_server_protocol::ItemGuardianApprovalReviewCompletedNotification;
 use codex_app_server_protocol::ItemStartedNotification;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::McpToolCallAppContext;
@@ -149,8 +137,6 @@ use codex_plugin::AppConnectorId;
 use codex_plugin::PluginCapabilitySummary;
 use codex_plugin::PluginId;
 use codex_plugin::PluginTelemetryMetadata;
-use codex_protocol::approvals::NetworkApprovalProtocol;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::models::NetworkPermissions as CoreNetworkPermissions;
@@ -242,7 +228,6 @@ fn sample_thread_start_response(
         runtime_workspace_roots: Vec::new(),
         instruction_sources: Vec::new(),
         approval_policy: AppServerAskForApproval::OnRequest,
-        approvals_reviewer: AppServerApprovalsReviewer::User,
         sandbox: AppServerSandboxPolicy::DangerFullAccess,
         active_permission_profile: None,
         reasoning_effort: None,
@@ -307,7 +292,6 @@ fn sample_thread_resume_response_with_source(
         runtime_workspace_roots: Vec::new(),
         instruction_sources: Vec::new(),
         approval_policy: AppServerAskForApproval::OnRequest,
-        approvals_reviewer: AppServerApprovalsReviewer::User,
         sandbox: AppServerSandboxPolicy::DangerFullAccess,
         active_permission_profile: None,
         reasoning_effort: None,
@@ -426,7 +410,6 @@ fn sample_turn_resolved_config(thread_id: &str, turn_id: &str) -> TurnResolvedCo
         reasoning_summary: None,
         service_tier: None,
         approval_policy: AskForApproval::OnRequest,
-        approvals_reviewer: ApprovalsReviewer::AutoReview,
         sandbox_network_access: true,
         collaboration_mode: ModeKind::Plan,
         personality: None,
@@ -949,40 +932,7 @@ fn sample_effective_permissions_approval_response(
     permissions: CoreRequestPermissionProfile,
     scope: CorePermissionGrantScope,
 ) -> CoreRequestPermissionsResponse {
-    CoreRequestPermissionsResponse {
-        permissions,
-        scope,
-        strict_auto_review: false,
-    }
-}
-
-fn sample_guardian_review_completed(
-    review_id: &str,
-    target_item_id: Option<&str>,
-    status: GuardianApprovalReviewStatus,
-) -> ServerNotification {
-    ServerNotification::ItemGuardianApprovalReviewCompleted(
-        ItemGuardianApprovalReviewCompletedNotification {
-            thread_id: "thread-1".to_string(),
-            turn_id: "turn-1".to_string(),
-            started_at_ms: 1_000,
-            completed_at_ms: 1_042,
-            review_id: review_id.to_string(),
-            target_item_id: target_item_id.map(str::to_string),
-            decision_source: codex_app_server_protocol::AutoReviewDecisionSource::Agent,
-            review: GuardianApprovalReview {
-                status,
-                risk_level: None,
-                user_authorization: None,
-                rationale: None,
-            },
-            action: GuardianApprovalReviewAction::Command {
-                source: AppServerGuardianCommandSource::Shell,
-                command: "echo hi".to_string(),
-                cwd: test_path_buf("/tmp").abs(),
-            },
-        },
-    )
+    CoreRequestPermissionsResponse { permissions, scope }
 }
 
 fn expected_absolute_path(path: &PathBuf) -> String {
@@ -2105,170 +2055,6 @@ async fn compaction_event_ingests_custom_fact() {
 }
 
 #[tokio::test]
-async fn guardian_review_event_ingests_custom_fact_with_optional_target_item() {
-    let mut reducer = AnalyticsReducer::default();
-    let mut events = Vec::new();
-
-    reducer
-        .ingest(
-            AnalyticsFact::Initialize {
-                connection_id: 7,
-                params: InitializeParams {
-                    client_info: ClientInfo {
-                        name: "codex-tui".to_string(),
-                        title: None,
-                        version: "1.0.0".to_string(),
-                    },
-                    capabilities: Some(InitializeCapabilities {
-                        experimental_api: false,
-                        opt_out_notification_methods: None,
-                        mcp_server_openai_form_elicitation: false,
-                    }),
-                },
-                product_client_id: DEFAULT_ORIGINATOR.to_string(),
-                runtime: sample_runtime_metadata(),
-                rpc_transport: AppServerRpcTransport::Websocket,
-            },
-            &mut events,
-        )
-        .await;
-    reducer
-        .ingest(
-            AnalyticsFact::ClientResponse {
-                connection_id: 7,
-                request_id: RequestId::Integer(1),
-                response: Box::new(sample_thread_start_response(
-                    "thread-guardian",
-                    /*ephemeral*/ false,
-                    "gpt-5",
-                )),
-                thread_originator: None,
-            },
-            &mut events,
-        )
-        .await;
-    events.clear();
-
-    reducer
-        .ingest(
-            AnalyticsFact::Custom(CustomAnalyticsFact::GuardianReview(Box::new(
-                GuardianReviewEventParams {
-                    thread_id: "thread-guardian".to_string(),
-                    turn_id: "turn-guardian".to_string(),
-                    review_id: "review-guardian".to_string(),
-                    target_item_id: None,
-                    approval_request_source: GuardianApprovalRequestSource::DelegatedSubagent,
-                    reviewed_action: GuardianReviewedAction::NetworkAccess {
-                        protocol: NetworkApprovalProtocol::Https,
-                        port: 443,
-                    },
-                    reviewed_action_truncated: false,
-                    decision: GuardianReviewDecision::Denied,
-                    terminal_status: GuardianReviewTerminalStatus::TimedOut,
-                    failure_reason: Some(GuardianReviewFailureReason::Timeout),
-                    attempt_count: 1,
-                    risk_level: None,
-                    user_authorization: None,
-                    outcome: None,
-                    guardian_thread_id: None,
-                    guardian_session_kind: None,
-                    guardian_model: None,
-                    guardian_reasoning_effort: None,
-                    guardian_default_review_model_id: Some("codex-auto-review".to_string()),
-                    guardian_catalog_contains_auto_review: Some(false),
-                    guardian_review_model_overridden: Some(false),
-                    guardian_review_model_override: None,
-                    guardian_model_provider_id: Some("openai".to_string()),
-                    had_prior_review_context: None,
-                    review_timeout_ms: 90_000,
-                    tool_call_count: None,
-                    time_to_first_token_ms: None,
-                    completion_latency_ms: Some(90_000),
-                    started_at: 100,
-                    completed_at: Some(190),
-                    input_tokens: None,
-                    cached_input_tokens: None,
-                    cache_write_input_tokens: None,
-                    output_tokens: None,
-                    reasoning_output_tokens: None,
-                    total_tokens: None,
-                },
-            ))),
-            &mut events,
-        )
-        .await;
-
-    let payload = serde_json::to_value(&events).expect("serialize events");
-    assert_eq!(payload.as_array().expect("events array").len(), 1);
-    assert_eq!(payload[0]["event_type"], "codex_guardian_review");
-    assert_eq!(
-        payload[0]["event_params"]["session_id"],
-        "session-thread-guardian"
-    );
-    assert_eq!(payload[0]["event_params"]["thread_id"], "thread-guardian");
-    assert_eq!(payload[0]["event_params"]["turn_id"], "turn-guardian");
-    assert_eq!(payload[0]["event_params"]["review_id"], "review-guardian");
-    assert_eq!(payload[0]["event_params"]["target_item_id"], json!(null));
-    assert_eq!(
-        payload[0]["event_params"]["approval_request_source"],
-        "delegated_subagent"
-    );
-    assert_eq!(
-        payload[0]["event_params"]["app_server_client"]["product_client_id"],
-        DEFAULT_ORIGINATOR
-    );
-    assert_eq!(
-        payload[0]["event_params"]["runtime"]["codex_rs_version"],
-        "0.1.0"
-    );
-    assert_eq!(
-        payload[0]["event_params"]["reviewed_action"]["type"],
-        "network_access"
-    );
-    assert_eq!(
-        payload[0]["event_params"]["reviewed_action"]["protocol"],
-        "https"
-    );
-    assert_eq!(payload[0]["event_params"]["reviewed_action"]["port"], 443);
-    assert!(payload[0]["event_params"].get("retry_reason").is_none());
-    assert!(payload[0]["event_params"].get("rationale").is_none());
-    assert!(
-        payload[0]["event_params"]["reviewed_action"]
-            .get("target")
-            .is_none()
-    );
-    assert!(
-        payload[0]["event_params"]["reviewed_action"]
-            .get("host")
-            .is_none()
-    );
-    assert_eq!(payload[0]["event_params"]["terminal_status"], "timed_out");
-    assert_eq!(payload[0]["event_params"]["failure_reason"], "timeout");
-    assert_eq!(payload[0]["event_params"]["attempt_count"], 1);
-    assert_eq!(payload[0]["event_params"]["review_timeout_ms"], 90_000);
-    assert_eq!(
-        payload[0]["event_params"]["guardian_default_review_model_id"],
-        "codex-auto-review"
-    );
-    assert_eq!(
-        payload[0]["event_params"]["guardian_catalog_contains_auto_review"],
-        false
-    );
-    assert_eq!(
-        payload[0]["event_params"]["guardian_review_model_overridden"],
-        false
-    );
-    assert_eq!(
-        payload[0]["event_params"]["guardian_review_model_override"],
-        json!(null)
-    );
-    assert_eq!(
-        payload[0]["event_params"]["guardian_model_provider_id"],
-        "openai"
-    );
-}
-
-#[tokio::test]
 async fn item_lifecycle_notifications_publish_command_execution_event() {
     let mut reducer = AnalyticsReducer::default();
     let mut events = Vec::new();
@@ -2584,36 +2370,6 @@ async fn aborted_server_request_publishes_aborted_user_review_event_once() {
         )
         .await;
     assert!(events.is_empty());
-}
-
-#[tokio::test]
-async fn guardian_completed_notification_publishes_review_event_with_thread_metadata() {
-    let mut reducer = AnalyticsReducer::default();
-    let mut events = Vec::new();
-
-    ingest_review_prerequisites(&mut reducer, &mut events).await;
-    reducer
-        .ingest(
-            AnalyticsFact::Notification(Box::new(sample_guardian_review_completed(
-                "guardian-review-1",
-                Some("item-1"),
-                GuardianApprovalReviewStatus::Denied,
-            ))),
-            &mut events,
-        )
-        .await;
-
-    let payload = serde_json::to_value(&events[0]).expect("serialize review event");
-    assert_eq!(payload["event_type"], "codex_review_event");
-    assert_eq!(payload["event_params"]["review_id"], "guardian-review-1");
-    assert_eq!(payload["event_params"]["item_id"], "item-1");
-    assert_eq!(payload["event_params"]["thread_source"], "user");
-    assert_eq!(payload["event_params"]["subject_kind"], "command_execution");
-    assert_eq!(payload["event_params"]["reviewer"], "guardian");
-    assert_eq!(payload["event_params"]["status"], "denied");
-    assert_eq!(payload["event_params"]["started_at_ms"], 1_000);
-    assert_eq!(payload["event_params"]["completed_at_ms"], 1_042);
-    assert_eq!(payload["event_params"]["duration_ms"], 42);
 }
 
 #[tokio::test]
@@ -3921,7 +3677,6 @@ fn turn_event_serializes_expected_shape() {
             reasoning_summary: Some("detailed".to_string()),
             service_tier: "flex".to_string(),
             approval_policy: "on-request".to_string(),
-            approvals_reviewer: "auto_review".to_string(),
             sandbox_network_access: true,
             collaboration_mode: Some("plan"),
             personality: Some("pragmatic".to_string()),
@@ -3994,7 +3749,6 @@ fn turn_event_serializes_expected_shape() {
                 "reasoning_summary": "detailed",
                 "service_tier": "flex",
                 "approval_policy": "on-request",
-                "approvals_reviewer": "auto_review",
                 "sandbox_network_access": true,
                 "collaboration_mode": "plan",
                 "personality": "pragmatic",

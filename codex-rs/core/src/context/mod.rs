@@ -14,7 +14,6 @@ pub(crate) use codex_core_context::ContextWindowGuidance;
 pub use codex_core_context::ContextualUserFragment;
 pub(crate) use codex_core_context::CurrentTimeReminder;
 pub(crate) use codex_core_context::FileSystemContext;
-pub(crate) use codex_core_context::GuardianFollowupReviewReminder;
 pub(crate) use codex_core_context::HookAdditionalContext;
 pub(crate) use codex_core_context::InterAgentCompletionMessage;
 pub use codex_core_context::InternalContextSource;

@@ -89,7 +89,6 @@ impl App {
         let PermissionProfileSelection {
             profile_id,
             approval_policy,
-            approvals_reviewer,
             display_label,
         } = selection;
         let selected_config = match self
@@ -143,9 +142,6 @@ impl App {
             ));
             return false;
         }
-        if let Some(reviewer) = approvals_reviewer {
-            config.approvals_reviewer = reviewer;
-        }
         config.permissions.network = network.clone();
         self.config = config;
 
@@ -167,9 +163,6 @@ impl App {
             ));
             return false;
         }
-        if let Some(reviewer) = approvals_reviewer {
-            self.chat_widget.set_approvals_reviewer(reviewer);
-        }
         self.chat_widget.set_permission_network(network);
         self.runtime_permission_profile_override =
             Some(RuntimePermissionProfileOverride::from_config(&self.config));
@@ -179,7 +172,6 @@ impl App {
             .send(AppEvent::CodexOp(AppCommand::override_turn_context(
                 /*cwd*/ None,
                 approval_policy,
-                approvals_reviewer,
                 Some(permission_profile.clone()),
                 active_permission_profile,
                 /*model*/ None,
@@ -294,11 +286,6 @@ impl App {
         }
     }
 
-    pub(super) fn set_approvals_reviewer_in_app_and_widget(&mut self, reviewer: ApprovalsReviewer) {
-        self.config.approvals_reviewer = reviewer;
-        self.chat_widget.set_approvals_reviewer(reviewer);
-    }
-
     pub(super) fn try_set_approval_policy_on_config(
         &mut self,
         config: &mut Config,
@@ -362,19 +349,12 @@ impl App {
             return;
         }
 
-        let auto_review_preset = auto_review_mode();
         let mut next_config = self.config.clone();
-        let mut approval_policy_override = None;
-        let mut approvals_reviewer_override = None;
-        let mut permission_profile_override = None;
-        let mut active_permission_profile_override = None;
         let mut feature_updates_to_apply = Vec::with_capacity(updates.len());
-        let mut permissions_history_label: Option<&'static str> = None;
         let mut config_edits = Vec::new();
 
         for (feature, enabled) in updates {
             let feature_key = feature.key();
-            let mut feature_edits = Vec::new();
             let mut feature_config = next_config.clone();
             if let Err(err) = feature_config.features.set_enabled(feature, enabled) {
                 tracing::error!(
@@ -388,72 +368,8 @@ impl App {
                 continue;
             }
             let effective_enabled = feature_config.features.enabled(feature);
-            if feature == Feature::GuardianApproval {
-                let previous_approvals_reviewer = feature_config.approvals_reviewer;
-                if effective_enabled {
-                    // Persist the reviewer setting so future sessions keep the
-                    // experiment's matching `/permissions` mode until the user
-                    // changes it explicitly.
-                    feature_config.approvals_reviewer = auto_review_preset.approvals_reviewer;
-                    feature_edits.push(crate::config_update::replace_config_value(
-                        "approvals_reviewer",
-                        serde_json::json!(auto_review_preset.approvals_reviewer.to_string()),
-                    ));
-                    if previous_approvals_reviewer != auto_review_preset.approvals_reviewer {
-                        permissions_history_label = Some("Approve for me");
-                    }
-                } else if !effective_enabled {
-                    feature_edits.push(crate::config_update::clear_config_value(
-                        "approvals_reviewer",
-                    ));
-                    feature_config.approvals_reviewer = ApprovalsReviewer::User;
-                    if previous_approvals_reviewer != ApprovalsReviewer::User {
-                        permissions_history_label = Some("Ask for approval");
-                    }
-                }
-                approvals_reviewer_override = Some(feature_config.approvals_reviewer);
-            }
-            if feature == Feature::GuardianApproval && effective_enabled {
-                // The feature flag alone is not enough for the live session.
-                // We also align approval policy + sandbox to the Auto-review
-                // preset so enabling the experiment immediately
-                // makes guardian review observable in the current thread.
-                if !self.try_set_approval_policy_on_config(
-                    &mut feature_config,
-                    auto_review_preset.approval_policy,
-                    "Failed to enable Approve for me",
-                    "failed to set auto-review approval policy on staged config",
-                ) {
-                    continue;
-                }
-                let Some(permission_profile) = self
-                    .try_set_builtin_active_permission_profile_on_config(
-                        &mut feature_config,
-                        auto_review_preset.active_permission_profile.clone(),
-                        "Failed to enable Approve for me",
-                        "failed to set auto-review permission profile on staged config",
-                    )
-                else {
-                    continue;
-                };
-                feature_edits.extend([
-                    crate::config_update::replace_config_value(
-                        "approval_policy",
-                        serde_json::json!("on-request"),
-                    ),
-                    crate::config_update::replace_config_value(
-                        "sandbox_mode",
-                        serde_json::json!("workspace-write"),
-                    ),
-                ]);
-                approval_policy_override = Some(auto_review_preset.approval_policy);
-                permission_profile_override = Some(permission_profile);
-                active_permission_profile_override =
-                    Some(auto_review_preset.active_permission_profile.clone());
-            }
             next_config = feature_config;
             feature_updates_to_apply.push((feature, effective_enabled));
-            config_edits.extend(feature_edits);
             config_edits.push(crate::config_update::build_feature_enabled_edit(
                 feature_key,
                 effective_enabled,
@@ -498,11 +414,6 @@ impl App {
                     &effective_config,
                     &feature_updates_to_apply,
                 );
-                self.sync_auto_review_runtime_state_from_effective_config(
-                    &effective_config,
-                    &feature_updates_to_apply,
-                )
-                .await;
             }
             return;
         }
@@ -511,78 +422,6 @@ impl App {
         for (feature, effective_enabled) in feature_updates_to_apply {
             self.chat_widget
                 .set_feature_enabled(feature, effective_enabled);
-        }
-        if approvals_reviewer_override.is_some() {
-            self.set_approvals_reviewer_in_app_and_widget(self.config.approvals_reviewer);
-        }
-        if approval_policy_override.is_some() {
-            self.chat_widget.set_approval_policy(AskForApproval::from(
-                self.config.permissions.approval_policy.value(),
-            ));
-        }
-        let permission_profile_override_value = permission_profile_override
-            .is_some()
-            .then(|| self.config.permissions.permission_profile().clone());
-        if let Some(permission_profile) = permission_profile_override_value.as_ref()
-            && let Err(err) = self
-                .chat_widget
-                .set_permission_profile_from_session_snapshot(
-                    PermissionProfileSnapshot::from_session_snapshot(
-                        permission_profile.clone(),
-                        active_permission_profile_override.clone(),
-                    ),
-                )
-        {
-            tracing::error!(
-                error = %err,
-                "failed to set auto-review permission profile on chat config"
-            );
-            self.chat_widget
-                .add_error_message(format!("Failed to enable Approve for me: {err}"));
-        }
-        if permission_profile_override.is_some() {
-            self.runtime_permission_profile_override =
-                Some(RuntimePermissionProfileOverride::from_config(&self.config));
-        }
-
-        if approval_policy_override.is_some()
-            || approvals_reviewer_override.is_some()
-            || permission_profile_override.is_some()
-        {
-            self.sync_active_thread_permission_settings_to_cached_session()
-                .await;
-            // This uses `OverrideTurnContext` intentionally: toggling the
-            // experiment should update the active thread's effective approval
-            // settings immediately, just like a `/permissions` selection. Without
-            // this runtime patch, the config edit would only affect future
-            // sessions or turns recreated from disk.
-            let op = AppCommand::override_turn_context(
-                /*cwd*/ None,
-                approval_policy_override,
-                approvals_reviewer_override,
-                permission_profile_override,
-                active_permission_profile_override,
-                /*model*/ None,
-                /*effort*/ None,
-                /*summary*/ None,
-                /*service_tier*/ None,
-                /*collaboration_mode*/ None,
-                /*personality*/ None,
-            );
-            let replay_state_op =
-                ThreadEventStore::op_can_change_pending_replay_state(&op).then(|| op.clone());
-            let submitted = self.chat_widget.submit_op(op);
-            if submitted && let Some(op) = replay_state_op.as_ref() {
-                self.note_active_thread_outbound_op(op).await;
-                self.refresh_pending_thread_approvals().await;
-            }
-        }
-
-        if let Some(label) = permissions_history_label {
-            self.chat_widget.add_info_message(
-                format!("Permissions updated to {label}"),
-                /*hint*/ None,
-            );
         }
     }
 
@@ -793,108 +632,6 @@ impl App {
             }
             self.chat_widget.set_feature_enabled(*feature, enabled);
         }
-
-        if feature_updates
-            .iter()
-            .any(|(feature, _)| *feature == Feature::GuardianApproval)
-            && !self.config.features.enabled(Feature::GuardianApproval)
-        {
-            self.set_approvals_reviewer_in_app_and_widget(ApprovalsReviewer::User);
-            return;
-        }
-
-        if let Some(reviewer) = approvals_reviewer_from_effective_config(effective_config) {
-            self.set_approvals_reviewer_in_app_and_widget(reviewer);
-        }
-        if let Some(policy) = approval_policy_from_effective_config(effective_config) {
-            if let Err(err) = self
-                .config
-                .permissions
-                .approval_policy
-                .set(policy.to_core())
-            {
-                tracing::warn!(
-                    error = %err,
-                    "failed to sync effective approval policy after an overridden write"
-                );
-                self.chat_widget.add_error_message(format!(
-                    "Failed to refresh overridden Approve for me settings: {err}"
-                ));
-            } else {
-                self.chat_widget.set_approval_policy(policy);
-            }
-        }
-    }
-
-    async fn sync_auto_review_runtime_state_from_effective_config(
-        &mut self,
-        effective_config: &ConfigReadResponse,
-        feature_updates: &[(Feature, bool)],
-    ) {
-        if !feature_updates
-            .iter()
-            .any(|(feature, _)| *feature == Feature::GuardianApproval)
-            || !self.config.features.enabled(Feature::GuardianApproval)
-            || sandbox_mode_from_effective_config(effective_config)
-                != Some(AppServerSandboxMode::WorkspaceWrite)
-        {
-            return;
-        }
-
-        let auto_review_preset = auto_review_mode();
-        let mut config = self.config.clone();
-        let Some(permission_profile) = self.try_set_builtin_active_permission_profile_on_config(
-            &mut config,
-            auto_review_preset.active_permission_profile.clone(),
-            "Failed to refresh overridden Approve for me settings",
-            "failed to sync overridden Auto-review permission profile",
-        ) else {
-            return;
-        };
-        self.config = config;
-        if let Err(err) = self
-            .chat_widget
-            .set_permission_profile_from_session_snapshot(PermissionProfileSnapshot::active(
-                permission_profile.clone(),
-                auto_review_preset.active_permission_profile.clone(),
-            ))
-        {
-            tracing::warn!(
-                error = %err,
-                "failed to sync overridden Auto-review permission profile on chat config"
-            );
-            self.chat_widget.add_error_message(format!(
-                "Failed to refresh overridden Approve for me settings: {err}"
-            ));
-            return;
-        }
-
-        self.runtime_permission_profile_override =
-            Some(RuntimePermissionProfileOverride::from_config(&self.config));
-        self.sync_active_thread_permission_settings_to_cached_session()
-            .await;
-
-        let approval_policy = AskForApproval::from(self.config.permissions.approval_policy.value());
-        let op = AppCommand::override_turn_context(
-            /*cwd*/ None,
-            Some(approval_policy),
-            Some(self.config.approvals_reviewer),
-            /*permission_profile*/ None,
-            Some(auto_review_preset.active_permission_profile),
-            /*model*/ None,
-            /*effort*/ None,
-            /*summary*/ None,
-            /*service_tier*/ None,
-            /*collaboration_mode*/ None,
-            /*personality*/ None,
-        );
-        let replay_state_op =
-            ThreadEventStore::op_can_change_pending_replay_state(&op).then(|| op.clone());
-        let submitted = self.chat_widget.submit_op(op);
-        if submitted && let Some(op) = replay_state_op.as_ref() {
-            self.note_active_thread_outbound_op(op).await;
-            self.refresh_pending_thread_approvals().await;
-        }
     }
 }
 
@@ -919,27 +656,6 @@ fn feature_enabled_from_effective_config(
         .as_ref()
         .and_then(|features| features.entries().get(feature.key()).copied())
         .unwrap_or_else(|| feature.default_enabled())
-}
-
-fn approvals_reviewer_from_effective_config(
-    effective_config: &ConfigReadResponse,
-) -> Option<ApprovalsReviewer> {
-    effective_config
-        .config
-        .approvals_reviewer
-        .map(codex_app_server_protocol::ApprovalsReviewer::to_core)
-}
-
-fn approval_policy_from_effective_config(
-    effective_config: &ConfigReadResponse,
-) -> Option<AskForApproval> {
-    effective_config.config.approval_policy
-}
-
-fn sandbox_mode_from_effective_config(
-    effective_config: &ConfigReadResponse,
-) -> Option<AppServerSandboxMode> {
-    effective_config.config.sandbox_mode
 }
 
 fn auto_session_name_from_effective_config(effective_config: &ConfigReadResponse) -> Option<bool> {
@@ -1328,7 +1044,6 @@ enabled = false
                 model_provider_id: "test-provider".to_string(),
                 service_tier: None,
                 approval_policy: AskForApproval::Never,
-                approvals_reviewer: ApprovalsReviewer::User,
                 permission_profile: PermissionProfile::read_only(),
                 active_permission_profile: None,
                 cwd: next_cwd.clone().abs(),
@@ -1369,46 +1084,6 @@ terminal_resize_reflow_max_rows = 9000
         assert_eq!(
             app.config.terminal_resize_reflow.max_rows,
             crate::legacy_core::config::TerminalResizeReflowMaxRows::Limit(9000)
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn overridden_disabled_guardian_does_not_apply_auto_review_companions() -> Result<()> {
-        let mut app = make_test_app().await;
-        let original_policy = app.config.permissions.approval_policy.value();
-        let effective_config: ConfigReadResponse = serde_json::from_value(serde_json::json!({
-            "config": {
-                "approval_policy": AskForApproval::OnRequest,
-                "approvals_reviewer": codex_app_server_protocol::ApprovalsReviewer::AutoReview,
-                "sandbox_mode": AppServerSandboxMode::WorkspaceWrite,
-                "features": {
-                    "guardian_approval": false,
-                },
-            },
-            "origins": {},
-        }))?;
-
-        app.sync_feature_state_from_effective_config(
-            &effective_config,
-            &[(Feature::GuardianApproval, /*enabled*/ true)],
-        );
-
-        assert!(!app.config.features.enabled(Feature::GuardianApproval));
-        assert!(
-            !app.chat_widget
-                .config_ref()
-                .features
-                .enabled(Feature::GuardianApproval)
-        );
-        assert_eq!(app.config.approvals_reviewer, ApprovalsReviewer::User);
-        assert_eq!(
-            app.chat_widget.config_ref().approvals_reviewer,
-            ApprovalsReviewer::User
-        );
-        assert_eq!(
-            app.config.permissions.approval_policy.value(),
-            original_policy
         );
         Ok(())
     }

@@ -444,10 +444,6 @@ impl App {
                 self.lookup_message_history_batch(thread_id, cursor, log_id)
                     .await?;
             }
-            AppEvent::ApproveRecentAutoReviewDenial { thread_id, id } => {
-                self.chat_widget
-                    .approve_recent_auto_review_denial(thread_id, id);
-            }
             AppEvent::SubmitThreadOp { thread_id, op } => {
                 self.submit_thread_op(app_server, thread_id, op).await?;
             }
@@ -1064,28 +1060,6 @@ impl App {
             AppEvent::SelectPermissionProfile(selection) => {
                 if self.apply_permission_profile_selection(selection).await {
                     self.chat_widget.submit_initial_user_message_if_pending();
-                }
-            }
-            AppEvent::UpdateApprovalsReviewer(policy) => {
-                self.config.approvals_reviewer = policy;
-                self.chat_widget.set_approvals_reviewer(policy);
-                self.sync_active_thread_permission_settings_to_cached_session()
-                    .await;
-                if let Err(err) = crate::config_update::write_config_batch(
-                    app_server.request_handle(),
-                    vec![crate::config_update::replace_config_value(
-                        "approvals_reviewer",
-                        serde_json::json!(policy.to_string()),
-                    )],
-                )
-                .await
-                {
-                    tracing::error!(
-                        error = %err,
-                        "failed to persist approvals reviewer update"
-                    );
-                    self.chat_widget
-                        .add_error_message(format!("Failed to save approvals reviewer: {err}"));
                 }
             }
             AppEvent::UpdateFeatureFlags { updates } => {

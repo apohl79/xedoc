@@ -158,9 +158,6 @@ impl ChatWidget {
                 self.on_compaction_progress(&notification.stage)
             }
             ServerNotification::Warning(notification) => self.on_warning(notification.message),
-            ServerNotification::GuardianWarning(notification) => {
-                self.on_warning(notification.message)
-            }
             ServerNotification::DeprecationNotice(notification) => {
                 self.on_deprecation_notice(notification.summary, notification.details)
             }
@@ -172,26 +169,6 @@ impl ChatWidget {
             ),
             ServerNotification::McpServerStatusUpdated(notification) => {
                 self.on_mcp_server_status_updated(notification)
-            }
-            ServerNotification::ItemGuardianApprovalReviewStarted(notification) => {
-                self.on_guardian_review_notification(
-                    notification.review_id,
-                    notification.turn_id,
-                    notification.started_at_ms,
-                    notification.review,
-                    /*completion*/ None,
-                    notification.action,
-                );
-            }
-            ServerNotification::ItemGuardianApprovalReviewCompleted(notification) => {
-                self.on_guardian_review_notification(
-                    notification.review_id,
-                    notification.turn_id,
-                    notification.started_at_ms,
-                    notification.review,
-                    Some((notification.completed_at_ms, notification.decision_source)),
-                    notification.action,
-                );
             }
             ServerNotification::ThreadClosed(_) => {
                 if !from_replay {

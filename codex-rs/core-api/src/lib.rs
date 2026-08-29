@@ -84,7 +84,6 @@ pub use codex_models_manager::manager::RefreshStrategy;
 pub use codex_models_manager::manager::SharedModelsManager;
 pub use codex_protocol::ThreadId;
 pub use codex_protocol::config_types::AltScreenMode;
-pub use codex_protocol::config_types::ApprovalsReviewer;
 pub use codex_protocol::config_types::AutoCompactTokenLimitScope;
 pub use codex_protocol::config_types::CollaborationModeMask;
 pub use codex_protocol::config_types::ShellEnvironmentPolicy;

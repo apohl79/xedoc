@@ -581,7 +581,6 @@ mod tests {
                 current_date: None,
                 timezone: None,
                 approval_policy,
-                approvals_reviewer: None,
                 sandbox_policy: SandboxPolicy::DangerFullAccess,
                 permission_profile: None,
                 network: None,

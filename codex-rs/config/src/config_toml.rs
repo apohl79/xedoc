@@ -8,7 +8,6 @@ use crate::HooksToml;
 use crate::permissions_toml::PermissionsToml;
 use crate::profile_toml::ConfigProfile;
 use crate::types::AnalyticsConfigToml;
-use crate::types::ApprovalsReviewer;
 use crate::types::AppsConfigToml;
 use crate::types::AuthCredentialsStoreMode;
 use crate::types::History;
@@ -170,15 +169,6 @@ pub struct ConfigToml {
 
     /// Default approval policy for executing commands.
     pub approval_policy: Option<AskForApproval>,
-
-    /// Configures who approval requests are routed to for review once they have
-    /// been escalated. This does not disable separate safety checks such as
-    /// ARC.
-    pub approvals_reviewer: Option<ApprovalsReviewer>,
-
-    /// Optional policy instructions for the guardian auto-reviewer.
-    #[serde(default)]
-    pub auto_review: Option<AutoReviewToml>,
 
     #[serde(default)]
     pub shell_environment_policy: ShellEnvironmentPolicyToml,
@@ -544,12 +534,6 @@ pub enum ThreadStoreToml {
     InMemory {
         id: String,
     },
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
-pub struct AutoReviewToml {
-    /// Additional policy instructions inserted into the guardian prompt.
-    pub policy: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]

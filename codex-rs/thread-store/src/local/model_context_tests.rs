@@ -369,7 +369,6 @@ fn turn_context(root: &Path, turn_id: &str) -> RolloutItem {
         current_date: None,
         timezone: None,
         approval_policy: AskForApproval::Never,
-        approvals_reviewer: None,
         sandbox_policy: SandboxPolicy::new_read_only_policy(),
         permission_profile: None,
         network: None,

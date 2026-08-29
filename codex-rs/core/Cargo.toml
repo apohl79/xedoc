@@ -53,7 +53,6 @@ codex-core-rollout-reconstruction = { workspace = true }
 codex-core-rollout-truncation = { workspace = true }
 codex-core-exec = { workspace = true }
 codex-core-approval-policy = { workspace = true }
-codex-core-guardian-approval = { workspace = true }
 codex-core-mcp-runtime = { workspace = true }
 codex-core-mcp-skill-dependency = { workspace = true }
 codex-core-elicitation = { workspace = true }

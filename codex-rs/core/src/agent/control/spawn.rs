@@ -286,7 +286,6 @@ impl AgentControl {
             .unwrap_or((stored_source, None));
         if let Some(role_name) = session_source.get_agent_role() {
             let runtime_approval_policy = config.permissions.approval_policy.value();
-            let runtime_approvals_reviewer = config.approvals_reviewer;
             let runtime_cwd = config.cwd.clone();
             let runtime_permission_profile = match config.permissions.active_permission_profile() {
                 Some(active_permission_profile) => {
@@ -311,7 +310,6 @@ impl AgentControl {
                 .map_err(|err| {
                     CodexErr::InvalidRequest(format!("approval_policy is invalid: {err}"))
                 })?;
-            config.approvals_reviewer = runtime_approvals_reviewer;
             config.cwd = runtime_cwd;
             config
                 .permissions

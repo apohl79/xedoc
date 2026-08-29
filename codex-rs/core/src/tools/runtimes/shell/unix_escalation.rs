@@ -3,10 +3,6 @@ use crate::exec::ExecCapturePolicy;
 use crate::exec::ExecExpiration;
 use crate::exec::cancel_when_either;
 use crate::exec::is_likely_sandbox_denied;
-use crate::guardian::GuardianApprovalRequest;
-use crate::guardian::new_guardian_review_id;
-use crate::guardian::review_approval_request;
-use crate::guardian::routes_approval_to_guardian;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::sandboxing::ExecOptions;
 use crate::sandboxing::ExecRequest;
@@ -38,7 +34,6 @@ use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemSandboxPolicy;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
-use codex_protocol::protocol::GuardianCommandSource;
 use codex_protocol::protocol::NetworkPolicyRuleAction;
 use codex_protocol::protocol::ReviewDecision;
 use codex_sandboxing::SandboxCommand;
@@ -230,7 +225,6 @@ pub(super) async fn try_run_zsh_fork(
         turn: Arc::clone(&ctx.turn),
         call_id: ctx.call_id.clone(),
         environment_id: req.turn_environment.environment_id.clone(),
-        tool_name: GuardianCommandSource::Shell,
         approval_policy: ctx.turn.approval_policy.value(),
         permission_profile: command_executor.permission_profile.clone(),
         file_system_sandbox_policy: command_executor.file_system_sandbox_policy.clone(),
@@ -312,7 +306,6 @@ pub(crate) async fn prepare_unified_exec_zsh_fork(
         turn: Arc::clone(&ctx.turn),
         call_id: ctx.call_id.clone(),
         environment_id: req.turn_environment.environment_id.clone(),
-        tool_name: GuardianCommandSource::UnifiedExec,
         approval_policy: ctx.turn.approval_policy.value(),
         permission_profile: exec_request.permission_profile.clone(),
         file_system_sandbox_policy: exec_request.file_system_sandbox_policy.clone(),
@@ -347,7 +340,6 @@ struct CoreShellActionProvider {
     turn: Arc<crate::session::turn_context::TurnContext>,
     call_id: String,
     environment_id: String,
-    tool_name: GuardianCommandSource,
     approval_policy: AskForApproval,
     permission_profile: PermissionProfile,
     file_system_sandbox_policy: FileSystemSandboxPolicy,
@@ -438,8 +430,6 @@ impl CoreShellActionProvider {
         let call_id = self.call_id.clone();
         let approval_id = Some(Uuid::new_v4().to_string());
         let environment_id = Some(self.environment_id.clone());
-        let source = self.tool_name;
-        let guardian_review_id = routes_approval_to_guardian(&turn).then(new_guardian_review_id);
         Ok(stopwatch
             .pause_for(async move {
                 // 1) Run PermissionRequest hooks
@@ -465,26 +455,7 @@ impl CoreShellActionProvider {
                     None => {}
                 }
 
-                // 2) Route to Guardian if configured
-                if let Some(review_id) = guardian_review_id {
-                    return review_approval_request(
-                        &session,
-                        &turn,
-                        review_id,
-                        GuardianApprovalRequest::Execve {
-                            id: call_id.clone(),
-                            source,
-                            program: program.to_string_lossy().into_owned(),
-                            argv: argv.to_vec(),
-                            cwd: workdir.clone(),
-                            additional_permissions,
-                        },
-                        /*retry_reason*/ None,
-                    )
-                    .await;
-                }
-
-                // 3) Fall back to regular user prompt
+                // 2) Regular user prompt
                 session
                     .request_command_approval(
                         &turn,
@@ -556,9 +527,9 @@ impl CoreShellActionProvider {
                         ReviewDecision::Denied { rejection } => {
                             EscalationDecision::deny(Some(rejection))
                         }
-                        ReviewDecision::TimedOut => EscalationDecision::deny(Some(
-                            crate::guardian::guardian_timeout_message(),
-                        )),
+                        ReviewDecision::TimedOut => {
+                            EscalationDecision::deny(Some("approval review timed out".to_string()))
+                        }
                         ReviewDecision::Abort => {
                             EscalationDecision::deny(Some("User cancelled execution".to_string()))
                         }

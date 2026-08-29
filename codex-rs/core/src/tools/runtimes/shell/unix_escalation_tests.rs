@@ -30,7 +30,6 @@ use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::GranularApprovalConfig;
-use codex_protocol::protocol::GuardianCommandSource;
 use codex_sandboxing::SandboxType;
 use codex_sandboxing::policy_transforms::effective_permission_profile;
 use codex_shell_escalation::EscalationExecution;
@@ -424,7 +423,6 @@ async fn preapproved_additional_permissions_escalate_intercepted_exec() -> anyho
         turn: Arc::new(turn_context),
         call_id: "preapproved-additional-permissions".to_string(),
         environment_id: "local".to_string(),
-        tool_name: GuardianCommandSource::Shell,
         approval_policy: AskForApproval::OnRequest,
         permission_profile: permission_profile.clone(),
         file_system_sandbox_policy: read_only_file_system_sandbox_policy(),
@@ -560,7 +558,6 @@ async fn execve_permission_request_hook_short_circuits_prompt() -> anyhow::Resul
         turn: std::sync::Arc::new(turn_context),
         call_id: "execve-hook-call".to_string(),
         environment_id: "local".to_string(),
-        tool_name: GuardianCommandSource::Shell,
         approval_policy: AskForApproval::OnRequest,
         permission_profile: PermissionProfile::read_only(),
         file_system_sandbox_policy: read_only_file_system_sandbox_policy(),
@@ -768,7 +765,6 @@ prefix_rule(pattern = ["{cat_path_literal}"], decision = "allow")
         turn: Arc::new(turn_context),
         call_id: "deny-read-prefix-allow".to_string(),
         environment_id: "local".to_string(),
-        tool_name: GuardianCommandSource::Shell,
         approval_policy: AskForApproval::OnRequest,
         permission_profile,
         file_system_sandbox_policy,
@@ -805,7 +801,6 @@ async fn denied_reads_keep_granular_sandbox_rejection_for_escalation() -> anyhow
         turn: Arc::new(turn_context),
         call_id: "deny-read-granular-sandbox-reject".to_string(),
         environment_id: "local".to_string(),
-        tool_name: GuardianCommandSource::Shell,
         approval_policy: AskForApproval::Granular(GranularApprovalConfig {
             sandbox_approval: false,
             rules: true,

@@ -108,7 +108,6 @@ use codex_app_server_protocol::PluginReadParams;
 use codex_app_server_protocol::PluginReadResponse;
 use codex_app_server_protocol::PluginUninstallParams;
 use codex_app_server_protocol::PluginUninstallResponse;
-use codex_app_server_protocol::SandboxMode as AppServerSandboxMode;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::SkillErrorInfo;
@@ -124,7 +123,6 @@ use codex_app_server_protocol::WriteStatus;
 use codex_config::CloudConfigBundleLoader;
 use codex_config::ConfigLayerStackOrdering;
 use codex_config::LoaderOverrides;
-use codex_config::types::ApprovalsReviewer;
 use codex_config::types::ModelAvailabilityNuxConfig;
 use codex_exec_server::EnvironmentManager;
 use codex_features::Feature;
@@ -138,7 +136,6 @@ use codex_otel::TelemetryAuthMode;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::Personality;
 use codex_protocol::models::ActivePermissionProfile;
-use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ModelAvailabilityNux;
 use codex_protocol::openai_models::ModelPreset;
@@ -389,35 +386,6 @@ fn default_exec_approval_decisions(
     }
     decisions.push(CommandExecutionApprovalDecision::Cancel);
     decisions
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct AutoReviewMode {
-    approval_policy: AskForApproval,
-    approvals_reviewer: ApprovalsReviewer,
-    active_permission_profile: ActivePermissionProfile,
-}
-
-/// Enabling the Auto-review experiment in the TUI should also switch the
-/// current `/permissions` settings to the matching Auto-review mode. Users
-/// can still change `/permissions` afterward; this just assumes that opting into
-/// the experiment means they want Auto-review enabled immediately.
-fn auto_review_mode() -> AutoReviewMode {
-    AutoReviewMode {
-        approval_policy: AskForApproval::OnRequest,
-        approvals_reviewer: ApprovalsReviewer::AutoReview,
-        active_permission_profile: ActivePermissionProfile::new(
-            BUILT_IN_PERMISSION_PROFILE_WORKSPACE,
-        ),
-    }
-}
-
-#[cfg(test)]
-impl AutoReviewMode {
-    fn permission_profile(&self) -> PermissionProfile {
-        builtin_permission_profile_for_active_permission_profile(&self.active_permission_profile)
-            .expect("auto-review mode should use a built-in permission profile")
-    }
 }
 
 /// Baseline cadence for periodic stream commit animation ticks.

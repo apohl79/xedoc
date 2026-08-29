@@ -109,7 +109,6 @@ impl ChatWidget {
             .send(AppEvent::CodexOp(AppCommand::override_turn_context(
                 /*cwd*/ None,
                 /*approval_policy*/ None,
-                /*approvals_reviewer*/ None,
                 /*permission_profile*/ None,
                 /*active_permission_profile*/ None,
                 /*model*/ None,

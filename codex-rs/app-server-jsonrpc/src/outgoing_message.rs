@@ -744,7 +744,6 @@ mod tests {
     use codex_app_server_protocol::ConfigWarningNotification;
     use codex_app_server_protocol::DynamicToolCallParams;
     use codex_app_server_protocol::FileChangeRequestApprovalParams;
-    use codex_app_server_protocol::GuardianWarningNotification;
     use codex_app_server_protocol::ModelRerouteReason;
     use codex_app_server_protocol::ModelReroutedNotification;
     use codex_app_server_protocol::ModelVerification;
@@ -922,27 +921,6 @@ mod tests {
                 "params": {
                     "threadId": "thread-1",
                     "stage": "summarizing history",
-                },
-            }),
-            serde_json::to_value(notification)
-                .expect("ensure the notification serializes correctly"),
-            "ensure the notification serializes correctly"
-        );
-    }
-
-    #[test]
-    fn verify_guardian_warning_notification_serialization() {
-        let notification = ServerNotification::GuardianWarning(GuardianWarningNotification {
-            thread_id: "thread-1".to_string(),
-            message: "Automatic approval review denied the requested action.".to_string(),
-        });
-
-        assert_eq!(
-            json!({
-                "method": "guardianWarning",
-                "params": {
-                    "threadId": "thread-1",
-                    "message": "Automatic approval review denied the requested action.",
                 },
             }),
             serde_json::to_value(notification)

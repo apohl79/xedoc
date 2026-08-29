@@ -8,8 +8,6 @@ use codex_app_server_protocol::RequestId as AppServerRequestId;
 use codex_app_server_protocol::ReviewTarget;
 use codex_app_server_protocol::ToolRequestUserInputResponse;
 use codex_app_server_protocol::UserInput;
-use codex_config::types::ApprovalsReviewer;
-use codex_protocol::approvals::GuardianAssessmentEvent;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
@@ -33,7 +31,6 @@ pub enum AppCommand {
         pending_steer_id: Option<u64>,
         cwd: PathBuf,
         approval_policy: AskForApproval,
-        approvals_reviewer: Option<ApprovalsReviewer>,
         active_permission_profile: Option<ActivePermissionProfile>,
         model: String,
         effort: Option<ReasoningEffortConfig>,
@@ -49,7 +46,6 @@ pub enum AppCommand {
     OverrideTurnContext {
         cwd: Option<PathBuf>,
         approval_policy: Option<AskForApproval>,
-        approvals_reviewer: Option<ApprovalsReviewer>,
         permission_profile: Option<PermissionProfile>,
         active_permission_profile: Option<ActivePermissionProfile>,
         model: Option<String>,
@@ -96,9 +92,6 @@ pub enum AppCommand {
     Review {
         target: ReviewTarget,
     },
-    ApproveGuardianDeniedAction {
-        event: GuardianAssessmentEvent,
-    },
 }
 
 impl AppCommand {
@@ -133,7 +126,6 @@ impl AppCommand {
             pending_steer_id: None,
             cwd,
             approval_policy,
-            approvals_reviewer: None,
             active_permission_profile,
             model,
             effort,
@@ -179,8 +171,7 @@ impl AppCommand {
             | Self::Compact
             | Self::SetThreadName { .. }
             | Self::Shutdown
-            | Self::Review { .. }
-            | Self::ApproveGuardianDeniedAction { .. } => None,
+            | Self::Review { .. } => None,
         }
     }
 
@@ -188,7 +179,6 @@ impl AppCommand {
     pub fn override_turn_context(
         cwd: Option<PathBuf>,
         approval_policy: Option<AskForApproval>,
-        approvals_reviewer: Option<ApprovalsReviewer>,
         permission_profile: Option<PermissionProfile>,
         active_permission_profile: Option<ActivePermissionProfile>,
         model: Option<String>,
@@ -201,7 +191,6 @@ impl AppCommand {
         Self::OverrideTurnContext {
             cwd,
             approval_policy,
-            approvals_reviewer,
             permission_profile,
             active_permission_profile,
             model,
@@ -276,10 +265,6 @@ impl AppCommand {
 
     pub fn review(target: ReviewTarget) -> Self {
         Self::Review { target }
-    }
-
-    pub fn approve_guardian_denied_action(event: GuardianAssessmentEvent) -> Self {
-        Self::ApproveGuardianDeniedAction { event }
     }
 
     pub fn is_review(&self) -> bool {

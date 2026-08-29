@@ -36,7 +36,6 @@ pub struct ThreadSessionState {
     pub model_provider_id: String,
     pub service_tier: Option<String>,
     pub approval_policy: AskForApproval,
-    pub approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
     /// Permission snapshot used by TUI display surfaces. Legacy app-server
     /// responses are converted to a profile at ingestion time using the
     /// response cwd so cached sessions do not reinterpret cwd-bound grants.

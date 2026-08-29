@@ -49,40 +49,6 @@ fn wants_no_sandbox_approval_granular_respects_sandbox_flag() {
 }
 
 #[tokio::test]
-async fn approval_action_preserves_patch_path_uris() {
-    let path = PathUri::parse("file:///C:/workspace/guardian-apply-patch-test.txt")
-        .expect("valid foreign path URI");
-    let action = ApplyPatchAction::new_add_for_test(&path, "hello".to_string());
-    let expected_cwd = action.cwd.clone();
-    let expected_patch = action.patch.clone();
-    let request = ApplyPatchRequest {
-        turn_environment: test_turn_environment(codex_exec_server::LOCAL_ENVIRONMENT_ID),
-        action,
-        file_paths: vec![path.clone()],
-        changes: HashMap::new(),
-        exec_approval_requirement: ExecApprovalRequirement::NeedsApproval {
-            reason: None,
-            proposed_execpolicy_amendment: None,
-        },
-        additional_permissions: None,
-        permissions_preapproved: false,
-    };
-
-    let approval_action = ApplyPatchRuntime::build_approval_action(&request, "call-1");
-
-    assert_eq!(
-        approval_action,
-        ApprovalAction::ApplyPatch {
-            id: "call-1".to_string(),
-            environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
-            cwd: expected_cwd,
-            files: vec![path],
-            patch: expected_patch,
-        }
-    );
-}
-
-#[tokio::test]
 async fn permission_request_payload_uses_apply_patch_hook_name_and_aliases() {
     let runtime = ApplyPatchRuntime::new();
     let path = std::env::temp_dir()

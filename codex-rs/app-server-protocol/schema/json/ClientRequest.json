@@ -71,15 +71,6 @@
         }
       ]
     },
-    "ApprovalsReviewer": {
-      "description": "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
-      "enum": [
-        "user",
-        "auto_review",
-        "guardian_subagent"
-      ],
-      "type": "string"
-    },
     "AskForApproval": {
       "oneOf": [
         {
@@ -3287,21 +3278,6 @@
       ],
       "type": "object"
     },
-    "ThreadApproveGuardianDeniedActionParams": {
-      "properties": {
-        "event": {
-          "description": "Serialized `codex_protocol::protocol::GuardianAssessmentEvent`."
-        },
-        "threadId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "event",
-        "threadId"
-      ],
-      "type": "object"
-    },
     "ThreadArchiveParams": {
       "properties": {
         "threadId": {
@@ -3347,17 +3323,6 @@
               "type": "null"
             }
           ]
-        },
-        "approvalsReviewer": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ApprovalsReviewer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Override where approval requests are routed for review on this thread and subsequent turns."
         },
         "baseInstructions": {
           "type": [
@@ -3868,17 +3833,6 @@
             }
           ]
         },
-        "approvalsReviewer": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ApprovalsReviewer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Override where approval requests are routed for review on this thread and subsequent turns."
-        },
         "baseInstructions": {
           "type": [
             "string",
@@ -4039,17 +3993,6 @@
               "type": "null"
             }
           ]
-        },
-        "approvalsReviewer": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ApprovalsReviewer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Override where approval requests are routed for review on this thread and subsequent turns."
         },
         "baseInstructions": {
           "type": [
@@ -4256,17 +4199,6 @@
             }
           ],
           "description": "Override the approval policy for this turn and subsequent turns."
-        },
-        "approvalsReviewer": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ApprovalsReviewer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Override where approval requests are routed for review on this turn and subsequent turns."
         },
         "clientUserMessageId": {
           "type": [
@@ -4957,30 +4889,6 @@
         "params"
       ],
       "title": "Thread/shellCommandRequest",
-      "type": "object"
-    },
-    {
-      "properties": {
-        "id": {
-          "$ref": "#/definitions/RequestId"
-        },
-        "method": {
-          "enum": [
-            "thread/approveGuardianDeniedAction"
-          ],
-          "title": "Thread/approveGuardianDeniedActionRequestMethod",
-          "type": "string"
-        },
-        "params": {
-          "$ref": "#/definitions/ThreadApproveGuardianDeniedActionParams"
-        }
-      },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
-      "title": "Thread/approveGuardianDeniedActionRequest",
       "type": "object"
     },
     {

@@ -9,7 +9,6 @@ use codex_extension_api::ExtensionRegistryBuilder;
 use codex_features::Feature;
 use codex_image_generation_extension::install as install_image_generation_extension;
 use codex_login::CodexAuth;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::models::FileSystemPermissions;
 use codex_protocol::models::PermissionProfile;
@@ -254,7 +253,6 @@ async fn extension_tool_uses_granted_turn_permissions_without_local_persistence(
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(AskForApproval::OnRequest),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
@@ -286,7 +284,6 @@ async fn extension_tool_uses_granted_turn_permissions_without_local_persistence(
             response: RequestPermissionsResponse {
                 permissions: request.permissions,
                 scope: PermissionGrantScope::Turn,
-                strict_auto_review: false,
             },
         })
         .await?;

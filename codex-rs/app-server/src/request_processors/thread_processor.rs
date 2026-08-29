@@ -82,15 +82,6 @@ fn collect_resume_override_mismatches(
             ));
         }
     }
-    if let Some(requested_review_policy) = request.approvals_reviewer.as_ref() {
-        let active_review_policy: codex_app_server_protocol::ApprovalsReviewer =
-            config_snapshot.approvals_reviewer.into();
-        if requested_review_policy != &active_review_policy {
-            mismatch_details.push(format!(
-                "approvals_reviewer requested={requested_review_policy:?} active={active_review_policy:?}"
-            ));
-        }
-    }
     if let Some(requested_sandbox) = request.sandbox.as_ref() {
         let active_sandbox = config_snapshot.sandbox_policy();
         let sandbox_matches = matches!(
@@ -216,34 +207,6 @@ fn merge_rollout_resume_metadata(
             serde_json::Value::String(reasoning_effort.to_string()),
         );
     }
-}
-
-fn merge_persisted_approvals_reviewer(
-    thread_history: &InitialHistory,
-    request_overrides: Option<&HashMap<String, serde_json::Value>>,
-    typesafe_overrides: &mut ConfigOverrides,
-) {
-    if typesafe_overrides.approvals_reviewer.is_some()
-        || request_overrides.is_some_and(|overrides| overrides.contains_key("approvals_reviewer"))
-    {
-        return;
-    }
-
-    let InitialHistory::Resumed(resumed_history) = thread_history else {
-        return;
-    };
-    typesafe_overrides.approvals_reviewer =
-        resumed_history
-            .history
-            .iter()
-            .rev()
-            .find_map(|item| match item {
-                RolloutItem::TurnContext(turn_context) => turn_context.approvals_reviewer,
-                RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
-                    Some(event.thread_settings.approvals_reviewer)
-                }
-                _ => None,
-            });
 }
 
 fn normalize_thread_list_cwd_filters(
@@ -800,16 +763,6 @@ impl ThreadRequestProcessor {
             .map(|response| Some(response.into()))
     }
 
-    pub(crate) async fn thread_approve_guardian_denied_action(
-        &self,
-        request_id: &ConnectionRequestId,
-        params: ThreadApproveGuardianDeniedActionParams,
-    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        self.thread_approve_guardian_denied_action_inner(request_id, params)
-            .await
-            .map(|response| Some(response.into()))
-    }
-
     pub(crate) async fn conversation_summary(
         &self,
         params: GetConversationSummaryParams,
@@ -990,7 +943,6 @@ impl ThreadRequestProcessor {
             cwd,
             runtime_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox,
             permissions,
             config,
@@ -1033,7 +985,6 @@ impl ThreadRequestProcessor {
             cwd,
             runtime_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox,
             permissions,
             base_instructions,
@@ -1386,7 +1337,6 @@ impl ThreadRequestProcessor {
             runtime_workspace_roots: config_snapshot.workspace_roots,
             instruction_sources,
             approval_policy: config_snapshot.approval_policy.into(),
-            approvals_reviewer: config_snapshot.approvals_reviewer.into(),
             sandbox,
             active_permission_profile,
             reasoning_effort: config_snapshot.reasoning_effort,
@@ -1427,7 +1377,6 @@ impl ThreadRequestProcessor {
         cwd: Option<String>,
         runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
         approval_policy: Option<codex_app_server_protocol::AskForApproval>,
-        approvals_reviewer: Option<codex_app_server_protocol::ApprovalsReviewer>,
         sandbox: Option<SandboxMode>,
         permissions: Option<String>,
         base_instructions: Option<String>,
@@ -1443,8 +1392,6 @@ impl ThreadRequestProcessor {
             default_permissions: permissions,
             approval_policy: approval_policy
                 .map(codex_app_server_protocol::AskForApproval::to_core),
-            approvals_reviewer: approvals_reviewer
-                .map(codex_app_server_protocol::ApprovalsReviewer::to_core),
             sandbox_mode: sandbox.map(SandboxMode::to_core),
             codex_linux_sandbox_exe: self.arg0_paths.codex_linux_sandbox_exe.clone(),
             main_execve_wrapper_exe: self.arg0_paths.main_execve_wrapper_exe.clone(),
@@ -1944,26 +1891,6 @@ impl ThreadRequestProcessor {
         .await
         .map_err(|err| internal_error(format!("failed to start shell command: {err}")))?;
         Ok(ThreadShellCommandResponse {})
-    }
-
-    async fn thread_approve_guardian_denied_action_inner(
-        &self,
-        request_id: &ConnectionRequestId,
-        params: ThreadApproveGuardianDeniedActionParams,
-    ) -> Result<ThreadApproveGuardianDeniedActionResponse, JSONRPCErrorError> {
-        let ThreadApproveGuardianDeniedActionParams { thread_id, event } = params;
-        let event = serde_json::from_value(event)
-            .map_err(|err| invalid_request(format!("invalid Guardian denial event: {err}")))?;
-        let (_, thread) = self.load_thread(&thread_id).await?;
-
-        self.submit_core_op(
-            request_id,
-            thread.as_ref(),
-            Op::ApproveGuardianDeniedAction { event },
-        )
-        .await
-        .map_err(|err| internal_error(format!("failed to approve Guardian denial: {err}")))?;
-        Ok(ThreadApproveGuardianDeniedActionResponse {})
     }
 
     async fn thread_list_response_inner(
@@ -3071,7 +2998,6 @@ impl ThreadRequestProcessor {
             cwd,
             runtime_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox,
             permissions,
             config: mut request_overrides,
@@ -3130,7 +3056,6 @@ impl ThreadRequestProcessor {
             cwd,
             runtime_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox,
             permissions,
             base_instructions,
@@ -3346,7 +3271,6 @@ impl ThreadRequestProcessor {
                     runtime_workspace_roots: config_snapshot.workspace_roots,
                     instruction_sources,
                     approval_policy: session_configured.approval_policy.into(),
-                    approvals_reviewer: session_configured.approvals_reviewer.into(),
                     sandbox,
                     active_permission_profile,
                     reasoning_effort: session_configured.reasoning_effort,
@@ -3393,11 +3317,6 @@ impl ThreadRequestProcessor {
         request_overrides: &mut Option<HashMap<String, serde_json::Value>>,
         typesafe_overrides: &mut ConfigOverrides,
     ) -> Option<ThreadMetadata> {
-        merge_persisted_approvals_reviewer(
-            thread_history,
-            request_overrides.as_ref(),
-            typesafe_overrides,
-        );
         let InitialHistory::Resumed(resumed_history) = thread_history else {
             return None;
         };
@@ -3976,7 +3895,6 @@ impl ThreadRequestProcessor {
             cwd,
             runtime_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox,
             permissions,
             config: cli_overrides,
@@ -4064,7 +3982,6 @@ impl ThreadRequestProcessor {
             cwd,
             runtime_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox,
             permissions,
             base_instructions,
@@ -4243,7 +4160,6 @@ impl ThreadRequestProcessor {
             runtime_workspace_roots: config_snapshot.workspace_roots,
             instruction_sources,
             approval_policy: session_configured.approval_policy.into(),
-            approvals_reviewer: session_configured.approvals_reviewer.into(),
             sandbox,
             active_permission_profile,
             reasoning_effort: session_configured.reasoning_effort,

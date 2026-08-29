@@ -1,6 +1,5 @@
 use anyhow::Context;
 use anyhow::Result;
-use codex_config::types::ApprovalsReviewer;
 use codex_core::config::Constrained;
 use codex_exec_server::CreateDirectoryOptions;
 use codex_exec_server::LOCAL_ENVIRONMENT_ID;
@@ -69,338 +68,6 @@ const NETWORK_TEST_TARGET: &str = "http://codex-network-test.invalid:80";
     not(target_os = "linux"),
     ignore = "requires the trusted Linux proxy bridge"
 )]
-async fn guardian_network_approval_preserves_action_and_outcome_routing() -> Result<()> {
-    skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
-    skip_if_host_windows!(Ok(()));
-    skip_if_no_network!(Ok(()));
-    skip_if_sandbox!(Ok(()));
-
-    let server = start_mock_server().await;
-    let test = managed_network_unified_exec_test(&server).await?;
-    let first_call_id = "guardian-network-approved";
-    let second_call_id = "guardian-network-denied";
-    let first_command = network_fetch_args(LOCAL_ENVIRONMENT_ID)["cmd"]
-        .as_str()
-        .context("expected network command")?
-        .to_string();
-    let second_command = first_command.clone();
-    let denial = "The destination is outside the approved test boundary.";
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-guardian-network-parent-1"),
-                ev_function_call(
-                    first_call_id,
-                    "exec_command",
-                    &serde_json::to_string(&network_fetch_args(LOCAL_ENVIRONMENT_ID))?,
-                ),
-                ev_completed("resp-guardian-network-parent-1"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-guardian-network-allow"),
-                ev_assistant_message(
-                    "msg-guardian-network-allow",
-                    r#"{"risk_level":"low","user_authorization":"high","outcome":"allow","rationale":"The test request is safe."}"#,
-                ),
-                ev_completed("resp-guardian-network-allow"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-guardian-network-parent-2"),
-                ev_assistant_message("msg-guardian-network-parent-2", "approved"),
-                ev_completed("resp-guardian-network-parent-2"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-guardian-network-parent-3"),
-                ev_function_call(
-                    second_call_id,
-                    "exec_command",
-                    &serde_json::to_string(&network_fetch_args(LOCAL_ENVIRONMENT_ID))?,
-                ),
-                ev_completed("resp-guardian-network-parent-3"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-guardian-network-deny"),
-                ev_assistant_message(
-                    "msg-guardian-network-deny",
-                    &json!({
-                        "risk_level": "high",
-                        "user_authorization": "low",
-                        "outcome": "deny",
-                        "rationale": denial,
-                    })
-                    .to_string(),
-                ),
-                ev_completed("resp-guardian-network-deny"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-guardian-network-parent-4"),
-                ev_assistant_message("msg-guardian-network-parent-4", "denied"),
-                ev_completed("resp-guardian-network-parent-4"),
-            ]),
-        ],
-    )
-    .await;
-
-    for prompt in ["approve the network request", "deny the network request"] {
-        submit_managed_network_turn(
-            &test,
-            prompt,
-            vec![local(test.config.cwd.clone())],
-            ApprovalsReviewer::AutoReview,
-            AskForApproval::OnRequest,
-        )
-        .await?;
-        wait_for_completion_without_network_prompt(&test).await;
-    }
-
-    let actions = guardian_network_actions(&responses)?;
-    assert_eq!(actions.len(), 2);
-    assert_eq!(
-        actions[0],
-        json!({
-            "host": NETWORK_TEST_HOST,
-            "port": 80,
-            "protocol": "http",
-            "target": NETWORK_TEST_TARGET,
-            "tool": "network_access",
-            "trigger": {
-                "callId": first_call_id,
-                "command": ["/bin/sh", "-c", first_command],
-                "cwd": test.config.cwd,
-                "sandboxPermissions": "use_default",
-                "toolName": "exec_command",
-                "tty": false,
-            },
-        })
-    );
-    assert_eq!(
-        actions[1]
-            .pointer("/trigger/callId")
-            .and_then(Value::as_str),
-        Some(second_call_id)
-    );
-    assert_eq!(
-        actions[1]
-            .pointer("/trigger/command/2")
-            .and_then(Value::as_str),
-        Some(second_command.as_str())
-    );
-
-    let requests = responses.requests();
-    let approved_output = requests
-        .iter()
-        .find_map(|request| request.function_call_output_text(first_call_id))
-        .context("expected approved network tool output")?;
-    assert!(!approved_output.contains("rejected"));
-    let denied_output = requests
-        .iter()
-        .find_map(|request| request.function_call_output_text(second_call_id))
-        .context("expected denied network tool output")?;
-    assert!(denied_output.contains(denial));
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[cfg_attr(
-    not(target_os = "linux"),
-    ignore = "requires the trusted Linux proxy bridge"
-)]
-async fn cancelled_guardian_network_review_fails_closed_without_rewriting_turn_state() -> Result<()>
-{
-    skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
-    skip_if_host_windows!(Ok(()));
-    skip_if_no_network!(Ok(()));
-    skip_if_sandbox!(Ok(()));
-
-    let server = start_mock_server().await;
-    let test = managed_network_unified_exec_test(&server).await?;
-    let call_id = "guardian-network-cancelled";
-    let marker = "guardian cancellation must preserve this turn marker";
-    mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| {
-            !is_guardian_request(request) && request_body_contains(request, marker)
-        },
-        sse(vec![
-            ev_response_created("resp-guardian-cancel-parent"),
-            ev_function_call(
-                call_id,
-                "exec_command",
-                &serde_json::to_string(&network_fetch_args(LOCAL_ENVIRONMENT_ID))?,
-            ),
-            ev_completed("resp-guardian-cancel-parent"),
-        ]),
-    )
-    .await;
-    let pending_guardian = mount_response_once_match(
-        &server,
-        is_guardian_request,
-        sse_response(sse(vec![
-            ev_response_created("resp-guardian-cancelled-review"),
-            ev_assistant_message("msg-guardian-cancelled-review", r#"{"outcome":"allow"}"#),
-            ev_completed("resp-guardian-cancelled-review"),
-        ]))
-        .set_delay(Duration::from_secs(30)),
-    )
-    .await;
-    submit_managed_network_turn(
-        &test,
-        marker,
-        vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::AutoReview,
-        AskForApproval::OnRequest,
-    )
-    .await?;
-    wait_for_response_request(&pending_guardian).await;
-    test.codex.submit(Op::Interrupt).await?;
-    wait_for_event(&test.codex, |event| {
-        matches!(event, EventMsg::TurnAborted(_))
-    })
-    .await;
-
-    let state_check = mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| {
-            !is_guardian_request(request)
-                && request_body_contains(request, "verify preserved state")
-        },
-        sse(vec![
-            ev_response_created("resp-guardian-cancel-state-check"),
-            ev_assistant_message("msg-guardian-cancel-state-check", "state preserved"),
-            ev_completed("resp-guardian-cancel-state-check"),
-        ]),
-    )
-    .await;
-    submit_managed_network_turn(
-        &test,
-        "verify preserved state",
-        vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::User,
-        AskForApproval::OnRequest,
-    )
-    .await?;
-    wait_for_turn_complete(&test).await;
-    assert!(state_check.single_request().body_contains_text(marker));
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "current_thread")]
-#[cfg_attr(
-    not(target_os = "linux"),
-    ignore = "requires the trusted Linux proxy bridge"
-)]
-async fn timed_out_guardian_network_review_uses_timeout_outcome_without_user_fallback() -> Result<()>
-{
-    skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
-    skip_if_host_windows!(Ok(()));
-    skip_if_no_network!(Ok(()));
-    skip_if_sandbox!(Ok(()));
-
-    let server = start_mock_server().await;
-    let test = managed_network_unified_exec_test(&server).await?;
-    let call_id = "guardian-network-timeout";
-    let poll_call_id = "guardian-network-timeout-poll";
-    mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| {
-            !is_guardian_request(request)
-                && request_body_contains(request, "time out the Guardian network review")
-        },
-        sse(vec![
-            ev_response_created("resp-guardian-timeout-parent"),
-            ev_function_call(
-                call_id,
-                "exec_command",
-                &serde_json::to_string(&network_fetch_args(LOCAL_ENVIRONMENT_ID))?,
-            ),
-            ev_completed("resp-guardian-timeout-parent"),
-        ]),
-    )
-    .await;
-    let pending_guardian = mount_response_once_match(
-        &server,
-        is_guardian_request,
-        sse_response(sse(vec![
-            ev_response_created("resp-guardian-timeout-review"),
-            ev_assistant_message("msg-guardian-timeout-review", r#"{"outcome":"allow"}"#),
-            ev_completed("resp-guardian-timeout-review"),
-        ]))
-        .set_delay(Duration::from_secs(300)),
-    )
-    .await;
-    mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| {
-            !is_guardian_request(request) && request_body_contains(request, call_id)
-        },
-        sse(vec![
-            ev_response_created("resp-guardian-timeout-parent-followup"),
-            ev_function_call(
-                poll_call_id,
-                "write_stdin",
-                &serde_json::to_string(&json!({
-                    "session_id": 1000,
-                    "chars": "",
-                    "yield_time_ms": 1_000,
-                }))?,
-            ),
-            ev_completed("resp-guardian-timeout-parent-followup"),
-        ]),
-    )
-    .await;
-    let parent_final = mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| {
-            !is_guardian_request(request) && request_body_contains(request, poll_call_id)
-        },
-        sse(vec![
-            ev_response_created("resp-guardian-timeout-parent-final"),
-            ev_assistant_message("msg-guardian-timeout-parent-final", "timed out"),
-            ev_completed("resp-guardian-timeout-parent-final"),
-        ]),
-    )
-    .await;
-
-    submit_managed_network_turn(
-        &test,
-        "time out the Guardian network review",
-        vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::AutoReview,
-        AskForApproval::OnRequest,
-    )
-    .await?;
-    wait_for_response_request(&pending_guardian).await;
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(91)).await;
-    tokio::time::resume();
-    wait_for_completion_without_network_prompt(&test).await;
-
-    let tool_output = parent_final
-        .requests()
-        .iter()
-        .find_map(|request| request.function_call_output_text(poll_call_id))
-        .context("expected timed-out Guardian tool output")?;
-    assert!(
-        tool_output.contains(concat!(
-            "The automatic permission approval review did not finish before its deadline. ",
-            "Do not assume the action is unsafe based on the timeout alone. ",
-            "You may retry once, or ask the user for guidance or explicit approval."
-        )),
-        "unexpected timed-out Guardian tool output: {tool_output}"
-    );
-    assert!(!tool_output.contains("rejected by user"));
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[cfg_attr(
-    not(target_os = "linux"),
-    ignore = "requires the trusted Linux proxy bridge"
-)]
 async fn user_network_approval_once_session_and_denial_semantics() -> Result<()> {
     skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
     skip_if_host_windows!(Ok(()));
@@ -422,7 +89,6 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
         &test,
         "approve this network request once",
         environments.clone(),
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -458,7 +124,6 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
         &test,
         "the once decision must prompt again",
         environments.clone(),
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -483,7 +148,6 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
         &test,
         "the session decision must bypass another prompt",
         environments.clone(),
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -504,7 +168,6 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
         &test,
         "a different port must prompt",
         environments,
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -552,7 +215,6 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
         &test,
         "a different protocol must prompt and the user abort must stay a user outcome",
         vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -604,7 +266,6 @@ async fn allowing_network_policy_amendment_persists_context_and_bypasses_prompt(
         &test,
         "persist an allow rule for this host",
         environments.clone(),
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -658,7 +319,6 @@ async fn allowing_network_policy_amendment_persists_context_and_bypasses_prompt(
         &test,
         "reuse the persisted allow rule",
         environments,
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -695,7 +355,6 @@ async fn unattributed_network_request_uses_active_turn_environment_fallback() ->
         &test,
         "hold the active turn",
         vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -777,7 +436,6 @@ async fn ambiguous_unattributed_network_request_is_not_assigned_to_active_calls(
         &test,
         "start two active commands",
         vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::User,
         AskForApproval::OnRequest,
     )
     .await?;
@@ -831,214 +489,6 @@ async fn ambiguous_unattributed_network_request_is_not_assigned_to_active_calls(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[cfg_attr(
-    not(target_os = "linux"),
-    ignore = "requires the trusted Linux proxy bridge"
-)]
-async fn guardian_receives_exact_triggers_for_concurrent_network_requests() -> Result<()> {
-    skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
-    skip_if_host_windows!(Ok(()));
-    skip_if_no_network!(Ok(()));
-    skip_if_sandbox!(Ok(()));
-
-    let server = start_mock_server().await;
-    let test = managed_network_unified_exec_test(&server).await?;
-    let barrier_dir = TempDir::new_in(test.cwd.path())?;
-    let first_marker = barrier_dir.path().join("first");
-    let second_marker = barrier_dir.path().join("second");
-    let network_command = |marker: &PathBuf, peer_marker: &PathBuf, host: &str| {
-        format!(
-            "touch '{}' && while [ ! -e '{}' ]; do sleep 0.01; done && python3 -c \"import urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler()).open('http://{host}', timeout=10).read()\"",
-            marker.display(),
-            peer_marker.display(),
-        )
-    };
-    let first_command = network_command(&first_marker, &second_marker, "1.1.1.1");
-    let second_command = network_command(&second_marker, &first_marker, "8.8.8.8");
-    let first_denial = "first concurrent network request denied";
-    let second_denial = "second concurrent network request denied";
-    mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| {
-            !is_guardian_request(request)
-                && request_body_contains(request, "run both network requests")
-                && !request_body_contains(request, "exec-network-first")
-        },
-        sse(vec![
-            ev_response_created("resp-network-concurrent"),
-            ev_function_call(
-                "exec-network-first",
-                "exec_command",
-                &serde_json::to_string(&network_exec_args(&first_command))?,
-            ),
-            ev_function_call(
-                "exec-network-second",
-                "exec_command",
-                &serde_json::to_string(&network_exec_args(&second_command))?,
-            ),
-            ev_completed("resp-network-concurrent"),
-        ]),
-    )
-    .await;
-    let first_guardian = mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| guardian_request_is_for(request, "exec-network-first"),
-        sse(vec![
-            ev_response_created("resp-network-guardian-1"),
-            ev_assistant_message(
-                "msg-network-guardian-1",
-                &json!({
-                    "risk_level": "high",
-                    "user_authorization": "low",
-                    "outcome": "deny",
-                    "rationale": first_denial,
-                })
-                .to_string(),
-            ),
-            ev_completed("resp-network-guardian-1"),
-        ]),
-    )
-    .await;
-    let second_guardian = mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| guardian_request_is_for(request, "exec-network-second"),
-        sse(vec![
-            ev_response_created("resp-network-guardian-2"),
-            ev_assistant_message(
-                "msg-network-guardian-2",
-                &json!({
-                    "risk_level": "high",
-                    "user_authorization": "low",
-                    "outcome": "deny",
-                    "rationale": second_denial,
-                })
-                .to_string(),
-            ),
-            ev_completed("resp-network-guardian-2"),
-        ]),
-    )
-    .await;
-    let final_response = mount_sse_once_match(
-        &server,
-        |request: &wiremock::Request| {
-            !is_guardian_request(request)
-                && request_body_contains(request, "exec-network-first")
-                && request_body_contains(request, "exec-network-second")
-        },
-        sse(vec![
-            ev_response_created("resp-network-done"),
-            ev_assistant_message("msg-network-done", "done"),
-            ev_completed("resp-network-done"),
-        ]),
-    )
-    .await;
-
-    submit_managed_network_turn(
-        &test,
-        "run both network requests",
-        vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::AutoReview,
-        AskForApproval::OnRequest,
-    )
-    .await?;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-    let actual_triggers = loop {
-        let mut actual_triggers = guardian_network_triggers(&[&first_guardian, &second_guardian])?;
-        actual_triggers.sort_unstable();
-        actual_triggers.dedup();
-        if actual_triggers.len() == 2 {
-            break actual_triggers;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            anyhow::bail!("timed out waiting for both Guardian network reviews");
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    };
-    wait_for_turn_complete(&test).await;
-
-    assert_eq!(
-        actual_triggers,
-        vec![
-            ("exec-network-first".to_string(), first_command),
-            ("exec-network-second".to_string(), second_command),
-        ]
-    );
-    let requests = final_response.requests();
-    let first_output = requests
-        .iter()
-        .find_map(|request| request.function_call_output_text("exec-network-first"))
-        .context("expected first concurrent tool output")?;
-    let second_output = requests
-        .iter()
-        .find_map(|request| request.function_call_output_text("exec-network-second"))
-        .context("expected second concurrent tool output")?;
-    assert!(first_output.contains(first_denial));
-    assert!(!first_output.contains(second_denial));
-    assert!(second_output.contains(second_denial));
-    assert!(!second_output.contains(first_denial));
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[cfg_attr(
-    not(target_os = "linux"),
-    ignore = "requires the trusted Linux proxy bridge"
-)]
-async fn guardian_receives_exact_trigger_for_single_network_request() -> Result<()> {
-    skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
-    skip_if_host_windows!(Ok(()));
-    skip_if_no_network!(Ok(()));
-    skip_if_sandbox!(Ok(()));
-
-    let server = start_mock_server().await;
-    let test = managed_network_unified_exec_test(&server).await?;
-    let command = "python3 -c \"import urllib.request; opener = urllib.request.build_opener(urllib.request.ProxyHandler()); print('OK:' + opener.open('http://1.1.1.1', timeout=10).read().decode(errors='replace'))\"".to_string();
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-network-single"),
-                ev_function_call(
-                    "exec-network-single",
-                    "exec_command",
-                    &serde_json::to_string(&network_exec_args(&command))?,
-                ),
-                ev_completed("resp-network-single"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-network-guardian"),
-                ev_assistant_message("msg-network-guardian", r#"{"outcome":"deny"}"#),
-                ev_completed("resp-network-guardian"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-network-done"),
-                ev_assistant_message("msg-network-done", "done"),
-                ev_completed("resp-network-done"),
-            ]),
-        ],
-    )
-    .await;
-
-    submit_managed_network_turn(
-        &test,
-        "run one network request",
-        vec![local(test.config.cwd.clone())],
-        ApprovalsReviewer::AutoReview,
-        AskForApproval::OnRequest,
-    )
-    .await?;
-    wait_for_turn_complete(&test).await;
-
-    assert_eq!(
-        guardian_network_triggers(&[&responses])?,
-        vec![("exec-network-single".to_string(), command)]
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn approved_network_host_for_one_environment_still_prompts_in_another() -> Result<()> {
     skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
     skip_if_host_windows!(Ok(()));
@@ -1082,7 +532,6 @@ async fn approved_network_host_for_one_environment_still_prompts_in_another() ->
         &test,
         "fetch from the local environment",
         environments.clone(),
-        ApprovalsReviewer::User,
         AskForApproval::UnlessTrusted,
     )
     .await?;
@@ -1107,7 +556,6 @@ async fn approved_network_host_for_one_environment_still_prompts_in_another() ->
         &test,
         "fetch from the remote environment",
         environments.clone(),
-        ApprovalsReviewer::User,
         AskForApproval::UnlessTrusted,
     )
     .await?;
@@ -1238,7 +686,6 @@ async fn submit_managed_network_turn(
     test: &TestCodex,
     prompt: &str,
     environments: Vec<TurnEnvironmentSelection>,
-    approvals_reviewer: ApprovalsReviewer,
     approval_policy: AskForApproval,
 ) -> Result<()> {
     let permission_profile = PermissionProfile::workspace_write_with(
@@ -1264,7 +711,6 @@ async fn submit_managed_network_turn(
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(turn_environment_selections),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(approvals_reviewer),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
@@ -1304,93 +750,6 @@ fn request_body_contains(request: &wiremock::Request, text: &str) -> bool {
     decoded_request_body(request)
         .and_then(|body| String::from_utf8(body).ok())
         .is_some_and(|body| body.contains(text))
-}
-
-fn is_guardian_request(request: &wiremock::Request) -> bool {
-    decoded_request_body(request)
-        .and_then(|body| serde_json::from_slice::<Value>(&body).ok())
-        .is_some_and(|body| {
-            body.pointer("/client_metadata/x-openai-subagent")
-                .and_then(Value::as_str)
-                == Some("guardian")
-        })
-}
-
-fn guardian_request_is_for(request: &wiremock::Request, call_id: &str) -> bool {
-    decoded_request_body(request)
-        .and_then(|body| serde_json::from_slice::<Value>(&body).ok())
-        .filter(|body| {
-            body.pointer("/client_metadata/x-openai-subagent")
-                .and_then(Value::as_str)
-                == Some("guardian")
-        })
-        .and_then(|body| {
-            body.get("input")
-                .and_then(Value::as_array)
-                .and_then(|input| {
-                    input
-                        .iter()
-                        .rev()
-                        .find(|item| item.get("role").and_then(Value::as_str) == Some("user"))
-                })
-                .cloned()
-        })
-        .is_some_and(|latest_user_message| latest_user_message.to_string().contains(call_id))
-}
-
-fn guardian_network_triggers(responses: &[&ResponseMock]) -> Result<Vec<(String, String)>> {
-    responses
-        .iter()
-        .flat_map(|responses| responses.requests())
-        .filter(|request| {
-            request.body_json()["client_metadata"]["x-openai-subagent"].as_str() == Some("guardian")
-        })
-        .map(|request| {
-            let user_texts = request.message_input_texts("user");
-            let action: Value = serde_json::from_str(
-                user_texts
-                    .iter()
-                    .rev()
-                    .find(|text| text.contains("\"tool\": \"network_access\""))
-                    .context("expected network access JSON in Guardian request")?
-                    .trim(),
-            )?;
-            Ok((
-                action
-                    .pointer("/trigger/callId")
-                    .and_then(Value::as_str)
-                    .context("expected exact trigger call id")?
-                    .to_string(),
-                action
-                    .pointer("/trigger/command/2")
-                    .and_then(Value::as_str)
-                    .context("expected exact trigger command")?
-                    .to_string(),
-            ))
-        })
-        .collect()
-}
-
-fn guardian_network_actions(responses: &ResponseMock) -> Result<Vec<Value>> {
-    responses
-        .requests()
-        .into_iter()
-        .filter(|request| {
-            request.body_json()["client_metadata"]["x-openai-subagent"].as_str() == Some("guardian")
-        })
-        .map(|request| {
-            let user_texts = request.message_input_texts("user");
-            serde_json::from_str(
-                user_texts
-                    .iter()
-                    .rev()
-                    .find(|text| text.contains("\"tool\": \"network_access\""))
-                    .context("expected network access JSON in Guardian request")?
-                    .trim(),
-            )
-            .context("parse Guardian network action")
-        })
-        .collect()
 }
 
 async fn expect_network_approval(

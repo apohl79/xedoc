@@ -304,9 +304,6 @@ impl ChatWidget {
             SlashCommand::Experimental => {
                 self.open_experimental_popup();
             }
-            SlashCommand::AutoReview => {
-                self.open_auto_review_denials_popup();
-            }
             SlashCommand::Quit | SlashCommand::Exit => {
                 self.request_quit_without_confirmation();
             }
@@ -954,7 +951,6 @@ impl ChatWidget {
             | SlashCommand::MultiAgents
             | SlashCommand::Permissions
             | SlashCommand::Experimental
-            | SlashCommand::AutoReview
             | SlashCommand::Quit
             | SlashCommand::Exit
             | SlashCommand::Logout

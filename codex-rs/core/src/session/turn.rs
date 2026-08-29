@@ -577,12 +577,6 @@ async fn build_skills_and_plugins(
     cancellation_token: &CancellationToken,
 ) -> Option<Vec<ResponseItem>> {
     let turn_context = step_context.turn.as_ref();
-    // Guardian input embeds the parent transcript as untrusted evidence. Do not interpret skill or
-    // plugin mentions from that generated prompt as requests to inject additional instructions.
-    if crate::guardian::is_guardian_reviewer_source(&turn_context.session_source) {
-        return Some(Vec::new());
-    }
-
     let user_input = input
         .iter()
         .filter_map(|item| match item {
@@ -635,7 +629,6 @@ async fn build_skills_and_plugins(
         turn_context,
         cancellation_token,
         &mentioned_skills,
-        Some(sess.mcp_elicitation_reviewer()),
     )
     .await;
 
@@ -800,7 +793,6 @@ async fn track_turn_resolved_config_analytics(
                 .as_deref()
                 .and_then(ServiceTier::from_request_value),
             approval_policy: turn_context.approval_policy.value(),
-            approvals_reviewer: turn_context.config.approvals_reviewer,
             sandbox_network_access: turn_context.network_sandbox_policy().is_enabled(),
             collaboration_mode: turn_context.mode,
             personality: turn_context.personality,
@@ -1113,9 +1105,7 @@ pub(crate) fn build_prompt(
         parallel_tool_calls: turn_context.model_info.supports_parallel_tool_calls,
         base_instructions,
         output_schema: turn_context.final_output_json_schema.clone(),
-        output_schema_strict: !crate::guardian::is_guardian_reviewer_source(
-            &turn_context.session_source,
-        ),
+        output_schema_strict: true,
     }
 }
 
@@ -1509,7 +1499,6 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
         },
         EventMsg::Error(_)
         | EventMsg::Warning(_)
-        | EventMsg::GuardianWarning(_)
         | EventMsg::RealtimeConversationStarted(_)
         | EventMsg::RealtimeConversationSdp(_)
         | EventMsg::RealtimeConversationRealtime(_)
@@ -1553,7 +1542,6 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
         | EventMsg::RequestUserInput(_)
         | EventMsg::DynamicToolCallRequest(_)
         | EventMsg::DynamicToolCallResponse(_)
-        | EventMsg::GuardianAssessment(_)
         | EventMsg::ElicitationRequest(_)
         | EventMsg::ApplyPatchApprovalRequest(_)
         | EventMsg::DeprecationNotice(_)

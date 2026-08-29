@@ -41,9 +41,6 @@ use crate::events::CodexTurnSteerEventRequest;
 use crate::events::CodexWebSearchEventParams;
 use crate::events::CodexWebSearchEventRequest;
 use crate::events::FinalApprovalOutcome;
-use crate::events::GuardianReviewEventParams;
-use crate::events::GuardianReviewEventPayload;
-use crate::events::GuardianReviewEventRequest;
 use crate::events::ReviewResolution;
 use crate::events::ReviewStatus;
 use crate::events::ReviewSubjectKind;
@@ -111,15 +108,12 @@ use codex_app_server_protocol::CommandExecutionStatus;
 use codex_app_server_protocol::DynamicToolCallOutputContentItem;
 use codex_app_server_protocol::DynamicToolCallStatus;
 use codex_app_server_protocol::FileChangeApprovalDecision;
-use codex_app_server_protocol::GuardianApprovalReviewAction;
-use codex_app_server_protocol::GuardianApprovalReviewStatus;
 use codex_app_server_protocol::InitializeParams;
 use codex_app_server_protocol::McpToolCallStatus;
 use codex_app_server_protocol::NetworkPolicyRuleAction;
 use codex_app_server_protocol::PatchApplyStatus;
 use codex_app_server_protocol::PatchChangeKind;
 use codex_app_server_protocol::RequestId;
-use codex_app_server_protocol::RequestPermissionProfile;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::ServerResponse;
@@ -191,16 +185,6 @@ struct AnalyticsDropSite<'a> {
 }
 
 impl<'a> AnalyticsDropSite<'a> {
-    fn guardian(input: &'a GuardianReviewEventParams) -> Self {
-        Self {
-            event_name: "guardian",
-            thread_id: &input.thread_id,
-            turn_id: Some(&input.turn_id),
-            review_id: Some(&input.review_id),
-            item_id: None,
-        }
-    }
-
     fn review(input: &'a PendingReviewState) -> Self {
         Self {
             event_name: "review",
@@ -506,9 +490,6 @@ impl AnalyticsReducer {
                 CustomAnalyticsFact::Goal(input) => {
                     self.ingest_goal(*input, out);
                 }
-                CustomAnalyticsFact::GuardianReview(input) => {
-                    self.ingest_guardian_review(*input, out);
-                }
                 CustomAnalyticsFact::TurnResolvedConfig(input) => {
                     self.ingest_turn_resolved_config(*input, out).await;
                 }
@@ -609,29 +590,6 @@ impl AnalyticsReducer {
         out.push(TrackEventRequest::ThreadInitialized(
             subagent_thread_started_event_request(input),
         ));
-    }
-
-    fn ingest_guardian_review(
-        &mut self,
-        input: GuardianReviewEventParams,
-        out: &mut Vec<TrackEventRequest>,
-    ) {
-        let Some((connection_state, thread_state, thread_metadata)) =
-            self.thread_context_or_warn(AnalyticsDropSite::guardian(&input))
-        else {
-            return;
-        };
-        out.push(TrackEventRequest::GuardianReview(Box::new(
-            GuardianReviewEventRequest {
-                event_type: "codex_guardian_review",
-                event_params: GuardianReviewEventPayload {
-                    session_id: thread_metadata.session_id.clone(),
-                    app_server_client: thread_state.app_server_client(connection_state),
-                    runtime: connection_state.runtime.clone(),
-                    guardian_review: input,
-                },
-            },
-        )));
     }
 
     fn ingest_request(
@@ -1299,12 +1257,6 @@ impl AnalyticsReducer {
                 }
                 self.item_review_summaries.remove(&key);
             }
-            ServerNotification::ItemGuardianApprovalReviewStarted(notification) => {
-                let _ = notification;
-            }
-            ServerNotification::ItemGuardianApprovalReviewCompleted(notification) => {
-                self.ingest_guardian_review_completed(notification, out);
-            }
             ServerNotification::TurnStarted(notification) => {
                 let turn_state = self.turns.entry(notification.turn.id).or_default();
                 turn_state.started_at = notification
@@ -1434,48 +1386,6 @@ impl AnalyticsReducer {
                 thread_metadata.parent_thread_id.clone(),
             ),
         })));
-    }
-
-    fn ingest_guardian_review_completed(
-        &mut self,
-        notification: codex_app_server_protocol::ItemGuardianApprovalReviewCompletedNotification,
-        out: &mut Vec<TrackEventRequest>,
-    ) {
-        let Some((status, resolution)) = guardian_review_result(notification.review.status) else {
-            return;
-        };
-        let (subject_kind, subject_name, trigger) =
-            guardian_review_subject_metadata(&notification.action);
-        let Some(started_at_ms) = option_i64_to_u64(Some(notification.started_at_ms)) else {
-            return;
-        };
-        let pending_review = PendingReviewState {
-            thread_id: notification.thread_id,
-            turn_id: notification.turn_id,
-            item_id: notification.target_item_id,
-            review_id: notification.review_id,
-            subject_kind,
-            subject_name,
-            trigger,
-            started_at_ms,
-            requested_additional_permissions: guardian_review_requested_additional_permissions(
-                &notification.action,
-            ),
-            requested_network_access: guardian_review_requested_network_access(
-                &notification.action,
-            ),
-        };
-        let Some(completed_at_ms) = option_i64_to_u64(Some(notification.completed_at_ms)) else {
-            return;
-        };
-        self.emit_review_event(
-            pending_review,
-            Reviewer::Guardian,
-            status,
-            resolution,
-            completed_at_ms,
-            out,
-        );
     }
 
     fn ingest_turn_steer_response(
@@ -2257,114 +2167,6 @@ fn effective_permissions_review_result(
     }
 }
 
-fn guardian_review_result(
-    status: GuardianApprovalReviewStatus,
-) -> Option<(ReviewStatus, ReviewResolution)> {
-    match status {
-        GuardianApprovalReviewStatus::InProgress => None,
-        GuardianApprovalReviewStatus::Approved => {
-            Some((ReviewStatus::Approved, ReviewResolution::None))
-        }
-        GuardianApprovalReviewStatus::Denied => {
-            Some((ReviewStatus::Denied, ReviewResolution::None))
-        }
-        GuardianApprovalReviewStatus::TimedOut => {
-            Some((ReviewStatus::TimedOut, ReviewResolution::None))
-        }
-        GuardianApprovalReviewStatus::Aborted => {
-            Some((ReviewStatus::Aborted, ReviewResolution::None))
-        }
-    }
-}
-
-fn guardian_review_subject_metadata(
-    action: &GuardianApprovalReviewAction,
-) -> (ReviewSubjectKind, String, ReviewTrigger) {
-    match action {
-        GuardianApprovalReviewAction::Command { .. } => (
-            ReviewSubjectKind::CommandExecution,
-            "command_execution".to_string(),
-            ReviewTrigger::Initial,
-        ),
-        GuardianApprovalReviewAction::Execve { .. } => (
-            ReviewSubjectKind::CommandExecution,
-            "command_execution".to_string(),
-            ReviewTrigger::ExecveIntercept,
-        ),
-        GuardianApprovalReviewAction::ApplyPatch { .. } => (
-            ReviewSubjectKind::FileChange,
-            "apply_patch".to_string(),
-            ReviewTrigger::SandboxDenial,
-        ),
-        GuardianApprovalReviewAction::NetworkAccess { .. } => (
-            ReviewSubjectKind::NetworkAccess,
-            "network_access".to_string(),
-            ReviewTrigger::NetworkPolicyDenial,
-        ),
-        GuardianApprovalReviewAction::RequestPermissions { permissions, .. } => {
-            let requested_network_access = permissions
-                .network
-                .as_ref()
-                .and_then(|network| network.enabled)
-                .unwrap_or(false);
-            let trigger = if requested_network_access {
-                ReviewTrigger::NetworkPolicyDenial
-            } else if permissions.file_system.is_some() {
-                ReviewTrigger::SandboxDenial
-            } else {
-                ReviewTrigger::Initial
-            };
-            (
-                ReviewSubjectKind::Permissions,
-                "permissions".to_string(),
-                trigger,
-            )
-        }
-        GuardianApprovalReviewAction::McpToolCall { tool_name, .. } => (
-            ReviewSubjectKind::McpToolCall,
-            tool_name.clone(),
-            ReviewTrigger::Initial,
-        ),
-    }
-}
-
-fn guardian_review_requested_additional_permissions(action: &GuardianApprovalReviewAction) -> bool {
-    match action {
-        GuardianApprovalReviewAction::ApplyPatch { .. }
-        | GuardianApprovalReviewAction::NetworkAccess { .. } => true,
-        GuardianApprovalReviewAction::RequestPermissions { permissions, .. } => {
-            guardian_review_request_permissions_network_enabled(permissions)
-                || permissions.file_system.is_some()
-        }
-        GuardianApprovalReviewAction::Command { .. }
-        | GuardianApprovalReviewAction::Execve { .. }
-        | GuardianApprovalReviewAction::McpToolCall { .. } => false,
-    }
-}
-
-fn guardian_review_requested_network_access(action: &GuardianApprovalReviewAction) -> bool {
-    match action {
-        GuardianApprovalReviewAction::NetworkAccess { .. } => true,
-        GuardianApprovalReviewAction::RequestPermissions { permissions, .. } => {
-            guardian_review_request_permissions_network_enabled(permissions)
-        }
-        GuardianApprovalReviewAction::ApplyPatch { .. }
-        | GuardianApprovalReviewAction::Command { .. }
-        | GuardianApprovalReviewAction::Execve { .. }
-        | GuardianApprovalReviewAction::McpToolCall { .. } => false,
-    }
-}
-
-fn guardian_review_request_permissions_network_enabled(
-    permissions: &RequestPermissionProfile,
-) -> bool {
-    permissions
-        .network
-        .as_ref()
-        .and_then(|network| network.enabled)
-        .unwrap_or(false)
-}
-
 fn final_approval_outcome(
     reviewer: Reviewer,
     status: ReviewStatus,
@@ -2624,7 +2426,6 @@ fn codex_turn_event_params(
         reasoning_summary,
         service_tier,
         approval_policy,
-        approvals_reviewer,
         sandbox_network_access,
         collaboration_mode,
         personality,
@@ -2666,7 +2467,6 @@ fn codex_turn_event_params(
             .map(|value| value.to_string())
             .unwrap_or_else(|| "default".to_string()),
         approval_policy: approval_policy.to_string(),
-        approvals_reviewer: approvals_reviewer.to_string(),
         sandbox_network_access,
         collaboration_mode: Some(collaboration_mode_mode(collaboration_mode)),
         personality: personality_mode(personality),
@@ -2849,15 +2649,6 @@ mod tests {
             sandbox_policy_mode(&permission_profile, Path::new("/")),
             "external_sandbox"
         );
-    }
-
-    #[test]
-    fn guardian_review_result_maps_terminal_statuses() {
-        assert!(guardian_review_result(GuardianApprovalReviewStatus::InProgress).is_none());
-        assert!(matches!(
-            guardian_review_result(GuardianApprovalReviewStatus::TimedOut),
-            Some((ReviewStatus::TimedOut, ReviewResolution::None))
-        ));
     }
 
     #[test]

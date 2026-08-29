@@ -1,6 +1,5 @@
 use super::*;
 use crate::world_state::test_support::render_section_cases;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
@@ -83,11 +82,7 @@ fn permissions_state(
     PermissionsState::new(
         &permission_profile,
         approval_policy,
-        ApprovalPromptContext::new(
-            ApprovalsReviewer::User,
-            Some(&approval_messages),
-            Some(&permission_messages),
-        ),
+        ApprovalPromptContext::new(Some(&approval_messages), Some(&permission_messages)),
         &Policy::empty(),
         Path::new("/workspace"),
         /*exec_permission_approvals_enabled*/ false,

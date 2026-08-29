@@ -813,7 +813,6 @@ async fn skills_changed_notification_is_emitted_after_skill_change() -> Result<(
             cwd: None,
             runtime_workspace_roots: None,
             approval_policy: None,
-            approvals_reviewer: None,
             sandbox: None,
             permissions: None,
             config: None,

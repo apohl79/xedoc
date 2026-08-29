@@ -2,7 +2,6 @@
 
 use anyhow::Context;
 use anyhow::Result;
-use codex_config::types::ApprovalsReviewer;
 use codex_core::CodexThread;
 use codex_core::config::Constrained;
 use codex_core::config::ThreadStoreConfig;
@@ -683,7 +682,6 @@ async fn submit_turn(
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(sandbox_policy),
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
                     mode: codex_protocol::config_types::ModeKind::Default,
@@ -720,7 +718,6 @@ async fn submit_turn_preserving_active_permission_profile(
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
                     mode: codex_protocol::config_types::ModeKind::Default,
                     settings: codex_protocol::config_types::Settings {
@@ -2048,7 +2045,6 @@ async fn approving_apply_patch_for_session_skips_future_prompts_for_same_file() 
             config
                 .set_legacy_sandbox_policy(sandbox_policy_for_config)
                 .expect("set sandbox policy");
-            config.approvals_reviewer = ApprovalsReviewer::User;
         });
     let test = builder.build(&server).await?;
 
@@ -2597,7 +2593,6 @@ async fn env_zsh_script_spawned_by_python_can_request_escalation_under_zsh_fork(
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
@@ -2741,7 +2736,6 @@ async fn matched_prefix_rule_runs_unsandboxed_under_zsh_fork() -> Result<()> {
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
@@ -2909,7 +2903,6 @@ import sys
 ALLOWED_HOSTS = ("builder.example.com",)
 ALLOWED_PROFILES = (":workspace",)
 
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Print an ssh command that recreates the current Codex sandbox remotely."
@@ -2926,7 +2919,6 @@ def parse_args():
     if not re.fullmatch(r"[a-z0-9.-]+", args.host) or args.host not in ALLOWED_HOSTS:
         parser.error("host is not allowlisted")
     return args
-
 
 def main():
     args = parse_args()
@@ -2954,7 +2946,6 @@ def main():
 
     # Test-only proof that this inner script was allowed to run unsandboxed.
     Path({outside_path_literal}).write_text("unsandboxed", encoding="utf-8")
-
 
 if __name__ == "__main__":
     main()
@@ -3657,7 +3648,6 @@ allow_local_binding = true
             thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(turn_sandbox_policy),
                 permission_profile: turn_permission_profile,
                 collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {

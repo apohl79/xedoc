@@ -32,7 +32,6 @@ use codex_config::loader::project_trust_key;
 use codex_config::permissions_toml::PermissionsToml;
 use codex_config::profile_toml::ConfigProfile;
 use codex_config::sandbox_mode_requirement_for_permission_profile;
-use codex_config::types::ApprovalsReviewer;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_config::types::AuthKeyringBackendKind;
 use codex_config::types::History;
@@ -639,11 +638,6 @@ pub struct Config {
     /// User-defined permission profiles available from effective config.
     pub custom_permission_profiles: Vec<PermissionProfileCatalogEntry>,
 
-    /// Configures who approval requests are routed to for review once they have
-    /// been escalated. This does not disable separate safety checks such as
-    /// ARC.
-    pub approvals_reviewer: ApprovalsReviewer,
-
     /// enforce_residency means web traffic cannot be routed outside of a
     /// particular geography. HTTP clients should direct their requests
     /// using backend-specific headers or URLs to enforce this.
@@ -667,12 +661,6 @@ pub struct Config {
 
     /// Developer instructions override injected as a separate message.
     pub developer_instructions: Option<String>,
-
-    /// Guardian-specific policy config override from requirements.toml or config.toml.
-    /// This is inserted into the fixed guardian prompt template under the
-    /// `# Policy Configuration` section rather than replacing the whole
-    /// guardian developer prompt.
-    pub guardian_policy_config: Option<String>,
 
     /// Whether to inject the `<permissions instructions>` developer block.
     pub include_permissions_instructions: bool,
@@ -2516,7 +2504,6 @@ pub struct ConfigOverrides {
     pub review_model: Option<String>,
     pub cwd: Option<PathBuf>,
     pub approval_policy: Option<AskForApproval>,
-    pub approvals_reviewer: Option<ApprovalsReviewer>,
     pub sandbox_mode: Option<SandboxMode>,
     pub permission_profile: Option<PermissionProfile>,
     pub default_permissions: Option<String>,
@@ -3145,7 +3132,6 @@ impl Config {
         // Config.
         let ConfigRequirements {
             approval_policy: mut constrained_approval_policy,
-            approvals_reviewer: mut constrained_approvals_reviewer,
             permission_profile: mut constrained_permission_profile,
             web_search_mode: mut constrained_web_search_mode,
             allow_managed_hooks_only: _,
@@ -3160,7 +3146,6 @@ impl Config {
             enforce_residency,
             network: network_requirements,
             filesystem: filesystem_requirements,
-            guardian_policy_config_source: _,
         } = config_layer_stack.requirements().clone();
 
         let mut startup_warnings = config_layer_stack
@@ -3174,7 +3159,6 @@ impl Config {
             review_model: override_review_model,
             cwd,
             approval_policy: approval_policy_override,
-            approvals_reviewer: approvals_reviewer_override,
             sandbox_mode,
             permission_profile,
             default_permissions: default_permissions_override,
@@ -3535,20 +3519,6 @@ impl Config {
             );
             approval_policy = constrained_approval_policy.value();
         }
-        let approvals_reviewer_was_explicit =
-            approvals_reviewer_override.is_some() || cfg.approvals_reviewer.is_some();
-        let mut approvals_reviewer = approvals_reviewer_override
-            .or(cfg.approvals_reviewer)
-            .unwrap_or(ApprovalsReviewer::User);
-        if !approvals_reviewer_was_explicit
-            && let Err(err) = constrained_approvals_reviewer.can_set(&approvals_reviewer)
-        {
-            tracing::warn!(
-                error = %err,
-                "default approvals reviewer is disallowed by requirements; falling back to required default"
-            );
-            approvals_reviewer = constrained_approvals_reviewer.value();
-        }
         let web_search_mode =
             resolve_web_search_mode(&cfg, &features).unwrap_or(WebSearchMode::Cached);
         let web_search_config = resolve_web_search_config(&cfg);
@@ -3760,15 +3730,6 @@ impl Config {
             .and_then(|skills| skills.include_instructions)
             .unwrap_or(true);
         let include_environment_context = cfg.include_environment_context.unwrap_or(true);
-        let guardian_policy_config =
-            guardian_policy_config_from_requirements(config_layer_stack.requirements_toml())
-                .or_else(|| {
-                    cfg.auto_review
-                        .as_ref()
-                        .and_then(|auto_review| normalize_guardian_policy_config(
-                            auto_review.policy.as_deref(),
-                        ))
-                });
         let personality = personality
             .or(cfg.personality)
             .or_else(|| {
@@ -3829,12 +3790,6 @@ impl Config {
                 })
                 .map_err(std::io::Error::from)?;
         }
-        apply_requirement_constrained_value(
-            "approvals_reviewer",
-            approvals_reviewer,
-            &mut constrained_approvals_reviewer,
-            &mut startup_warnings,
-        )?;
         let permission_profile_was_constrained = apply_requirement_constrained_value(
             "permission_profile",
             permission_profile,
@@ -3940,7 +3895,6 @@ impl Config {
             },
             explicit_permission_profile_mode,
             custom_permission_profiles,
-            approvals_reviewer: constrained_approvals_reviewer.value(),
             enforce_residency: enforce_residency.value,
             notify: cfg.notify,
             base_instructions,
@@ -4029,7 +3983,6 @@ impl Config {
                 .or(show_raw_agent_reasoning)
                 .unwrap_or(false),
             show_hook_output: cfg.show_hook_output.unwrap_or(false),
-            guardian_policy_config,
             model_reasoning_effort: cfg.model_reasoning_effort,
             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
             model_reasoning_summary: cfg.model_reasoning_summary,
@@ -4259,12 +4212,6 @@ impl Config {
     }
 }
 
-fn guardian_policy_config_from_requirements(
-    requirements_toml: &ConfigRequirementsToml,
-) -> Option<String> {
-    normalize_guardian_policy_config(requirements_toml.guardian_policy_config.as_deref())
-}
-
 fn merge_managed_permission_profiles(
     configured_permissions: Option<&PermissionsToml>,
     requirements_toml: &ConfigRequirementsToml,
@@ -4430,13 +4377,6 @@ fn is_permission_allowed(
         .get(profile_id)
         .copied()
         .unwrap_or(false)
-}
-
-fn normalize_guardian_policy_config(value: Option<&str>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    })
 }
 
 /// Returns the path to the Codex configuration directory, which can be

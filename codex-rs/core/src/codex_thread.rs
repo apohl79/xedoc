@@ -9,7 +9,6 @@ use codex_exec_server::SelectedCapabilityRootsStatus;
 use codex_features::Feature;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary;
@@ -62,7 +61,6 @@ pub struct ThreadConfigSnapshot {
     pub model_provider_id: String,
     pub service_tier: Option<String>,
     pub approval_policy: AskForApproval,
-    pub approvals_reviewer: ApprovalsReviewer,
     pub permission_profile: PermissionProfile,
     pub active_permission_profile: Option<ActivePermissionProfile>,
     pub environments: TurnEnvironmentSelections,
@@ -144,7 +142,6 @@ pub struct CodexThreadSettingsOverrides {
     pub environments: Option<TurnEnvironmentSelections>,
     pub profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
     pub approval_policy: Option<AskForApproval>,
-    pub approvals_reviewer: Option<ApprovalsReviewer>,
     pub sandbox_policy: Option<SandboxPolicy>,
     pub permission_profile: Option<PermissionProfile>,
     pub active_permission_profile: Option<ActivePermissionProfile>,
@@ -390,7 +387,6 @@ impl CodexThread {
             environments,
             profile_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox_policy,
             permission_profile,
             active_permission_profile,
@@ -425,7 +421,6 @@ impl CodexThread {
             environments,
             profile_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox_policy,
             permission_profile,
             active_permission_profile,
@@ -530,13 +525,6 @@ impl CodexThread {
 
     pub(crate) fn is_running(&self) -> bool {
         !self.io.tx_sub.is_closed()
-    }
-
-    pub async fn guardian_trunk_rollout_path(&self) -> Option<PathBuf> {
-        self.session
-            .guardian_review_session
-            .trunk_rollout_path()
-            .await
     }
 
     pub async fn load_history(

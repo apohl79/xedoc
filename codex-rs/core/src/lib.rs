@@ -57,7 +57,6 @@ pub mod exec_env;
 mod exec_policy;
 #[cfg(test)]
 mod git_info_tests;
-mod guardian;
 mod hook_runtime;
 mod image_preparation;
 mod installation_id;

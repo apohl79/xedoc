@@ -37,7 +37,6 @@ mod apply_patch_cli;
 #[cfg(not(target_os = "windows"))]
 mod approvals;
 mod audio_truncation;
-mod auto_review;
 mod catalog_permission_messages;
 mod cli_stream;
 mod client;
@@ -59,7 +58,6 @@ mod extension_sandbox;
 mod external_auth;
 mod fork_thread;
 #[cfg(not(target_os = "windows"))]
-mod guardian_review;
 #[cfg(not(target_os = "windows"))]
 mod hooks;
 #[cfg(not(target_os = "windows"))]

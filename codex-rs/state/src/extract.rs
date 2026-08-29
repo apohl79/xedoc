@@ -169,7 +169,6 @@ mod tests {
     use chrono::DateTime;
     use chrono::Utc;
     use codex_protocol::ThreadId;
-    use codex_protocol::config_types::ApprovalsReviewer;
     use codex_protocol::config_types::CollaborationMode;
     use codex_protocol::config_types::ModeKind;
     use codex_protocol::config_types::ReasoningSummary;
@@ -424,7 +423,6 @@ mod tests {
                 current_date: None,
                 timezone: None,
                 approval_policy: AskForApproval::Never,
-                approvals_reviewer: None,
                 sandbox_policy: SandboxPolicy::DangerFullAccess,
                 permission_profile: None,
                 network: None,
@@ -470,7 +468,6 @@ mod tests {
                 current_date: None,
                 timezone: None,
                 approval_policy: AskForApproval::OnRequest,
-                approvals_reviewer: None,
                 sandbox_policy: SandboxPolicy::DangerFullAccess,
                 permission_profile: Some(permission_profile.clone()),
                 network: None,
@@ -512,7 +509,6 @@ mod tests {
                 current_date: None,
                 timezone: None,
                 approval_policy: AskForApproval::OnRequest,
-                approvals_reviewer: None,
                 sandbox_policy: SandboxPolicy::new_read_only_policy(),
                 permission_profile: None,
                 network: None,
@@ -551,7 +547,6 @@ mod tests {
                 current_date: None,
                 timezone: None,
                 approval_policy: AskForApproval::OnRequest,
-                approvals_reviewer: None,
                 sandbox_policy: SandboxPolicy::new_read_only_policy(),
                 permission_profile: None,
                 network: None,
@@ -587,7 +582,6 @@ mod tests {
                     model_provider_id: "updated-provider".to_string(),
                     service_tier: None,
                     approval_policy: AskForApproval::Never,
-                    approvals_reviewer: ApprovalsReviewer::User,
                     permission_profile: permission_profile.clone(),
                     active_permission_profile: None,
                     cwd: cwd.clone().try_into().expect("absolute settings cwd"),

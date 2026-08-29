@@ -44,7 +44,6 @@ pub(crate) struct Session {
     pub(crate) conversation: Arc<RealtimeConversationManager>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
     pub(crate) input_queue: InputQueue,
-    pub(crate) guardian_review_session: GuardianReviewSessionManager,
     pub(crate) services: SessionServices,
     pub(super) next_internal_sub_id: AtomicU64,
 }
@@ -72,7 +71,6 @@ pub(crate) struct SessionConfiguration {
 
     /// When to escalate for approval for execution
     pub(super) approval_policy: Constrained<AskForApproval>,
-    pub(super) approvals_reviewer: ApprovalsReviewer,
     /// Permission profile state for the session. Keep the constrained profile,
     /// active profile id, and profile-defined workspace roots in sync by using
     /// the methods below instead of mutating the fields independently.
@@ -197,7 +195,6 @@ impl SessionConfiguration {
             model_provider_id: self.original_config_do_not_use.model_provider_id.clone(),
             service_tier: self.service_tier.clone(),
             approval_policy: self.approval_policy.value(),
-            approvals_reviewer: self.approvals_reviewer,
             permission_profile: self.materialized_permission_profile(),
             active_permission_profile: self.active_permission_profile(),
             environments: self.environments.clone(),
@@ -286,9 +283,6 @@ impl SessionConfiguration {
         }
         if let Some(approval_policy) = updates.approval_policy {
             next_configuration.approval_policy.set(approval_policy)?;
-        }
-        if let Some(approvals_reviewer) = updates.approvals_reviewer {
-            next_configuration.approvals_reviewer = approvals_reviewer;
         }
 
         let current_cwd = self.cwd().clone();
@@ -432,7 +426,6 @@ pub(crate) struct SessionSettingsUpdate {
     pub(crate) environments: Option<TurnEnvironmentSelections>,
     pub(crate) profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
     pub(crate) approval_policy: Option<AskForApproval>,
-    pub(crate) approvals_reviewer: Option<ApprovalsReviewer>,
     pub(crate) sandbox_policy: Option<SandboxPolicy>,
     pub(crate) permission_profile: Option<PermissionProfile>,
     pub(crate) active_permission_profile: Option<ActivePermissionProfile>,
@@ -509,12 +502,6 @@ impl Session {
                 .features
                 .enabled(Feature::ConcurrentReasoningSummaries),
             config.http_client_factory(),
-        )
-        .with_prompt_cache_key_override(
-            crate::guardian::prompt_cache_key_override_for_review_session(
-                &session_configuration.session_source,
-                session_configuration.parent_thread_id,
-            ),
         )
     }
 
@@ -1108,8 +1095,6 @@ impl Session {
                 session_telemetry,
                 models_manager: Arc::clone(&models_manager),
                 tool_approvals: Mutex::new(ApprovalStore::default()),
-                guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
-                runtime_handle: tokio::runtime::Handle::current(),
                 skills_service,
                 agents_md_manager,
                 plugins_manager: Arc::clone(&plugins_manager),
@@ -1157,7 +1142,6 @@ impl Session {
                 conversation: Arc::new(RealtimeConversationManager::new()),
                 active_turn: Mutex::new(None),
                 input_queue: InputQueue::new(),
-                guardian_review_session: GuardianReviewSessionManager::default(),
                 services,
                 next_internal_sub_id: AtomicU64::new(0),
             });
@@ -1181,7 +1165,6 @@ impl Session {
                     model_provider_id: config.model_provider_id.clone(),
                     service_tier: session_configuration.service_tier.clone(),
                     approval_policy: session_configuration.approval_policy.value(),
-                    approvals_reviewer: session_configuration.approvals_reviewer,
                     permission_profile: session_configuration.materialized_permission_profile(),
                     active_permission_profile: session_configuration.active_permission_profile(),
                     cwd: session_configuration.cwd().clone(),
@@ -1231,7 +1214,7 @@ impl Session {
                     .load(std::sync::atomic::Ordering::Relaxed),
                 tool_plugin_provenance,
                 auth,
-                Some(sess.mcp_elicitation_reviewer()),
+                /*elicitation_reviewer*/ None,
                 Some(sess.mcp_elicitation_lifecycle()),
                 codex_mcp::ElicitationRequestRouter::default(),
             )

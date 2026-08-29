@@ -15,7 +15,6 @@ use codex_config::RequirementSource;
 use codex_config::Sourced;
 use codex_config::config_toml::AgentRoleToml;
 use codex_config::config_toml::AgentsToml;
-use codex_config::config_toml::AutoReviewToml;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::ExperimentalRequestUserInput;
 use codex_config::config_toml::ProjectConfig;
@@ -38,7 +37,6 @@ use codex_config::permissions_toml::PermissionProfileToml;
 use codex_config::permissions_toml::PermissionsToml;
 use codex_config::permissions_toml::WorkspaceRootsToml;
 use codex_config::types::AppToolApproval;
-use codex_config::types::ApprovalsReviewer;
 use codex_config::types::BundledSkillsConfig;
 use codex_config::types::HistoryPersistence;
 use codex_config::types::McpServerEnvVar;
@@ -7080,181 +7078,6 @@ async fn loads_compact_prompt_from_file() -> std::io::Result<()> {
 }
 
 #[tokio::test]
-async fn load_config_uses_requirements_guardian_policy_config() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let config_layer_stack = ConfigLayerStack::new(
-        Vec::new(),
-        Default::default(),
-        codex_config::ConfigRequirementsToml {
-            guardian_policy_config: Some(
-                "  Use the workspace-managed guardian policy.  ".to_string(),
-            ),
-            ..Default::default()
-        },
-    )
-    .map_err(std::io::Error::other)?;
-
-    let config = Config::load_config_with_layer_stack(
-        LOCAL_FS.as_ref(),
-        ConfigToml::default(),
-        ConfigOverrides {
-            cwd: Some(codex_home.path().to_path_buf()),
-            ..Default::default()
-        },
-        codex_home.abs(),
-        config_layer_stack,
-    )
-    .await?;
-
-    assert_eq!(
-        config.guardian_policy_config.as_deref(),
-        Some("Use the workspace-managed guardian policy.")
-    );
-
-    Ok(())
-}
-
-#[test]
-fn config_toml_deserializes_auto_review_policy() {
-    let cfg = toml::from_str::<ConfigToml>(
-        r#"
-[auto_review]
-policy = "Use the user-configured guardian policy."
-"#,
-    )
-    .expect("TOML deserialization should succeed");
-
-    assert_eq!(
-        cfg.auto_review
-            .as_ref()
-            .and_then(|auto_review| auto_review.policy.as_deref()),
-        Some("Use the user-configured guardian policy.")
-    );
-}
-
-#[tokio::test]
-async fn load_config_uses_auto_review_guardian_policy_config() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let cfg = ConfigToml {
-        auto_review: Some(AutoReviewToml {
-            policy: Some("  Use the user-configured guardian policy.  ".to_string()),
-        }),
-        ..Default::default()
-    };
-
-    let config = Config::load_from_base_config_with_overrides(
-        cfg,
-        ConfigOverrides {
-            cwd: Some(codex_home.path().to_path_buf()),
-            ..Default::default()
-        },
-        codex_home.abs(),
-    )
-    .await?;
-
-    assert_eq!(
-        config.guardian_policy_config.as_deref(),
-        Some("Use the user-configured guardian policy.")
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn requirements_guardian_policy_beats_auto_review() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let config_layer_stack = ConfigLayerStack::new(
-        Vec::new(),
-        Default::default(),
-        codex_config::ConfigRequirementsToml {
-            guardian_policy_config: Some("Use the managed guardian policy.".to_string()),
-            ..Default::default()
-        },
-    )
-    .map_err(std::io::Error::other)?;
-    let cfg = ConfigToml {
-        auto_review: Some(AutoReviewToml {
-            policy: Some("Use the user-configured guardian policy.".to_string()),
-        }),
-        ..Default::default()
-    };
-
-    let config = Config::load_config_with_layer_stack(
-        LOCAL_FS.as_ref(),
-        cfg,
-        ConfigOverrides {
-            cwd: Some(codex_home.path().to_path_buf()),
-            ..Default::default()
-        },
-        codex_home.abs(),
-        config_layer_stack,
-    )
-    .await?;
-
-    assert_eq!(
-        config.guardian_policy_config.as_deref(),
-        Some("Use the managed guardian policy.")
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn load_config_ignores_empty_auto_review_guardian_policy_config() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let cfg = ConfigToml {
-        auto_review: Some(AutoReviewToml {
-            policy: Some("   ".to_string()),
-        }),
-        ..Default::default()
-    };
-
-    let config = Config::load_from_base_config_with_overrides(
-        cfg,
-        ConfigOverrides {
-            cwd: Some(codex_home.path().to_path_buf()),
-            ..Default::default()
-        },
-        codex_home.abs(),
-    )
-    .await?;
-
-    assert_eq!(config.guardian_policy_config, None);
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn load_config_ignores_empty_requirements_guardian_policy_config() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let config_layer_stack = ConfigLayerStack::new(
-        Vec::new(),
-        Default::default(),
-        codex_config::ConfigRequirementsToml {
-            guardian_policy_config: Some("   ".to_string()),
-            ..Default::default()
-        },
-    )
-    .map_err(std::io::Error::other)?;
-
-    let config = Config::load_config_with_layer_stack(
-        LOCAL_FS.as_ref(),
-        ConfigToml::default(),
-        ConfigOverrides {
-            cwd: Some(codex_home.path().to_path_buf()),
-            ..Default::default()
-        },
-        codex_home.abs(),
-        config_layer_stack,
-    )
-    .await?;
-
-    assert_eq!(config.guardian_policy_config, None);
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn load_config_rejects_missing_agent_role_config_file() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let missing_path = codex_home.path().join("agents").join("researcher.toml");
@@ -8909,7 +8732,6 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
 
     let requirements_toml = codex_config::ConfigRequirementsToml {
         allowed_approval_policies: None,
-        allowed_approvals_reviewers: None,
         allowed_sandbox_modes: None,
         allowed_permission_profiles: None,
         default_permissions: None,
@@ -8929,7 +8751,6 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         network: None,
         permissions: None,
         models: None,
-        guardian_policy_config: None,
     };
     let requirement_source = codex_config::RequirementSource::Unknown;
     let requirement_source_for_error = requirement_source.clone();
@@ -9907,28 +9728,6 @@ shell_tool = false
 }
 
 #[tokio::test]
-async fn feature_requirements_auto_review_disables_guardian_approval() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .cloud_config_bundle(
-            CloudConfigBundleFixture::loader_with_enterprise_requirement(
-                r#"
-[features]
-auto_review = false
-"#,
-            ),
-        )
-        .build()
-        .await?;
-
-    assert!(!config.features.enabled(Feature::GuardianApproval));
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn browser_feature_requirements_are_valid() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
 
@@ -10067,21 +9866,6 @@ shell_tool = false
 }
 
 #[tokio::test]
-async fn approvals_reviewer_defaults_to_manual_only_without_guardian_feature() -> std::io::Result<()>
-{
-    let codex_home = TempDir::new()?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .build()
-        .await?;
-
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::User);
-    Ok(())
-}
-
-#[tokio::test]
 async fn prompt_instruction_blocks_can_be_disabled_from_config() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
@@ -10105,190 +9889,6 @@ include_instructions = false
     assert!(!config.include_collaboration_mode_instructions);
     assert!(!config.include_skill_instructions);
     assert!(!config.include_environment_context);
-    Ok(())
-}
-
-#[tokio::test]
-async fn approvals_reviewer_stays_manual_only_when_guardian_feature_is_enabled()
--> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[features]
-guardian_approval = true
-"#,
-    )?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .build()
-        .await?;
-
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::User);
-    Ok(())
-}
-
-#[tokio::test]
-async fn approvals_reviewer_can_be_set_in_config_without_guardian_approval() -> std::io::Result<()>
-{
-    let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join(CONFIG_TOML_FILE),
-        r#"approvals_reviewer = "user"
-"#,
-    )?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .build()
-        .await?;
-
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::User);
-    Ok(())
-}
-
-#[tokio::test]
-async fn requirements_disallowing_default_approvals_reviewer_falls_back_to_required_default()
--> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .cloud_config_bundle(
-            CloudConfigBundleFixture::loader_with_enterprise_requirement(
-                r#"allowed_approvals_reviewers = ["guardian_subagent"]"#,
-            ),
-        )
-        .build()
-        .await?;
-
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::AutoReview);
-    Ok(())
-}
-
-#[tokio::test]
-async fn root_approvals_reviewer_falls_back_when_disallowed_by_requirements() -> std::io::Result<()>
-{
-    let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join(CONFIG_TOML_FILE),
-        r#"approvals_reviewer = "user"
-"#,
-    )?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .cloud_config_bundle(
-            CloudConfigBundleFixture::loader_with_enterprise_requirement(
-                r#"allowed_approvals_reviewers = ["guardian_subagent"]"#,
-            ),
-        )
-        .build()
-        .await?;
-
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::AutoReview);
-    assert!(
-        config.startup_warnings.iter().any(|warning| {
-            warning
-                .contains("Configured value for `approvals_reviewer` is disallowed by requirements")
-        }),
-        "{:?}",
-        config.startup_warnings
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn profile_approvals_reviewer_falls_back_when_disallowed_by_requirements()
--> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    let selected_config = codex_home.path().join("default.config.toml");
-    std::fs::write(
-        &selected_config,
-        r#"approvals_reviewer = "user"
-"#,
-    )?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .loader_overrides(LoaderOverrides {
-            user_config_path: Some(selected_config.abs()),
-            user_config_profile: Some("default".parse().expect("profile-v2 name")),
-            ..LoaderOverrides::without_managed_config_for_tests()
-        })
-        .cloud_config_bundle(
-            CloudConfigBundleFixture::loader_with_enterprise_requirement(
-                r#"allowed_approvals_reviewers = ["guardian_subagent"]"#,
-            ),
-        )
-        .build()
-        .await?;
-
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::AutoReview);
-    Ok(())
-}
-
-#[tokio::test]
-async fn approvals_reviewer_preserves_valid_user_choice_when_allowed_by_requirements()
--> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join(CONFIG_TOML_FILE),
-        r#"approvals_reviewer = "guardian_subagent"
-"#,
-    )?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .cloud_config_bundle(
-            CloudConfigBundleFixture::loader_with_enterprise_requirement(
-                r#"allowed_approvals_reviewers = ["user", "guardian_subagent"]"#,
-            ),
-        )
-        .build()
-        .await?;
-
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::AutoReview);
-    assert!(
-        config
-            .startup_warnings
-            .iter()
-            .all(|warning| !warning.contains("approvals_reviewer")),
-        "{:?}",
-        config.startup_warnings
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn smart_approvals_alias_is_ignored() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[features]
-smart_approvals = true
-"#,
-    )?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .build()
-        .await?;
-
-    assert!(config.features.enabled(Feature::GuardianApproval));
-    assert_eq!(config.approvals_reviewer, ApprovalsReviewer::User);
-
-    let serialized = tokio::fs::read_to_string(codex_home.path().join(CONFIG_TOML_FILE)).await?;
-    assert!(serialized.contains("smart_approvals = true"));
-    assert!(!serialized.contains("guardian_approval"));
-    assert!(!serialized.contains("approvals_reviewer"));
-
     Ok(())
 }
 

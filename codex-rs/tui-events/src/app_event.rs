@@ -39,7 +39,6 @@ use crate::payloads::GoalDraft;
 use crate::payloads::HookTrustUpdate;
 use crate::payloads::StatusLineGitSummary;
 use codex_app_server_protocol::AskForApproval;
-use codex_config::types::ApprovalsReviewer;
 use codex_features::Feature;
 use codex_plugin::PluginCapabilitySummary;
 use codex_protocol::config_types::CollaborationModeMask;
@@ -254,12 +253,6 @@ pub enum AppEvent {
     /// Forward a command to the Agent. Using an `AppEvent` for this avoids
     /// bubbling channels through layers of widgets.
     CodexOp(AppCommand),
-
-    /// Approve one retry of a recent auto-review denial selected in the TUI.
-    ApproveRecentAutoReviewDenial {
-        thread_id: ThreadId,
-        id: String,
-    },
 
     /// Kick off an asynchronous file search for the given query (text after
     /// the `@`). Previous searches may be cancelled by the app layer so there
@@ -643,9 +636,6 @@ pub enum AppEvent {
     /// Select a named permission profile, optionally applying built-in mode settings too.
     SelectPermissionProfile(PermissionProfileSelection),
 
-    /// Update the current approvals reviewer in the running app and widget.
-    UpdateApprovalsReviewer(ApprovalsReviewer),
-
     /// Update feature flags and persist them to the top-level config.
     UpdateFeatureFlags {
         updates: Vec<(Feature, bool)>,
@@ -830,7 +820,6 @@ pub enum AppEvent {
 pub struct PermissionProfileSelection {
     pub profile_id: String,
     pub approval_policy: Option<AskForApproval>,
-    pub approvals_reviewer: Option<ApprovalsReviewer>,
     pub display_label: String,
 }
 

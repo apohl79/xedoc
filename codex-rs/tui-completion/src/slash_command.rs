@@ -18,8 +18,6 @@ pub enum SlashCommand {
     Keymap,
     Vim,
     Experimental,
-    #[strum(to_string = "approve")]
-    AutoReview,
     Skills,
     Hooks,
     Review,
@@ -106,7 +104,6 @@ impl SlashCommand {
             SlashCommand::Keymap => "remap TUI shortcuts",
             SlashCommand::Vim => "toggle Vim mode for the composer",
             SlashCommand::Experimental => "toggle experimental features",
-            SlashCommand::AutoReview => "approve one retry of a recent auto-review denial",
             SlashCommand::Mcp => "list configured MCP tools; use /mcp verbose for details",
             SlashCommand::Plugins => "browse plugins",
             SlashCommand::Logout => "log out of Codex",
@@ -189,7 +186,6 @@ impl SlashCommand {
             | SlashCommand::Plugins
             | SlashCommand::Title
             | SlashCommand::Statusline
-            | SlashCommand::AutoReview
             | SlashCommand::Ide
             | SlashCommand::Quit
             | SlashCommand::Exit
@@ -247,14 +243,5 @@ mod tests {
         assert!(SlashCommand::Raw.available_in_side_conversation());
         assert!(SlashCommand::Raw.supports_inline_args());
         assert!(SlashCommand::App.available_during_task());
-    }
-
-    #[test]
-    fn auto_review_command_is_approve() {
-        assert_eq!(SlashCommand::AutoReview.command(), "approve");
-        assert_eq!(
-            SlashCommand::from_str("approve"),
-            Ok(SlashCommand::AutoReview)
-        );
     }
 }

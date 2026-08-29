@@ -41,7 +41,6 @@ pub use codex_utils_string::sanitize_metric_tag_value;
 #[derive(Debug, Clone, Serialize, Display)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolDecisionSource {
-    AutomatedReviewer,
     Config,
     User,
 }

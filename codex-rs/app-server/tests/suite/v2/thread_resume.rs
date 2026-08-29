@@ -1,5 +1,4 @@
 use anyhow::Result;
-use app_test_support::ChatGptAuthFixture;
 use app_test_support::TestAppServer;
 use app_test_support::create_apply_patch_sse_response;
 use app_test_support::create_fake_paginated_rollout;
@@ -13,9 +12,7 @@ use app_test_support::create_shell_command_sse_response;
 use app_test_support::rollout_path;
 use app_test_support::test_absolute_path;
 use app_test_support::to_response;
-use app_test_support::write_chatgpt_auth;
 use chrono::Utc;
-use codex_app_server_protocol::ApprovalsReviewer;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::ClientInfo;
 use codex_app_server_protocol::CommandExecutionApprovalDecision;
@@ -58,9 +55,7 @@ use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
-use codex_config::types::AuthCredentialsStoreMode;
 use codex_core::ARCHIVED_SESSIONS_SUBDIR;
-use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
@@ -108,11 +103,6 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 use uuid::Uuid;
-use wiremock::Mock;
-use wiremock::MockServer;
-use wiremock::ResponseTemplate;
-use wiremock::matchers::method;
-use wiremock::matchers::path;
 
 use super::analytics::assert_basic_thread_initialized_event;
 use super::analytics::mount_analytics_capture;
@@ -489,97 +479,7 @@ async fn turn_start_updates_runtime_workspace_roots_for_loaded_thread() -> Resul
 }
 
 #[tokio::test]
-async fn thread_resume_preserves_persisted_approvals_reviewer() -> Result<()> {
-    let server = create_mock_responses_server_repeating_assistant("Done").await;
-    let codex_home = TempDir::new()?;
-    create_config_toml(codex_home.path(), &server.uri())?;
-
-    let thread_id = {
-        let mut mcp = TestAppServer::builder()
-            .with_codex_home(codex_home.path())
-            .without_auto_env()
-            .build()
-            .await?;
-        timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
-
-        let start_id = mcp
-            .send_thread_start_request(ThreadStartParams {
-                model: Some("gpt-5.4".to_string()),
-                approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
-                ..Default::default()
-            })
-            .await?;
-        let start_resp: JSONRPCResponse = timeout(
-            DEFAULT_READ_TIMEOUT,
-            mcp.read_stream_until_response_message(RequestId::Integer(start_id)),
-        )
-        .await??;
-        let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(start_resp)?;
-
-        let turn_id = mcp
-            .send_turn_start_request(TurnStartParams {
-                thread_id: thread.id.clone(),
-                client_user_message_id: None,
-                input: vec![UserInput::Text {
-                    text: "materialize this thread".to_string(),
-                    text_elements: Vec::new(),
-                }],
-                ..Default::default()
-            })
-            .await?;
-        timeout(
-            DEFAULT_READ_TIMEOUT,
-            mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
-        )
-        .await??;
-        timeout(
-            DEFAULT_READ_TIMEOUT,
-            mcp.read_stream_until_notification_message("turn/completed"),
-        )
-        .await??;
-
-        thread.id
-    };
-
-    let config_path = codex_home.path().join("config.toml");
-    let config = std::fs::read_to_string(&config_path)?;
-    std::fs::write(
-        config_path,
-        config.replace(
-            "approval_policy = \"never\"\n",
-            "approval_policy = \"never\"\napprovals_reviewer = \"user\"\n",
-        ),
-    )?;
-
-    let mut mcp = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .without_auto_env()
-        .build()
-        .await?;
-    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
-    let resume_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id,
-            ..Default::default()
-        })
-        .await?;
-    let resume_resp: JSONRPCResponse = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(resume_id)),
-    )
-    .await??;
-    let ThreadResumeResponse {
-        approvals_reviewer, ..
-    } = to_response::<ThreadResumeResponse>(resume_resp)?;
-
-    assert_eq!(approvals_reviewer, ApprovalsReviewer::AutoReview);
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewer_update()
--> Result<()> {
+async fn thread_resume_preserves_acknowledged_model_effort_update() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &server.uri())?;
@@ -640,7 +540,6 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
                 thread_id: thread.id.clone(),
                 model: Some("gpt-5.2-codex".to_string()),
                 effort: Some(ReasoningEffort::Ultra),
-                approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
                 ..Default::default()
             })
             .await?;
@@ -678,13 +577,11 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
     let ThreadResumeResponse {
         model,
         reasoning_effort,
-        approvals_reviewer,
         ..
     } = to_response::<ThreadResumeResponse>(resume_resp)?;
 
     assert_eq!(model, "gpt-5.2-codex");
     assert_eq!(reasoning_effort, Some(ReasoningEffort::Ultra));
-    assert_eq!(approvals_reviewer, ApprovalsReviewer::AutoReview);
 
     let update_id = mcp
         .send_thread_settings_update_request(ThreadSettingsUpdateParams {
@@ -3957,98 +3854,6 @@ async fn thread_resume_fails_when_required_mcp_server_fails_to_initialize() -> R
         err.error.message.contains("required_broken"),
         "unexpected error message: {}",
         err.error.message
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn thread_resume_surfaces_cloud_config_bundle_load_errors() -> Result<()> {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/backend-api/wham/config/bundle"))
-        .respond_with(
-            ResponseTemplate::new(401)
-                .insert_header("content-type", "text/html")
-                .set_body_string("<html>nope</html>"),
-        )
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/oauth/token"))
-        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
-            "error": { "code": "refresh_token_invalidated" }
-        })))
-        .mount(&server)
-        .await;
-
-    let codex_home = TempDir::new()?;
-    let model_server = create_mock_responses_server_repeating_assistant("Done").await;
-    let chatgpt_base_url = format!("{}/backend-api", server.uri());
-    create_config_toml_with_chatgpt_base_url(
-        codex_home.path(),
-        &model_server.uri(),
-        &chatgpt_base_url,
-    )?;
-    write_chatgpt_auth(
-        codex_home.path(),
-        ChatGptAuthFixture::new("chatgpt-token")
-            .refresh_token("stale-refresh-token")
-            .plan_type("business")
-            .chatgpt_user_id("user-123")
-            .chatgpt_account_id("account-123")
-            .account_id("account-123"),
-        AuthCredentialsStoreMode::File,
-    )?;
-    let conversation_id = create_fake_rollout_with_text_elements(
-        codex_home.path(),
-        "2025-01-05T12-00-00",
-        "2025-01-05T12:00:00Z",
-        "Saved user message",
-        Vec::new(),
-        Some("mock_provider"),
-        /*git_info*/ None,
-    )?;
-    let refresh_token_url = format!("{}/oauth/token", server.uri());
-    let mut mcp = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .with_env_overrides(&[
-            ("OPENAI_API_KEY", None),
-            (
-                REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR,
-                Some(refresh_token_url.as_str()),
-            ),
-        ])
-        .build()
-        .await?;
-    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
-
-    let resume_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id: conversation_id,
-            ..Default::default()
-        })
-        .await?;
-    let err: JSONRPCError = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_error_message(RequestId::Integer(resume_id)),
-    )
-    .await??;
-
-    assert!(
-        err.error.message.contains("failed to load configuration"),
-        "unexpected error message: {}",
-        err.error.message
-    );
-    assert_eq!(
-        err.error.data,
-        Some(json!({
-            "reason": "cloudConfigBundle",
-            "errorCode": "Auth",
-            "action": "relogin",
-            "statusCode": 401,
-            "detail": "Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.",
-        }))
     );
 
     Ok(())

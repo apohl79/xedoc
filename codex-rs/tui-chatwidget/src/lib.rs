@@ -18,10 +18,6 @@ mod approval_events {
     pub use codex_tui_events::approval_events::*;
 }
 
-mod auto_review_denials {
-    pub use codex_tui_events::auto_review_denials::*;
-}
-
 mod bottom_pane {
     pub use codex_tui_bottom_pane::*;
 }

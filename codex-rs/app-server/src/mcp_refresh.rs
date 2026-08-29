@@ -96,7 +96,6 @@ async fn queue_refresh(
 mod tests {
     use super::*;
     use crate::extensions::ThreadExtensionDependencies;
-    use crate::extensions::guardian_agent_spawner;
     use crate::extensions::thread_extensions;
     use codex_arg0::Arg0DispatchPaths;
     use codex_config::CloudConfigBundleLoader;
@@ -229,20 +228,17 @@ mod tests {
                 codex_core::build_models_manager(&good_config, auth_manager.clone()),
                 SessionSource::Exec,
                 Arc::clone(&environment_manager),
-                thread_extensions(
-                    guardian_agent_spawner(thread_manager.clone()),
-                    ThreadExtensionDependencies {
-                        event_sink: Arc::new(NoopExtensionEventSink),
-                        auth_manager: auth_manager.clone(),
-                        state_db: Some(state_db.clone()),
-                        analytics_events_client: codex_analytics::AnalyticsEventsClient::disabled(),
-                        thread_manager: thread_manager.clone(),
-                        goal_service: Arc::new(codex_goal_extension::GoalService::new()),
-                        environment_manager: Arc::clone(&environment_manager),
-                        executor_skill_provider: Arc::clone(&executor_skill_provider),
-                        thread_store: Arc::clone(&thread_store),
-                    },
-                ),
+                thread_extensions(ThreadExtensionDependencies {
+                    event_sink: Arc::new(NoopExtensionEventSink),
+                    auth_manager: auth_manager.clone(),
+                    state_db: Some(state_db.clone()),
+                    analytics_events_client: codex_analytics::AnalyticsEventsClient::disabled(),
+                    thread_manager: thread_manager.clone(),
+                    goal_service: Arc::new(codex_goal_extension::GoalService::new()),
+                    environment_manager: Arc::clone(&environment_manager),
+                    executor_skill_provider: Arc::clone(&executor_skill_provider),
+                    thread_store: Arc::clone(&thread_store),
+                }),
                 Arc::new(CodexHomeUserInstructionsProvider::new(
                     good_config.codex_home.clone(),
                 )),

@@ -57,7 +57,6 @@ impl Session {
                 &permission_profile,
                 turn_context.approval_policy.value(),
                 ApprovalPromptContext::new(
-                    turn_context.config.approvals_reviewer,
                     model_messages.and_then(|messages| messages.approvals.as_ref()),
                     model_messages.and_then(|messages| messages.permissions.as_ref()),
                 ),

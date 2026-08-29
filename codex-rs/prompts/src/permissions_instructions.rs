@@ -1,6 +1,5 @@
 use codex_context_fragments::ContextualUserFragment;
 use codex_execpolicy::Policy;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::SandboxMode;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::format_allow_prefixes;
@@ -24,7 +23,6 @@ const APPROVAL_POLICY_ON_REQUEST_RULE: &str =
     include_str!("../templates/permissions/approval_policy/on_request.md");
 const APPROVAL_POLICY_ON_REQUEST_RULE_REQUEST_PERMISSION: &str =
     include_str!("../templates/permissions/approval_policy/on_request_rule_request_permission.md");
-const AUTO_REVIEW_APPROVAL_SUFFIX: &str = "`approvals_reviewer` is `auto_review`: Sandbox escalations with require_escalated will be reviewed for compliance with the policy. If a rejection happens, you should proceed only with a materially safer alternative, or inform the user of the risk and send a final message to ask for approval.";
 const NETWORK_ACCESS_PLACEHOLDER: &str = "{{ network_access }}";
 
 const SANDBOX_MODE_DANGER_FULL_ACCESS: &str =
@@ -49,7 +47,6 @@ static SANDBOX_MODE_READ_ONLY_TEMPLATE: LazyLock<Template> = LazyLock::new(|| {
 
 struct PermissionsPromptConfig<'a> {
     approval_policy: AskForApproval,
-    approvals_reviewer: ApprovalsReviewer,
     approval_messages: Option<&'a ApprovalMessages>,
     permission_messages: Option<&'a PermissionMessages>,
     exec_policy: &'a Policy,
@@ -65,19 +62,16 @@ pub struct PermissionsInstructions {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ApprovalPromptContext<'a> {
-    reviewer: ApprovalsReviewer,
     messages: Option<&'a ApprovalMessages>,
     permission_messages: Option<&'a PermissionMessages>,
 }
 
 impl<'a> ApprovalPromptContext<'a> {
     pub fn new(
-        reviewer: ApprovalsReviewer,
         messages: Option<&'a ApprovalMessages>,
         permission_messages: Option<&'a PermissionMessages>,
     ) -> Self {
         Self {
-            reviewer,
             messages,
             permission_messages,
         }
@@ -104,7 +98,6 @@ impl PermissionsInstructions {
             network_access_from_policy(permission_profile.network_sandbox_policy()),
             PermissionsPromptConfig {
                 approval_policy,
-                approvals_reviewer: approval_context.reviewer,
                 approval_messages: approval_context.messages,
                 permission_messages: approval_context.permission_messages,
                 exec_policy,
@@ -152,7 +145,6 @@ impl PermissionsInstructions {
             &mut text,
             &approval_text(
                 config.approval_policy,
-                config.approvals_reviewer,
                 config.approval_messages,
                 config.exec_policy,
                 config.exec_permission_approvals_enabled,
@@ -223,7 +215,6 @@ fn append_section(text: &mut String, section: &str) {
 
 fn approval_text(
     approval_policy: AskForApproval,
-    approvals_reviewer: ApprovalsReviewer,
     approval_messages: Option<&ApprovalMessages>,
     exec_policy: &Policy,
     exec_permission_approvals_enabled: bool,
@@ -231,10 +222,7 @@ fn approval_text(
 ) -> String {
     if let Some(approval_messages) = approval_messages {
         let selected = match &approval_policy {
-            AskForApproval::OnRequest => match approvals_reviewer {
-                ApprovalsReviewer::User => approval_messages.on_request.as_ref(),
-                ApprovalsReviewer::AutoReview => approval_messages.on_request_auto_review.as_ref(),
-            },
+            AskForApproval::OnRequest => approval_messages.on_request.as_ref(),
             AskForApproval::Never => approval_messages.never.as_ref(),
             AskForApproval::UnlessTrusted => approval_messages.unless_trusted.as_ref(),
             AskForApproval::Granular(_) => None,
@@ -268,7 +256,7 @@ fn approval_text(
         }
         sections.join("\n\n")
     };
-    let text = match approval_policy {
+    match approval_policy {
         AskForApproval::Never => APPROVAL_POLICY_NEVER.to_string(),
         AskForApproval::UnlessTrusted => {
             with_request_permissions_tool(APPROVAL_POLICY_UNLESS_TRUSTED)
@@ -280,14 +268,6 @@ fn approval_text(
             exec_permission_approvals_enabled,
             request_permissions_tool_enabled,
         ),
-    };
-
-    if approvals_reviewer == ApprovalsReviewer::AutoReview
-        && approval_policy != AskForApproval::Never
-    {
-        format!("{text}\n\n{AUTO_REVIEW_APPROVAL_SUFFIX}")
-    } else {
-        text
     }
 }
 

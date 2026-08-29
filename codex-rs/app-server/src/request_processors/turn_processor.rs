@@ -124,7 +124,6 @@ struct ThreadSettingsBuildParams {
     method: &'static str,
     environments: Option<TurnEnvironmentSelections>,
     approval_policy: Option<codex_app_server_protocol::AskForApproval>,
-    approvals_reviewer: Option<codex_app_server_protocol::ApprovalsReviewer>,
     sandbox_policy: Option<codex_app_server_protocol::SandboxPolicy>,
     permissions: Option<String>,
     model: Option<String>,
@@ -549,7 +548,6 @@ impl TurnRequestProcessor {
                     method: "turn/start",
                     environments,
                     approval_policy: params.approval_policy,
-                    approvals_reviewer: params.approvals_reviewer,
                     sandbox_policy: params.sandbox_policy,
                     permissions: params.permissions,
                     model: params.model,
@@ -672,7 +670,6 @@ impl TurnRequestProcessor {
             method,
             environments,
             approval_policy,
-            approvals_reviewer,
             sandbox_policy,
             permissions,
             model,
@@ -704,7 +701,6 @@ impl TurnRequestProcessor {
 
         let has_any_overrides = has_environment_override
             || approval_policy.is_some()
-            || approvals_reviewer.is_some()
             || sandbox_policy.is_some()
             || permissions.is_some()
             || model.is_some()
@@ -716,8 +712,6 @@ impl TurnRequestProcessor {
 
         let approval_policy =
             approval_policy.map(codex_app_server_protocol::AskForApproval::to_core);
-        let approvals_reviewer =
-            approvals_reviewer.map(codex_app_server_protocol::ApprovalsReviewer::to_core);
         let sandbox_policy = sandbox_policy.map(|policy| policy.to_core());
         let (permission_profile, active_permission_profile, profile_workspace_roots) =
             if let Some(permissions) = permissions {
@@ -769,7 +763,6 @@ impl TurnRequestProcessor {
                 .preview_thread_settings_overrides(CodexThreadSettingsOverrides {
                     environments: environments.clone(),
                     approval_policy,
-                    approvals_reviewer,
                     sandbox_policy: sandbox_policy.clone(),
                     permission_profile: permission_profile.clone(),
                     active_permission_profile: active_permission_profile.clone(),
@@ -792,7 +785,6 @@ impl TurnRequestProcessor {
             environments,
             profile_workspace_roots,
             approval_policy,
-            approvals_reviewer,
             sandbox_policy,
             permission_profile,
             active_permission_profile,
@@ -828,7 +820,6 @@ impl TurnRequestProcessor {
                     method: "thread/settings/update",
                     environments,
                     approval_policy: params.approval_policy,
-                    approvals_reviewer: params.approvals_reviewer,
                     sandbox_policy: params.sandbox_policy,
                     permissions: params.permissions,
                     model: params.model,

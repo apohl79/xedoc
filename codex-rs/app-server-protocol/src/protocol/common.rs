@@ -578,11 +578,6 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadShellCommandResponse,
     },
-    ThreadApproveGuardianDeniedAction => "thread/approveGuardianDeniedAction" {
-        params: v2::ThreadApproveGuardianDeniedActionParams,
-        serialization: thread_id(params.thread_id),
-        response: v2::ThreadApproveGuardianDeniedActionResponse,
-    },
     #[experimental("thread/backgroundTerminals/clean")]
     ThreadBackgroundTerminalsClean => "thread/backgroundTerminals/clean" {
         params: v2::ThreadBackgroundTerminalsCleanParams,
@@ -1529,8 +1524,6 @@ server_notification_definitions! {
     TurnDiffUpdated => "turn/diff/updated" (v2::TurnDiffUpdatedNotification),
     TurnPlanUpdated => "turn/plan/updated" (v2::TurnPlanUpdatedNotification),
     ItemStarted => "item/started" (v2::ItemStartedNotification),
-    ItemGuardianApprovalReviewStarted => "item/autoApprovalReview/started" (v2::ItemGuardianApprovalReviewStartedNotification),
-    ItemGuardianApprovalReviewCompleted => "item/autoApprovalReview/completed" (v2::ItemGuardianApprovalReviewCompletedNotification),
     ItemCompleted => "item/completed" (v2::ItemCompletedNotification),
     /// This event is internal-only. Used by Codex Cloud.
     RawResponseItemCompleted => "rawResponseItem/completed" (v2::RawResponseItemCompletedNotification),
@@ -1571,7 +1564,6 @@ server_notification_definitions! {
     ModelSafetyBufferingUpdated => "model/safetyBuffering/updated" (v2::ModelSafetyBufferingUpdatedNotification),
     CompactionProgress => "compaction/progress" (v2::CompactionProgressNotification),
     Warning => "warning" (v2::WarningNotification),
-    GuardianWarning => "guardianWarning" (v2::GuardianWarningNotification),
     DeprecationNotice => "deprecationNotice" (v2::DeprecationNoticeNotification),
     ConfigWarning => "configWarning" (v2::ConfigWarningNotification),
     FuzzyFileSearchSessionUpdated => "fuzzyFileSearch/sessionUpdated" (FuzzyFileSearchSessionUpdatedNotification),
@@ -1900,20 +1892,6 @@ mod tests {
             thread_goal_set.serialization_scope(),
             Some(ClientRequestSerializationScope::Thread {
                 thread_id: "goal-thread".to_string()
-            })
-        );
-
-        let guardian_approval = ClientRequest::ThreadApproveGuardianDeniedAction {
-            request_id: request_id(),
-            params: v2::ThreadApproveGuardianDeniedActionParams {
-                thread_id: "guardian-thread".to_string(),
-                event: json!({ "type": "guardian" }),
-            },
-        };
-        assert_eq!(
-            guardian_approval.serialization_scope(),
-            Some(ClientRequestSerializationScope::Thread {
-                thread_id: "guardian-thread".to_string()
             })
         );
 
@@ -2395,7 +2373,6 @@ mod tests {
                     )),
                 ],
                 approval_policy: v2::AskForApproval::OnRequest,
-                approvals_reviewer: v2::ApprovalsReviewer::User,
                 sandbox: v2::SandboxPolicy::DangerFullAccess,
                 active_permission_profile: None,
                 reasoning_effort: None,
@@ -2445,7 +2422,6 @@ mod tests {
                     "runtimeWorkspaceRoots": [],
                     "instructionSources": [absolute_path_string("tmp/AGENTS.md")],
                     "approvalPolicy": "on-request",
-                    "approvalsReviewer": "user",
                     "sandbox": {
                         "type": "dangerFullAccess"
                     },
@@ -3467,7 +3443,6 @@ mod tests {
                 thread_settings: v2::ThreadSettings {
                     cwd: absolute_path("/tmp/repo"),
                     approval_policy: v2::AskForApproval::Never,
-                    approvals_reviewer: v2::ApprovalsReviewer::User,
                     sandbox_policy: v2::SandboxPolicy::DangerFullAccess,
                     active_permission_profile: None,
                     model: "gpt-5.4".to_string(),

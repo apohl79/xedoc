@@ -6,7 +6,6 @@ simple sequence for any ToolRuntime: approval → select sandbox → attempt →
 retry with an escalated sandbox strategy on denial (no re‑approval thanks to
 caching).
 */
-use super::approvals::ApprovalReviewer;
 use super::approvals::resolve_tool_apporval;
 use crate::network_policy_decision::network_approval_context_from_payload;
 use crate::tools::flat_tool_name;
@@ -65,7 +64,6 @@ impl ToolOrchestrator {
     {
         let network_approval = match begin_network_approval(
             &tool_ctx.session,
-            &tool_ctx.turn.sub_id,
             managed_network_active,
             tool.network_approval_spec(req, tool_ctx),
         )
@@ -145,7 +143,6 @@ impl ToolOrchestrator {
         let otel = turn_ctx.session_telemetry.clone();
         let otel_tn = flat_tool_name(&tool_ctx.tool_name).into_owned();
         let otel_ci = &tool_ctx.call_id;
-        let strict_auto_review = tool_ctx.session.strict_auto_review_enabled_for_turn().await;
         // 1) Approval
         let mut already_approved = false;
 
@@ -165,33 +162,12 @@ impl ToolOrchestrator {
         });
         match &requirement {
             ExecApprovalRequirement::Skip { .. } => {
-                if strict_auto_review {
-                    let approval_ctx = ApprovalCtx {
-                        session: &tool_ctx.session,
-                        turn: &tool_ctx.turn,
-                        call_id: &tool_ctx.call_id,
-                        retry_reason: None,
-                        network_approval_context: None,
-                    };
-                    resolve_tool_apporval(
-                        tool,
-                        req,
-                        tool_ctx.call_id.as_str(),
-                        approval_ctx,
-                        tool_ctx,
-                        ApprovalReviewer::Guardian,
-                        &otel,
-                    )
-                    .await?;
-                    already_approved = true;
-                } else {
-                    otel.tool_decision(
-                        &otel_tn,
-                        otel_ci,
-                        &ReviewDecision::Approved,
-                        ToolDecisionSource::Config,
-                    );
-                }
+                otel.tool_decision(
+                    &otel_tn,
+                    otel_ci,
+                    &ReviewDecision::Approved,
+                    ToolDecisionSource::Config,
+                );
             }
             ExecApprovalRequirement::Forbidden { reason } => {
                 return Err(ToolError::Rejected(reason.clone()));
@@ -210,11 +186,6 @@ impl ToolOrchestrator {
                     tool_ctx.call_id.as_str(),
                     approval_ctx,
                     tool_ctx,
-                    if strict_auto_review {
-                        ApprovalReviewer::Guardian
-                    } else {
-                        ApprovalReviewer::for_turn(turn_ctx)
-                    },
                     &otel,
                 )
                 .await?;
@@ -380,10 +351,8 @@ impl ToolOrchestrator {
                         build_denial_reason_from_output(output.as_ref())
                     };
 
-                // Strict auto-review approval covers the sandboxed attempt only;
-                // retrying without the sandbox requires a fresh guardian review.
-                let bypass_retry_approval = !strict_auto_review
-                    && tool.should_bypass_approval(approval_policy, already_approved)
+                let bypass_retry_approval = tool
+                    .should_bypass_approval(approval_policy, already_approved)
                     && network_approval_context.is_none();
                 if !bypass_retry_approval {
                     let approval_ctx = ApprovalCtx {
@@ -401,11 +370,6 @@ impl ToolOrchestrator {
                         &permission_request_run_id,
                         approval_ctx,
                         tool_ctx,
-                        if strict_auto_review {
-                            ApprovalReviewer::Guardian
-                        } else {
-                            ApprovalReviewer::for_turn(turn_ctx)
-                        },
                         &otel,
                     )
                     .await?;

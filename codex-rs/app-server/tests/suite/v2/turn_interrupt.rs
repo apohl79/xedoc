@@ -363,7 +363,6 @@ fn create_config_toml(
             r#"
 model = "mock-model"
 approval_policy = "{approval_policy}"
-approvals_reviewer = "user"
 sandbox_mode = "{sandbox_mode}"
 
 model_provider = "mock_provider"

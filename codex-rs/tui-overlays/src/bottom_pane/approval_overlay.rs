@@ -350,7 +350,6 @@ impl ApprovalOverlay {
             let cell = history_cell::new_approval_decision_cell(
                 subject,
                 command_decision_to_review_decision(&decision),
-                history_cell::ApprovalDecisionActor::User,
             );
             self.app_event_tx.send(AppEvent::InsertHistoryCell(cell));
         }
@@ -369,9 +368,9 @@ impl ApprovalOverlay {
             return;
         };
         let granted_permissions = match decision {
-            PermissionsDecision::GrantForTurn
-            | PermissionsDecision::GrantForTurnWithStrictAutoReview
-            | PermissionsDecision::GrantForSession => permissions.clone(),
+            PermissionsDecision::GrantForTurn | PermissionsDecision::GrantForSession => {
+                permissions.clone()
+            }
             PermissionsDecision::Deny => Default::default(),
         };
         let scope = if matches!(decision, PermissionsDecision::GrantForSession) {
@@ -379,15 +378,9 @@ impl ApprovalOverlay {
         } else {
             PermissionGrantScope::Turn
         };
-        let strict_auto_review = matches!(
-            decision,
-            PermissionsDecision::GrantForTurnWithStrictAutoReview
-        );
         if request.thread_label().is_none() {
             let message = if granted_permissions.is_empty() {
                 "You did not grant additional permissions"
-            } else if strict_auto_review {
-                "You granted additional permissions with strict auto review"
             } else if matches!(scope, PermissionGrantScope::Session) {
                 "You granted additional permissions for this session"
             } else {
@@ -404,7 +397,6 @@ impl ApprovalOverlay {
             codex_protocol::request_permissions::RequestPermissionsResponse {
                 permissions: granted_permissions,
                 scope,
-                strict_auto_review,
             },
         );
     }
@@ -761,7 +753,6 @@ enum ApprovalDecision {
 #[derive(Clone, Copy)]
 enum PermissionsDecision {
     GrantForTurn,
-    GrantForTurnWithStrictAutoReview,
     GrantForSession,
     Deny,
 }
@@ -1008,13 +999,6 @@ fn permissions_options(keymap: &ApprovalKeymap) -> Vec<ApprovalOption> {
             label: "Yes, grant these permissions for this turn".to_string(),
             decision: ApprovalDecision::Permissions(PermissionsDecision::GrantForTurn),
             shortcuts: keymap.approve.clone(),
-        },
-        ApprovalOption {
-            label: "Yes, grant for this turn with strict auto review".to_string(),
-            decision: ApprovalDecision::Permissions(
-                PermissionsDecision::GrantForTurnWithStrictAutoReview,
-            ),
-            shortcuts: vec![key_hint::plain(KeyCode::Char('r'))],
         },
         ApprovalOption {
             label: "Yes, grant these permissions for this session".to_string(),
@@ -1763,7 +1747,6 @@ mod tests {
             labels,
             vec![
                 "Yes, grant these permissions for this turn".to_string(),
-                "Yes, grant for this turn with strict auto review".to_string(),
                 "Yes, grant these permissions for this session".to_string(),
                 "No, continue without permissions".to_string(),
             ]
@@ -1880,7 +1863,6 @@ mod tests {
             {
                 assert!(response.permissions.is_empty());
                 assert_eq!(response.scope, PermissionGrantScope::Turn);
-                assert!(!response.strict_auto_review);
                 saw_op = true;
                 break;
             }
@@ -1888,33 +1870,6 @@ mod tests {
         assert!(
             saw_op,
             "expected permission deny shortcut to emit an empty permission response"
-        );
-    }
-
-    #[test]
-    fn permissions_strict_auto_review_shortcut_submits_turn_scope_with_strict_review() {
-        let (tx, mut rx) = unbounded_channel::<AppEvent>();
-        let tx = AppEventSender::new(tx);
-        let mut view = make_overlay(make_permissions_request(), tx, Features::with_defaults());
-
-        view.handle_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
-
-        let mut saw_op = false;
-        while let Ok(ev) = rx.try_recv() {
-            if let AppEvent::SubmitThreadOp {
-                op: Op::RequestPermissionsResponse { response, .. },
-                ..
-            } = ev
-            {
-                assert_eq!(response.scope, PermissionGrantScope::Turn);
-                assert!(response.strict_auto_review);
-                saw_op = true;
-                break;
-            }
-        }
-        assert!(
-            saw_op,
-            "expected permission approval decision to emit a strict auto review response"
         );
     }
 
@@ -2148,7 +2103,6 @@ mod tests {
         let cell = history_cell::new_approval_decision_cell(
             history_cell::ApprovalDecisionSubject::Command(command),
             ReviewDecision::Approved,
-            history_cell::ApprovalDecisionActor::User,
         );
         let lines = cell.display_lines(/*width*/ 28);
         let rendered: Vec<String> = lines
@@ -2174,7 +2128,6 @@ mod tests {
         let approved = history_cell::new_approval_decision_cell(
             history_cell::ApprovalDecisionSubject::Command(Vec::new()),
             ReviewDecision::Approved,
-            history_cell::ApprovalDecisionActor::User,
         );
         assert_eq!(
             render_history_cell_lines(approved.as_ref(), /*width*/ 80),
@@ -2184,7 +2137,6 @@ mod tests {
         let approved_for_session = history_cell::new_approval_decision_cell(
             history_cell::ApprovalDecisionSubject::Command(Vec::new()),
             ReviewDecision::ApprovedForSession,
-            history_cell::ApprovalDecisionActor::User,
         );
         assert_eq!(
             render_history_cell_lines(approved_for_session.as_ref(), /*width*/ 80),

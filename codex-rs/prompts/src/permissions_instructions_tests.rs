@@ -135,7 +135,6 @@ fn empty_catalog_permission_message_preserves_non_sandbox_sections() {
         NetworkAccess::Restricted,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::Never,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: None,
             permission_messages: Some(&messages),
             exec_policy: &Policy::empty(),
@@ -162,7 +161,6 @@ fn builds_permissions_with_network_access_override() {
         NetworkAccess::Enabled,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::OnRequest,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: None,
             permission_messages: None,
             exec_policy: &Policy::empty(),
@@ -201,11 +199,7 @@ fn builds_permissions_from_profile() {
     let instructions = PermissionsInstructions::from_permission_profile(
         &permission_profile,
         AskForApproval::UnlessTrusted,
-        ApprovalPromptContext::new(
-            ApprovalsReviewer::User,
-            /*messages*/ None,
-            /*permission_messages*/ None,
-        ),
+        ApprovalPromptContext::new(/*messages*/ None, /*permission_messages*/ None),
         &Policy::empty(),
         &cwd,
         /*exec_permission_approvals_enabled*/ false,
@@ -250,11 +244,7 @@ fn builds_permissions_from_profile_with_denied_reads() {
     let instructions = PermissionsInstructions::from_permission_profile(
         &permission_profile,
         AskForApproval::OnRequest,
-        ApprovalPromptContext::new(
-            ApprovalsReviewer::AutoReview,
-            /*messages*/ None,
-            /*permission_messages*/ None,
-        ),
+        ApprovalPromptContext::new(/*messages*/ None, /*permission_messages*/ None),
         &Policy::empty(),
         &cwd,
         /*exec_permission_approvals_enabled*/ false,
@@ -278,7 +268,6 @@ fn includes_request_rule_instructions_for_on_request() {
         NetworkAccess::Enabled,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::OnRequest,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: None,
             permission_messages: None,
             exec_policy: &exec_policy,
@@ -301,7 +290,6 @@ fn includes_request_permissions_tool_instructions_for_unless_trusted_when_enable
         NetworkAccess::Enabled,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::UnlessTrusted,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: None,
             permission_messages: None,
             exec_policy: &Policy::empty(),
@@ -323,7 +311,6 @@ fn includes_request_permission_rule_instructions_for_on_request_when_enabled() {
         NetworkAccess::Enabled,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::OnRequest,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: None,
             permission_messages: None,
             exec_policy: &Policy::empty(),
@@ -345,7 +332,6 @@ fn includes_request_permissions_tool_instructions_for_on_request_when_tool_is_en
         NetworkAccess::Enabled,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::OnRequest,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: None,
             permission_messages: None,
             exec_policy: &Policy::empty(),
@@ -367,7 +353,6 @@ fn on_request_includes_tool_guidance_alongside_inline_permission_guidance_when_b
         NetworkAccess::Enabled,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::OnRequest,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: None,
             permission_messages: None,
             exec_policy: &Policy::empty(),
@@ -383,40 +368,25 @@ fn on_request_includes_tool_guidance_alongside_inline_permission_guidance_when_b
 }
 
 #[test]
-fn catalog_approval_messages_select_reviewer_variant() {
+fn catalog_approval_messages_select_policy_variant() {
     let messages = ApprovalMessages {
         on_request: Some("user catalog approvals".to_string()),
-        on_request_auto_review: Some("auto-review catalog approvals".to_string()),
+        on_request_auto_review: None,
         never: Some("never catalog approvals".to_string()),
         unless_trusted: Some("unless-trusted catalog approvals".to_string()),
     };
 
-    for (approval_policy, reviewer, expected) in [
-        (
-            AskForApproval::OnRequest,
-            ApprovalsReviewer::User,
-            "user catalog approvals",
-        ),
-        (
-            AskForApproval::OnRequest,
-            ApprovalsReviewer::AutoReview,
-            "auto-review catalog approvals",
-        ),
-        (
-            AskForApproval::Never,
-            ApprovalsReviewer::AutoReview,
-            "never catalog approvals",
-        ),
+    for (approval_policy, expected) in [
+        (AskForApproval::OnRequest, "user catalog approvals"),
+        (AskForApproval::Never, "never catalog approvals"),
         (
             AskForApproval::UnlessTrusted,
-            ApprovalsReviewer::AutoReview,
             "unless-trusted catalog approvals",
         ),
     ] {
         assert_eq!(
             approval_text(
                 approval_policy,
-                reviewer,
                 Some(&messages),
                 &Policy::empty(),
                 /*exec_permission_approvals_enabled*/ true,
@@ -447,7 +417,6 @@ fn empty_catalog_approval_message_suppresses_legacy_approval_section() {
         NetworkAccess::Restricted,
         PermissionsPromptConfig {
             approval_policy: AskForApproval::OnRequest,
-            approvals_reviewer: ApprovalsReviewer::User,
             approval_messages: Some(&messages),
             permission_messages: None,
             exec_policy: &exec_policy,
@@ -474,14 +443,13 @@ fn empty_catalog_approval_message_suppresses_legacy_approval_section() {
 fn missing_catalog_key_uses_legacy_approval_text() {
     let messages = ApprovalMessages {
         on_request: None,
-        on_request_auto_review: Some("unused catalog approvals".to_string()),
+        on_request_auto_review: None,
         never: None,
         unless_trusted: None,
     };
 
     let on_request = approval_text(
         AskForApproval::OnRequest,
-        ApprovalsReviewer::User,
         Some(&messages),
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ false,
@@ -489,7 +457,6 @@ fn missing_catalog_key_uses_legacy_approval_text() {
     );
     let never = approval_text(
         AskForApproval::Never,
-        ApprovalsReviewer::User,
         Some(&messages),
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ false,
@@ -513,7 +480,6 @@ fn empty_catalog_non_on_request_approval_messages_suppress_legacy_approval_text(
         assert_eq!(
             approval_text(
                 approval_policy,
-                ApprovalsReviewer::AutoReview,
                 Some(&messages),
                 &Policy::empty(),
                 /*exec_permission_approvals_enabled*/ true,
@@ -522,37 +488,6 @@ fn empty_catalog_non_on_request_approval_messages_suppress_legacy_approval_text(
             ""
         );
     }
-}
-
-#[test]
-fn auto_review_approvals_append_auto_review_specific_guidance() {
-    let text = approval_text(
-        AskForApproval::OnRequest,
-        ApprovalsReviewer::AutoReview,
-        /*approval_messages*/ None,
-        &Policy::empty(),
-        /*exec_permission_approvals_enabled*/ false,
-        /*request_permissions_tool_enabled*/ false,
-    );
-
-    assert!(text.contains("`approvals_reviewer` is `auto_review`"));
-    assert!(!text.contains("`approvals_reviewer` is `guardian_subagent`"));
-    assert!(text.contains("materially safer alternative"));
-}
-
-#[test]
-fn auto_review_approvals_omit_auto_review_specific_guidance_when_approval_is_never() {
-    let text = approval_text(
-        AskForApproval::Never,
-        ApprovalsReviewer::AutoReview,
-        /*approval_messages*/ None,
-        &Policy::empty(),
-        /*exec_permission_approvals_enabled*/ false,
-        /*request_permissions_tool_enabled*/ false,
-    );
-
-    assert!(!text.contains("`approvals_reviewer` is `auto_review`"));
-    assert!(!text.contains("`approvals_reviewer` is `guardian_subagent`"));
 }
 
 fn granular_categories_section(title: &str, categories: &[&str]) -> String {
@@ -597,7 +532,6 @@ fn granular_policy_lists_prompted_and_rejected_categories_separately() {
             request_permissions: true,
             mcp_elicitations: false,
         }),
-        ApprovalsReviewer::User,
         /*approval_messages*/ None,
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ true,
@@ -635,7 +569,6 @@ fn granular_policy_includes_command_permission_instructions_when_sandbox_approva
             request_permissions: true,
             mcp_elicitations: true,
         }),
-        ApprovalsReviewer::User,
         /*approval_messages*/ None,
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ true,
@@ -668,7 +601,6 @@ fn granular_policy_omits_shell_permission_instructions_when_inline_requests_are_
             request_permissions: true,
             mcp_elicitations: true,
         }),
-        ApprovalsReviewer::User,
         /*approval_messages*/ None,
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ false,
@@ -701,7 +633,6 @@ fn granular_policy_includes_request_permissions_tool_only_when_that_prompt_can_s
             request_permissions: true,
             mcp_elicitations: true,
         }),
-        ApprovalsReviewer::User,
         /*approval_messages*/ None,
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ true,
@@ -717,7 +648,6 @@ fn granular_policy_includes_request_permissions_tool_only_when_that_prompt_can_s
             request_permissions: false,
             mcp_elicitations: true,
         }),
-        ApprovalsReviewer::User,
         /*approval_messages*/ None,
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ true,
@@ -736,7 +666,6 @@ fn granular_policy_lists_request_permissions_category_without_tool_section_when_
             request_permissions: true,
             mcp_elicitations: false,
         }),
-        ApprovalsReviewer::User,
         /*approval_messages*/ None,
         &Policy::empty(),
         /*exec_permission_approvals_enabled*/ true,

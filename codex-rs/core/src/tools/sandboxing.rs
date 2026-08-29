@@ -122,8 +122,6 @@ impl<S> Clone for ApprovalCtx<'_, S> {
     }
 }
 
-pub(crate) use super::approvals::ApprovalAction;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PermissionRequestPayload {
     pub tool_name: HookToolName,
@@ -192,7 +190,7 @@ pub(crate) trait Approvable<Req, S = Session> {
     }
 
     /// Return hook input for approval-time policy hooks when this runtime wants
-    /// hook evaluation to run before guardian or user approval.
+    /// hook evaluation to run before user approval.
     fn permission_request_payload(&self, _req: &Req) -> Option<PermissionRequestPayload> {
         None
     }
@@ -212,12 +210,6 @@ pub(crate) trait Approvable<Req, S = Session> {
         req: &'a Req,
         ctx: ApprovalCtx<'a, S>,
     ) -> BoxFuture<'a, ReviewDecision>;
-
-    fn approval_action(
-        &self,
-        req: &Req,
-        ctx: &ApprovalCtx<'_, S>,
-    ) -> std::io::Result<ApprovalAction>;
 }
 
 pub(crate) struct ToolCtx<S = Session> {

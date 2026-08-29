@@ -5,7 +5,6 @@ mod app_event;
 mod app_event_sender;
 pub mod approval_conversions;
 pub mod approval_events;
-pub mod auto_review_denials;
 mod payloads;
 mod session_log;
 

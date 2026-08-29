@@ -40,8 +40,6 @@ use codex_app_server_protocol::SessionSource;
 use codex_app_server_protocol::SkillsListParams;
 use codex_app_server_protocol::SkillsListResponse;
 use codex_app_server_protocol::Thread;
-use codex_app_server_protocol::ThreadApproveGuardianDeniedActionParams;
-use codex_app_server_protocol::ThreadApproveGuardianDeniedActionResponse;
 use codex_app_server_protocol::ThreadArchiveParams;
 use codex_app_server_protocol::ThreadArchiveResponse;
 use codex_app_server_protocol::ThreadBackgroundTerminalsCleanParams;
@@ -98,7 +96,6 @@ use codex_app_server_protocol::UserInput;
 use codex_core_config::config::Config;
 use codex_otel::TelemetryAuthMode;
 use codex_protocol::ThreadId;
-use codex_protocol::approvals::GuardianAssessmentEvent;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::PermissionProfile;
@@ -813,7 +810,6 @@ impl AppServerSession {
         items: Vec<UserInput>,
         cwd: PathBuf,
         approval_policy: AskForApproval,
-        approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
         permissions_override: TurnPermissionsOverride,
         workspace_roots: &[AbsolutePathBuf],
         model: String,
@@ -840,7 +836,6 @@ impl AppServerSession {
                     cwd: Some(cwd),
                     runtime_workspace_roots: Some(workspace_roots.to_vec()),
                     approval_policy: Some(approval_policy),
-                    approvals_reviewer: Some(approvals_reviewer.into()),
                     sandbox_policy,
                     permissions,
                     model: Some(model),
@@ -1056,27 +1051,6 @@ impl AppServerSession {
         Ok(())
     }
 
-    pub async fn thread_approve_guardian_denied_action(
-        &mut self,
-        thread_id: ThreadId,
-        event: &GuardianAssessmentEvent,
-    ) -> Result<()> {
-        let request_id = self.next_request_id();
-        let _: ThreadApproveGuardianDeniedActionResponse = self
-            .client
-            .request_typed(ClientRequest::ThreadApproveGuardianDeniedAction {
-                request_id,
-                params: ThreadApproveGuardianDeniedActionParams {
-                    thread_id: thread_id.to_string(),
-                    event: serde_json::to_value(event)
-                        .wrap_err("failed to serialize Auto Review denial event")?,
-                },
-            })
-            .await
-            .wrap_err("thread/approveGuardianDeniedAction failed in TUI")?;
-        Ok(())
-    }
-
     pub async fn thread_background_terminals_clean(&mut self, thread_id: ThreadId) -> Result<()> {
         let request_id = self.next_request_id();
         let _: ThreadBackgroundTerminalsCleanResponse = self
@@ -1263,12 +1237,6 @@ fn model_preset_from_api_model(model: ApiModel) -> ModelPreset {
     }
 }
 
-fn approvals_reviewer_override_from_config(
-    config: &Config,
-) -> Option<codex_app_server_protocol::ApprovalsReviewer> {
-    Some(config.approvals_reviewer.into())
-}
-
 fn config_request_overrides_from_config(
     config: &Config,
 ) -> Option<HashMap<String, serde_json::Value>> {
@@ -1415,7 +1383,6 @@ fn thread_start_params_from_config(
         cwd: thread_cwd_from_config(config, thread_params_mode, remote_cwd_override),
         runtime_workspace_roots: Some(config.workspace_roots.clone()),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
-        approvals_reviewer: approvals_reviewer_override_from_config(config),
         sandbox,
         permissions,
         config: config_request_overrides_from_config(config),
@@ -1470,7 +1437,6 @@ fn thread_resume_params_from_config(
         cwd: thread_cwd_from_config(&config, thread_params_mode, remote_cwd_override),
         runtime_workspace_roots: Some(config.workspace_roots.clone()),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
-        approvals_reviewer: approvals_reviewer_override_from_config(&config),
         sandbox,
         permissions,
         config: config_overrides,
@@ -1505,7 +1471,6 @@ fn thread_fork_params_from_config(
         cwd: thread_cwd_from_config(&config, thread_params_mode, remote_cwd_override),
         runtime_workspace_roots: Some(config.workspace_roots.clone()),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
-        approvals_reviewer: approvals_reviewer_override_from_config(&config),
         sandbox,
         permissions,
         config: config_request_overrides_from_config(&config),
@@ -1604,7 +1569,6 @@ async fn thread_session_state_from_thread_start_response(
         response.model_provider.clone(),
         response.service_tier.clone(),
         response.approval_policy,
-        response.approvals_reviewer.to_core(),
         permission_profile,
         response.active_permission_profile.clone().map(Into::into),
         response.cwd.clone(),
@@ -1645,7 +1609,6 @@ async fn thread_session_state_from_thread_resume_response(
         response.model_provider.clone(),
         response.service_tier.clone(),
         response.approval_policy,
-        response.approvals_reviewer.to_core(),
         permission_profile,
         response.active_permission_profile.clone().map(Into::into),
         response.cwd.clone(),
@@ -1677,7 +1640,6 @@ async fn thread_session_state_from_thread_fork_response(
         response.model_provider.clone(),
         response.service_tier.clone(),
         response.approval_policy,
-        response.approvals_reviewer.to_core(),
         permission_profile,
         response.active_permission_profile.clone().map(Into::into),
         response.cwd.clone(),
@@ -1716,7 +1678,6 @@ async fn thread_session_state_from_thread_response(
     model_provider_id: String,
     service_tier: Option<String>,
     approval_policy: AskForApproval,
-    approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
     permission_profile: PermissionProfile,
     active_permission_profile: Option<ActivePermissionProfile>,
     cwd: AbsolutePathBuf,
@@ -1744,7 +1705,6 @@ async fn thread_session_state_from_thread_response(
         model_provider_id,
         service_tier,
         approval_policy,
-        approvals_reviewer,
         permission_profile,
         active_permission_profile,
         cwd,
@@ -2676,7 +2636,6 @@ mod tests {
                 &test_path_buf("/tmp/project/AGENTS.md").abs(),
             )],
             approval_policy: codex_app_server_protocol::AskForApproval::Never,
-            approvals_reviewer: codex_app_server_protocol::ApprovalsReviewer::User,
             sandbox: read_only_profile
                 .to_legacy_sandbox_policy(test_path_buf("/tmp/project").as_path())
                 .expect("read-only profile must be legacy-compatible")
@@ -2811,7 +2770,6 @@ mod tests {
             "openai".to_string(),
             /*service_tier*/ None,
             AskForApproval::Never,
-            codex_protocol::config_types::ApprovalsReviewer::User,
             PermissionProfile::read_only(),
             /*active_permission_profile*/ None,
             test_path_buf("/tmp/project").abs(),
@@ -2846,7 +2804,6 @@ mod tests {
             "openai".to_string(),
             /*service_tier*/ None,
             AskForApproval::Never,
-            codex_protocol::config_types::ApprovalsReviewer::User,
             PermissionProfile::read_only(),
             /*active_permission_profile*/ None,
             test_path_buf("/tmp/project").abs(),

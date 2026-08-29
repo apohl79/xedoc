@@ -7,13 +7,11 @@ the process manager to spawn PTYs once an ExecRequest is prepared.
 use crate::command_canonicalization::canonicalize_command_for_approval;
 use crate::exec::ExecCapturePolicy;
 use crate::exec::ExecExpiration;
-use crate::guardian::GuardianNetworkAccessTrigger;
 use crate::sandboxing::ExecOptions;
 use crate::sandboxing::ExecServerEnvConfig;
 use crate::sandboxing::SandboxPermissions;
 use crate::session::turn_context::TurnEnvironment;
 use crate::shell::ShellType;
-use crate::tools::flat_tool_name;
 use crate::tools::network_approval::NetworkApprovalMode;
 use crate::tools::network_approval::NetworkApprovalSpec;
 use crate::tools::runtimes::RuntimePathPrepends;
@@ -23,7 +21,6 @@ use crate::tools::runtimes::exec_env_for_sandbox_permissions;
 use crate::tools::runtimes::maybe_wrap_shell_lc_with_snapshot;
 use crate::tools::runtimes::shell::zsh_fork_backend;
 use crate::tools::sandboxing::Approvable;
-use crate::tools::sandboxing::ApprovalAction;
 use crate::tools::sandboxing::ApprovalCtx;
 use crate::tools::sandboxing::ExecApprovalRequirement;
 use crate::tools::sandboxing::PermissionRequestPayload;
@@ -215,23 +212,6 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
         })
     }
 
-    fn approval_action(
-        &self,
-        req: &UnifiedExecRequest,
-        ctx: &ApprovalCtx<'_>,
-    ) -> std::io::Result<ApprovalAction> {
-        Ok(ApprovalAction::ExecCommand {
-            id: ctx.call_id.to_string(),
-            environment_id: req.turn_environment.environment_id.clone(),
-            command: req.command.clone(),
-            cwd: req.cwd.clone(),
-            sandbox_permissions: req.sandbox_permissions,
-            additional_permissions: req.additional_permissions.clone(),
-            justification: req.justification.clone(),
-            tty: req.tty,
-        })
-    }
-
     fn exec_approval_requirement(
         &self,
         req: &UnifiedExecRequest,
@@ -278,16 +258,7 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecProcess> for UnifiedExecRunt
         Some(NetworkApprovalSpec {
             network: Some(network.clone()),
             mode: NetworkApprovalMode::Deferred,
-            trigger: GuardianNetworkAccessTrigger {
-                call_id: ctx.call_id.clone(),
-                tool_name: flat_tool_name(&ctx.tool_name).into_owned(),
-                command: req.command.clone(),
-                cwd: req.cwd.to_abs_path().ok()?,
-                sandbox_permissions: req.sandbox_permissions,
-                additional_permissions: req.additional_permissions.clone(),
-                justification: req.justification.clone(),
-                tty: Some(req.tty),
-            },
+            cwd: req.cwd.to_abs_path().ok()?,
             command: req.hook_command.clone(),
             environment_id: req.turn_environment.environment_id.clone(),
         })

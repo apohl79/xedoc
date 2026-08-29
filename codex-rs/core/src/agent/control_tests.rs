@@ -21,7 +21,6 @@ use codex_protocol::AgentPath;
 use codex_protocol::ResponseItemId;
 use codex_protocol::capabilities::CapabilityRootLocation;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Settings;
@@ -1120,7 +1119,6 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
                         model_provider_id: "parent-only-provider".to_string(),
                         service_tier: None,
                         approval_policy: AskForApproval::Never,
-                        approvals_reviewer: ApprovalsReviewer::User,
                         permission_profile: PermissionProfile::workspace_write(),
                         active_permission_profile: None,
                         cwd: harness.config.cwd.clone(),

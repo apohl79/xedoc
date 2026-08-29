@@ -2,7 +2,6 @@ use anyhow::Context;
 use anyhow::Result;
 use codex_config::permissions_toml::FilesystemPermissionToml;
 use codex_config::permissions_toml::PermissionProfileToml;
-use codex_config::types::ApprovalsReviewer;
 use codex_core::sandboxing::SandboxPermissions;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;
@@ -413,7 +412,6 @@ async fn submit_turn_with_session_permissions(
             thread_settings: ThreadSettingsOverrides {
                 environments: Some(local_selections(test.config.cwd.clone())),
                 approval_policy: Some(approval_policy),
-                approvals_reviewer: Some(ApprovalsReviewer::User),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
                 collaboration_mode: Some(CollaborationMode {

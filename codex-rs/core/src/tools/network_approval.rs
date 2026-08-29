@@ -1,8 +1,3 @@
-use crate::guardian::GuardianApprovalRequest;
-use crate::guardian::GuardianNetworkAccessTrigger;
-use crate::guardian::new_guardian_review_id;
-use crate::guardian::review_approval_request;
-use crate::guardian::routes_approval_to_guardian;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::network_policy_decision::denied_network_policy_message;
 use crate::session::session::Session;
@@ -26,6 +21,7 @@ use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::WarningEvent;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -49,7 +45,7 @@ pub(crate) enum NetworkApprovalMode {
 pub(crate) struct NetworkApprovalSpec {
     pub network: Option<NetworkProxy>,
     pub mode: NetworkApprovalMode,
-    pub trigger: GuardianNetworkAccessTrigger,
+    pub cwd: AbsolutePathBuf,
     pub command: String,
     pub environment_id: String,
 }
@@ -238,8 +234,7 @@ impl PendingHostApproval {
 
 struct ActiveNetworkApprovalCall {
     registration_id: String,
-    turn_id: String,
-    trigger: GuardianNetworkAccessTrigger,
+    cwd: AbsolutePathBuf,
     command: String,
     environment_id: String,
     cancellation_token: CancellationToken,
@@ -281,20 +276,10 @@ impl Default for NetworkApprovalService {
 }
 
 impl NetworkApprovalService {
-    /// Replace the target session's approval cache with the source session's
-    /// currently approved hosts.
-    pub(crate) async fn sync_session_approved_hosts_to(&self, other: &Self) {
-        let approved_hosts = self.session_approved_hosts.lock().await.clone();
-        let mut other_approved_hosts = other.session_approved_hosts.lock().await;
-        other_approved_hosts.clear();
-        other_approved_hosts.extend(approved_hosts.iter().cloned());
-    }
-
     async fn register_call(
         &self,
         registration_id: String,
-        turn_id: String,
-        trigger: GuardianNetworkAccessTrigger,
+        cwd: AbsolutePathBuf,
         command: String,
         environment_id: String,
         cancellation_token: CancellationToken,
@@ -305,8 +290,7 @@ impl NetworkApprovalService {
             key,
             Arc::new(ActiveNetworkApprovalCall {
                 registration_id,
-                turn_id,
-                trigger,
+                cwd,
                 command,
                 environment_id,
                 cancellation_token,
@@ -601,7 +585,7 @@ impl NetworkApprovalService {
             host: request.host.clone(),
             protocol,
         };
-        let guardian_approval_id = Self::approval_id_for_key(&key);
+        let approval_id = Self::approval_id_for_key(&key);
         let prompt_command = vec!["network-access".to_string(), target.clone()];
         let command = owner_call
             .as_ref()
@@ -609,7 +593,7 @@ impl NetworkApprovalService {
         if let Some(permission_request_decision) = run_permission_request_hooks(
             &session,
             &turn_context,
-            &guardian_approval_id,
+            &approval_id,
             PermissionRequestPayload::bash(command, Some(format!("network-access {target}"))),
         )
         .await
@@ -638,58 +622,35 @@ impl NetworkApprovalService {
                 }
             }
         }
-        let use_guardian = routes_approval_to_guardian(&turn_context);
-        let guardian_review_id = use_guardian.then(new_guardian_review_id);
-        let approval_decision = if let Some(review_id) = guardian_review_id.clone() {
-            review_approval_request(
-                &session,
-                &turn_context,
-                review_id,
-                GuardianApprovalRequest::NetworkAccess {
-                    id: guardian_approval_id.clone(),
-                    turn_id: owner_call
-                        .as_ref()
-                        .map_or_else(|| turn_context.sub_id.clone(), |call| call.turn_id.clone()),
-                    target,
-                    host: request.host,
-                    protocol,
-                    port: key.port,
-                    trigger: owner_call.as_ref().map(|call| call.trigger.clone()),
-                },
-                Some(policy_denial_message.clone()),
-            )
-            .await
+        let available_decisions = None;
+        let cwd = if let Some(owner_call) = owner_call.as_ref() {
+            owner_call.cwd.clone()
         } else {
-            let available_decisions = None;
-            let cwd = if let Some(owner_call) = owner_call.as_ref() {
-                owner_call.trigger.cwd.clone()
-            } else {
-                turn_context
-                    .environments
-                    .turn_environments()
-                    .find(|environment| environment.environment_id == environment_id)
-                    .and_then(|environment| environment.cwd().to_abs_path().ok())
-                    .unwrap_or_else(|| {
-                        #[allow(deprecated)]
-                        turn_context.cwd.clone()
-                    })
-            };
-            session
-                .request_command_approval(
-                    turn_context.as_ref(),
-                    guardian_approval_id,
-                    /*approval_id*/ None,
-                    Some(environment_id),
-                    prompt_command,
-                    cwd,
-                    Some(prompt_reason),
-                    Some(network_approval_context.clone()),
-                    /*proposed_execpolicy_amendment*/ None,
-                    /*additional_permissions*/ None,
-                    available_decisions,
-                )
-                .await
+            turn_context
+                .environments
+                .turn_environments()
+                .find(|environment| environment.environment_id == environment_id)
+                .and_then(|environment| environment.cwd().to_abs_path().ok())
+                .unwrap_or_else(|| {
+                    #[allow(deprecated)]
+                    turn_context.cwd.clone()
+                })
         };
+        let approval_decision = session
+            .request_command_approval(
+                turn_context.as_ref(),
+                approval_id,
+                /*approval_id*/ None,
+                Some(environment_id),
+                prompt_command,
+                cwd,
+                Some(prompt_reason),
+                Some(network_approval_context.clone()),
+                /*proposed_execpolicy_amendment*/ None,
+                /*additional_permissions*/ None,
+                available_decisions,
+            )
+            .await;
 
         let mut cache_session_deny = false;
         let resolved = match approval_decision {
@@ -773,13 +734,11 @@ impl NetworkApprovalService {
             },
             ReviewDecision::Denied { rejection } => {
                 if let Some(owner_call) = owner_call.as_ref() {
-                    let outcome = if use_guardian {
-                        NetworkApprovalOutcome::DeniedByPolicy(rejection)
-                    } else {
-                        NetworkApprovalOutcome::DeniedByApproval(rejection)
-                    };
-                    self.record_call_outcome(&owner_call.registration_id, outcome)
-                        .await;
+                    self.record_call_outcome(
+                        &owner_call.registration_id,
+                        NetworkApprovalOutcome::DeniedByApproval(rejection),
+                    )
+                    .await;
                 }
                 PendingApprovalDecision::Deny
             }
@@ -788,7 +747,7 @@ impl NetworkApprovalService {
                     self.record_call_outcome(
                         &owner_call.registration_id,
                         NetworkApprovalOutcome::DeniedByPolicy(
-                            crate::guardian::guardian_timeout_message(),
+                            "approval review timed out".to_string(),
                         ),
                     )
                     .await;
@@ -796,17 +755,7 @@ impl NetworkApprovalService {
                 PendingApprovalDecision::Deny
             }
             ReviewDecision::Abort => {
-                if use_guardian {
-                    if let Some(owner_call) = owner_call.as_ref() {
-                        self.record_call_outcome(
-                            &owner_call.registration_id,
-                            NetworkApprovalOutcome::DeniedByPolicy(
-                                "automatic approval review was cancelled".to_string(),
-                            ),
-                        )
-                        .await;
-                    }
-                } else if let Some(owner_call) = owner_call.as_ref() {
+                if let Some(owner_call) = owner_call.as_ref() {
                     self.record_call_outcome(
                         &owner_call.registration_id,
                         NetworkApprovalOutcome::DeniedByApproval("rejected by user".to_string()),
@@ -874,14 +823,13 @@ pub(crate) fn build_network_policy_decider(
 
 pub(crate) async fn begin_network_approval(
     session: &Session,
-    turn_id: &str,
     managed_network_active: bool,
     spec: Option<NetworkApprovalSpec>,
 ) -> Result<Option<ActiveNetworkApproval>, ToolError> {
     let NetworkApprovalSpec {
         network,
         mode,
-        trigger,
+        cwd,
         command,
         environment_id,
     } = match spec {
@@ -910,8 +858,7 @@ pub(crate) async fn begin_network_approval(
         .network_approval
         .register_call(
             registration_id.clone(),
-            turn_id.to_string(),
-            trigger,
+            cwd,
             command,
             environment_id,
             cancellation_token.clone(),

@@ -8,7 +8,6 @@ use codex_app_server_protocol::PluginAvailability;
 use codex_app_server_protocol::PluginShareContext;
 use codex_app_server_protocol::PluginShareDiscoverability;
 use codex_app_server_protocol::PluginSource;
-use codex_features::Stage;
 use pretty_assertions::assert_eq;
 
 #[tokio::test]
@@ -2140,26 +2139,6 @@ async fn experimental_features_toggle_saves_on_exit() {
 
     let updates = updates.expect("expected UpdateFeatureFlags event");
     assert_eq!(updates, vec![(expected_feature, true)]);
-}
-
-#[tokio::test]
-async fn experimental_popup_omits_stable_guardian_approval() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let guardian_stage = FEATURES
-        .iter()
-        .find(|spec| spec.id == Feature::GuardianApproval)
-        .map(|spec| spec.stage)
-        .expect("expected guardian approval feature metadata");
-
-    assert_eq!(guardian_stage, Stage::Stable);
-
-    chat.open_experimental_popup();
-
-    let popup = render_bottom_popup(&chat, /*width*/ 120);
-    assert!(
-        !popup.contains("Auto-review"),
-        "expected stable auto-review feature to be omitted from experimental popup, got:\n{popup}"
-    );
 }
 
 #[tokio::test]

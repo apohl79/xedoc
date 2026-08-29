@@ -1,4 +1,3 @@
-use super::ApprovalsReviewer;
 use super::AskForApproval;
 use super::SandboxMode;
 use super::shared::default_enabled;
@@ -172,7 +171,6 @@ pub enum AppToolApproval {
 pub struct AppsDefaultConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
-    pub approvals_reviewer: Option<ApprovalsReviewer>,
     #[serde(default = "default_enabled")]
     pub destructive_enabled: bool,
     #[serde(default = "default_enabled")]
@@ -202,7 +200,6 @@ pub struct AppToolsConfig {
 pub struct AppConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
-    pub approvals_reviewer: Option<ApprovalsReviewer>,
     pub destructive_enabled: Option<bool>,
     pub open_world_enabled: Option<bool>,
     pub default_tools_approval_mode: Option<AppToolApproval>,
@@ -250,10 +247,6 @@ pub struct Config {
     pub model_provider: Option<String>,
     #[experimental(nested)]
     pub approval_policy: Option<AskForApproval>,
-    /// [UNSTABLE] Optional default for where approval requests are routed for
-    /// review.
-    #[experimental("config/read.approvalsReviewer")]
-    pub approvals_reviewer: Option<ApprovalsReviewer>,
     pub sandbox_mode: Option<SandboxMode>,
     pub sandbox_workspace_write: Option<SandboxWorkspaceWrite>,
     pub forced_chatgpt_workspace_id: Option<ForcedChatgptWorkspaceIds>,
@@ -373,8 +366,6 @@ pub struct ConfigReadResponse {
 pub struct ConfigRequirements {
     #[experimental(nested)]
     pub allowed_approval_policies: Option<Vec<AskForApproval>>,
-    #[experimental("configRequirements/read.allowedApprovalsReviewers")]
-    pub allowed_approvals_reviewers: Option<Vec<ApprovalsReviewer>>,
     pub allowed_sandbox_modes: Option<Vec<SandboxMode>>,
     pub allowed_permission_profiles: Option<BTreeMap<String, bool>>,
     pub default_permissions: Option<String>,

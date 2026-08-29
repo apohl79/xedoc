@@ -80,7 +80,6 @@ use codex_otel::set_parent_from_context;
 use codex_otel::traceparent_context_from_env;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
-use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::SandboxMode;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::PermissionProfile;
@@ -136,7 +135,6 @@ pub use exec_events::Usage;
 pub use exec_events::WebSearchItem;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::future::Future;
 use std::io::IsTerminal;
 use std::io::Read;
 use std::path::Path;
@@ -202,7 +200,6 @@ struct ExecRunArgs {
     state_db: Option<StateDbHandle>,
     command: Option<ExecCommand>,
     config: Config,
-    resume_approvals_reviewer_override: Option<codex_app_server_protocol::ApprovalsReviewer>,
     dangerously_bypass_approvals_and_sandbox: bool,
     exec_span: tracing::Span,
     images: Vec<PathBuf>,
@@ -377,10 +374,8 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     let overrides = ConfigOverrides {
         model,
         review_model: None,
-        // Default to never ask for approvals in headless mode. Rebuild below if
-        // the fully resolved reviewer is AutoReview.
+        // Default to never ask for approvals in headless mode.
         approval_policy: Some(AskForApproval::Never),
-        approvals_reviewer: None,
         sandbox_mode,
         permission_profile: None,
         default_permissions: None,
@@ -413,16 +408,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
             .cloud_config_bundle(cloud_config_bundle.clone())
             .build()
     };
-    let config = build_exec_config(
-        overrides,
-        dangerously_bypass_approvals_and_sandbox || removed_full_auto,
-        build_config,
-    )
-    .await?;
-    let resume_approvals_reviewer_override = cli_kv_overrides
-        .iter()
-        .any(|(key, _)| key == "approvals_reviewer")
-        .then(|| config.approvals_reviewer.into());
+    let config = build_config(overrides).await?;
 
     #[allow(clippy::print_stderr)]
     match check_execpolicy_for_warnings(&config.config_layer_stack).await {
@@ -535,7 +521,6 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         state_db,
         command,
         config,
-        resume_approvals_reviewer_override,
         dangerously_bypass_approvals_and_sandbox,
         exec_span: exec_span.clone(),
         images,
@@ -550,41 +535,6 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     })
     .instrument(exec_span)
     .await
-}
-
-async fn build_exec_config<BuildConfig, BuildFuture>(
-    overrides: ConfigOverrides,
-    preserve_headless_approval_policy: bool,
-    build_config: BuildConfig,
-) -> std::io::Result<Config>
-where
-    BuildConfig: Fn(ConfigOverrides) -> BuildFuture,
-    BuildFuture: Future<Output = std::io::Result<Config>>,
-{
-    let build_without_headless_approval_policy = || {
-        build_config(ConfigOverrides {
-            approval_policy: None,
-            ..overrides.clone()
-        })
-    };
-    match build_config(overrides.clone()).await {
-        Ok(config)
-            if config.approvals_reviewer == ApprovalsReviewer::AutoReview
-                && !preserve_headless_approval_policy =>
-        {
-            build_without_headless_approval_policy().await
-        }
-        Ok(config) => Ok(config),
-        Err(headless_error) if !preserve_headless_approval_policy => {
-            match build_without_headless_approval_policy().await {
-                Ok(config) if config.approvals_reviewer == ApprovalsReviewer::AutoReview => {
-                    Ok(config)
-                }
-                Ok(_) | Err(_) => Err(headless_error),
-            }
-        }
-        Err(headless_error) => Err(headless_error),
-    }
 }
 
 #[allow(clippy::print_stderr)]
@@ -633,7 +583,6 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
         state_db,
         command,
         config,
-        resume_approvals_reviewer_override,
         dangerously_bypass_approvals_and_sandbox,
         exec_span,
         images,
@@ -765,11 +714,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
                 &client,
                 ClientRequest::ThreadResume {
                     request_id: request_ids.next(),
-                    params: thread_resume_params_from_config(
-                        &config,
-                        thread_id,
-                        resume_approvals_reviewer_override,
-                    ),
+                    params: thread_resume_params_from_config(&config, thread_id),
                 },
                 "thread/resume",
             )
@@ -858,7 +803,6 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
                         cwd: Some(default_cwd),
                         runtime_workspace_roots: None,
                         approval_policy: Some(default_approval_policy.into()),
-                        approvals_reviewer: None,
                         sandbox_policy: None,
                         permissions: None,
                         model: None,
@@ -1032,7 +976,6 @@ fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
         cwd: Some(config.cwd.to_string_lossy().to_string()),
         runtime_workspace_roots: Some(config.workspace_roots.clone()),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
-        approvals_reviewer: Some(config.approvals_reviewer.into()),
         sandbox: sandbox.flatten(),
         permissions,
         config: thread_config_overrides_from_config(config),
@@ -1042,11 +985,7 @@ fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
     }
 }
 
-fn thread_resume_params_from_config(
-    config: &Config,
-    thread_id: String,
-    approvals_reviewer_override: Option<codex_app_server_protocol::ApprovalsReviewer>,
-) -> ThreadResumeParams {
+fn thread_resume_params_from_config(config: &Config, thread_id: String) -> ThreadResumeParams {
     let permissions = permissions_selection_from_config(config);
     let sandbox = permissions.is_none().then(|| {
         sandbox_mode_from_permission_profile(
@@ -1061,7 +1000,6 @@ fn thread_resume_params_from_config(
         cwd: Some(config.cwd.to_string_lossy().to_string()),
         runtime_workspace_roots: Some(config.workspace_roots.clone()),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
-        approvals_reviewer: approvals_reviewer_override,
         sandbox: sandbox.flatten(),
         permissions,
         config: thread_config_overrides_from_config(config),
@@ -1143,7 +1081,6 @@ fn session_configured_from_thread_start_response(
         response.model_provider.clone(),
         response.service_tier.clone(),
         response.approval_policy.to_core(),
-        response.approvals_reviewer.to_core(),
         config.permissions.effective_permission_profile(),
         response.active_permission_profile.clone().map(Into::into),
         response.cwd.clone(),
@@ -1166,7 +1103,6 @@ fn session_configured_from_thread_resume_response(
         response.model_provider.clone(),
         response.service_tier.clone(),
         response.approval_policy.to_core(),
-        response.approvals_reviewer.to_core(),
         config.permissions.effective_permission_profile(),
         response.active_permission_profile.clone().map(Into::into),
         response.cwd.clone(),
@@ -1198,7 +1134,6 @@ fn session_configured_from_thread_response(
     model_provider_id: String,
     service_tier: Option<String>,
     approval_policy: AskForApproval,
-    approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
     permission_profile: PermissionProfile,
     active_permission_profile: Option<codex_protocol::models::ActivePermissionProfile>,
     cwd: AbsolutePathBuf,
@@ -1224,7 +1159,6 @@ fn session_configured_from_thread_response(
         model_provider_id,
         service_tier,
         approval_policy,
-        approvals_reviewer,
         permission_profile,
         active_permission_profile,
         cwd,

@@ -52,7 +52,6 @@ members = [
     "core-rollout-truncation",
     "core-exec",
     "core-approval-policy",
-    "core-guardian-approval",
     "core-mcp-runtime",
     "core-mcp-skill-dependency",
     "core-elicitation",
@@ -81,7 +80,6 @@ members = [
     "ext/agent",
     "ext/extension-api",
     "ext/goal",
-    "ext/guardian",
     "ext/image-generation",
     "ext/items",
     "ext/mcp",
@@ -235,7 +233,6 @@ codex-core-rollout-reconstruction = { path = "core-rollout-reconstruction" }
 codex-core-rollout-truncation = { path = "core-rollout-truncation" }
 codex-core-exec = { path = "core-exec" }
 codex-core-approval-policy = { path = "core-approval-policy" }
-codex-core-guardian-approval = { path = "core-guardian-approval" }
 codex-core-mcp-runtime = { path = "core-mcp-runtime" }
 codex-core-mcp-skill-dependency = { path = "core-mcp-skill-dependency" }
 codex-core-elicitation = { path = "core-elicitation" }
@@ -261,7 +258,6 @@ codex-execpolicy = { path = "execpolicy" }
 codex-extension-api = { path = "ext/extension-api" }
 codex-extension-items = { path = "ext/items" }
 codex-goal-extension = { path = "ext/goal" }
-codex-guardian = { path = "ext/guardian" }
 codex-image-generation-extension = { path = "ext/image-generation" }
 codex-experimental-api-macros = { path = "codex-experimental-api-macros" }
 codex-features = { path = "features" }

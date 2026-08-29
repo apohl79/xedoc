@@ -10,7 +10,6 @@ use anyhow::bail;
 use clap::Parser;
 use codex_core_api::AbsolutePathBuf;
 use codex_core_api::AltScreenMode;
-use codex_core_api::ApprovalsReviewer;
 use codex_core_api::Arg0DispatchPaths;
 use codex_core_api::AskForApproval;
 use codex_core_api::AuthCredentialsStoreMode;
@@ -192,14 +191,12 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         )?,
         explicit_permission_profile_mode: false,
         custom_permission_profiles: Vec::new(),
-        approvals_reviewer: ApprovalsReviewer::User,
         enforce_residency: Constrained::allow_any(/*initial_value*/ None),
         hide_agent_reasoning: false,
         show_raw_agent_reasoning: false,
         show_hook_output: false,
         base_instructions: None,
         developer_instructions: None,
-        guardian_policy_config: None,
         include_permissions_instructions: false,
         include_collaboration_mode_instructions: false,
         include_skill_instructions: false,
