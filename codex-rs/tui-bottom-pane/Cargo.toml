@@ -10,7 +10,7 @@ path = "src/lib.rs"
 doctest = false
 
 [features]
-test-support = []
+test-support = ["codex-tui-composer/test-support"]
 
 [lints]
 workspace = true
