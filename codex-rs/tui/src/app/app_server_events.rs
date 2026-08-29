@@ -6,7 +6,6 @@ use super::app_server_event_targets::server_notification_thread_target;
 use super::app_server_event_targets::server_request_thread_id;
 use super::thread_events::ThreadEventAttachment;
 use crate::AppServerTarget;
-use crate::app_command::AppCommand;
 use crate::app_event::AppEvent;
 use crate::app_server_session::AppServerSession;
 use crate::app_server_session::status_account_display_from_auth_mode;
@@ -49,8 +48,7 @@ impl App {
                 self.chat_widget.finish_mcp_startup_after_lag();
             }
             AppServerEvent::ServerNotification(notification) => {
-                self.handle_server_notification_event(app_server_client, notification)
-                    .await;
+                self.handle_server_notification_event(notification).await;
             }
             AppServerEvent::ServerRequest(request) => {
                 self.handle_server_request_event(app_server_client, request)
@@ -166,13 +164,12 @@ impl App {
                     })
                     .cloned()
             }) {
-                self.handle_server_notification_event(
-                    app_server_client,
-                    ServerNotification::TurnCompleted(TurnCompletedNotification {
+                self.handle_server_notification_event(ServerNotification::TurnCompleted(
+                    TurnCompletedNotification {
                         thread_id: thread_id.to_string(),
                         turn,
-                    }),
-                )
+                    },
+                ))
                 .await;
             }
             if let Some(channel) = self.thread_event_channels.get(&thread_id) {
@@ -184,11 +181,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_server_notification_event(
-        &mut self,
-        app_server_client: &AppServerSession,
-        notification: ServerNotification,
-    ) {
+    async fn handle_server_notification_event(&mut self, notification: ServerNotification) {
         match &notification {
             ServerNotification::ServerRequestResolved(notification) => {
                 if let Some(request) = self
@@ -227,26 +220,6 @@ impl App {
                         .is_some_and(AuthMode::has_chatgpt_account),
                     has_codex_backend_auth,
                 );
-                return;
-            }
-            ServerNotification::ExternalAgentConfigImportCompleted(notification) => {
-                let should_report_completion =
-                    app_server_client.consume_external_agent_config_import_completion();
-                if let Err(err) = self.refresh_in_memory_config_from_disk().await {
-                    tracing::warn!(
-                        error = %err,
-                        "failed to refresh config after external agent config import"
-                    );
-                }
-                let cwd = self.chat_widget.config_ref().cwd.to_path_buf();
-                self.chat_widget.refresh_plugin_mentions();
-                self.chat_widget.submit_op(AppCommand::reload_user_config());
-                self.fetch_plugins_list(app_server_client, cwd);
-                if should_report_completion {
-                    self.chat_widget.add_plain_history_lines(
-                        crate::external_agent_config_migration_flow::external_agent_config_migration_finished_lines(notification),
-                    );
-                }
                 return;
             }
             _ => {}

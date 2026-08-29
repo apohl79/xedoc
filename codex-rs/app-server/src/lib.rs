@@ -94,7 +94,6 @@ mod current_time;
 mod dynamic_tools;
 mod effective_plugin_change;
 mod extensions;
-mod external_agent_migration;
 mod external_auth;
 mod filters;
 mod fs_watch;
