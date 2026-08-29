@@ -43,8 +43,6 @@ pub(crate) mod login;
 mod marketplace_cmd;
 mod mcp_cmd;
 mod plugin_cmd;
-#[cfg(target_os = "windows")]
-mod sandbox_setup;
 mod state_db_recovery;
 mod version;
 #[cfg(not(windows))]
@@ -56,10 +54,8 @@ use crate::plugin_cmd::PluginSubcommand;
 pub use commands::LandlockCommand;
 pub use commands::SandboxStateArgs;
 pub use commands::SeatbeltCommand;
-pub use commands::WindowsCommand;
 pub use debug_sandbox::run_command_under_landlock;
 pub use debug_sandbox::run_command_under_seatbelt;
-pub use debug_sandbox::run_command_under_windows_sandbox;
 pub use login::read_access_token_from_stdin;
 pub use login::read_api_key_from_stdin;
 pub use login::run_login_status;
@@ -413,13 +409,11 @@ impl clap::FromArgMatches for SessionTuiCli {
 type HostSandboxArgs = crate::SeatbeltCommand;
 #[cfg(target_os = "linux")]
 type HostSandboxArgs = crate::LandlockCommand;
-#[cfg(target_os = "windows")]
-type HostSandboxArgs = crate::WindowsCommand;
 
-#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 type HostSandboxArgs = UnsupportedSandboxArgs;
 
-#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 #[derive(Debug, Parser)]
 struct UnsupportedSandboxArgs {
     /// Layer $CODEX_HOME/<name>.config.toml on top of the base user config.
@@ -1363,16 +1357,6 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
             run_update_command()?;
         }
         Some(Subcommand::Sandbox(mut sandbox_cli)) => {
-            #[cfg(target_os = "windows")]
-            if let Some(setup_cli) = sandbox_setup::parse_setup_command(&sandbox_cli.command)? {
-                reject_remote_mode_for_subcommand(
-                    root_remote.as_deref(),
-                    root_remote_auth_token_env.as_deref(),
-                    "sandbox setup",
-                )?;
-                sandbox_setup::run(setup_cli).await?;
-                return Ok(());
-            }
             reject_remote_mode_for_subcommand(
                 root_remote.as_deref(),
                 root_remote_auth_token_env.as_deref(),
@@ -1401,14 +1385,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 loader_overrides,
             )
             .await?;
-            #[cfg(target_os = "windows")]
-            crate::run_command_under_windows_sandbox(
-                sandbox_cli,
-                arg0_paths.codex_linux_sandbox_exe.clone(),
-                loader_overrides,
-            )
-            .await?;
-            #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
             {
                 let _ = loader_overrides;
                 anyhow::bail!("`codex sandbox` is not supported on this operating system");
@@ -2867,7 +2844,7 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn sandbox_parses_permission_profile() {
         let cli = MultitoolCli::try_parse_from([
@@ -2888,7 +2865,7 @@ mod tests {
         assert_eq!(command.command, vec!["echo"]);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn sandbox_parses_legacy_permissions_profile_alias() {
         let cli = MultitoolCli::try_parse_from([
@@ -2909,7 +2886,7 @@ mod tests {
         assert_eq!(command.command, vec!["echo"]);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn sandbox_help_only_shows_singular_permission_profile() {
         let help = help_from_args(&["codex", "sandbox", "--help"]);
@@ -2917,7 +2894,7 @@ mod tests {
         assert!(!help.contains("--permissions-profile"), "{help}");
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn sandbox_parses_permissions_profile_short_alias() {
         let cli =
@@ -2932,7 +2909,7 @@ mod tests {
         assert_eq!(command.command, vec!["echo"]);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn sandbox_parses_config_profile() {
         let cli =
@@ -2947,7 +2924,7 @@ mod tests {
         assert_eq!(command.command, vec!["echo"]);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn sandbox_rejects_explicit_profile_controls_without_profile() {
         let err = MultitoolCli::try_parse_from(["codex", "sandbox", "-C", "/tmp"])

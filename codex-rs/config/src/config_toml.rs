@@ -25,7 +25,6 @@ use crate::types::SkillsConfig;
 use crate::types::ToolSuggestConfig;
 use crate::types::Tui;
 use crate::types::UriBasedFileOpener;
-use crate::types::WindowsToml;
 use codex_features::FeaturesToml;
 use codex_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;
 use codex_model_provider_info::LEGACY_OLLAMA_CHAT_PROVIDER_ID;
@@ -43,7 +42,6 @@ use codex_protocol::config_types::TrustLevel;
 use codex_protocol::config_types::Verbosity;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::config_types::WebSearchToolConfig;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::permissions::NetworkSandboxPolicy;
@@ -500,10 +498,6 @@ pub struct ConfigToml {
     /// OTEL configuration.
     pub otel: Option<OtelConfigToml>,
 
-    /// Windows-specific configuration.
-    #[serde(default)]
-    pub windows: Option<WindowsToml>,
-
     /// Collection of in-product notices (different from notifications)
     /// See [`crate::types::Notice`] for more details
     pub notice: Option<Notice>,
@@ -748,7 +742,6 @@ impl ConfigToml {
     pub async fn derive_permission_profile(
         &self,
         sandbox_mode_override: Option<SandboxMode>,
-        windows_sandbox_level: WindowsSandboxLevel,
         active_project: Option<&ProjectConfig>,
         permission_profile_constraint: Option<&crate::Constrained<PermissionProfile>>,
     ) -> PermissionProfile {
@@ -761,9 +754,7 @@ impl ConfigToml {
                 active_project
                     .filter(|project| project.is_trusted() || project.is_untrusted())
                     .map(|_| {
-                        if cfg!(target_os = "windows")
-                            && windows_sandbox_level == WindowsSandboxLevel::Disabled
-                        {
+                        if cfg!(target_os = "windows") {
                             SandboxMode::ReadOnly
                         } else {
                             SandboxMode::WorkspaceWrite
@@ -772,8 +763,6 @@ impl ConfigToml {
             })
             .unwrap_or_default();
         let effective_sandbox_mode = if cfg!(target_os = "windows")
-            // If the experimental Windows sandbox is enabled, do not force a downgrade.
-            && windows_sandbox_level == WindowsSandboxLevel::Disabled
             && matches!(resolved_sandbox_mode, SandboxMode::WorkspaceWrite)
         {
             SandboxMode::ReadOnly

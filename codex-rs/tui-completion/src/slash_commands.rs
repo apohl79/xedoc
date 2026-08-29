@@ -60,7 +60,6 @@ pub struct BuiltinCommandFlags {
     pub service_tier_commands_enabled: bool,
     pub goal_command_enabled: bool,
     pub personality_command_enabled: bool,
-    pub allow_elevate_sandbox: bool,
     pub side_conversation_active: bool,
 }
 
@@ -68,7 +67,6 @@ pub struct BuiltinCommandFlags {
 pub fn builtins_for_input(flags: BuiltinCommandFlags) -> Vec<(&'static str, SlashCommand)> {
     built_in_slash_commands()
         .into_iter()
-        .filter(|(_, cmd)| flags.allow_elevate_sandbox || *cmd != SlashCommand::ElevateSandbox)
         .filter(|(_, cmd)| flags.collaboration_modes_enabled || *cmd != SlashCommand::Plan)
         .filter(|(_, cmd)| flags.plugins_command_enabled || *cmd != SlashCommand::Plugins)
         .filter(|(_, cmd)| flags.goal_command_enabled || *cmd != SlashCommand::Goal)
@@ -164,7 +162,6 @@ mod tests {
             service_tier_commands_enabled: true,
             goal_command_enabled: true,
             personality_command_enabled: true,
-            allow_elevate_sandbox: true,
             side_conversation_active: false,
         }
     }

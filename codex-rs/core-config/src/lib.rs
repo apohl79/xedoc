@@ -7,8 +7,6 @@ pub mod config;
 #[doc(hidden)]
 pub mod config_lock;
 
-pub mod windows_sandbox;
-
 mod path_utils {
     pub use codex_utils_path::*;
 }

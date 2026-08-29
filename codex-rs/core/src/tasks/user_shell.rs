@@ -216,17 +216,10 @@ pub(crate) async fn execute_user_shell_command(
         expiration: USER_SHELL_TIMEOUT_MS.into(),
         capture_policy: ExecCapturePolicy::ShellTool,
         sandbox: SandboxType::None,
-        windows_sandbox_policy_cwd: cwd.clone().into(),
-        windows_sandbox_workspace_roots: turn_context.config.effective_workspace_roots(),
-        windows_sandbox_level: turn_context.windows_sandbox_level,
-        windows_sandbox_private_desktop: turn_context
-            .config
-            .permissions
-            .windows_sandbox_private_desktop,
+        sandbox_policy_cwd: cwd.clone().into(),
         permission_profile: permission_profile.clone(),
         file_system_sandbox_policy: permission_profile.file_system_sandbox_policy(),
         network_sandbox_policy: permission_profile.network_sandbox_policy(),
-        windows_sandbox_filesystem_overrides: None,
         arg0: None,
         exec_server_sandbox: None,
         exec_server_enforce_managed_network: false,

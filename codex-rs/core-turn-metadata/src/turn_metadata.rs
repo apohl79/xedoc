@@ -21,7 +21,6 @@ use codex_git_utils::get_git_repo_root;
 use codex_git_utils::get_has_changes;
 use codex_git_utils::get_head_commit_hash;
 use codex_protocol::ThreadId;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::protocol::SessionSource;
@@ -114,17 +113,11 @@ impl TurnMetadataState {
         turn_id: String,
         cwd: AbsolutePathBuf,
         permission_profile: &PermissionProfile,
-        windows_sandbox_level: WindowsSandboxLevel,
         enforce_managed_network: bool,
     ) -> Self {
         let repo_root = get_git_repo_root(&cwd).map(|root| root.to_string_lossy().into_owned());
         let sandbox = Some(
-            permission_profile_sandbox_tag(
-                permission_profile,
-                windows_sandbox_level,
-                enforce_managed_network,
-            )
-            .to_string(),
+            permission_profile_sandbox_tag(permission_profile, enforce_managed_network).to_string(),
         );
         Self {
             cwd,

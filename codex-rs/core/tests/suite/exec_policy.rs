@@ -285,23 +285,13 @@ async fn granular_complex_forced_rm_requests_approval_when_allowed() -> Result<(
 
 #[cfg(windows)]
 #[tokio::test]
-async fn unified_exec_disabled_windows_sandbox_rejects_managed_read_only_command() -> Result<()> {
+async fn unified_exec_windows_rejects_managed_read_only_command() -> Result<()> {
     let server = start_mock_server().await;
     let mut builder = test_codex().with_config(|config| {
         config
             .features
             .enable(Feature::UnifiedExec)
             .expect("test config should allow feature update");
-        config
-            .features
-            .disable(Feature::WindowsSandbox)
-            .expect("test config should allow feature update");
-        config
-            .features
-            .disable(Feature::WindowsSandboxElevated)
-            .expect("test config should allow feature update");
-        config.set_windows_sandbox_enabled(false);
-        config.set_windows_elevated_sandbox_enabled(false);
     });
     let test = builder.build(&server).await?;
     let call_id = "unified-exec-disabled-windows-sandbox-read-only";

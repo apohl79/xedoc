@@ -1,4 +1,3 @@
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::PermissionProfile;
 use codex_sandboxing::SandboxType;
 use codex_sandboxing::get_platform_sandbox;
@@ -7,7 +6,6 @@ use std::path::Path;
 
 pub fn permission_profile_sandbox_tag(
     profile: &PermissionProfile,
-    windows_sandbox_level: WindowsSandboxLevel,
     enforce_managed_network: bool,
 ) -> &'static str {
     match profile {
@@ -27,12 +25,7 @@ pub fn permission_profile_sandbox_tag(
             }
         }
     }
-    if cfg!(target_os = "windows") && matches!(windows_sandbox_level, WindowsSandboxLevel::Elevated)
-    {
-        return "windows_elevated";
-    }
-
-    get_platform_sandbox(windows_sandbox_level != WindowsSandboxLevel::Disabled)
+    get_platform_sandbox()
         .map(SandboxType::as_metric_tag)
         .unwrap_or("none")
 }

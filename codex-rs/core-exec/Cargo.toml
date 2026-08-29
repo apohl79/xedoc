@@ -47,7 +47,6 @@ tokio-util = { workspace = true, features = ["rt"] }
 tracing = { workspace = true, features = ["log"] }
 
 [target.'cfg(windows)'.dependencies]
-codex-windows-sandbox = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

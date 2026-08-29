@@ -174,7 +174,6 @@ impl CommandExecRequestProcessor {
             },
             None => None,
         };
-        let windows_sandbox_level = WindowsSandboxLevel::from_config(&self.config);
         let output_bytes_cap = if disable_output_cap {
             None
         } else {
@@ -203,7 +202,6 @@ impl CommandExecRequestProcessor {
             network_proxy_spec,
             network_proxy_permission_profile,
             managed_network_requirements_enabled,
-            windows_sandbox_workspace_roots,
         ) = if let Some(permission_profile) = permission_profile {
             let overrides = ConfigOverrides {
                 cwd: Some(cwd.to_path_buf()),
@@ -231,7 +229,6 @@ impl CommandExecRequestProcessor {
                 config.permissions.network.clone(),
                 config.permissions.permission_profile().clone(),
                 config.managed_network_requirements_enabled(),
-                config.effective_workspace_roots(),
             )
         } else if let Some(policy) = sandbox_policy.map(|policy| policy.to_core()) {
             self.config
@@ -257,7 +254,6 @@ impl CommandExecRequestProcessor {
                 self.config.permissions.network.clone(),
                 self.config.permissions.permission_profile().clone(),
                 self.config.managed_network_requirements_enabled(),
-                self.config.effective_workspace_roots(),
             )
         } else {
             (
@@ -265,7 +261,6 @@ impl CommandExecRequestProcessor {
                 self.config.permissions.network.clone(),
                 self.config.permissions.permission_profile().clone(),
                 self.config.managed_network_requirements_enabled(),
-                self.config.effective_workspace_roots(),
             )
         };
         let started_network_proxy = match network_proxy_spec.as_ref() {
@@ -299,11 +294,6 @@ impl CommandExecRequestProcessor {
                 .map(codex_core::config::StartedNetworkProxy::proxy),
             network_environment_id: None,
             sandbox_permissions: SandboxPermissions::UseDefault,
-            windows_sandbox_level,
-            windows_sandbox_private_desktop: self
-                .config
-                .permissions
-                .windows_sandbox_private_desktop,
             justification: None,
             arg0: None,
         };
@@ -323,7 +313,6 @@ impl CommandExecRequestProcessor {
             exec_params,
             &effective_permission_profile,
             &sandbox_cwd,
-            windows_sandbox_workspace_roots.as_slice(),
             &codex_linux_sandbox_exe,
             use_legacy_landlock,
         )

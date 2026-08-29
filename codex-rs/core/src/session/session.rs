@@ -77,7 +77,6 @@ pub(crate) struct SessionConfiguration {
     /// active profile id, and profile-defined workspace roots in sync by using
     /// the methods below instead of mutating the fields independently.
     pub(super) permission_profile_state: PermissionProfileState,
-    pub(super) windows_sandbox_level: WindowsSandboxLevel,
 
     /// Sticky thread-level environment selections plus the legacy cwd used
     /// when a turn does not select an environment.
@@ -291,9 +290,6 @@ impl SessionConfiguration {
         if let Some(approvals_reviewer) = updates.approvals_reviewer {
             next_configuration.approvals_reviewer = approvals_reviewer;
         }
-        if let Some(windows_sandbox_level) = updates.windows_sandbox_level {
-            next_configuration.windows_sandbox_level = windows_sandbox_level;
-        }
 
         let current_cwd = self.cwd().clone();
         let next_environments = updates
@@ -440,7 +436,6 @@ pub(crate) struct SessionSettingsUpdate {
     pub(crate) sandbox_policy: Option<SandboxPolicy>,
     pub(crate) permission_profile: Option<PermissionProfile>,
     pub(crate) active_permission_profile: Option<ActivePermissionProfile>,
-    pub(crate) windows_sandbox_level: Option<WindowsSandboxLevel>,
     pub(crate) collaboration_mode: Option<CollaborationMode>,
     pub(crate) base_instructions: Option<String>,
     pub(crate) reasoning_summary: Option<ReasoningSummaryConfig>,

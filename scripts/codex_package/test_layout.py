@@ -27,8 +27,6 @@ class PackageLayoutTest(unittest.TestCase):
                 rg_bin=touch_executable(root / "rg"),
                 zsh_bin=None,
                 bwrap_bin=touch_executable(root / "bwrap"),
-                codex_command_runner_bin=None,
-                codex_windows_sandbox_setup_bin=None,
             )
 
             build_package_dir(
@@ -67,8 +65,6 @@ class PackageLayoutTest(unittest.TestCase):
                 rg_bin=touch_executable(root / "rg"),
                 zsh_bin=None,
                 bwrap_bin=touch_executable(root / "bwrap"),
-                codex_command_runner_bin=None,
-                codex_windows_sandbox_setup_bin=None,
             )
 
             build_package_dir(

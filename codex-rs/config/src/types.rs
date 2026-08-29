@@ -155,22 +155,6 @@ impl Default for AuthKeyringBackendKind {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum WindowsSandboxModeToml {
-    Elevated,
-    Unelevated,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
-#[schemars(deny_unknown_fields)]
-pub struct WindowsToml {
-    pub sandbox: Option<WindowsSandboxModeToml>,
-    /// Defaults to `true`. Set to `false` to launch the final sandboxed child
-    /// process on `Winsta0\\Default` instead of a private desktop.
-    pub sandbox_private_desktop: Option<bool>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, JsonSchema)]
 pub enum UriBasedFileOpener {
     #[serde(rename = "vscode")]
@@ -809,8 +793,6 @@ pub struct ExternalConfigMigrationPrompts {
 pub struct Notice {
     /// Tracks whether the user has acknowledged the full access warning prompt.
     pub hide_full_access_warning: Option<bool>,
-    /// Tracks whether the user has acknowledged the Windows world-writable directories warning.
-    pub hide_world_writable_warning: Option<bool>,
     /// Tracks whether the user opted out of Codex-managed fast defaults.
     pub fast_default_opt_out: Option<bool>,
     /// Tracks whether the user opted out of the rate limit model switch reminder.

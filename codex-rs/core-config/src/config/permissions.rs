@@ -1,5 +1,4 @@
 use codex_config::config_toml::ProjectConfig;
-use codex_protocol::config_types::WindowsSandboxLevel;
 
 pub(crate) use codex_core_config_runtime::permissions::BUILT_IN_DANGER_FULL_ACCESS_PROFILE;
 pub(crate) use codex_core_config_runtime::permissions::BUILT_IN_READ_ONLY_PROFILE;
@@ -15,10 +14,9 @@ pub(crate) use codex_core_config_runtime::permissions::validate_user_permission_
 
 pub(crate) fn default_builtin_permission_profile_name(
     active_project: &ProjectConfig,
-    windows_sandbox_level: WindowsSandboxLevel,
 ) -> &'static str {
     if (active_project.is_trusted() || active_project.is_untrusted())
-        && !(cfg!(target_os = "windows") && windows_sandbox_level == WindowsSandboxLevel::Disabled)
+        && !cfg!(target_os = "windows")
     {
         BUILT_IN_WORKSPACE_PROFILE
     } else {

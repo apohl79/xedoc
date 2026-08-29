@@ -50,7 +50,6 @@ async fn workspace_roots_test(server: &MockServer) -> Result<TestCodex> {
             .enable(Feature::UnifiedExec)
             .expect("test config should allow feature update");
         config.workspace_roots = vec![config.cwd.clone()];
-        config.set_windows_sandbox_enabled(/*value*/ true);
     });
     builder.build_with_auto_env(server).await
 }

@@ -30,7 +30,6 @@ use codex_protocol::config_types::ModeKind;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Settings;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::models::AdditionalPermissionProfile;
 use codex_protocol::models::PermissionProfile;
@@ -133,8 +132,6 @@ pub struct TurnContext {
     pub permission_profile: PermissionProfile,
     /// Workspace-internal network proxy.
     pub network: Option<NetworkProxy>,
-    /// Workspace-internal Windows sandbox level.
-    pub windows_sandbox_level: WindowsSandboxLevel,
     /// Workspace-internal available-model catalog.
     pub available_models: Vec<ModelPreset>,
     /// Workspace-internal Unified Exec shell mode.
@@ -301,7 +298,6 @@ impl TurnContext {
             approval_policy: self.approval_policy.clone(),
             permission_profile: self.permission_profile.clone(),
             network: self.network.clone(),
-            windows_sandbox_level: self.windows_sandbox_level,
             available_models,
             unified_exec_shell_mode: self.unified_exec_shell_mode.clone(),
             final_output_json_schema: self.final_output_json_schema.clone(),
@@ -346,11 +342,6 @@ impl TurnContext {
             permissions: permissions.into(),
             cwd: Some(environment.cwd().clone()),
             workspace_roots: environment.workspace_roots().to_vec(),
-            windows_sandbox_level: self.windows_sandbox_level,
-            windows_sandbox_private_desktop: self
-                .config
-                .permissions
-                .windows_sandbox_private_desktop,
             use_legacy_landlock: self.config.features.use_legacy_landlock(),
         }
     }

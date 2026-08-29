@@ -5,7 +5,6 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SCRIPT_DIR.parent
 
@@ -43,8 +42,6 @@ class PackageInputs:
     rg_bin: Path
     zsh_bin: Path | None
     bwrap_bin: Path | None
-    codex_command_runner_bin: Path | None
-    codex_windows_sandbox_setup_bin: Path | None
 
 
 PACKAGE_VARIANTS: dict[str, PackageVariant] = {
@@ -59,7 +56,6 @@ PACKAGE_VARIANTS: dict[str, PackageVariant] = {
         executable_stem="codex-app-server",
     ),
 }
-
 
 TARGET_SPECS: dict[str, TargetSpec] = {
     "x86_64-unknown-linux-gnu": TargetSpec(
@@ -111,7 +107,6 @@ TARGET_SPECS: dict[str, TargetSpec] = {
         dotslash_platform="windows-aarch64",
     ),
 }
-
 
 HOST_RELEASE_TARGETS: dict[tuple[str, str], str] = {
     ("darwin", "aarch64"): "aarch64-apple-darwin",

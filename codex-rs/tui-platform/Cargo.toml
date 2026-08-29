@@ -17,10 +17,6 @@ workspace = true
 
 [dependencies]
 base64 = { workspace = true }
-codex-config = { workspace = true }
-codex-core-config = { workspace = true }
-codex-features = { workspace = true }
-codex-protocol = { workspace = true }
 codex-tui-input = { workspace = true }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
@@ -31,12 +27,6 @@ arboard = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = { workspace = true }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-anyhow = { workspace = true }
-codex-utils-absolute-path = { workspace = true }
-codex-windows-sandbox = { workspace = true }
-dunce = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

@@ -92,8 +92,6 @@ impl ToolOrchestrator {
             workspace_roots: attempt.workspace_roots,
             codex_linux_sandbox_exe: attempt.codex_linux_sandbox_exe,
             use_legacy_landlock: attempt.use_legacy_landlock,
-            windows_sandbox_level: attempt.windows_sandbox_level,
-            windows_sandbox_private_desktop: attempt.windows_sandbox_private_desktop,
             network_denial_cancellation_token: network_approval
                 .as_ref()
                 .map(ActiveNetworkApproval::cancellation_token),
@@ -246,7 +244,6 @@ impl ToolOrchestrator {
                 &file_system_sandbox_policy,
                 network_sandbox_policy,
                 sandbox_preference,
-                turn_ctx.windows_sandbox_level,
                 managed_network_active,
             )
         } else {
@@ -271,11 +268,6 @@ impl ToolOrchestrator {
             workspace_roots,
             codex_linux_sandbox_exe: turn_ctx.config.codex_linux_sandbox_exe.as_ref(),
             use_legacy_landlock,
-            windows_sandbox_level: turn_ctx.windows_sandbox_level,
-            windows_sandbox_private_desktop: turn_ctx
-                .config
-                .permissions
-                .windows_sandbox_private_desktop,
             network_denial_cancellation_token: None,
             network_proxy: None,
         };
@@ -431,7 +423,6 @@ impl ToolOrchestrator {
                         &file_system_sandbox_policy,
                         network_sandbox_policy,
                         sandbox_preference,
-                        turn_ctx.windows_sandbox_level,
                         managed_network_active,
                     )
                 } else {
@@ -453,11 +444,6 @@ impl ToolOrchestrator {
                     workspace_roots,
                     codex_linux_sandbox_exe: retry_codex_linux_sandbox_exe,
                     use_legacy_landlock,
-                    windows_sandbox_level: turn_ctx.windows_sandbox_level,
-                    windows_sandbox_private_desktop: turn_ctx
-                        .config
-                        .permissions
-                        .windows_sandbox_private_desktop,
                     network_denial_cancellation_token: None,
                     network_proxy: None,
                 };

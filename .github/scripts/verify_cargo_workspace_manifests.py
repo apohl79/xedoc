@@ -15,13 +15,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CARGO_RS_ROOT = ROOT / "codex-rs"
 WORKSPACE_PACKAGE_FIELDS = ("version", "edition", "license")
-TOP_LEVEL_NAME_EXCEPTIONS = {
-    "windows-sandbox-rs": "codex-windows-sandbox",
-}
+TOP_LEVEL_NAME_EXCEPTIONS: dict[str, str] = {}
 UTILITY_NAME_EXCEPTIONS = {
     "path-utils": "codex-utils-path",
 }
@@ -31,7 +28,6 @@ MANIFEST_FEATURE_EXCEPTIONS = {
 }
 OPTIONAL_DEPENDENCY_EXCEPTIONS = set()
 INTERNAL_DEPENDENCY_FEATURE_EXCEPTIONS = {}
-
 
 def main() -> int:
     internal_package_names = workspace_package_names()
@@ -100,7 +96,6 @@ def main() -> int:
             print(f"  - {error}")
 
     return 1
-
 
 def manifest_errors(
     path: Path,
@@ -205,7 +200,6 @@ def manifest_errors(
 
     return errors
 
-
 def expected_package_name(path: Path) -> str | None:
     parts = path.relative_to(CARGO_RS_ROOT).parts
     if len(parts) == 2 and parts[1] == "Cargo.toml":
@@ -219,14 +213,11 @@ def expected_package_name(path: Path) -> str | None:
         return UTILITY_NAME_EXCEPTIONS.get(directory, f"codex-utils-{directory}")
     return None
 
-
 def is_workspace_reference(value: object) -> bool:
     return isinstance(value, dict) and value.get("workspace") is True
 
-
 def manifest_key(path: Path) -> str:
     return str(path.relative_to(ROOT))
-
 
 def normalize_feature_mapping(value: object) -> dict[str, tuple[str, ...]] | None:
     if not isinstance(value, dict):
@@ -242,12 +233,10 @@ def normalize_feature_mapping(value: object) -> dict[str, tuple[str, ...]] | Non
         normalized[key] = normalized_features
     return normalized
 
-
 def normalize_string_list(value: object) -> tuple[str, ...] | None:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         return None
     return tuple(value)
-
 
 def render_feature_mapping(features: dict[str, tuple[str, ...]]) -> str:
     entries = [
@@ -255,10 +244,8 @@ def render_feature_mapping(features: dict[str, tuple[str, ...]]) -> str:
     ]
     return ", ".join(entries)
 
-
 def render_string_list(items: tuple[str, ...]) -> str:
     return "[" + ", ".join(f'"{item}"' for item in items) + "]"
-
 
 def dependency_sections(manifest: dict) -> list[tuple[str, dict]]:
     sections = []
@@ -287,10 +274,8 @@ def dependency_sections(manifest: dict) -> list[tuple[str, dict]]:
 
     return sections
 
-
 def dependency_entry_label(section_name: str, dependency_name: str) -> str:
     return f"[{section_name}].{dependency_name}"
-
 
 def is_internal_dependency(
     manifest_path: Path,
@@ -312,7 +297,6 @@ def is_internal_dependency(
     except ValueError:
         return False
     return True
-
 
 def add_unused_exception_errors(
     failures_by_path: dict[str, list[str]],
@@ -353,10 +337,8 @@ def add_unused_exception_errors(
             "`INTERNAL_DEPENDENCY_FEATURE_EXCEPTIONS`",
         )
 
-
 def add_failure(failures_by_path: dict[str, list[str]], path_key: str, error: str) -> None:
     failures_by_path.setdefault(path_key, []).append(error)
-
 
 def workspace_package_names() -> set[str]:
     package_names = set()
@@ -370,10 +352,8 @@ def workspace_package_names() -> set[str]:
             package_names.add(package_name)
     return package_names
 
-
 def load_manifest(path: Path) -> dict:
     return tomllib.loads(path.read_text())
-
 
 def cargo_manifests() -> list[Path]:
     return sorted(
@@ -382,10 +362,8 @@ def cargo_manifests() -> list[Path]:
         if path != CARGO_RS_ROOT / "Cargo.toml"
     )
 
-
 def manifests_to_verify() -> list[Path]:
     return [CARGO_RS_ROOT / "Cargo.toml", *cargo_manifests()]
-
 
 if __name__ == "__main__":
     sys.exit(main())

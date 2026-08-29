@@ -176,10 +176,6 @@ pub struct SandboxAttempt<'a> {
     pub codex_linux_sandbox_exe: Option<&'a std::path::PathBuf>,
     /// Whether legacy Landlock behavior is enabled.
     pub use_legacy_landlock: bool,
-    /// Windows sandbox isolation level.
-    pub windows_sandbox_level: codex_protocol::config_types::WindowsSandboxLevel,
-    /// Whether Windows uses a private desktop.
-    pub windows_sandbox_private_desktop: bool,
     /// Cancellation token for managed-network denials.
     pub network_denial_cancellation_token: Option<CancellationToken>,
     /// Managed network proxy configured for this sandbox attempt.
@@ -220,20 +216,9 @@ impl<'a> SandboxAttempt<'a> {
                     .codex_linux_sandbox_exe
                     .map(std::path::PathBuf::as_path),
                 use_legacy_landlock: self.use_legacy_landlock,
-                windows_sandbox_level: self.windows_sandbox_level,
-                windows_sandbox_private_desktop: self.windows_sandbox_private_desktop,
             })
             .map_err(CodexErr::from)?;
-        let workspace_roots = self
-            .workspace_roots
-            .iter()
-            .map(PathUri::to_abs_path)
-            .collect::<std::io::Result<Vec<_>>>()?;
-        Ok(ExecRequest::from_sandbox_exec_request(
-            request,
-            options,
-            workspace_roots,
-        ))
+        Ok(ExecRequest::from_sandbox_exec_request(request, options))
     }
 
     /// Builds a remote execution request from a sandbox command.
@@ -260,19 +245,15 @@ impl<'a> SandboxAttempt<'a> {
                 sandbox_policy_cwd: self.sandbox_cwd,
                 codex_linux_sandbox_exe: None,
                 use_legacy_landlock: self.use_legacy_landlock,
-                windows_sandbox_level: self.windows_sandbox_level,
-                windows_sandbox_private_desktop: self.windows_sandbox_private_desktop,
             })
             .map_err(CodexErr::from)?;
-        let mut exec_request = ExecRequest::from_sandbox_exec_request(request, options, Vec::new());
+        let mut exec_request = ExecRequest::from_sandbox_exec_request(request, options);
         exec_request.exec_server_managed_network = managed_network;
         if self.sandbox_requested {
             exec_request.exec_server_sandbox = Some(FileSystemSandboxContext {
                 permissions: exec_server_permissions.into(),
-                cwd: Some(exec_request.windows_sandbox_policy_cwd.clone()),
+                cwd: Some(exec_request.sandbox_policy_cwd.clone()),
                 workspace_roots: self.workspace_roots.to_vec(),
-                windows_sandbox_level: self.windows_sandbox_level,
-                windows_sandbox_private_desktop: self.windows_sandbox_private_desktop,
                 use_legacy_landlock: self.use_legacy_landlock,
             });
             exec_request.exec_server_enforce_managed_network = self.enforce_managed_network;

@@ -10,7 +10,6 @@ from .targets import PackageVariant
 from .targets import TargetSpec
 from .zsh import ZSH_RESOURCE_PATH
 
-
 LAYOUT_VERSION = 1
 SESSION_CONTROL_LAYOUT_VERSION = 2
 SESSION_CONTROL_SOURCE = Path(__file__).resolve().parents[1] / "codex-session"
@@ -84,20 +83,6 @@ def build_package_dir(
 
     if inputs.bwrap_bin is not None:
         copy_executable(inputs.bwrap_bin, resources_dir / "bwrap", is_windows=False)
-
-    if inputs.codex_command_runner_bin is not None:
-        copy_executable(
-            inputs.codex_command_runner_bin,
-            resources_dir / "codex-command-runner.exe",
-            is_windows=True,
-        )
-
-    if inputs.codex_windows_sandbox_setup_bin is not None:
-        copy_executable(
-            inputs.codex_windows_sandbox_setup_bin,
-            resources_dir / "codex-windows-sandbox-setup.exe",
-            is_windows=True,
-        )
 
     metadata = {
         "layoutVersion": (
@@ -181,14 +166,6 @@ def validate_package_dir(
     if spec.is_linux:
         required_files.append(Path("codex-resources") / "bwrap")
         executable_files.append(Path("codex-resources") / "bwrap")
-
-    if spec.is_windows:
-        required_files.extend(
-            [
-                Path("codex-resources") / "codex-command-runner.exe",
-                Path("codex-resources") / "codex-windows-sandbox-setup.exe",
-            ]
-        )
 
     for relative_file in required_files:
         path = package_dir / relative_file

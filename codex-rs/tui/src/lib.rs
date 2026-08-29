@@ -50,8 +50,6 @@ use codex_protocol::ThreadId;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::config_types::AltScreenMode;
 use codex_protocol::config_types::SandboxMode;
-#[cfg(target_os = "windows")]
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_rollout::StateDbHandle;
 use codex_rollout::state_db;
 use codex_state::log_db;
@@ -165,8 +163,6 @@ mod updates;
 #[cfg(any(not(debug_assertions), test))]
 mod updates_cache;
 pub(crate) use codex_tui_transcript::version;
-#[cfg(target_os = "windows")]
-mod windows_sandbox;
 mod workspace_command;
 
 #[cfg(test)]
@@ -1272,8 +1268,6 @@ async fn run_ratatui_app(
 
     let should_show_trust_screen_flag =
         !uses_remote_workspace && should_show_trust_screen(&initial_config);
-    #[cfg(target_os = "windows")]
-    let mut trust_decision_was_made = false;
     let login_status = if initial_config.model_provider.requires_openai_auth {
         let Some(app_server) = app_server.as_mut() else {
             unreachable!("app server should exist when auth is required");
@@ -1317,10 +1311,6 @@ async fn run_ratatui_app(
                 update_action: None,
                 exit_reason: ExitReason::UserRequested,
             });
-        }
-        #[cfg(target_os = "windows")]
-        {
-            trust_decision_was_made = onboarding_result.directory_trust_persisted;
         }
         // If the user made an explicit trust decision, or we showed the login flow, reload config
         // so current process state reflects persisted trust/auth changes.
@@ -1551,25 +1541,6 @@ async fn run_ratatui_app(
 
     set_default_client_residency_requirement(config.enforce_residency.value());
     let should_show_trust_screen = should_show_trust_screen(&config);
-    #[cfg(target_os = "windows")]
-    let windows_sandbox_level = crate::windows_sandbox::level_from_config(&config);
-    #[cfg(target_os = "windows")]
-    let required_elevated_sandbox_needs_setup = windows_sandbox_level
-        == WindowsSandboxLevel::Elevated
-        && config
-            .config_layer_stack
-            .requirements()
-            .windows_sandbox_mode
-            .source
-            .is_some()
-        && !crate::windows_sandbox::sandbox_setup_is_complete(config.codex_home.as_path());
-    #[cfg(target_os = "windows")]
-    let should_prompt_windows_sandbox_nux_at_startup = (trust_decision_was_made
-        && windows_sandbox_level == WindowsSandboxLevel::Disabled)
-        || required_elevated_sandbox_needs_setup;
-    #[cfg(not(target_os = "windows"))]
-    let should_prompt_windows_sandbox_nux_at_startup = false;
-
     let Cli {
         prompt,
         shared,
@@ -1651,7 +1622,6 @@ async fn run_ratatui_app(
         images,
         session_selection,
         should_show_trust_screen, // Proxy to: is it a first run in this directory?
-        should_prompt_windows_sandbox_nux_at_startup,
         app_server_target,
         state_db,
         environment_manager,
@@ -1877,7 +1847,6 @@ mod tests {
     use codex_app_server_protocol::ThreadStartResponse;
     use codex_config::config_toml::ProjectConfig;
     use pretty_assertions::assert_eq;
-    use serial_test::serial;
     use tempfile::TempDir;
 
     async fn build_config(temp_dir: &TempDir) -> std::io::Result<Config> {
@@ -2831,22 +2800,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
-    async fn windows_shows_trust_prompt_without_sandbox() -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let mut config = build_config(&temp_dir).await?;
-        config.active_project = ProjectConfig { trust_level: None };
-        config.set_windows_sandbox_enabled(/*value*/ false);
-
-        let should_show = should_show_trust_screen(&config);
-        assert!(
-            should_show,
-            "Trust prompt should be shown when project trust is undecided"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn embedded_app_server_supports_thread_start_rpc() -> color_eyre::Result<()> {
         let temp_dir = TempDir::new()?;
         let config = build_config(&temp_dir).await?;
@@ -3023,28 +2976,6 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn windows_shows_trust_prompt_with_sandbox() -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let mut config = build_config(&temp_dir).await?;
-        config.active_project = ProjectConfig { trust_level: None };
-        config.set_windows_sandbox_enabled(/*value*/ true);
-
-        let should_show = should_show_trust_screen(&config);
-        if cfg!(target_os = "windows") {
-            assert!(
-                should_show,
-                "Windows trust prompt should be shown on native Windows with sandbox enabled"
-            );
-        } else {
-            assert!(
-                should_show,
-                "Non-Windows should still show trust prompt when project is untrusted"
-            );
-        }
-        Ok(())
-    }
     #[tokio::test]
     async fn untrusted_project_skips_trust_prompt() -> std::io::Result<()> {
         use codex_protocol::config_types::TrustLevel;

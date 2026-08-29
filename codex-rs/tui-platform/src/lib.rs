@@ -4,4 +4,3 @@
 
 pub mod clipboard;
 pub mod terminal_title;
-pub mod windows_sandbox;

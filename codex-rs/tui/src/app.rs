@@ -12,8 +12,6 @@ use crate::app_event::HistoryLookupResponse;
 use crate::app_event::PermissionProfileSelection;
 use crate::app_event::PluginLocation;
 use crate::app_event::PluginRemoteSectionError;
-#[cfg(target_os = "windows")]
-use crate::app_event::WindowsSandboxEnableMode;
 use crate::app_event_sender::AppEventSender;
 use crate::app_server_session::AppServerBootstrap;
 use crate::app_server_session::AppServerSession;
@@ -130,8 +128,6 @@ use codex_config::LoaderOverrides;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::MemoriesToml;
 use codex_config::types::ModelAvailabilityNuxConfig;
-#[cfg(target_os = "windows")]
-use codex_config::types::WindowsToml;
 use codex_exec_server::EnvironmentManager;
 use codex_features::Feature;
 use codex_features::FeaturesToml;
@@ -143,8 +139,6 @@ use codex_otel::SessionTelemetry;
 use codex_otel::TelemetryAuthMode;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::Personality;
-#[cfg(target_os = "windows")]
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::PermissionProfile;
@@ -152,8 +146,6 @@ use codex_protocol::openai_models::ModelAvailabilityNux;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ModelUpgrade;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
-#[cfg(target_os = "windows")]
-use codex_protocol::permissions::FileSystemSandboxKind;
 use codex_rollout::StateDbHandle;
 use codex_terminal_detection::user_agent;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -430,14 +422,6 @@ impl AutoReviewMode {
     }
 }
 
-#[cfg(target_os = "windows")]
-fn managed_filesystem_sandbox_is_restricted(permission_profile: &PermissionProfile) -> bool {
-    matches!(
-        permission_profile.file_system_sandbox_policy().kind,
-        FileSystemSandboxKind::Restricted
-    )
-}
-
 /// Baseline cadence for periodic stream commit animation ticks.
 ///
 /// Smooth-mode streaming drains one line per tick, so this interval controls
@@ -616,8 +600,6 @@ pub(crate) struct App {
     /// This is thread-scoped state (`Option<ThreadId>`) instead of a global bool
     /// so shutdown events from other threads still take the normal failover path.
     pending_shutdown_exit_thread_id: Option<ThreadId>,
-
-    windows_sandbox: WindowsSandboxState,
 
     thread_event_channels: HashMap<ThreadId, ThreadEventChannel>,
     thread_event_listener_tasks: HashMap<ThreadId, JoinHandle<()>>,
@@ -825,7 +807,6 @@ impl App {
         initial_images: Vec<PathBuf>,
         session_selection: SessionSelection,
         is_first_run: bool,
-        should_prompt_windows_sandbox_nux_at_startup: bool,
         app_server_target: AppServerTarget,
         state_db: Option<StateDbHandle>,
         environment_manager: Arc<EnvironmentManager>,
@@ -1057,8 +1038,6 @@ impl App {
         chat_widget.remote_connection = remote_connection;
         chat_widget.set_can_disconnect_active_turn(app_server_target.supports_thread_disconnect());
         let thread_and_widget_ms = thread_and_widget_started_at.elapsed().as_millis();
-        chat_widget
-            .maybe_prompt_windows_sandbox_enable(should_prompt_windows_sandbox_nux_at_startup);
 
         let file_search = FileSearchManager::new(config.cwd.to_path_buf(), app_event_tx.clone());
         let runtime_keymap = RuntimeKeymap::from_config(&config.tui_keymap).map_err(|err| {
@@ -1105,7 +1084,6 @@ See the Codex keymap documentation for supported actions and examples."
             app_server_target,
             pending_update_action: None,
             pending_shutdown_exit_thread_id: None,
-            windows_sandbox: WindowsSandboxState::default(),
             thread_event_channels: HashMap::new(),
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
@@ -1140,36 +1118,6 @@ See the Codex keymap documentation for supported actions and examples."
             }
         }
         let initial_session_ms = initial_session_started_at.elapsed().as_millis();
-
-        // On startup, if a managed filesystem sandbox is active, warn about
-        // world-writable dirs on Windows.
-        #[cfg(target_os = "windows")]
-        {
-            let startup_permission_profile = app.config.permissions.effective_permission_profile();
-            let should_check = crate::windows_sandbox::level_from_config(&app.config)
-                != WindowsSandboxLevel::Disabled
-                && managed_filesystem_sandbox_is_restricted(&startup_permission_profile)
-                && !app
-                    .config
-                    .notices
-                    .hide_world_writable_warning
-                    .unwrap_or(false);
-            if should_check {
-                let cwd = app.config.cwd.clone();
-                let workspace_roots = app.config.effective_workspace_roots();
-                let env_map: std::collections::HashMap<String, String> = std::env::vars().collect();
-                let tx = app.app_event_tx.clone();
-                let logs_base_dir = app.config.codex_home.clone();
-                Self::spawn_world_writable_scan(
-                    cwd,
-                    workspace_roots,
-                    env_map,
-                    logs_base_dir,
-                    startup_permission_profile,
-                    tx,
-                );
-            }
-        }
 
         let event_stream_started_at = Instant::now();
         let tui_events = tui.event_stream();

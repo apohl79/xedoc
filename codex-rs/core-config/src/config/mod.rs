@@ -4,9 +4,6 @@ use crate::path_utils::normalize_for_native_workdir;
 pub const MIN_EMPTY_YIELD_TIME_MS: u64 = crate::unified_exec::MIN_EMPTY_YIELD_TIME_MS;
 pub const DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS: u64 =
     crate::unified_exec::DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS;
-use crate::windows_sandbox::WindowsSandboxLevelExt;
-use crate::windows_sandbox::resolve_windows_sandbox_mode;
-use crate::windows_sandbox::resolve_windows_sandbox_private_desktop;
 use codex_config::CloudConfigBundleLoader;
 use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
@@ -54,7 +51,6 @@ use codex_config::types::ToolSuggestDiscoverable;
 use codex_config::types::TuiKeymap;
 use codex_config::types::TuiNotificationSettings;
 use codex_config::types::UriBasedFileOpener;
-use codex_config::types::WindowsSandboxModeToml;
 use codex_core_plugins::PluginLoadOutcome;
 use codex_core_plugins::PluginsConfigInput;
 use codex_exec_server::ExecutorFileSystem;
@@ -102,7 +98,6 @@ use codex_protocol::config_types::TrustLevel;
 use codex_protocol::config_types::Verbosity;
 use codex_protocol::config_types::WebSearchConfig;
 use codex_protocol::config_types::WebSearchMode;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::SandboxEnforcement;
@@ -340,11 +335,6 @@ pub struct Permissions {
     pub allow_login_shell: bool,
     /// Policy used to build process environments for shell/unified exec.
     pub shell_environment_policy: ShellEnvironmentPolicy,
-    /// Effective Windows sandbox mode derived from `[windows].sandbox` or
-    /// legacy feature keys.
-    pub windows_sandbox_mode: Option<WindowsSandboxModeToml>,
-    /// Whether the final Windows sandboxed child should run on a private desktop.
-    pub windows_sandbox_private_desktop: bool,
 }
 
 impl Permissions {
@@ -363,8 +353,6 @@ impl Permissions {
             network: None,
             allow_login_shell: true,
             shell_environment_policy: ShellEnvironmentPolicy::default(),
-            windows_sandbox_mode: None,
-            windows_sandbox_private_desktop: true,
         })
     }
 
@@ -3164,7 +3152,6 @@ impl Config {
             approval_policy: mut constrained_approval_policy,
             approvals_reviewer: mut constrained_approvals_reviewer,
             permission_profile: mut constrained_permission_profile,
-            windows_sandbox_mode: mut constrained_windows_sandbox_mode,
             web_search_mode: mut constrained_web_search_mode,
             allow_managed_hooks_only: _,
             allow_appshots: _,
@@ -3271,29 +3258,6 @@ impl Config {
         )?;
         let respect_system_proxy = features.enabled(Feature::RespectSystemProxy);
         let enable_network_proxy = features.enabled(Feature::NetworkProxy);
-        let configured_windows_sandbox_mode = resolve_windows_sandbox_mode(&cfg);
-        // Keep the configured mode separate so a requirement-constrained mode
-        // does not look like it was explicitly selected in config.
-        let selected_windows_sandbox_mode = configured_windows_sandbox_mode.or_else(|| {
-            match WindowsSandboxLevel::from_features(&features) {
-                WindowsSandboxLevel::Elevated => Some(WindowsSandboxModeToml::Elevated),
-                WindowsSandboxLevel::RestrictedToken => Some(WindowsSandboxModeToml::Unelevated),
-                WindowsSandboxLevel::Disabled => None,
-            }
-        });
-        apply_requirement_constrained_value(
-            "windows.sandbox",
-            selected_windows_sandbox_mode,
-            &mut constrained_windows_sandbox_mode,
-            &mut startup_warnings,
-        )?;
-        let effective_windows_sandbox_mode = *constrained_windows_sandbox_mode.get();
-        let windows_sandbox_mode = if constrained_windows_sandbox_mode.source.is_some() {
-            effective_windows_sandbox_mode
-        } else {
-            configured_windows_sandbox_mode
-        };
-        let windows_sandbox_private_desktop = resolve_windows_sandbox_private_desktop(&cfg);
         let resolved_cwd = AbsolutePathBuf::try_from(normalize_for_native_workdir({
             use std::env;
 
@@ -3350,11 +3314,6 @@ impl Config {
             ));
         }
 
-        let windows_sandbox_level = match effective_windows_sandbox_mode {
-            Some(WindowsSandboxModeToml::Elevated) => WindowsSandboxLevel::Elevated,
-            Some(WindowsSandboxModeToml::Unelevated) => WindowsSandboxLevel::RestrictedToken,
-            None => WindowsSandboxLevel::Disabled,
-        };
         let memories_config: MemoriesConfig = cfg.memories.clone().unwrap_or_default().into();
         let memories_root = memory_root(&codex_home);
 
@@ -3426,10 +3385,7 @@ impl Config {
                     let default_permissions = effective_permission_selection
                         .selected_profile_id
                         .unwrap_or_else(|| {
-                            default_builtin_permission_profile_name(
-                                &active_project,
-                                windows_sandbox_level,
-                            )
+                            default_builtin_permission_profile_name(&active_project)
                         });
                     network_proxy_config_for_profile_selection(
                         effective_permission_selection.profiles.as_ref(),
@@ -3449,7 +3405,7 @@ impl Config {
             let default_permissions = effective_permission_selection
                 .selected_profile_id
                 .unwrap_or_else(|| {
-                    default_builtin_permission_profile_name(&active_project, windows_sandbox_level)
+                    default_builtin_permission_profile_name(&active_project)
                 });
             let builtin_workspace_write_settings = if using_implicit_builtin_profile {
                 cfg.sandbox_workspace_write.as_ref()
@@ -3529,7 +3485,6 @@ impl Config {
             let mut permission_profile = cfg
                 .derive_permission_profile(
                     sandbox_mode,
-                    windows_sandbox_level,
                     Some(&active_project),
                     Some(&constrained_permission_profile),
                 )
@@ -3993,8 +3948,6 @@ impl Config {
                 network,
                 allow_login_shell,
                 shell_environment_policy,
-                windows_sandbox_mode,
-                windows_sandbox_private_desktop,
             },
             explicit_permission_profile_mode,
             custom_permission_profiles,
@@ -4239,32 +4192,6 @@ impl Config {
         } else {
             Ok(Some(s))
         }
-    }
-
-    pub fn set_windows_sandbox_enabled(&mut self, value: bool) {
-        self.permissions.windows_sandbox_mode = if value {
-            Some(WindowsSandboxModeToml::Unelevated)
-        } else if matches!(
-            self.permissions.windows_sandbox_mode,
-            Some(WindowsSandboxModeToml::Unelevated)
-        ) {
-            None
-        } else {
-            self.permissions.windows_sandbox_mode
-        };
-    }
-
-    pub fn set_windows_elevated_sandbox_enabled(&mut self, value: bool) {
-        self.permissions.windows_sandbox_mode = if value {
-            Some(WindowsSandboxModeToml::Elevated)
-        } else if matches!(
-            self.permissions.windows_sandbox_mode,
-            Some(WindowsSandboxModeToml::Elevated)
-        ) {
-            None
-        } else {
-            self.permissions.windows_sandbox_mode
-        };
     }
 
     pub fn managed_network_requirements_enabled(&self) -> bool {

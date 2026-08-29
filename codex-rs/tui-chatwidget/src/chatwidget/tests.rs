@@ -117,7 +117,6 @@ pub(super) use codex_config::ConstraintError;
 pub(super) use codex_config::RequirementSource;
 pub(super) use codex_config::types::ApprovalsReviewer;
 pub(super) use codex_config::types::Notifications;
-pub(super) use codex_config::types::WindowsSandboxModeToml;
 pub(super) use codex_core_plugins::OPENAI_CURATED_MARKETPLACE_NAME;
 pub(super) use codex_features::FEATURES;
 pub(super) use codex_features::Feature;

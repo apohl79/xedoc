@@ -15,9 +15,7 @@ The builder creates a canonical Codex package directory:
 │   └── codex-session                    # Unix fork packages only
 ├── codex-resources
 │   ├── bwrap                             # Linux only
-│   ├── zsh/bin/zsh                       # supported Unix targets only
-│   ├── codex-command-runner.exe          # Windows only
-│   └── codex-windows-sandbox-setup.exe   # Windows only
+│   └── zsh/bin/zsh                       # supported Unix targets only
 └── codex-path
     └── rg[.exe]
 ```
@@ -47,8 +45,6 @@ override was provided:
 - all targets: the selected entrypoint, unless `--entrypoint-bin` is provided
 - all targets: `codex-code-mode-host`, unless `--code-mode-host-bin` is provided
 - Linux targets: `bwrap`, unless `--bwrap-bin` is provided
-- Windows targets: `codex-command-runner` and `codex-windows-sandbox-setup`,
-  unless the corresponding prebuilt helper flags are provided
 
 The default cargo profile is `dev-small` because local iteration should favor
 fast, small builds. Release jobs should pass `--cargo-profile release` and an
@@ -60,10 +56,9 @@ Release jobs should likewise pass `--code-mode-host-bin` so the package contains
 the signed host executable beside the signed entrypoint.
 
 Release jobs that already built package resource binaries should also pass the
-corresponding resource flags: `--bwrap-bin` for Linux packages, and
-`--codex-command-runner-bin` plus `--codex-windows-sandbox-setup-bin` for
-Windows packages. This keeps package archive creation as a pure staging step
-after signing instead of rebuilding resources.
+corresponding resource flags: `--bwrap-bin` for Linux packages. This keeps
+package archive creation as a pure staging step after signing instead of
+rebuilding resources.
 
 When the builder source-builds an entrypoint for a Darwin or Linux target, it
 downloads and verifies the matching Codex-built V8 release pair before invoking

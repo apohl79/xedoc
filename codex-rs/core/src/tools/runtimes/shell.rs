@@ -23,7 +23,6 @@ use crate::tools::runtimes::RuntimePathPrepends;
 #[cfg(unix)]
 use crate::tools::runtimes::apply_zsh_fork_path_prepend;
 use crate::tools::runtimes::build_sandbox_command;
-use crate::tools::runtimes::disable_powershell_profile_for_elevated_windows_sandbox;
 use crate::tools::runtimes::exec_env_for_sandbox_permissions;
 use crate::tools::runtimes::maybe_wrap_shell_lc_with_snapshot;
 use crate::tools::sandboxing::Approvable;
@@ -290,12 +289,6 @@ impl ToolRuntime<ShellRequest, ExecToolCallOutput> for ShellRuntime {
             &explicit_env_overrides,
             &env,
             &runtime_path_prepends,
-        );
-        let command = disable_powershell_profile_for_elevated_windows_sandbox(
-            &command,
-            req.shell_type.as_ref(),
-            attempt.sandbox,
-            attempt.windows_sandbox_level,
         );
         let command = if matches!(shell.shell_type, ShellType::PowerShell) {
             prefix_powershell_script_with_utf8(&command)

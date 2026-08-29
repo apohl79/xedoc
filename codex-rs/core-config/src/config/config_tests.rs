@@ -63,8 +63,6 @@ use codex_config::types::ToolSuggestDiscoverableType;
 use codex_config::types::Tui;
 use codex_config::types::TuiKeymap;
 use codex_config::types::TuiNotificationSettings;
-use codex_config::types::WindowsSandboxModeToml;
-use codex_config::types::WindowsToml;
 use codex_core_plugins::PluginsManager;
 use codex_exec_server::LOCAL_FS;
 use codex_features::Feature;
@@ -201,14 +199,12 @@ fn http_mcp(url: &str) -> McpServerConfig {
 async fn derive_legacy_sandbox_policy_for_test(
     cfg: &ConfigToml,
     sandbox_mode_override: Option<SandboxMode>,
-    windows_sandbox_level: WindowsSandboxLevel,
     active_project: Option<&ProjectConfig>,
     permission_profile_constraint: Option<&Constrained<PermissionProfile>>,
 ) -> SandboxPolicy {
     let permission_profile = cfg
         .derive_permission_profile(
             sandbox_mode_override,
-            windows_sandbox_level,
             active_project,
             permission_profile_constraint,
         )
@@ -1704,10 +1700,6 @@ async fn network_proxy_feature_matrix_preserves_sandbox_network_semantics() -> s
                     network_access: case.network_enabled,
                     ..Default::default()
                 }),
-                windows: Some(WindowsToml {
-                    sandbox: Some(WindowsSandboxModeToml::Elevated),
-                    sandbox_private_desktop: None,
-                }),
                 features,
                 ..Default::default()
             },
@@ -3127,10 +3119,6 @@ async fn implicit_builtin_workspace_profile_preserves_sandbox_workspace_write_se
                 exclude_tmpdir_env_var: true,
                 exclude_slash_tmp: false,
             }),
-            windows: Some(WindowsToml {
-                sandbox: Some(WindowsSandboxModeToml::Elevated),
-                sandbox_private_desktop: None,
-            }),
             ..Default::default()
         },
         ConfigOverrides {
@@ -3192,10 +3180,6 @@ async fn implicit_builtin_workspace_profile_preserves_add_dir_metadata_carveouts
                     trust_level: Some(TrustLevel::Trusted),
                 },
             )])),
-            windows: Some(WindowsToml {
-                sandbox: Some(WindowsSandboxModeToml::Elevated),
-                sandbox_private_desktop: None,
-            }),
             ..Default::default()
         },
         ConfigOverrides {
@@ -4063,7 +4047,6 @@ network_access = false  # This should be ignored.
     let resolution = derive_legacy_sandbox_policy_for_test(
         &sandbox_full_access_cfg,
         sandbox_mode_override,
-        WindowsSandboxLevel::Disabled,
         /*active_project*/ None,
         /*permission_profile_constraint*/ None,
     )
@@ -4083,7 +4066,6 @@ network_access = true  # This should be ignored.
     let resolution = derive_legacy_sandbox_policy_for_test(
         &sandbox_read_only_cfg,
         sandbox_mode_override,
-        WindowsSandboxLevel::Disabled,
         /*active_project*/ None,
         /*permission_profile_constraint*/ None,
     )
@@ -4114,7 +4096,6 @@ trust_level = "trusted"
     let resolution = derive_legacy_sandbox_policy_for_test(
         &sandbox_workspace_write_cfg,
         sandbox_mode_override,
-        WindowsSandboxLevel::Disabled,
         /*active_project*/ None,
         /*permission_profile_constraint*/ None,
     )
@@ -4153,7 +4134,6 @@ exclude_slash_tmp = true
     let resolution = derive_legacy_sandbox_policy_for_test(
         &sandbox_workspace_write_cfg,
         sandbox_mode_override,
-        WindowsSandboxLevel::Disabled,
         /*active_project*/ None,
         /*permission_profile_constraint*/ None,
     )
@@ -9084,7 +9064,6 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         allow_managed_hooks_only: None,
         allow_appshots: None,
         computer_use: None,
-        windows: None,
         feature_requirements: None,
         hooks: None,
         mcp_servers: None,
@@ -9370,7 +9349,6 @@ trust_level = "untrusted"
     let resolution = derive_legacy_sandbox_policy_for_test(
         &cfg,
         /*sandbox_mode_override*/ None,
-        WindowsSandboxLevel::Disabled,
         Some(&active_project),
         /*permission_profile_constraint*/ None,
     )
@@ -9426,7 +9404,6 @@ async fn derive_sandbox_policy_falls_back_to_read_only_for_implicit_defaults() -
     let resolution = derive_legacy_sandbox_policy_for_test(
         &cfg,
         /*sandbox_mode_override*/ None,
-        WindowsSandboxLevel::Disabled,
         Some(&active_project),
         Some(&constrained),
     )
@@ -9478,7 +9455,6 @@ async fn derive_sandbox_policy_preserves_windows_downgrade_for_unsupported_fallb
     let resolution = derive_legacy_sandbox_policy_for_test(
         &cfg,
         /*sandbox_mode_override*/ None,
-        WindowsSandboxLevel::Disabled,
         Some(&active_project),
         Some(&constrained),
     )
@@ -9743,42 +9719,6 @@ async fn explicit_sandbox_mode_falls_back_when_disallowed_by_requirements() -> s
     assert_eq!(
         config.legacy_sandbox_policy(),
         SandboxPolicy::new_read_only_policy()
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn windows_sandbox_mode_falls_back_when_disallowed_by_requirements() -> std::io::Result<()> {
-    let codex_home = TempDir::new()?;
-    std::fs::write(
-        codex_home.path().join(CONFIG_TOML_FILE),
-        r#"[windows]
-sandbox = "unelevated"
-"#,
-    )?;
-
-    let config = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .fallback_cwd(Some(codex_home.path().to_path_buf()))
-        .cloud_config_bundle(
-            CloudConfigBundleFixture::loader_with_enterprise_requirement(
-                r#"[windows]
-allowed_sandbox_implementations = ["elevated"]
-"#,
-            ),
-        )
-        .build()
-        .await?;
-
-    assert_eq!(
-        config.permissions.windows_sandbox_mode,
-        Some(codex_config::types::WindowsSandboxModeToml::Elevated)
-    );
-    assert!(
-        config.startup_warnings.iter().any(|warning| warning
-            .contains("Configured value for `windows.sandbox` is disallowed by requirements")),
-        "{:?}",
-        config.startup_warnings
     );
     Ok(())
 }

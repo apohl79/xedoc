@@ -1,6 +1,5 @@
 use super::*;
 use crate::tools::sandboxing::SandboxAttempt;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::AdditionalPermissionProfile;
 use codex_protocol::models::FileSystemPermissions;
 use codex_protocol::models::PermissionProfile;
@@ -223,8 +222,6 @@ async fn file_system_sandbox_context_uses_active_attempt() {
         workspace_roots: std::slice::from_ref(&sandbox_policy_cwd),
         codex_linux_sandbox_exe: None,
         use_legacy_landlock: true,
-        windows_sandbox_level: WindowsSandboxLevel::RestrictedToken,
-        windows_sandbox_private_desktop: true,
         network_denial_cancellation_token: None,
         network_proxy: None,
     };
@@ -250,11 +247,6 @@ async fn file_system_sandbox_context_uses_active_attempt() {
         sandbox.cwd,
         Some(codex_utils_path_uri::PathUri::from_abs_path(&path))
     );
-    assert_eq!(
-        sandbox.windows_sandbox_level,
-        WindowsSandboxLevel::RestrictedToken
-    );
-    assert_eq!(sandbox.windows_sandbox_private_desktop, true);
     assert_eq!(sandbox.use_legacy_landlock, true);
 }
 
@@ -292,8 +284,6 @@ async fn no_sandbox_attempt_has_no_file_system_context() {
         workspace_roots: std::slice::from_ref(&sandbox_policy_cwd),
         codex_linux_sandbox_exe: None,
         use_legacy_landlock: false,
-        windows_sandbox_level: WindowsSandboxLevel::Disabled,
-        windows_sandbox_private_desktop: false,
         network_denial_cancellation_token: None,
         network_proxy: None,
     };

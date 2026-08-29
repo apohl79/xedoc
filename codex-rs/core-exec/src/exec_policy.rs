@@ -20,7 +20,6 @@ use codex_execpolicy::RuleMatch;
 use codex_execpolicy::blocking_append_allow_prefix_rule;
 use codex_execpolicy::blocking_append_network_rule;
 use codex_protocol::approvals::ExecPolicyAmendment;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemSandboxKind;
 use codex_protocol::protocol::AskForApproval;
@@ -164,7 +163,6 @@ pub enum ExecPolicyCommandOrigin {
 pub struct UnmatchedCommandContext<'a> {
     pub approval_policy: AskForApproval,
     pub permission_profile: &'a PermissionProfile,
-    pub windows_sandbox_level: WindowsSandboxLevel,
     pub sandbox_permissions: SandboxPermissions,
     pub used_complex_parsing: bool,
     pub command_origin: ExecPolicyCommandOrigin,
@@ -283,7 +281,6 @@ pub struct ExecApprovalRequest<'a> {
     pub command: &'a [String],
     pub approval_policy: AskForApproval,
     pub permission_profile: PermissionProfile,
-    pub windows_sandbox_level: WindowsSandboxLevel,
     pub sandbox_permissions: SandboxPermissions,
     pub prefix_rule: Option<Vec<String>>,
 }
@@ -317,7 +314,6 @@ impl ExecPolicyManager {
             command,
             approval_policy,
             permission_profile,
-            windows_sandbox_level,
             sandbox_permissions,
             prefix_rule,
         } = req;
@@ -337,7 +333,6 @@ impl ExecPolicyManager {
                 UnmatchedCommandContext {
                     approval_policy,
                     permission_profile: &permission_profile,
-                    windows_sandbox_level,
                     sandbox_permissions,
                     used_complex_parsing,
                     command_origin,
@@ -734,7 +729,6 @@ pub fn render_decision_for_unmatched_command(
     let UnmatchedCommandContext {
         approval_policy,
         permission_profile,
-        windows_sandbox_level,
         sandbox_permissions,
         used_complex_parsing,
         command_origin,
@@ -748,13 +742,10 @@ pub fn render_decision_for_unmatched_command(
         }
     };
 
-    // When the Windows sandbox backend is disabled, managed filesystem
-    // restrictions are only a policy shape; there is no platform sandbox to
-    // enforce the boundary. Keep that legacy case conservative while still
-    // relying on the real Windows sandbox when it is enabled.
-    let windows_managed_fs_restrictions_without_sandbox_backend = cfg!(windows)
-        && windows_sandbox_level == WindowsSandboxLevel::Disabled
-        && profile_has_managed_filesystem_restrictions(permission_profile);
+    // Windows has no platform sandbox, so managed filesystem restrictions are
+    // only a policy shape there; keep that case conservative.
+    let windows_managed_fs_restrictions_without_sandbox_backend =
+        cfg!(windows) && profile_has_managed_filesystem_restrictions(permission_profile);
 
     if is_known_safe
         && !used_complex_parsing

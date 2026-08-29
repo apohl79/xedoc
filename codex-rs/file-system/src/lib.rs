@@ -1,7 +1,6 @@
 mod find_up;
 
 use bytes::Bytes;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::ManagedFileSystemPermissions;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::SandboxEnforcement;
@@ -283,9 +282,6 @@ pub struct FileSystemSandboxContext {
     pub cwd: Option<PathUri>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub workspace_roots: Vec<PathUri>,
-    pub windows_sandbox_level: WindowsSandboxLevel,
-    #[serde(default)]
-    pub windows_sandbox_private_desktop: bool,
     #[serde(default)]
     pub use_legacy_landlock: bool,
 }
@@ -325,8 +321,6 @@ impl FileSystemSandboxContext {
             permissions: permissions.into(),
             cwd,
             workspace_roots,
-            windows_sandbox_level: WindowsSandboxLevel::Disabled,
-            windows_sandbox_private_desktop: false,
             use_legacy_landlock: false,
         }
     }

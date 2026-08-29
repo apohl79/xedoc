@@ -42,8 +42,6 @@ pub enum ConfigEdit {
     SetModelPersonality { personality: Option<Personality> },
     /// Toggle the acknowledgement flag under `[notice]`.
     SetNoticeHideFullAccessWarning(bool),
-    /// Toggle the Windows world-writable directories warning acknowledgement flag.
-    SetNoticeHideWorldWritableWarning(bool),
     /// Toggle the rate limit model nudge acknowledgement flag.
     SetNoticeHideRateLimitModelNudge(bool),
     /// Toggle the model migration prompt acknowledgement flag.
@@ -267,10 +265,6 @@ impl ConfigDocument {
             )),
             ConfigEdit::SetNoticeHideFullAccessWarning(acknowledged) => Ok(self.write_value(
                 &[NOTICE_TABLE_KEY, "hide_full_access_warning"],
-                value(*acknowledged),
-            )),
-            ConfigEdit::SetNoticeHideWorldWritableWarning(acknowledged) => Ok(self.write_value(
-                &[NOTICE_TABLE_KEY, "hide_world_writable_warning"],
                 value(*acknowledged),
             )),
             ConfigEdit::SetNoticeHideRateLimitModelNudge(acknowledged) => Ok(self.write_value(
@@ -804,12 +798,6 @@ impl ConfigEditsBuilder {
         self
     }
 
-    pub fn set_hide_world_writable_warning(mut self, acknowledged: bool) -> Self {
-        self.edits
-            .push(ConfigEdit::SetNoticeHideWorldWritableWarning(acknowledged));
-        self
-    }
-
     pub fn set_hide_rate_limit_model_nudge(mut self, acknowledged: bool) -> Self {
         self.edits
             .push(ConfigEdit::SetNoticeHideRateLimitModelNudge(acknowledged));
@@ -870,14 +858,6 @@ impl ConfigEditsBuilder {
         self
     }
 
-    pub fn set_windows_sandbox_mode(mut self, mode: &str) -> Self {
-        self.edits.push(ConfigEdit::SetPath {
-            segments: vec!["windows".to_string(), "sandbox".to_string()],
-            value: value(mode),
-        });
-        self
-    }
-
     pub fn set_realtime_microphone(mut self, microphone: Option<&str>) -> Self {
         let segments = vec!["audio".to_string(), "microphone".to_string()];
         match microphone {
@@ -910,18 +890,6 @@ impl ConfigEditsBuilder {
                 value: value(voice),
             }),
             None => self.edits.push(ConfigEdit::ClearPath { segments }),
-        }
-        self
-    }
-
-    pub fn clear_legacy_windows_sandbox_keys(mut self) -> Self {
-        for key in [
-            "experimental_windows_sandbox",
-            "elevated_windows_sandbox",
-            "enable_experimental_windows_sandbox",
-        ] {
-            let segments = vec!["features".to_string(), key.to_string()];
-            self.edits.push(ConfigEdit::ClearPath { segments });
         }
         self
     }

@@ -1,7 +1,6 @@
 use super::ApprovalsReviewer;
 use super::AskForApproval;
 use super::SandboxMode;
-use super::WindowsSandboxSetupMode;
 use super::shared::default_enabled;
 use codex_experimental_api_macros::ExperimentalApi;
 use codex_protocol::config_types::AutoCompactTokenLimitScope;
@@ -377,7 +376,6 @@ pub struct ConfigRequirements {
     #[experimental("configRequirements/read.allowedApprovalsReviewers")]
     pub allowed_approvals_reviewers: Option<Vec<ApprovalsReviewer>>,
     pub allowed_sandbox_modes: Option<Vec<SandboxMode>>,
-    pub allowed_windows_sandbox_implementations: Option<Vec<WindowsSandboxSetupMode>>,
     pub allowed_permission_profiles: Option<BTreeMap<String, bool>>,
     pub default_permissions: Option<String>,
     pub allowed_web_search_modes: Option<Vec<WebSearchMode>>,

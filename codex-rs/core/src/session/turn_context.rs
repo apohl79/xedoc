@@ -134,7 +134,6 @@ impl Session {
             sub_id.clone(),
             cwd.clone(),
             &permission_profile,
-            session_configuration.windows_sandbox_level,
             network.is_some(),
         ));
         let (current_date, timezone) = local_time_context();
@@ -172,7 +171,6 @@ impl Session {
             approval_policy: session_configuration.approval_policy.clone(),
             permission_profile,
             network,
-            windows_sandbox_level: session_configuration.windows_sandbox_level,
             available_models,
             unified_exec_shell_mode,
             final_output_json_schema: None,

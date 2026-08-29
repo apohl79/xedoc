@@ -1031,28 +1031,12 @@ impl UnifiedExecProcessManager {
         if request.command.is_empty() {
             return Err(UnifiedExecError::MissingCommandLine);
         }
-        let windows_sandbox = if request.sandbox
-            == codex_sandboxing::SandboxType::WindowsRestrictedToken
-        {
-            Some(codex_sandboxing::WindowsSandboxSpawnRequest {
-                permission_profile: &request.permission_profile,
-                workspace_roots: &request.windows_sandbox_workspace_roots,
-                windows_sandbox_level: request.windows_sandbox_level,
-                proxy_enforced: request.network.is_some(),
-                proxy_settings_mode: codex_sandboxing::WindowsSandboxProxySettingsMode::Reconcile,
-                filesystem_overrides: request.windows_sandbox_filesystem_overrides.as_ref(),
-                use_private_desktop: request.windows_sandbox_private_desktop,
-            })
-        } else {
-            None
-        };
         let spawn_result = codex_sandboxing::spawn_process(codex_sandboxing::SpawnRequest {
             command: &request.command,
             cwd: native_cwd.as_path(),
             env: &request.env,
             arg0: &request.arg0,
             sandbox: request.sandbox,
-            windows_sandbox,
             tty,
             stdin_open: tty,
             inherited_fds: &inherited_fds,
@@ -1098,7 +1082,6 @@ impl UnifiedExecProcessManager {
                 command: &request.command,
                 approval_policy: context.turn.approval_policy.value(),
                 permission_profile: context.turn.permission_profile(),
-                windows_sandbox_level: context.turn.windows_sandbox_level,
                 sandbox_permissions: if request.additional_permissions_preapproved {
                     crate::sandboxing::SandboxPermissions::UseDefault
                 } else {

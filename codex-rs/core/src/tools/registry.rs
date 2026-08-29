@@ -370,7 +370,6 @@ impl ToolRegistry {
                 "sandbox",
                 permission_profile_sandbox_tag(
                     &invocation.turn.permission_profile,
-                    invocation.turn.windows_sandbox_level,
                     invocation.turn.network.is_some(),
                 ),
             ),

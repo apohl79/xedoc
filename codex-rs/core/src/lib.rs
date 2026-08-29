@@ -107,12 +107,10 @@ mod stream_events_utils;
 pub mod test_support;
 mod unified_exec;
 pub use codex_core_client::X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER;
-pub use codex_core_config::windows_sandbox;
 pub use codex_protocol::config_types::ModelProviderAuthInfo;
 mod event_mapping;
 pub use codex_prompts as review_prompts;
 mod thread_manager;
-pub(crate) mod windows_sandbox_read_grants;
 pub use codex_core_response_items::web_search_action_detail;
 pub use thread_manager::ForkSnapshot;
 pub use thread_manager::NewThread;
@@ -122,7 +120,6 @@ pub use thread_manager::ThreadShutdownReport;
 pub use thread_manager::build_models_manager;
 pub use thread_manager::local_agent_graph_store_from_state_db;
 pub use thread_manager::thread_store_from_config;
-pub use windows_sandbox_read_grants::grant_read_root_non_elevated;
 #[deprecated(note = "use ThreadManager")]
 pub type ConversationManager = ThreadManager;
 #[deprecated(note = "use NewThread")]

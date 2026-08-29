@@ -192,7 +192,6 @@ fn turn_metadata_state_uses_platform_sandbox_tag() {
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
 
@@ -203,11 +202,8 @@ fn turn_metadata_state_uses_platform_sandbox_tag() {
     let thread_id = json.get("thread_id").and_then(Value::as_str);
 
     assert!(json.get("request_kind").is_none());
-    let expected_sandbox = permission_profile_sandbox_tag(
-        &permission_profile,
-        WindowsSandboxLevel::Disabled,
-        /*enforce_managed_network*/ false,
-    );
+    let expected_sandbox =
+        permission_profile_sandbox_tag(&permission_profile, /*enforce_managed_network*/ false);
     assert_eq!(sandbox_name, Some(expected_sandbox));
     assert_eq!(session_id, Some("session-a"));
     assert_eq!(thread_id, Some("thread-a"));
@@ -235,7 +231,6 @@ fn turn_metadata_state_includes_root_fork_lineage() {
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
 
@@ -274,7 +269,6 @@ fn turn_metadata_state_includes_thread_spawn_subagent_parent_without_fork() {
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
 
@@ -313,7 +307,6 @@ fn turn_metadata_state_includes_forked_thread_spawn_subagent_lineage() {
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
 
@@ -354,7 +347,6 @@ fn turn_metadata_state_includes_known_parent_for_non_thread_spawn_subagents_with
             "turn-a".to_string(),
             cwd.clone(),
             &permission_profile,
-            WindowsSandboxLevel::Disabled,
             /*enforce_managed_network*/ false,
         );
 
@@ -386,7 +378,6 @@ fn turn_metadata_state_includes_turn_started_at_unix_ms_after_start() {
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
     state.set_turn_started_at_unix_ms(/*turn_started_at_unix_ms*/ 1_700_000_000_123);
@@ -416,7 +407,6 @@ fn turn_metadata_state_includes_model_and_reasoning_effort_only_in_request_meta(
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
 
@@ -465,7 +455,6 @@ fn turn_metadata_state_marks_user_input_requested_during_turn_only_for_mcp_reque
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
 
@@ -518,7 +507,6 @@ fn turn_metadata_state_ignores_client_reserved_metadata_before_start() {
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
     state.set_responsesapi_client_metadata(HashMap::from([
@@ -572,7 +560,6 @@ fn turn_metadata_state_merges_client_metadata_without_replacing_reserved_fields(
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
     state.set_responsesapi_client_metadata(HashMap::from([
@@ -694,7 +681,6 @@ fn turn_metadata_state_overlays_compaction_only_on_compaction_requests() {
         "turn-a".to_string(),
         cwd,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
     state.set_responsesapi_client_metadata(HashMap::from([(
@@ -757,7 +743,6 @@ async fn turn_metadata_state_preserves_lineage_after_git_enrichment() {
         "turn-a".to_string(),
         repo_path,
         &permission_profile,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
 

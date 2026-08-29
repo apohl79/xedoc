@@ -422,8 +422,6 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
                 | SlashCommand::MultiAgents
                 | SlashCommand::Vim
                 | SlashCommand::Keymap
-                | SlashCommand::ElevateSandbox
-                | SlashCommand::SandboxReadRoot
                 | SlashCommand::Experimental
                 | SlashCommand::Memories
                 | SlashCommand::Quit
@@ -529,7 +527,6 @@ pub struct ChatComposer {
     mentions_v2_enabled: bool,
     goal_command_enabled: bool,
     personality_command_enabled: bool,
-    windows_degraded_sandbox_active: bool,
     side_conversation_active: bool,
     history_search: Option<HistorySearchSession>,
     submit_keys: Vec<KeyBinding>,
@@ -601,7 +598,6 @@ impl ChatComposer {
             service_tier_commands_enabled: self.service_tier_commands_enabled,
             goal_command_enabled: self.goal_command_enabled,
             personality_command_enabled: self.personality_command_enabled,
-            allow_elevate_sandbox: self.windows_degraded_sandbox_active,
             side_conversation_active: self.side_conversation_active,
         }
     }
@@ -702,7 +698,6 @@ impl ChatComposer {
             mentions_v2_enabled: false,
             goal_command_enabled: false,
             personality_command_enabled: false,
-            windows_degraded_sandbox_active: false,
             side_conversation_active: false,
             history_search: None,
             submit_keys: vec![key_hint::plain(KeyCode::Enter)],
@@ -912,10 +907,6 @@ impl ChatComposer {
 
     fn image_paste_enabled(&self) -> bool {
         self.config.image_paste_enabled
-    }
-    #[cfg(target_os = "windows")]
-    pub fn set_windows_degraded_sandbox_active(&mut self, enabled: bool) {
-        self.windows_degraded_sandbox_active = enabled;
     }
     fn layout_areas(&self, area: Rect) -> [Rect; 4] {
         self.layout_areas_with_textarea_right_reserve(area, /*textarea_right_reserve*/ 0)

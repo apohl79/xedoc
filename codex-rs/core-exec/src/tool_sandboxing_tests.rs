@@ -183,8 +183,6 @@ fn exec_server_materialization_keeps_command_native_and_carries_sandbox_context(
         workspace_roots: std::slice::from_ref(&cwd_uri),
         codex_linux_sandbox_exe: None,
         use_legacy_landlock: false,
-        windows_sandbox_level: codex_protocol::config_types::WindowsSandboxLevel::Disabled,
-        windows_sandbox_private_desktop: false,
         network_denial_cancellation_token: None,
         network_proxy: None,
     };
@@ -236,8 +234,6 @@ fn exec_server_materialization_keeps_command_native_and_carries_sandbox_context(
                 permissions: exec_server_permissions.into(),
                 cwd: Some(cwd_uri),
                 workspace_roots: vec![PathUri::from_abs_path(&cwd)],
-                windows_sandbox_level: codex_protocol::config_types::WindowsSandboxLevel::Disabled,
-                windows_sandbox_private_desktop: false,
                 use_legacy_landlock: false,
             }),
             true,

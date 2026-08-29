@@ -23,7 +23,6 @@ async fn spawn_command_under_sandbox(
     use codex_core::exec::ExecParams;
     use codex_core::exec::build_exec_request;
     use codex_core::sandboxing::SandboxPermissions;
-    use codex_protocol::config_types::WindowsSandboxLevel;
     use std::process::Stdio;
 
     #[cfg(target_os = "linux")]
@@ -43,14 +42,11 @@ async fn spawn_command_under_sandbox(
             network: None,
             network_environment_id: None,
             sandbox_permissions: SandboxPermissions::UseDefault,
-            windows_sandbox_level: WindowsSandboxLevel::Disabled,
-            windows_sandbox_private_desktop: false,
             justification: None,
             arg0: None,
         },
         permission_profile,
         sandbox_cwd,
-        std::slice::from_ref(sandbox_cwd),
         &codex_linux_sandbox_exe,
         /*use_legacy_landlock*/ false,
     )

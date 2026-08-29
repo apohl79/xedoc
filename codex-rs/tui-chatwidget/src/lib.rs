@@ -223,11 +223,6 @@ mod width {
     pub use codex_tui_transcript::width::*;
 }
 
-#[cfg(any(target_os = "windows", test))]
-mod windows_sandbox {
-    pub use codex_tui_platform::windows_sandbox::*;
-}
-
 mod workspace_command {
     pub use codex_tui_workspace::workspace_command::*;
 }

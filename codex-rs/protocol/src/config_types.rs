@@ -262,18 +262,6 @@ fn string_enum_schema_with_description(values: &[&str], description: &str) -> Sc
 }
 
 #[derive(
-    Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Display, JsonSchema, TS,
-)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub enum WindowsSandboxLevel {
-    #[default]
-    Disabled,
-    RestrictedToken,
-    Elevated,
-}
-
-#[derive(
     Debug,
     Serialize,
     Deserialize,

@@ -1,6 +1,5 @@
 use super::permission_profile_policy_tag;
 use super::permission_profile_sandbox_tag;
-use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::ManagedFileSystemPermissions;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemAccessMode;
@@ -19,7 +18,6 @@ use std::path::Path;
 fn danger_full_access_is_untagged_even_when_linux_sandbox_defaults_apply() {
     let actual = permission_profile_sandbox_tag(
         &PermissionProfile::Disabled,
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
     assert_eq!(actual, "none");
@@ -31,7 +29,6 @@ fn external_sandbox_keeps_external_tag_when_linux_sandbox_defaults_apply() {
         &PermissionProfile::External {
             network: NetworkSandboxPolicy::Enabled,
         },
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
     assert_eq!(actual, "external");
@@ -41,10 +38,9 @@ fn external_sandbox_keeps_external_tag_when_linux_sandbox_defaults_apply() {
 fn default_linux_sandbox_uses_platform_sandbox_tag() {
     let actual = permission_profile_sandbox_tag(
         &PermissionProfile::read_only(),
-        WindowsSandboxLevel::Disabled,
         /*enforce_managed_network*/ false,
     );
-    let expected = get_platform_sandbox(/*windows_sandbox_enabled*/ false)
+    let expected = get_platform_sandbox()
         .map(SandboxType::as_metric_tag)
         .unwrap_or("none");
     assert_eq!(actual, expected);
@@ -55,7 +51,6 @@ fn profile_sandbox_tag_distinguishes_disabled_from_external() {
     assert_eq!(
         permission_profile_sandbox_tag(
             &PermissionProfile::Disabled,
-            WindowsSandboxLevel::Disabled,
             /*enforce_managed_network*/ false,
         ),
         "none"
@@ -65,7 +60,6 @@ fn profile_sandbox_tag_distinguishes_disabled_from_external() {
             &PermissionProfile::External {
                 network: NetworkSandboxPolicy::Restricted,
             },
-            WindowsSandboxLevel::Disabled,
             /*enforce_managed_network*/ false,
         ),
         "external"
@@ -80,11 +74,7 @@ fn unrestricted_managed_profile_with_enabled_network_is_untagged() {
     };
 
     assert_eq!(
-        permission_profile_sandbox_tag(
-            &profile,
-            WindowsSandboxLevel::Disabled,
-            /*enforce_managed_network*/ false,
-        ),
+        permission_profile_sandbox_tag(&profile, /*enforce_managed_network*/ false,),
         "none"
     );
 }
@@ -105,11 +95,7 @@ fn root_write_managed_profile_with_enabled_network_is_untagged() {
     };
 
     assert_eq!(
-        permission_profile_sandbox_tag(
-            &profile,
-            WindowsSandboxLevel::Disabled,
-            /*enforce_managed_network*/ false,
-        ),
+        permission_profile_sandbox_tag(&profile, /*enforce_managed_network*/ false,),
         "none"
     );
 }
@@ -120,16 +106,12 @@ fn managed_network_enforcement_tags_unrestricted_profiles_as_sandboxed() {
         file_system: ManagedFileSystemPermissions::Unrestricted,
         network: NetworkSandboxPolicy::Enabled,
     };
-    let expected = get_platform_sandbox(/*windows_sandbox_enabled*/ false)
+    let expected = get_platform_sandbox()
         .map(SandboxType::as_metric_tag)
         .unwrap_or("none");
 
     assert_eq!(
-        permission_profile_sandbox_tag(
-            &profile,
-            WindowsSandboxLevel::Disabled,
-            /*enforce_managed_network*/ true,
-        ),
+        permission_profile_sandbox_tag(&profile, /*enforce_managed_network*/ true,),
         expected
     );
 }
