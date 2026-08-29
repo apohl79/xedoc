@@ -57,7 +57,6 @@ use crate::mcp_cmd::McpCli;
 use crate::plugin_cmd::PluginCli;
 use crate::plugin_cmd::PluginSubcommand;
 use crate::remote_control_cmd::RemoteControlCommand;
-use codex_cli_doctor::DoctorCommand;
 pub use commands::LandlockCommand;
 pub use commands::SandboxStateArgs;
 pub use commands::SeatbeltCommand;
@@ -169,9 +168,6 @@ enum Subcommand {
 
     /// Update Codex to the latest version.
     Update,
-
-    /// Diagnose local Codex installation, config, auth, and runtime health.
-    Doctor(DoctorCommand),
 
     /// Run commands within a Codex-provided sandbox.
     Sandbox(HostSandboxArgs),
@@ -1437,21 +1433,6 @@ async fn cli_main(
             )?;
             run_update_command()?;
         }
-        Some(Subcommand::Doctor(doctor_cli)) => {
-            reject_remote_mode_for_subcommand(
-                root_remote.as_deref(),
-                root_remote_auth_token_env.as_deref(),
-                "doctor",
-            )?;
-            codex_cli_doctor::run_doctor(
-                doctor_cli,
-                root_config_overrides.clone(),
-                &interactive,
-                &arg0_paths,
-                version::codex_cli_version(),
-            )
-            .await?;
-        }
         Some(Subcommand::Sandbox(mut sandbox_cli)) => {
             #[cfg(target_os = "windows")]
             if let Some(setup_cli) = sandbox_setup::parse_setup_command(&sandbox_cli.command)? {
@@ -2123,8 +2104,7 @@ fn unsupported_subcommand_name_for_strict_config(
         | Some(Subcommand::Archive(_))
         | Some(Subcommand::Delete(_))
         | Some(Subcommand::Unarchive(_))
-        | Some(Subcommand::Fork(_))
-        | Some(Subcommand::Doctor(_)) => None,
+        | Some(Subcommand::Fork(_)) => None,
         Some(Subcommand::AppServer(app_server)) if app_server.subcommand.is_none() => None,
         Some(Subcommand::AppServer(app_server)) => {
             Some(app_server_subcommand_name(app_server.subcommand.as_ref()))

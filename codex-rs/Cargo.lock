@@ -2297,51 +2297,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-cli-doctor"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "clap",
- "codex-api",
- "codex-app-server",
- "codex-app-server-daemon",
- "codex-arg0",
- "codex-config",
- "codex-core",
- "codex-features",
- "codex-git-utils",
- "codex-install-context",
- "codex-login",
- "codex-model-provider",
- "codex-protocol",
- "codex-rollout",
- "codex-state",
- "codex-terminal-detection",
- "codex-tui",
- "codex-utils-absolute-path",
- "codex-utils-cli",
- "codex-utils-path",
- "crossterm",
- "http 1.4.0",
- "insta",
- "os_info",
- "owo-colors",
- "pretty_assertions",
- "serde",
- "serde_json",
- "sqlx",
- "supports-color 3.0.2",
- "sys-locale",
- "tempfile",
- "tokio",
- "toml 0.9.11+spec-1.1.0",
- "unicode-segmentation",
- "which 8.0.0",
- "windows-sys 0.52.0",
- "zstd",
-]
-
-[[package]]
 name = "codex-cli-runtime"
 version = "0.145.0"
 dependencies = [
@@ -2355,7 +2310,6 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-app-server-test-client",
  "codex-arg0",
- "codex-cli-doctor",
  "codex-config",
  "codex-core",
  "codex-core-plugins",
