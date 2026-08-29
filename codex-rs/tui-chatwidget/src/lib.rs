@@ -46,10 +46,6 @@ mod collaboration_modes {
     pub use codex_tui_settings::collaboration_modes::*;
 }
 
-mod color {
-    pub use codex_tui_render::color::*;
-}
-
 #[cfg(test)]
 mod custom_terminal {
     pub use codex_tui_transcript::custom_terminal::*;
@@ -189,16 +185,8 @@ mod streaming {
     pub use codex_tui_transcript::streaming::*;
 }
 
-mod style {
-    pub use codex_tui_render::style::*;
-}
-
 mod terminal_hyperlinks {
     pub use codex_tui_render::terminal_hyperlinks::*;
-}
-
-mod terminal_palette {
-    pub use codex_tui_render::terminal_palette::*;
 }
 
 mod terminal_title {
@@ -247,10 +235,6 @@ mod windows_sandbox {
 
 mod workspace_command {
     pub use codex_tui_workspace::workspace_command::*;
-}
-
-mod workspace_messages {
-    pub use codex_tui_events::workspace_messages::*;
 }
 
 mod chatwidget;

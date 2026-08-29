@@ -99,15 +99,6 @@
             "null"
           ]
         },
-        "allowedApprovalsReviewers": {
-          "items": {
-            "$ref": "#/definitions/ApprovalsReviewer"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
         "allowedPermissionProfiles": {
           "additionalProperties": {
             "type": "boolean"
@@ -179,30 +170,10 @@
             "null"
           ]
         },
-        "hooks": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ManagedHooksRequirements"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "models": {
           "anyOf": [
             {
               "$ref": "#/definitions/ModelsRequirements"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "network": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/NetworkRequirements"
             },
             {
               "type": "null"

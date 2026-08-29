@@ -1962,8 +1962,6 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-app-server-transport",
  "codex-arg0",
- "codex-backend-client",
- "codex-cloud-config",
  "codex-config",
  "codex-core",
  "codex-core-plugins",
@@ -2264,32 +2262,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-backend-client"
-version = "0.145.0"
-dependencies = [
- "anyhow",
- "codex-api",
- "codex-backend-openapi-models",
- "codex-http-client",
- "codex-login",
- "codex-model-provider",
- "codex-protocol",
- "pretty_assertions",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "codex-backend-openapi-models"
-version = "0.145.0"
-dependencies = [
- "serde",
- "serde_json",
- "serde_with",
-]
-
-[[package]]
 name = "codex-bwrap"
 version = "0.145.0"
 dependencies = [
@@ -2439,30 +2411,6 @@ dependencies = [
  "http 1.4.0",
  "rand 0.9.3",
  "tokio",
-]
-
-[[package]]
-name = "codex-cloud-config"
-version = "0.145.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "codex-agent-identity",
- "codex-backend-client",
- "codex-config",
- "codex-core",
- "codex-login",
- "codex-otel",
- "codex-protocol",
- "hmac 0.12.1",
- "pretty_assertions",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -3517,7 +3465,6 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-apply-patch",
  "codex-arg0",
- "codex-cloud-config",
  "codex-config",
  "codex-core",
  "codex-feedback",
@@ -4158,7 +4105,6 @@ version = "0.145.0"
 dependencies = [
  "anyhow",
  "chrono",
- "codex-backend-client",
  "codex-config",
  "codex-core",
  "codex-features",
@@ -4788,7 +4734,6 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-arg0",
  "codex-cli",
- "codex-cloud-config",
  "codex-config",
  "codex-core-plugins",
  "codex-exec-server",

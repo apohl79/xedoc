@@ -126,9 +126,3 @@ pub struct StatusLinePullRequest {
     pub number: u64,
     pub url: String,
 }
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WorkspaceHeadlineFetchResult {
-    Available(Option<String>),
-    FeatureDisabled,
-}

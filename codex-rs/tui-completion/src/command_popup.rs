@@ -43,7 +43,6 @@ pub struct CommandPopup {
 pub struct CommandPopupFlags {
     pub collaboration_modes_enabled: bool,
     pub plugins_command_enabled: bool,
-    pub token_activity_command_enabled: bool,
     pub service_tier_commands_enabled: bool,
     pub goal_command_enabled: bool,
     pub personality_command_enabled: bool,
@@ -56,7 +55,6 @@ impl From<CommandPopupFlags> for BuiltinCommandFlags {
         Self {
             collaboration_modes_enabled: value.collaboration_modes_enabled,
             plugins_command_enabled: value.plugins_command_enabled,
-            token_activity_command_enabled: value.token_activity_command_enabled,
             service_tier_commands_enabled: value.service_tier_commands_enabled,
             goal_command_enabled: value.goal_command_enabled,
             personality_command_enabled: value.personality_command_enabled,
@@ -526,7 +524,6 @@ mod tests {
             CommandPopupFlags {
                 collaboration_modes_enabled: true,
                 plugins_command_enabled: false,
-                token_activity_command_enabled: false,
                 service_tier_commands_enabled: false,
                 goal_command_enabled: false,
                 personality_command_enabled: true,
@@ -552,7 +549,6 @@ mod tests {
             CommandPopupFlags {
                 collaboration_modes_enabled: true,
                 plugins_command_enabled: false,
-                token_activity_command_enabled: false,
                 service_tier_commands_enabled: false,
                 goal_command_enabled: false,
                 personality_command_enabled: false,
@@ -583,7 +579,6 @@ mod tests {
             CommandPopupFlags {
                 collaboration_modes_enabled: true,
                 plugins_command_enabled: false,
-                token_activity_command_enabled: false,
                 service_tier_commands_enabled: false,
                 goal_command_enabled: false,
                 personality_command_enabled: true,

@@ -4,7 +4,6 @@ members = [
     "analytics",
     "agent-graph-store",
     "agent-identity",
-    "backend-client",
     "bwrap",
     "ansi-escape",
     "async-utils",
@@ -20,13 +19,11 @@ members = [
     "feedback",
     "features",
     "install-context",
-    "codex-backend-openapi-models",
     "code-mode",
     "code-mode-client",
     "code-mode-host",
     "code-mode-protocol",
     "codex-home",
-    "cloud-config",
     "cli",
     "cli-doctor",
     "cli-runtime",
@@ -213,13 +210,11 @@ codex-app-server-test-client = { path = "app-server-test-client" }
 codex-apply-patch = { path = "apply-patch" }
 codex-arg0 = { path = "arg0" }
 codex-async-utils = { path = "async-utils" }
-codex-backend-client = { path = "backend-client" }
 codex-cli = { path = "cli" }
 codex-cli-doctor = { path = "cli-doctor" }
 codex-cli-runtime = { path = "cli-runtime" }
 codex-client = { path = "codex-client" }
 codex-collaboration-mode-templates = { path = "collaboration-mode-templates" }
-codex-cloud-config = { path = "cloud-config" }
 codex-code-mode = { path = "code-mode" }
 codex-code-mode-client = { path = "code-mode-client" }
 codex-code-mode-protocol = { path = "code-mode-protocol" }

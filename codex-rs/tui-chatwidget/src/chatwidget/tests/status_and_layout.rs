@@ -17,15 +17,6 @@ fn enable_test_ambient_pet(chat: &mut ChatWidget) {
     chat.install_test_ambient_pet_for_tests(/*animations_enabled*/ false);
 }
 
-fn take_workspace_headline_request_id(
-    rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
-) -> u64 {
-    match rx.try_recv() {
-        Ok(AppEvent::RefreshStatusLineWorkspaceHeadline { request_id }) => request_id,
-        event => panic!("expected workspace headline refresh, got {event:?}"),
-    }
-}
-
 /// Receiving a token usage update without usage clears the context indicator.
 #[tokio::test]
 async fn token_count_none_resets_context_indicator() {
@@ -128,9 +119,7 @@ async fn token_usage_update_uses_runtime_context_window() {
     );
     assert_eq!(chat.bottom_pane.context_window_percent(), Some(100));
 
-    chat.add_status_output(
-        /*refreshing_rate_limits*/ false, /*request_id*/ None,
-    );
+    chat.add_status_output();
 
     let cells = drain_insert_history(&mut rx);
     let context_line = cells
@@ -461,22 +450,6 @@ async fn configured_pet_load_is_deferred_until_after_construction() {
             assert!(result.unwrap().is_some());
         }
     );
-}
-
-#[tokio::test]
-async fn prefetch_rate_limits_is_gated_on_chatgpt_auth_provider() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-
-    assert!(!chat.should_prefetch_rate_limits());
-
-    set_chatgpt_auth(&mut chat);
-    assert!(chat.should_prefetch_rate_limits());
-
-    chat.config.model_provider.requires_openai_auth = false;
-    assert!(!chat.should_prefetch_rate_limits());
-
-    chat.prefetch_rate_limits();
-    assert!(!chat.should_prefetch_rate_limits());
 }
 
 #[tokio::test]
@@ -1374,13 +1347,6 @@ async fn rate_limit_usage_warnings_keep_newly_reached_workspace_limit() {
             chat.codex_rate_limit_reached_type,
             Some(RateLimitReachedType::WorkspaceMemberUsageLimitReached)
         );
-
-        chat.on_rate_limit_error(
-            RateLimitErrorKind::UsageLimit,
-            "Usage limit reached.".to_string(),
-        );
-        let popup = render_bottom_popup(&chat, /*width*/ 100);
-        assert!(popup.contains("Request a limit increase from your owner"));
     }
 }
 
@@ -1475,16 +1441,6 @@ async fn rolling_credits_preserve_depleted_workspace_error_routing() {
     assert_eq!(
         chat.codex_rate_limit_reached_type,
         Some(RateLimitReachedType::WorkspaceMemberCreditsDepleted)
-    );
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::Generic,
-        "Usage limit reached.".to_string(),
-    );
-    let popup = render_bottom_popup(&chat, /*width*/ 100);
-    assert!(
-        popup.contains("Ask your workspace owner to add more"),
-        "popup: {popup}"
     );
 }
 
@@ -1629,121 +1585,6 @@ async fn rate_limit_switch_prompt_popup_snapshot() {
 }
 
 #[tokio::test]
-async fn workspace_member_credits_depleted_prompts_and_sends_credits() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let mut limits = snapshot(/*percent*/ 100.0);
-    limits.rate_limit_reached_type = Some(RateLimitReachedType::WorkspaceMemberCreditsDepleted);
-    chat.on_rate_limit_snapshot(Some(limits));
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::Generic,
-        "Usage limit reached.".to_string(),
-    );
-    let popup = render_bottom_popup(&chat, /*width*/ 90);
-    assert_chatwidget_snapshot!("workspace_member_credits_depleted_prompt", popup);
-
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
-    let event = next_send_add_credits_nudge_email_event(&mut rx);
-    assert_eq!(event, AddCreditsNudgeCreditType::Credits);
-}
-
-#[tokio::test]
-async fn workspace_member_usage_limit_prompts_and_sends_usage_limit() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let mut limits = snapshot(/*percent*/ 100.0);
-    limits.rate_limit_reached_type = Some(RateLimitReachedType::WorkspaceMemberUsageLimitReached);
-    chat.on_rate_limit_snapshot(Some(limits));
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::UsageLimit,
-        "Usage limit reached.".to_string(),
-    );
-    let popup = render_bottom_popup(&chat, /*width*/ 100);
-    assert_chatwidget_snapshot!("workspace_member_usage_limit_prompt", popup);
-
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
-    let event = next_send_add_credits_nudge_email_event(&mut rx);
-    assert_eq!(event, AddCreditsNudgeCreditType::UsageLimit);
-}
-
-#[tokio::test]
-async fn sparse_rate_limit_snapshot_preserves_member_limit_type_for_error_prompt() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let mut usage_limits = snapshot(/*percent*/ 100.0);
-    usage_limits.rate_limit_reached_type =
-        Some(RateLimitReachedType::WorkspaceMemberUsageLimitReached);
-    chat.on_rate_limit_snapshot(Some(usage_limits));
-
-    let mut rolling_limits = snapshot(/*percent*/ 100.0);
-    rolling_limits.rate_limit_reached_type = None;
-    chat.on_rolling_rate_limit_snapshot(rolling_limits);
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::UsageLimit,
-        "Usage limit reached.".to_string(),
-    );
-    let popup = render_bottom_popup(&chat, /*width*/ 100);
-    assert!(
-        popup.contains("Request a limit increase from your owner"),
-        "popup: {popup}"
-    );
-
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
-    let event = next_send_add_credits_nudge_email_event(&mut rx);
-    assert_eq!(event, AddCreditsNudgeCreditType::UsageLimit);
-}
-
-#[tokio::test]
-async fn usage_limit_error_remaps_stale_member_credits_state_to_usage_limit_prompt() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let mut limits = snapshot(/*percent*/ 100.0);
-    limits.rate_limit_reached_type = Some(RateLimitReachedType::WorkspaceMemberCreditsDepleted);
-    chat.on_rate_limit_snapshot(Some(limits));
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::UsageLimit,
-        "Usage limit reached.".to_string(),
-    );
-    let popup = render_bottom_popup(&chat, /*width*/ 100);
-    assert!(
-        popup.contains("Request a limit increase from your owner"),
-        "popup: {popup}"
-    );
-
-    chat.handle_key_event(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
-    let event = next_send_add_credits_nudge_email_event(&mut rx);
-    assert_eq!(event, AddCreditsNudgeCreditType::UsageLimit);
-}
-
-#[tokio::test]
-async fn workspace_owner_limit_states_do_not_prompt_for_owner_nudge() {
-    for (limit_type, error_kind) in [
-        (
-            RateLimitReachedType::WorkspaceOwnerCreditsDepleted,
-            RateLimitErrorKind::Generic,
-        ),
-        (
-            RateLimitReachedType::WorkspaceOwnerUsageLimitReached,
-            RateLimitErrorKind::UsageLimit,
-        ),
-        (
-            RateLimitReachedType::RateLimitReached,
-            RateLimitErrorKind::Generic,
-        ),
-    ] {
-        let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-        let mut limits = snapshot(/*percent*/ 100.0);
-        limits.rate_limit_reached_type = Some(limit_type);
-        chat.on_rate_limit_snapshot(Some(limits));
-
-        chat.on_rate_limit_error(error_kind, "Usage limit reached.".to_string());
-        let popup = render_bottom_popup(&chat, /*width*/ 90);
-        assert!(!popup.contains("workspace owner"));
-        assert_no_owner_nudge_or_rate_limit_refresh(&mut rx);
-    }
-}
-
-#[tokio::test]
 async fn workspace_owner_limit_states_render_state_specific_messages() {
     let cases = [
         (
@@ -1778,158 +1619,6 @@ async fn workspace_owner_limit_states_render_state_specific_messages() {
         "workspace_owner_limit_state_messages",
         rendered_cases.join("\n---\n")
     );
-}
-
-#[tokio::test]
-async fn missing_rate_limit_reached_type_does_not_prompt_or_refresh() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.on_rate_limit_snapshot(Some(snapshot(/*percent*/ 100.0)));
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::UsageLimit,
-        "Usage limit reached.".to_string(),
-    );
-    let popup = render_bottom_popup(&chat, /*width*/ 90);
-    assert!(!popup.contains("workspace owner"));
-    assert_no_owner_nudge_or_rate_limit_refresh(&mut rx);
-}
-
-#[tokio::test]
-async fn workspace_owner_nudge_default_no_dismisses_without_sending() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let mut limits = snapshot(/*percent*/ 100.0);
-    limits.rate_limit_reached_type = Some(RateLimitReachedType::WorkspaceMemberCreditsDepleted);
-    chat.on_rate_limit_snapshot(Some(limits));
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::Generic,
-        "Usage limit reached.".to_string(),
-    );
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    assert_no_owner_nudge_or_rate_limit_refresh(&mut rx);
-}
-
-#[tokio::test]
-async fn workspace_owner_nudge_reappears_after_dismissing_no() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    let mut limits = snapshot(/*percent*/ 100.0);
-    limits.rate_limit_reached_type = Some(RateLimitReachedType::WorkspaceMemberUsageLimitReached);
-    chat.on_rate_limit_snapshot(Some(limits));
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::UsageLimit,
-        "Usage limit reached.".to_string(),
-    );
-    chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_no_owner_nudge_or_rate_limit_refresh(&mut rx);
-
-    chat.on_rate_limit_error(
-        RateLimitErrorKind::UsageLimit,
-        "Usage limit reached.".to_string(),
-    );
-    let popup = render_bottom_popup(&chat, /*width*/ 100);
-    assert!(
-        popup.contains("Request a limit increase from your owner"),
-        "popup: {popup}"
-    );
-}
-
-#[tokio::test]
-async fn workspace_owner_credits_nudge_completion_renders_feedback() {
-    let cases = [
-        (
-            Ok(AddCreditsNudgeEmailStatus::Sent),
-            "Workspace owner notified.",
-        ),
-        (
-            Ok(AddCreditsNudgeEmailStatus::CooldownActive),
-            "Workspace owner was already notified recently.",
-        ),
-        (
-            Err("request failed".to_string()),
-            "Could not notify your workspace owner. Please try again.",
-        ),
-    ];
-
-    let mut rendered_cases = Vec::new();
-    for (result, expected) in cases {
-        let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-        chat.start_add_credits_nudge_email_request(AddCreditsNudgeCreditType::Credits);
-        chat.finish_add_credits_nudge_email_request(result);
-        let rendered = drain_insert_history(&mut rx)
-            .into_iter()
-            .map(|lines| lines_to_single_string(&lines))
-            .collect::<String>();
-        assert!(rendered.contains(expected), "rendered: {rendered}");
-        rendered_cases.push(rendered);
-    }
-
-    assert_chatwidget_snapshot!(
-        "workspace_owner_credits_nudge_completion_feedback",
-        rendered_cases.join("\n---\n")
-    );
-}
-
-#[tokio::test]
-async fn workspace_owner_usage_limit_nudge_completion_renders_feedback() {
-    let cases = [
-        (
-            Ok(AddCreditsNudgeEmailStatus::Sent),
-            "Limit increase requested.",
-        ),
-        (
-            Ok(AddCreditsNudgeEmailStatus::CooldownActive),
-            "A limit increase was already requested recently.",
-        ),
-        (
-            Err("request failed".to_string()),
-            "Could not request a limit increase. Please try again.",
-        ),
-    ];
-
-    let mut rendered_cases = Vec::new();
-    for (result, expected) in cases {
-        let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-        chat.start_add_credits_nudge_email_request(AddCreditsNudgeCreditType::UsageLimit);
-        chat.finish_add_credits_nudge_email_request(result);
-        let rendered = drain_insert_history(&mut rx)
-            .into_iter()
-            .map(|lines| lines_to_single_string(&lines))
-            .collect::<String>();
-        assert!(rendered.contains(expected), "rendered: {rendered}");
-        rendered_cases.push(rendered);
-    }
-
-    assert_chatwidget_snapshot!(
-        "workspace_owner_usage_limit_nudge_completion_feedback",
-        rendered_cases.join("\n---\n")
-    );
-}
-
-fn next_send_add_credits_nudge_email_event(
-    rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
-) -> AddCreditsNudgeCreditType {
-    while let Ok(event) = rx.try_recv() {
-        if let AppEvent::SendAddCreditsNudgeEmail { credit_type } = event {
-            return credit_type;
-        }
-    }
-    panic!("expected SendAddCreditsNudgeEmail app event");
-}
-
-fn assert_no_owner_nudge_or_rate_limit_refresh(
-    rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
-) {
-    while let Ok(event) = rx.try_recv() {
-        assert!(
-            !matches!(
-                event,
-                AppEvent::SendAddCreditsNudgeEmail { .. } | AppEvent::RefreshRateLimits { .. }
-            ),
-            "unexpected event: {event:?}"
-        );
-    }
 }
 
 #[tokio::test]
@@ -3253,192 +2942,6 @@ async fn status_line_legacy_context_usage_renders_context_used_percent() {
     assert!(
         drain_insert_history(&mut rx).is_empty(),
         "legacy context-usage should remain a valid status line item"
-    );
-}
-
-#[tokio::test]
-async fn status_line_workspace_headline_renders_cached_value() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.thread_id = Some(ThreadId::new());
-    chat.config.tui_status_line = Some(vec!["workspace-headline".to_string()]);
-    chat.status_line_workspace_headline = Some("Workspace maintenance starts at 5pm".to_string());
-
-    chat.refresh_status_line();
-
-    assert_eq!(
-        status_line_text(&chat),
-        Some("Workspace maintenance starts at 5pm".to_string())
-    );
-    assert!(
-        drain_insert_history(&mut rx).is_empty(),
-        "workspace-headline should be a valid status line item"
-    );
-}
-
-#[tokio::test]
-async fn status_line_workspace_headline_omits_when_unavailable() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.thread_id = Some(ThreadId::new());
-    chat.config.tui_status_line = Some(vec![
-        "workspace-headline".to_string(),
-        "run-state".to_string(),
-    ]);
-
-    chat.refresh_status_line();
-
-    assert_eq!(status_line_text(&chat), Some("Ready".to_string()));
-    assert!(
-        drain_insert_history(&mut rx).is_empty(),
-        "workspace-headline should be omitted without warning when no headline is cached"
-    );
-}
-
-#[tokio::test]
-async fn workspace_headline_update_applies_feature_disabled_result() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.tui_status_line = Some(vec!["workspace-headline".to_string()]);
-    chat.status_line_workspace_headline = Some("Old headline".to_string());
-    let request_id = 3;
-    chat.status_line_workspace_headline_pending_request_id = Some(request_id);
-
-    assert!(chat.set_status_line_workspace_headline(
-        request_id,
-        Ok(crate::workspace_messages::WorkspaceHeadlineFetchResult::FeatureDisabled),
-    ));
-
-    assert_eq!(status_line_text(&chat), None);
-    assert!(chat.status_line_workspace_messages_disabled);
-}
-
-#[tokio::test]
-async fn workspace_headline_update_applies_available_headline() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.tui_status_line = Some(vec!["workspace-headline".to_string()]);
-    let request_id = 4;
-    chat.status_line_workspace_headline_pending_request_id = Some(request_id);
-
-    assert!(chat.set_status_line_workspace_headline(
-        request_id,
-        Ok(
-            crate::workspace_messages::WorkspaceHeadlineFetchResult::Available(Some(
-                "Fresh workspace headline".to_string(),
-            ))
-        ),
-    ));
-
-    assert_eq!(
-        status_line_text(&chat),
-        Some("Fresh workspace headline".to_string())
-    );
-    assert!(!chat.status_line_workspace_messages_disabled);
-}
-
-#[tokio::test]
-async fn account_update_clears_workspace_headline_state() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.tui_status_line = Some(vec!["workspace-headline".to_string()]);
-    chat.status_line_workspace_headline = Some("Old workspace headline".to_string());
-    chat.status_line_workspace_headline_pending_request_id = Some(5);
-    chat.status_line_workspace_headline_last_requested_at = Some(Instant::now());
-    chat.status_line_workspace_messages_disabled = true;
-
-    chat.update_account_state(
-        /*status_account_display*/ None, /*plan_type*/ None,
-        /*has_chatgpt_account*/ false, /*has_codex_backend_auth*/ false,
-    );
-
-    assert_eq!(
-        (
-            status_line_text(&chat),
-            chat.status_line_workspace_headline_pending_request_id,
-            chat.status_line_workspace_headline_last_requested_at,
-            chat.status_line_workspace_messages_disabled,
-        ),
-        (None, None, None, false)
-    );
-}
-
-#[tokio::test]
-async fn workspace_headline_fetch_allows_backend_auth_without_chatgpt_account() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.tui_status_line = Some(vec!["workspace-headline".to_string()]);
-
-    chat.update_account_state(
-        /*status_account_display*/ None, /*plan_type*/ None,
-        /*has_chatgpt_account*/ false, /*has_codex_backend_auth*/ true,
-    );
-
-    let request_id = take_workspace_headline_request_id(&mut rx);
-    assert_eq!(
-        chat.status_line_workspace_headline_pending_request_id,
-        Some(request_id)
-    );
-}
-
-#[tokio::test]
-async fn account_update_discards_stale_workspace_headline_results() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.config.tui_status_line = Some(vec!["workspace-headline".to_string()]);
-
-    chat.update_account_state(
-        Some(StatusAccountDisplay::ChatGpt {
-            email: Some("first@example.com".to_string()),
-            plan: None,
-        }),
-        /*plan_type*/ None,
-        /*has_chatgpt_account*/ true,
-        /*has_codex_backend_auth*/ true,
-    );
-    let stale_request_id = take_workspace_headline_request_id(&mut rx);
-
-    chat.update_account_state(
-        Some(StatusAccountDisplay::ChatGpt {
-            email: Some("second@example.com".to_string()),
-            plan: None,
-        }),
-        /*plan_type*/ None,
-        /*has_chatgpt_account*/ true,
-        /*has_codex_backend_auth*/ true,
-    );
-    let current_request_id = take_workspace_headline_request_id(&mut rx);
-
-    assert_ne!(stale_request_id, current_request_id);
-    assert!(!chat.set_status_line_workspace_headline(
-        stale_request_id,
-        Ok(
-            crate::workspace_messages::WorkspaceHeadlineFetchResult::Available(Some(
-                "First account headline".to_string(),
-            ))
-        ),
-    ));
-    assert_eq!(
-        (
-            chat.status_line_workspace_headline.clone(),
-            chat.status_line_workspace_headline_pending_request_id,
-            chat.status_line_workspace_messages_disabled,
-        ),
-        (None, Some(current_request_id), false)
-    );
-
-    assert!(chat.set_status_line_workspace_headline(
-        current_request_id,
-        Ok(
-            crate::workspace_messages::WorkspaceHeadlineFetchResult::Available(Some(
-                "Second account headline".to_string(),
-            ))
-        ),
-    ));
-    assert!(!chat.set_status_line_workspace_headline(
-        stale_request_id,
-        Ok(crate::workspace_messages::WorkspaceHeadlineFetchResult::FeatureDisabled),
-    ));
-    assert_eq!(
-        (
-            status_line_text(&chat),
-            chat.status_line_workspace_headline_pending_request_id,
-            chat.status_line_workspace_messages_disabled,
-        ),
-        (Some("Second account headline".to_string()), None, false,)
     );
 }
 

@@ -228,7 +228,7 @@ impl ChatWidget {
         self.refresh_status_surfaces();
     }
 
-    pub fn add_status_output(&mut self, refreshing_rate_limits: bool, request_id: Option<u64>) {
+    pub fn add_status_output(&mut self) {
         let token_info = self.token_info.as_ref();
         let total_usage = self.status_line_total_usage();
         let collaboration_mode = self.collaboration_mode_label();
@@ -255,7 +255,7 @@ impl ChatWidget {
             .collect();
         let agents_summary =
             crate::status::compose_agents_summary(&self.config, &self.instruction_source_paths);
-        let (cell, handle) = crate::status::new_status_output_with_rate_limits_handle(
+        let (cell, _handle) = crate::status::new_status_output_with_rate_limits_handle(
             &self.config,
             self.runtime_model_provider_base_url.as_deref(),
             self.remote_connection.as_ref(),
@@ -272,51 +272,9 @@ impl ChatWidget {
             collaboration_mode,
             reasoning_effort_override,
             agents_summary,
-            refreshing_rate_limits,
+            /*refreshing_rate_limits*/ false,
         );
-        if let Some(request_id) = request_id {
-            self.refreshing_status_outputs.push((request_id, handle));
-        }
         self.add_to_history(cell);
-    }
-
-    pub fn finish_status_rate_limit_refresh(
-        &mut self,
-        request_id: u64,
-        snapshots: Vec<RateLimitSnapshot>,
-    ) {
-        if !self
-            .refreshing_status_outputs
-            .iter()
-            .any(|(pending_request_id, _)| *pending_request_id == request_id)
-        {
-            return;
-        }
-
-        for snapshot in snapshots {
-            self.on_rate_limit_snapshot(Some(snapshot));
-        }
-
-        let rate_limit_snapshots: Vec<RateLimitSnapshotDisplay> = self
-            .rate_limit_snapshots_by_limit_id
-            .values()
-            .cloned()
-            .collect();
-        let now = Local::now();
-        let mut remaining = Vec::with_capacity(self.refreshing_status_outputs.len());
-        let mut updated_any = false;
-        for (pending_request_id, handle) in self.refreshing_status_outputs.drain(..) {
-            if pending_request_id == request_id {
-                updated_any = true;
-                handle.finish_rate_limit_refresh(rate_limit_snapshots.as_slice(), now);
-            } else {
-                remaining.push((pending_request_id, handle));
-            }
-        }
-        self.refreshing_status_outputs = remaining;
-        if updated_any {
-            self.request_redraw();
-        }
     }
 
     pub(super) fn open_status_line_setup(&mut self) {

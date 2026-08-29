@@ -438,7 +438,6 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
                 | SlashCommand::Import
                 | SlashCommand::Hooks
                 | SlashCommand::Status
-                | SlashCommand::Usage
                 | SlashCommand::Ide
                 | SlashCommand::DebugConfig
                 | SlashCommand::Title
@@ -528,7 +527,6 @@ pub struct ChatComposer {
     collaboration_modes_enabled: bool,
     config: ChatComposerConfig,
     plugins_command_enabled: bool,
-    token_activity_command_enabled: bool,
     service_tier_commands_enabled: bool,
     service_tier_commands: Vec<ServiceTierCommand>,
     mentions_v2_enabled: bool,
@@ -603,7 +601,6 @@ impl ChatComposer {
         BuiltinCommandFlags {
             collaboration_modes_enabled: self.collaboration_modes_enabled,
             plugins_command_enabled: self.plugins_command_enabled,
-            token_activity_command_enabled: self.token_activity_command_enabled,
             service_tier_commands_enabled: self.service_tier_commands_enabled,
             goal_command_enabled: self.goal_command_enabled,
             personality_command_enabled: self.personality_command_enabled,
@@ -703,7 +700,6 @@ impl ChatComposer {
             collaboration_modes_enabled: false,
             config,
             plugins_command_enabled: false,
-            token_activity_command_enabled: false,
             service_tier_commands_enabled: false,
             service_tier_commands: Vec::new(),
             mentions_v2_enabled: false,
@@ -790,10 +786,6 @@ impl ChatComposer {
 
     pub fn set_plugins_command_enabled(&mut self, enabled: bool) {
         self.plugins_command_enabled = enabled;
-    }
-
-    pub fn set_token_activity_command_enabled(&mut self, enabled: bool) {
-        self.token_activity_command_enabled = enabled;
     }
 
     pub fn set_mentions_v2_enabled(&mut self, enabled: bool) {

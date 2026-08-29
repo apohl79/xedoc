@@ -33,7 +33,6 @@ codex-app-server-client = { workspace = true }
 codex-app-server-protocol = { workspace = true }
 codex-arg0 = { workspace = true }
 codex-install-context = { workspace = true }
-codex-cloud-config = { workspace = true }
 codex-config = { workspace = true }
 codex-core-plugins = { workspace = true }
 codex-exec-server = { workspace = true }
@@ -162,7 +161,6 @@ winsplit = "0.1"
 # Only include it for non-Android targets so the crate builds on Android.
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard = { workspace = true }
-
 
 [dev-dependencies]
 app_test_support = { workspace = true }

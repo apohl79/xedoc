@@ -8,7 +8,6 @@ pub mod approval_events;
 pub mod auto_review_denials;
 mod payloads;
 mod session_log;
-pub mod workspace_messages;
 
 pub use app_command::AppCommand;
 pub use app_event::*;

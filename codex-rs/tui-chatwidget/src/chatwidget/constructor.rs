@@ -127,30 +127,15 @@ impl ChatWidget {
             agent_token_usage: TokenUsage::default(),
             agent_session_cost_usd: None,
             rate_limit_snapshots_by_limit_id: BTreeMap::new(),
-            refreshing_status_outputs: Vec::new(),
-            next_status_refresh_request_id: 0,
-            refreshing_token_activity_output: None,
-            completed_token_activity_output: None,
-            next_token_activity_request_id: 0,
-            pending_rate_limit_reset_request_id: None,
-            pending_rate_limit_reset_idempotency_key: None,
-            rate_limit_reset_picker_request_id: None,
-            pending_rate_limit_reset_hint_request_id: None,
-            pending_usage_menu_rate_limit_request_id: None,
-            pending_rate_limit_reset_hint: None,
-            available_rate_limit_reset_credits: None,
-            next_rate_limit_reset_request_id: 0,
             plan_type: initial_plan_type,
             codex_rate_limit_reached_type: None,
             codex_spend_control_reached: None,
             rate_limit_warnings: RateLimitWarningState::default(),
             warning_display_state: WarningDisplayState::default(),
             rate_limit_switch_prompt: RateLimitSwitchPromptState::default(),
-            add_credits_nudge_email_in_flight: None,
             adaptive_chunking: AdaptiveChunkingPolicy::default(),
             stream_controller: None,
             plan_stream_controller: None,
-            pending_stream_consolidations: 0,
             clipboard_lease: None,
             copy_last_response_binding,
             running_commands: HashMap::new(),
@@ -242,11 +227,6 @@ impl ChatWidget {
             status_line_git_summary_cwd: None,
             status_line_git_summary_pending: false,
             status_line_git_summary_lookup_complete: false,
-            status_line_workspace_headline: None,
-            status_line_workspace_headline_pending_request_id: None,
-            next_status_line_workspace_headline_request_id: 0,
-            status_line_workspace_headline_last_requested_at: None,
-            status_line_workspace_messages_disabled: false,
             current_goal_status_indicator: None,
             current_goal_status: None,
             external_editor_state: ExternalEditorState::Closed,
@@ -254,7 +234,6 @@ impl ChatWidget {
             last_non_retry_error: None,
         };
 
-        widget.prefetch_rate_limits();
         if let Some(keymap) = runtime_keymap {
             widget.bottom_pane.set_keymap_bindings(&keymap);
         }
@@ -283,10 +262,6 @@ impl ChatWidget {
                 WindowsSandboxLevel::RestrictedToken
             ));
         widget.update_collaboration_mode_indicator();
-
-        widget
-            .bottom_pane
-            .set_token_activity_command_enabled(widget.has_codex_backend_auth);
         widget.refresh_status_surfaces();
 
         widget

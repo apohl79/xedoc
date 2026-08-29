@@ -46,13 +46,6 @@
     }
   },
   "properties": {
-    "ancestorThreadId": {
-      "description": "Optional ancestor thread filter. Returns spawned descendants at any depth, excluding the ancestor itself. Mutually exclusive with `parentThreadId`.",
-      "type": [
-        "string",
-        "null"
-      ]
-    },
     "archived": {
       "description": "Optional archived filter; when set to true, only archived threads are returned. If false or null, only non-archived threads are returned.",
       "type": [
@@ -94,13 +87,6 @@
       },
       "type": [
         "array",
-        "null"
-      ]
-    },
-    "parentThreadId": {
-      "description": "Optional direct parent thread filter. Mutually exclusive with `ancestorThreadId`.",
-      "type": [
-        "string",
         "null"
       ]
     },

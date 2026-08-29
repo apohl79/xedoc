@@ -274,18 +274,6 @@ impl ChatWidget {
         self.refresh_status_line();
     }
 
-    pub(super) fn stop_rate_limit_poller(&mut self) {}
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn prefetch_rate_limits(&mut self) {
-        self.stop_rate_limit_poller();
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn should_prefetch_rate_limits(&self) -> bool {
-        self.config.model_provider.requires_openai_auth && self.has_chatgpt_account
-    }
-
     fn lower_cost_preset(&self) -> Option<ModelPreset> {
         let models = self.model_catalog.try_list_models().ok()?;
         models
@@ -397,99 +385,6 @@ impl ChatWidget {
             items,
             ..Default::default()
         });
-    }
-
-    pub(super) fn open_workspace_owner_nudge_prompt(
-        &mut self,
-        credit_type: AddCreditsNudgeCreditType,
-    ) {
-        if self.add_credits_nudge_email_in_flight.is_some() {
-            return;
-        }
-
-        let (title, prompt) = match credit_type {
-            AddCreditsNudgeCreditType::Credits => (
-                "You've reached your workspace credit limit",
-                "Your workspace is out of credits. Ask your workspace owner to add more. Notify owner?",
-            ),
-            AddCreditsNudgeCreditType::UsageLimit => (
-                "Usage limit reached",
-                "Request a limit increase from your owner to continue using codex. Request increase?",
-            ),
-        };
-        let send_actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
-            tx.send(AppEvent::SendAddCreditsNudgeEmail { credit_type });
-        })];
-        let items = vec![
-            SelectionItem {
-                name: "Yes".to_string(),
-                display_shortcut: Some(key_hint::plain(KeyCode::Char('y'))),
-                actions: send_actions,
-                dismiss_on_select: true,
-                ..Default::default()
-            },
-            SelectionItem {
-                name: "No".to_string(),
-                display_shortcut: Some(key_hint::plain(KeyCode::Char('n'))),
-                is_default: true,
-                dismiss_on_select: true,
-                ..Default::default()
-            },
-        ];
-
-        self.bottom_pane.show_selection_view(SelectionViewParams {
-            title: Some(title.to_string()),
-            subtitle: Some(prompt.to_string()),
-            footer_hint: Some(standard_popup_hint_line()),
-            items,
-            initial_selected_idx: Some(1),
-            ..Default::default()
-        });
-    }
-
-    pub fn start_add_credits_nudge_email_request(
-        &mut self,
-        credit_type: AddCreditsNudgeCreditType,
-    ) -> bool {
-        self.add_credits_nudge_email_in_flight = Some(credit_type);
-        true
-    }
-
-    pub fn finish_add_credits_nudge_email_request(
-        &mut self,
-        result: Result<AddCreditsNudgeEmailStatus, String>,
-    ) {
-        let credit_type = self
-            .add_credits_nudge_email_in_flight
-            .take()
-            .unwrap_or(AddCreditsNudgeCreditType::Credits);
-        let message = match (credit_type, result) {
-            (AddCreditsNudgeCreditType::Credits, Ok(AddCreditsNudgeEmailStatus::Sent)) => {
-                "Workspace owner notified."
-            }
-            (
-                AddCreditsNudgeCreditType::Credits,
-                Ok(AddCreditsNudgeEmailStatus::CooldownActive),
-            ) => "Workspace owner was already notified recently.",
-            (AddCreditsNudgeCreditType::Credits, Err(_)) => {
-                "Could not notify your workspace owner. Please try again."
-            }
-            (AddCreditsNudgeCreditType::UsageLimit, Ok(AddCreditsNudgeEmailStatus::Sent)) => {
-                "Limit increase requested."
-            }
-            (
-                AddCreditsNudgeCreditType::UsageLimit,
-                Ok(AddCreditsNudgeEmailStatus::CooldownActive),
-            ) => "A limit increase was already requested recently.",
-            (AddCreditsNudgeCreditType::UsageLimit, Err(_)) => {
-                "Could not request a limit increase. Please try again."
-            }
-        };
-        self.add_to_history(history_cell::new_info_event(
-            message.to_string(),
-            /*hint*/ None,
-        ));
-        self.request_redraw();
     }
 
     pub fn set_rate_limit_switch_prompt_hidden(&mut self, hidden: bool) {

@@ -1901,13 +1901,8 @@ Codex supports these authentication modes. The current mode is surfaced in `acco
 - `account/login/cancel` — cancel a pending managed ChatGPT login by `loginId`.
 - `account/logout` — sign out; triggers `account/updated` on success.
 - `account/updated` (notify) — emitted whenever auth mode changes (`authMode`: `apikey`, `bedrockApiKey`, `chatgpt`, `personalAccessToken`, or `null`) and includes the current ChatGPT `planType` when available.
-- `account/rateLimits/read` — fetch ChatGPT rate limits, an optional effective monthly credit limit, whether spend control has been reached, and the earned rate-limit resets currently available, including expiry details when provided by the backend. Rate-limit updates arrive via `account/rateLimits/updated` (notify); reset-credit data is snapshot-only.
-- `account/rateLimitResetCredit/consume` — consume one earned reset using a caller-provided idempotency key, optionally selecting a reset-credit ID returned by `account/rateLimits/read`.
-- `account/usage/read` — fetch ChatGPT account token-activity summary and daily buckets.
-- `account/workspaceMessages/read` — fetch active workspace messages, including workspace notification headlines when available.
-- `account/rateLimits/updated` (notify) — emitted whenever a user's ChatGPT rate limits change. This is a sparse rolling update; merge available values into the most recent `account/rateLimits/read` response or refetch that snapshot.
+- `account/rateLimits/updated` (notify) — emitted whenever a user's ChatGPT rate limits change. This is a sparse rolling update; merge available values into the most recently observed snapshot.
   `spendControlReached` is `true` or `false` when the backend reports spend-control state; `null` means unavailable and must not clear a previously observed value in a sparse update.
-- `account/sendAddCreditsNudgeEmail` — ask ChatGPT to email the workspace owner about depleted credits or a reached usage limit.
 - `mcpServer/oauthLogin/completed` (notify) — emitted after a `mcpServer/oauth/login` flow finishes for a server; payload includes `{ name, threadId, success, error? }`.
 - `mcpServer/startupStatus/updated` (notify) — emitted when a configured MCP server's startup status changes; payload includes `{ threadId, name, status, error, failureReason }`, where `threadId` is the owning thread when startup is thread-scoped and `null` when it is app-scoped, and `status` is `starting`, `ready`, `failed`, or `cancelled`. `failureReason` is `reauthenticationRequired` when stored OAuth credentials have expired and cannot be refreshed, so clients can prompt the user to reconnect the named server.
 
@@ -2030,32 +2025,7 @@ When using a Codex-managed Bedrock key, logout removes the key and clears `model
 ### 7) Rate limits (ChatGPT)
 
 ```json
-{ "method": "account/rateLimits/read", "id": 7 }
-{
-  "id": 7,
-  "result": {
-    "rateLimits": {
-      "primary": { "usedPercent": 25, "windowDurationMins": 15, "resetsAt": 1730947200 },
-      "secondary": null,
-      "rateLimitReachedType": null
-    },
-    "rateLimitResetCredits": {
-      "availableCount": 2,
-      "credits": [
-        {
-          "id": "RateLimitResetCredit_1",
-          "resetType": "codexRateLimits",
-          "status": "available",
-          "grantedAt": 1781654400,
-          "expiresAt": 1784246400,
-          "title": "Full reset (Weekly + 5 hr)",
-          "description": "Ready to redeem"
-        }
-      ]
-    }
-  }
-}
-{ "method": "account/rateLimits/updated", "params": { "rateLimits": { … } } }
+{ "method": "account/rateLimits/updated", "params": { "rateLimits": { "primary": { "usedPercent": 25, "windowDurationMins": 15, "resetsAt": 1730947200 }, "secondary": null, "rateLimitReachedType": null } } }
 ```
 
 Field notes:
@@ -2064,48 +2034,7 @@ Field notes:
 - `windowDurationMins` is the quota window length.
 - `resetsAt` is a Unix timestamp (seconds) for the next reset.
 - `rateLimitReachedType` identifies the backend-classified limit state when one has been reached.
-- `individualLimit` describes the effective monthly credit limit when available. In an `account/rateLimits/read` response, `null` means no monthly limit is available. In a sparse `account/rateLimits/updated` notification, nullable account metadata may be unavailable and does not clear a previously observed value.
-- `rateLimitResetCredits` contains the available earned-reset count when the backend provides it; otherwise it is `null`.
-- `rateLimitResetCredits.credits` is `null` when only the count is available. An empty array means details were fetched and no available credits were returned.
-- The backend may cap `rateLimitResetCredits.credits`, so `availableCount` is the authoritative total and can be greater than the number of detail rows.
-- Refetch `account/rateLimits/read` after consuming a reset.
-
-### 8) Earned rate-limit resets (ChatGPT)
-
-```json
-{ "method": "account/rateLimitResetCredit/consume", "id": 8, "params": { "idempotencyKey": "8ae96ff3-3425-4f4c-8772-b6fd61502868", "creditId": "RateLimitResetCredit_1" } }
-{ "id": 8, "result": { "outcome": "reset" } }
-```
-
-Field notes:
-
-- `idempotencyKey` must be non-empty. A UUID is recommended for each logical redemption attempt; reuse the same value when retrying that attempt.
-- `creditId` is optional. When provided, it must be a non-empty opaque ID returned by `account/rateLimits/read`; when omitted, the backend selects the next available credit.
-- `reset` means a credit was consumed.
-- `alreadyRedeemed` means the same redemption completed previously. Treat it as an idempotent success and refresh account limits.
-- `nothingToReset` means there is no eligible rate-limit window to reset.
-- `noCredit` means the account has no earned reset credits available.
-- Refetch `account/rateLimits/read` after consuming a reset instead of inferring updated state from this response.
-
-### 9) Workspace messages (ChatGPT)
-
-```json
-{ "method": "account/workspaceMessages/read", "id": 9 }
-{ "id": 9, "result": { "featureEnabled": true, "messages": [
-    { "messageId": "msg_123", "messageType": "headline", "messageBody": "Workspace maintenance starts at 5pm.", "createdAt": 1781395200, "archivedAt": null }
-] } }
-```
-
-When the upstream workspace-message feature is disabled, `featureEnabled` is `false` and `messages` is empty.
-
-### 10) Notify a workspace owner about a limit
-
-```json
-{ "method": "account/sendAddCreditsNudgeEmail", "id": 9, "params": { "creditType": "credits" } }
-{ "id": 9, "result": { "status": "sent" } }
-```
-
-Use `creditType: "credits"` when workspace credits are depleted, or `creditType: "usage_limit"` when the workspace usage limit has been reached. If the owner was already notified recently, the response status is `cooldown_active`.
+- `individualLimit` describes the effective monthly credit limit when available. In a sparse `account/rateLimits/updated` notification, nullable account metadata may be unavailable and does not clear a previously observed value.
 
 ## Experimental API Opt-in
 
