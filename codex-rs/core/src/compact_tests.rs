@@ -174,6 +174,30 @@ fn collect_user_messages_filters_legacy_warnings() {
 }
 
 #[test]
+fn without_reasoning_items_drops_reasoning_and_keeps_order() {
+    let reasoning = ResponseItem::Reasoning {
+        id: None,
+        summary: Vec::new(),
+        content: None,
+        encrypted_content: Some("signed".to_string()),
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let items = vec![
+        user_message("first"),
+        reasoning.clone(),
+        user_message("second"),
+        reasoning,
+    ];
+
+    let filtered = without_reasoning_items(items);
+
+    assert_eq!(
+        filtered,
+        vec![user_message("first"), user_message("second")]
+    );
+}
+
+#[test]
 fn build_token_limited_compacted_history_truncates_overlong_user_messages() {
     // Use a small truncation limit so the test remains fast while still validating
     // that oversized user content is truncated.

@@ -304,11 +304,17 @@ async fn run_compact_task_inner_impl(
         (summary, normalized_history)
     } else {
         send_progress(&sess, &turn_context, CompactionStage::Summarizing).await;
+        let mut prefix_trimmed = false;
         loop {
             // Clone is required because of the loop
             let turn_input = history
                 .clone()
                 .for_prompt(&turn_context.model_info.input_modalities);
+            let turn_input = if prefix_trimmed {
+                without_reasoning_items(turn_input)
+            } else {
+                turn_input
+            };
             let turn_input_len = turn_input.len();
             let prompt = Prompt {
                 input: turn_input,
@@ -344,6 +350,7 @@ async fn run_compact_task_inner_impl(
                             "Context window exceeded while compacting; removing oldest history item. Error: {e}"
                         );
                         history.remove_first_item();
+                        prefix_trimmed = true;
                         retries = 0;
                         continue;
                     }
@@ -567,6 +574,19 @@ pub(crate) fn collect_user_messages(items: &[ResponseItem]) -> Vec<CompactedUser
 
 pub(crate) fn is_summary_message(message: &str) -> bool {
     message.starts_with(format!("{SUMMARY_PREFIX}\n").as_str())
+}
+
+/// Drops replayed reasoning items from a compaction request whose transcript prefix no longer
+/// matches the one the reasoning was produced against.
+///
+/// Prefix-locked thinking models reject replayed reasoning blocks once anything before them
+/// changed. Summarization does not depend on prior reasoning, so hierarchical chunks and
+/// prefix-trimmed retries send the visible history only.
+pub(crate) fn without_reasoning_items(items: Vec<ResponseItem>) -> Vec<ResponseItem> {
+    items
+        .into_iter()
+        .filter(|item| !matches!(item, ResponseItem::Reasoning { .. }))
+        .collect()
 }
 
 /// Inserts canonical initial context into compacted replacement history at the
