@@ -40,11 +40,6 @@ jobs:
     uses: ./.github/workflows/rust-ci.yml
     secrets: inherit
 
-  sdk:
-    name: sdk
-    uses: ./.github/workflows/sdk.yml
-    secrets: inherit
-
   required:
     name: CI required
     # Without `always()`, GitHub skips this job after a failed dependency and a
@@ -57,7 +52,6 @@ jobs:
       - codespell
       - repo-checks
       - rust-ci
-      - sdk
     runs-on: ubuntu-24.04
     steps:
       # Keep the helper on the same revision as the caller and child workflows.

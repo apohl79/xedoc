@@ -80,44 +80,7 @@ def buildifier_formatter_group(*, check: bool) -> FormatterGroup:
     return FormatterGroup("Bazel/Starlark", (Command(tuple(buildifier_args)),))
 
 
-def python_sdk_formatter_group(*, check: bool) -> FormatterGroup:
-    # Each `--project` retains its local dependency and Ruff configuration context.
-    uv_run_args = [
-        "uv",
-        "run",
-        "--frozen",
-        "--project",
-        "sdk/python",
-        "--only-group",
-        "format",
-    ]
-    format_args = [
-        *uv_run_args,
-        "ruff",
-        "format",
-    ]
-    if check:
-        format_args.append("--check")
-        # `ruff check --diff` reports lint-driven rewrites without changing files.
-        # It is the check-mode counterpart of `--fix --fix-only`, not a full lint gate.
-        lint_args = ["ruff", "check", "--diff"]
-    else:
-        # Ruff's lint fixer and formatter are separate passes: the first applies
-        # fixable lint rewrites, while the second formats source layout.
-        lint_args = ["ruff", "check", "--fix", "--fix-only"]
-
-    return FormatterGroup(
-        "Python SDK",
-        (
-            Command((*uv_run_args, *lint_args, "sdk/python")),
-            Command((*format_args, "sdk/python")),
-        ),
-    )
-
-
 def python_scripts_formatter_group(*, check: bool) -> FormatterGroup:
-    # The SDK and internal scripts intentionally use separate project roots so
-    # uv and Ruff retain each project's configuration context.
     args = [
         "uv",
         "run",
@@ -138,7 +101,6 @@ def formatter_groups(*, check: bool) -> tuple[FormatterGroup, ...]:
         just_formatter_group(check=check),
         rust_formatter_group(check=check),
         buildifier_formatter_group(check=check),
-        python_sdk_formatter_group(check=check),
         python_scripts_formatter_group(check=check),
     )
 

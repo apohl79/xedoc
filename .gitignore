@@ -16,7 +16,6 @@ out/
 storybook-static/
 
 # ignore README for publishing
-codex-cli/README.md
 
 # ignore Nix derivation results
 result
@@ -60,7 +59,6 @@ yarn-error.log*
 # ci
 .vercel/
 .netlify/
-/.tmp/sdk-ci/
 /upstream-rusty-v8/
 
 # patches
