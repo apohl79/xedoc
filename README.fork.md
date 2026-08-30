@@ -618,6 +618,65 @@ initialization. Conditions are trusted plugin code and inherit Codex's process
 environment. Because injected context is persistent, a later environment change
 does not remove an entry already present in the thread history.
 
+## Removed Upstream Functionality
+
+The fork deliberately drops upstream features that only serve OpenAI-hosted
+products (ChatGPT/Codex desktop apps, Codex Cloud, telemetry) or that the fork
+owner does not use. During a fork upgrade, do not re-add these; drop the
+upstream changes that touch them instead.
+
+Removed crates (with their `ext/*` and `core-*` companions):
+`analytics`, `backend-client`, `chatgpt`, `cli-doctor`, `cloud-config`,
+`cloud-tasks`, `cloud-tasks-client`, `cloud-tasks-mock-client`,
+`codex-backend-openapi-models`, `connectors`, `core-connectors-runtime`,
+`core-guardian-approval`, `core-mcp-openai-file`, `core-realtime`,
+`core-realtime-context`, `external-agent-migration`, `feedback`,
+`memories/read`, `memories/write`, `rollout-trace`, `tui-pet`, `tui-pet-ui`,
+`windows-sandbox-rs`. The `sdk/python*`, `sdk/typescript`, and `codex-cli`
+npm wrapper directories are gone.
+
+Removed behavior:
+
+- External agent config migration (`externalAgentConfig/*` app-server methods,
+  TUI import flow, `/import`).
+- Windows sandbox (`[windows]` config, `codex-windows-sandbox-setup` and
+  `codex-command-runner` binaries, `windowsSandbox/*`, `/elevate-sandbox`,
+  `/sandbox-read-root`). Windows now behaves as sandbox-disabled.
+- Remote control and attestation (`codex app-server remote-control`,
+  `--remote-control`, `remoteControl/*`, `attestation/generate`, daemon
+  `settings.json`).
+- Codex Cloud tasks (`codex cloud`, `codex apply`).
+- Codex Apps/connectors (`app/*` methods, `/apps`, `[apps]` runtime,
+  `apps_mcp_product_sku`, `include_apps_instructions`).
+- Analytics (`[analytics]`, `--analytics-default-enabled`, all `track_*`
+  event plumbing) and the Statsig OTEL exporter; `otel.metrics_exporter` now
+  defaults to `none` and `"statsig"` no longer parses.
+- `codex doctor`, rollout trace (`codex debug trace-reduce`), feedback upload
+  (`feedback/upload`, `/feedback`, `[feedback]`), terminal pets (`/pets`,
+  `[tui].pet*`).
+- Memories (`[memories]`, `/memories`, `/memory-drop`, `/memory-update`,
+  `memory/reset`, `thread/memoryMode/set`, `codex debug clear-memories`).
+  The `threads.memory_mode` DB column and migrations are kept for replay
+  compatibility.
+- Guardian auto-review (`[auto_review]`, `approvals_reviewer`,
+  `guardianWarning`, `item/autoApprovalReview/*`,
+  `thread/approveGuardianDeniedAction`, `/auto-review`).
+- Realtime conversation (`[realtime]`, `[audio]`, `experimental_realtime_*`,
+  `thread/realtime/*`).
+- ChatGPT backend client and cloud config (`account/usage/read`,
+  `account/rateLimits/read`, `account/workspaceMessages/read`,
+  `account/sendAddCreditsNudgeEmail`, `account/rateLimitResetCredit/consume`,
+  `/usage`).
+- Remote plugin sharing, tool suggest, and app plumbing (`plugin/share/*`,
+  `plugin/skill/read`, `tool_suggest`). The `openai-curated-remote`
+  marketplace is no longer registered; `plugin/read` and `plugin/install`
+  require `marketplacePath`.
+
+Upstream release workflows and installers (`rust-release*.yml`,
+`.github/dotslash-config.json`, `.github/actions/windows-code-sign`,
+`scripts/install/install.ps1`) still reference the removed Windows sandbox
+binaries; the fork uses its own release packaging instead.
+
 ## Notes For Maintainers
 
 - Refresh this file after rebasing `main-fork` onto a newer upstream baseline.
