@@ -57,10 +57,10 @@ pub(crate) use codex_core_exec::unified_exec::OutputHandles;
 #[cfg(unix)]
 pub(crate) use codex_core_exec::unified_exec::SpawnLifecycle;
 pub(crate) use codex_core_exec::unified_exec::SpawnLifecycleHandle;
+#[cfg(test)]
 pub(crate) use codex_core_exec::unified_exec::UNIFIED_EXEC_OUTPUT_MAX_BYTES;
 pub(crate) use codex_core_exec::unified_exec::UnifiedExecError;
 pub(crate) use codex_core_exec::unified_exec::UnifiedExecProcess;
-pub(crate) use codex_core_exec::unified_exec::format_output_omission_marker;
 
 pub(crate) const MIN_YIELD_TIME_MS: u64 = 250;
 pub(crate) const WINDOWS_INITIAL_EXEC_YIELD_TIME_FLOOR_MS: u64 = 2_000;

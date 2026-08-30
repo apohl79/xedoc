@@ -23,6 +23,7 @@ use codex_core_client::responses_metadata::CompactionImplementation;
 use codex_core_client::responses_metadata::CompactionPhase;
 use codex_core_client::responses_metadata::CompactionReason;
 use codex_core_client::responses_metadata::CompactionTrigger;
+#[cfg(test)]
 use codex_core_context_manager::content_items_to_text;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;

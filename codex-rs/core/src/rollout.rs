@@ -22,10 +22,6 @@ pub use codex_rollout::read_head_for_summary;
 pub use codex_rollout::read_session_meta_line;
 pub use codex_rollout::rollout_date_parts;
 
-pub(crate) mod list {
-    pub use codex_rollout::find_thread_path_by_id_str;
-}
-
 #[cfg(test)]
 pub(crate) mod recorder {
     pub use codex_rollout::RolloutRecorder;
