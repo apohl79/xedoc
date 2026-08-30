@@ -409,37 +409,6 @@ async fn load_config_resolves_experimental_request_user_input_enabled() -> std::
 }
 
 #[tokio::test]
-async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
-    let codex_home = tempdir()?;
-    let config_toml: ConfigToml = toml::from_str(
-        r#"
-[features.code_mode]
-enabled = true
-excluded_tool_namespaces = ["mcp__codex_apps", "multi_agent_v1"]
-direct_only_tool_namespaces = ["mcp__history", "mcp__notes"]
-"#,
-    )
-    .expect("TOML deserialization should succeed");
-    let config = Config::load_from_base_config_with_overrides(
-        config_toml,
-        ConfigOverrides::default(),
-        codex_home.abs(),
-    )
-    .await?;
-
-    assert_eq!(
-        config.code_mode.excluded_tool_namespaces,
-        vec!["mcp__codex_apps".to_string(), "multi_agent_v1".to_string()]
-    );
-    assert_eq!(
-        config.code_mode.direct_only_tool_namespaces,
-        vec!["mcp__history".to_string(), "mcp__notes".to_string()]
-    );
-    assert!(config.features.enabled(Feature::CodeMode));
-    Ok(())
-}
-
-#[tokio::test]
 async fn load_config_resolves_token_budget_config() -> std::io::Result<()> {
     for (config_toml, expected) in [
         (
@@ -9943,7 +9912,6 @@ max_concurrent_threads_per_session = 9
     );
     assert!(config.multi_agent_v2.hide_spawn_agent_metadata);
     assert!(!config.multi_agent_v2.expose_spawn_agent_model_overrides);
-    assert!(config.multi_agent_v2.non_code_mode_only);
 
     Ok(())
 }

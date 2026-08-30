@@ -64,7 +64,9 @@ async fn installed_goal_tools_create_goal_and_fill_empty_preview() -> anyhow::Re
         }),
     );
     let output = create_tool.handle(invocation.clone()).await?;
-    let result = output.code_mode_result(&invocation.payload);
+    let result = output
+        .post_tool_use_response(&invocation.call_id, &invocation.payload)
+        .expect("goal tool output should be json");
     assert_eq!(
         result,
         json!({
@@ -175,7 +177,9 @@ async fn installed_goal_tools_only_replace_complete_goal() -> anyhow::Result<()>
         json!({ "objective": "replacement goal" }),
     );
     let output = create_tool.handle(invocation.clone()).await?;
-    let result = output.code_mode_result(&invocation.payload);
+    let result = output
+        .post_tool_use_response(&invocation.call_id, &invocation.payload)
+        .expect("goal tool output should be json");
 
     assert_eq!(json!("replacement goal"), result["goal"]["objective"]);
     assert_eq!(json!("active"), result["goal"]["status"]);
@@ -790,7 +794,9 @@ async fn update_goal_can_block_and_accounts_final_progress() -> anyhow::Result<(
         json!({ "status": "blocked" }),
     );
     let output = update_tool.handle(invocation.clone()).await?;
-    let result = output.code_mode_result(&invocation.payload);
+    let result = output
+        .post_tool_use_response(&invocation.call_id, &invocation.payload)
+        .expect("goal tool output should be json");
 
     assert_eq!(
         result,

@@ -232,13 +232,6 @@ impl ToolOutput for ViewImageOutput {
             output,
         }
     }
-
-    fn code_mode_result(&self, _payload: &ToolPayload) -> serde_json::Value {
-        serde_json::json!({
-            "image_url": self.image_url,
-            "detail": self.image_detail
-        })
-    }
 }
 
 #[cfg(test)]
@@ -284,26 +277,6 @@ mod tests {
         };
 
         assert_eq!(output.log_preview(), "<image data URL omitted: 25 bytes>");
-    }
-
-    #[test]
-    fn code_mode_result_returns_image_url_object() {
-        let output = ViewImageOutput {
-            image_url: "data:image/png;base64,AAA".to_string(),
-            image_detail: DEFAULT_IMAGE_DETAIL,
-        };
-
-        let result = output.code_mode_result(&ToolPayload::Function {
-            arguments: "{}".to_string(),
-        });
-
-        assert_eq!(
-            result,
-            json!({
-                "image_url": "data:image/png;base64,AAA",
-                "detail": "high",
-            })
-        );
     }
 
     #[tokio::test]

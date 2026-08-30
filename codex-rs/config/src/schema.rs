@@ -29,9 +29,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
         if feature.id == codex_features::Feature::CodeMode {
             validation.properties.insert(
                 feature.key.to_string(),
-                schema_gen.subschema_for::<codex_features::FeatureToml<
-                    codex_features::CodeModeConfigToml,
-                >>(),
+                removed_code_mode_schema(schema_gen),
             );
             continue;
         }
@@ -100,6 +98,32 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
     object.object = Some(Box::new(validation));
 
     Schema::Object(object)
+}
+
+fn removed_code_mode_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+    let mut config_validation = ObjectValidation::default();
+    config_validation
+        .properties
+        .insert("enabled".to_string(), schema_gen.subschema_for::<bool>());
+    for key in ["excluded_tool_namespaces", "direct_only_tool_namespaces"] {
+        config_validation
+            .properties
+            .insert(key.to_string(), schema_gen.subschema_for::<Vec<String>>());
+    }
+    config_validation.additional_properties = Some(Box::new(Schema::Bool(false)));
+
+    let config = Schema::Object(SchemaObject {
+        instance_type: Some(InstanceType::Object.into()),
+        object: Some(Box::new(config_validation)),
+        ..Default::default()
+    });
+    Schema::Object(SchemaObject {
+        subschemas: Some(Box::new(SubschemaValidation {
+            any_of: Some(vec![schema_gen.subschema_for::<bool>(), config]),
+            ..Default::default()
+        })),
+        ..Default::default()
+    })
 }
 
 fn removed_apps_mcp_path_override_schema(schema_gen: &mut SchemaGenerator) -> Schema {

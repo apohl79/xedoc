@@ -183,7 +183,6 @@ use codex_protocol::error::Result as CodexResult;
 #[cfg(test)]
 use codex_protocol::exec_output::StreamOutput;
 
-mod code_mode_warning;
 mod config_lock;
 pub(crate) mod context_window;
 mod handlers;
@@ -204,7 +203,6 @@ mod token_budget;
 pub(crate) mod turn;
 pub(crate) mod turn_context;
 mod world_state;
-use self::code_mode_warning::unsupported_code_mode_warning;
 use self::config_lock::export_config_lock_if_configured;
 use self::config_lock::validate_config_lock_if_configured;
 #[cfg(test)]
@@ -389,8 +387,6 @@ pub(crate) struct SessionSpawnArgs {
     pub(crate) skills_service: Arc<SkillsService>,
     pub(crate) plugins_manager: Arc<PluginsManager>,
     pub(crate) mcp_manager: Arc<McpManager>,
-    pub(crate) code_mode_session_provider:
-        Arc<dyn codex_code_mode_protocol::CodeModeSessionProvider>,
     pub(crate) extensions: Arc<codex_extension_api::ExtensionRegistry<crate::config::Config>>,
     pub(crate) conversation_history: InitialHistory,
     pub(crate) requested_history_mode: Option<ThreadHistoryMode>,
@@ -475,7 +471,6 @@ impl Session {
             skills_service,
             plugins_manager,
             mcp_manager,
-            code_mode_session_provider,
             extensions,
             conversation_history,
             requested_history_mode,
@@ -668,7 +663,6 @@ impl Session {
             skills_service,
             plugins_manager,
             mcp_manager.clone(),
-            code_mode_session_provider,
             extensions,
             thread_extension_init,
             supports_openai_form_elicitation,

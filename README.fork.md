@@ -432,7 +432,7 @@ The fork adds release helpers for building apohl79-branded packages from
   dirty builds cannot create or upload a GitHub release.
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
-- The helper builds `codex-cli` and `codex-code-mode-host` with Bazel by default.
+- The helper builds `codex-cli` with Bazel by default.
   Pass `--build-system cargo` to use the previous Cargo `--locked` path.
 - Bazel builds use the `apohl79-release` configuration, which matches the Cargo
   release profile's optimization, ThinLTO, codegen-unit, and unstripped
@@ -628,12 +628,13 @@ upstream changes that touch them instead.
 Removed crates (with their `ext/*` and `core-*` companions):
 `analytics`, `backend-client`, `chatgpt`, `cli-doctor`, `cloud-config`,
 `cloud-tasks`, `cloud-tasks-client`, `cloud-tasks-mock-client`,
+`code-mode`, `code-mode-client`, `code-mode-host`, `code-mode-protocol`,
 `codex-backend-openapi-models`, `connectors`, `core-connectors-runtime`,
 `core-guardian-approval`, `core-mcp-openai-file`, `core-realtime`,
 `core-realtime-context`, `external-agent-migration`, `feedback`,
 `memories/read`, `memories/write`, `rollout-trace`, `tui-pet`, `tui-pet-ui`,
-`windows-sandbox-rs`. The `sdk/python*`, `sdk/typescript`, and `codex-cli`
-npm wrapper directories are gone.
+`v8-poc`, `windows-sandbox-rs`. The `sdk/python*`, `sdk/typescript`, and
+`codex-cli` npm wrapper directories are gone.
 
 Removed behavior:
 
@@ -671,11 +672,22 @@ Removed behavior:
   `plugin/skill/read`, `tool_suggest`). The `openai-curated-remote`
   marketplace is no longer registered; `plugin/read` and `plugin/install`
   require `marketplacePath`.
+- Code mode and the embedded V8 runtime (`features.code_mode*`,
+  `execute`/`wait` tools, `ToolExposure::DirectModelOnly`, the
+  `codex-code-mode-host` binary, `third_party/v8`, the rusty_v8 Bazel layer
+  and patches, `v8-canary`/`rusty-v8-release` workflows). `features.code_mode`,
+  `code_mode_buffered_exec`, `code_mode_host`, `code_mode_only`, and
+  `multi_agent_v2.non_code_mode_only` remain tolerated config keys; the
+  `ToolMode` enum in `protocol` keeps its `code_mode*` variants for
+  `models.json` compatibility. Every tool is exposed directly to the model.
+  macOS signing entitlements no longer include
+  `allow-unsigned-executable-memory`.
 
 Upstream release workflows and installers (`rust-release*.yml`,
 `.github/dotslash-config.json`, `.github/actions/windows-code-sign`,
-`scripts/install/install.ps1`) still reference the removed Windows sandbox
-binaries; the fork uses its own release packaging instead.
+`.github/scripts/build-codex-package-archive.sh`, `scripts/install/install.sh`,
+`scripts/install/install.ps1`) still reference the removed Windows sandbox and
+code-mode host binaries; the fork uses its own release packaging instead.
 
 ## Notes For Maintainers
 

@@ -92,14 +92,6 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--code-mode-host-bin",
-        type=Path,
-        help=(
-            "Optional prebuilt codex-code-mode-host executable. If omitted, "
-            "the host is built with Cargo."
-        ),
-    )
-    parser.add_argument(
         "--bwrap-bin",
         type=Path,
         help=(
@@ -147,11 +139,6 @@ def main() -> int:
             "prebuilt entrypoint executable",
             "--entrypoint-bin",
         ),
-        code_mode_host_bin=resolve_optional_input_path(
-            args.code_mode_host_bin,
-            "prebuilt code-mode host executable",
-            "--code-mode-host-bin",
-        ),
         bwrap_bin=resolve_optional_input_path(
             args.bwrap_bin,
             "prebuilt Linux bwrap executable",
@@ -161,7 +148,6 @@ def main() -> int:
     version = args.version or read_workspace_version()
     inputs = PackageInputs(
         entrypoint_bin=source_outputs.entrypoint_bin,
-        code_mode_host_bin=source_outputs.code_mode_host_bin,
         rg_bin=resolve_rg_bin(spec, args.rg_bin),
         zsh_bin=resolve_zsh_bin(spec, args.zsh_manifest),
         bwrap_bin=source_outputs.bwrap_bin,

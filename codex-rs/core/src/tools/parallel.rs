@@ -108,7 +108,7 @@ impl ToolCallRuntime {
         let wait_for_runtime_cancellation = self.router.tool_waits_for_runtime_cancellation(&call);
         let started = Instant::now();
         let tool_call_timing_guard =
-            ToolCallTimingGuard::capture(started, &session.thread_id, &turn.sub_id, &call, &source);
+            ToolCallTimingGuard::capture(started, &session.thread_id, &turn.sub_id, &call);
         let execution_started_at = tool_call_timing_guard
             .as_ref()
             .map(|timing| Arc::clone(&timing.execution_started_at));
@@ -120,7 +120,7 @@ impl ToolCallRuntime {
         let dispatch_call = call.clone();
 
         let dispatch_span = trace_span!(
-            "dispatch_tool_call_with_code_mode_result",
+            "dispatch_tool_call",
             otel.name = %call.tool_name,
             tool_name = %call.tool_name,
             call_id = call.call_id.as_str(),
@@ -265,12 +265,8 @@ impl ToolCallTimingGuard {
         conversation_id: &impl std::fmt::Display,
         turn_id: &str,
         call: &ToolCall,
-        source: &ToolCallSource,
     ) -> Option<Self> {
-        // Code-mode calls are nested within a direct code-mode tool call whose
-        // timing already includes them. Suppress nested guards so consumers do
-        // not mistake overlapping events for independent tool-call latency.
-        if !matches!(source, ToolCallSource::Direct) || !tracing::enabled!(tracing::Level::INFO) {
+        if !tracing::enabled!(tracing::Level::INFO) {
             return None;
         }
 
@@ -360,49 +356,6 @@ mod tests {
     use tokio::sync::Notify;
     use tokio::sync::oneshot;
     use tracing_test::internal::MockWriter;
-
-    #[test]
-    fn tool_call_timing_guard_ignores_code_mode_source() {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .finish();
-        tracing::subscriber::with_default(subscriber, || {
-            let call = ToolCall {
-                tool_name: codex_tools::ToolName::plain("test_tool"),
-                call_id: "call-1".to_string(),
-                payload: ToolPayload::Function {
-                    arguments: "{}".to_string(),
-                },
-            };
-            let direct_guard = ToolCallTimingGuard::capture(
-                Instant::now(),
-                &"conversation-id",
-                "turn-id",
-                &call,
-                &ToolCallSource::Direct,
-            );
-            assert!(
-                direct_guard.is_some(),
-                "direct tool calls should create a timing guard"
-            );
-            drop(direct_guard);
-
-            let code_mode_guard = ToolCallTimingGuard::capture(
-                Instant::now(),
-                &"conversation-id",
-                "turn-id",
-                &call,
-                &ToolCallSource::CodeMode {
-                    cell_id: "cell-1".to_string(),
-                    runtime_tool_call_id: "runtime-call-1".to_string(),
-                },
-            );
-            assert!(
-                code_mode_guard.is_none(),
-                "nested code-mode calls should not create overlapping timing events"
-            );
-        });
-    }
 
     #[tokio::test]
     async fn cancellation_before_dispatch_admission_logs_dispatch_only_timing() -> anyhow::Result<()>

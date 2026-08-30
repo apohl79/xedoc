@@ -48,7 +48,6 @@ use codex_core_plugins::PluginLoadOutcome;
 use codex_core_plugins::PluginsConfigInput;
 use codex_exec_server::ExecutorFileSystem;
 use codex_exec_server::LOCAL_FS;
-use codex_features::CodeModeConfigToml;
 use codex_features::CurrentTimeReminderConfigToml;
 use codex_features::CurrentTimeReminderDeliveryMode;
 use codex_features::CurrentTimeSource;
@@ -955,9 +954,6 @@ pub struct Config {
     /// Whether to register the experimental request_user_input tool.
     pub experimental_request_user_input_enabled: bool,
 
-    /// Configuration for the experimental code-mode tool surface.
-    pub code_mode: CodeModeConfig,
-
     /// If set to `true`, used only the experimental unified exec tool.
     pub use_experimental_unified_exec_tool: bool,
 
@@ -1007,12 +1003,6 @@ pub struct Config {
 
     /// OTEL configuration (exporter type, endpoint, headers, etc.).
     pub otel: codex_config::types::OtelConfig,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
-pub struct CodeModeConfig {
-    pub excluded_tool_namespaces: Vec<String>,
-    pub direct_only_tool_namespaces: Vec<String>,
 }
 
 pub(crate) const DEFAULT_TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE: &str = concat!(
@@ -1096,7 +1086,6 @@ pub struct MultiAgentV2Config {
     pub tool_namespace: Option<String>,
     pub hide_spawn_agent_metadata: bool,
     pub expose_spawn_agent_model_overrides: bool,
-    pub non_code_mode_only: bool,
 }
 
 impl MultiAgentV2Config {
@@ -1119,7 +1108,6 @@ impl MultiAgentV2Config {
             tool_namespace: Some(DEFAULT_MULTI_AGENT_V2_TOOL_NAMESPACE.to_string()),
             hide_spawn_agent_metadata: false,
             expose_spawn_agent_model_overrides: true,
-            non_code_mode_only: true,
         }
     }
 }
@@ -2460,21 +2448,6 @@ fn resolve_orchestrator_feature_enabled(
     feature.and_then(|feature| feature.enabled).unwrap_or(true)
 }
 
-fn resolve_code_mode_config(config_toml: &ConfigToml) -> CodeModeConfig {
-    let base = code_mode_toml_config(config_toml.features.as_ref());
-
-    CodeModeConfig {
-        excluded_tool_namespaces: base
-            .and_then(|config| config.excluded_tool_namespaces.as_ref())
-            .cloned()
-            .unwrap_or_default(),
-        direct_only_tool_namespaces: base
-            .and_then(|config| config.direct_only_tool_namespaces.as_ref())
-            .cloned()
-            .unwrap_or_default(),
-    }
-}
-
 fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config {
     let base = multi_agent_v2_toml_config(config_toml.features.as_ref());
     let max_concurrent_threads_per_session = base
@@ -2536,9 +2509,6 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
         .and_then(|config| config.tool_namespace.as_ref())
         .cloned()
         .or(default.tool_namespace);
-    let non_code_mode_only = base
-        .and_then(|config| config.non_code_mode_only)
-        .unwrap_or(default.non_code_mode_only);
 
     MultiAgentV2Config {
         max_concurrent_threads_per_session,
@@ -2552,7 +2522,6 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
         tool_namespace,
         hide_spawn_agent_metadata,
         expose_spawn_agent_model_overrides,
-        non_code_mode_only,
     }
 }
 
@@ -2774,13 +2743,6 @@ fn append_usage_hint_text(usage_hint_text: Option<&str>, additional_text: &str) 
     match usage_hint_text {
         Some(usage_hint_text) => format!("{usage_hint_text}\n\n{additional_text}"),
         None => additional_text.to_string(),
-    }
-}
-
-fn code_mode_toml_config(features: Option<&FeaturesToml>) -> Option<&CodeModeConfigToml> {
-    match features?.code_mode.as_ref()? {
-        FeatureToml::Enabled(_) => None,
-        FeatureToml::Config(config) => Some(config),
     }
 }
 
@@ -3399,7 +3361,6 @@ impl Config {
         let web_search_config = resolve_web_search_config(&cfg);
         let experimental_request_user_input_enabled =
             resolve_experimental_request_user_input_enabled(&cfg);
-        let code_mode = resolve_code_mode_config(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg);
         let token_budget = resolve_token_budget_config(&cfg, &features)?;
         let rollout_budget = resolve_rollout_budget_config(&cfg, &features)?;
@@ -3874,7 +3835,6 @@ impl Config {
             web_search_mode: constrained_web_search_mode.value,
             web_search_config,
             experimental_request_user_input_enabled,
-            code_mode,
             use_experimental_unified_exec_tool,
             background_terminal_max_timeout,
             ghost_snapshot,

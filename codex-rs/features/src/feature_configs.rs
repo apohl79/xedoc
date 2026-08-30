@@ -6,31 +6,6 @@ use std::collections::BTreeMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct CodeModeConfigToml {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    /// Exact tool namespaces to omit from the code-mode nested tool surface.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub excluded_tool_namespaces: Option<Vec<String>>,
-    /// Exact tool namespaces to expose only as direct model tools.
-    /// These tools bypass deferral, remain top-level in code-mode-only sessions, and are omitted
-    /// from the nested code-mode tool surface.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub direct_only_tool_namespaces: Option<Vec<String>>,
-}
-
-impl FeatureConfig for CodeModeConfigToml {
-    fn enabled(&self) -> Option<bool> {
-        self.enabled
-    }
-
-    fn set_enabled(&mut self, enabled: bool) {
-        self.enabled = Some(enabled);
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct MultiAgentV2ConfigToml {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
@@ -66,6 +41,7 @@ pub struct MultiAgentV2ConfigToml {
     /// corresponding guidance to root and subagent usage hints.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expose_spawn_agent_model_overrides: Option<bool>,
+    /// Deprecated compatibility field. Its value is ignored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub non_code_mode_only: Option<bool>,
 }
@@ -190,6 +166,17 @@ impl FeatureConfig for CurrentTimeReminderConfigToml {
     fn set_enabled(&mut self, enabled: bool) {
         self.enabled = Some(enabled);
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RemovedCodeModeConfigToml {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    excluded_tool_namespaces: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    direct_only_tool_namespaces: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]

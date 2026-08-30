@@ -157,7 +157,6 @@ fn normalize_candidate(
     for (feature, enabled) in pinned_features {
         candidate.set_enabled(*feature, *enabled);
     }
-    candidate.normalize_dependencies();
     candidate
 }
 

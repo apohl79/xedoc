@@ -184,71 +184,6 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration as StdDuration;
 
-struct MissingCellCodeModeSession;
-
-impl codex_code_mode_protocol::CodeModeSession for MissingCellCodeModeSession {
-    fn execute<'a>(
-        &'a self,
-        _request: codex_code_mode_protocol::ExecuteRequest,
-    ) -> codex_code_mode_protocol::CodeModeSessionResultFuture<
-        'a,
-        codex_code_mode_protocol::StartedCell,
-    > {
-        Box::pin(async { Err("code mode execute is unavailable in this test".to_string()) })
-    }
-
-    fn wait<'a>(
-        &'a self,
-        request: codex_code_mode_protocol::WaitRequest,
-    ) -> codex_code_mode_protocol::CodeModeSessionResultFuture<
-        'a,
-        codex_code_mode_protocol::WaitOutcome,
-    > {
-        Box::pin(async move { Ok(missing_cell_outcome(request.cell_id)) })
-    }
-
-    fn terminate<'a>(
-        &'a self,
-        cell_id: codex_code_mode_protocol::CellId,
-    ) -> codex_code_mode_protocol::CodeModeSessionResultFuture<
-        'a,
-        codex_code_mode_protocol::WaitOutcome,
-    > {
-        Box::pin(async move { Ok(missing_cell_outcome(cell_id)) })
-    }
-
-    fn shutdown<'a>(&'a self) -> codex_code_mode_protocol::CodeModeSessionResultFuture<'a, ()> {
-        Box::pin(async { Ok(()) })
-    }
-}
-
-fn missing_cell_outcome(
-    cell_id: codex_code_mode_protocol::CellId,
-) -> codex_code_mode_protocol::WaitOutcome {
-    codex_code_mode_protocol::WaitOutcome::MissingCell(
-        codex_code_mode_protocol::RuntimeResponse::Result {
-            error_text: Some(format!("exec cell {cell_id} not found")),
-            cell_id,
-            content_items: Vec::new(),
-        },
-    )
-}
-
-struct MissingCellCodeModeSessionProvider;
-
-impl codex_code_mode_protocol::CodeModeSessionProvider for MissingCellCodeModeSessionProvider {
-    fn create_session<'a>(
-        &'a self,
-        _delegate: Arc<dyn codex_code_mode_protocol::CodeModeSessionDelegate>,
-    ) -> codex_code_mode_protocol::CodeModeSessionProviderFuture<'a> {
-        Box::pin(async {
-            let session: Arc<dyn codex_code_mode_protocol::CodeModeSession> =
-                Arc::new(MissingCellCodeModeSession);
-            Ok(session)
-        })
-    }
-}
-
 impl StepContext {
     pub(crate) fn for_test(turn: Arc<TurnContext>) -> Arc<Self> {
         let environments = turn.environments.clone();
@@ -5162,7 +5097,6 @@ async fn session_new_fails_when_zsh_fork_enabled_without_packaged_zsh() {
         skills_service,
         plugins_manager,
         mcp_manager,
-        Arc::new(MissingCellCodeModeSessionProvider),
         Arc::new(codex_extension_api::ExtensionRegistryBuilder::new().build()),
         codex_extension_api::ExtensionDataInit::default(),
         /*supports_openai_form_elicitation*/ false,
@@ -5368,10 +5302,6 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
                 .enabled(Feature::ConcurrentReasoningSummaries),
             config.http_client_factory(),
         )),
-        code_mode_service: crate::tools::code_mode::CodeModeService::new(
-            Arc::new(MissingCellCodeModeSessionProvider),
-            &config.features,
-        ),
         tool_search_handler_cache: Default::default(),
         turn_environments: Arc::clone(&turn_environments),
     };
@@ -5530,7 +5460,6 @@ async fn make_session_with_config_and_rx(
         skills_service,
         plugins_manager,
         mcp_manager,
-        Arc::new(MissingCellCodeModeSessionProvider),
         Arc::new(codex_extension_api::ExtensionRegistryBuilder::new().build()),
         codex_extension_api::ExtensionDataInit::default(),
         /*supports_openai_form_elicitation*/ false,
@@ -5632,7 +5561,6 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
         skills_service,
         plugins_manager,
         mcp_manager,
-        Arc::new(MissingCellCodeModeSessionProvider),
         Arc::new(codex_extension_api::ExtensionRegistryBuilder::new().build()),
         codex_extension_api::ExtensionDataInit::default(),
         /*supports_openai_form_elicitation*/ false,
@@ -7211,10 +7139,6 @@ where
                 .enabled(Feature::ConcurrentReasoningSummaries),
             config.http_client_factory(),
         )),
-        code_mode_service: crate::tools::code_mode::CodeModeService::new(
-            Arc::new(MissingCellCodeModeSessionProvider),
-            &config.features,
-        ),
         tool_search_handler_cache: Default::default(),
         turn_environments: Arc::clone(&turn_environments),
     };
@@ -9846,7 +9770,7 @@ async fn fatal_tool_error_stops_turn_and_reports_error() {
         .expect("tool call present");
     let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
     let err = router
-        .dispatch_tool_call_with_code_mode_result(
+        .dispatch_tool_call(
             Arc::clone(&session),
             step_context,
             CancellationToken::new(),

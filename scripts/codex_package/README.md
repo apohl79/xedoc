@@ -11,7 +11,6 @@ The builder creates a canonical Codex package directory:
 ├── codex-package.json
 ├── bin
 │   ├── <entrypoint>[.exe]
-│   ├── codex-code-mode-host[.exe]
 │   └── codex-session                    # Unix fork packages only
 ├── codex-resources
 │   ├── bwrap                             # Linux only
@@ -43,7 +42,6 @@ grouped `cargo build` command per package when they are needed and no prebuilt
 override was provided:
 
 - all targets: the selected entrypoint, unless `--entrypoint-bin` is provided
-- all targets: `codex-code-mode-host`, unless `--code-mode-host-bin` is provided
 - Linux targets: `bwrap`, unless `--bwrap-bin` is provided
 
 The default cargo profile is `dev-small` because local iteration should favor
@@ -52,20 +50,10 @@ explicit target. Release jobs that already built and signed/notarized the
 entrypoint should pass `--entrypoint-bin` so the package contains that exact
 binary instead of rebuilding it.
 
-Release jobs should likewise pass `--code-mode-host-bin` so the package contains
-the signed host executable beside the signed entrypoint.
-
 Release jobs that already built package resource binaries should also pass the
 corresponding resource flags: `--bwrap-bin` for Linux packages. This keeps
 package archive creation as a pure staging step after signing instead of
 rebuilding resources.
-
-When the builder source-builds an entrypoint for a Darwin or Linux target, it
-downloads and verifies the matching Codex-built V8 release pair before invoking
-Cargo and sets `RUSTY_V8_ARCHIVE` plus `RUSTY_V8_SRC_BINDING_PATH` for that
-build. Windows targets keep Cargo's release-build MSVC artifact path. Explicit
-overrides remain authoritative when both variables are already set. Set
-`V8_FROM_SOURCE=1` to leave the build with the `v8` crate source-build path.
 
 `rg` is not built from this repository, so the builder fetches it from the
 DotSlash manifest at `scripts/codex_package/rg`. Downloaded archives are cached

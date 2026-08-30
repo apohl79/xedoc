@@ -143,7 +143,7 @@ where
 
     /// Dispatches a tool call without terminal-outcome coordination.
     #[tracing::instrument(level = "trace", skip_all, err)]
-    pub async fn dispatch_tool_call_with_code_mode_result(
+    pub async fn dispatch_tool_call(
         &self,
         session: Arc<S>,
         step_context: Arc<C>,
@@ -152,7 +152,7 @@ where
         call: ToolCall,
         source: ToolCallSource,
     ) -> Result<AnyToolResult<D::PostToolUsePayload>, codex_tools::FunctionCallError> {
-        self.dispatch_tool_call_with_code_mode_result_inner(
+        self.dispatch_tool_call_inner(
             session,
             step_context,
             cancellation_token,
@@ -180,7 +180,7 @@ where
         source: ToolCallSource,
         terminal_outcome_reached: Arc<AtomicBool>,
     ) -> Result<AnyToolResult<D::PostToolUsePayload>, codex_tools::FunctionCallError> {
-        self.dispatch_tool_call_with_code_mode_result_inner(
+        self.dispatch_tool_call_inner(
             session,
             step_context,
             cancellation_token,
@@ -196,7 +196,7 @@ where
         clippy::too_many_arguments,
         reason = "tool dispatch preserves the existing cancellation contract"
     )]
-    async fn dispatch_tool_call_with_code_mode_result_inner(
+    async fn dispatch_tool_call_inner(
         &self,
         session: Arc<S>,
         step_context: Arc<C>,

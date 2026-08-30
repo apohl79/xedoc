@@ -16,7 +16,6 @@ use toml::Table;
 
 mod feature_configs;
 mod legacy;
-pub use feature_configs::CodeModeConfigToml;
 pub use feature_configs::CurrentTimeReminderConfigToml;
 pub use feature_configs::CurrentTimeReminderDeliveryMode;
 pub use feature_configs::CurrentTimeSource;
@@ -26,6 +25,7 @@ pub use feature_configs::NetworkProxyDomainPermissionToml;
 pub use feature_configs::NetworkProxyModeToml;
 pub use feature_configs::NetworkProxyUnixSocketPermissionToml;
 use feature_configs::RemovedAppsMcpPathOverrideConfigToml;
+use feature_configs::RemovedCodeModeConfigToml;
 pub use feature_configs::RolloutBudgetConfigToml;
 pub use feature_configs::TokenBudgetConfigToml;
 use legacy::LegacyFeatureToggles;
@@ -90,13 +90,13 @@ pub enum Feature {
     SecretAuthStorage,
 
     // Experimental
-    /// Enable JavaScript code mode backed by the in-process V8 runtime.
+    /// Removed compatibility flag for the deleted JavaScript code mode.
     CodeMode,
-    /// Use a 30-second default yield timeout for code mode exec calls.
+    /// Removed compatibility flag for the deleted code mode buffered exec timeout.
     CodeModeBufferedExec,
-    /// Run JavaScript code mode in the standalone host process.
+    /// Removed compatibility flag for the deleted code mode host process.
     CodeModeHost,
-    /// Restrict model-visible tools to code mode entrypoints (`exec`, `wait`).
+    /// Removed compatibility flag for the deleted code-mode-only tool surface.
     CodeModeOnly,
     /// Use the single unified PTY-backed exec tool.
     UnifiedExec,
@@ -466,7 +466,11 @@ impl Features {
                 "undo" => {
                     continue;
                 }
-                "js_repl" => {
+                "js_repl"
+                | "code_mode"
+                | "code_mode_buffered_exec"
+                | "code_mode_host"
+                | "code_mode_only" => {
                     continue;
                 }
                 "js_repl_tools_only" => {
@@ -545,19 +549,12 @@ impl Features {
         }
 
         overrides.apply(&mut features);
-        features.normalize_dependencies();
 
         features
     }
 
     pub fn enabled_features(&self) -> Vec<Feature> {
         self.enabled.iter().copied().collect()
-    }
-
-    pub fn normalize_dependencies(&mut self) {
-        if self.enabled(Feature::CodeModeOnly) && !self.enabled(Feature::CodeMode) {
-            self.enable(Feature::CodeMode);
-        }
     }
 }
 
@@ -640,8 +637,9 @@ pub fn is_known_feature_key(key: &str) -> bool {
 /// Deserializable features table for TOML.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 pub struct FeaturesToml {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub code_mode: Option<FeatureToml<CodeModeConfigToml>>,
+    #[serde(default, rename = "code_mode", skip_serializing)]
+    #[schemars(skip)]
+    removed_code_mode: Option<FeatureToml<RemovedCodeModeConfigToml>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multi_agent_v2: Option<FeatureToml<MultiAgentV2ConfigToml>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -672,13 +670,12 @@ impl FeaturesToml {
     pub fn clear_removed_compatibility_entries(&mut self) {
         self.removed_apps_mcp_path_override = None;
         self.entries.remove("apps_mcp_path_override");
+        self.removed_code_mode = None;
+        self.entries.remove("code_mode");
     }
 
     pub fn entries(&self) -> BTreeMap<String, bool> {
         let mut entries = self.entries.clone();
-        if let Some(enabled) = self.code_mode.as_ref().and_then(FeatureToml::enabled) {
-            entries.insert(Feature::CodeMode.key().to_string(), enabled);
-        }
         if let Some(enabled) = self.multi_agent_v2.as_ref().and_then(FeatureToml::enabled) {
             entries.insert(Feature::MultiAgentV2.key().to_string(), enabled);
         }
@@ -704,7 +701,7 @@ impl FeaturesToml {
     pub fn materialize_resolved_enabled(&mut self, features: &Features) {
         self.clear_removed_compatibility_entries();
         let Self {
-            code_mode,
+            removed_code_mode: _,
             multi_agent_v2,
             token_budget,
             rollout_budget,
@@ -718,9 +715,7 @@ impl FeaturesToml {
         }
         for spec in FEATURES {
             let enabled = features.enabled(spec.id);
-            if spec.id == Feature::CodeMode {
-                materialize_resolved_feature_enabled(code_mode, enabled);
-            } else if spec.id == Feature::MultiAgentV2 {
+            if spec.id == Feature::MultiAgentV2 {
                 materialize_resolved_feature_enabled(multi_agent_v2, enabled);
             } else if spec.id == Feature::TokenBudget {
                 materialize_resolved_feature_enabled(token_budget, enabled);
@@ -856,25 +851,25 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::CodeMode,
         key: "code_mode",
-        stage: Stage::UnderDevelopment,
+        stage: Stage::Removed,
         default_enabled: false,
     },
     FeatureSpec {
         id: Feature::CodeModeBufferedExec,
         key: "code_mode_buffered_exec",
-        stage: Stage::UnderDevelopment,
+        stage: Stage::Removed,
         default_enabled: false,
     },
     FeatureSpec {
         id: Feature::CodeModeHost,
         key: "code_mode_host",
-        stage: Stage::Stable,
-        default_enabled: true,
+        stage: Stage::Removed,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::CodeModeOnly,
         key: "code_mode_only",
-        stage: Stage::UnderDevelopment,
+        stage: Stage::Removed,
         default_enabled: false,
     },
     FeatureSpec {

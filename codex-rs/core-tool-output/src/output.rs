@@ -13,7 +13,6 @@ use codex_utils_output_truncation::approx_token_count;
 use codex_utils_output_truncation::formatted_truncate_text;
 use codex_utils_output_truncation::truncate_text;
 use codex_utils_string::take_bytes_at_char_boundary;
-use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -34,16 +33,10 @@ where
     Box::new(output)
 }
 
-/// Identifies whether a tool call came from direct or code-mode execution.
+/// Identifies where a tool call originated.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ToolCallSource {
     Direct,
-    CodeMode {
-        /// Runtime cell that issued the nested tool request.
-        cell_id: String,
-        /// Per-cell runtime invocation identifier for diagnostics.
-        runtime_tool_call_id: String,
-    },
 }
 
 /// Model-facing output for an MCP tool call.
@@ -75,12 +68,6 @@ impl ToolOutput for McpToolOutput {
             call_id: call_id.to_string(),
             output: self.response_payload(),
         }
-    }
-
-    fn code_mode_result(&self, _payload: &ToolPayload) -> JsonValue {
-        serde_json::to_value(&self.result).unwrap_or_else(|err| {
-            JsonValue::String(format!("failed to serialize mcp result: {err}"))
-        })
     }
 
     fn post_tool_use_input(&self, _payload: &ToolPayload) -> Option<JsonValue> {
@@ -251,10 +238,6 @@ impl ToolOutput for ApplyPatchToolOutput {
     fn post_tool_use_response(&self, _call_id: &str, _payload: &ToolPayload) -> Option<JsonValue> {
         Some(JsonValue::String(self.text.clone()))
     }
-
-    fn code_mode_result(&self, _payload: &ToolPayload) -> JsonValue {
-        JsonValue::Object(serde_json::Map::new())
-    }
 }
 
 /// Model-facing output used when execution is aborted.
@@ -351,38 +334,6 @@ impl ToolOutput for ExecCommandToolOutput {
         Some(JsonValue::String(
             self.truncated_output(self.model_output_max_tokens()),
         ))
-    }
-
-    fn code_mode_result(&self, _payload: &ToolPayload) -> JsonValue {
-        #[derive(Serialize)]
-        struct UnifiedExecCodeModeResult {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            chunk_id: Option<String>,
-            wall_time_seconds: f64,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            exit_code: Option<i32>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            session_id: Option<i32>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            original_token_count: Option<usize>,
-            output: String,
-        }
-
-        let result = UnifiedExecCodeModeResult {
-            chunk_id: (!self.chunk_id.is_empty()).then(|| self.chunk_id.clone()),
-            wall_time_seconds: self.wall_time.as_secs_f64(),
-            exit_code: self.exit_code,
-            session_id: self.process_id,
-            original_token_count: self.original_token_count,
-            output: match self.max_output_tokens {
-                Some(max_tokens) => self.truncated_output(max_tokens),
-                None => String::from_utf8_lossy(&self.raw_output).to_string(),
-            },
-        };
-
-        serde_json::to_value(result).unwrap_or_else(|err| {
-            JsonValue::String(format!("failed to serialize exec result: {err}"))
-        })
     }
 }
 

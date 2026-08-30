@@ -111,26 +111,19 @@ class InstallApohl79ShTest(unittest.TestCase):
                 {
                     "returncode": result.returncode,
                     "codex_link": os.readlink(install_bin / "codex"),
-                    "host_link": os.readlink(install_bin / "codex-code-mode-host"),
                     "session_link": os.readlink(install_bin / "codex-session"),
-                    "host_installed": (
-                        release_dir / "bin/codex-code-mode-host"
-                    ).is_file(),
+                    "codex_installed": (release_dir / "bin/codex").is_file(),
                 },
                 {
                     "returncode": 0,
                     "codex_link": str(
                         root / "codex-home/packages/standalone/current/bin/codex"
                     ),
-                    "host_link": str(
-                        root
-                        / "codex-home/packages/standalone/current/bin/codex-code-mode-host"
-                    ),
                     "session_link": str(
                         root
                         / "codex-home/packages/standalone/current/bin/codex-session"
                     ),
-                    "host_installed": True,
+                    "codex_installed": True,
                 },
             )
 
@@ -687,12 +680,6 @@ def write_package_archive(archive_path: Path) -> None:
             archive,
             "bin/codex",
             fake_codex_content(),
-            mode=0o755,
-        )
-        write_zip_text(
-            archive,
-            "bin/codex-code-mode-host",
-            "#!/bin/sh\nexit 0\n",
             mode=0o755,
         )
         write_zip_text(

@@ -14,9 +14,6 @@ pub type ToolExecutorFuture<'a> =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ToolExposure {
     /// Include this tool in the initial model-visible tool list.
-    ///
-    /// When code mode is enabled, this tool is also available as a nested
-    /// code-mode tool.
     Direct,
 
     /// Register this tool for later discovery, but omit it from the initial
@@ -25,19 +22,13 @@ pub enum ToolExposure {
     /// metadata from function and namespace specs.
     Deferred,
 
-    /// Include this tool in the initial model-visible tool list only.
-    ///
-    /// In code-mode-only sessions, this keeps the tool callable as a normal
-    /// model tool while excluding it from the nested code-mode tool surface.
-    DirectModelOnly,
-
     /// Keep this tool registered for dispatch without exposing it to the model.
     Hidden,
 }
 
 impl ToolExposure {
     pub fn is_direct(self) -> bool {
-        matches!(self, Self::Direct | Self::DirectModelOnly)
+        matches!(self, Self::Direct)
     }
 }
 

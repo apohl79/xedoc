@@ -8,7 +8,6 @@ from pathlib import Path
 from .targets import REPO_ROOT
 from .targets import PackageVariant
 from .targets import TargetSpec
-from .v8 import resolve_codex_v8_cargo_env
 
 CODEX_RS_ROOT = REPO_ROOT / "codex-rs"
 
@@ -16,7 +15,6 @@ CODEX_RS_ROOT = REPO_ROOT / "codex-rs"
 @dataclass(frozen=True)
 class SourceBuildOutputs:
     entrypoint_bin: Path
-    code_mode_host_bin: Path
     bwrap_bin: Path | None
 
 
@@ -27,7 +25,6 @@ def build_source_binaries(
     cargo: str,
     profile: str,
     entrypoint_bin: Path | None,
-    code_mode_host_bin: Path | None,
     bwrap_bin: Path | None,
 ) -> SourceBuildOutputs:
     validate_prebuilt_resource_inputs(spec, bwrap_bin=bwrap_bin)
@@ -35,7 +32,6 @@ def build_source_binaries(
         spec,
         variant,
         build_entrypoint=entrypoint_bin is None,
-        build_code_mode_host=code_mode_host_bin is None,
         build_bwrap=spec.is_linux and bwrap_bin is None,
     )
     if binaries:
@@ -50,18 +46,11 @@ def build_source_binaries(
         for binary in binaries:
             cmd.extend(["--bin", binary])
 
-        cargo_env = None
-        if entrypoint_bin is None or code_mode_host_bin is None:
-            codex_v8_env = resolve_codex_v8_cargo_env(spec)
-            if codex_v8_env:
-                cargo_env = {**os.environ, **codex_v8_env}
-
         print("+", " ".join(cmd))
         subprocess.run(
             cmd,
             cwd=CODEX_RS_ROOT,
             check=True,
-            env=cargo_env,
         )
 
     output_dir = cargo_profile_output_dir(spec, profile)
@@ -69,11 +58,6 @@ def build_source_binaries(
         entrypoint_bin=resolve_output_path(
             entrypoint_bin,
             output_dir / variant.entrypoint_name(spec),
-        ),
-        code_mode_host_bin=(
-            code_mode_host_bin.resolve()
-            if code_mode_host_bin is not None
-            else output_dir / f"codex-code-mode-host{spec.exe_suffix}"
         ),
         bwrap_bin=resolve_output_path(
             bwrap_bin,
@@ -89,14 +73,11 @@ def source_binaries_for_target(
     variant: PackageVariant,
     *,
     build_entrypoint: bool,
-    build_code_mode_host: bool,
     build_bwrap: bool,
 ) -> list[str]:
     binaries = []
     if build_entrypoint:
         binaries.append(variant.cargo_bin)
-    if build_code_mode_host:
-        binaries.append("codex-code-mode-host")
     if build_bwrap:
         binaries.append("bwrap")
     return binaries
@@ -148,7 +129,6 @@ def cargo_profile_dirname(profile: str) -> str:
 def validate_source_outputs(outputs: SourceBuildOutputs) -> None:
     for path in [
         outputs.entrypoint_bin,
-        outputs.code_mode_host_bin,
         outputs.bwrap_bin,
     ]:
         if path is not None and not path.is_file():

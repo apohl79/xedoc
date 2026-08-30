@@ -17,10 +17,6 @@ members = [
     "arg0",
     "features",
     "install-context",
-    "code-mode",
-    "code-mode-client",
-    "code-mode-host",
-    "code-mode-protocol",
     "codex-home",
     "cli",
     "cli-runtime",
@@ -128,7 +124,6 @@ members = [
     "tui-transcript",
     "tui-workspace",
     "tools",
-    "v8-poc",
     "websocket-client",
     "utils/absolute-path",
     "utils/path-uri",
@@ -199,9 +194,6 @@ codex-cli = { path = "cli" }
 codex-cli-runtime = { path = "cli-runtime" }
 codex-client = { path = "codex-client" }
 codex-collaboration-mode-templates = { path = "collaboration-mode-templates" }
-codex-code-mode = { path = "code-mode" }
-codex-code-mode-client = { path = "code-mode-client" }
-codex-code-mode-protocol = { path = "code-mode-protocol" }
 codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
 codex-websocket-client = { path = "websocket-client" }
@@ -341,7 +333,6 @@ codex-utils-sleep-inhibitor = { path = "utils/sleep-inhibitor" }
 codex-utils-stream-parser = { path = "utils/stream-parser" }
 codex-utils-string = { path = "utils/string" }
 codex-utils-template = { path = "utils/template" }
-codex-v8-poc = { path = "v8-poc" }
 core_test_support = { path = "core/tests/common" }
 mcp_test_support = { path = "mcp-server/tests/common" }
 
@@ -382,7 +373,6 @@ crossbeam-channel = "0.5.15"
 crypto_box = { version = "0.9.1", features = ["seal"] }
 crossterm = "0.28.1"
 ctor = "0.6.3"
-deno_core_icudata = "0.77.0"
 derive_more = "2"
 diffy = "0.4.2"
 dirs = "6"
@@ -540,7 +530,6 @@ unicode-width = "0.2"
 url = "2"
 urlencoding = "2.1"
 uuid = "1"
-v8 = "=149.2.0"
 vt100 = "0.16.2"
 walkdir = "2.5.0"
 webbrowser = "1.0"
@@ -600,7 +589,6 @@ unwrap_used = "deny"
 ignored = [
     "icu_provider",
     "openssl-sys",
-    "codex-v8-poc",
 ]
 
 [profile.dev]

@@ -412,7 +412,7 @@ async fn extension_tool_executors_are_model_visible_and_dispatchable() -> anyhow
     })?
     .expect("function_call should produce a tool call");
     let result = router
-        .dispatch_tool_call_with_code_mode_result(
+        .dispatch_tool_call(
             Arc::new(session),
             step_context,
             CancellationToken::new(),

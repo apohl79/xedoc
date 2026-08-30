@@ -53,7 +53,6 @@ BAZEL_PLATFORM_BY_TARGET = {
 @dataclass(frozen=True)
 class ReleaseBinaries:
     entrypoint: Path
-    code_mode_host: Path
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -291,7 +290,6 @@ def build_release(args: argparse.Namespace) -> None:
         raise RuntimeError(f"Unsupported release build system: {build_system}")
 
     entrypoint = release_binaries.entrypoint
-    code_mode_host = release_binaries.code_mode_host
 
     signing_script = source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
     entitlements = (
@@ -307,16 +305,6 @@ def build_release(args: argparse.Namespace) -> None:
         cwd=source_root,
     )
     run(["codesign", "--verify", "--strict", "--verbose=2", str(entrypoint)])
-    run(
-        build_codesign_command(
-            target=code_mode_host,
-            identity=codesign_identity,
-            entitlements=entitlements,
-            signing_script=signing_script,
-        ),
-        cwd=source_root,
-    )
-    run(["codesign", "--verify", "--strict", "--verbose=2", str(code_mode_host)])
 
     package_dir = (
         resolve_repo_path(args.package_dir)
@@ -338,8 +326,6 @@ def build_release(args: argparse.Namespace) -> None:
         fork_version,
         "--entrypoint-bin",
         str(entrypoint),
-        "--code-mode-host-bin",
-        str(code_mode_host),
         "--cargo-profile",
         "release",
         "--package-dir",
@@ -411,8 +397,6 @@ def build_cargo_release_binaries(
             str(source_root / "codex-rs" / "Cargo.toml"),
             "--package",
             "codex-cli",
-            "--package",
-            "codex-code-mode-host",
             "--bins",
             "--profile",
             "release",
@@ -427,13 +411,6 @@ def build_cargo_release_binaries(
         entrypoint=require_built_file(
             target_dir / spec.target / "release" / f"codex{spec.exe_suffix}",
             "Built entrypoint",
-        ),
-        code_mode_host=require_built_file(
-            target_dir
-            / spec.target
-            / "release"
-            / f"codex-code-mode-host{spec.exe_suffix}",
-            "Built code-mode host",
         ),
     )
 
@@ -533,18 +510,13 @@ def resolve_bazel_release_binaries(
     outputs = [line.strip() for line in stdout.splitlines() if line.strip()]
     paths = [execution_root / output for output in outputs]
     paths_by_name = {path.name: path for path in paths}
-    expected_names = {"codex", "codex-code-mode-host"}
-    if len(outputs) != 2 or paths_by_name.keys() != expected_names:
+    if len(outputs) != 1 or paths_by_name.keys() != {"codex"}:
         raise RuntimeError(
-            "Bazel release bundle must contain exactly codex and "
-            f"codex-code-mode-host; reported {sorted(paths_by_name)}."
+            "Bazel release bundle must contain exactly codex; "
+            f"reported {sorted(paths_by_name)}."
         )
     return ReleaseBinaries(
         entrypoint=require_built_file(paths_by_name["codex"], "Bazel entrypoint"),
-        code_mode_host=require_built_file(
-            paths_by_name["codex-code-mode-host"],
-            "Bazel code-mode host",
-        ),
     )
 
 
@@ -554,13 +526,8 @@ def stage_release_binaries(
 ) -> ReleaseBinaries:
     staging_dir.mkdir(parents=True, exist_ok=True)
     entrypoint = staging_dir / release_binaries.entrypoint.name
-    code_mode_host = staging_dir / release_binaries.code_mode_host.name
     shutil.copy2(release_binaries.entrypoint, entrypoint)
-    shutil.copy2(release_binaries.code_mode_host, code_mode_host)
-    return ReleaseBinaries(
-        entrypoint=entrypoint.resolve(),
-        code_mode_host=code_mode_host.resolve(),
-    )
+    return ReleaseBinaries(entrypoint=entrypoint.resolve())
 
 
 def require_built_file(path: Path, description: str) -> Path:

@@ -59,7 +59,6 @@ yarn-error.log*
 # ci
 .vercel/
 .netlify/
-/upstream-rusty-v8/
 
 # patches
 apply_patch/

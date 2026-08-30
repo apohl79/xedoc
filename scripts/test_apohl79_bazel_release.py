@@ -73,10 +73,8 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             source_root = Path(temp_dir)
             execution_root = source_root / "execroot"
             entrypoint = execution_root / "bazel-out/release/codex"
-            code_mode_host = execution_root / "bazel-out/release/codex-code-mode-host"
             entrypoint.parent.mkdir(parents=True)
             entrypoint.write_text("codex", encoding="utf-8")
-            code_mode_host.write_text("host", encoding="utf-8")
 
             with (
                 mock.patch.object(apohl79_release, "run") as run_mock,
@@ -85,10 +83,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                     "command_output",
                     side_effect=[
                         f"{execution_root}\n",
-                        (
-                            "bazel-out/release/codex\n"
-                            "bazel-out/release/codex-code-mode-host\n"
-                        ),
+                        "bazel-out/release/codex\n",
                     ],
                 ) as command_output,
             ):
@@ -103,10 +98,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
 
             self.assertEqual(
                 result,
-                apohl79_release.ReleaseBinaries(
-                    entrypoint=entrypoint.resolve(),
-                    code_mode_host=code_mode_host.resolve(),
-                ),
+                apohl79_release.ReleaseBinaries(entrypoint=entrypoint.resolve()),
             )
             build_command = run_mock.call_args.args[0]
             build_env = run_mock.call_args.kwargs["env"]
@@ -161,23 +153,19 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             entrypoint = execution_root / "bazel-out/release/codex"
             entrypoint.parent.mkdir(parents=True)
             entrypoint.write_text("codex", encoding="utf-8")
-            code_mode_host = entrypoint.with_name("codex-code-mode-host")
-            code_mode_host.write_text("host", encoding="utf-8")
 
             self.assertEqual(
                 apohl79_release.resolve_bazel_release_binaries(
-                    (
-                        "bazel-out/release/codex\n"
-                        "bazel-out/release/codex-code-mode-host\n"
-                    ),
+                    "bazel-out/release/codex\n",
                     execution_root,
                 ),
-                apohl79_release.ReleaseBinaries(
-                    entrypoint.resolve(),
-                    code_mode_host.resolve(),
-                ),
+                apohl79_release.ReleaseBinaries(entrypoint.resolve()),
             )
-            for stdout in ("", "bazel-out/release/codex\n", "one\ntwo\nthree\n"):
+            for stdout in (
+                "",
+                "bazel-out/release/codex-app-server\n",
+                "bazel-out/release/codex\nbazel-out/release/other\n",
+            ):
                 with self.subTest(stdout=stdout):
                     with self.assertRaisesRegex(
                         RuntimeError,
@@ -194,28 +182,20 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             source = root / "source"
             source.mkdir()
             entrypoint = source / "codex"
-            code_mode_host = source / "codex-code-mode-host"
             entrypoint.write_text("unsigned-codex", encoding="utf-8")
-            code_mode_host.write_text("unsigned-host", encoding="utf-8")
 
             result = apohl79_release.stage_release_binaries(
-                apohl79_release.ReleaseBinaries(entrypoint, code_mode_host),
+                apohl79_release.ReleaseBinaries(entrypoint),
                 root / "staged",
             )
 
             self.assertEqual(
-                (
-                    result,
-                    result.entrypoint.read_text(encoding="utf-8"),
-                    result.code_mode_host.read_text(encoding="utf-8"),
-                ),
+                (result, result.entrypoint.read_text(encoding="utf-8")),
                 (
                     apohl79_release.ReleaseBinaries(
                         (root / "staged/codex").resolve(),
-                        (root / "staged/codex-code-mode-host").resolve(),
                     ),
                     "unsigned-codex",
-                    "unsigned-host",
                 ),
             )
 

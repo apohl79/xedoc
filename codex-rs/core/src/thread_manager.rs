@@ -20,10 +20,6 @@ use codex_agent_graph_store::AgentGraphStore;
 use codex_agent_graph_store::LocalAgentGraphStore;
 use codex_app_server_protocol::ThreadHistoryBuilder;
 use codex_app_server_protocol::TurnStatus;
-use codex_code_mode_client::ProcessOwnedCodeModeSessionProvider;
-use codex_code_mode_protocol::CodeModeSessionDelegate;
-use codex_code_mode_protocol::CodeModeSessionProvider;
-use codex_code_mode_protocol::CodeModeSessionProviderFuture;
 use codex_core_plugins::PluginsManager;
 use codex_exec_server::EnvironmentManager;
 use codex_extension_api::ExtensionDataInit;
@@ -92,17 +88,6 @@ use tracing::instrument;
 use tracing::warn;
 
 const THREAD_CREATED_CHANNEL_CAPACITY: usize = 1024;
-
-struct CodeModeHostDisabledSessionProvider;
-
-impl CodeModeSessionProvider for CodeModeHostDisabledSessionProvider {
-    fn create_session<'a>(
-        &'a self,
-        _delegate: Arc<dyn CodeModeSessionDelegate>,
-    ) -> CodeModeSessionProviderFuture<'a> {
-        Box::pin(async { Err("code mode requires the code_mode_host feature".to_string()) })
-    }
-}
 
 /// Test-only override for enabling thread-manager behaviors used by integration
 /// tests.
@@ -266,7 +251,6 @@ pub(crate) struct ThreadManagerState {
     skills_service: Arc<SkillsService>,
     plugins_manager: Arc<PluginsManager>,
     mcp_manager: Arc<McpManager>,
-    code_mode_session_provider: Arc<dyn CodeModeSessionProvider>,
     extensions: Arc<ExtensionRegistry<Config>>,
     user_instructions_provider: Arc<dyn UserInstructionsProvider>,
     thread_store: Arc<dyn ThreadStore>,
@@ -423,11 +407,6 @@ impl ThreadManager {
                 skills_service,
                 plugins_manager,
                 mcp_manager,
-                code_mode_session_provider: if config.features.enabled(Feature::CodeModeHost) {
-                    Arc::new(ProcessOwnedCodeModeSessionProvider::default())
-                } else {
-                    Arc::new(CodeModeHostDisabledSessionProvider)
-                },
                 extensions,
                 user_instructions_provider,
                 thread_store,
@@ -441,16 +420,6 @@ impl ThreadManager {
             }),
             _test_codex_home_guard: None,
         }
-    }
-
-    pub(crate) fn with_code_mode_host_program_for_tests(mut self, host_program: PathBuf) -> Self {
-        let Some(state) = Arc::get_mut(&mut self.state) else {
-            unreachable!("new thread manager state should not be shared");
-        };
-        state.code_mode_session_provider = Arc::new(
-            ProcessOwnedCodeModeSessionProvider::with_host_program(host_program),
-        );
-        self
     }
 
     /// Construct with a dummy AuthManager containing the provided CodexAuth.
@@ -541,7 +510,6 @@ impl ThreadManager {
                 skills_service,
                 plugins_manager,
                 mcp_manager,
-                code_mode_session_provider: Arc::new(ProcessOwnedCodeModeSessionProvider::default()),
                 extensions: empty_extension_registry(),
                 user_instructions_provider: Arc::new(
                     crate::test_support::EmptyUserInstructionsProvider,
@@ -1722,7 +1690,6 @@ impl ThreadManagerState {
             skills_service: Arc::clone(&self.skills_service),
             plugins_manager: Arc::clone(&self.plugins_manager),
             mcp_manager: Arc::clone(&self.mcp_manager),
-            code_mode_session_provider: Arc::clone(&self.code_mode_session_provider),
             extensions: Arc::clone(&self.extensions),
             conversation_history: initial_history,
             requested_history_mode: history_mode,

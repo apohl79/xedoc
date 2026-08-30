@@ -10,7 +10,6 @@ use codex_tools::ToolExecutor;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use futures::future::BoxFuture;
-use serde_json::Value as JsonValue;
 use serde_json::json;
 use std::collections::BTreeMap;
 
@@ -43,12 +42,6 @@ impl ToolOutput for CurrentTimeOutput {
     fn to_response_item(&self, call_id: &str, payload: &ToolPayload) -> ResponseInputItem {
         FunctionToolOutput::from_text(format!("It is {}.", self.0), Some(true))
             .to_response_item(call_id, payload)
-    }
-
-    fn code_mode_result(&self, _payload: &ToolPayload) -> JsonValue {
-        json!({
-            "current_time": self.0,
-        })
     }
 }
 

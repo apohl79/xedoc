@@ -46,50 +46,6 @@ fn function_payloads_remain_function_outputs() {
 }
 
 #[test]
-fn mcp_code_mode_result_serializes_full_call_tool_result() {
-    let output = McpToolOutput {
-        result: CallToolResult {
-            content: vec![serde_json::json!({
-                "type": "text",
-                "text": "ignored",
-            })],
-            structured_content: Some(serde_json::json!({
-                "threadId": "thread_123",
-                "content": "done",
-            })),
-            is_error: Some(false),
-            meta: Some(serde_json::json!({
-                "source": "mcp",
-            })),
-        },
-        tool_input: json!({}),
-        wall_time: Duration::ZERO,
-        original_image_detail_supported: false,
-        truncation_policy: TruncationPolicy::Bytes(1024),
-    };
-
-    assert_eq!(
-        output.code_mode_result(&ToolPayload::Function {
-            arguments: "{}".to_string(),
-        }),
-        serde_json::json!({
-            "content": [{
-                "type": "text",
-                "text": "ignored",
-            }],
-            "structuredContent": {
-                "threadId": "thread_123",
-                "content": "done",
-            },
-            "isError": false,
-            "_meta": {
-                "source": "mcp",
-            },
-        })
-    );
-}
-
-#[test]
 fn mcp_tool_output_response_item_includes_wall_time() {
     let output = McpToolOutput {
         result: CallToolResult {
@@ -236,44 +192,6 @@ fn mcp_tool_output_response_item_preserves_content_items() {
         }
         other => panic!("expected FunctionCallOutput, got {other:?}"),
     }
-}
-
-#[test]
-fn mcp_tool_output_code_mode_result_stays_raw_call_tool_result() {
-    let large_content = "large structured value ".repeat(1_000);
-    let output = McpToolOutput {
-        result: CallToolResult {
-            content: vec![serde_json::json!({
-                "type": "text",
-                "text": "ignored",
-            })],
-            structured_content: Some(serde_json::json!({
-                "content": large_content,
-            })),
-            is_error: Some(false),
-            meta: None,
-        },
-        tool_input: json!({}),
-        wall_time: Duration::from_millis(1250),
-        original_image_detail_supported: false,
-        truncation_policy: TruncationPolicy::Bytes(64),
-    };
-
-    assert_eq!(
-        output.code_mode_result(&ToolPayload::Function {
-            arguments: "{}".to_string(),
-        }),
-        serde_json::json!({
-            "content": [{
-                "type": "text",
-                "text": "ignored",
-            }],
-            "structuredContent": {
-                "content": "large structured value ".repeat(1_000),
-            },
-            "isError": false,
-        })
-    );
 }
 
 #[test]
@@ -430,7 +348,8 @@ fn telemetry_preview_truncates_by_lines() {
         .map(|index| format!("line {index}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let lines = telemetry_preview(&content).lines().collect::<Vec<_>>();
+    let preview = telemetry_preview(&content);
+    let lines = preview.lines().collect::<Vec<_>>();
 
     assert_eq!(
         (lines.len() <= TELEMETRY_PREVIEW_MAX_LINES + 1, lines.last()),

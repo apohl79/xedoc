@@ -9,7 +9,6 @@ use codex_protocol::protocol::EventMsg;
 use codex_tools::ToolExposure;
 use codex_tools::ToolName;
 use futures::future::BoxFuture;
-use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -108,14 +107,6 @@ impl<P> AnyToolResult<P> {
             ..
         } = self;
         result.to_response_item(&call_id, &payload)
-    }
-
-    /// Converts this result into a Code Mode value.
-    pub fn code_mode_result(self) -> Value {
-        let Self {
-            payload, result, ..
-        } = self;
-        result.code_mode_result(&payload)
     }
 }
 

@@ -554,9 +554,6 @@ async fn shutdown_session_runtime(sess: &Arc<Session>) {
         .unified_exec_manager
         .terminate_all_processes()
         .await;
-    if let Err(err) = sess.services.code_mode_service.shutdown().await {
-        warn!("failed to shutdown code mode session: {err}");
-    }
     sess.services.mcp_runtime.shutdown().await;
 
     crate::hook_runtime::run_session_end_hooks(sess).await;

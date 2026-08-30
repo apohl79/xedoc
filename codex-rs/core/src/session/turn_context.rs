@@ -405,13 +405,6 @@ impl Session {
             )
             .await;
         }
-
-        if let Some(message) =
-            unsupported_code_mode_warning(&tc.model_info, tc.config.features.get())
-        {
-            self.send_event(tc, EventMsg::Warning(WarningEvent { message }))
-                .await;
-        }
     }
 
     pub(crate) async fn new_default_turn(&self) -> Arc<TurnContext> {

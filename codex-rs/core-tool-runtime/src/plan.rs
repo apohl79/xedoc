@@ -11,7 +11,6 @@ use codex_tools::ToolExecutor;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use futures::future::BoxFuture;
-use serde_json::Value as JsonValue;
 
 use crate::ToolInvocation;
 use crate::ToolOutput;
@@ -53,10 +52,6 @@ impl ToolOutput for PlanToolOutput {
             call_id: call_id.to_string(),
             output,
         }
-    }
-
-    fn code_mode_result(&self, _payload: &ToolPayload) -> JsonValue {
-        JsonValue::Object(serde_json::Map::new())
     }
 }
 

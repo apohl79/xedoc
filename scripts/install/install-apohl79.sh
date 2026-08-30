@@ -8,7 +8,6 @@ APOHL79_TARGET="${CODEX_APOHL79_TARGET:-}"
 LOCAL_ZIP="${CODEX_APOHL79_LOCAL_ZIP:-}"
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/codex"
-HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
 SESSION_CONTROL_BIN_PATH="$BIN_DIR/codex-session"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 NON_INTERACTIVE="${CODEX_NON_INTERACTIVE:-false}"
@@ -718,7 +717,6 @@ release_dir_is_complete() {
     [ "$(basename "$release_dir")" = "$expected_name" ] &&
     [ -f "$release_dir/codex-package.json" ] &&
     [ -x "$release_dir/bin/codex" ] &&
-    [ -x "$release_dir/bin/codex-code-mode-host" ] &&
     [ -x "$release_dir/bin/codex-session" ] &&
     [ -x "$release_dir/codex" ] &&
     [ -x "$release_dir/codex-path/rg" ]
@@ -735,12 +733,10 @@ install_zip_release() {
   unzip -q "$archive_path" -d "$stage_release"
 
   [ -f "$stage_release/bin/codex" ] || die "Archive is missing bin/codex."
-  [ -f "$stage_release/bin/codex-code-mode-host" ] || die "Archive is missing bin/codex-code-mode-host."
   [ -f "$stage_release/bin/codex-session" ] || die "Archive is missing bin/codex-session."
   [ -f "$stage_release/codex-path/rg" ] || die "Archive is missing codex-path/rg."
   chmod 0755 \
     "$stage_release/bin/codex" \
-    "$stage_release/bin/codex-code-mode-host" \
     "$stage_release/bin/codex-session" \
     "$stage_release/codex-path/rg"
   if [ -f "$stage_release/codex-resources/zsh/bin/zsh" ]; then
@@ -765,7 +761,6 @@ update_current_link() {
 update_visible_command() {
   mkdir -p "$BIN_DIR"
   tmp_link="$BIN_DIR/.codex.$$"
-  tmp_host_link="$BIN_DIR/.codex-code-mode-host.$$"
   tmp_session_link="$BIN_DIR/.codex-session.$$"
 
   replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/bin/codex" "$tmp_link"
@@ -773,10 +768,11 @@ update_visible_command() {
     "$SESSION_CONTROL_BIN_PATH" \
     "$CURRENT_LINK/bin/codex-session" \
     "$tmp_session_link"
-  replace_path_with_symlink \
-    "$HOST_BIN_PATH" \
-    "$CURRENT_LINK/bin/codex-code-mode-host" \
-    "$tmp_host_link"
+  # Older fork releases shipped a codex-code-mode-host symlink; drop it if stale.
+  if [ "$(readlink "$BIN_DIR/codex-code-mode-host" 2>/dev/null || true)" = \
+    "$CURRENT_LINK/bin/codex-code-mode-host" ]; then
+    rm -f "$BIN_DIR/codex-code-mode-host"
+  fi
 }
 
 cleanup() {

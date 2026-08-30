@@ -246,7 +246,7 @@ pub fn normalize_generated_session_name(name: &str) -> Option<String> {
     if name.is_empty() {
         return None;
     }
-    if generated_session_name_looks_sensitive(&name) {
+    if generated_session_name_looks_sensitive(name) {
         Some(SENSITIVE_SESSION_NAME_FALLBACK.to_string())
     } else {
         Some(name.to_string())

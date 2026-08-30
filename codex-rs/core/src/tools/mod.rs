@@ -1,5 +1,4 @@
 mod approvals;
-pub(crate) mod code_mode;
 pub(crate) mod context;
 pub(crate) mod events;
 pub(crate) mod handlers;
@@ -17,10 +16,7 @@ pub(crate) mod spec_plan;
 
 use std::borrow::Cow;
 
-use crate::session::turn_context::TurnContext;
-use codex_features::Feature;
 use codex_protocol::exec_output::ExecToolCallOutput;
-use codex_protocol::openai_models::ToolMode;
 use codex_tools::ToolName;
 use codex_utils_output_truncation::TruncationPolicy;
 use codex_utils_output_truncation::formatted_truncate_text;
@@ -52,18 +48,6 @@ pub(crate) fn tool_user_shell_type(
         crate::shell::ShellType::Sh => codex_tools::ToolUserShellType::Sh,
         crate::shell::ShellType::Cmd => codex_tools::ToolUserShellType::Cmd,
     }
-}
-
-fn effective_tool_mode(turn_context: &TurnContext) -> ToolMode {
-    turn_context.model_info.tool_mode.unwrap_or_else(|| {
-        if turn_context.config.features.enabled(Feature::CodeModeOnly) {
-            ToolMode::CodeModeOnly
-        } else if turn_context.config.features.enabled(Feature::CodeMode) {
-            ToolMode::CodeMode
-        } else {
-            ToolMode::Direct
-        }
-    })
 }
 
 /// Format the combined exec output for sending back to the model.

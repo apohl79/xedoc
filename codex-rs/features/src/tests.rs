@@ -76,16 +76,6 @@ path = "/custom/mcp"
 }
 
 #[test]
-fn code_mode_only_requires_code_mode() {
-    let mut features = Features::with_defaults();
-    features.enable(Feature::CodeModeOnly);
-    features.normalize_dependencies();
-
-    assert_eq!(features.enabled(Feature::CodeModeOnly), true);
-    assert_eq!(features.enabled(Feature::CodeMode), true);
-}
-
-#[test]
 fn from_sources_ignores_removed_terminal_resize_reflow_feature_key() {
     let features_toml = FeaturesToml::from(BTreeMap::from([(
         "terminal_resize_reflow".to_string(),
@@ -201,7 +191,7 @@ fn from_sources_applies_base_profile_and_overrides() {
     };
 
     let mut profile_entries = BTreeMap::new();
-    profile_entries.insert("code_mode_only".to_string(), true);
+    profile_entries.insert("deferred_executor".to_string(), true);
     let profile_features = FeaturesToml {
         entries: profile_entries,
         ..Default::default()
@@ -222,8 +212,7 @@ fn from_sources_applies_base_profile_and_overrides() {
     );
 
     assert_eq!(features.enabled(Feature::Plugins), true);
-    assert_eq!(features.enabled(Feature::CodeModeOnly), true);
-    assert_eq!(features.enabled(Feature::CodeMode), true);
+    assert_eq!(features.enabled(Feature::DeferredExecutor), true);
     assert_eq!(features.enabled(Feature::ApplyPatchFreeform), false);
     assert_eq!(features.enabled(Feature::WebSearchRequest), false);
 }
@@ -418,7 +407,7 @@ non_code_mode_only = true
 #[test]
 fn materialize_resolved_enabled_writes_all_features_and_preserves_custom_config() {
     let mut features = Features::with_defaults();
-    features.enable(Feature::CodeMode);
+    features.enable(Feature::DeferredExecutor);
     features.enable(Feature::MultiAgentV2);
     features.enable(Feature::NetworkProxy);
     features.enable(Feature::RespectSystemProxy);
@@ -510,14 +499,14 @@ fn unstable_warning_event_ignores_enabled_structured_stable_feature() {
     let configured_features: Table = toml::from_str(
         r#"
 multi_agent_v2 = { enabled = true, tool_namespace = "agents" }
-code_mode = true
+deferred_executor = true
 "#,
     )
     .expect("features table should deserialize");
 
     let mut features = Features::with_defaults();
     features.enable(Feature::MultiAgentV2);
-    features.enable(Feature::CodeMode);
+    features.enable(Feature::DeferredExecutor);
 
     let warning = unstable_features_warning_event(
         Some(&configured_features),
@@ -531,7 +520,7 @@ code_mode = true
         panic!("expected warning event");
     };
     assert_eq!(
-        "Under-development features enabled: code_mode. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /tmp/config.toml.".to_string(),
+        "Under-development features enabled: deferred_executor. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /tmp/config.toml.".to_string(),
         message
     );
 }

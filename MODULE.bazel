@@ -4,13 +4,12 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "llvm", version = "0.7.9")
 
-# Patch hermetic LLVM for Codex's custom libc++ and Windows gnullvm runtime
-# needs that have not landed upstream.
+# Patch hermetic LLVM for Windows gnullvm runtime needs that have not landed
+# upstream.
 single_version_override(
     module_name = "llvm",
     patch_strip = 1,
     patches = [
-        "//patches:llvm_rusty_v8_custom_libcxx.patch",
         "//patches:llvm_windows_arm64_powl.patch",
         "//patches:llvm_windows_mingw_compat.patch",
     ],
@@ -80,14 +79,6 @@ use_repo(osx, "macos_sdk")
 # Needed to disable xcode...
 bazel_dep(name = "apple_support", version = "2.1.0")
 bazel_dep(name = "rules_cc", version = "0.2.18")
-single_version_override(
-    module_name = "rules_cc",
-    patch_strip = 1,
-    patches = [
-        "//patches:rules_cc_rusty_v8_custom_libcxx.patch",
-    ],
-)
-
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_rs", version = "0.0.58")
 
@@ -186,9 +177,8 @@ crate.from_cargo(
         "aarch64-unknown-linux-gnu",
         "aarch64-unknown-linux-musl",
         "aarch64-apple-darwin",
-        # Keep both Windows ABIs in the generated Cargo metadata: the V8
-        # experiment still consumes release assets that only exist under the
-        # MSVC names while targeting the GNU toolchain.
+        # Keep both Windows ABIs in the generated Cargo metadata so MSVC-named
+        # crate metadata stays resolvable while targeting the GNU toolchain.
         "aarch64-pc-windows-msvc",
         "aarch64-pc-windows-gnullvm",
         "x86_64-unknown-linux-gnu",
@@ -357,48 +347,7 @@ crate.annotation(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
-
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-
 include("//bazel/modules:wine.MODULE.bazel")
-
-new_local_repository(
-    name = "v8_targets",
-    build_file = "//third_party/v8:BUILD.bazel",
-    path = "third_party/v8",
-)
-
-crate.annotation(
-    build_script_data = [
-        "@v8_targets//:rusty_v8_archive_for_target",
-        "@v8_targets//:rusty_v8_binding_for_target",
-    ],
-    build_script_env = {
-        "RUSTY_V8_ARCHIVE": "$(execpath @v8_targets//:rusty_v8_archive_for_target)",
-        "RUSTY_V8_SRC_BINDING_PATH": "$(execpath @v8_targets//:rusty_v8_binding_for_target)",
-    },
-    crate = "v8",
-    # Keep the Rust feature aligned with the source-built Bazel artifacts.
-    # Windows MSVC still consumes upstream non-sandboxed prebuilts.
-    crate_features_select = {
-        "aarch64-apple-darwin": ["v8_enable_sandbox"],
-        "aarch64-pc-windows-gnullvm": ["v8_enable_sandbox"],
-        "aarch64-unknown-linux-gnu": ["v8_enable_sandbox"],
-        "aarch64-unknown-linux-musl": ["v8_enable_sandbox"],
-        "x86_64-apple-darwin": ["v8_enable_sandbox"],
-        "x86_64-pc-windows-gnullvm": ["v8_enable_sandbox"],
-        "x86_64-unknown-linux-gnu": ["v8_enable_sandbox"],
-        "x86_64-unknown-linux-musl": ["v8_enable_sandbox"],
-    },
-    gen_build_script = "on",
-    patch_args = ["-p1"],
-    patches = [
-        "//patches:rusty_v8_prebuilt_out_dir.patch",
-    ],
-)
-
-inject_repo(crate, "v8_targets")
 
 llvm = use_extension("@llvm//extensions:llvm.bzl", "llvm")
 use_repo(llvm, "llvm-project")
@@ -458,79 +407,6 @@ crate.annotation(
 )
 
 inject_repo(crate, "alsa_lib")
-
-bazel_dep(name = "v8", version = "14.9.207.2")
-archive_override(
-    module_name = "v8",
-    integrity = "sha256-tflbZE5srqal6leMxJjK/ZQtwpF96OMGJ6avd5lice4=",
-    patch_strip = 3,
-    patches = [
-        "//patches:v8_module_deps.patch",
-        "//patches:v8_bazel_rules.patch",
-        "//patches:v8_source_portability.patch",
-    ],
-    strip_prefix = "v8-14.9.207.2",
-    urls = ["https://github.com/v8/v8/archive/refs/tags/14.9.207.2.tar.gz"],
-)
-
-http_archive(
-    name = "v8_crate_146_4_0",
-    build_file = "//third_party/v8:v8_crate.BUILD.bazel",
-    sha256 = "d97bcac5cdc5a195a4813f1855a6bc658f240452aac36caa12fd6c6f16026ab1",
-    strip_prefix = "v8-146.4.0",
-    type = "tar.gz",
-    urls = ["https://static.crates.io/crates/v8/v8-146.4.0.crate"],
-)
-
-http_archive(
-    name = "v8_crate_149_2_0",
-    build_file = "//third_party/v8:v8_crate.BUILD.bazel",
-    sha256 = "46dccf61a364b61bbaac70a8ba64a1a1006e87123b7d62eaeec999a3ba31ecdb",
-    strip_prefix = "v8-149.2.0",
-    type = "tar.gz",
-    urls = ["https://static.crates.io/crates/v8/v8-149.2.0.crate"],
-)
-
-git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
-
-git_repository(
-    name = "rusty_v8_libcxx",
-    build_file = "//third_party/v8:libcxx.BUILD.bazel",
-    commit = "99457fa555797f8c5ac3c076ca288d8481d3b23a",
-    remote = "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx.git",
-)
-
-git_repository(
-    name = "rusty_v8_libcxxabi",
-    build_file = "//third_party/v8:libcxxabi.BUILD.bazel",
-    commit = "8f11bb1d4438d0239d0dfc1bd9456a9f31629dda",
-    remote = "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi.git",
-)
-
-git_repository(
-    name = "rusty_v8_llvm_libc",
-    build_file = "//third_party/v8:llvm_libc.BUILD.bazel",
-    commit = "cb952785ccee13811f293f3c419958d1e3ddafbf",
-    remote = "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc.git",
-)
-
-http_file(
-    name = "rusty_v8_149_2_0_aarch64_pc_windows_msvc_archive",
-    downloaded_file_path = "rusty_v8_release_aarch64-pc-windows-msvc.lib.gz",
-    sha256 = "923f2b6ccdc14526b814e171e34c9aafd7969f12304948857c6696d022f0fb3c",
-    urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v149.2.0/rusty_v8_release_aarch64-pc-windows-msvc.lib.gz",
-    ],
-)
-
-http_file(
-    name = "rusty_v8_149_2_0_x86_64_pc_windows_msvc_archive",
-    downloaded_file_path = "rusty_v8_release_x86_64-pc-windows-msvc.lib.gz",
-    sha256 = "12b5a791b54e92f748738ad8d0d12dad8d281a2d836638ad1aa6678e3b855d9a",
-    urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v149.2.0/rusty_v8_release_x86_64-pc-windows-msvc.lib.gz",
-    ],
-)
 
 use_repo(crate, "crates")
 

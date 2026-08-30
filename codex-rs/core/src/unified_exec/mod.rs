@@ -68,6 +68,7 @@ pub(crate) const WINDOWS_INITIAL_EXEC_YIELD_TIME_FLOOR_MS: u64 = 2_000;
 pub(crate) use codex_core_config::config::MIN_EMPTY_YIELD_TIME_MS;
 pub(crate) const MAX_YIELD_TIME_MS: u64 = 30_000;
 pub(crate) use codex_core_config::config::DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS;
+#[cfg(test)]
 pub(crate) const DEFAULT_MAX_OUTPUT_TOKENS: usize = 10_000;
 pub(crate) const MAX_UNIFIED_EXEC_PROCESSES: usize = 64;
 
@@ -171,10 +172,6 @@ pub(crate) fn clamp_yield_time(yield_time_ms: u64) -> u64 {
         yield_time_ms
     };
     yield_time_ms.clamp(MIN_YIELD_TIME_MS, MAX_YIELD_TIME_MS)
-}
-
-pub(crate) fn resolve_max_tokens(max_tokens: Option<usize>) -> usize {
-    max_tokens.unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS)
 }
 
 pub(crate) fn generate_chunk_id() -> String {

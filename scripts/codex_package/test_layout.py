@@ -23,7 +23,6 @@ class PackageLayoutTest(unittest.TestCase):
             package_dir.mkdir()
             inputs = PackageInputs(
                 entrypoint_bin=touch_executable(root / "codex"),
-                code_mode_host_bin=touch_executable(root / "codex-code-mode-host"),
                 rg_bin=touch_executable(root / "rg"),
                 zsh_bin=None,
                 bwrap_bin=touch_executable(root / "bwrap"),
@@ -54,14 +53,13 @@ class PackageLayoutTest(unittest.TestCase):
                 {"layout_version": 1, "session_control": False},
             )
 
-    def test_app_server_package_places_code_mode_host_beside_entrypoint(self) -> None:
+    def test_app_server_package_places_session_control_beside_entrypoint(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             package_dir = root / "package"
             package_dir.mkdir()
             inputs = PackageInputs(
                 entrypoint_bin=touch_executable(root / "codex-app-server"),
-                code_mode_host_bin=touch_executable(root / "codex-code-mode-host"),
                 rg_bin=touch_executable(root / "rg"),
                 zsh_bin=None,
                 bwrap_bin=touch_executable(root / "bwrap"),
@@ -86,9 +84,9 @@ class PackageLayoutTest(unittest.TestCase):
             self.assertEqual(
                 {
                     name: (package_dir / "bin" / name).is_file()
-                    for name in ("codex-code-mode-host", "codex-session")
+                    for name in ("codex-app-server", "codex-session")
                 },
-                {"codex-code-mode-host": True, "codex-session": True},
+                {"codex-app-server": True, "codex-session": True},
             )
 
 

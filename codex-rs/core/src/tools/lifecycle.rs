@@ -24,7 +24,9 @@ pub(crate) async fn notify_tool_start(invocation: &ToolInvocation) {
                 turn_id: invocation.turn.sub_id.as_str(),
                 call_id: invocation.call_id.as_str(),
                 tool_name: &invocation.tool_name,
-                source: extension_tool_call_source(invocation.source.clone()),
+                source: match invocation.source {
+                    ToolCallSource::Direct => ExtensionToolCallSource::Direct,
+                },
             })
             .await;
     }
@@ -77,22 +79,11 @@ async fn notify_tool_finish_parts(
                 turn_id: turn.sub_id.as_str(),
                 call_id,
                 tool_name,
-                source: extension_tool_call_source(source.clone()),
+                source: match source {
+                    ToolCallSource::Direct => ExtensionToolCallSource::Direct,
+                },
                 outcome,
             })
             .await;
-    }
-}
-
-fn extension_tool_call_source(source: ToolCallSource) -> ExtensionToolCallSource {
-    match source {
-        ToolCallSource::Direct => ExtensionToolCallSource::Direct,
-        ToolCallSource::CodeMode {
-            cell_id,
-            runtime_tool_call_id,
-        } => ExtensionToolCallSource::CodeMode {
-            cell_id,
-            runtime_tool_call_id,
-        },
     }
 }
