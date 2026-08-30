@@ -9,7 +9,6 @@ use codex_protocol::capabilities::SelectedCapabilityRoot;
 
 pub(crate) struct McpServerElicitationOutcome {
     pub(crate) response: Option<ElicitationResponse>,
-    pub(crate) sent: bool,
 }
 
 impl Session {
@@ -237,7 +236,6 @@ impl Session {
                     content: Some(serde_json::json!({})),
                     meta: None,
                 }),
-                sent: false,
             };
         }
 
@@ -282,7 +280,6 @@ impl Session {
         self.send_event(turn_context, event).await;
         McpServerElicitationOutcome {
             response: rx_response.await.ok(),
-            sent: true,
         }
     }
 

@@ -33,7 +33,6 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort;
-use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use pretty_assertions::assert_eq;
@@ -325,34 +324,6 @@ async fn chatgpt_auth_manager(
         auth,
         agent_identity_authapi_base_url,
     )
-}
-
-#[test]
-fn build_subagent_headers_sets_other_subagent_label() {
-    let client = test_model_client(SessionSource::SubAgent(SubAgentSource::Other(
-        "memory_consolidation".to_string(),
-    )));
-    let headers = client.build_subagent_headers();
-    let value = headers
-        .get(X_OPENAI_SUBAGENT_HEADER)
-        .and_then(|value| value.to_str().ok());
-    assert_eq!(value, Some("memory_consolidation"));
-}
-
-#[test]
-fn build_subagent_headers_sets_internal_memory_consolidation_label() {
-    let client = test_model_client(SessionSource::Internal(
-        InternalSessionSource::MemoryConsolidation,
-    ));
-    let headers = client.build_subagent_headers();
-    let value = headers
-        .get(X_OPENAI_SUBAGENT_HEADER)
-        .and_then(|value| value.to_str().ok());
-    assert_eq!(value, Some("memory_consolidation"));
-    assert_eq!(
-        headers.get("originator"),
-        Some(&http::HeaderValue::from_static("test_originator"))
-    );
 }
 
 #[test]

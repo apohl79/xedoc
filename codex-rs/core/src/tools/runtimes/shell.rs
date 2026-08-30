@@ -51,7 +51,6 @@ use tokio_util::sync::CancellationToken;
 pub struct ShellRequest {
     pub command: Vec<String>,
     pub turn_environment: TurnEnvironment,
-    pub shell_type: Option<ShellType>,
     pub hook_command: String,
     pub cwd: AbsolutePathBuf,
     pub timeout_ms: Option<u64>,

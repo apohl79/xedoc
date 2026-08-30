@@ -478,7 +478,6 @@ async fn request_mcp_server_elicitation_auto_accepts_when_auto_deny_is_enabled()
             meta: None,
         })
     );
-    assert!(!response.sent);
     assert!(rx.try_recv().is_err());
 }
 

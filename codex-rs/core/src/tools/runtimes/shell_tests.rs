@@ -16,7 +16,6 @@ async fn approval_key_includes_environment_id() {
             Vec::new(),
             /*shell*/ None,
         ),
-        shell_type: None,
         hook_command: "echo hello".to_string(),
         cwd: cwd.clone(),
         timeout_ms: None,

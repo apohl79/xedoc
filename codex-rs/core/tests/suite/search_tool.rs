@@ -39,10 +39,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::time::Duration;
 
-const SEARCH_TOOL_DESCRIPTION_SNIPPETS: [&str; 2] = [
-    "You have access to tools from the following sources",
-    "- Calendar: Plan events and manage your calendar.",
-];
 const TOOL_SEARCH_TOOL_NAME: &str = "tool_search";
 
 fn tool_names(body: &Value) -> Vec<String> {
@@ -60,22 +56,6 @@ fn tool_names(body: &Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn tool_search_description(body: &Value) -> Option<String> {
-    body.get("tools")
-        .and_then(Value::as_array)
-        .and_then(|tools| {
-            tools.iter().find_map(|tool| {
-                if tool.get("type").and_then(Value::as_str) == Some(TOOL_SEARCH_TOOL_NAME) {
-                    tool.get("description")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                } else {
-                    None
-                }
-            })
-        })
 }
 
 fn tool_search_output_item(request: &ResponsesRequest, call_id: &str) -> Value {
