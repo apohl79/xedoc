@@ -18,7 +18,7 @@ filegroup(
 )
 
 filegroup(
-    name = "apohl79-release-binaries",
+    name = "xedoc-release-binaries",
     srcs = [
         "//xedoc-rs/cli:xedoc",
     ],

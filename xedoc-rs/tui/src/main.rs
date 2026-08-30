@@ -10,11 +10,6 @@ use xedoc_tui::ExitReason;
 use xedoc_tui::run_main;
 use xedoc_utils_cli::CliConfigOverrides;
 
-const XEDOC_CLI_VERSION: &str = match option_env!("XEDOC_RELEASE_VERSION") {
-    Some(version) => version,
-    None => env!("CARGO_PKG_VERSION"),
-};
-
 fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<String> {
     let is_fatal = matches!(&exit_info.exit_reason, ExitReason::Fatal(_));
     let AppExitInfo {
@@ -53,7 +48,7 @@ struct TopCli {
 }
 
 fn main() -> anyhow::Result<()> {
-    xedoc_tui::set_xedoc_cli_version(XEDOC_CLI_VERSION);
+    xedoc_tui::set_xedoc_cli_version(env!("CARGO_PKG_VERSION"));
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
         let mut inner = top_cli.inner;

@@ -12,7 +12,7 @@
   (e.g. post-turn vs pre-commit) create noise without benefit.
 -->
 
-- [pre-commit] On `main-fork`, bump `scripts/apohl79_build_number.txt` in every commit or merge that changes code shipped in the binary. Do not bump it for documentation, installer, test-only, or instruction-only changes.
+- [pre-commit] On `main-fork`, bump `[workspace.package].version` in `xedoc-rs/Cargo.toml` (and `xedoc-rs/Cargo.lock`) in every commit or merge that changes code shipped in the binary, following Conventional Commits (`feat` → minor, `fix`/`perf`/`refactor` → patch, `!`/`BREAKING CHANGE` → major). Do not bump it for documentation, installer, test-only, or instruction-only changes.
 - [pre-edit] Re-read the repository evidence gate in AGENTS.md before touching source files.
 
 # Rust/xedoc-rs
@@ -55,10 +55,11 @@ In the xedoc-rs folder where the rust code lives:
   repo root to refresh `MODULE.bazel.lock`, and include that lockfile update in the same change.
 - After dependency changes, run `just bazel-lock-check` from the repo root so lockfile drift is caught
   locally before CI.
-- Every `main-fork` commit or merge that changes code shipped in the binary must increment `scripts/apohl79_build_number.txt`.
-  This fork build number is monotonically increasing across upstream Xedoc
-  release upgrades, and fork release versions must use
-  `[xedoc-version]-apohl79-[build-number]`.
+- Xedoc uses its own semantic version, independent of the upstream Codex version. Every `main-fork`
+  commit or merge that changes code shipped in the binary must bump `[workspace.package].version` in
+  `xedoc-rs/Cargo.toml` (and the matching `xedoc-rs/Cargo.lock` entries) per Conventional Commits:
+  `feat` → minor, `fix`/`perf`/`refactor` → patch, `!`/`BREAKING CHANGE` → major. Release tags are
+  `v[version]`.
 - Bazel does not automatically make source-tree files available to compile-time Rust file access. If
   you add `include_str!`, `include_bytes!`, `sqlx::migrate!`, or similar build-time file or
   directory reads, update the crate's `BUILD.bazel` (`compile_data`, `build_script_data`, or test
@@ -248,7 +249,7 @@ Use `just bench-smoke` to dry-run the benchmark for a single iteration to ensure
 
 - Prefer the utilities in `core_test_support::responses` when writing end-to-end Xedoc tests.
 - Use `TestXedocBuilder::build_with_auto_env()` by default to ensure that new tests work with
-  foreign app/exec OSes. See $remote-tests for details.
+  foreign app/exec OSes.
 - All `mount_sse*` helpers return a `ResponseMock`; hold onto it so you can assert against outbound `/responses` POST bodies.
 - Use `ResponseMock::single_request()` when a test should only issue one POST, or `ResponseMock::requests()` to inspect every captured `ResponsesRequest`.
 - `ResponsesRequest` exposes helpers (`body_json`, `input`, `function_call_output`, `custom_tool_call_output`, `call_output`, `header`, `path`, `query_param`) so assertions can target structured payloads instead of manual JSON digging.
@@ -277,8 +278,7 @@ Use `just bench-smoke` to dry-run the benchmark for a single iteration to ensure
 - Tests should exercise app-server's public JSON-RPC API.
 - Use similar server mocking as for core integration tests.
 - Use `TestAppServer::builder().build()` and `TestAppServer::send_thread_start_request_with_auto_env()`
-  by default to ensure that new tests work with foreign app/exec OSes. See `$remote-tests` for
-  details.
+  by default to ensure that new tests work with foreign app/exec OSes.
 
 ## App-server API Development Best Practices
 
@@ -341,5 +341,4 @@ closest `pyproject.toml`'s `requires-python` field to see what minimum runtime v
 
 Tests and features must support Linux, macOS and Windows unless feature is explicitly OS-specific.
 
-Xedoc supports running connected app-server and exec-server on different operating systems. See the
-`$remote-tests` skill for details about integration testing these configurations.
+Xedoc supports running connected app-server and exec-server on different operating systems.

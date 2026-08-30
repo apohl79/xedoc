@@ -2,14 +2,6 @@ load("//:defs.bzl", "MACOS_WEBRTC_RUSTC_LINK_FLAGS", "xedoc_rust_crate")
 
 xedoc_rust_crate(
     name = "tui",
-    binary_rustc_env_files_extra = select({
-        "//:apohl79-release-mode": ["//bazel/release:apohl79_release.env"],
-        "//conditions:default": [],
-    }),
-    binary_stamp = select({
-        "//:apohl79-release-mode": 1,
-        "//conditions:default": 0,
-    }),
     compile_data = glob(
         include = ["**"],
         allow_empty = True,

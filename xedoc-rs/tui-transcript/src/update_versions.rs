@@ -5,23 +5,9 @@ pub fn is_newer(latest: &str, current: &str) -> Option<bool> {
     }
 }
 
-pub fn is_apohl79_fork_release(version: &str) -> bool {
-    parse_apohl79_fork_release(version).is_some()
-}
-
-pub fn is_newer_apohl79_fork_release(latest: &str, current: &str) -> Option<bool> {
-    match (
-        parse_apohl79_fork_release(latest),
-        parse_apohl79_fork_release(current),
-    ) {
-        (Some(latest), Some(current)) => Some(latest > current),
-        _ => None,
-    }
-}
-
 pub fn extract_version_from_latest_tag(latest_tag_name: &str) -> anyhow::Result<String> {
     latest_tag_name
-        .strip_prefix("rust-v")
+        .strip_prefix('v')
         .map(str::to_owned)
         .ok_or_else(|| anyhow::anyhow!("Failed to parse latest tag name '{latest_tag_name}'"))
 }
@@ -38,12 +24,6 @@ fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
     Some((maj, min, pat))
 }
 
-fn parse_apohl79_fork_release(version: &str) -> Option<(u64, u64, u64, u64)> {
-    let (base_version, build_number) = version.trim().rsplit_once("-apohl79-")?;
-    let (major, minor, patch) = parse_version(base_version)?;
-    Some((major, minor, patch, build_number.parse::<u64>().ok()?))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,14 +32,14 @@ mod tests {
     #[test]
     fn extracts_version_from_latest_tag() {
         assert_eq!(
-            extract_version_from_latest_tag("rust-v1.5.0").expect("failed to parse version"),
+            extract_version_from_latest_tag("v1.5.0").expect("failed to parse version"),
             "1.5.0"
         );
     }
 
     #[test]
     fn latest_tag_without_prefix_is_invalid() {
-        assert!(extract_version_from_latest_tag("v1.5.0").is_err());
+        assert!(extract_version_from_latest_tag("1.5.0").is_err());
     }
 
     #[test]
@@ -74,35 +54,6 @@ mod tests {
         assert_eq!(is_newer("0.11.0", "0.11.1"), Some(false));
         assert_eq!(is_newer("1.0.0", "0.9.9"), Some(true));
         assert_eq!(is_newer("0.9.9", "1.0.0"), Some(false));
-    }
-
-    #[test]
-    fn apohl79_fork_release_is_recognized() {
-        assert_eq!(is_apohl79_fork_release("0.144.0-apohl79-31"), true);
-    }
-
-    #[test]
-    fn newer_apohl79_fork_build_is_available() {
-        assert_eq!(
-            is_newer_apohl79_fork_release("0.144.0-apohl79-32", "0.144.0-apohl79-31"),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn base_version_increase_is_newer_apohl79_fork_build() {
-        assert_eq!(
-            is_newer_apohl79_fork_release("0.145.0-apohl79-1", "0.144.0-apohl79-31"),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn equal_apohl79_fork_build_is_not_available() {
-        assert_eq!(
-            is_newer_apohl79_fork_release("0.144.0-apohl79-31", "0.144.0-apohl79-31"),
-            Some(false)
-        );
     }
 
     #[test]

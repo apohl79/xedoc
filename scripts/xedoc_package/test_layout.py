@@ -24,7 +24,6 @@ class PackageLayoutTest(unittest.TestCase):
             inputs = PackageInputs(
                 entrypoint_bin=touch_executable(root / "xedoc"),
                 rg_bin=touch_executable(root / "rg"),
-                zsh_bin=None,
                 bwrap_bin=touch_executable(root / "bwrap"),
             )
 
@@ -39,7 +38,6 @@ class PackageLayoutTest(unittest.TestCase):
                 package_dir,
                 PACKAGE_VARIANTS["xedoc"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
-                include_zsh=False,
             )
 
             metadata = json.loads(
@@ -61,7 +59,6 @@ class PackageLayoutTest(unittest.TestCase):
             inputs = PackageInputs(
                 entrypoint_bin=touch_executable(root / "xedoc-app-server"),
                 rg_bin=touch_executable(root / "rg"),
-                zsh_bin=None,
                 bwrap_bin=touch_executable(root / "bwrap"),
             )
 
@@ -77,7 +74,6 @@ class PackageLayoutTest(unittest.TestCase):
                 package_dir,
                 PACKAGE_VARIANTS["xedoc-app-server"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
-                include_zsh=False,
                 include_session_control=True,
             )
 

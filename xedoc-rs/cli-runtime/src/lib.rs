@@ -37,8 +37,6 @@ mod mcp_cmd;
 mod plugin_cmd;
 mod state_db_recovery;
 mod version;
-#[cfg(not(windows))]
-mod wsl_paths;
 
 use crate::mcp_cmd::McpCli;
 use crate::plugin_cmd::PluginCli;
@@ -667,10 +665,8 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
     }
     if let Some(action) = update_action {
         run_update_action(action)?;
-        #[cfg(target_os = "macos")]
-        if action.relaunches_after_update() {
-            return relaunch_apohl79_xedoc();
-        }
+        println!("\n🎉 Update ran successfully! Launching the updated Xedoc binary.");
+        return relaunch_xedoc();
     }
     Ok(())
 }
@@ -681,60 +677,35 @@ fn run_update_action(action: UpdateAction) -> anyhow::Result<()> {
     let cmd_str = action.command_str();
     println!("Updating Xedoc via `{cmd_str}`...");
 
-    let status = {
-        #[cfg(windows)]
-        {
-            if action == UpdateAction::StandaloneWindows {
-                let (cmd, args) = action.command_args();
-                // Run the standalone PowerShell installer with PowerShell
-                // itself. Routing this through `cmd.exe /C` would parse
-                // PowerShell metacharacters like `|` before PowerShell sees
-                // the installer command.
-                std::process::Command::new(cmd).args(args).status()?
-            } else {
-                // On Windows, run via cmd.exe so .CMD/.BAT are correctly resolved (PATHEXT semantics).
-                std::process::Command::new("cmd")
-                    .args(["/C", &cmd_str])
-                    .status()?
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            let (cmd, args) = action.command_args();
-            let command_path = crate::wsl_paths::normalize_for_wsl(cmd);
-            let normalized_args: Vec<String> = args
-                .iter()
-                .map(crate::wsl_paths::normalize_for_wsl)
-                .collect();
-            std::process::Command::new(&command_path)
-                .args(&normalized_args)
-                .status()?
-        }
-    };
+    let (cmd, args) = action.command_args();
+    let status = std::process::Command::new(cmd).args(args).status()?;
     if !status.success() {
         anyhow::bail!("`{cmd_str}` failed with status {status}");
-    }
-    if action.relaunches_after_update() {
-        println!("\n🎉 Update ran successfully! Launching the updated Xedoc binary.");
-    } else {
-        println!("\n🎉 Update ran successfully! Please restart Xedoc.");
     }
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn relaunch_apohl79_xedoc() -> anyhow::Result<()> {
-    use std::os::unix::process::CommandExt;
-
+fn relaunch_xedoc() -> anyhow::Result<()> {
     let install_dir = std::env::var_os("XEDOC_INSTALL_DIR")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/bin")))
-        .ok_or_else(|| anyhow::anyhow!("cannot locate the apohl79 Xedoc install directory"))?;
+        .ok_or_else(|| anyhow::anyhow!("cannot locate the Xedoc install directory"))?;
     let binary = install_dir.join("xedoc");
-    Err(std::process::Command::new(binary)
-        .args(std::env::args_os().skip(1))
-        .exec()
-        .into())
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        Err(std::process::Command::new(binary)
+            .args(std::env::args_os().skip(1))
+            .exec()
+            .into())
+    }
+    #[cfg(not(unix))]
+    {
+        let status = std::process::Command::new(binary)
+            .args(std::env::args_os().skip(1))
+            .status()?;
+        std::process::exit(status.code().unwrap_or(1));
+    }
 }
 
 fn run_update_command() -> anyhow::Result<()> {
@@ -749,10 +720,12 @@ fn run_update_command() -> anyhow::Result<()> {
     {
         let Some(action) = xedoc_tui::get_update_action() else {
             anyhow::bail!(
-                "Could not detect the Xedoc installation method. Please update manually: https://developers.openai.com/codex/cli/"
+                "Xedoc self-update is only available on macOS. Please update manually: https://github.com/apohl79/codex/releases/latest"
             );
         };
-        run_update_action(action)
+        run_update_action(action)?;
+        println!("\n🎉 Update ran successfully! Please restart Xedoc.");
+        Ok(())
     }
 }
 

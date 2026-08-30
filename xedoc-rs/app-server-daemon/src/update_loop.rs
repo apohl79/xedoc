@@ -48,6 +48,9 @@ const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
 const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
 #[cfg(unix)]
 const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
+#[cfg(unix)]
+const INSTALLER_URL: &str =
+    "https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh";
 
 #[cfg(unix)]
 pub(crate) async fn run() -> Result<()> {
@@ -155,7 +158,7 @@ pub(crate) fn reexec_managed_updater(managed_xedoc_bin: &std::path::Path) -> Res
 
 #[cfg(unix)]
 async fn install_latest_standalone() -> Result<()> {
-    let script = reqwest::get("https://chatgpt.com/codex/install.sh")
+    let script = reqwest::get(INSTALLER_URL)
         .await
         .context("failed to fetch standalone Xedoc updater")?
         .error_for_status()
@@ -166,6 +169,7 @@ async fn install_latest_standalone() -> Result<()> {
 
     let mut child = Command::new("/bin/sh")
         .arg("-s")
+        .env("XEDOC_NON_INTERACTIVE", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

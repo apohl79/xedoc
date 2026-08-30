@@ -14,141 +14,101 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import apohl79_release
-from apohl79_release import build_codesign_command
-from apohl79_release import derive_fork_version
-from apohl79_release import latest_release_version_from_ls_remote
-from apohl79_release import main
-from apohl79_release import run
+import xedoc_release
+from xedoc_release import build_codesign_command
+from xedoc_release import main
+from xedoc_release import run
 
 
-class Apohl79ReleaseTest(unittest.TestCase):
+class XedocReleaseTest(unittest.TestCase):
     def test_previous_published_release_uses_github_target_and_skips_current(
         self,
     ) -> None:
         releases = [
-            {"tag_name": "rust-v0.145.0-apohl79-51", "target_commitish": "current"},
-            {"tag_name": "rust-v0.145.0-apohl79-38", "target_commitish": "previous"},
+            {"tag_name": "v1.2.0", "target_commitish": "current"},
+            {"tag_name": "v1.1.0", "target_commitish": "previous"},
         ]
         with mock.patch.object(
-            apohl79_release.subprocess,
+            xedoc_release.subprocess,
             "check_output",
             return_value=json.dumps(releases),
         ):
-            result = apohl79_release.find_previous_published_fork_release(
-                "rust-v0.145.0-apohl79-51",
+            result = xedoc_release.find_previous_published_release(
+                "v1.2.0",
                 gh="gh",
                 repo="apohl79/codex",
                 env=None,
             )
 
-        self.assertEqual(result, ("rust-v0.145.0-apohl79-38", "previous"))
+        self.assertEqual(result, ("v1.1.0", "previous"))
 
-    def test_fork_commit_subjects_preserve_the_first_character(self) -> None:
+    def test_release_commit_subjects_preserve_the_first_character(self) -> None:
         with (
             mock.patch.object(
-                apohl79_release, "fork_author", return_value="Andreas Pohl"
+                xedoc_release, "release_author", return_value="Andreas Pohl"
             ),
             mock.patch.object(
-                apohl79_release.subprocess,
+                xedoc_release.subprocess,
                 "check_output",
                 return_value="abcdef1 feat: complete subject\n",
             ),
         ):
-            result = apohl79_release.fork_commits_between("previous", "HEAD")
+            result = xedoc_release.release_commits_between("previous", "HEAD")
 
         self.assertEqual(result, ["feat: complete subject"])
 
-    def test_release_version_uses_cargo_version_when_not_sentinel(self) -> None:
+    def test_github_release_tag_uses_v_prefix(self) -> None:
         self.assertEqual(
-            derive_fork_version(
-                "0.141.0",
-                ls_remote_stdout=(
-                    "abc\trefs/tags/rust-v0.140.0-alpha.19\n"
-                    "def\trefs/tags/rust-v0.140.0-alpha.19^{}\n"
-                ),
-                build_number=1,
-            ),
-            "0.141.0-apohl79-1",
+            xedoc_release.github_release_tag("0.141.0"),
+            "v0.141.0",
         )
 
-    def test_release_version_falls_back_to_latest_valid_upstream_tag(self) -> None:
-        self.assertEqual(
-            derive_fork_version(
-                "0.0.0",
-                describe_tag=None,
-                ls_remote_stdout=(
-                    "aaa\trefs/tags/rust-v0.140.0-alpha.9\n"
-                    "bbb\trefs/tags/rust-vrust-v0.999.0\n"
-                    "ccc\trefs/tags/rust-v0.140.0-alpha.10^{}\n"
-                    "ddd\trefs/tags/rust-v0.139.0\n"
-                    "eee\trefs/tags/rust-v0.140.0-alpha.10\n"
-                ),
-                build_number=12,
-            ),
-            "0.140.0-alpha.10-apohl79-12",
-        )
-
-    def test_release_version_uses_latest_upstream_tag_instead_of_reachable_tag(
-        self,
-    ) -> None:
-        self.assertEqual(
-            derive_fork_version(
-                "0.0.0",
-                describe_tag="rust-v0.139.0",
-                ls_remote_stdout="aaa\trefs/tags/rust-v0.140.0-alpha.10\n",
-                build_number=7,
-            ),
-            "0.140.0-alpha.10-apohl79-7",
-        )
-
-    def test_release_version_ignores_reachable_fork_tag(self) -> None:
-        self.assertEqual(
-            derive_fork_version(
-                "0.0.0",
-                describe_tag="rust-v0.140.0-alpha.10-apohl79-41",
-                ls_remote_stdout=(
-                    "aaa\trefs/tags/rust-v0.140.0-alpha.20\n"
-                    "bbb\trefs/tags/rust-v0.140.0-alpha.21\n"
-                ),
-                build_number=42,
-            ),
-            "0.140.0-alpha.21-apohl79-42",
-        )
-
-    def test_read_fork_build_number_accepts_minimum(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "apohl79_build_number.txt"
-            path.write_text("1\n", encoding="utf-8")
-
-            self.assertEqual(apohl79_release.read_fork_build_number(path), 1)
-
-    def test_read_fork_build_number_rejects_zero(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "apohl79_build_number.txt"
-            path.write_text("0\n", encoding="utf-8")
-
-            with self.assertRaisesRegex(RuntimeError, "must be at least 1"):
-                apohl79_release.read_fork_build_number(path)
-
-    def test_read_fork_build_number_rejects_non_integer(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "apohl79_build_number.txt"
-            path.write_text("build-1\n", encoding="utf-8")
-
-            with self.assertRaisesRegex(RuntimeError, "must be a positive integer"):
-                apohl79_release.read_fork_build_number(path)
-
-    def test_latest_release_version_rejects_missing_valid_tags(self) -> None:
-        with self.assertRaisesRegex(
-            RuntimeError, "No valid upstream rust release tags"
+    def test_previous_release_lookup_ignores_legacy_fork_tags(self) -> None:
+        releases = [
+            {"tag_name": "v1.0.0", "target_commitish": "current"},
+            {"tag_name": "rust-v0.145.0-apohl79-51", "target_commitish": "legacy"},
+            {"tag_name": "rust-v0.145.0", "target_commitish": "upstream"},
+        ]
+        with mock.patch.object(
+            xedoc_release.subprocess,
+            "check_output",
+            return_value=json.dumps(releases),
         ):
-            latest_release_version_from_ls_remote("aaa\trefs/tags/rust-vrust-v0.1.0\n")
+            result = xedoc_release.find_previous_published_release(
+                "v1.0.0",
+                gh="gh",
+                repo="apohl79/codex",
+                env=None,
+            )
 
-    def test_github_release_tag_uses_rust_prefix(self) -> None:
+        self.assertIsNone(result)
+
+    def test_incremental_release_notes_group_conventional_commits(self) -> None:
         self.assertEqual(
-            apohl79_release.github_release_tag("0.141.0-apohl79-1"),
-            "rust-v0.141.0-apohl79-1",
+            xedoc_release.incremental_release_notes(
+                version="1.1.0",
+                date="2026-08-30",
+                commits=[
+                    "feat: add xedoc-plugin discovery",
+                    "fix: keep wire names codex-compatible",
+                    "chore: bump version to 1.1.0",
+                ],
+            ),
+            "\n".join(
+                [
+                    "## Xedoc 1.1.0",
+                    "",
+                    "**Release date:** 2026-08-30",
+                    "",
+                    "### Features",
+                    "",
+                    "- feat: add xedoc-plugin discovery",
+                    "",
+                    "### Fixes",
+                    "",
+                    "- fix: keep wire names codex-compatible",
+                ]
+            ),
         )
 
     def test_github_release_env_uses_configured_account_token(self) -> None:
@@ -160,7 +120,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 return_value="secret-token\n",
             ) as check_output,
         ):
-            env = apohl79_release.github_release_env(
+            env = xedoc_release.github_release_env(
                 gh="gh",
                 account="apohl79",
             )
@@ -184,7 +144,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             ),
         ):
             self.assertIsNone(
-                apohl79_release.github_release_env(
+                xedoc_release.github_release_env(
                     gh="gh",
                     account="apohl79",
                 )
@@ -205,8 +165,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
             commands.append((command, cwd, env, check, stdout))
             return subprocess.CompletedProcess(command, 0)
 
-        with mock.patch.object(apohl79_release, "run", side_effect=fake_run):
-            apohl79_release.ensure_github_release_target_exists(
+        with mock.patch.object(xedoc_release, "run", side_effect=fake_run):
+            xedoc_release.ensure_github_release_target_exists(
                 gh="gh",
                 repo="apohl79/codex",
                 target="abc123",
@@ -219,7 +179,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             [
                 (
                     ["gh", "api", "repos/apohl79/codex/commits/abc123"],
-                    apohl79_release.REPO_ROOT,
+                    xedoc_release.REPO_ROOT,
                     github_env,
                     False,
                     subprocess.DEVNULL,
@@ -230,7 +190,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_github_release_target_preflight_reports_missing_target(self) -> None:
         with (
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "run",
                 return_value=subprocess.CompletedProcess(["gh"], 1),
             ),
@@ -239,7 +199,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 "Release target commit abc123 for --ref main-fork is not available",
             ),
         ):
-            apohl79_release.ensure_github_release_target_exists(
+            xedoc_release.ensure_github_release_target_exists(
                 gh="gh",
                 repo="apohl79/codex",
                 target="abc123",
@@ -264,12 +224,12 @@ class Apohl79ReleaseTest(unittest.TestCase):
             returncode = 1 if command[:3] == ["gh", "release", "view"] else 0
             return subprocess.CompletedProcess(command, returncode)
 
-        with mock.patch.object(apohl79_release, "run", side_effect=fake_run):
-            apohl79_release.publish_github_release(
+        with mock.patch.object(xedoc_release, "run", side_effect=fake_run):
+            xedoc_release.publish_github_release(
                 gh="gh",
                 repo="apohl79/codex",
-                tag="rust-v0.141.0-apohl79-1",
-                title="0.141.0-apohl79-1",
+                tag="v0.141.0",
+                title="0.141.0",
                 target="abc123",
                 archive_outputs=[Path("/tmp/xedoc.zip")],
             )
@@ -282,11 +242,11 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "gh",
                         "release",
                         "view",
-                        "rust-v0.141.0-apohl79-1",
+                        "v0.141.0",
                         "--repo",
                         "apohl79/codex",
                     ],
-                    apohl79_release.REPO_ROOT,
+                    xedoc_release.REPO_ROOT,
                     False,
                     subprocess.DEVNULL,
                 ),
@@ -295,17 +255,17 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "gh",
                         "release",
                         "create",
-                        "rust-v0.141.0-apohl79-1",
+                        "v0.141.0",
                         "--repo",
                         "apohl79/codex",
                         "--title",
-                        "0.141.0-apohl79-1",
+                        "0.141.0",
                         "--notes",
-                        "apohl79 Xedoc 0.141.0-apohl79-1",
+                        "Xedoc 0.141.0",
                         "--target",
                         "abc123",
                     ],
-                    apohl79_release.REPO_ROOT,
+                    xedoc_release.REPO_ROOT,
                     True,
                     None,
                 ),
@@ -314,13 +274,13 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "gh",
                         "release",
                         "upload",
-                        "rust-v0.141.0-apohl79-1",
+                        "v0.141.0",
                         "/tmp/xedoc.zip",
                         "--repo",
                         "apohl79/codex",
                         "--clobber",
                     ],
-                    apohl79_release.REPO_ROOT,
+                    xedoc_release.REPO_ROOT,
                     True,
                     None,
                 ),
@@ -342,12 +302,12 @@ class Apohl79ReleaseTest(unittest.TestCase):
             commands.append((command, cwd, check, stdout))
             return subprocess.CompletedProcess(command, 0)
 
-        with mock.patch.object(apohl79_release, "run", side_effect=fake_run):
-            apohl79_release.publish_github_release(
+        with mock.patch.object(xedoc_release, "run", side_effect=fake_run):
+            xedoc_release.publish_github_release(
                 gh="gh",
                 repo="apohl79/codex",
-                tag="rust-v0.141.0-apohl79-1",
-                title="0.141.0-apohl79-1",
+                tag="v0.141.0",
+                title="0.141.0",
                 target="abc123",
                 archive_outputs=[Path("/tmp/xedoc-a.zip"), Path("/tmp/xedoc-b.zip")],
             )
@@ -413,11 +373,6 @@ class Apohl79ReleaseTest(unittest.TestCase):
             original_cargo_lock = "version = 4\n"
             cargo_toml.write_text(original_cargo_toml, encoding="utf-8")
             cargo_lock.write_text(original_cargo_lock, encoding="utf-8")
-            (repo_root / "scripts").mkdir()
-            (repo_root / "scripts/apohl79_build_number.txt").write_text(
-                "9\n",
-                encoding="utf-8",
-            )
             (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
             target_dir = repo_root / "target"
             commands = []
@@ -462,38 +417,37 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
-                output_dir=Path("dist/apohl79"),
+                output_dir=Path("dist/xedoc"),
                 package_dir=None,
                 ref="main-fork",
                 skip_github_release=True,
                 target="aarch64-apple-darwin",
-                version_suffix="apohl79",
             )
 
             with (
-                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(xedoc_release, "REPO_ROOT", repo_root),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "ensure_current_checkout_matches_ref",
                     return_value=None,
                 ),
                 mock.patch.object(
-                    apohl79_release, "ensure_git_path_clean", return_value=None
+                    xedoc_release, "ensure_git_path_clean", return_value=None
                 ),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "resolve_codesign_identity",
                     return_value="Developer ID Application: Example",
                 ),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "default_cargo_build_jobs",
                     return_value=4,
                 ),
-                mock.patch.object(apohl79_release, "run", side_effect=fake_run),
+                mock.patch.object(xedoc_release, "run", side_effect=fake_run),
                 mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
             ):
-                apohl79_release.build_release(args)
+                xedoc_release.build_release(args)
 
             self.assertEqual(
                 cargo_toml.read_text(encoding="utf-8"),
@@ -532,7 +486,6 @@ class Apohl79ReleaseTest(unittest.TestCase):
             self.assertIsNotNone(cargo_env)
             assert cargo_env is not None
             self.assertEqual(cargo_env["CARGO_TARGET_DIR"], str(target_dir.resolve()))
-            self.assertEqual(cargo_env["XEDOC_RELEASE_VERSION"], "0.141.0-apohl79-9")
             self.assertEqual(cargo_env["CARGO_BUILD_JOBS"], "4")
             package_commands = [
                 command
@@ -544,7 +497,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             version_arg_index = package_command.index("--version")
             self.assertEqual(
                 package_command[version_arg_index + 1],
-                "0.141.0-apohl79-9",
+                "0.141.0",
             )
             signing_commands = [
                 command
@@ -586,14 +539,9 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 encoding="utf-8",
             )
             cargo_lock.write_text("version = 4\n", encoding="utf-8")
-            (repo_root / "scripts").mkdir()
-            (repo_root / "scripts/apohl79_build_number.txt").write_text(
-                "10\n",
-                encoding="utf-8",
-            )
             (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
             target_dir = repo_root / "target"
-            archive_output = Path("dist/apohl79/custom.zip")
+            archive_output = Path("dist/xedoc/custom.zip")
             published = {}
 
             def fake_run(
@@ -650,52 +598,51 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
-                output_dir=Path("dist/apohl79"),
+                output_dir=Path("dist/xedoc"),
                 package_dir=None,
                 ref="main-fork",
                 skip_github_release=False,
                 target="aarch64-apple-darwin",
-                version_suffix="apohl79",
             )
 
             with (
-                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(xedoc_release, "REPO_ROOT", repo_root),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "ensure_current_checkout_matches_ref",
                     return_value=None,
                 ),
                 mock.patch.object(
-                    apohl79_release, "ensure_git_path_clean", return_value=None
+                    xedoc_release, "ensure_git_path_clean", return_value=None
                 ),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "resolve_codesign_identity",
                     return_value="Developer ID Application: Example",
                 ),
-                mock.patch.object(apohl79_release, "git_commit", return_value="c" * 40),
+                mock.patch.object(xedoc_release, "git_commit", return_value="c" * 40),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "github_release_env",
                     return_value={"GH_TOKEN": "secret-token"},
                 ),
-                mock.patch.object(apohl79_release, "run", side_effect=fake_run),
+                mock.patch.object(xedoc_release, "run", side_effect=fake_run),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "publish_github_release",
                     side_effect=fake_publish_github_release,
                 ),
                 mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
             ):
-                apohl79_release.build_release(args)
+                xedoc_release.build_release(args)
 
             self.assertEqual(
                 published,
                 {
                     "gh": "custom-gh",
                     "repo": "apohl79/codex",
-                    "tag": "rust-v0.141.0-apohl79-10",
-                    "title": "0.141.0-apohl79-10",
+                    "tag": "v0.141.0",
+                    "title": "0.141.0",
                     "target": "c" * 40,
                     "archive_outputs": [(repo_root / archive_output).resolve()],
                     "env": {"GH_TOKEN": "secret-token"},
@@ -713,11 +660,6 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 encoding="utf-8",
             )
             cargo_lock.write_text("version = 4\n", encoding="utf-8")
-            (repo_root / "scripts").mkdir()
-            (repo_root / "scripts/apohl79_build_number.txt").write_text(
-                "10\n",
-                encoding="utf-8",
-            )
             commands = []
 
             def fake_run(
@@ -748,42 +690,41 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
-                output_dir=Path("dist/apohl79"),
+                output_dir=Path("dist/xedoc"),
                 package_dir=None,
                 ref="main-fork",
                 skip_github_release=False,
                 target="aarch64-apple-darwin",
-                version_suffix="apohl79",
             )
 
             with (
-                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(xedoc_release, "REPO_ROOT", repo_root),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "ensure_current_checkout_matches_ref",
                     return_value=None,
                 ),
                 mock.patch.object(
-                    apohl79_release, "ensure_git_path_clean", return_value=None
+                    xedoc_release, "ensure_git_path_clean", return_value=None
                 ),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "resolve_codesign_identity",
                     return_value="Developer ID Application: Example",
                 ),
-                mock.patch.object(apohl79_release, "git_commit", return_value="c" * 40),
+                mock.patch.object(xedoc_release, "git_commit", return_value="c" * 40),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "github_release_env",
                     return_value={"GH_TOKEN": "secret-token"},
                 ),
-                mock.patch.object(apohl79_release, "run", side_effect=fake_run),
+                mock.patch.object(xedoc_release, "run", side_effect=fake_run),
             ):
                 with self.assertRaisesRegex(
                     RuntimeError,
                     "Release target commit cccccccccccc for --ref main-fork",
                 ):
-                    apohl79_release.build_release(args)
+                    xedoc_release.build_release(args)
 
             self.assertEqual(
                 commands,
@@ -840,11 +781,6 @@ class Apohl79ReleaseTest(unittest.TestCase):
             )
             cargo_toml.write_text(original_cargo_toml, encoding="utf-8")
             cargo_lock.write_text(stale_cargo_lock, encoding="utf-8")
-            (repo_root / "scripts").mkdir()
-            (repo_root / "scripts/apohl79_build_number.txt").write_text(
-                "11\n",
-                encoding="utf-8",
-            )
             (repo_root / ".github/scripts/macos-signing").mkdir(parents=True)
             target_dir = repo_root / "target"
             commands = []
@@ -888,38 +824,37 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
-                output_dir=Path("dist/apohl79"),
+                output_dir=Path("dist/xedoc"),
                 package_dir=None,
                 ref="main-fork",
                 skip_github_release=True,
                 target="aarch64-apple-darwin",
-                version_suffix="apohl79",
             )
 
             with (
-                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(xedoc_release, "REPO_ROOT", repo_root),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "ensure_current_checkout_matches_ref",
                     return_value=None,
                 ),
                 mock.patch.object(
-                    apohl79_release, "ensure_git_path_clean", return_value=None
+                    xedoc_release, "ensure_git_path_clean", return_value=None
                 ),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "resolve_codesign_identity",
                     return_value="Developer ID Application: Example",
                 ),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "default_cargo_build_jobs",
                     return_value=4,
                 ),
-                mock.patch.object(apohl79_release, "run", side_effect=fake_run),
+                mock.patch.object(xedoc_release, "run", side_effect=fake_run),
                 mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
             ):
-                apohl79_release.build_release(args)
+                xedoc_release.build_release(args)
 
             self.assertEqual(
                 cargo_lock.read_text(encoding="utf-8"), repaired_cargo_lock
@@ -965,7 +900,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             )
 
             self.assertEqual(
-                apohl79_release.stale_workspace_lock_packages(
+                xedoc_release.stale_workspace_lock_packages(
                     cargo_lock, "0.141.0-alpha.5"
                 ),
                 ["xedoc-cli=0.0.0"],
@@ -996,10 +931,10 @@ class Apohl79ReleaseTest(unittest.TestCase):
             )
 
             with (
-                mock.patch.object(apohl79_release, "run", return_value=None),
+                mock.patch.object(xedoc_release, "run", return_value=None),
                 self.assertRaises(RuntimeError) as ctx,
             ):
-                apohl79_release.repair_stale_release_lockfiles(
+                xedoc_release.repair_stale_release_lockfiles(
                     cargo="cargo",
                     source_root=source_root,
                     cargo_toml=cargo_toml,
@@ -1033,32 +968,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with mock.patch.object(apohl79_release, "run") as run_mock:
-                apohl79_release.repair_stale_release_lockfiles(
-                    cargo="cargo",
-                    source_root=source_root,
-                    cargo_toml=cargo_toml,
-                    cargo_lock=cargo_lock,
-                    target="aarch64-apple-darwin",
-                )
-
-            run_mock.assert_not_called()
-
-    def test_repair_stale_release_lockfiles_skips_sentinel_version(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            source_root = Path(temp_dir)
-            cargo_toml = source_root / "xedoc-rs" / "Cargo.toml"
-            cargo_lock = source_root / "xedoc-rs" / "Cargo.lock"
-            cargo_toml.parent.mkdir(parents=True)
-            cargo_toml.write_text(
-                "[workspace.package]\n"
-                f'version = "{apohl79_release.WORKSPACE_VERSION_SENTINEL}"\n',
-                encoding="utf-8",
-            )
-            cargo_lock.write_text("version = 4\n", encoding="utf-8")
-
-            with mock.patch.object(apohl79_release, "run") as run_mock:
-                apohl79_release.repair_stale_release_lockfiles(
+            with mock.patch.object(xedoc_release, "run") as run_mock:
+                xedoc_release.repair_stale_release_lockfiles(
                     cargo="cargo",
                     source_root=source_root,
                     cargo_toml=cargo_toml,
@@ -1085,11 +996,6 @@ class Apohl79ReleaseTest(unittest.TestCase):
             original_cargo_lock = "version = 4\n"
             cargo_toml.write_text(original_cargo_toml, encoding="utf-8")
             cargo_lock.write_text(original_cargo_lock, encoding="utf-8")
-            (repo_root / "scripts").mkdir()
-            (repo_root / "scripts/apohl79_build_number.txt").write_text(
-                "12\n",
-                encoding="utf-8",
-            )
             target_dir = repo_root / "target"
 
             def failing_run(
@@ -1125,34 +1031,33 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 github_account="apohl79",
                 github_repo="apohl79/codex",
                 keep_worktree=False,
-                output_dir=Path("dist/apohl79"),
+                output_dir=Path("dist/xedoc"),
                 package_dir=None,
                 ref="main-fork",
                 skip_github_release=True,
                 target="aarch64-apple-darwin",
-                version_suffix="apohl79",
             )
 
             with (
-                mock.patch.object(apohl79_release, "REPO_ROOT", repo_root),
+                mock.patch.object(xedoc_release, "REPO_ROOT", repo_root),
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "ensure_current_checkout_matches_ref",
                     return_value=None,
                 ),
                 mock.patch.object(
-                    apohl79_release, "ensure_git_path_clean", return_value=None
+                    xedoc_release, "ensure_git_path_clean", return_value=None
                 ) as ensure_git_path_clean,
                 mock.patch.object(
-                    apohl79_release,
+                    xedoc_release,
                     "resolve_codesign_identity",
                     return_value="Developer ID Application: Example",
                 ),
-                mock.patch.object(apohl79_release, "run", side_effect=failing_run),
+                mock.patch.object(xedoc_release, "run", side_effect=failing_run),
                 mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
             ):
                 with self.assertRaisesRegex(RuntimeError, "cargo failed"):
-                    apohl79_release.build_release(args)
+                    xedoc_release.build_release(args)
 
             ensure_git_path_clean.assert_not_called()
             self.assertEqual(
@@ -1166,7 +1071,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
 
     def test_current_checkout_ref_mismatch_reports_commits(self) -> None:
         with mock.patch.object(
-            apohl79_release,
+            xedoc_release,
             "git_commit",
             side_effect=["a" * 40, "b" * 40],
         ):
@@ -1174,7 +1079,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 RuntimeError,
                 "Current checkout HEAD \\(aaaaaaaaaaaa\\) does not match --ref main-fork",
             ):
-                apohl79_release.ensure_current_checkout_matches_ref("main-fork")
+                xedoc_release.ensure_current_checkout_matches_ref("main-fork")
 
     def test_main_rejects_placeholder_codesign_identity_before_build(self) -> None:
         stderr = io.StringIO()
@@ -1198,7 +1103,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"OAI_CODESIGN_BACKEND": ""}),
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "native_codesign_identities",
                 return_value={
                     "ABCDEF0123456789",
@@ -1207,7 +1112,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             ),
         ):
             self.assertEqual(
-                apohl79_release.resolve_codesign_identity(
+                xedoc_release.resolve_codesign_identity(
                     "Developer ID Application: Example (TEAMID)"
                 ),
                 "Developer ID Application: Example (TEAMID)",
@@ -1219,7 +1124,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"OAI_CODESIGN_BACKEND": ""}),
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "native_codesign_identities",
                 return_value={"Developer ID Application: Other (TEAMID)"},
             ),
@@ -1228,7 +1133,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 RuntimeError,
                 "No native codesign identity named 'Developer ID Application: Example",
             ):
-                apohl79_release.resolve_codesign_identity(
+                xedoc_release.resolve_codesign_identity(
                     "Developer ID Application: Example (TEAMID)"
                 )
 
@@ -1238,7 +1143,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"OAI_CODESIGN_BACKEND": ""}),
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "native_codesign_identities",
                 return_value={
                     "ABCDEF0123456789",
@@ -1248,7 +1153,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             ),
         ):
             self.assertEqual(
-                apohl79_release.resolve_codesign_identity(None),
+                xedoc_release.resolve_codesign_identity(None),
                 "Developer ID Application: Example (TEAMID)",
             )
 
@@ -1256,7 +1161,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"OAI_CODESIGN_BACKEND": ""}),
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "native_codesign_identities",
                 return_value={"Apple Development: Example (TEAMID)"},
             ),
@@ -1265,13 +1170,13 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 RuntimeError,
                 "No Developer ID Application codesign identity was found",
             ):
-                apohl79_release.resolve_codesign_identity(None)
+                xedoc_release.resolve_codesign_identity(None)
 
     def test_codesign_identity_resolver_rejects_ambiguous_developer_ids(self) -> None:
         with (
             mock.patch.dict(os.environ, {"OAI_CODESIGN_BACKEND": ""}),
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "native_codesign_identities",
                 return_value={
                     "Developer ID Application: One (TEAMID)",
@@ -1283,19 +1188,19 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 RuntimeError,
                 "Multiple Developer ID Application codesign identities were found",
             ):
-                apohl79_release.resolve_codesign_identity(None)
+                xedoc_release.resolve_codesign_identity(None)
 
     def test_codesign_identity_resolver_skips_keychain_for_akv_backend(self) -> None:
         with (
             mock.patch.dict(os.environ, {"OAI_CODESIGN_BACKEND": "akv-pkcs11"}),
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "native_codesign_identities",
                 side_effect=AssertionError("should not read keychain"),
             ),
         ):
             self.assertEqual(
-                apohl79_release.resolve_codesign_identity(None),
+                xedoc_release.resolve_codesign_identity(None),
                 "akv-pkcs11",
             )
 
@@ -1312,7 +1217,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             return_value=stdout,
         ):
             self.assertEqual(
-                apohl79_release.native_codesign_identities(),
+                xedoc_release.native_codesign_identities(),
                 {
                     "ABCDEF0123456789",
                     "Developer ID Application: Example (TEAMID)",
@@ -1330,11 +1235,11 @@ class Apohl79ReleaseTest(unittest.TestCase):
             }.get(name)
 
         with mock.patch.object(
-            apohl79_release,
+            xedoc_release,
             "sysctl_int",
             side_effect=fake_sysctl_int,
         ):
-            self.assertEqual(apohl79_release.default_cargo_build_jobs(), 4)
+            self.assertEqual(xedoc_release.default_cargo_build_jobs(), 4)
 
     def test_default_cargo_build_jobs_falls_back_to_physical_cores(self) -> None:
         def fake_sysctl_int(name: str) -> int | None:
@@ -1345,21 +1250,21 @@ class Apohl79ReleaseTest(unittest.TestCase):
             }.get(name)
 
         with mock.patch.object(
-            apohl79_release,
+            xedoc_release,
             "sysctl_int",
             side_effect=fake_sysctl_int,
         ):
-            self.assertEqual(apohl79_release.default_cargo_build_jobs(), 8)
+            self.assertEqual(xedoc_release.default_cargo_build_jobs(), 8)
 
     def test_default_cargo_build_jobs_falls_back_to_one(self) -> None:
         with (
-            mock.patch.object(apohl79_release, "sysctl_int", return_value=None),
-            mock.patch.object(apohl79_release.os, "cpu_count", return_value=None),
+            mock.patch.object(xedoc_release, "sysctl_int", return_value=None),
+            mock.patch.object(xedoc_release.os, "cpu_count", return_value=None),
         ):
-            self.assertEqual(apohl79_release.default_cargo_build_jobs(), 1)
+            self.assertEqual(xedoc_release.default_cargo_build_jobs(), 1)
 
     def test_parse_args_accepts_cargo_build_jobs_lower_bound(self) -> None:
-        args = apohl79_release.parse_args(["--cargo-build-jobs", "1"])
+        args = xedoc_release.parse_args(["--cargo-build-jobs", "1"])
 
         self.assertEqual(args.cargo_build_jobs, 1)
 
@@ -1367,18 +1272,18 @@ class Apohl79ReleaseTest(unittest.TestCase):
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
             with self.assertRaises(SystemExit) as raised:
-                apohl79_release.parse_args(["--cargo-build-jobs", "0"])
+                xedoc_release.parse_args(["--cargo-build-jobs", "0"])
 
         self.assertEqual(raised.exception.code, 2)
         self.assertIn("must be a positive integer", stderr.getvalue())
 
     def test_parse_args_accepts_allow_dirty(self) -> None:
-        args = apohl79_release.parse_args(["--allow-dirty"])
+        args = xedoc_release.parse_args(["--allow-dirty"])
 
         self.assertTrue(args.allow_dirty)
 
     def test_allow_dirty_requires_local_only_build(self) -> None:
-        args = apohl79_release.parse_args(
+        args = xedoc_release.parse_args(
             ["--allow-dirty", "--target", "aarch64-apple-darwin"]
         )
 
@@ -1386,33 +1291,32 @@ class Apohl79ReleaseTest(unittest.TestCase):
             RuntimeError,
             "--allow-dirty requires --skip-github-release",
         ):
-            apohl79_release.build_release(args)
+            xedoc_release.build_release(args)
 
-    def test_resolve_cargo_build_jobs_prefers_cli_over_fork_env(self) -> None:
+    def test_resolve_cargo_build_jobs_prefers_cli_over_env(self) -> None:
         with mock.patch.dict(
             os.environ,
-            {apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR: "3"},
+            {xedoc_release.CARGO_BUILD_JOBS_ENV_VAR: "3"},
         ):
-            self.assertEqual(apohl79_release.resolve_cargo_build_jobs(2), "2")
+            self.assertEqual(xedoc_release.resolve_cargo_build_jobs(2), "2")
 
-    def test_resolve_cargo_build_jobs_uses_fork_env(self) -> None:
+    def test_resolve_cargo_build_jobs_uses_env(self) -> None:
         with mock.patch.dict(
             os.environ,
-            {apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR: "3"},
+            {xedoc_release.CARGO_BUILD_JOBS_ENV_VAR: "3"},
         ):
-            self.assertEqual(apohl79_release.resolve_cargo_build_jobs(None), "3")
+            self.assertEqual(xedoc_release.resolve_cargo_build_jobs(None), "3")
 
-    def test_resolve_cargo_build_jobs_rejects_invalid_fork_env(self) -> None:
+    def test_resolve_cargo_build_jobs_rejects_invalid_env(self) -> None:
         with mock.patch.dict(
             os.environ,
-            {apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR: "0"},
+            {xedoc_release.CARGO_BUILD_JOBS_ENV_VAR: "0"},
         ):
             with self.assertRaisesRegex(
                 RuntimeError,
-                f"{apohl79_release.FORK_CARGO_BUILD_JOBS_ENV_VAR} must be a "
-                "positive integer.",
+                f"{xedoc_release.CARGO_BUILD_JOBS_ENV_VAR} must be a positive integer.",
             ):
-                apohl79_release.resolve_cargo_build_jobs(None)
+                xedoc_release.resolve_cargo_build_jobs(None)
 
     def test_sysctl_int_parses_positive_integer(self) -> None:
         with mock.patch.object(
@@ -1421,7 +1325,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             return_value="4\n",
         ):
             self.assertEqual(
-                apohl79_release.sysctl_int("hw.perflevel0.physicalcpu"),
+                xedoc_release.sysctl_int("hw.perflevel0.physicalcpu"),
                 4,
             )
 
@@ -1431,14 +1335,14 @@ class Apohl79ReleaseTest(unittest.TestCase):
             "check_output",
             side_effect=subprocess.CalledProcessError(1, ["sysctl"]),
         ):
-            self.assertIsNone(apohl79_release.sysctl_int("missing"))
+            self.assertIsNone(xedoc_release.sysctl_int("missing"))
 
         with mock.patch.object(
             subprocess,
             "check_output",
             return_value="not-an-int\n",
         ):
-            self.assertIsNone(apohl79_release.sysctl_int("invalid"))
+            self.assertIsNone(xedoc_release.sysctl_int("invalid"))
 
     def test_run_reports_command_failure_as_runtime_error(self) -> None:
         with mock.patch.object(
@@ -1458,7 +1362,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             contextlib.redirect_stderr(stderr),
             mock.patch.dict(os.environ, {"OAI_CODESIGN_BACKEND": ""}),
             mock.patch.object(
-                apohl79_release,
+                xedoc_release,
                 "native_codesign_identities",
                 return_value={"Apple Development: Example (TEAMID)"},
             ),
@@ -1493,7 +1397,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_shell_wrapper_does_not_pin_version(self) -> None:
         wrapper = (
             Path(__file__)
-            .with_name("build_apohl79_release.sh")
+            .with_name("build_xedoc_release.sh")
             .read_text(encoding="utf-8")
         )
 

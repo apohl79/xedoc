@@ -455,7 +455,7 @@ impl Daemon {
             "managed standalone Xedoc install not found at {managed_xedoc_path}\n\n\
              This command requires the standalone install managed by the Xedoc installer, because \
              the daemon starts and updates app-server from that fixed path.\n\n\
-             Install it with:\n  curl -fsSL https://chatgpt.com/codex/install.sh | sh\n\n\
+             Install it with:\n  curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh | sh\n\n\
              Then rerun the command you just tried."
         ))
     }
