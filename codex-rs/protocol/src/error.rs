@@ -66,7 +66,7 @@ pub enum SandboxErr {
 
 #[derive(Error, Debug)]
 pub enum CodexErr {
-    #[error("turn aborted. Something went wrong? Hit `/feedback` to report the issue.")]
+    #[error("turn aborted")]
     TurnAborted,
 
     #[error("shared rollout token budget exhausted")]
@@ -104,7 +104,7 @@ pub enum CodexErr {
     Spawn,
     /// Returned by run_command_stream when the user pressed Ctrl-C (SIGINT). Session uses this to
     /// surface a polite FunctionCallOutput back to the model instead of crashing the CLI.
-    #[error("interrupted (Ctrl-C). Something went wrong? Hit `/feedback` to report the issue.")]
+    #[error("interrupted (Ctrl-C)")]
     Interrupted,
     /// Unexpected HTTP status code.
     #[error("{0}")]
