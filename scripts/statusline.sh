@@ -1,5 +1,5 @@
 #!/bin/bash
-# Codex status line script
+# Xedoc status line script
 # Reads JSON payload from stdin, outputs ANSI-styled status line
 #
 # Feature flags — set via environment to override defaults (1=on, 0=off)
@@ -26,13 +26,13 @@ ENABLE_DURATION=${ENABLE_DURATION:-0}
 ENABLE_LINES=${ENABLE_LINES:-0}
 # Cumulative input/output token counts (dim)
 ENABLE_TOKENS=${ENABLE_TOKENS:-0}
-# Codex version (dim gray)
+# Xedoc version (dim gray)
 ENABLE_VERSION=${ENABLE_VERSION:-0}
 # Vim mode indicator — NORMAL/INSERT (bold yellow)
 ENABLE_VIM_MODE=${ENABLE_VIM_MODE:-0}
-# Codex session name (lavender)
+# Xedoc session name (lavender)
 ENABLE_SESSION_NAME=${ENABLE_SESSION_NAME:-0}
-# Codex task progress indicator (orange)
+# Xedoc task progress indicator (orange)
 ENABLE_TASK_INDICATOR=${ENABLE_TASK_INDICATOR:-0}
 
 input=$(</dev/stdin)
@@ -222,8 +222,8 @@ if [ "$ENABLE_GIT" = "1" ] && [ "$is_git_repo" = "1" ]; then
     [ -n "$git_info" ] && parts+=("\033[32m${git_info}\033[0m")
 fi
 
-# --- Codex session name (lavender) ---
-if [ "$ENABLE_SESSION_NAME" = "1" ] && [ "$harness" = "codex" ]; then
+# --- Xedoc session name (lavender) ---
+if [ "$ENABLE_SESSION_NAME" = "1" ] && [ "$harness" = "xedoc" ]; then
     [ -n "$session_name" ] && parts+=("\033[38;5;141m${session_name}\033[0m")
 fi
 
@@ -260,8 +260,8 @@ if [ "$ENABLE_CONTEXT" = "1" ] && [ -n "$ctx_pct" ]; then
     parts+=("\033[36m${context_info}\033[0m")
 fi
 
-# --- Codex task indicator (orange) ---
-if [ "$ENABLE_TASK_INDICATOR" = "1" ] && [ "$harness" = "codex" ]; then
+# --- Xedoc task indicator (orange) ---
+if [ "$ENABLE_TASK_INDICATOR" = "1" ] && [ "$harness" = "xedoc" ]; then
     [ -n "$task_text" ] && parts+=("\033[38;5;208m${task_text}\033[0m")
 fi
 

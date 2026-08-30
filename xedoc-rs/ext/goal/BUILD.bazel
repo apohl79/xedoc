@@ -1,0 +1,10 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "goal",
+    compile_data = glob([
+        "templates/**",
+    ]),
+    crate_name = "xedoc_goal_extension",
+    integration_compile_data_extra = ["src/accounting.rs"],
+)

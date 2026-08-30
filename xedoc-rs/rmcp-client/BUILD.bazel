@@ -1,0 +1,9 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "rmcp-client",
+    crate_name = "xedoc_rmcp_client",
+    extra_binaries = [
+        "//xedoc-rs/cli:xedoc",
+    ],
+)

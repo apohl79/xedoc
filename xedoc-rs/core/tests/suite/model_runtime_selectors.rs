@@ -1,0 +1,289 @@
+use anyhow::Result;
+use core_test_support::responses;
+use core_test_support::responses::ev_assistant_message;
+use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_models_once;
+use core_test_support::responses::mount_sse_once;
+use core_test_support::responses::sse;
+use core_test_support::skip_if_no_network;
+use core_test_support::submit_thread_settings;
+use core_test_support::test_xedoc::test_xedoc;
+use core_test_support::wait_for_event;
+use pretty_assertions::assert_eq;
+use serde_json::Value;
+use tokio::time::Duration;
+use tokio::time::Instant;
+use tokio::time::sleep;
+use xedoc_core::config::Config;
+use xedoc_features::Feature;
+use xedoc_login::XedocAuth;
+use xedoc_models_manager::manager::RefreshStrategy;
+use xedoc_models_manager::manager::SharedModelsManager;
+use xedoc_models_manager::model_info::model_info_from_slug;
+use xedoc_protocol::openai_models::ModelInfo;
+use xedoc_protocol::openai_models::ModelPreset;
+use xedoc_protocol::openai_models::ModelVisibility;
+use xedoc_protocol::openai_models::ModelsResponse;
+use xedoc_protocol::protocol::EventMsg;
+use xedoc_protocol::protocol::MultiAgentVersion;
+use xedoc_protocol::protocol::Op;
+use xedoc_protocol::protocol::ThreadSettingsOverrides;
+use xedoc_protocol::user_input::UserInput;
+
+const CHILD_MODEL: &str = "test-multi-agent-child";
+const ROOT_MODEL: &str = "test-multi-agent-root";
+const ROOT_PROMPT: &str = "spawn a child";
+const MULTI_AGENT_V2_NAMESPACE: &str = "multi_agent_v2";
+
+fn remote_model(slug: &str) -> ModelInfo {
+    ModelInfo {
+        visibility: ModelVisibility::List,
+        used_fallback_model_metadata: false,
+        ..model_info_from_slug(slug)
+    }
+}
+
+fn tool_names(body: &Value) -> Vec<String> {
+    body.get("tools")
+        .and_then(Value::as_array)
+        .map(|tools| {
+            tools
+                .iter()
+                .filter_map(|tool| {
+                    tool.get("name")
+                        .or_else(|| tool.get("type"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn wait_for_model_available(manager: &SharedModelsManager, slug: &str) -> ModelPreset {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Some(model) = manager
+            .list_models(
+                RefreshStrategy::Online,
+                xedoc_core::test_support::default_http_client_factory(),
+            )
+            .await
+            .iter()
+            .find(|model| model.model == slug)
+            .cloned()
+        {
+            return model;
+        }
+        if Instant::now() >= deadline {
+            panic!("timed out waiting for the remote model {slug} to appear");
+        }
+        sleep(Duration::from_millis(25)).await;
+    }
+}
+
+async fn response_body_for_remote_model(
+    remote_model: ModelInfo,
+    configure: impl FnOnce(&mut Config) + Send + 'static,
+) -> Result<Value> {
+    let server = responses::start_mock_server().await;
+    let model_slug = remote_model.slug.clone();
+    let models_mock = mount_models_once(
+        &server,
+        ModelsResponse {
+            models: vec![remote_model],
+        },
+    )
+    .await;
+    let response_mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    let configured_model_slug = model_slug.clone();
+    let mut builder = test_xedoc()
+        .with_auth(XedocAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_config(move |config| {
+            config.model = Some(configured_model_slug.clone());
+            configure(config);
+        });
+    let test = builder.build(&server).await?;
+    let models_manager = test.thread_manager.get_models_manager();
+    let available_model = wait_for_model_available(&models_manager, &model_slug).await;
+    assert_eq!(available_model.model, model_slug);
+    assert_eq!(models_mock.requests().len(), 1);
+
+    submit_thread_settings(
+        &test.xedoc,
+        ThreadSettingsOverrides {
+            model: Some(model_slug),
+            ..Default::default()
+        },
+    )
+    .await?;
+    test.xedoc
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "list tools".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+    wait_for_event(&test.xedoc, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    Ok(response_mock.single_request().body_json())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn multi_agent_config_precedence_overrides_remote_model_selector() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let mut v2_model = remote_model("test-multi-agent-v2");
+    v2_model.multi_agent_version = Some(MultiAgentVersion::V2);
+    let disabled_body = response_body_for_remote_model(v2_model, |config| {
+        config.agents_enabled = false;
+        config
+            .features
+            .enable(Feature::Collab)
+            .expect("test config should allow feature update");
+        config
+            .features
+            .disable(Feature::MultiAgentV2)
+            .expect("test config should allow feature update");
+    })
+    .await?;
+    assert!(tool_names(&disabled_body).iter().all(|name| !matches!(
+        name.as_str(),
+        "multi_agent_v1"
+            | MULTI_AGENT_V2_NAMESPACE
+            | "spawn_agent"
+            | "send_message"
+            | "wait_agent"
+            | "list_agents"
+    )));
+
+    let mut v1_model = remote_model("test-multi-agent-v1");
+    v1_model.multi_agent_version = Some(MultiAgentVersion::V1);
+    let v1_body = response_body_for_remote_model(v1_model, |config| {
+        config
+            .features
+            .enable(Feature::Collab)
+            .expect("test config should allow feature update");
+        config
+            .features
+            .disable(Feature::MultiAgentV2)
+            .expect("test config should allow feature update");
+    })
+    .await?;
+    assert!(tool_names(&v1_body).contains(&"multi_agent_v1".to_string()));
+
+    let mut disabled_model = remote_model("test-multi-agent-disabled");
+    disabled_model.multi_agent_version = Some(MultiAgentVersion::Disabled);
+    let v2_body = response_body_for_remote_model(disabled_model, |config| {
+        config.agents_enabled = false;
+        config
+            .features
+            .enable(Feature::MultiAgentV2)
+            .expect("test config should allow feature update");
+    })
+    .await?;
+    assert!(tool_names(&v2_body).contains(&MULTI_AGENT_V2_NAMESPACE.to_string()));
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn remote_multi_agent_selector_uses_model_selected_before_first_turn() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = wiremock::MockServer::start().await;
+    let mut initial_model = remote_model(ROOT_MODEL);
+    initial_model.multi_agent_version = Some(MultiAgentVersion::V1);
+    let mut selected_model = remote_model(CHILD_MODEL);
+    selected_model.multi_agent_version = Some(MultiAgentVersion::V2);
+    let models_mock = mount_models_once(
+        &server,
+        ModelsResponse {
+            models: vec![initial_model, selected_model],
+        },
+    )
+    .await;
+    let response_mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    let mut builder = test_xedoc()
+        .with_auth(XedocAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_config(|config| {
+            config.model = Some(ROOT_MODEL.to_string());
+        });
+    let test = builder.build(&server).await?;
+    assert_eq!(
+        (
+            models_mock.requests().len(),
+            test.xedoc.multi_agent_version(),
+        ),
+        (1, None)
+    );
+
+    submit_thread_settings(
+        &test.xedoc,
+        ThreadSettingsOverrides {
+            model: Some(CHILD_MODEL.to_string()),
+            ..Default::default()
+        },
+    )
+    .await?;
+    assert_eq!(test.xedoc.multi_agent_version(), None);
+
+    test.xedoc
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: ROOT_PROMPT.into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+    wait_for_event(&test.xedoc, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    let response_body = response_mock
+        .last_request()
+        .expect("expected response request")
+        .body_json();
+    assert_eq!(
+        (
+            models_mock.requests().len(),
+            test.xedoc.multi_agent_version(),
+            tool_names(&response_body).contains(&MULTI_AGENT_V2_NAMESPACE.to_string()),
+        ),
+        (1, Some(MultiAgentVersion::V2), true)
+    );
+
+    Ok(())
+}

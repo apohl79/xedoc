@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-test-support",
+    crate_name = "xedoc_tui_test_support",
+)

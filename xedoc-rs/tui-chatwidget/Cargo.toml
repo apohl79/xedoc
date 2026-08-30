@@ -1,0 +1,100 @@
+[package]
+name = "xedoc-tui-chatwidget"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_chatwidget"
+path = "src/lib.rs"
+doctest = false
+
+[features]
+test-support = ["dep:xedoc-tui-test-support"]
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+xedoc-app-server-client = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-plugins = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-file-search = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-terminal-detection = { workspace = true }
+xedoc-tui-agents = { workspace = true }
+xedoc-tui-app-server-session = { workspace = true }
+xedoc-tui-bottom-pane = { workspace = true, features = ["test-support"] }
+xedoc-tui-completion = { workspace = true }
+xedoc-tui-debug = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-frame = { workspace = true }
+xedoc-tui-hooks = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-overlays = { workspace = true }
+xedoc-tui-platform = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-settings = { workspace = true }
+xedoc-tui-status = { workspace = true }
+xedoc-tui-test-support = { workspace = true, optional = true }
+xedoc-tui-transcript = { workspace = true }
+xedoc-tui-workspace = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-approval-presets = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+xedoc-utils-home-dir = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+xedoc-utils-plugins = { workspace = true }
+xedoc-utils-sandbox-summary = { workspace = true }
+xedoc-utils-sleep-inhibitor = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+derive_more = { workspace = true, features = ["is_variant"] }
+dirs = { workspace = true }
+image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
+rand = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+shlex = { workspace = true }
+strum = { workspace = true }
+tempfile = { workspace = true }
+textwrap = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tokio-stream = { workspace = true, features = ["sync"] }
+tokio-util = { workspace = true, features = ["time"] }
+toml = { workspace = true }
+tracing = { workspace = true, features = ["log"] }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-tui-bottom-pane = { workspace = true, features = ["test-support"] }
+xedoc-tui-composer = { workspace = true, features = ["test-support"] }
+xedoc-tui-platform = { workspace = true, features = ["test-support"] }
+xedoc-tui-status = { workspace = true, features = ["test-support"] }
+xedoc-tui-transcript = { workspace = true, features = ["test-support"] }
+xedoc-utils-cargo-bin = { workspace = true }
+futures = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+ratatui-macros = { workspace = true }
+regex-lite = { workspace = true }
+serial_test = { workspace = true }
+vt100 = { workspace = true }
+wiremock = { workspace = true }

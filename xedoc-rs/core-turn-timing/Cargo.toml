@@ -1,0 +1,21 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-turn-timing"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_turn_timing"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core-client = { workspace = true }
+xedoc-protocol = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

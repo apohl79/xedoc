@@ -1,0 +1,134 @@
+[package]
+name = "xedoc-app-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "xedoc-app-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "xedoc-app-server-test-notify-capture"
+path = "src/bin/notify_capture.rs"
+test = false
+
+[[bin]]
+name = "exec-server"
+path = "src/bin/exec_server.rs"
+test = false
+
+[[bin]]
+name = "test_notify_capture"
+path = "src/bin/test_notify_capture.rs"
+test = false
+
+[lib]
+name = "xedoc_app_server"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+axum = { workspace = true, default-features = false, features = [
+    "http1",
+    "json",
+    "tokio",
+    "ws",
+] }
+xedoc-agent-extension = { workspace = true }
+xedoc-app-server-jsonrpc = { workspace = true }
+xedoc-arg0 = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-core-plugins = { workspace = true }
+xedoc-home = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-goal-extension = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-file-watcher = { workspace = true }
+xedoc-hooks = { workspace = true }
+xedoc-http-client = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-skills = { workspace = true }
+xedoc-skills-extension = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+xedoc-utils-pty = { workspace = true }
+xedoc-file-search = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-image-generation-extension = { workspace = true }
+xedoc-web-search-extension = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-mcp-extension = { workspace = true }
+xedoc-model-provider = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-app-server-transport = { workspace = true }
+xedoc-rmcp-client = { workspace = true }
+xedoc-rollout = { workspace = true }
+xedoc-sandboxing = { workspace = true }
+xedoc-state = { workspace = true }
+xedoc-thread-store = { workspace = true }
+xedoc-tools = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-json-to-toml = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+futures = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+toml = { workspace = true }
+toml_edit = { workspace = true }
+tokio = { workspace = true, features = [
+    "io-std",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "signal",
+] }
+tokio-util = { workspace = true }
+tracing = { workspace = true, features = ["log"] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
+uuid = { workspace = true, features = ["serde", "v7"] }
+
+[dev-dependencies]
+app_test_support = { workspace = true }
+axum = { workspace = true, default-features = false, features = [
+    "http1",
+    "json",
+    "tokio",
+] }
+base64 = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-utils-cargo-bin = { workspace = true }
+core_test_support = { workspace = true }
+hmac = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+pretty_assertions = { workspace = true }
+reqwest = { workspace = true, features = ["rustls-tls"] }
+rmcp = { workspace = true, default-features = false, features = [
+    "elicitation",
+    "server",
+    "transport-streamable-http-server",
+] }
+serial_test = { workspace = true }
+sha2 = { workspace = true }
+shlex = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+url = { workspace = true }
+wiremock = { workspace = true }

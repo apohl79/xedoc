@@ -1,0 +1,25 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-prompts"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "xedoc_prompts"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+xedoc-context-fragments = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-execpolicy = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-template = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

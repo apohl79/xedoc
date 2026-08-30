@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "installation-id",
+    crate_name = "xedoc_installation_id",
+)

@@ -1,0 +1,72 @@
+[package]
+name = "xedoc-tui-transcript"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_transcript"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+test-support = []
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+xedoc-ansi-escape = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-install-context = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-tui-markdown = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+xedoc-utils-elapsed = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+crossterm = { workspace = true }
+derive_more = { workspace = true, features = ["is_variant"] }
+dirs = { workspace = true }
+image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+pulldown-cmark = { workspace = true }
+rand = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-rendered-line-info"] }
+ratatui-macros = { workspace = true }
+regex-lite = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "json"] }
+rmcp = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+shlex = { workspace = true }
+supports-color = { workspace = true }
+tempfile = { workspace = true }
+textwrap = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+xedoc-home = { workspace = true }
+xedoc-tui-test-support = { workspace = true }
+xedoc-utils-cargo-bin = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }
+vt100 = { workspace = true }

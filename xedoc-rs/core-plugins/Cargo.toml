@@ -1,0 +1,56 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-plugins"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "xedoc_core_plugins"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-plugin-marketplace = { workspace = true }
+xedoc-core-skills = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-hooks = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-skills = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+xedoc-utils-plugins = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+reqwest = { workspace = true }
+regex = { workspace = true }
+semver = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "macros", "rt", "time"] }
+toml = { workspace = true }
+tracing = { workspace = true }
+zip = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+which = { workspace = true }
+
+[dev-dependencies]
+libc = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+url = { workspace = true }
+wiremock = { workspace = true }

@@ -1,0 +1,10 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "models-manager",
+    compile_data = [
+        "models.json",
+        "prompt.md",
+    ],
+    crate_name = "xedoc_models_manager",
+)

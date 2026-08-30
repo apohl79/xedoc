@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Verify codex-tui does not depend on or import codex-core directly."""
+"""Verify xedoc-tui does not depend on or import xedoc-core directly."""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-TUI_ROOT = ROOT / "codex-rs" / "tui"
+TUI_ROOT = ROOT / "xedoc-rs" / "tui"
 TUI_MANIFEST = TUI_ROOT / "Cargo.toml"
-FORBIDDEN_PACKAGE = "codex-core"
+FORBIDDEN_PACKAGE = "xedoc-core"
 FORBIDDEN_SOURCE_PATTERNS = (
-    re.compile(r"\bcodex_core::"),
-    re.compile(r"\buse\s+codex_core\b"),
-    re.compile(r"\bextern\s+crate\s+codex_core\b"),
+    re.compile(r"\bxedoc_core::"),
+    re.compile(r"\buse\s+xedoc_core\b"),
+    re.compile(r"\bextern\s+crate\s+xedoc_core\b"),
 )
 
 
@@ -29,10 +29,10 @@ def main() -> int:
     if not failures:
         return 0
 
-    print("codex-tui must not depend on or import codex-core directly.")
+    print("xedoc-tui must not depend on or import xedoc-core directly.")
     print(
         "Use the app-server protocol/client boundary instead; temporary embedded "
-        "startup gaps belong behind codex_app_server_client::legacy_core."
+        "startup gaps belong behind xedoc_app_server_client::legacy_core."
     )
     print()
     for failure in failures:
@@ -77,7 +77,7 @@ def source_failures() -> list[str]:
         text = path.read_text()
         for line_number, line in enumerate(text.splitlines(), start=1):
             if any(pattern.search(line) for pattern in FORBIDDEN_SOURCE_PATTERNS):
-                failures.append(f"{relative_path(path)}:{line_number} imports `codex_core`")
+                failures.append(f"{relative_path(path)}:{line_number} imports `xedoc_core`")
     return failures
 
 

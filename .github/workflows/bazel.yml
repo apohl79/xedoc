@@ -517,7 +517,7 @@ jobs:
             --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
             --build_metadata=TAG_job=verify-bwrap \
             -- \
-            //codex-rs/bwrap:bwrap
+            //xedoc-rs/bwrap:bwrap
 
       - name: Upload Bazel execution logs
         if: always() && !cancelled()

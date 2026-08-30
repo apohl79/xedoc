@@ -10,15 +10,15 @@ RELEASE_VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.+-]*$")
 
 
 def main() -> int:
-    release_version = os.environ.get("CODEX_RELEASE_VERSION", "")
+    release_version = os.environ.get("XEDOC_RELEASE_VERSION", "")
     if not RELEASE_VERSION_RE.fullmatch(release_version):
         print(
-            "CODEX_RELEASE_VERSION must be set to a valid release version.",
+            "XEDOC_RELEASE_VERSION must be set to a valid release version.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"STABLE_CODEX_RELEASE_VERSION {release_version}")
+    print(f"STABLE_XEDOC_RELEASE_VERSION {release_version}")
     return 0
 
 

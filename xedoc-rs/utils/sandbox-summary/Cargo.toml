@@ -1,0 +1,19 @@
+[package]
+name = "xedoc-utils-sandbox-summary"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+
+[dev-dependencies]
+xedoc-utils-absolute-path = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lib]
+doctest = false

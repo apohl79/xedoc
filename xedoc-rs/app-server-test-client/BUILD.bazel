@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "app-server-test-client",
+    crate_name = "xedoc_app_server_test_client",
+)

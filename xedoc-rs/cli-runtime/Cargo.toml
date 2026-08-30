@@ -1,0 +1,74 @@
+[package]
+name = "xedoc-cli-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_cli_runtime"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
+clap_complete = { workspace = true }
+xedoc-app-server = { workspace = true }
+xedoc-app-server-daemon = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-app-server-test-client = { workspace = true }
+xedoc-arg0 = { workspace = true }
+xedoc-api = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-core-plugins = { workspace = true }
+xedoc-home = { workspace = true }
+xedoc-exec = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-execpolicy = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-mcp-server = { workspace = true }
+xedoc-model-provider = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-responses-api-proxy = { workspace = true }
+xedoc-rmcp-client = { workspace = true }
+xedoc-sandboxing = { workspace = true }
+xedoc-state = { workspace = true }
+xedoc-stdio-to-uds = { workspace = true }
+xedoc-terminal-detection = { workspace = true }
+xedoc-tui = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-path = { workspace = true }
+libc = { workspace = true }
+owo-colors = { workspace = true }
+regex-lite = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+supports-color = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = [
+    "io-std",
+    "macros",
+    "net",
+    "process",
+    "rt-multi-thread",
+    "signal",
+    "time",
+] }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+pretty_assertions = { workspace = true }

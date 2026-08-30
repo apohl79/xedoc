@@ -1,0 +1,6 @@
+//! Operating-system integrations used by the Xedoc terminal UI.
+
+#![deny(clippy::print_stdout, clippy::print_stderr)]
+
+pub mod clipboard;
+pub mod terminal_title;

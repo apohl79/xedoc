@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-tool-specs"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_tool_specs"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-protocol = { workspace = true }
+xedoc-tools = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+xedoc-features = { workspace = true }
+pretty_assertions = { workspace = true }

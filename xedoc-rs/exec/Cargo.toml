@@ -1,0 +1,75 @@
+[package]
+name = "xedoc-exec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+autotests = false
+
+[[bin]]
+name = "xedoc-exec"
+path = "src/main.rs"
+
+[lib]
+name = "xedoc_exec"
+path = "src/lib.rs"
+doctest = false
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+xedoc-arg0 = { workspace = true }
+xedoc-app-server-client = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+xedoc-utils-oss = { workspace = true }
+xedoc-utils-sandbox-summary = { workspace = true }
+owo-colors = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+supports-color = { workspace = true }
+tokio = { workspace = true, features = [
+    "io-std",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "signal",
+] }
+tracing = { workspace = true, features = ["log"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+ts-rs = { workspace = true, features = [
+    "uuid-impl",
+    "serde-json-impl",
+    "no-serde-warnings",
+] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+xedoc-apply-patch = { workspace = true }
+xedoc-utils-cargo-bin = { workspace = true }
+core_test_support = { workspace = true }
+libc = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+predicates = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+uuid = { workspace = true }
+walkdir = { workspace = true }
+wiremock = { workspace = true }

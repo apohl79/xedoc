@@ -1,86 +1,86 @@
 {
   "outputs": {
-    "codex": {
+    "xedoc": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "^codex-package-aarch64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/codex"
+          "regex": "^xedoc-package-aarch64-apple-darwin\\.tar\\.zst$",
+          "path": "bin/xedoc"
         },
         "macos-x86_64": {
-          "regex": "^codex-package-x86_64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/codex"
+          "regex": "^xedoc-package-x86_64-apple-darwin\\.tar\\.zst$",
+          "path": "bin/xedoc"
         },
         "linux-x86_64": {
-          "regex": "^codex-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
-          "path": "bin/codex"
+          "regex": "^xedoc-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
+          "path": "bin/xedoc"
         },
         "linux-aarch64": {
-          "regex": "^codex-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
-          "path": "bin/codex"
+          "regex": "^xedoc-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
+          "path": "bin/xedoc"
         },
         "windows-x86_64": {
-          "regex": "^codex-package-x86_64-pc-windows-msvc\\.tar\\.zst$",
-          "path": "bin/codex.exe"
+          "regex": "^xedoc-package-x86_64-pc-windows-msvc\\.tar\\.zst$",
+          "path": "bin/xedoc.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-package-aarch64-pc-windows-msvc\\.tar\\.zst$",
-          "path": "bin/codex.exe"
+          "regex": "^xedoc-package-aarch64-pc-windows-msvc\\.tar\\.zst$",
+          "path": "bin/xedoc.exe"
         }
       }
     },
-    "codex-app-server": {
+    "xedoc-app-server": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "^codex-app-server-package-aarch64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^xedoc-app-server-package-aarch64-apple-darwin\\.tar\\.zst$",
+          "path": "bin/xedoc-app-server"
         },
         "macos-x86_64": {
-          "regex": "^codex-app-server-package-x86_64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^xedoc-app-server-package-x86_64-apple-darwin\\.tar\\.zst$",
+          "path": "bin/xedoc-app-server"
         },
         "linux-x86_64": {
-          "regex": "^codex-app-server-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^xedoc-app-server-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
+          "path": "bin/xedoc-app-server"
         },
         "linux-aarch64": {
-          "regex": "^codex-app-server-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^xedoc-app-server-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
+          "path": "bin/xedoc-app-server"
         },
         "windows-x86_64": {
-          "regex": "^codex-app-server-package-x86_64-pc-windows-msvc\\.tar\\.zst$",
-          "path": "bin/codex-app-server.exe"
+          "regex": "^xedoc-app-server-package-x86_64-pc-windows-msvc\\.tar\\.zst$",
+          "path": "bin/xedoc-app-server.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-app-server-package-aarch64-pc-windows-msvc\\.tar\\.zst$",
-          "path": "bin/codex-app-server.exe"
+          "regex": "^xedoc-app-server-package-aarch64-pc-windows-msvc\\.tar\\.zst$",
+          "path": "bin/xedoc-app-server.exe"
         }
       }
     },
-    "codex-responses-api-proxy": {
+    "xedoc-responses-api-proxy": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-apple-darwin\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^xedoc-responses-api-proxy-aarch64-apple-darwin\\.zst$",
+          "path": "xedoc-responses-api-proxy"
         },
         "macos-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-apple-darwin\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^xedoc-responses-api-proxy-x86_64-apple-darwin\\.zst$",
+          "path": "xedoc-responses-api-proxy"
         },
         "linux-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-unknown-linux-musl\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^xedoc-responses-api-proxy-x86_64-unknown-linux-musl\\.zst$",
+          "path": "xedoc-responses-api-proxy"
         },
         "linux-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-unknown-linux-musl\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^xedoc-responses-api-proxy-aarch64-unknown-linux-musl\\.zst$",
+          "path": "xedoc-responses-api-proxy"
         },
         "windows-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-responses-api-proxy.exe"
+          "regex": "^xedoc-responses-api-proxy-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "xedoc-responses-api-proxy.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-responses-api-proxy.exe"
+          "regex": "^xedoc-responses-api-proxy-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "xedoc-responses-api-proxy.exe"
         }
       }
     },
@@ -96,27 +96,27 @@
         }
       }
     },
-    "codex-command-runner": {
+    "xedoc-command-runner": {
       "platforms": {
         "windows-x86_64": {
-          "regex": "^codex-command-runner-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-command-runner.exe"
+          "regex": "^xedoc-command-runner-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "xedoc-command-runner.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-command-runner-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-command-runner.exe"
+          "regex": "^xedoc-command-runner-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "xedoc-command-runner.exe"
         }
       }
     },
-    "codex-windows-sandbox-setup": {
+    "xedoc-windows-sandbox-setup": {
       "platforms": {
         "windows-x86_64": {
-          "regex": "^codex-windows-sandbox-setup-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-windows-sandbox-setup.exe"
+          "regex": "^xedoc-windows-sandbox-setup-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "xedoc-windows-sandbox-setup.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-windows-sandbox-setup-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-windows-sandbox-setup.exe"
+          "regex": "^xedoc-windows-sandbox-setup-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "xedoc-windows-sandbox-setup.exe"
         }
       }
     }

@@ -12,9 +12,9 @@ import subprocess
 import sys
 import textwrap
 
-from codex_package.targets import TARGET_SPECS
-from codex_package.targets import TargetSpec
-from codex_package.targets import default_target
+from xedoc_package.targets import TARGET_SPECS
+from xedoc_package.targets import TargetSpec
+from xedoc_package.targets import default_target
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -41,7 +41,7 @@ LS_REMOTE_TAG_RE = re.compile(
 )
 WORKSPACE_VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*)"[^"]+"(.*)$')
 BAZEL_RELEASE_CONFIG = "apohl79-release"
-BAZEL_RELEASE_BUNDLE = "//codex-rs:apohl79-release-binaries"
+BAZEL_RELEASE_BUNDLE = "//xedoc-rs:apohl79-release-binaries"
 BAZEL_RELEASE_STARTUP_OPTIONS = ["--noexperimental_remote_repo_contents_cache"]
 BAZEL_RELEASE_CACHE_OPTIONS = ["--repo_contents_cache="]
 BAZEL_PLATFORM_BY_TARGET = {
@@ -58,7 +58,7 @@ class ReleaseBinaries:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build a signed local release package for the apohl79 Codex fork."
+            "Build a signed local release package for the apohl79 Xedoc fork."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -76,7 +76,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version-suffix",
         default=DEFAULT_SUFFIX,
-        help="Suffix appended to the base Codex version.",
+        help="Suffix appended to the base Xedoc version.",
     )
     parser.add_argument(
         "--codesign-identity",
@@ -227,8 +227,8 @@ def build_release(args: argparse.Namespace) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     source_root = REPO_ROOT
-    cargo_toml = source_root / "codex-rs" / "Cargo.toml"
-    cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+    cargo_toml = source_root / "xedoc-rs" / "Cargo.toml"
+    cargo_lock = source_root / "xedoc-rs" / "Cargo.lock"
     ensure_current_checkout_matches_ref(args.ref)
     if not getattr(args, "allow_dirty", False):
         ensure_git_path_clean(cargo_toml)
@@ -293,7 +293,7 @@ def build_release(args: argparse.Namespace) -> None:
 
     signing_script = source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
     entitlements = (
-        source_root / ".github/scripts/macos-signing/codex.entitlements.plist"
+        source_root / ".github/scripts/macos-signing/xedoc.entitlements.plist"
     )
     run(
         build_codesign_command(
@@ -309,19 +309,19 @@ def build_release(args: argparse.Namespace) -> None:
     package_dir = (
         resolve_repo_path(args.package_dir)
         if args.package_dir is not None
-        else output_dir / fork_version / f"codex-package-{args.target}"
+        else output_dir / fork_version / f"xedoc-package-{args.target}"
     )
     archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
-        output_dir / fork_version / f"codex-{args.target}-{fork_version}.zip"
+        output_dir / fork_version / f"xedoc-{args.target}-{fork_version}.zip"
     ]
 
     package_args = [
         sys.executable,
-        str(source_root / "scripts/build_codex_package.py"),
+        str(source_root / "scripts/build_xedoc_package.py"),
         "--target",
         args.target,
         "--variant",
-        "codex",
+        "xedoc",
         "--version",
         fork_version,
         "--entrypoint-bin",
@@ -358,7 +358,7 @@ def build_release(args: argparse.Namespace) -> None:
             ),
         )
 
-    print(f"Built apohl79 Codex release {fork_version}")
+    print(f"Built apohl79 Xedoc release {fork_version}")
     print(f"GitHub release: {release_tag}")
     print(f"Package directory: {package_dir}")
     for archive_output in archive_outputs:
@@ -375,11 +375,11 @@ def build_cargo_release_binaries(
     fork_version: str,
 ) -> ReleaseBinaries:
     target_dir = Path(
-        os.environ.get("CARGO_TARGET_DIR", source_root / "codex-rs" / "target")
+        os.environ.get("CARGO_TARGET_DIR", source_root / "xedoc-rs" / "target")
     ).resolve()
     env = os.environ.copy()
     env["CARGO_TARGET_DIR"] = str(target_dir)
-    env["CODEX_RELEASE_VERSION"] = fork_version
+    env["XEDOC_RELEASE_VERSION"] = fork_version
     resolved_cargo_build_jobs = resolve_cargo_build_jobs(cargo_build_jobs)
     if resolved_cargo_build_jobs is not None:
         env["CARGO_BUILD_JOBS"] = resolved_cargo_build_jobs
@@ -394,22 +394,22 @@ def build_cargo_release_binaries(
             "build",
             "--locked",
             "--manifest-path",
-            str(source_root / "codex-rs" / "Cargo.toml"),
+            str(source_root / "xedoc-rs" / "Cargo.toml"),
             "--package",
-            "codex-cli",
+            "xedoc-cli",
             "--bins",
             "--profile",
             "release",
             "--target",
             target,
         ],
-        cwd=source_root / "codex-rs",
+        cwd=source_root / "xedoc-rs",
         env=env,
     )
 
     return ReleaseBinaries(
         entrypoint=require_built_file(
-            target_dir / spec.target / "release" / f"codex{spec.exe_suffix}",
+            target_dir / spec.target / "release" / f"xedoc{spec.exe_suffix}",
             "Built entrypoint",
         ),
     )
@@ -439,7 +439,7 @@ def build_bazel_release_binaries(
         else []
     )
     env = os.environ.copy()
-    env["CODEX_RELEASE_VERSION"] = fork_version
+    env["XEDOC_RELEASE_VERSION"] = fork_version
 
     run(
         [
@@ -510,13 +510,13 @@ def resolve_bazel_release_binaries(
     outputs = [line.strip() for line in stdout.splitlines() if line.strip()]
     paths = [execution_root / output for output in outputs]
     paths_by_name = {path.name: path for path in paths}
-    if len(outputs) != 1 or paths_by_name.keys() != {"codex"}:
+    if len(outputs) != 1 or paths_by_name.keys() != {"xedoc"}:
         raise RuntimeError(
-            "Bazel release bundle must contain exactly codex; "
+            "Bazel release bundle must contain exactly xedoc; "
             f"reported {sorted(paths_by_name)}."
         )
     return ReleaseBinaries(
-        entrypoint=require_built_file(paths_by_name["codex"], "Bazel entrypoint"),
+        entrypoint=require_built_file(paths_by_name["xedoc"], "Bazel entrypoint"),
     )
 
 
@@ -614,7 +614,7 @@ def repair_stale_release_lockfiles(
             "--filter-platform",
             target,
         ],
-        cwd=source_root / "codex-rs",
+        cwd=source_root / "xedoc-rs",
         stdout=subprocess.DEVNULL,
     )
     refresh_bazel_lockfiles(source_root)
@@ -963,7 +963,7 @@ def generate_release_notes(
 ) -> str:
     """Generate a changelog body for the GitHub release from git history."""
     if not _is_git_repo():
-        return f"apohl79 Codex {fork_version}"
+        return f"apohl79 Xedoc {fork_version}"
 
     previous_release = find_previous_published_fork_release(
         tag, gh=gh, repo=repo, env=env
@@ -1138,7 +1138,7 @@ def _bullet_list(items: list[str], indent: str = "") -> str:
 
 def initial_release_notes(upstream_base: str, date: str, fork_version: str) -> str:
     return textwrap.dedent(f"""\
-        ## apohl79 Codex {fork_version}
+        ## apohl79 Xedoc {fork_version}
 
         **Upstream base:** OpenAI Codex {upstream_base}
         **Release date:** {date}
@@ -1158,7 +1158,7 @@ def incremental_release_notes(
     prev_upstream: str | None = None,
 ) -> str:
     header = textwrap.dedent(f"""\
-        ## apohl79 Codex {fork_version}
+        ## apohl79 Xedoc {fork_version}
 
         **Upstream base:** OpenAI Codex {upstream_base}
         **Release date:** {date}""")
@@ -1231,7 +1231,7 @@ def publish_github_release(
     else:
         print(f"Creating GitHub release {tag} in {repo}.", flush=True)
         if notes is None:
-            notes = f"apohl79 Codex {title}"
+            notes = f"apohl79 Xedoc {title}"
         run(
             [
                 gh,
@@ -1325,7 +1325,7 @@ def latest_release_version_from_ls_remote(stdout: str) -> str:
 def release_version_sort_key(version: str) -> tuple[int, int, int, int, int]:
     match = VERSION_RE.match(version)
     if match is None:
-        raise RuntimeError(f"Invalid Codex release version: {version}")
+        raise RuntimeError(f"Invalid Xedoc release version: {version}")
 
     major = int(match.group("major"))
     minor = int(match.group("minor"))
@@ -1343,7 +1343,7 @@ def release_version_sort_key(version: str) -> tuple[int, int, int, int, int]:
 def validate_release_version(version: str) -> str:
     if VERSION_RE.match(version) is None:
         raise RuntimeError(
-            f"Invalid Codex release version: {version}. Expected x.y.z[-alpha[.N]|-beta[.N]]."
+            f"Invalid Xedoc release version: {version}. Expected x.y.z[-alpha[.N]|-beta[.N]]."
         )
     return version
 
@@ -1382,7 +1382,7 @@ def build_codesign_command(
         "--deep",
         "false",
         "--identifier",
-        "codex",
+        "xedoc",
         "--options",
         "runtime",
         "--timestamp",

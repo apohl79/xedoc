@@ -1,14 +1,14 @@
 # Core crate ownership.
-/codex-rs/arg0/ @openai/codex-core-agent-team
-/codex-rs/codex-mcp/ @openai/codex-core-agent-team
-/codex-rs/core/ @openai/codex-core-agent-team
-/codex-rs/exec-server/ @openai/codex-core-agent-team
-/codex-rs/exec-server-protocol/ @openai/codex-core-agent-team
-/codex-rs/ext/extension-api/ @openai/codex-core-agent-team
-/codex-rs/prompts/ @openai/codex-core-agent-team
-/codex-rs/utils/path-uri/ @openai/codex-core-agent-team
+/xedoc-rs/arg0/ @openai/codex-core-agent-team
+/xedoc-rs/xedoc-mcp/ @openai/codex-core-agent-team
+/xedoc-rs/core/ @openai/codex-core-agent-team
+/xedoc-rs/exec-server/ @openai/codex-core-agent-team
+/xedoc-rs/exec-server-protocol/ @openai/codex-core-agent-team
+/xedoc-rs/ext/extension-api/ @openai/codex-core-agent-team
+/xedoc-rs/prompts/ @openai/codex-core-agent-team
+/xedoc-rs/utils/path-uri/ @openai/codex-core-agent-team
 
-# Keep macOS AKV signing changes reviewed by Codex maintainers.
+# Keep macOS AKV signing changes reviewed by Xedoc maintainers.
 /.github/actions/setup-akv-pkcs11-codesigning/ @openai/codex-core-agent-team
 /.github/scripts/macos-signing/ @openai/codex-core-agent-team
 /.github/workflows/rust-release.yml @openai/codex-core-agent-team

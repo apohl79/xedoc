@@ -1,0 +1,9 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "web-search",
+    compile_data = [
+        "web_run_description.md",
+    ],
+    crate_name = "xedoc_web_search_extension",
+)

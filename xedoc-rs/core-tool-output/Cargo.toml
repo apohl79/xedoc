@@ -1,0 +1,27 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-tool-output"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_tool_output"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core-context-manager = { workspace = true }
+xedoc-core-exec = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tools = { workspace = true }
+xedoc-utils-output-truncation = { workspace = true }
+xedoc-utils-string = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+regex-lite = { workspace = true }

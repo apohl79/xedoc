@@ -72,9 +72,9 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             source_root = Path(temp_dir)
             execution_root = source_root / "execroot"
-            entrypoint = execution_root / "bazel-out/release/codex"
+            entrypoint = execution_root / "bazel-out/release/xedoc"
             entrypoint.parent.mkdir(parents=True)
-            entrypoint.write_text("codex", encoding="utf-8")
+            entrypoint.write_text("xedoc", encoding="utf-8")
 
             with (
                 mock.patch.object(apohl79_release, "run") as run_mock,
@@ -83,7 +83,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                     "command_output",
                     side_effect=[
                         f"{execution_root}\n",
-                        "bazel-out/release/codex\n",
+                        "bazel-out/release/xedoc\n",
                     ],
                 ) as command_output,
             ):
@@ -114,11 +114,11 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                     "--platforms=@llvm//platforms:macos_arm64",
                     "--local_resources=cpu=4",
                     "--",
-                    "//codex-rs:apohl79-release-binaries",
+                    "//xedoc-rs:apohl79-release-binaries",
                 ],
             )
             self.assertEqual(
-                build_env["CODEX_RELEASE_VERSION"],
+                build_env["XEDOC_RELEASE_VERSION"],
                 "0.145.0-apohl79-92",
             )
             self.assertEqual(
@@ -142,7 +142,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                         "--platforms=@llvm//platforms:macos_arm64",
                         "--output=files",
                         "--",
-                        "//codex-rs:apohl79-release-binaries",
+                        "//xedoc-rs:apohl79-release-binaries",
                     ],
                 ],
             )
@@ -150,21 +150,21 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
     def test_resolve_bazel_release_binaries_requires_exact_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             execution_root = Path(temp_dir)
-            entrypoint = execution_root / "bazel-out/release/codex"
+            entrypoint = execution_root / "bazel-out/release/xedoc"
             entrypoint.parent.mkdir(parents=True)
-            entrypoint.write_text("codex", encoding="utf-8")
+            entrypoint.write_text("xedoc", encoding="utf-8")
 
             self.assertEqual(
                 apohl79_release.resolve_bazel_release_binaries(
-                    "bazel-out/release/codex\n",
+                    "bazel-out/release/xedoc\n",
                     execution_root,
                 ),
                 apohl79_release.ReleaseBinaries(entrypoint.resolve()),
             )
             for stdout in (
                 "",
-                "bazel-out/release/codex-app-server\n",
-                "bazel-out/release/codex\nbazel-out/release/other\n",
+                "bazel-out/release/xedoc-app-server\n",
+                "bazel-out/release/xedoc\nbazel-out/release/other\n",
             ):
                 with self.subTest(stdout=stdout):
                     with self.assertRaisesRegex(
@@ -181,8 +181,8 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / "source"
             source.mkdir()
-            entrypoint = source / "codex"
-            entrypoint.write_text("unsigned-codex", encoding="utf-8")
+            entrypoint = source / "xedoc"
+            entrypoint.write_text("unsigned-xedoc", encoding="utf-8")
 
             result = apohl79_release.stage_release_binaries(
                 apohl79_release.ReleaseBinaries(entrypoint),
@@ -193,9 +193,9 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 (result, result.entrypoint.read_text(encoding="utf-8")),
                 (
                     apohl79_release.ReleaseBinaries(
-                        (root / "staged/codex").resolve(),
+                        (root / "staged/xedoc").resolve(),
                     ),
-                    "unsigned-codex",
+                    "unsigned-xedoc",
                 ),
             )
 
@@ -204,13 +204,13 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             root = Path(temp_dir)
             source = root / "source"
             source.mkdir()
-            entrypoint = source / "codex"
-            entrypoint.write_text("rebuilt-codex", encoding="utf-8")
+            entrypoint = source / "xedoc"
+            entrypoint.write_text("rebuilt-xedoc", encoding="utf-8")
             entrypoint.chmod(0o555)
             staged = root / "staged"
             staged.mkdir()
-            stale = staged / "codex"
-            stale.write_text("stale-codex", encoding="utf-8")
+            stale = staged / "xedoc"
+            stale.write_text("stale-xedoc", encoding="utf-8")
             stale.chmod(0o555)
 
             result = apohl79_release.stage_release_binaries(
@@ -219,7 +219,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
             )
 
             self.assertEqual(
-                result.entrypoint.read_text(encoding="utf-8"), "rebuilt-codex"
+                result.entrypoint.read_text(encoding="utf-8"), "rebuilt-xedoc"
             )
 
     def test_bazel_status_emits_valid_release_version(self) -> None:
@@ -227,7 +227,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
         with (
             mock.patch.dict(
                 os.environ,
-                {"CODEX_RELEASE_VERSION": "0.145.0-apohl79-92"},
+                {"XEDOC_RELEASE_VERSION": "0.145.0-apohl79-92"},
             ),
             contextlib.redirect_stdout(stdout),
         ):
@@ -236,7 +236,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(
             stdout.getvalue(),
-            "STABLE_CODEX_RELEASE_VERSION 0.145.0-apohl79-92\n",
+            "STABLE_XEDOC_RELEASE_VERSION 0.145.0-apohl79-92\n",
         )
 
     def test_bazel_status_rejects_missing_or_malformed_version(self) -> None:
@@ -246,7 +246,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 with (
                     mock.patch.dict(
                         os.environ,
-                        {"CODEX_RELEASE_VERSION": release_version},
+                        {"XEDOC_RELEASE_VERSION": release_version},
                         clear=True,
                     ),
                     contextlib.redirect_stderr(stderr),
@@ -256,7 +256,7 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 self.assertEqual(result, 1)
                 self.assertEqual(
                     stderr.getvalue(),
-                    "CODEX_RELEASE_VERSION must be set to a valid release version.\n",
+                    "XEDOC_RELEASE_VERSION must be set to a valid release version.\n",
                 )
 
 

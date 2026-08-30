@@ -15,7 +15,7 @@ class MacosSigningEntitlementsTest(unittest.TestCase):
             return plistlib.load(file)
 
     def test_release_binaries_only_allow_jit(self) -> None:
-        for binary in ["codex", "codex-app-server", "codex-responses-api-proxy"]:
+        for binary in ["xedoc", "xedoc-app-server", "xedoc-responses-api-proxy"]:
             with self.subTest(binary=binary):
                 self.assertEqual(self.load(binary), {ALLOW_JIT: True})
 

@@ -1,0 +1,17 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-utils"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_utils"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rand = { workspace = true }
+tracing = { workspace = true, features = ["log"] }

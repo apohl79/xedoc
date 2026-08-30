@@ -1,0 +1,36 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-context"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_context"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+xedoc-context-fragments = { workspace = true }
+xedoc-core-skills = { workspace = true }
+xedoc-execpolicy = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-prompts = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+xedoc-utils-string = { workspace = true }
+indexmap = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha1 = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }

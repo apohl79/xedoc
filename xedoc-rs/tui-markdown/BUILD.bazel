@@ -1,0 +1,12 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-markdown",
+    crate_name = "xedoc_tui_markdown",
+    test_data_extra = glob([
+        "src/**/snapshots/**",
+    ]),
+    test_shard_counts = {
+        "tui-markdown-unit-tests": 4,
+    },
+)

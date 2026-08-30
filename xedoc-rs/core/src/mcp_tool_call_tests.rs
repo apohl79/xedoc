@@ -1,0 +1,878 @@
+use super::*;
+use crate::config::ConfigBuilder;
+use crate::environment_selection::TurnEnvironmentState;
+use crate::session::step_context::StepContext;
+use crate::session::tests::make_session_and_context;
+use crate::session::tests::make_session_and_context_with_rx;
+use crate::session::turn_context::TurnEnvironment;
+use crate::state::ActiveTurn;
+use crate::tools::hook_names::HookToolName;
+use core_test_support::hooks::trusted_config_layer_stack;
+use pretty_assertions::assert_eq;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tempfile::tempdir;
+use xedoc_config::CONFIG_TOML_FILE;
+use xedoc_config::config_toml::ConfigToml;
+use xedoc_config::types::McpServerConfig;
+use xedoc_config::types::McpServerToolConfig;
+use xedoc_hooks::Hooks;
+use xedoc_hooks::HooksConfig;
+use xedoc_protocol::models::PermissionProfile;
+use xedoc_protocol::protocol::AskForApproval;
+use xedoc_protocol::protocol::McpInvocation;
+use xedoc_utils_path_uri::PathUri;
+
+fn annotations(
+    read_only: Option<bool>,
+    destructive: Option<bool>,
+    open_world: Option<bool>,
+) -> ToolAnnotations {
+    ToolAnnotations::from_raw(
+        /*title*/ None,
+        read_only,
+        destructive,
+        /*idempotent_hint*/ None,
+        open_world,
+    )
+}
+
+fn approval_metadata(
+    connector_id: Option<&str>,
+    connector_name: Option<&str>,
+    connector_description: Option<&str>,
+    tool_title: Option<&str>,
+    tool_description: Option<&str>,
+) -> McpToolApprovalMetadata {
+    McpToolApprovalMetadata {
+        annotations: None,
+        connector_id: connector_id.map(str::to_string),
+        link_id: None,
+        connector_name: connector_name.map(str::to_string),
+        connector_description: connector_description.map(str::to_string),
+        connected_account_email: None,
+        plugin_id: None,
+        tool_title: tool_title.map(str::to_string),
+        tool_description: tool_description.map(str::to_string),
+        mcp_app_resource_uri: None,
+    }
+}
+
+fn write_sample_plugin_mcp(xedoc_home: &std::path::Path) {
+    let plugin_root = xedoc_home.join("plugins/cache/test/sample/local");
+    std::fs::create_dir_all(plugin_root.join(".xedoc-plugin")).expect("create plugin manifest dir");
+    std::fs::write(
+        plugin_root.join(".xedoc-plugin/plugin.json"),
+        r#"{
+  "name": "sample"
+}"#,
+    )
+    .expect("write plugin manifest");
+    std::fs::write(
+        plugin_root.join(".mcp.json"),
+        r#"{
+  "mcpServers": {
+    "sample": {
+      "type": "http",
+      "url": "https://sample.example/mcp"
+    }
+  }
+}"#,
+    )
+    .expect("write plugin mcp config");
+}
+
+fn install_mcp_permission_request_hook(
+    session: &mut Session,
+    turn_context: &TurnContext,
+    matcher: &str,
+    hook_output: &serde_json::Value,
+) -> std::path::PathBuf {
+    let script_path = turn_context
+        .config
+        .xedoc_home
+        .join("mcp_permission_request_hook.py");
+    let log_path = turn_context
+        .config
+        .xedoc_home
+        .join("mcp_permission_request_hook_log.jsonl");
+    let hook_output = hook_output.to_string();
+    std::fs::create_dir_all(&turn_context.config.xedoc_home)
+        .expect("create xedoc home for MCP permission hook");
+    let script = format!(
+        r#"import json
+from pathlib import Path
+import sys
+
+payload = json.load(sys.stdin)
+with Path(r"{log_path}").open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(payload) + "\n")
+
+print({hook_output:?})
+"#,
+        log_path = log_path.display(),
+        hook_output = hook_output,
+    );
+
+    std::fs::write(&script_path, script).expect("write MCP permission hook script");
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    let script_path_arg = if cfg!(windows) {
+        script_path.display().to_string()
+    } else {
+        format!(
+            "'{}'",
+            script_path.display().to_string().replace('\'', "'\\''")
+        )
+    };
+    std::fs::write(
+        turn_context.config.xedoc_home.join("hooks.json"),
+        serde_json::json!({
+            "hooks": {
+                "PermissionRequest": [{
+                    "matcher": matcher,
+                    "hooks": [{
+                        "type": "command",
+                        "command": format!("{python} {script_path_arg}"),
+                        "timeout_sec": 5,
+                    }]
+                }]
+            }
+        })
+        .to_string(),
+    )
+    .expect("write hooks.json");
+    let hook_list = xedoc_hooks::list_hooks(HooksConfig {
+        feature_enabled: true,
+        config_layer_stack: Some(turn_context.config.config_layer_stack.clone()),
+        ..HooksConfig::default()
+    });
+    assert_eq!(hook_list.hooks.len(), 1);
+    let trusted_config_layer_stack = trusted_config_layer_stack(
+        &turn_context.config.config_layer_stack,
+        &turn_context.config.xedoc_home,
+        hook_list.hooks,
+    );
+
+    session
+        .services
+        .hooks
+        .store(Arc::new(Hooks::new(HooksConfig {
+            feature_enabled: true,
+            config_layer_stack: Some(trusted_config_layer_stack),
+            shell_program: (!cfg!(windows)).then_some("/bin/sh".to_string()),
+            shell_args: if cfg!(windows) {
+                Vec::new()
+            } else {
+                vec!["-c".to_string()]
+            },
+            ..HooksConfig::default()
+        })));
+
+    log_path.to_path_buf()
+}
+
+#[tokio::test]
+async fn mcp_sandbox_cwd_uses_matching_server_environment_uri() -> anyhow::Result<()> {
+    let (_, mut turn_context) = make_session_and_context().await;
+    let secondary_cwd = PathUri::parse("file:///C:/remote/project")?;
+    let environment = turn_context
+        .environments
+        .primary()
+        .expect("primary environment")
+        .environment
+        .clone();
+    turn_context
+        .environments
+        .environments
+        .push(TurnEnvironmentState::Ready(TurnEnvironment::new(
+            "remote".to_string(),
+            environment,
+            secondary_cwd.clone(),
+            Vec::new(),
+            /*shell*/ None,
+        )));
+
+    let step_context = StepContext::for_test(Arc::new(turn_context));
+    let sandbox_cwd = sandbox_cwd_for_mcp_server(&step_context, "remote");
+
+    assert_eq!(sandbox_cwd, Some(secondary_cwd));
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_sandbox_cwd_is_none_for_unselected_server_environment() -> anyhow::Result<()> {
+    let (_, turn_context) = make_session_and_context().await;
+
+    let step_context = StepContext::for_test(Arc::new(turn_context));
+    let sandbox_cwd = sandbox_cwd_for_mcp_server(&step_context, "remote");
+
+    assert_eq!(sandbox_cwd, None);
+    Ok(())
+}
+
+#[tokio::test]
+async fn persist_custom_mcp_tool_approval_writes_tool_override() {
+    let tmp = tempdir().expect("tempdir");
+    std::fs::write(
+        tmp.path().join(CONFIG_TOML_FILE),
+        "[mcp_servers.docs]\ncommand = \"docs-server\"\n",
+    )
+    .expect("seed config");
+    let config = ConfigBuilder::default()
+        .xedoc_home(tmp.path().to_path_buf())
+        .build()
+        .await
+        .expect("load config");
+
+    persist_custom_mcp_tool_approval(&config, "docs", "search")
+        .await
+        .expect("persist approval");
+
+    let contents = std::fs::read_to_string(tmp.path().join(CONFIG_TOML_FILE)).expect("read config");
+    let parsed: ConfigToml = toml::from_str(&contents).expect("parse config");
+    let tool = parsed
+        .mcp_servers
+        .get("docs")
+        .and_then(|server| server.tools.get("search"))
+        .expect("docs/search tool config exists");
+
+    assert_eq!(
+        tool,
+        &McpServerToolConfig {
+            approval_mode: Some(AppToolApproval::Approve),
+        }
+    );
+    assert!(contents.contains("[mcp_servers.docs.tools.search]"));
+}
+
+#[tokio::test]
+async fn custom_mcp_tool_approval_mode_uses_server_default_with_tool_override() {
+    let tmp = tempdir().expect("tempdir");
+    std::fs::write(
+        tmp.path().join(CONFIG_TOML_FILE),
+        r#"
+[mcp_servers.docs]
+command = "docs-server"
+default_tools_approval_mode = "approve"
+
+[mcp_servers.docs.tools.search]
+approval_mode = "prompt"
+"#,
+    )
+    .expect("seed config");
+    let config = ConfigBuilder::default()
+        .xedoc_home(tmp.path().to_path_buf())
+        .build()
+        .await
+        .expect("load config");
+    let (session, mut turn_context) = make_session_and_context().await;
+    turn_context.config = Arc::new(config);
+
+    assert_eq!(
+        custom_mcp_tool_approval_mode(&session, &turn_context, "docs", "read").await,
+        AppToolApproval::Approve
+    );
+    assert_eq!(
+        custom_mcp_tool_approval_mode(&session, &turn_context, "docs", "search").await,
+        AppToolApproval::Prompt
+    );
+    assert_eq!(
+        custom_mcp_tool_approval_mode(&session, &turn_context, "unknown", "search").await,
+        AppToolApproval::Auto
+    );
+}
+
+#[tokio::test]
+async fn custom_mcp_tool_approval_mode_uses_plugin_mcp_policy() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    let xedoc_home = session.xedoc_home().await;
+    write_sample_plugin_mcp(xedoc_home.as_path());
+    std::fs::write(
+        xedoc_home.join(CONFIG_TOML_FILE),
+        r#"
+[features]
+plugins = true
+
+[plugins."sample@test"]
+enabled = true
+
+[plugins."sample@test".mcp_servers.sample]
+default_tools_approval_mode = "prompt"
+
+[plugins."sample@test".mcp_servers.sample.tools.search]
+approval_mode = "approve"
+"#,
+    )
+    .expect("seed config");
+    let config = ConfigBuilder::default()
+        .xedoc_home(xedoc_home.to_path_buf())
+        .build()
+        .await
+        .expect("load config");
+    turn_context.config = Arc::new(config);
+    session.services.plugins_manager.clear_cache();
+
+    assert_eq!(
+        custom_mcp_tool_approval_mode(&session, &turn_context, "sample", "read").await,
+        AppToolApproval::Prompt
+    );
+    assert_eq!(
+        custom_mcp_tool_approval_mode(&session, &turn_context, "sample", "search").await,
+        AppToolApproval::Approve
+    );
+}
+
+#[tokio::test]
+async fn custom_mcp_tool_approval_mode_uses_updated_plugin_mcp_policy_after_cache_warm() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    let xedoc_home = session.xedoc_home().await;
+    write_sample_plugin_mcp(xedoc_home.as_path());
+    std::fs::write(
+        xedoc_home.join(CONFIG_TOML_FILE),
+        r#"
+[features]
+plugins = true
+
+[plugins."sample@test"]
+enabled = true
+"#,
+    )
+    .expect("seed config");
+    let initial_config = ConfigBuilder::default()
+        .xedoc_home(xedoc_home.to_path_buf())
+        .build()
+        .await
+        .expect("load initial config");
+    session
+        .services
+        .plugins_manager
+        .plugins_for_config(&initial_config.plugins_config_input())
+        .await;
+    std::fs::write(
+        xedoc_home.join(CONFIG_TOML_FILE),
+        r#"
+[features]
+plugins = true
+
+[plugins."sample@test"]
+enabled = true
+
+[plugins."sample@test".mcp_servers.sample.tools.search]
+approval_mode = "approve"
+"#,
+    )
+    .expect("update config");
+    let updated_config = ConfigBuilder::default()
+        .xedoc_home(xedoc_home.to_path_buf())
+        .build()
+        .await
+        .expect("load updated config");
+    turn_context.config = Arc::new(updated_config);
+
+    assert_eq!(
+        custom_mcp_tool_approval_mode(&session, &turn_context, "sample", "search").await,
+        AppToolApproval::Approve
+    );
+}
+
+#[tokio::test]
+async fn maybe_persist_mcp_tool_approval_reloads_session_config_for_custom_server() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    let xedoc_home = session.xedoc_home().await;
+    std::fs::create_dir_all(&xedoc_home).expect("create xedoc home");
+    std::fs::write(
+        xedoc_home.join(CONFIG_TOML_FILE),
+        "[mcp_servers.docs]\ncommand = \"docs-server\"\n",
+    )
+    .expect("seed config");
+    let config = crate::config_test_support::config_builder_without_managed_config()
+        .xedoc_home(xedoc_home.clone().to_path_buf())
+        .build()
+        .await
+        .expect("load config");
+    turn_context.config = Arc::new(config);
+    let key = McpToolApprovalKey {
+        server: "docs".to_string(),
+        connector_id: None,
+        tool_name: "search".to_string(),
+    };
+
+    maybe_persist_mcp_tool_approval(&session, &turn_context, key.clone()).await;
+
+    let config = session.get_config().await;
+    let mcp_servers_toml = config
+        .config_layer_stack
+        .effective_config()
+        .as_table()
+        .and_then(|table| table.get("mcp_servers"))
+        .cloned()
+        .expect("mcp_servers table");
+    let mcp_servers = HashMap::<String, McpServerConfig>::deserialize(mcp_servers_toml)
+        .expect("deserialize MCP servers");
+    let tool = mcp_servers
+        .get("docs")
+        .and_then(|server| server.tools.get("search"))
+        .expect("docs/search tool config exists");
+
+    assert_eq!(
+        tool,
+        &McpServerToolConfig {
+            approval_mode: Some(AppToolApproval::Approve),
+        }
+    );
+    assert_eq!(mcp_tool_approval_is_remembered(&session, &key).await, true);
+}
+
+#[tokio::test]
+async fn maybe_persist_mcp_tool_approval_writes_plugin_mcp_policy() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    let xedoc_home = session.xedoc_home().await;
+    write_sample_plugin_mcp(xedoc_home.as_path());
+    std::fs::write(
+        xedoc_home.join(CONFIG_TOML_FILE),
+        r#"
+[features]
+plugins = true
+
+[plugins."sample@test"]
+enabled = true
+"#,
+    )
+    .expect("seed config");
+    let config = ConfigBuilder::default()
+        .xedoc_home(xedoc_home.to_path_buf())
+        .build()
+        .await
+        .expect("load config");
+    turn_context.config = Arc::new(config);
+    session.services.plugins_manager.clear_cache();
+    let key = McpToolApprovalKey {
+        server: "sample".to_string(),
+        connector_id: None,
+        tool_name: "search".to_string(),
+    };
+
+    maybe_persist_mcp_tool_approval(&session, &turn_context, key.clone()).await;
+
+    let contents = std::fs::read_to_string(xedoc_home.join(CONFIG_TOML_FILE)).expect("read config");
+    let parsed: ConfigToml = toml::from_str(&contents).expect("parse config");
+    let tool = parsed
+        .plugins
+        .get("sample@test")
+        .and_then(|plugin| plugin.mcp_servers.get("sample"))
+        .and_then(|server| server.tools.get("search"))
+        .expect("sample/search tool config exists");
+
+    assert_eq!(
+        tool,
+        &McpServerToolConfig {
+            approval_mode: Some(AppToolApproval::Approve),
+        }
+    );
+    assert!(contents.contains(r#"[plugins."sample@test".mcp_servers.sample.tools.search]"#));
+    assert_eq!(mcp_tool_approval_is_remembered(&session, &key).await, true);
+}
+
+#[tokio::test]
+async fn maybe_persist_mcp_tool_approval_writes_project_config_for_project_server() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    let xedoc_home = session.xedoc_home().await;
+    let project_dir = tempdir().expect("tempdir");
+    std::fs::write(project_dir.path().join(".git"), "gitdir: nowhere").expect("seed git marker");
+    let project_xedoc_dir = project_dir.path().join(".xedoc");
+    std::fs::create_dir_all(&project_xedoc_dir).expect("create project .xedoc dir");
+    std::fs::write(
+        project_xedoc_dir.join(CONFIG_TOML_FILE),
+        "[mcp_servers.docs]\ncommand = \"docs-server\"\n",
+    )
+    .expect("seed project config");
+    ConfigEditsBuilder::new(&xedoc_home)
+        .set_project_trust_level(
+            project_dir.path(),
+            xedoc_protocol::config_types::TrustLevel::Trusted,
+        )
+        .apply()
+        .await
+        .expect("trust project");
+    let config = ConfigBuilder::default()
+        .xedoc_home(xedoc_home.to_path_buf())
+        .fallback_cwd(Some(project_dir.path().to_path_buf()))
+        .build()
+        .await
+        .expect("load project config");
+    turn_context.config = Arc::new(config);
+    let key = McpToolApprovalKey {
+        server: "docs".to_string(),
+        connector_id: None,
+        tool_name: "search".to_string(),
+    };
+
+    maybe_persist_mcp_tool_approval(&session, &turn_context, key.clone()).await;
+
+    let contents = std::fs::read_to_string(project_xedoc_dir.join(CONFIG_TOML_FILE))
+        .expect("read project config");
+    let parsed: ConfigToml = toml::from_str(&contents).expect("parse project config");
+    let tool = parsed
+        .mcp_servers
+        .get("docs")
+        .and_then(|server| server.tools.get("search"))
+        .expect("docs/search tool config exists");
+
+    assert_eq!(
+        tool,
+        &McpServerToolConfig {
+            approval_mode: Some(AppToolApproval::Approve),
+        }
+    );
+    assert!(contents.contains("[mcp_servers.docs.tools.search]"));
+    assert_eq!(mcp_tool_approval_is_remembered(&session, &key).await, true);
+}
+
+#[tokio::test]
+async fn approve_mode_skips_when_annotations_do_not_require_approval() {
+    let (session, turn_context) = make_session_and_context().await;
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+    let invocation = McpInvocation {
+        server: "custom_server".to_string(),
+        tool: "read_only_tool".to_string(),
+        arguments: None,
+    };
+    let metadata = McpToolApprovalMetadata {
+        annotations: Some(annotations(
+            Some(true),
+            /*destructive*/ None,
+            /*open_world*/ None,
+        )),
+        connector_id: None,
+        link_id: None,
+        connector_name: None,
+        connector_description: None,
+        connected_account_email: None,
+        plugin_id: None,
+        tool_title: Some("Read Only Tool".to_string()),
+        tool_description: None,
+        mcp_app_resource_uri: None,
+    };
+
+    let decision = maybe_request_mcp_tool_approval(
+        &session,
+        &StepContext::for_test(Arc::clone(&turn_context)),
+        "call-1",
+        &invocation,
+        &HookToolName::new("mcp__test__tool"),
+        Some(&metadata),
+        AppToolApproval::Approve,
+    )
+    .await;
+
+    assert_eq!(decision, None);
+}
+
+#[tokio::test]
+async fn permission_request_hook_allows_mcp_tool_call() {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let log_path = install_mcp_permission_request_hook(
+        &mut session,
+        &turn_context,
+        "mcp__memory__.*",
+        &serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": { "behavior": "allow" }
+            }
+        }),
+    );
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+    let invocation = McpInvocation {
+        server: "memory".to_string(),
+        tool: "create_entities".to_string(),
+        arguments: Some(serde_json::json!({
+            "entities": [{
+                "name": "Ada",
+                "entityType": "person"
+            }]
+        })),
+    };
+    let metadata = McpToolApprovalMetadata {
+        annotations: Some(annotations(
+            Some(false),
+            Some(true),
+            /*open_world*/ None,
+        )),
+        connector_id: None,
+        link_id: None,
+        connector_name: None,
+        connector_description: None,
+        connected_account_email: None,
+        plugin_id: None,
+        tool_title: Some("Create entities".to_string()),
+        tool_description: None,
+        mcp_app_resource_uri: None,
+    };
+
+    let decision = maybe_request_mcp_tool_approval(
+        &session,
+        &StepContext::for_test(Arc::clone(&turn_context)),
+        "call-mcp-hook",
+        &invocation,
+        &HookToolName::new("mcp__memory__create_entities"),
+        Some(&metadata),
+        AppToolApproval::Auto,
+    )
+    .await;
+
+    assert_eq!(decision, Some(McpToolApprovalDecision::Accept));
+    let log = std::fs::read_to_string(log_path).expect("read MCP permission hook log");
+    let inputs = log
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("parse hook input"))
+        .collect::<Vec<_>>();
+    #[allow(deprecated)]
+    let turn_cwd = turn_context.cwd.clone();
+    assert_eq!(
+        inputs,
+        vec![serde_json::json!({
+            "session_id": session.session_id(),
+            "turn_id": "turn_id",
+            "cwd": turn_cwd,
+            "transcript_path": null,
+            "model": turn_context.model_info.slug,
+            "permission_mode": "default",
+            "tool_name": "mcp__memory__create_entities",
+            "hook_event_name": "PermissionRequest",
+            "tool_input": {
+                "entities": [{
+                    "name": "Ada",
+                    "entityType": "person"
+                }]
+            }
+        })]
+    );
+}
+
+#[tokio::test]
+async fn permission_request_hook_uses_hook_tool_name_without_metadata() {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let log_path = install_mcp_permission_request_hook(
+        &mut session,
+        &turn_context,
+        "mcp__memory__.*",
+        &serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": { "behavior": "allow" }
+            }
+        }),
+    );
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+    let invocation = McpInvocation {
+        server: "memory".to_string(),
+        tool: "create_entities".to_string(),
+        arguments: Some(serde_json::json!({ "entities": [] })),
+    };
+
+    let decision = maybe_request_mcp_tool_approval(
+        &session,
+        &StepContext::for_test(Arc::clone(&turn_context)),
+        "call-mcp-hook-no-metadata",
+        &invocation,
+        &HookToolName::new("mcp__memory__create_entities"),
+        /*metadata*/ None,
+        AppToolApproval::Auto,
+    )
+    .await;
+
+    assert_eq!(decision, Some(McpToolApprovalDecision::Accept));
+    let log = std::fs::read_to_string(log_path).expect("read MCP permission hook log");
+    let inputs = log
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("parse hook input"))
+        .collect::<Vec<_>>();
+    #[allow(deprecated)]
+    let turn_cwd = turn_context.cwd.clone();
+    assert_eq!(
+        inputs,
+        vec![serde_json::json!({
+            "session_id": session.session_id(),
+            "turn_id": "turn_id",
+            "cwd": turn_cwd,
+            "transcript_path": null,
+            "model": turn_context.model_info.slug,
+            "permission_mode": "default",
+            "tool_name": "mcp__memory__create_entities",
+            "hook_event_name": "PermissionRequest",
+            "tool_input": { "entities": [] }
+        })]
+    );
+}
+
+#[tokio::test]
+async fn permission_request_hook_runs_after_remembered_mcp_approval() {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let log_path = install_mcp_permission_request_hook(
+        &mut session,
+        &turn_context,
+        "mcp__memory__.*",
+        &serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": {
+                    "behavior": "deny",
+                    "message": "should be skipped"
+                }
+            }
+        }),
+    );
+    let invocation = McpInvocation {
+        server: "memory".to_string(),
+        tool: "create_entities".to_string(),
+        arguments: Some(serde_json::json!({ "entities": [] })),
+    };
+    let metadata = McpToolApprovalMetadata {
+        annotations: Some(annotations(
+            Some(false),
+            Some(true),
+            /*open_world*/ None,
+        )),
+        connector_id: None,
+        link_id: None,
+        connector_name: None,
+        connector_description: None,
+        connected_account_email: None,
+        plugin_id: None,
+        tool_title: Some("Create entities".to_string()),
+        tool_description: None,
+        mcp_app_resource_uri: None,
+    };
+    let remembered_key =
+        session_mcp_tool_approval_key(&invocation, Some(&metadata), AppToolApproval::Auto)
+            .expect("memory MCP tool should support session approval");
+    remember_mcp_tool_approval(&session, remembered_key).await;
+
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+    let decision = maybe_request_mcp_tool_approval(
+        &session,
+        &StepContext::for_test(Arc::clone(&turn_context)),
+        "call-mcp-remembered",
+        &invocation,
+        &HookToolName::new("mcp__memory__create_entities"),
+        Some(&metadata),
+        AppToolApproval::Auto,
+    )
+    .await;
+
+    assert_eq!(decision, Some(McpToolApprovalDecision::Accept));
+    assert!(
+        !log_path.exists(),
+        "remembered approval should skip PermissionRequest hooks"
+    );
+}
+
+#[tokio::test]
+async fn prompt_mode_waits_for_approval_when_annotations_do_not_require_approval() {
+    let (session, turn_context, _rx_event) = make_session_and_context_with_rx().await;
+    {
+        let mut active_turn = session.active_turn.lock().await;
+        *active_turn = Some(ActiveTurn::default());
+    }
+    let invocation = McpInvocation {
+        server: "custom_server".to_string(),
+        tool: "read_only_tool".to_string(),
+        arguments: None,
+    };
+    let metadata = McpToolApprovalMetadata {
+        annotations: Some(annotations(
+            Some(true),
+            /*destructive*/ None,
+            /*open_world*/ None,
+        )),
+        connector_id: None,
+        link_id: None,
+        connector_name: None,
+        connector_description: None,
+        connected_account_email: None,
+        plugin_id: None,
+        tool_title: Some("Read Only Tool".to_string()),
+        tool_description: None,
+        mcp_app_resource_uri: None,
+    };
+
+    let mut approval_task = {
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        tokio::spawn(async move {
+            maybe_request_mcp_tool_approval(
+                &session,
+                &StepContext::for_test(Arc::clone(&turn_context)),
+                "call-prompt",
+                &invocation,
+                &HookToolName::new("mcp__test__tool"),
+                Some(&metadata),
+                AppToolApproval::Prompt,
+            )
+            .await
+        })
+    };
+
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(200), &mut approval_task)
+            .await
+            .is_err(),
+        "prompt mode should wait for approval instead of auto-allowing"
+    );
+    approval_task.abort();
+}
+
+#[tokio::test]
+async fn full_access_mode_skips_mcp_tool_approval_for_all_approval_modes() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    turn_context
+        .approval_policy
+        .set(AskForApproval::Never)
+        .expect("test setup should allow updating approval policy");
+    turn_context.permission_profile = PermissionProfile::Disabled;
+
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+    let invocation = McpInvocation {
+        server: "playwright".to_string(),
+        tool: "dangerous_tool".to_string(),
+        arguments: Some(serde_json::json!({ "id": 1 })),
+    };
+    let metadata = McpToolApprovalMetadata {
+        annotations: Some(annotations(Some(false), Some(true), Some(true))),
+        connector_id: Some("calendar".to_string()),
+        link_id: None,
+        connector_name: Some("Calendar".to_string()),
+        connector_description: Some("Manage events".to_string()),
+        connected_account_email: None,
+        plugin_id: None,
+        tool_title: Some("Dangerous Tool".to_string()),
+        tool_description: Some("Performs a risky action.".to_string()),
+        mcp_app_resource_uri: None,
+    };
+
+    for approval_mode in [
+        AppToolApproval::Auto,
+        AppToolApproval::Prompt,
+        AppToolApproval::Approve,
+    ] {
+        let decision = maybe_request_mcp_tool_approval(
+            &session,
+            &StepContext::for_test(Arc::clone(&turn_context)),
+            "call-2",
+            &invocation,
+            &HookToolName::new("mcp__test__tool"),
+            Some(&metadata),
+            approval_mode,
+        )
+        .await;
+
+        assert_eq!(decision, None);
+    }
+}

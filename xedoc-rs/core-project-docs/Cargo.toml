@@ -1,0 +1,34 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-project-docs"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_project_docs"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-config = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-core-context = { workspace = true }
+xedoc-core-environment = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-file-system = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+toml = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+xedoc-features = { workspace = true }
+core_test_support = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

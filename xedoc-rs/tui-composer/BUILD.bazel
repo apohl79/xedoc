@@ -1,0 +1,13 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-composer",
+    crate_features = ["test-support"],
+    crate_name = "xedoc_tui_composer",
+    test_data_extra = glob([
+        "src/**/snapshots/**",
+    ]),
+    test_shard_counts = {
+        "tui-composer-unit-tests": 4,
+    },
+)
