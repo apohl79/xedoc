@@ -199,6 +199,29 @@ class Apohl79BazelReleaseTest(unittest.TestCase):
                 ),
             )
 
+    def test_stage_release_binaries_overwrites_read_only_staged_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            source.mkdir()
+            entrypoint = source / "codex"
+            entrypoint.write_text("rebuilt-codex", encoding="utf-8")
+            entrypoint.chmod(0o555)
+            staged = root / "staged"
+            staged.mkdir()
+            stale = staged / "codex"
+            stale.write_text("stale-codex", encoding="utf-8")
+            stale.chmod(0o555)
+
+            result = apohl79_release.stage_release_binaries(
+                apohl79_release.ReleaseBinaries(entrypoint),
+                staged,
+            )
+
+            self.assertEqual(
+                result.entrypoint.read_text(encoding="utf-8"), "rebuilt-codex"
+            )
+
     def test_bazel_status_emits_valid_release_version(self) -> None:
         stdout = io.StringIO()
         with (

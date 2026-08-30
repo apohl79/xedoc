@@ -526,6 +526,9 @@ def stage_release_binaries(
 ) -> ReleaseBinaries:
     staging_dir.mkdir(parents=True, exist_ok=True)
     entrypoint = staging_dir / release_binaries.entrypoint.name
+    # Bazel outputs are read-only and copy2 keeps that mode, so drop any
+    # previously staged binary before overwriting it.
+    entrypoint.unlink(missing_ok=True)
     shutil.copy2(release_binaries.entrypoint, entrypoint)
     return ReleaseBinaries(entrypoint=entrypoint.resolve())
 
