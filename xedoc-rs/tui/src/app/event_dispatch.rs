@@ -471,9 +471,6 @@ impl App {
             AppEvent::OpenUrlInBrowser { url } => {
                 self.open_url_in_browser(url);
             }
-            AppEvent::OpenDesktopThread { thread_id } => {
-                self.open_desktop_thread(thread_id);
-            }
             AppEvent::FetchPluginsList { cwd } => {
                 self.fetch_plugins_list(app_server, cwd);
             }

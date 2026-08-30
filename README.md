@@ -5,7 +5,6 @@ This `apohl79/codex` fork tracks upstream Xedoc on `main-fork` with substantial 
 </p>
 </br>
 If you want Xedoc in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
-</br>If you want the desktop app experience, run <code>xedoc app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Xedoc App page</a>.
 </br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Xedoc Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
 
 ---

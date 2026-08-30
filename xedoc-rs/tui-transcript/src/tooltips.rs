@@ -6,14 +6,9 @@ use xedoc_protocol::account::PlanType;
 const ANNOUNCEMENT_TIP_URL: &str =
     "https://raw.githubusercontent.com/openai/codex/main/announcement_tip.toml";
 
-const IS_MACOS: bool = cfg!(target_os = "macos");
-const IS_WINDOWS: bool = cfg!(target_os = "windows");
-
-const APP_TOOLTIP: &str = "Try the **Desktop app**. Run 'xedoc app' or visit https://chatgpt.com/codex?app-landing-page=true";
 const FAST_TOOLTIP: &str =
     "*New* Use **/fast** to enable our fastest inference with increased plan usage.";
-const OTHER_TOOLTIP: &str = "*New* Build faster with the **Desktop app**. Run 'xedoc app' or visit https://chatgpt.com/codex?app-landing-page=true";
-const OTHER_TOOLTIP_NON_MAC: &str = "*New* Build faster with Xedoc.";
+const OTHER_TOOLTIP: &str = "*New* Build faster with Xedoc.";
 const FREE_GO_TOOLTIP: &str =
     "*New* For a limited time, Xedoc is included in your plan for free – let’s build together.";
 
@@ -23,15 +18,7 @@ lazy_static! {
     static ref TOOLTIPS: Vec<&'static str> = RAW_TOOLTIPS
         .lines()
         .map(str::trim)
-        .filter(|line| {
-            if line.is_empty() || line.starts_with('#') {
-                return false;
-            }
-            if !IS_MACOS && !IS_WINDOWS && line.contains("xedoc app") {
-                return false;
-            }
-            true
-        })
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .collect();
     static ref ALL_TOOLTIPS: Vec<&'static str> = {
         let mut tips = Vec::new();
@@ -66,7 +53,7 @@ pub fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Option<St
                 ) || plan_type.is_team_like()
                     || plan_type.is_business_like() =>
             {
-                if let Some(tooltip) = pick_paid_tooltip(&mut rng, fast_mode_enabled) {
+                if let Some(tooltip) = pick_paid_tooltip(fast_mode_enabled) {
                     return Some(tooltip.to_string());
                 }
             }
@@ -74,12 +61,7 @@ pub fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Option<St
                 return Some(FREE_GO_TOOLTIP.to_string());
             }
             _ => {
-                let tooltip = if IS_MACOS {
-                    OTHER_TOOLTIP
-                } else {
-                    OTHER_TOOLTIP_NON_MAC
-                };
-                return Some(tooltip.to_string());
+                return Some(OTHER_TOOLTIP.to_string());
             }
         }
     }
@@ -87,24 +69,12 @@ pub fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Option<St
     pick_tooltip(&mut rng).map(str::to_string)
 }
 
-fn paid_app_tooltip() -> Option<&'static str> {
-    if IS_MACOS || IS_WINDOWS {
-        Some(APP_TOOLTIP)
-    } else {
-        None
-    }
-}
-
 /// Paid users spend most startup sessions in a dedicated promo slot rather than the
-/// generic random tip pool. Keep this business logic explicit: we currently split
-/// that slot between the app promo and Fast mode, but suppress the Fast promo once
-/// the user already has Fast mode enabled.
-fn pick_paid_tooltip<R: Rng + ?Sized>(
-    rng: &mut R,
-    fast_mode_enabled: bool,
-) -> Option<&'static str> {
-    if fast_mode_enabled || rng.random_bool(0.5) {
-        paid_app_tooltip()
+/// generic random tip pool. That slot only promotes Fast mode, so it is suppressed
+/// once the user already has Fast mode enabled.
+fn pick_paid_tooltip(fast_mode_enabled: bool) -> Option<&'static str> {
+    if fast_mode_enabled {
+        None
     } else {
         Some(FAST_TOOLTIP)
     }
@@ -344,30 +314,16 @@ mod tests {
     }
 
     #[test]
-    fn paid_tooltip_pool_rotates_between_promos() {
-        let mut seen = std::collections::BTreeSet::new();
-        for seed in 0..32 {
-            let mut rng = StdRng::seed_from_u64(seed);
-            seen.insert(pick_paid_tooltip(
-                &mut rng, /*fast_mode_enabled*/ false,
-            ));
-        }
-
-        let expected = std::collections::BTreeSet::from([paid_app_tooltip(), Some(FAST_TOOLTIP)]);
-        assert_eq!(seen, expected);
+    fn paid_tooltip_promotes_fast_mode_when_disabled() {
+        assert_eq!(
+            pick_paid_tooltip(/*fast_mode_enabled*/ false),
+            Some(FAST_TOOLTIP)
+        );
     }
 
     #[test]
     fn paid_tooltip_pool_skips_fast_when_fast_mode_is_enabled() {
-        let mut seen = std::collections::BTreeSet::new();
-        for seed in 0..8 {
-            let mut rng = StdRng::seed_from_u64(seed);
-            seen.insert(pick_paid_tooltip(&mut rng, /*fast_mode_enabled*/ true));
-        }
-
-        let expected = std::collections::BTreeSet::from([paid_app_tooltip()]);
-        assert_eq!(seen, expected);
-        assert!(!seen.contains(&Some(FAST_TOOLTIP)));
+        assert_eq!(pick_paid_tooltip(/*fast_mode_enabled*/ true), None);
     }
 
     #[test]

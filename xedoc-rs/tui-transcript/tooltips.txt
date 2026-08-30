@@ -10,7 +10,6 @@ Use /fork to branch the current chat into a new thread.
 Use /side to start a side conversation in a temporary fork without polluting the main thread.
 Use /init to create an AGENTS.md with project-specific guidance.
 Use /mcp to list configured MCP tools.
-Run `xedoc app` to open the Desktop app (it installs on macOS if needed).
 Use /personality to customize how Xedoc communicates.
 Use /rename to rename your threads for easier thread resuming.
 Use the OpenAI docs MCP for API questions; enable it with `xedoc mcp add openaiDeveloperDocs --url https://developers.openai.com/mcp`.

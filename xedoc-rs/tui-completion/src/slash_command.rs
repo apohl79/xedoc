@@ -27,7 +27,6 @@ pub enum SlashCommand {
     Delete,
     Resume,
     Fork,
-    App,
     Init,
     Compact,
     Plan,
@@ -74,7 +73,6 @@ impl SlashCommand {
             SlashCommand::Delete => "permanently delete this session and exit",
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
-            SlashCommand::App => "continue this session in the Desktop app",
             SlashCommand::Quit | SlashCommand::Exit => "exit Xedoc",
             SlashCommand::Copy => "copy last response as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
@@ -180,7 +178,6 @@ impl SlashCommand {
             | SlashCommand::DebugConfig
             | SlashCommand::Ps
             | SlashCommand::Stop
-            | SlashCommand::App
             | SlashCommand::Goal
             | SlashCommand::Mcp
             | SlashCommand::Plugins
@@ -201,7 +198,6 @@ impl SlashCommand {
     fn is_visible(self) -> bool {
         match self {
             SlashCommand::Copy => !cfg!(target_os = "android"),
-            SlashCommand::App => cfg!(any(target_os = "macos", target_os = "windows")),
             SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
             _ => true,
         }
@@ -242,6 +238,5 @@ mod tests {
         assert!(SlashCommand::Raw.available_during_task());
         assert!(SlashCommand::Raw.available_in_side_conversation());
         assert!(SlashCommand::Raw.supports_inline_args());
-        assert!(SlashCommand::App.available_during_task());
     }
 }

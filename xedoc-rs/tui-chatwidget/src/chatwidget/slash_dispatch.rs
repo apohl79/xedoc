@@ -226,16 +226,6 @@ impl ChatWidget {
             SlashCommand::Fork => {
                 self.app_event_tx.send(AppEvent::ForkCurrentSession);
             }
-            SlashCommand::App => {
-                let Some(thread_id) = self.thread_id else {
-                    self.add_error_message(
-                        "Session is still starting; try /app again in a moment.".to_string(),
-                    );
-                    return;
-                };
-                self.app_event_tx
-                    .send(AppEvent::OpenDesktopThread { thread_id });
-            }
             SlashCommand::Init => {
                 const INIT_PROMPT: &str = include_str!("../../prompt_for_init_command.md");
                 self.submit_user_message(INIT_PROMPT.to_string().into());
@@ -928,7 +918,6 @@ impl ChatWidget {
             | SlashCommand::Raw
             | SlashCommand::Vim
             | SlashCommand::Diff
-            | SlashCommand::App
             | SlashCommand::Rename
             | SlashCommand::TestApproval => QueueDrain::Continue,
             SlashCommand::New

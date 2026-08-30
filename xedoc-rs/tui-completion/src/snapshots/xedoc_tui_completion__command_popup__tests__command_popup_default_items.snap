@@ -17,7 +17,6 @@ expression: commands
 /delete - permanently delete this session and exit
 /resume - resume a saved chat
 /fork - fork the current chat
-/app - continue this session in the Desktop app
 /init - create an AGENTS.md file with instructions for Xedoc
 /compact - summarize conversation to prevent hitting the context limit
 /agent - switch the active agent thread
