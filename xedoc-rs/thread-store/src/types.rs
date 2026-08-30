@@ -328,6 +328,7 @@ pub struct StoredTurnError {
     /// User-visible error message.
     pub message: String,
     /// Structured Xedoc error classification, when available.
+    #[serde(rename = "codexErrorInfo")]
     pub xedoc_error_info: Option<XedocErrorInfo>,
     /// Optional additional detail for clients that expose expanded error context.
     pub additional_details: Option<String>,

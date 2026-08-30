@@ -7,6 +7,14 @@
     }
   },
   "properties": {
+    "codexHome": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/AbsolutePathBuf"
+        }
+      ],
+      "description": "Absolute path to the server's $XEDOC_HOME directory."
+    },
     "platformFamily": {
       "description": "Platform family for the running app-server target, for example `\"unix\"` or `\"windows\"`.",
       "type": "string"
@@ -17,21 +25,13 @@
     },
     "userAgent": {
       "type": "string"
-    },
-    "xedocHome": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/AbsolutePathBuf"
-        }
-      ],
-      "description": "Absolute path to the server's $XEDOC_HOME directory."
     }
   },
   "required": [
+    "codexHome",
     "platformFamily",
     "platformOs",
-    "userAgent",
-    "xedocHome"
+    "userAgent"
   ],
   "title": "InitializeResponse",
   "type": "object"

@@ -86,7 +86,7 @@ async fn start_recording_app_server(
                                 id: request.id,
                                 result: serde_json::json!({
                                     "userAgent": "xedoc-tui-test",
-                                    "xedocHome": xedoc_home,
+                                    "codexHome": xedoc_home,
                                 }),
                             }))?
                             .into(),
@@ -165,7 +165,7 @@ async fn forward_remote_app_server_message(
                         id: request.id,
                         result: serde_json::json!({
                             "userAgent": "xedoc-tui-test",
-                            "xedocHome": xedoc_home,
+                            "codexHome": xedoc_home,
                         }),
                     }))?
                     .into(),

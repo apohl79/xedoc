@@ -27,7 +27,7 @@ async fn list_turns_pages_projected_rows_and_applies_item_views() {
             20,
             "failed",
             Some(
-                r#"{"message":"turn failed","xedocErrorInfo":"serverOverloaded","additionalDetails":"retry later"}"#,
+                r#"{"message":"turn failed","codexErrorInfo":"serverOverloaded","additionalDetails":"retry later"}"#,
             ),
             None,
             None,

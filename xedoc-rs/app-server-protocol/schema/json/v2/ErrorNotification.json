@@ -1,43 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "NonSteerableTurnKind": {
-      "enum": [
-        "review",
-        "compact"
-      ],
-      "type": "string"
-    },
-    "TurnError": {
-      "properties": {
-        "additionalDetails": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "message": {
-          "type": "string"
-        },
-        "xedocErrorInfo": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/XedocErrorInfo"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "type": "object"
-    },
-    "XedocErrorInfo": {
-      "description": "This translation layer make sure that we expose xedoc error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `xedocErrorInfo` variant.",
+    "CodexErrorInfo": {
+      "description": "This translation layer make sure that we expose xedoc error code in camel case. The wire name stays `CodexErrorInfo` / `codexErrorInfo` for client compatibility.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
       "oneOf": [
         {
           "enum": [
@@ -75,7 +40,7 @@
           "required": [
             "httpConnectionFailed"
           ],
-          "title": "HttpConnectionFailedXedocErrorInfo",
+          "title": "HttpConnectionFailedCodexErrorInfo",
           "type": "object"
         },
         {
@@ -99,7 +64,7 @@
           "required": [
             "responseStreamConnectionFailed"
           ],
-          "title": "ResponseStreamConnectionFailedXedocErrorInfo",
+          "title": "ResponseStreamConnectionFailedCodexErrorInfo",
           "type": "object"
         },
         {
@@ -123,7 +88,7 @@
           "required": [
             "responseStreamDisconnected"
           ],
-          "title": "ResponseStreamDisconnectedXedocErrorInfo",
+          "title": "ResponseStreamDisconnectedCodexErrorInfo",
           "type": "object"
         },
         {
@@ -147,7 +112,7 @@
           "required": [
             "responseTooManyFailedAttempts"
           ],
-          "title": "ResponseTooManyFailedAttemptsXedocErrorInfo",
+          "title": "ResponseTooManyFailedAttemptsCodexErrorInfo",
           "type": "object"
         },
         {
@@ -169,10 +134,45 @@
           "required": [
             "activeTurnNotSteerable"
           ],
-          "title": "ActiveTurnNotSteerableXedocErrorInfo",
+          "title": "ActiveTurnNotSteerableCodexErrorInfo",
           "type": "object"
         }
       ]
+    },
+    "NonSteerableTurnKind": {
+      "enum": [
+        "review",
+        "compact"
+      ],
+      "type": "string"
+    },
+    "TurnError": {
+      "properties": {
+        "additionalDetails": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "codexErrorInfo": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CodexErrorInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
     }
   },
   "properties": {

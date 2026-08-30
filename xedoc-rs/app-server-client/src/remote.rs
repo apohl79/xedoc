@@ -836,7 +836,7 @@ where
                                 });
                             xedoc_home = response
                                 .result
-                                .get("xedocHome")
+                                .get("codexHome")
                                 .and_then(serde_json::Value::as_str)
                                 .filter(|xedoc_home| !xedoc_home.is_empty())
                                 .map(str::to_string);

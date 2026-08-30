@@ -273,6 +273,8 @@ pub enum TurnItemsView {
 #[error("{message}")]
 pub struct TurnError {
     pub message: String,
+    #[serde(rename = "codexErrorInfo")]
+    #[ts(rename = "codexErrorInfo")]
     pub xedoc_error_info: Option<XedocErrorInfo>,
     #[serde(default)]
     pub additional_details: Option<String>,

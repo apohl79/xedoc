@@ -75,6 +75,8 @@ pub enum ConfigLayerSource {
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
     Project {
+        #[serde(rename = "dotCodexFolder")]
+        #[ts(rename = "dotCodexFolder")]
         dot_xedoc_folder: AbsolutePathBuf,
     },
 
