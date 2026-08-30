@@ -342,7 +342,7 @@ impl MessageProcessor {
             Arc::clone(&goal_service),
         );
         let thread_processor = ThreadRequestProcessor::new(
-            auth_manager.clone(),
+            auth_manager,
             Arc::clone(&thread_manager),
             outgoing.clone(),
             arg0_paths.clone(),
@@ -354,7 +354,7 @@ impl MessageProcessor {
             thread_watch_manager.clone(),
             Arc::clone(&thread_list_state_permit),
             thread_goal_processor.clone(),
-            state_db.clone(),
+            state_db,
             log_db,
             Arc::clone(&skills_watcher),
             config_warnings,
@@ -362,9 +362,9 @@ impl MessageProcessor {
         let turn_processor = TurnRequestProcessor::new(
             Arc::clone(&thread_manager),
             outgoing.clone(),
-            arg0_paths.clone(),
+            arg0_paths,
             Arc::clone(&config),
-            config_manager.clone(),
+            config_manager,
             pending_thread_unloads,
             thread_state_manager,
             thread_watch_manager,

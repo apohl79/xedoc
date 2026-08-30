@@ -241,10 +241,7 @@ deny_read = [{high_path:?}, {low_path:?}]
     );
     assert_eq!(
         composed.allowed_approval_policies,
-        Some(Sourced::new(
-            vec![AskForApproval::Never],
-            mdm_source.clone()
-        ))
+        Some(Sourced::new(vec![AskForApproval::Never], mdm_source))
     );
 }
 
