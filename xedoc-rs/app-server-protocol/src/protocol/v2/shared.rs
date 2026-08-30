@@ -55,11 +55,13 @@ pub enum NonSteerableTurnKind {
 }
 
 /// This translation layer make sure that we expose xedoc error code in camel case.
+/// The wire name stays `CodexErrorInfo` / `codexErrorInfo` for client compatibility.
 ///
 /// When an upstream HTTP status is available (for example, from the Responses API or a provider),
-/// it is forwarded in `httpStatusCode` on the relevant `xedocErrorInfo` variant.
+/// it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename = "CodexErrorInfo", rename_all = "camelCase")]
+#[ts(rename = "CodexErrorInfo")]
 #[ts(export_to = "v2/")]
 pub enum XedocErrorInfo {
     ContextWindowExceeded,

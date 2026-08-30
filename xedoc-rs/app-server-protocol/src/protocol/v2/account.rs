@@ -32,7 +32,8 @@ pub enum Account {
     #[serde(rename = "amazonBedrock", rename_all = "camelCase")]
     #[ts(rename = "amazonBedrock", rename_all = "camelCase")]
     AmazonBedrock {
-        #[serde(default)]
+        #[serde(default, rename = "usesCodexManagedCredentials")]
+        #[ts(rename = "usesCodexManagedCredentials")]
         uses_xedoc_managed_credentials: bool,
     },
 }
@@ -114,6 +115,8 @@ pub enum LoginAccountParams {
 #[ts(export_to = "v2/")]
 pub enum LoginAppBrand {
     #[default]
+    #[serde(rename = "codex")]
+    #[ts(rename = "codex")]
     Xedoc,
     Chatgpt,
 }

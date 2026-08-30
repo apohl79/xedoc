@@ -1095,7 +1095,7 @@ mod tests {
                 id: request.id,
                 result: serde_json::json!({
                     "userAgent": "codex_cli_rs/9.8.7-test (Test OS; x86_64) rust",
-                    "xedocHome": "/server/.xedoc",
+                    "codexHome": "/server/.xedoc",
                 }),
             }),
         )

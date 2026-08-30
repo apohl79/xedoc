@@ -2621,7 +2621,7 @@ mod tests {
         assert_eq!(
             json!({
                 "type": "amazonBedrock",
-                "usesXedocManagedCredentials": true,
+                "usesCodexManagedCredentials": true,
             }),
             serde_json::to_value(&xedoc_managed_bedrock)?,
         );
@@ -2632,7 +2632,7 @@ mod tests {
         assert_eq!(
             json!({
                 "type": "amazonBedrock",
-                "usesXedocManagedCredentials": false,
+                "usesCodexManagedCredentials": false,
             }),
             serde_json::to_value(&externally_managed_bedrock)?,
         );

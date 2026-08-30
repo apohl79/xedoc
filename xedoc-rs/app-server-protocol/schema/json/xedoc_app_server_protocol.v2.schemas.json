@@ -59,7 +59,7 @@
               "title": "AmazonBedrockAccountType",
               "type": "string"
             },
-            "usesXedocManagedCredentials": {
+            "usesCodexManagedCredentials": {
               "default": false,
               "type": "boolean"
             }
@@ -2267,6 +2267,144 @@
       ],
       "title": "ClientRequest"
     },
+    "CodexErrorInfo": {
+      "description": "This translation layer make sure that we expose xedoc error code in camel case. The wire name stays `CodexErrorInfo` / `codexErrorInfo` for client compatibility.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
+      "oneOf": [
+        {
+          "enum": [
+            "contextWindowExceeded",
+            "sessionBudgetExceeded",
+            "usageLimitExceeded",
+            "serverOverloaded",
+            "cyberPolicy",
+            "internalServerError",
+            "unauthorized",
+            "badRequest",
+            "threadRollbackFailed",
+            "sandboxError",
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "httpConnectionFailed": {
+              "properties": {
+                "httpStatusCode": {
+                  "format": "uint16",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "httpConnectionFailed"
+          ],
+          "title": "HttpConnectionFailedCodexErrorInfo",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Failed to connect to the response SSE stream.",
+          "properties": {
+            "responseStreamConnectionFailed": {
+              "properties": {
+                "httpStatusCode": {
+                  "format": "uint16",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "responseStreamConnectionFailed"
+          ],
+          "title": "ResponseStreamConnectionFailedCodexErrorInfo",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The response SSE stream disconnected in the middle of a turn before completion.",
+          "properties": {
+            "responseStreamDisconnected": {
+              "properties": {
+                "httpStatusCode": {
+                  "format": "uint16",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "responseStreamDisconnected"
+          ],
+          "title": "ResponseStreamDisconnectedCodexErrorInfo",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Reached the retry limit for responses.",
+          "properties": {
+            "responseTooManyFailedAttempts": {
+              "properties": {
+                "httpStatusCode": {
+                  "format": "uint16",
+                  "minimum": 0.0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "responseTooManyFailedAttempts"
+          ],
+          "title": "ResponseTooManyFailedAttemptsCodexErrorInfo",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+          "properties": {
+            "activeTurnNotSteerable": {
+              "properties": {
+                "turnKind": {
+                  "$ref": "#/definitions/NonSteerableTurnKind"
+                }
+              },
+              "required": [
+                "turnKind"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "activeTurnNotSteerable"
+          ],
+          "title": "ActiveTurnNotSteerableCodexErrorInfo",
+          "type": "object"
+        }
+      ]
+    },
     "CollabAgentState": {
       "properties": {
         "message": {
@@ -3230,7 +3368,7 @@
         {
           "description": "Path to a .xedoc/ folder within a project. There could be multiple of these between `cwd` and the project/repo root.",
           "properties": {
-            "dotXedocFolder": {
+            "dotCodexFolder": {
               "$ref": "#/definitions/AbsolutePathBuf"
             },
             "type": {
@@ -3242,7 +3380,7 @@
             }
           },
           "required": [
-            "dotXedocFolder",
+            "dotCodexFolder",
             "type"
           ],
           "title": "ProjectConfigLayerSource",
@@ -5898,7 +6036,7 @@
     },
     "LoginAppBrand": {
       "enum": [
-        "xedoc",
+        "codex",
         "chatgpt"
       ],
       "type": "string"
@@ -14234,18 +14372,18 @@
             "null"
           ]
         },
-        "message": {
-          "type": "string"
-        },
-        "xedocErrorInfo": {
+        "codexErrorInfo": {
           "anyOf": [
             {
-              "$ref": "#/definitions/XedocErrorInfo"
+              "$ref": "#/definitions/CodexErrorInfo"
             },
             {
               "type": "null"
             }
           ]
+        },
+        "message": {
+          "type": "string"
         }
       },
       "required": [
@@ -15035,146 +15173,8 @@
         "okOverridden"
       ],
       "type": "string"
-    },
-    "XedocErrorInfo": {
-      "description": "This translation layer make sure that we expose xedoc error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `xedocErrorInfo` variant.",
-      "oneOf": [
-        {
-          "enum": [
-            "contextWindowExceeded",
-            "sessionBudgetExceeded",
-            "usageLimitExceeded",
-            "serverOverloaded",
-            "cyberPolicy",
-            "internalServerError",
-            "unauthorized",
-            "badRequest",
-            "threadRollbackFailed",
-            "sandboxError",
-            "other"
-          ],
-          "type": "string"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "httpConnectionFailed": {
-              "properties": {
-                "httpStatusCode": {
-                  "format": "uint16",
-                  "minimum": 0.0,
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "httpConnectionFailed"
-          ],
-          "title": "HttpConnectionFailedXedocErrorInfo",
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "Failed to connect to the response SSE stream.",
-          "properties": {
-            "responseStreamConnectionFailed": {
-              "properties": {
-                "httpStatusCode": {
-                  "format": "uint16",
-                  "minimum": 0.0,
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "responseStreamConnectionFailed"
-          ],
-          "title": "ResponseStreamConnectionFailedXedocErrorInfo",
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "The response SSE stream disconnected in the middle of a turn before completion.",
-          "properties": {
-            "responseStreamDisconnected": {
-              "properties": {
-                "httpStatusCode": {
-                  "format": "uint16",
-                  "minimum": 0.0,
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "responseStreamDisconnected"
-          ],
-          "title": "ResponseStreamDisconnectedXedocErrorInfo",
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "Reached the retry limit for responses.",
-          "properties": {
-            "responseTooManyFailedAttempts": {
-              "properties": {
-                "httpStatusCode": {
-                  "format": "uint16",
-                  "minimum": 0.0,
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "responseTooManyFailedAttempts"
-          ],
-          "title": "ResponseTooManyFailedAttemptsXedocErrorInfo",
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
-          "properties": {
-            "activeTurnNotSteerable": {
-              "properties": {
-                "turnKind": {
-                  "$ref": "#/definitions/NonSteerableTurnKind"
-                }
-              },
-              "required": [
-                "turnKind"
-              ],
-              "type": "object"
-            }
-          },
-          "required": [
-            "activeTurnNotSteerable"
-          ],
-          "title": "ActiveTurnNotSteerableXedocErrorInfo",
-          "type": "object"
-        }
-      ]
     }
   },
-  "title": "XedocAppServerProtocolV2",
+  "title": "CodexAppServerProtocolV2",
   "type": "object"
 }

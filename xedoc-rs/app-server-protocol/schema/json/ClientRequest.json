@@ -1380,7 +1380,7 @@
     },
     "LoginAppBrand": {
       "enum": [
-        "xedoc",
+        "codex",
         "chatgpt"
       ],
       "type": "string"

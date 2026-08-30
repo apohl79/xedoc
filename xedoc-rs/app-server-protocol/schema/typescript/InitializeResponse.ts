@@ -7,7 +7,7 @@ export type InitializeResponse = { userAgent: string,
 /**
  * Absolute path to the server's $XEDOC_HOME directory.
  */
-xedocHome: AbsolutePathBuf,
+codexHome: AbsolutePathBuf,
 /**
  * Platform family for the running app-server target, for example
  * `"unix"` or `"windows"`.

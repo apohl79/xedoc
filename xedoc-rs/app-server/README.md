@@ -81,7 +81,7 @@ Use the thread APIs to create, list, or archive conversations. Drive a conversat
 
 ## Initialization
 
-Clients must send a single `initialize` request per transport connection before invoking any other method on that connection, then acknowledge with an `initialized` notification. The server returns the user agent string it will present to upstream services, `xedocHome` for the server's Xedoc home directory, and `platformFamily` and `platformOs` strings describing the app-server runtime target; subsequent requests issued before initialization receive a `"Not initialized"` error, and repeated `initialize` calls on the same connection receive an `"Already initialized"` error.
+Clients must send a single `initialize` request per transport connection before invoking any other method on that connection, then acknowledge with an `initialized` notification. The server returns the user agent string it will present to upstream services, `codexHome` for the server's Xedoc home directory, and `platformFamily` and `platformOs` strings describing the app-server runtime target; subsequent requests issued before initialization receive a `"Not initialized"` error, and repeated `initialize` calls on the same connection receive an `"Already initialized"` error.
 
 `initialize.params.capabilities` also supports per-connection notification opt-out via `optOutNotificationMethods`, which is a list of exact method names to suppress for that connection. Matching is exact (no wildcards/prefixes). Unknown method names are accepted and ignored.
 
@@ -1274,7 +1274,7 @@ The fuzzy file search session API emits per-query notifications:
 The app-server streams JSON-RPC notifications while a turn is running. Each turn emits `turn/started` when it begins running and ends with `turn/completed` (final `turn` status). Token usage events stream separately via `thread/tokenUsage/updated`. Clients subscribe to the events they care about, rendering each item incrementally as updates arrive. The per-item lifecycle is always: `item/started` → zero or more item-specific deltas → `item/completed`.
 
 - `turn/started` — `{ turn }` with the turn id, empty `items`, and `status: "inProgress"`.
-- `turn/completed` — `{ turn }` where `turn.status` is `completed`, `interrupted`, or `failed`; failures carry `{ error: { message, xedocErrorInfo?, additionalDetails? } }`.
+- `turn/completed` — `{ turn }` where `turn.status` is `completed`, `interrupted`, or `failed`; failures carry `{ error: { message, codexErrorInfo?, additionalDetails? } }`.
 - `turn/diff/updated` — `{ threadId, turnId, diff }` represents the up-to-date snapshot of the turn-level unified diff, emitted after every FileChange item. `diff` is the latest aggregated unified diff across every file change in the turn. UIs can render this to show the full "what changed" view without stitching individual `fileChange` items.
 - `turn/plan/updated` — `{ turnId, explanation?, plan }` whenever the agent shares or changes its plan; each `plan` entry is `{ step, status }` with `status` in `pending`, `inProgress`, or `completed`.
 - `rawResponse/completed` — internal-only; when `thread/start.experimentalRawEvents` is enabled, emits `{ threadId, turnId, responseId, usage }` once for each upstream Responses API completion. `usage` is the exact upstream usage payload mapped to the app-server token breakdown shape and is `null` when the upstream completion omitted usage. Unlike `thread/tokenUsage/updated`, this notification is not accumulated, estimated, persisted, or replayed.
@@ -1339,9 +1339,9 @@ There are additional item-specific events:
 
 ### Errors
 
-`error` event is emitted whenever the server hits an error mid-turn (for example, upstream model errors or quota limits). Carries the same `{ error: { message, xedocErrorInfo?, additionalDetails? } }` payload as `turn.status: "failed"` and may precede that terminal notification.
+`error` event is emitted whenever the server hits an error mid-turn (for example, upstream model errors or quota limits). Carries the same `{ error: { message, codexErrorInfo?, additionalDetails? } }` payload as `turn.status: "failed"` and may precede that terminal notification.
 
-`xedocErrorInfo` maps to the `XedocErrorInfo` enum. Common values:
+`codexErrorInfo` maps to the `CodexErrorInfo` enum. Common values:
 
 - `ContextWindowExceeded`
 - `SessionBudgetExceeded`
@@ -1358,7 +1358,7 @@ There are additional item-specific events:
 - `InternalServerError`
 - `Other`: all unclassified errors
 
-When an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `xedocErrorInfo` variant.
+When an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.
 
 ## Approvals
 
@@ -1741,7 +1741,7 @@ Response examples:
 
 ```json
 { "id": 1, "result": { "account": { "type": "chatgpt", "email": "user@example.com", "planType": "pro" }, "requiresOpenaiAuth": true } }
-{ "id": 1, "result": { "account": { "type": "amazonBedrock", "usesXedocManagedCredentials": false }, "requiresOpenaiAuth": false } }
+{ "id": 1, "result": { "account": { "type": "amazonBedrock", "usesCodexManagedCredentials": false }, "requiresOpenaiAuth": false } }
 ```
 
 Field notes:
@@ -1749,7 +1749,7 @@ Field notes:
 - `refreshToken` (bool): set `true` to force a token refresh.
 - `email` is `null` when the ChatGPT account does not have an email address.
 - `requiresOpenaiAuth` reflects the active provider; when `false`, Xedoc can run without OpenAI credentials.
-- Amazon Bedrock reports `usesXedocManagedCredentials: true` when it uses a Bedrock API key managed by Xedoc. It reports `false` for external credential paths, including the AWS credential chain and configured command auth. This identifies whether Xedoc-managed credentials are selected; it does not validate that the credential source can resolve credentials.
+- Amazon Bedrock reports `usesCodexManagedCredentials: true` when it uses a Bedrock API key managed by Xedoc. It reports `false` for external credential paths, including the AWS credential chain and configured command auth. This identifies whether Xedoc-managed credentials are selected; it does not validate that the credential source can resolve credentials.
 
 ### 2) Log in with an API key
 

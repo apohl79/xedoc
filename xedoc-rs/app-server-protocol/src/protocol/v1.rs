@@ -61,6 +61,8 @@ pub struct InitializeCapabilities {
 pub struct InitializeResponse {
     pub user_agent: String,
     /// Absolute path to the server's $XEDOC_HOME directory.
+    #[serde(rename = "codexHome")]
+    #[ts(rename = "codexHome")]
     pub xedoc_home: AbsolutePathBuf,
     /// Platform family for the running app-server target, for example
     /// `"unix"` or `"windows"`.

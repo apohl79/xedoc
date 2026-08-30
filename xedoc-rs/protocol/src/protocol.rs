@@ -1398,9 +1398,11 @@ pub enum NonSteerableTurnKind {
     Compact,
 }
 
-/// Xedoc errors that we expose to clients.
+/// Xedoc errors that we expose to clients. Wire name stays `CodexErrorInfo`
+/// so persisted rollouts and existing clients keep working.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename = "CodexErrorInfo", rename_all = "snake_case")]
+#[ts(rename = "CodexErrorInfo")]
 #[ts(rename_all = "snake_case")]
 pub enum XedocErrorInfo {
     ContextWindowExceeded,
@@ -1565,7 +1567,8 @@ pub struct ExitedReviewModeEvent {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 pub struct ErrorEvent {
     pub message: String,
-    #[serde(default)]
+    #[serde(default, rename = "codex_error_info")]
+    #[ts(rename = "codex_error_info")]
     pub xedoc_error_info: Option<XedocErrorInfo>,
 }
 
@@ -3296,7 +3299,8 @@ pub struct ThreadRolledBackEvent {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct StreamErrorEvent {
     pub message: String,
-    #[serde(default)]
+    #[serde(default, rename = "codex_error_info")]
+    #[ts(rename = "codex_error_info")]
     pub xedoc_error_info: Option<XedocErrorInfo>,
     /// Optional details about the underlying stream failure (often the same
     /// human-readable message that is surfaced as the terminal error if retries

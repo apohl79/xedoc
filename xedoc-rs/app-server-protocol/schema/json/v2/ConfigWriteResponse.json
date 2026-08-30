@@ -136,7 +136,7 @@
         {
           "description": "Path to a .xedoc/ folder within a project. There could be multiple of these between `cwd` and the project/repo root.",
           "properties": {
-            "dotXedocFolder": {
+            "dotCodexFolder": {
               "$ref": "#/definitions/AbsolutePathBuf"
             },
             "type": {
@@ -148,7 +148,7 @@
             }
           },
           "required": [
-            "dotXedocFolder",
+            "dotCodexFolder",
             "type"
           ],
           "title": "ProjectConfigLayerSource",
