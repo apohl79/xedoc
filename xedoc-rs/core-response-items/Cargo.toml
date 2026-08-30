@@ -1,0 +1,23 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-response-items"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_response_items"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core-context = { workspace = true }
+xedoc-core-context-manager = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-stream-parser = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

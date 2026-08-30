@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+import json
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from xedoc_package.layout import build_package_dir
+from xedoc_package.layout import validate_package_dir
+from xedoc_package.targets import PACKAGE_VARIANTS
+from xedoc_package.targets import PackageInputs
+from xedoc_package.targets import TARGET_SPECS
+
+
+class PackageLayoutTest(unittest.TestCase):
+    def test_default_package_layout_excludes_session_control(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            package_dir = root / "package"
+            package_dir.mkdir()
+            inputs = PackageInputs(
+                entrypoint_bin=touch_executable(root / "xedoc"),
+                rg_bin=touch_executable(root / "rg"),
+                zsh_bin=None,
+                bwrap_bin=touch_executable(root / "bwrap"),
+            )
+
+            build_package_dir(
+                package_dir,
+                "1.2.3",
+                PACKAGE_VARIANTS["xedoc"],
+                TARGET_SPECS["x86_64-unknown-linux-musl"],
+                inputs,
+            )
+            validate_package_dir(
+                package_dir,
+                PACKAGE_VARIANTS["xedoc"],
+                TARGET_SPECS["x86_64-unknown-linux-musl"],
+                include_zsh=False,
+            )
+
+            metadata = json.loads(
+                (package_dir / "xedoc-package.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                {
+                    "layout_version": metadata["layoutVersion"],
+                    "session_control": (package_dir / "bin" / "xedoc-session").exists(),
+                },
+                {"layout_version": 1, "session_control": False},
+            )
+
+    def test_app_server_package_places_session_control_beside_entrypoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            package_dir = root / "package"
+            package_dir.mkdir()
+            inputs = PackageInputs(
+                entrypoint_bin=touch_executable(root / "xedoc-app-server"),
+                rg_bin=touch_executable(root / "rg"),
+                zsh_bin=None,
+                bwrap_bin=touch_executable(root / "bwrap"),
+            )
+
+            build_package_dir(
+                package_dir,
+                "1.2.3",
+                PACKAGE_VARIANTS["xedoc-app-server"],
+                TARGET_SPECS["x86_64-unknown-linux-musl"],
+                inputs,
+                include_session_control=True,
+            )
+            validate_package_dir(
+                package_dir,
+                PACKAGE_VARIANTS["xedoc-app-server"],
+                TARGET_SPECS["x86_64-unknown-linux-musl"],
+                include_zsh=False,
+                include_session_control=True,
+            )
+
+            self.assertEqual(
+                {
+                    name: (package_dir / "bin" / name).is_file()
+                    for name in ("xedoc-app-server", "xedoc-session")
+                },
+                {"xedoc-app-server": True, "xedoc-session": True},
+            )
+
+
+def touch_executable(path: Path) -> Path:
+    path.touch(mode=0o755)
+    return path
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        working-directory: codex-rs
+        working-directory: xedoc-rs
     env:
       # Windows ARM64 archives are built on Windows x64, while their shards run
       # on native Windows ARM64. Key producer-side caches by the archive runner
@@ -194,9 +194,9 @@ jobs:
           cargo build \
             --target ${{ inputs.target }} \
             --profile ${{ inputs.profile }} \
-            -p codex-linux-sandbox \
-            --bin codex-linux-sandbox
-          cp "${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}/codex-linux-sandbox" "${helper_dir}/"
+            -p xedoc-linux-sandbox \
+            --bin xedoc-linux-sandbox
+          cp "${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}/xedoc-linux-sandbox" "${helper_dir}/"
 
       - name: Upload Cargo timings (nextest)
         if: always()
@@ -267,7 +267,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        working-directory: codex-rs
+        working-directory: xedoc-rs
     env:
       NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
       TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.artifact_id }}
@@ -314,12 +314,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME="codex-remote-test-env-${{ github.run_id }}-${{ matrix.shard }}"
+          export XEDOC_TEST_REMOTE_ENV_CONTAINER_NAME="xedoc-remote-test-env-${{ github.run_id }}-${{ matrix.shard }}"
           source "${GITHUB_WORKSPACE}/scripts/test-remote-env.sh"
-          echo "CODEX_TEST_ENVIRONMENT=${CODEX_TEST_ENVIRONMENT}" >> "$GITHUB_ENV"
-          echo "CODEX_TEST_REMOTE_ENV=${CODEX_TEST_REMOTE_ENV}" >> "$GITHUB_ENV"
-          echo "CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}" >> "$GITHUB_ENV"
-          echo "CODEX_TEST_REMOTE_EXEC_SERVER_URL=${CODEX_TEST_REMOTE_EXEC_SERVER_URL}" >> "$GITHUB_ENV"
+          echo "XEDOC_TEST_ENVIRONMENT=${XEDOC_TEST_ENVIRONMENT}" >> "$GITHUB_ENV"
+          echo "XEDOC_TEST_REMOTE_ENV=${XEDOC_TEST_REMOTE_ENV}" >> "$GITHUB_ENV"
+          echo "XEDOC_TEST_REMOTE_ENV_CONTAINER_NAME=${XEDOC_TEST_REMOTE_ENV_CONTAINER_NAME}" >> "$GITHUB_ENV"
+          echo "XEDOC_TEST_REMOTE_EXEC_SERVER_URL=${XEDOC_TEST_REMOTE_EXEC_SERVER_URL}" >> "$GITHUB_ENV"
 
       - name: Download nextest archive
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -351,8 +351,8 @@ jobs:
             helper_dir="${RUNNER_TEMP}/${TEST_HELPERS_ARTIFACT}"
             helper_target_dir="${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}"
             mkdir -p "${helper_target_dir}"
-            cp "${helper_dir}/codex-linux-sandbox" "${helper_target_dir}/"
-            chmod +x "${helper_target_dir}/codex-linux-sandbox"
+            cp "${helper_dir}/xedoc-linux-sandbox" "${helper_target_dir}/"
+            chmod +x "${helper_target_dir}/xedoc-linux-sandbox"
           fi
 
           nextest_args=(
@@ -368,11 +368,11 @@ jobs:
 
           test_command=(cargo nextest "${nextest_args[@]}")
           if [[ "${RUNNER_OS}" == "Linux" ]]; then
-            sandbox_helper="${helper_target_dir}/codex-linux-sandbox"
+            sandbox_helper="${helper_target_dir}/xedoc-linux-sandbox"
             test_command=(
               env
-              "CARGO_BIN_EXE_codex-linux-sandbox=${sandbox_helper}"
-              "CARGO_BIN_EXE_codex_linux_sandbox=${sandbox_helper}"
+              "CARGO_BIN_EXE_xedoc-linux-sandbox=${sandbox_helper}"
+              "CARGO_BIN_EXE_xedoc_linux_sandbox=${sandbox_helper}"
               cargo nextest "${nextest_args[@]}"
             )
           fi
@@ -397,9 +397,9 @@ jobs:
         run: |
           set +e
           if [[ "${STEPS_TEST_OUTCOME}" != "success" ]]; then
-            docker logs "${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}" || true
+            docker logs "${XEDOC_TEST_REMOTE_ENV_CONTAINER_NAME}" || true
           fi
-          docker rm -f "${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}" >/dev/null 2>&1 || true
+          docker rm -f "${XEDOC_TEST_REMOTE_ENV_CONTAINER_NAME}" >/dev/null 2>&1 || true
         env:
           STEPS_TEST_OUTCOME: ${{ steps.test.outcome }}
 

@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "json-to-toml",
+    crate_name = "xedoc_utils_json_to_toml",
+)

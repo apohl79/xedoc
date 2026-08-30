@@ -271,7 +271,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 tag="rust-v0.141.0-apohl79-1",
                 title="0.141.0-apohl79-1",
                 target="abc123",
-                archive_outputs=[Path("/tmp/codex.zip")],
+                archive_outputs=[Path("/tmp/xedoc.zip")],
             )
 
         self.assertEqual(
@@ -301,7 +301,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "--title",
                         "0.141.0-apohl79-1",
                         "--notes",
-                        "apohl79 Codex 0.141.0-apohl79-1",
+                        "apohl79 Xedoc 0.141.0-apohl79-1",
                         "--target",
                         "abc123",
                     ],
@@ -315,7 +315,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "release",
                         "upload",
                         "rust-v0.141.0-apohl79-1",
-                        "/tmp/codex.zip",
+                        "/tmp/xedoc.zip",
                         "--repo",
                         "apohl79/codex",
                         "--clobber",
@@ -349,7 +349,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 tag="rust-v0.141.0-apohl79-1",
                 title="0.141.0-apohl79-1",
                 target="abc123",
-                archive_outputs=[Path("/tmp/codex-a.zip"), Path("/tmp/codex-b.zip")],
+                archive_outputs=[Path("/tmp/xedoc-a.zip"), Path("/tmp/xedoc-b.zip")],
             )
 
         command_names = [command[:3] for command, *_ in commands]
@@ -366,28 +366,28 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_codesign_command_matches_release_binary_signing_shape(self) -> None:
         self.assertEqual(
             build_codesign_command(
-                target=Path("/tmp/codex"),
+                target=Path("/tmp/xedoc"),
                 identity="Developer ID Application: Example",
                 entitlements=Path(
-                    ".github/scripts/macos-signing/codex.entitlements.plist"
+                    ".github/scripts/macos-signing/xedoc.entitlements.plist"
                 ),
             ),
             [
                 ".github/scripts/macos-signing/sign_macos_code.sh",
                 "--target",
-                "/tmp/codex",
+                "/tmp/xedoc",
                 "--identity",
                 "Developer ID Application: Example",
                 "--deep",
                 "false",
                 "--identifier",
-                "codex",
+                "xedoc",
                 "--options",
                 "runtime",
                 "--timestamp",
                 "true",
                 "--entitlements",
-                ".github/scripts/macos-signing/codex.entitlements.plist",
+                ".github/scripts/macos-signing/xedoc.entitlements.plist",
             ],
         )
 
@@ -396,8 +396,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
-            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = repo_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             original_cargo_toml = "\n".join(
                 [
@@ -440,10 +440,10 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         encoding="utf-8"
                     )
                     entrypoint = (
-                        target_dir / "aarch64-apple-darwin" / "release" / "codex"
+                        target_dir / "aarch64-apple-darwin" / "release" / "xedoc"
                     )
                     entrypoint.parent.mkdir(parents=True)
-                    entrypoint.write_text("codex", encoding="utf-8")
+                    entrypoint.write_text("xedoc", encoding="utf-8")
                     entrypoint.chmod(0o755)
                 if command[:1] == [sys.executable]:
                     manifest_snapshots["package"] = cargo_toml.read_text(
@@ -524,15 +524,15 @@ class Apohl79ReleaseTest(unittest.TestCase):
             ]
             self.assertEqual(len(cargo_builds), 1)
             cargo_command, cargo_cwd, cargo_env = cargo_builds[0]
-            self.assertEqual(cargo_cwd, repo_root / "codex-rs")
+            self.assertEqual(cargo_cwd, repo_root / "xedoc-rs")
             self.assertIn("--locked", cargo_command)
             self.assertIn(str(cargo_toml), cargo_command)
             self.assertIn("--bins", cargo_command)
-            self.assertIn("codex-cli", cargo_command)
+            self.assertIn("xedoc-cli", cargo_command)
             self.assertIsNotNone(cargo_env)
             assert cargo_env is not None
             self.assertEqual(cargo_env["CARGO_TARGET_DIR"], str(target_dir.resolve()))
-            self.assertEqual(cargo_env["CODEX_RELEASE_VERSION"], "0.141.0-apohl79-9")
+            self.assertEqual(cargo_env["XEDOC_RELEASE_VERSION"], "0.141.0-apohl79-9")
             self.assertEqual(cargo_env["CARGO_BUILD_JOBS"], "4")
             package_commands = [
                 command
@@ -562,7 +562,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 [
                     str(
                         (
-                            target_dir / "aarch64-apple-darwin" / "release" / "codex"
+                            target_dir / "aarch64-apple-darwin" / "release" / "xedoc"
                         ).resolve()
                     ),
                 ],
@@ -571,8 +571,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_build_release_publishes_github_release_after_packaging(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
-            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = repo_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             cargo_toml.write_text(
                 "\n".join(
@@ -610,10 +610,10 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 _ = stdout
                 if command[:2] == ["cargo", "build"]:
                     entrypoint = (
-                        target_dir / "aarch64-apple-darwin" / "release" / "codex"
+                        target_dir / "aarch64-apple-darwin" / "release" / "xedoc"
                     )
                     entrypoint.parent.mkdir(parents=True)
-                    entrypoint.write_text("codex", encoding="utf-8")
+                    entrypoint.write_text("xedoc", encoding="utf-8")
                     entrypoint.chmod(0o755)
                 return subprocess.CompletedProcess(command, 0)
 
@@ -705,8 +705,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_build_release_preflights_github_target_before_build(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
-            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = repo_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             cargo_toml.write_text(
                 '[workspace.package]\nversion = "0.141.0"\n',
@@ -801,8 +801,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
-            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = repo_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             (repo_root / "MODULE.bazel").write_text("", encoding="utf-8")
             original_cargo_toml = "\n".join(
@@ -821,11 +821,11 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     "version = 4",
                     "",
                     "[[package]]",
-                    'name = "codex-cli"',
+                    'name = "xedoc-cli"',
                     'version = "0.0.0"',
                     "",
                     "[[package]]",
-                    'name = "codex-core"',
+                    'name = "xedoc-core"',
                     'version = "0.0.0"',
                     "",
                     "[[package]]",
@@ -860,7 +860,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
             ) -> subprocess.CompletedProcess:
                 commands.append((command, cwd, env, check, stdout))
                 if command[:2] == ["cargo", "metadata"]:
-                    self.assertEqual(cwd, repo_root / "codex-rs")
+                    self.assertEqual(cwd, repo_root / "xedoc-rs")
                     self.assertIn("--filter-platform", command)
                     self.assertEqual(stdout, subprocess.DEVNULL)
                     cargo_lock.write_text(repaired_cargo_lock, encoding="utf-8")
@@ -869,10 +869,10 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         encoding="utf-8"
                     )
                     entrypoint = (
-                        target_dir / "aarch64-apple-darwin" / "release" / "codex"
+                        target_dir / "aarch64-apple-darwin" / "release" / "xedoc"
                     )
                     entrypoint.parent.mkdir(parents=True)
-                    entrypoint.write_text("codex", encoding="utf-8")
+                    entrypoint.write_text("xedoc", encoding="utf-8")
                     entrypoint.chmod(0o755)
                 if command[:1] == [sys.executable]:
                     lock_snapshots["package"] = cargo_lock.read_text(encoding="utf-8")
@@ -951,7 +951,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "version = 4",
                         "",
                         "[[package]]",
-                        'name = "codex-cli"',
+                        'name = "xedoc-cli"',
                         'version = "0.0.0"',
                         "",
                         "[[package]]",
@@ -968,14 +968,14 @@ class Apohl79ReleaseTest(unittest.TestCase):
                 apohl79_release.stale_workspace_lock_packages(
                     cargo_lock, "0.141.0-alpha.5"
                 ),
-                ["codex-cli=0.0.0"],
+                ["xedoc-cli=0.0.0"],
             )
 
     def test_repair_stale_release_lockfiles_raises_when_still_stale(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source_root = Path(temp_dir)
-            cargo_toml = source_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = source_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = source_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             cargo_toml.write_text(
                 '[workspace.package]\nversion = "0.141.0-alpha.5"\n',
@@ -987,7 +987,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "version = 4",
                         "",
                         "[[package]]",
-                        'name = "codex-cli"',
+                        'name = "xedoc-cli"',
                         'version = "0.0.0"',
                         "",
                     ]
@@ -1007,13 +1007,13 @@ class Apohl79ReleaseTest(unittest.TestCase):
                     target="aarch64-apple-darwin",
                 )
 
-            self.assertIn("codex-cli=0.0.0", str(ctx.exception))
+            self.assertIn("xedoc-cli=0.0.0", str(ctx.exception))
 
     def test_repair_stale_release_lockfiles_no_op_when_lock_in_sync(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source_root = Path(temp_dir)
-            cargo_toml = source_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = source_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = source_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             cargo_toml.write_text(
                 '[workspace.package]\nversion = "0.141.0-alpha.5"\n',
@@ -1025,7 +1025,7 @@ class Apohl79ReleaseTest(unittest.TestCase):
                         "version = 4",
                         "",
                         "[[package]]",
-                        'name = "codex-cli"',
+                        'name = "xedoc-cli"',
                         'version = "0.141.0-alpha.5"',
                         "",
                     ]
@@ -1047,8 +1047,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_repair_stale_release_lockfiles_skips_sentinel_version(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source_root = Path(temp_dir)
-            cargo_toml = source_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = source_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = source_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = source_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             cargo_toml.write_text(
                 "[workspace.package]\n"
@@ -1071,8 +1071,8 @@ class Apohl79ReleaseTest(unittest.TestCase):
     def test_dirty_build_leaves_manifests_unchanged_after_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
-            cargo_toml = repo_root / "codex-rs" / "Cargo.toml"
-            cargo_lock = repo_root / "codex-rs" / "Cargo.lock"
+            cargo_toml = repo_root / "xedoc-rs" / "Cargo.toml"
+            cargo_lock = repo_root / "xedoc-rs" / "Cargo.lock"
             cargo_toml.parent.mkdir(parents=True)
             original_cargo_toml = "\n".join(
                 [

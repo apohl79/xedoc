@@ -1,0 +1,32 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-context-manager"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_context_manager"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+xedoc-core-context = { workspace = true }
+xedoc-core-turn-context = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-cache = { workspace = true }
+xedoc-utils-image = { workspace = true }
+xedoc-utils-output-truncation = { workspace = true }
+image = { workspace = true }
+serde_json = { workspace = true }
+symphonia = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v5"] }
+
+[dev-dependencies]
+xedoc-utils-absolute-path = { workspace = true }
+pretty_assertions = { workspace = true }
+regex-lite = { workspace = true }

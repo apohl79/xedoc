@@ -1,5 +1,5 @@
 packages:
-  - codex-rs/responses-api-proxy/npm
+  - xedoc-rs/responses-api-proxy/npm
 
 ignoredBuiltDependencies:
   - esbuild

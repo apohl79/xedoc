@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a signed local release package for the apohl79 Codex fork."""
+"""Build a signed local release package for the apohl79 Xedoc fork."""
 
 import os
 from pathlib import Path

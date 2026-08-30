@@ -1,0 +1,258 @@
+//! Permission and approval popup flows for `ChatWidget`.
+//!
+//! This module owns the generic permission pickers and confirmation surfaces.
+
+#![allow(clippy::disallowed_methods)]
+
+use super::*;
+
+impl ChatWidget {
+    /// Open the permissions popup.
+    pub fn open_approvals_popup(&mut self) {
+        self.open_permissions_popup();
+    }
+
+    /// Open a popup to choose the permissions mode.
+    pub fn open_permissions_popup(&mut self) {
+        if self.config.explicit_permission_profile_mode {
+            self.open_permission_profiles_popup();
+            return;
+        }
+
+        let include_read_only = cfg!(target_os = "windows");
+        let current_approval =
+            AskForApproval::from(self.config.permissions.approval_policy.value());
+        let current_permission_profile = self.config.permissions.permission_profile().clone();
+        let mut items: Vec<SelectionItem> = Vec::new();
+        let presets: Vec<ApprovalPreset> = builtin_approval_presets();
+
+        for preset in presets.into_iter() {
+            if !include_read_only && preset.id == "read-only" {
+                continue;
+            }
+            let base_name = if preset.id == "auto" {
+                ASK_FOR_APPROVAL_LABEL.to_string()
+            } else {
+                preset.label.to_string()
+            };
+            let base_description =
+                Some(preset.description.replace(" (Identical to Agent mode)", ""));
+            let approval_disabled_reason = match self
+                .config
+                .permissions
+                .approval_policy
+                .can_set(&preset.approval)
+            {
+                Ok(()) => None,
+                Err(err) => Some(err.to_string()),
+            };
+            let actions = self.permission_mode_actions(
+                &preset,
+                base_name.clone(),
+                /*profile_selection*/ None,
+                /*return_to_permissions*/ !include_read_only,
+            );
+            items.push(SelectionItem {
+                name: base_name,
+                description: base_description,
+                is_current: Self::preset_matches_current(
+                    current_approval,
+                    &current_permission_profile,
+                    self.config.cwd.as_path(),
+                    &preset,
+                ),
+                actions,
+                dismiss_on_select: true,
+                disabled_reason: approval_disabled_reason,
+                ..Default::default()
+            });
+        }
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Update Model Permissions".to_string()),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            header: Box::new(()),
+            ..Default::default()
+        });
+    }
+
+    pub(super) fn approval_preset_actions(
+        approval: AskForApproval,
+        permission_profile: PermissionProfile,
+        active_permission_profile: ActivePermissionProfile,
+        label: String,
+    ) -> Vec<SelectionAction> {
+        vec![Box::new(move |tx| {
+            tx.send(AppEvent::XedocOp(AppCommand::override_turn_context(
+                /*cwd*/ None,
+                Some(approval),
+                Some(permission_profile.clone()),
+                Some(active_permission_profile.clone()),
+                /*model*/ None,
+                /*effort*/ None,
+                /*summary*/ None,
+                /*service_tier*/ None,
+                /*collaboration_mode*/ None,
+                /*personality*/ None,
+            )));
+            tx.send(AppEvent::UpdateAskForApprovalPolicy(approval));
+            tx.send(AppEvent::UpdateActivePermissionProfile(
+                active_permission_profile.clone(),
+            ));
+            tx.send(AppEvent::InsertHistoryCell(Box::new(
+                history_cell::new_info_event(
+                    format!("Permissions updated to {label}"),
+                    /*hint*/ None,
+                ),
+            )));
+        })]
+    }
+
+    pub(super) fn permission_profile_selection_actions(
+        selection: PermissionProfileSelection,
+    ) -> Vec<SelectionAction> {
+        vec![Box::new(move |tx| {
+            tx.send(AppEvent::SelectPermissionProfile(selection.clone()));
+        })]
+    }
+
+    pub(super) fn permission_mode_actions(
+        &self,
+        preset: &ApprovalPreset,
+        label: String,
+        profile_selection: Option<PermissionProfileSelection>,
+        return_to_permissions: bool,
+    ) -> Vec<SelectionAction> {
+        let apply_actions = || {
+            profile_selection.clone().map_or_else(
+                || {
+                    Self::approval_preset_actions(
+                        AskForApproval::from(preset.approval),
+                        preset.permission_profile.clone(),
+                        preset.active_permission_profile.clone(),
+                        label.clone(),
+                    )
+                },
+                Self::permission_profile_selection_actions,
+            )
+        };
+        if preset.id == "full-access" {
+            let preset = preset.clone();
+            return vec![Box::new(move |tx| {
+                tx.send(AppEvent::OpenFullAccessConfirmation {
+                    preset: preset.clone(),
+                    return_to_permissions,
+                    profile_selection: profile_selection.clone(),
+                });
+            })];
+        }
+        apply_actions()
+    }
+
+    pub(super) fn preset_matches_current(
+        current_approval: AskForApproval,
+        current_permission_profile: &PermissionProfile,
+        cwd: &std::path::Path,
+        preset: &ApprovalPreset,
+    ) -> bool {
+        let preset_approval = AskForApproval::from(preset.approval);
+        if current_approval != preset_approval {
+            return false;
+        }
+
+        match preset.id {
+            "full-access" => matches!(current_permission_profile, PermissionProfile::Disabled),
+            "read-only" => {
+                let file_system_policy = current_permission_profile.file_system_sandbox_policy();
+                matches!(
+                    current_permission_profile,
+                    PermissionProfile::Managed { .. }
+                ) && !file_system_policy.has_full_disk_write_access()
+                    && file_system_policy
+                        .get_writable_roots_with_cwd(cwd)
+                        .is_empty()
+                    && current_permission_profile.network_sandbox_policy()
+                        == preset.permission_profile.network_sandbox_policy()
+            }
+            "auto" => {
+                let file_system_policy = current_permission_profile.file_system_sandbox_policy();
+                matches!(
+                    current_permission_profile,
+                    PermissionProfile::Managed { .. }
+                ) && file_system_policy.can_write_path_with_cwd(cwd, cwd)
+                    && !file_system_policy.has_full_disk_write_access()
+                    && current_permission_profile.network_sandbox_policy()
+                        == preset.permission_profile.network_sandbox_policy()
+            }
+            _ => current_permission_profile == &preset.permission_profile,
+        }
+    }
+
+    pub fn open_full_access_confirmation(
+        &mut self,
+        preset: ApprovalPreset,
+        return_to_permissions: bool,
+        profile_selection: Option<PermissionProfileSelection>,
+    ) {
+        let selected_name = preset.label.to_string();
+        let approval = AskForApproval::from(preset.approval);
+        let mut header_children: Vec<Box<dyn Renderable>> = Vec::new();
+        let title_line = Line::from("Enable full access?").bold();
+        let info_line = Line::from(vec![
+            "When Xedoc runs with full access, it can edit any file on your computer and run commands with network, without your approval. "
+                .into(),
+            "Exercise caution when enabling full access. This significantly increases the risk of data loss, leaks, or unexpected behavior."
+                .fg(Color::Rgb(217, 84, 104)),
+        ]);
+        header_children.push(Box::new(title_line));
+        header_children.push(Box::new(
+            Paragraph::new(vec![info_line]).wrap(Wrap { trim: false }),
+        ));
+        let header = ColumnRenderable::with(header_children);
+
+        let accept_actions = profile_selection.map_or_else(
+            || {
+                Self::approval_preset_actions(
+                    approval,
+                    preset.permission_profile,
+                    preset.active_permission_profile,
+                    selected_name,
+                )
+            },
+            Self::permission_profile_selection_actions,
+        );
+
+        let deny_actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
+            if return_to_permissions {
+                tx.send(AppEvent::OpenPermissionsPopup);
+            } else {
+                tx.send(AppEvent::OpenApprovalsPopup);
+            }
+        })];
+
+        let items = vec![
+            SelectionItem {
+                name: "Yes, continue anyway".to_string(),
+                description: Some("Apply full access for this session".to_string()),
+                actions: accept_actions,
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Cancel".to_string(),
+                description: Some("Go back without enabling full access".to_string()),
+                actions: deny_actions,
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+        ];
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            header: Box::new(header),
+            ..Default::default()
+        });
+    }
+}

@@ -1,0 +1,431 @@
+//! Session-wide mutable state.
+
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use xedoc_protocol::models::AdditionalPermissionProfile;
+use xedoc_protocol::models::ResponseItem;
+use xedoc_sandboxing::policy_transforms::merge_permission_profiles;
+
+use super::AdditionalContextStore;
+use crate::context_manager::ContextManager;
+use crate::session::PreviousTurnSettings;
+use crate::session::session::SessionConfiguration;
+use crate::session::time_reminder::CurrentTimeReminderState;
+use crate::session_startup_prewarm::SessionStartupPrewarmHandle;
+use xedoc_core_auto_compact_window::AutoCompactWindow;
+use xedoc_core_auto_compact_window::AutoCompactWindowIds;
+use xedoc_core_auto_compact_window::AutoCompactWindowSnapshot;
+use xedoc_protocol::protocol::RateLimitSnapshot;
+use xedoc_protocol::protocol::TokenUsage;
+use xedoc_protocol::protocol::TokenUsageInfo;
+use xedoc_protocol::protocol::TurnContextItem;
+use xedoc_utils_output_truncation::TruncationPolicy;
+
+use xedoc_model_provider_info::ModelTokenPrices;
+
+/// Accumulated session cost tracking across turns and subagents.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct SessionCostTracker {
+    /// Per-model breakdown: model_id → accumulated token counts and cost.
+    pub(crate) per_model_costs: HashMap<String, PerModelCost>,
+    /// Total cost from subagent sessions that completed and reported back.
+    pub(crate) subagent_cost_usd: f64,
+    /// Cost accumulated before this session was resumed.
+    pub(crate) restored_cost_usd: Option<f64>,
+    /// Whether any configured pricing has contributed to the total.
+    pub(crate) has_priced_usage: bool,
+}
+
+/// Token counts and cost for a single model used during this session.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct PerModelCost {
+    pub(crate) input_tokens: i64,
+    pub(crate) cached_input_tokens: i64,
+    pub(crate) output_tokens: i64,
+    pub(crate) cost_usd: f64,
+}
+
+impl SessionCostTracker {
+    pub(crate) fn total_cost_usd(&self) -> f64 {
+        self.restored_cost_usd.unwrap_or_default()
+            + self
+                .per_model_costs
+                .values()
+                .map(|c| c.cost_usd)
+                .sum::<f64>()
+            + self.subagent_cost_usd
+    }
+
+    pub(crate) fn available_cost_usd(&self) -> Option<f64> {
+        self.has_priced_usage.then(|| self.total_cost_usd())
+    }
+
+    pub(crate) fn restore_total_cost_usd(&mut self, cost_usd: Option<f64>) {
+        self.restored_cost_usd = cost_usd;
+        self.has_priced_usage = cost_usd.is_some();
+    }
+
+    /// Record token usage for a model using the provider's pricing table.
+    ///
+    /// If `prices` is `None` or the `model_id` has no entry in the table,
+    /// this call is a no-op — no cost is tracked.
+    pub(crate) fn record_usage(
+        &mut self,
+        model_id: &str,
+        usage: &TokenUsage,
+        prices: Option<&HashMap<String, ModelTokenPrices>>,
+    ) {
+        let Some(prices) = prices else {
+            return;
+        };
+        let Some(model_prices) = prices.get(model_id) else {
+            return;
+        };
+        self.has_priced_usage = true;
+
+        let is_long_context = usage.total_tokens > 272_000;
+
+        let entry = self
+            .per_model_costs
+            .entry(model_id.to_string())
+            .or_default();
+
+        let input_tokens = usage.non_cached_input().max(0) as f64;
+        let cached_tokens = usage.cached_input().max(0) as f64;
+        let output_tokens = usage.output_tokens.max(0) as f64;
+
+        let input_price = if is_long_context {
+            model_prices
+                .long_context_input_price_per_1m_tokens
+                .unwrap_or(model_prices.input_price_per_1m_tokens)
+        } else {
+            model_prices.input_price_per_1m_tokens
+        };
+
+        let cached_price_per_1m = model_prices
+            .cached_input_price_per_1m_tokens
+            .unwrap_or(model_prices.input_price_per_1m_tokens);
+        let cached_price_per_1m = if is_long_context {
+            model_prices
+                .long_context_cached_input_price_per_1m_tokens
+                .unwrap_or(cached_price_per_1m)
+        } else {
+            cached_price_per_1m
+        };
+
+        let output_price = if is_long_context {
+            model_prices
+                .long_context_output_price_per_1m_tokens
+                .unwrap_or(model_prices.output_price_per_1m_tokens)
+        } else {
+            model_prices.output_price_per_1m_tokens
+        };
+
+        let cost_delta = (input_tokens / 1_000_000.0) * input_price
+            + (cached_tokens / 1_000_000.0) * cached_price_per_1m
+            + (output_tokens / 1_000_000.0) * output_price;
+
+        entry.input_tokens += usage.non_cached_input().max(0);
+        entry.cached_input_tokens += usage.cached_input().max(0);
+        entry.output_tokens += usage.output_tokens.max(0);
+        entry.cost_usd += cost_delta;
+    }
+
+    /// Add cost reported by a completed subagent.
+    pub(crate) fn add_subagent_cost(&mut self, cost_usd: f64) {
+        self.subagent_cost_usd += cost_usd;
+        self.has_priced_usage = true;
+    }
+}
+
+/// Persistent, session-scoped state previously stored directly on `Session`.
+pub(crate) struct SessionState {
+    pub(crate) session_configuration: SessionConfiguration,
+    pub(crate) history: ContextManager,
+    pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
+    pub(crate) server_reasoning_included: bool,
+    pub(crate) mcp_dependency_prompted: HashSet<String>,
+    pub(crate) additional_context: AdditionalContextStore,
+    /// Settings used by the latest regular user turn, used for turn-to-turn
+    /// model handling on subsequent regular turns (including full-context
+    /// reinjection after resume or `/compact`).
+    previous_turn_settings: Option<PreviousTurnSettings>,
+    /// Runtime accounting state for the active auto-compaction window.
+    auto_compact_window: AutoCompactWindow,
+    /// Startup prewarmed session prepared during session initialization.
+    pub(crate) startup_prewarm: Option<SessionStartupPrewarmHandle>,
+    pub(crate) current_time_reminder: CurrentTimeReminderState,
+    pub(crate) pending_session_start_sources: VecDeque<xedoc_hooks::SessionStartSource>,
+    granted_permissions_by_environment_id: HashMap<String, AdditionalPermissionProfile>,
+    pub(crate) cost_tracker: SessionCostTracker,
+}
+
+impl SessionState {
+    /// Create a new session state mirroring previous `State::default()` semantics.
+    #[cfg(test)]
+    pub(crate) fn new(session_configuration: SessionConfiguration) -> Self {
+        Self::new_with_auto_compact_window_ids(
+            session_configuration,
+            AutoCompactWindowIds::new_initial(),
+        )
+    }
+
+    pub(crate) fn new_with_auto_compact_window_ids(
+        session_configuration: SessionConfiguration,
+        auto_compact_window_ids: AutoCompactWindowIds,
+    ) -> Self {
+        let history = ContextManager::new();
+        Self {
+            session_configuration,
+            history,
+            latest_rate_limits: None,
+            server_reasoning_included: false,
+            mcp_dependency_prompted: HashSet::new(),
+            additional_context: AdditionalContextStore::default(),
+            previous_turn_settings: None,
+            auto_compact_window: AutoCompactWindow::new_with_ids(auto_compact_window_ids),
+            startup_prewarm: None,
+            current_time_reminder: CurrentTimeReminderState::default(),
+            pending_session_start_sources: VecDeque::new(),
+            granted_permissions_by_environment_id: HashMap::new(),
+            cost_tracker: SessionCostTracker::default(),
+        }
+    }
+
+    // History helpers
+    pub(crate) fn record_items<I>(&mut self, items: I, policy: TruncationPolicy)
+    where
+        I: IntoIterator,
+        I::Item: std::ops::Deref<Target = ResponseItem>,
+    {
+        self.history.record_items(items, policy);
+    }
+
+    pub(crate) fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {
+        self.previous_turn_settings.clone()
+    }
+    pub(crate) fn set_previous_turn_settings(
+        &mut self,
+        previous_turn_settings: Option<PreviousTurnSettings>,
+    ) {
+        self.previous_turn_settings = previous_turn_settings;
+    }
+
+    pub(crate) fn clone_history(&self) -> ContextManager {
+        self.history.clone()
+    }
+
+    pub(crate) fn replace_history(
+        &mut self,
+        items: Vec<ResponseItem>,
+        reference_context_item: Option<TurnContextItem>,
+    ) {
+        self.history.replace(items);
+        self.history
+            .set_reference_context_item(reference_context_item);
+        self.auto_compact_window.clear_prefill();
+    }
+
+    pub(crate) fn set_token_info(&mut self, info: Option<TokenUsageInfo>) {
+        self.history.set_token_info(info);
+    }
+
+    pub(crate) fn set_reference_context_item(&mut self, item: Option<TurnContextItem>) {
+        self.history.set_reference_context_item(item);
+    }
+
+    pub(crate) fn reference_context_item(&self) -> Option<TurnContextItem> {
+        self.history.reference_context_item()
+    }
+
+    // Token/rate limit helpers
+    pub(crate) fn update_token_info_from_usage(
+        &mut self,
+        usage: &TokenUsage,
+        model_context_window: Option<i64>,
+    ) {
+        self.history.update_token_info(usage, model_context_window);
+    }
+
+    pub(crate) fn ensure_auto_compact_window_server_prefill_from_usage(
+        &mut self,
+        usage: &TokenUsage,
+    ) {
+        self.auto_compact_window
+            .ensure_server_observed_prefill_from_usage(usage);
+    }
+
+    pub(crate) fn set_auto_compact_window_estimated_prefill(&mut self, tokens: i64) {
+        self.auto_compact_window.set_estimated_prefill(tokens);
+    }
+
+    pub(crate) fn auto_compact_window_snapshot(&self) -> AutoCompactWindowSnapshot {
+        self.auto_compact_window.snapshot()
+    }
+
+    pub(crate) fn claim_token_budget_reminder(&mut self) -> bool {
+        self.auto_compact_window.claim_token_budget_reminder()
+    }
+
+    pub(crate) fn claim_auto_compact_fallback(&mut self) -> bool {
+        self.auto_compact_window.claim_auto_compact_fallback()
+    }
+
+    pub(crate) fn auto_compact_window_number(&self) -> u64 {
+        self.auto_compact_window.window_number()
+    }
+
+    pub(crate) fn auto_compact_window_ids(&self) -> AutoCompactWindowIds {
+        self.auto_compact_window.ids()
+    }
+
+    pub(crate) fn restore_auto_compact_window(
+        &mut self,
+        window_number: u64,
+        ids: AutoCompactWindowIds,
+    ) {
+        self.auto_compact_window.restore(window_number, ids);
+    }
+
+    pub(crate) fn advance_auto_compact_window(&mut self) -> (u64, AutoCompactWindowIds) {
+        self.auto_compact_window.advance()
+    }
+
+    pub(crate) fn request_new_context_window(&mut self) {
+        self.auto_compact_window.request_new_context_window();
+    }
+
+    pub(crate) fn take_new_context_window_request(&mut self) -> bool {
+        self.auto_compact_window.take_new_context_window_request()
+    }
+
+    pub(crate) fn start_new_context_window(&mut self) -> (u64, AutoCompactWindowIds) {
+        let window = self.auto_compact_window.advance();
+        self.auto_compact_window.clear_prefill();
+        window
+    }
+
+    pub(crate) fn token_info(&self) -> Option<TokenUsageInfo> {
+        self.history.token_info()
+    }
+
+    pub(crate) fn set_rate_limits(&mut self, snapshot: RateLimitSnapshot) {
+        self.latest_rate_limits = Some(merge_rate_limit_fields(
+            self.latest_rate_limits.as_ref(),
+            snapshot,
+        ));
+    }
+
+    pub(crate) fn token_info_and_rate_limits(
+        &self,
+    ) -> (Option<TokenUsageInfo>, Option<RateLimitSnapshot>) {
+        (self.token_info(), self.latest_rate_limits.clone())
+    }
+
+    pub(crate) fn set_token_usage_full(&mut self, context_window: i64) {
+        self.history.set_token_usage_full(context_window);
+    }
+
+    pub(crate) fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
+        self.history
+            .get_total_token_usage(server_reasoning_included)
+    }
+
+    pub(crate) fn set_server_reasoning_included(&mut self, included: bool) {
+        self.server_reasoning_included = included;
+    }
+
+    pub(crate) fn server_reasoning_included(&self) -> bool {
+        self.server_reasoning_included
+    }
+
+    pub(crate) fn record_mcp_dependency_prompted<I>(&mut self, names: I)
+    where
+        I: IntoIterator<Item = String>,
+    {
+        self.mcp_dependency_prompted.extend(names);
+    }
+
+    pub(crate) fn mcp_dependency_prompted(&self) -> HashSet<String> {
+        self.mcp_dependency_prompted.clone()
+    }
+
+    pub(crate) fn set_session_startup_prewarm(
+        &mut self,
+        startup_prewarm: SessionStartupPrewarmHandle,
+    ) {
+        self.startup_prewarm = Some(startup_prewarm);
+    }
+
+    pub(crate) fn take_session_startup_prewarm(&mut self) -> Option<SessionStartupPrewarmHandle> {
+        self.startup_prewarm.take()
+    }
+
+    pub(crate) fn queue_pending_session_start_source(
+        &mut self,
+        value: xedoc_hooks::SessionStartSource,
+    ) {
+        self.pending_session_start_sources.push_back(value);
+    }
+
+    pub(crate) fn take_pending_session_start_source(
+        &mut self,
+    ) -> Option<xedoc_hooks::SessionStartSource> {
+        self.pending_session_start_sources.pop_front()
+    }
+
+    pub(crate) fn record_granted_permissions(
+        &mut self,
+        environment_id: &str,
+        permissions: AdditionalPermissionProfile,
+    ) {
+        let granted_permissions = merge_permission_profiles(
+            self.granted_permissions_by_environment_id
+                .get(environment_id),
+            Some(&permissions),
+        );
+        if let Some(granted_permissions) = granted_permissions {
+            self.granted_permissions_by_environment_id
+                .insert(environment_id.to_string(), granted_permissions);
+        }
+    }
+
+    pub(crate) fn granted_permissions(
+        &self,
+        environment_id: &str,
+    ) -> Option<AdditionalPermissionProfile> {
+        self.granted_permissions_by_environment_id
+            .get(environment_id)
+            .cloned()
+    }
+}
+
+// Sometimes new snapshots don't include credits or plan information.
+// Preserve those from the previous snapshot when missing. For `limit_id`, treat
+// missing values as the default `"xedoc"` bucket.
+fn merge_rate_limit_fields(
+    previous: Option<&RateLimitSnapshot>,
+    mut snapshot: RateLimitSnapshot,
+) -> RateLimitSnapshot {
+    if snapshot.limit_id.is_none() {
+        snapshot.limit_id = Some("codex".to_string());
+    }
+    if snapshot.credits.is_none() {
+        snapshot.credits = previous.and_then(|prior| prior.credits.clone());
+    }
+    if snapshot.individual_limit.is_none() {
+        snapshot.individual_limit = previous.and_then(|prior| prior.individual_limit.clone());
+    }
+    if snapshot.spend_control_reached.is_none() {
+        snapshot.spend_control_reached = previous.and_then(|prior| prior.spend_control_reached);
+    }
+    if snapshot.plan_type.is_none() {
+        snapshot.plan_type = previous.and_then(|prior| prior.plan_type);
+    }
+    snapshot
+}
+
+#[cfg(test)]
+#[path = "session_tests.rs"]
+mod tests;

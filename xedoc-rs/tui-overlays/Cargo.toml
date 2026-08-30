@@ -1,0 +1,47 @@
+[package]
+name = "xedoc-tui-overlays"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_overlays"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-completion = { workspace = true }
+xedoc-tui-composer = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-frame = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-fuzzy-match = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+crossterm = { workspace = true }
+itertools = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+serde_json = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+textwrap = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+xedoc-tui-test-support = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }
+uuid = { workspace = true }

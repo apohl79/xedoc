@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "agent-graph-store",
+    crate_name = "xedoc_agent_graph_store",
+)

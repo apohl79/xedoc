@@ -1,0 +1,20 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-time"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_time"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-protocol = { workspace = true }
+tokio = { workspace = true }

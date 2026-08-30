@@ -1,0 +1,7 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "http-client",
+    compile_data = glob(["tests/fixtures/**"]),
+    crate_name = "xedoc_http_client",
+)

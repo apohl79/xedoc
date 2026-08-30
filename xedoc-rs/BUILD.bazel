@@ -1,0 +1,36 @@
+exports_files([
+    "Cargo.toml",
+    "clippy.toml",
+])
+
+filegroup(
+    name = "workspace-files",
+    srcs = glob(
+        [
+            "*",
+            ".cargo/**",
+        ],
+        exclude = [
+            "BUILD.bazel",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "apohl79-release-binaries",
+    srcs = [
+        "//xedoc-rs/cli:xedoc",
+    ],
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+test_suite(
+    name = "e2e-benchmarks",
+    tags = ["manual"],
+    tests = [
+        "//xedoc-rs/cli:xedoc-help-bench",
+    ],
+    visibility = ["//visibility:public"],
+)

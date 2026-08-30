@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-workspace",
+    crate_name = "xedoc_tui_workspace",
+)

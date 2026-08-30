@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-rollout-truncation"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_rollout_truncation"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-core-context-manager = { workspace = true }
+xedoc-core-response-items = { workspace = true }
+xedoc-protocol = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json = { workspace = true }

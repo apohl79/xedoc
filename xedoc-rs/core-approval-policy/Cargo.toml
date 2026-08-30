@@ -1,0 +1,33 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-approval-policy"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_approval_policy"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-apply-patch = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-execpolicy = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-network-proxy = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-rmcp-client = { workspace = true }
+xedoc-sandboxing = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+rmcp = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+xedoc-utils-absolute-path = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

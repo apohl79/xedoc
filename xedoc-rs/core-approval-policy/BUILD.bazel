@@ -1,0 +1,7 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "core-approval-policy",
+    compile_data = ["src/consequential_tool_message_templates.json"],
+    crate_name = "xedoc_core_approval_policy",
+)

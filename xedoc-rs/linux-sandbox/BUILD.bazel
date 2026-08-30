@@ -1,0 +1,9 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "linux-sandbox",
+    crate_name = "xedoc_linux_sandbox",
+    extra_binaries = [
+        "//xedoc-rs/bwrap:bwrap",
+    ],
+)

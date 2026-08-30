@@ -1,0 +1,7 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "xedoc-experimental-api-macros",
+    crate_name = "xedoc_experimental_api_macros",
+    proc_macro = True,
+)

@@ -1,0 +1,15 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-render",
+    compile_data = glob([
+        "src/render/themes/**",
+    ]),
+    crate_name = "xedoc_tui_render",
+    test_data_extra = glob([
+        "src/**/snapshots/**",
+    ]),
+    test_shard_counts = {
+        "tui-render-unit-tests": 4,
+    },
+)

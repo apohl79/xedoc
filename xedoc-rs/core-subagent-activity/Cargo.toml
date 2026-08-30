@@ -1,0 +1,18 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-subagent-activity"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_subagent_activity"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-protocol = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

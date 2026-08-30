@@ -1,0 +1,25 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-plugin-context"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_plugin_context"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core-config = { workspace = true }
+xedoc-core-context = { workspace = true }
+xedoc-core-plugins = { workspace = true }
+xedoc-core-skills = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-plugins = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

@@ -1,0 +1,541 @@
+use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+
+use http::HeaderMap;
+use tokio::time::timeout;
+use xedoc_api::AgentIdentityTelemetry;
+use xedoc_api::ModelCatalog;
+use xedoc_api::ModelsClient;
+use xedoc_api::RequestTelemetry;
+use xedoc_api::ReqwestTransport;
+use xedoc_api::TransportError;
+use xedoc_api::auth_header_telemetry;
+use xedoc_api::map_api_error;
+use xedoc_http_client::ClientRouteClass;
+use xedoc_http_client::HttpClientFactory;
+use xedoc_login::AuthEnvTelemetry;
+use xedoc_login::AuthManager;
+use xedoc_login::XedocAuth;
+use xedoc_login::collect_auth_env_telemetry;
+use xedoc_login::default_client::build_default_reqwest_client_for_route_async;
+use xedoc_model_provider_info::ModelProviderInfo;
+use xedoc_models_manager::manager::ModelsEndpointClient;
+use xedoc_models_manager::manager::ModelsEndpointFuture;
+use xedoc_models_manager::model_info::model_info_from_provider_catalog_slug;
+use xedoc_otel::TelemetryAuthMode;
+use xedoc_protocol::error::Result as CoreResult;
+use xedoc_protocol::error::XedocErr;
+use xedoc_protocol::openai_models::ModelInfo;
+use xedoc_protocol::openai_models::ModelVisibility;
+use xedoc_response_debug_context::extract_response_debug_context;
+use xedoc_response_debug_context::telemetry_transport_error_message;
+
+use crate::auth::agent_identity_telemetry;
+use crate::auth::resolve_provider_auth;
+
+const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
+const MODELS_ENDPOINT: &str = "/models";
+
+/// Provider-owned OpenAI-compatible `/models` endpoint.
+#[derive(Debug)]
+pub(crate) struct OpenAiModelsEndpoint {
+    provider_info: ModelProviderInfo,
+    auth_manager: Option<Arc<AuthManager>>,
+    transport_builder: Arc<dyn ModelsTransportBuilder>,
+}
+
+impl OpenAiModelsEndpoint {
+    pub(crate) fn new(
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
+        Self {
+            provider_info,
+            auth_manager,
+            transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
+        }
+    }
+
+    async fn auth(&self) -> Option<XedocAuth> {
+        match self.auth_manager.as_ref() {
+            Some(auth_manager) => auth_manager.auth().await,
+            None => None,
+        }
+    }
+
+    async fn uses_xedoc_backend(&self) -> bool {
+        self.auth()
+            .await
+            .as_ref()
+            .is_some_and(XedocAuth::uses_xedoc_backend)
+    }
+
+    async fn list_models(
+        &self,
+        client_version: &str,
+        http_client_factory: HttpClientFactory,
+    ) -> CoreResult<(Vec<ModelInfo>, Option<String>)> {
+        let _timer =
+            xedoc_otel::start_global_timer("xedoc.remote_models.fetch_update.duration_ms", &[]);
+        let auth = self.auth().await;
+        let auth_mode = auth.as_ref().map(XedocAuth::auth_mode);
+        let api_provider = self.provider_info.to_api_provider(auth_mode)?;
+        let api_auth = resolve_provider_auth(auth.as_ref(), &self.provider_info)?;
+        let request_url =
+            ModelsClient::<ReqwestTransport>::request_url(&api_provider, client_version);
+        let auth_telemetry = auth_header_telemetry(api_auth.as_ref());
+        let agent_identity_telemetry = if let Some(XedocAuth::AgentIdentity(auth)) = auth.as_ref() {
+            Some(agent_identity_telemetry(auth))
+        } else {
+            None
+        };
+        let request_telemetry: Arc<dyn RequestTelemetry> = Arc::new(ModelsRequestTelemetry {
+            auth_mode: auth_mode.map(|mode| TelemetryAuthMode::from(mode).to_string()),
+            auth_header_attached: auth_telemetry.attached,
+            auth_header_name: auth_telemetry.name,
+            agent_identity_telemetry,
+            auth_env: self.auth_env(),
+        });
+        timeout(MODELS_REFRESH_TIMEOUT, async {
+            let transport = self
+                .transport_builder
+                .build(http_client_factory, request_url.clone())
+                .await?;
+            let client = ModelsClient::new(transport, api_provider, api_auth)
+                .with_telemetry(Some(request_telemetry));
+            let (catalog, etag) = client
+                .list_models(request_url, HeaderMap::new())
+                .await
+                .map_err(map_api_error)?;
+            let models = match catalog {
+                ModelCatalog::Xedoc(models) => models,
+                ModelCatalog::OpenAiCompatible(models) => models
+                    .into_iter()
+                    .filter(|model| {
+                        self.provider_info
+                            .query_params
+                            .as_ref()
+                            .and_then(|query_params| query_params.get("provider"))
+                            .is_none_or(|provider_id| {
+                                model
+                                    .owned_by
+                                    .as_deref()
+                                    .is_none_or(|owned_by| owned_by == provider_id)
+                            })
+                    })
+                    .enumerate()
+                    .map(|(priority, model)| {
+                        let model_id = model.id.strip_prefix("models/").unwrap_or(&model.id);
+                        let mut model_info = model_info_from_provider_catalog_slug(
+                            model_id,
+                            &self.provider_info.name,
+                        );
+                        model_info.priority = i32::try_from(priority).unwrap_or(i32::MAX);
+                        model_info.visibility = ModelVisibility::List;
+                        model_info
+                    })
+                    .collect(),
+            };
+            Ok((models, etag))
+        })
+        .await
+        .map_err(|_| XedocErr::Timeout)?
+    }
+
+    fn auth_env(&self) -> AuthEnvTelemetry {
+        let xedoc_api_key_env_enabled = self
+            .auth_manager
+            .as_ref()
+            .is_some_and(|auth_manager| auth_manager.xedoc_api_key_env_enabled());
+        collect_auth_env_telemetry(&self.provider_info, xedoc_api_key_env_enabled)
+    }
+}
+
+impl ModelsEndpointClient for OpenAiModelsEndpoint {
+    fn has_command_auth(&self) -> bool {
+        self.provider_info.has_command_auth()
+    }
+
+    fn uses_xedoc_backend(&self) -> ModelsEndpointFuture<'_, bool> {
+        Box::pin(OpenAiModelsEndpoint::uses_xedoc_backend(self))
+    }
+
+    fn list_models<'a>(
+        &'a self,
+        client_version: &'a str,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsEndpointFuture<'a, CoreResult<(Vec<ModelInfo>, Option<String>)>> {
+        Box::pin(OpenAiModelsEndpoint::list_models(
+            self,
+            client_version,
+            http_client_factory,
+        ))
+    }
+}
+
+type ModelsTransportFuture<'a> =
+    Pin<Box<dyn Future<Output = std::io::Result<ReqwestTransport>> + Send + 'a>>;
+
+/// Builds the concrete transport selected for one models request.
+///
+/// Implementations must honor the supplied request-time client factory and exact request URL.
+trait ModelsTransportBuilder: fmt::Debug + Send + Sync {
+    fn build(
+        &self,
+        http_client_factory: HttpClientFactory,
+        request_url: String,
+    ) -> ModelsTransportFuture<'_>;
+}
+
+#[derive(Debug)]
+struct RouteAwareModelsTransportBuilder;
+
+impl ModelsTransportBuilder for RouteAwareModelsTransportBuilder {
+    fn build(
+        &self,
+        http_client_factory: HttpClientFactory,
+        request_url: String,
+    ) -> ModelsTransportFuture<'_> {
+        Box::pin(async move {
+            build_default_reqwest_client_for_route_async(
+                http_client_factory,
+                request_url,
+                ClientRouteClass::Api,
+            )
+            .await
+            .map(ReqwestTransport::new)
+        })
+    }
+}
+
+#[derive(Clone)]
+struct ModelsRequestTelemetry {
+    auth_mode: Option<String>,
+    auth_header_attached: bool,
+    auth_header_name: Option<&'static str>,
+    agent_identity_telemetry: Option<AgentIdentityTelemetry>,
+    auth_env: AuthEnvTelemetry,
+}
+
+impl RequestTelemetry for ModelsRequestTelemetry {
+    fn on_request(
+        &self,
+        attempt: u64,
+        status: Option<http::StatusCode>,
+        error: Option<&TransportError>,
+        duration: Duration,
+    ) {
+        let success = status.is_some_and(|code| code.is_success()) && error.is_none();
+        let error_message = error.map(telemetry_transport_error_message);
+        let response_debug = error
+            .map(extract_response_debug_context)
+            .unwrap_or_default();
+        let status = status.map(|status| status.as_u16());
+        tracing::event!(
+            target: "xedoc_otel.log_only",
+            tracing::Level::INFO,
+            event.name = "xedoc.api_request",
+            duration_ms = %duration.as_millis(),
+            http.response.status_code = status,
+            success = success,
+            error.message = error_message.as_deref(),
+            attempt = attempt,
+            endpoint = MODELS_ENDPOINT,
+            auth.header_attached = self.auth_header_attached,
+            auth.header_name = self.auth_header_name,
+            auth.env_openai_api_key_present = self.auth_env.openai_api_key_env_present,
+            auth.env_xedoc_api_key_present = self.auth_env.xedoc_api_key_env_present,
+            auth.env_xedoc_api_key_enabled = self.auth_env.xedoc_api_key_env_enabled,
+            auth.env_provider_key_name = self.auth_env.provider_env_key_name.as_deref(),
+            auth.env_provider_key_present = self.auth_env.provider_env_key_present,
+            auth.env_refresh_token_url_override_present = self.auth_env.refresh_token_url_override_present,
+            auth.request_id = response_debug.request_id.as_deref(),
+            auth.cf_ray = response_debug.cf_ray.as_deref(),
+            auth.error = response_debug.auth_error.as_deref(),
+            auth.error_code = response_debug.auth_error_code.as_deref(),
+            auth.mode = self.auth_mode.as_deref(),
+            auth.agent_id = self.agent_identity_telemetry.as_ref().map(|metadata| metadata.agent_id.as_str()),
+            auth.task_id = self.agent_identity_telemetry.as_ref().map(|metadata| metadata.task_id.as_str()),
+        );
+        tracing::event!(
+            target: "xedoc_otel.trace_safe",
+            tracing::Level::INFO,
+            event.name = "xedoc.api_request",
+            duration_ms = %duration.as_millis(),
+            http.response.status_code = status,
+            success = success,
+            error.message = error_message.as_deref(),
+            attempt = attempt,
+            endpoint = MODELS_ENDPOINT,
+            auth.header_attached = self.auth_header_attached,
+            auth.header_name = self.auth_header_name,
+            auth.env_openai_api_key_present = self.auth_env.openai_api_key_env_present,
+            auth.env_xedoc_api_key_present = self.auth_env.xedoc_api_key_env_present,
+            auth.env_xedoc_api_key_enabled = self.auth_env.xedoc_api_key_env_enabled,
+            auth.env_provider_key_name = self.auth_env.provider_env_key_name.as_deref(),
+            auth.env_provider_key_present = self.auth_env.provider_env_key_present,
+            auth.env_refresh_token_url_override_present = self.auth_env.refresh_token_url_override_present,
+            auth.request_id = response_debug.request_id.as_deref(),
+            auth.cf_ray = response_debug.cf_ray.as_deref(),
+            auth.error = response_debug.auth_error.as_deref(),
+            auth.error_code = response_debug.auth_error_code.as_deref(),
+            auth.mode = self.auth_mode.as_deref(),
+            auth.agent_id = self.agent_identity_telemetry.as_ref().map(|metadata| metadata.agent_id.as_str()),
+            auth.task_id = self.agent_identity_telemetry.as_ref().map(|metadata| metadata.task_id.as_str()),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::num::NonZeroU64;
+    use std::sync::Mutex;
+
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use serde_json::json;
+    use wiremock::Mock;
+    use wiremock::MockServer;
+    use wiremock::ResponseTemplate;
+    use wiremock::matchers::method;
+    use wiremock::matchers::path;
+    use wiremock::matchers::query_param;
+    use xedoc_http_client::OutboundProxyPolicy;
+    use xedoc_login::default_client::build_reqwest_client;
+    use xedoc_protocol::config_types::ModelProviderAuthInfo;
+    use xedoc_protocol::openai_models::ModelsResponse;
+
+    #[derive(Debug)]
+    struct RecordingTransportBuilder {
+        observed_request: Arc<Mutex<Option<(OutboundProxyPolicy, String)>>>,
+    }
+
+    impl ModelsTransportBuilder for RecordingTransportBuilder {
+        fn build(
+            &self,
+            http_client_factory: HttpClientFactory,
+            request_url: String,
+        ) -> ModelsTransportFuture<'_> {
+            let observed_request = Arc::clone(&self.observed_request);
+            Box::pin(async move {
+                *observed_request
+                    .lock()
+                    .expect("observed request lock should not be poisoned") =
+                    Some((http_client_factory.outbound_proxy_policy(), request_url));
+                Ok(ReqwestTransport::new(build_reqwest_client()))
+            })
+        }
+    }
+
+    fn provider_info_with_command_auth() -> ModelProviderInfo {
+        ModelProviderInfo {
+            auth: Some(ModelProviderAuthInfo {
+                command: "print-token".to_string(),
+                args: Vec::new(),
+                timeout_ms: NonZeroU64::new(5_000).expect("timeout should be non-zero"),
+                refresh_interval_ms: 300_000,
+                cwd: std::env::current_dir()
+                    .expect("current dir should be available")
+                    .try_into()
+                    .expect("current dir should be absolute"),
+            }),
+            requires_openai_auth: false,
+            ..ModelProviderInfo::create_openai_provider(/*base_url*/ None)
+        }
+    }
+
+    #[test]
+    fn command_auth_provider_reports_command_auth_without_cached_auth() {
+        let endpoint = OpenAiModelsEndpoint::new(
+            provider_info_with_command_auth(),
+            /*auth_manager*/ None,
+        );
+
+        assert!(endpoint.has_command_auth());
+    }
+
+    #[test]
+    fn provider_without_command_auth_reports_no_command_auth() {
+        let endpoint = OpenAiModelsEndpoint::new(
+            ModelProviderInfo::create_openai_provider(/*base_url*/ None),
+            /*auth_manager*/ None,
+        );
+
+        assert!(!endpoint.has_command_auth());
+    }
+
+    #[tokio::test]
+    async fn model_request_uses_request_time_proxy_policy_and_exact_url() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .and(query_param("client_version", "0.0.0"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(ModelsResponse { models: Vec::new() }),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let observed_request = Arc::new(Mutex::new(None));
+        let endpoint = OpenAiModelsEndpoint {
+            provider_info: ModelProviderInfo::create_openai_provider(Some(server.uri())),
+            auth_manager: None,
+            transport_builder: Arc::new(RecordingTransportBuilder {
+                observed_request: Arc::clone(&observed_request),
+            }),
+        };
+
+        endpoint
+            .list_models(
+                "0.0.0",
+                HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            )
+            .await
+            .expect("models request should succeed");
+
+        assert_eq!(
+            *observed_request
+                .lock()
+                .expect("observed request lock should not be poisoned"),
+            Some((
+                OutboundProxyPolicy::RespectSystemProxy,
+                format!("{}/models?client_version=0.0.0", server.uri()),
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn standard_catalog_uses_all_models_from_configured_endpoint() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "object": "list",
+                "data": [
+                    {"id": "claude-opus-5", "owned_by": "anthropic"},
+                    {"id": "claude-sonnet-5", "owned_by": "anthropic"},
+                    {"id": "claude-fable-5", "owned_by": "anthropic"},
+                    {"id": "opus", "owned_by": "anthropic"},
+                    {"id": "deepseek-v4-pro", "owned_by": "deepseek"}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
+        provider_info.name = "Claude".to_string();
+        let endpoint = OpenAiModelsEndpoint::new(provider_info, /*auth_manager*/ None);
+        let expected = [
+            "claude-opus-5",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "opus",
+            "deepseek-v4-pro",
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(priority, model)| {
+            let mut expected = model_info_from_provider_catalog_slug(model, "Claude");
+            expected.priority = i32::try_from(priority).expect("test priority fits in i32");
+            expected.visibility = ModelVisibility::List;
+            expected
+        })
+        .collect::<Vec<_>>();
+
+        let (models, _) = endpoint
+            .list_models(
+                "0.0.0",
+                HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            )
+            .await
+            .expect("models request should succeed");
+
+        assert_eq!(models, expected);
+    }
+
+    #[tokio::test]
+    async fn scoped_catalog_excludes_models_owned_by_another_provider() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .and(query_param("provider", "anthropic"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "object": "list",
+                "data": [
+                    {"id": "claude-opus-5", "owned_by": "anthropic"},
+                    {"id": "deepseek-v4-pro", "owned_by": "deepseek"},
+                    {"id": "unknown-model"}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
+        provider_info.name = "Claude".to_string();
+        provider_info.query_params = Some(HashMap::from([(
+            "provider".to_string(),
+            "anthropic".to_string(),
+        )]));
+        let endpoint = OpenAiModelsEndpoint::new(provider_info, /*auth_manager*/ None);
+        let expected = ["claude-opus-5", "unknown-model"]
+            .into_iter()
+            .enumerate()
+            .map(|(priority, model)| {
+                let mut expected = model_info_from_provider_catalog_slug(model, "Claude");
+                expected.priority = i32::try_from(priority).expect("test priority fits in i32");
+                expected.visibility = ModelVisibility::List;
+                expected
+            })
+            .collect::<Vec<_>>();
+
+        let (models, _) = endpoint
+            .list_models(
+                "0.0.0",
+                HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            )
+            .await
+            .expect("models request should succeed");
+
+        assert_eq!(models, expected);
+    }
+
+    #[tokio::test]
+    async fn catalog_accepts_vendor_owned_models_and_normalizes_resource_ids() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "object": "list",
+                "data": [
+                    {"id": "models/gemini-3.6-flash", "owned_by": "google"}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut provider_info = ModelProviderInfo::create_openai_provider(Some(server.uri()));
+        provider_info.name = "Gemini".to_string();
+        let endpoint = OpenAiModelsEndpoint::new(provider_info, /*auth_manager*/ None);
+        let mut expected = model_info_from_provider_catalog_slug("gemini-3.6-flash", "Gemini");
+        expected.priority = 0;
+        expected.visibility = ModelVisibility::List;
+
+        let (models, _) = endpoint
+            .list_models(
+                "0.0.0",
+                HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            )
+            .await
+            .expect("models request should succeed");
+
+        assert_eq!(models, vec![expected]);
+    }
+}

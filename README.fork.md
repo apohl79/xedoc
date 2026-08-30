@@ -1,10 +1,10 @@
-# apohl79 Codex Fork Notes
+# apohl79 Xedoc Fork Notes
 
 `main-fork` is the canonical `apohl79/codex` fork branch. It tracks OpenAI
-Codex while carrying fork-local features, release tooling, and fixes.
+Xedoc while carrying fork-local features, release tooling, and fixes.
 
 This file is the single source of truth for the fork feature/fix inventory used
-by `.codex/skills/upgrade-apohl79-fork`. The upgrade skill must read this file
+by `.xedoc/skills/upgrade-apohl79-fork`. The upgrade skill must read this file
 instead of maintaining a second feature list or a durable feature-branch list.
 
 The inventory below lists behavior that is present on the fork and not in the
@@ -33,12 +33,12 @@ search path.
 
 Primary files:
 
-- `codex-rs/tui/src/file_search.rs`
-- `codex-rs/tui/src/file_search_tests.rs`
-- `codex-rs/tui/src/bottom_pane/chat_composer.rs`
-- `codex-rs/tui/src/bottom_pane/file_search_popup.rs`
-- `codex-rs/tui/src/bottom_pane/mentions_v2/popup.rs`
-- `codex-rs/tui/src/bottom_pane/mentions_v2/render.rs`
+- `xedoc-rs/tui/src/file_search.rs`
+- `xedoc-rs/tui/src/file_search_tests.rs`
+- `xedoc-rs/tui/src/bottom_pane/chat_composer.rs`
+- `xedoc-rs/tui/src/bottom_pane/file_search_popup.rs`
+- `xedoc-rs/tui/src/bottom_pane/mentions_v2/popup.rs`
+- `xedoc-rs/tui/src/bottom_pane/mentions_v2/render.rs`
 
 ### Custom TUI Status Line
 
@@ -54,7 +54,7 @@ external command mode.
 - The setup flow defaults the command path to `~/.claude/statusline.sh`.
 - The TUI runs custom status-line commands asynchronously and sends a
   Claude-compatible JSON payload on stdin.
-- The payload includes Codex-specific metadata such as `harness: "codex"`,
+- The payload includes Xedoc-specific metadata such as `harness: "xedoc"`,
   session name, task indicator, context-window usage, token usage, git/project
   details, model/reasoning settings, approval and sandbox status, rate-limit
   information, and current status text.
@@ -72,12 +72,12 @@ external command mode.
 
 Primary files:
 
-- `codex-rs/config/src/types.rs`
-- `codex-rs/tui/src/bottom_pane/status_line_setup.rs`
-- `codex-rs/tui/src/chatwidget/status_controls.rs`
-- `codex-rs/tui/src/chatwidget/status.rs`
-- `codex-rs/tui/src/chatwidget/status_surfaces.rs`
-- `codex-rs/tui/src/status_line_command.rs`
+- `xedoc-rs/config/src/types.rs`
+- `xedoc-rs/tui/src/bottom_pane/status_line_setup.rs`
+- `xedoc-rs/tui/src/chatwidget/status_controls.rs`
+- `xedoc-rs/tui/src/chatwidget/status.rs`
+- `xedoc-rs/tui/src/chatwidget/status_surfaces.rs`
+- `xedoc-rs/tui/src/status_line_command.rs`
 - `scripts/statusline.sh`
 
 ### TUI Session Name Composer Label
@@ -97,10 +97,10 @@ composer border when a name is set.
 
 Primary files:
 
-- `codex-rs/tui/src/bottom_pane/chat_composer.rs`
-- `codex-rs/tui/src/bottom_pane/mod.rs`
-- `codex-rs/tui/src/chatwidget/session_flow.rs`
-- `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
+- `xedoc-rs/tui/src/bottom_pane/chat_composer.rs`
+- `xedoc-rs/tui/src/bottom_pane/mod.rs`
+- `xedoc-rs/tui/src/chatwidget/session_flow.rs`
+- `xedoc-rs/tui/src/chatwidget/tests/status_and_layout.rs`
 
 ### Terminal Title Identity Fallback
 
@@ -112,8 +112,8 @@ The fork keeps the terminal title meaningful before a thread has a stable name.
 
 Primary files:
 
-- `codex-rs/tui/src/chatwidget/status_surfaces.rs`
-- `codex-rs/tui/src/terminal_title.rs`
+- `xedoc-rs/tui/src/chatwidget/status_surfaces.rs`
+- `xedoc-rs/tui/src/terminal_title.rs`
 
 ### City Lights (Doom Emacs) Color Theme
 
@@ -136,12 +136,12 @@ TUI chrome colors to the City Lights palette.
 
 Primary files:
 
-- `codex-rs/tui/src/city_lights.rs`
-- `codex-rs/tui/src/style.rs`
-- `codex-rs/tui/src/render/highlight.rs`
-- `codex-rs/tui/src/render/themes/city-lights.tmTheme`
-- `codex-rs/tui/src/bottom_pane/chat_composer.rs`
-- `codex-rs/tui/src/history_cell/messages.rs`
+- `xedoc-rs/tui/src/city_lights.rs`
+- `xedoc-rs/tui/src/style.rs`
+- `xedoc-rs/tui/src/render/highlight.rs`
+- `xedoc-rs/tui/src/render/themes/city-lights.tmTheme`
+- `xedoc-rs/tui/src/bottom_pane/chat_composer.rs`
+- `xedoc-rs/tui/src/history_cell/messages.rs`
 
 ### Automatic Session Naming
 
@@ -175,15 +175,15 @@ without changing the visible model response.
 
 Primary files:
 
-- `codex-rs/core/src/session/session_name.rs`
-- `codex-rs/app-server/src/auto_session_name.rs`
-- `codex-rs/app-server/src/thread_state.rs`
-- `codex-rs/app-server-protocol/src/protocol/v2/thread.rs`
-- `codex-rs/state/migrations/0040_threads_title_source.sql`
-- `codex-rs/state/src/model/thread_metadata.rs`
-- `codex-rs/thread-store/src/local/update_thread_metadata.rs`
-- `codex-rs/tui/src/chatwidget/slash_dispatch.rs`
-- `codex-rs/tui/src/config_update.rs`
+- `xedoc-rs/core/src/session/session_name.rs`
+- `xedoc-rs/app-server/src/auto_session_name.rs`
+- `xedoc-rs/app-server/src/thread_state.rs`
+- `xedoc-rs/app-server-protocol/src/protocol/v2/thread.rs`
+- `xedoc-rs/state/migrations/0040_threads_title_source.sql`
+- `xedoc-rs/state/src/model/thread_metadata.rs`
+- `xedoc-rs/thread-store/src/local/update_thread_metadata.rs`
+- `xedoc-rs/tui/src/chatwidget/slash_dispatch.rs`
+- `xedoc-rs/tui/src/config_update.rs`
 
 ### Persistent Active Task List
 
@@ -200,10 +200,10 @@ task is running.
 
 Primary files:
 
-- `codex-rs/tui/src/bottom_pane/active_task_list.rs`
-- `codex-rs/tui/src/bottom_pane/mod.rs`
-- `codex-rs/tui/src/chatwidget/turn_runtime.rs`
-- `codex-rs/tui/src/chatwidget/tests/status_and_layout.rs`
+- `xedoc-rs/tui/src/bottom_pane/active_task_list.rs`
+- `xedoc-rs/tui/src/bottom_pane/mod.rs`
+- `xedoc-rs/tui/src/chatwidget/turn_runtime.rs`
+- `xedoc-rs/tui/src/chatwidget/tests/status_and_layout.rs`
 
 ### Active Agent and Thread Context UI
 
@@ -242,17 +242,17 @@ custom status line.
 
 Primary files:
 
-- `codex-rs/protocol/src/protocol.rs`
-- `codex-rs/app-server-protocol/src/protocol/event_mapping.rs`
-- `codex-rs/tui/src/app/agent_navigation.rs`
-- `codex-rs/tui/src/app/session_lifecycle.rs`
-- `codex-rs/tui/src/app/thread_routing.rs`
-- `codex-rs/tui/src/bottom_pane/active_agent_list.rs`
-- `codex-rs/tui/src/bottom_pane/footer.rs`
-- `codex-rs/tui/src/bottom_pane/mod.rs`
-- `codex-rs/tui/src/multi_agents.rs`
-- `codex-rs/core/src/agent/control.rs`
-- `codex-rs/core/src/session/turn.rs`
+- `xedoc-rs/protocol/src/protocol.rs`
+- `xedoc-rs/app-server-protocol/src/protocol/event_mapping.rs`
+- `xedoc-rs/tui/src/app/agent_navigation.rs`
+- `xedoc-rs/tui/src/app/session_lifecycle.rs`
+- `xedoc-rs/tui/src/app/thread_routing.rs`
+- `xedoc-rs/tui/src/bottom_pane/active_agent_list.rs`
+- `xedoc-rs/tui/src/bottom_pane/footer.rs`
+- `xedoc-rs/tui/src/bottom_pane/mod.rs`
+- `xedoc-rs/tui/src/multi_agents.rs`
+- `xedoc-rs/core/src/agent/control.rs`
+- `xedoc-rs/core/src/session/turn.rs`
 
 ### Multi-Agent Configuration and Safety
 
@@ -268,11 +268,11 @@ The fork adds provider and depth controls for multi-agent sessions.
 
 Primary files:
 
-- `codex-rs/config/src/thread_config.rs`
-- `codex-rs/core/src/config/mod.rs`
-- `codex-rs/core/src/session/config_lock.rs`
-- `codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs`
-- `codex-rs/core/src/session/mcp_runtime.rs`
+- `xedoc-rs/config/src/thread_config.rs`
+- `xedoc-rs/core/src/config/mod.rs`
+- `xedoc-rs/core/src/session/config_lock.rs`
+- `xedoc-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs`
+- `xedoc-rs/core/src/session/mcp_runtime.rs`
 
 ### Cost and Provider Pricing
 
@@ -287,10 +287,10 @@ provider-specific pricing overrides.
 
 Primary files:
 
-- `codex-rs/config/src/types.rs`
-- `codex-rs/core/src/session/mod.rs`
-- `codex-rs/core/src/token_usage.rs`
-- `codex-rs/tui/src/token_usage.rs`
+- `xedoc-rs/config/src/types.rs`
+- `xedoc-rs/core/src/session/mod.rs`
+- `xedoc-rs/core/src/token_usage.rs`
+- `xedoc-rs/tui/src/token_usage.rs`
 
 ### State Database and Replay Compatibility
 
@@ -306,10 +306,10 @@ upgrade and downgrade validation path.
 
 Primary files:
 
-- `codex-rs/state/src/migrations.rs`
-- `codex-rs/state/src/migrations_tests.rs`
-- `codex-rs/app-server/src/request_processors/token_usage_replay.rs`
-- `codex-rs/app-server/src/request_processors/thread_processor.rs`
+- `xedoc-rs/state/src/migrations.rs`
+- `xedoc-rs/state/src/migrations_tests.rs`
+- `xedoc-rs/app-server/src/request_processors/token_usage_replay.rs`
+- `xedoc-rs/app-server/src/request_processors/thread_processor.rs`
 
 ### Hook Output Visibility
 
@@ -326,11 +326,11 @@ quiet.
 
 Primary files:
 
-- `codex-rs/config/src/config_toml.rs`
-- `codex-rs/core/src/config/mod.rs`
-- `codex-rs/core/config.schema.json`
-- `codex-rs/tui/src/chatwidget/hook_lifecycle.rs`
-- `codex-rs/tui/src/history_cell/hook_cell.rs`
+- `xedoc-rs/config/src/config_toml.rs`
+- `xedoc-rs/core/src/config/mod.rs`
+- `xedoc-rs/core/config.schema.json`
+- `xedoc-rs/tui/src/chatwidget/hook_lifecycle.rs`
+- `xedoc-rs/tui/src/history_cell/hook_cell.rs`
 
 ### Multi-Provider Agent Message Delivery
 
@@ -348,18 +348,18 @@ The fork carries fixes for mixed-provider multi-agent sessions.
 
 Primary files:
 
-- `codex-rs/core/src/agent/control.rs`
-- `codex-rs/core/src/tools/handlers/multi_agents_v2.rs`
-- `codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs`
-- `codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs`
-- `codex-rs/core/tests/suite/subagent_notifications.rs`
+- `xedoc-rs/core/src/agent/control.rs`
+- `xedoc-rs/core/src/tools/handlers/multi_agents_v2.rs`
+- `xedoc-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs`
+- `xedoc-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs`
+- `xedoc-rs/core/tests/suite/subagent_notifications.rs`
 
 ### Inter-Agent Trace Diagnostics
 
 The fork adds opt-in API tracing for debugging inter-agent request and stream
 payload shape without writing full sensitive payloads by default.
 
-- Setting `CODEX_INTER_AGENT_TRACE` to a file path enables JSONL trace output.
+- Setting `XEDOC_INTER_AGENT_TRACE` to a file path enables JSONL trace output.
 - The trace records request, websocket request, and stream-event summaries.
 - Trace entries include request method/path, top-level body keys, input length,
   agent-message summaries, encrypted-content summaries, item identifiers, and
@@ -369,10 +369,10 @@ payload shape without writing full sensitive payloads by default.
 
 Primary files:
 
-- `codex-rs/codex-api/src/inter_agent_trace.rs`
-- `codex-rs/codex-api/src/endpoint/responses_websocket.rs`
-- `codex-rs/codex-api/src/endpoint/session.rs`
-- `codex-rs/codex-api/src/sse/responses.rs`
+- `xedoc-rs/xedoc-api/src/inter_agent_trace.rs`
+- `xedoc-rs/xedoc-api/src/endpoint/responses_websocket.rs`
+- `xedoc-rs/xedoc-api/src/endpoint/session.rs`
+- `xedoc-rs/xedoc-api/src/sse/responses.rs`
 
 ### Provider Stream and Error Handling Fixes
 
@@ -386,10 +386,10 @@ upstream rebases.
 
 Primary files:
 
-- `codex-rs/core/src/session/turn.rs`
-- `codex-rs/core/tests/suite/stream_no_completed.rs`
-- `codex-rs/codex-api/src/api_bridge.rs`
-- `codex-rs/codex-api/src/api_bridge_tests.rs`
+- `xedoc-rs/core/src/session/turn.rs`
+- `xedoc-rs/core/tests/suite/stream_no_completed.rs`
+- `xedoc-rs/xedoc-api/src/api_bridge.rs`
+- `xedoc-rs/xedoc-api/src/api_bridge_tests.rs`
 
 ### Queued Input Recall Cleanup
 
@@ -405,11 +405,11 @@ sent as a pending steer.
 
 Primary files:
 
-- `codex-rs/tui/src/app_command.rs`
-- `codex-rs/tui/src/chatwidget/input_queue.rs`
-- `codex-rs/tui/src/chatwidget/input_restore.rs`
-- `codex-rs/tui/src/chatwidget/input_submission.rs`
-- `codex-rs/tui/src/chatwidget/user_messages.rs`
+- `xedoc-rs/tui/src/app_command.rs`
+- `xedoc-rs/tui/src/chatwidget/input_queue.rs`
+- `xedoc-rs/tui/src/chatwidget/input_restore.rs`
+- `xedoc-rs/tui/src/chatwidget/input_submission.rs`
+- `xedoc-rs/tui/src/chatwidget/user_messages.rs`
 
 ### apohl79 Release Packaging
 
@@ -426,13 +426,13 @@ The fork adds release helpers for building apohl79-branded packages from
 - The default output directory is `dist/apohl79`.
 - The release helper verifies that the current checkout matches the requested
   ref.
-- The helper requires `codex-rs/Cargo.toml` and `codex-rs/Cargo.lock` to be
+- The helper requires `xedoc-rs/Cargo.toml` and `xedoc-rs/Cargo.lock` to be
   clean before packaging by default. Pass `--allow-dirty --skip-github-release`
   to build a local package from uncommitted manifest or build-number changes;
   dirty builds cannot create or upload a GitHub release.
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
-- The helper builds `codex-cli` with Bazel by default.
+- The helper builds `xedoc-cli` with Bazel by default.
   Pass `--build-system cargo` to use the previous Cargo `--locked` path.
 - Bazel builds use the `apohl79-release` configuration, which matches the Cargo
   release profile's optimization, ThinLTO, codegen-unit, and unstripped
@@ -448,23 +448,23 @@ The fork adds release helpers for building apohl79-branded packages from
   codesign mutates them. Signing, verification, packaging, and publishing remain
   local.
 - Cargo fallback builds preserve incremental artifacts by using the current
-  checkout and `codex-rs/target` as the default target directory. They limit
+  checkout and `xedoc-rs/target` as the default target directory. They limit
   default Cargo parallelism while respecting `--cargo-build-jobs`,
   `APOHL79_CARGO_BUILD_JOBS`, and Cargo's native `CARGO_BUILD_JOBS`.
 - The helper can auto-repair stale workspace package versions in
-  `codex-rs/Cargo.lock` before a locked release build.
+  `xedoc-rs/Cargo.lock` before a locked release build.
 - `scripts/apohl79_build_number.txt` stores the monotonically increasing fork
   build number. Fork release versions use
-  `[codex-version]-apohl79-[build-number]` and GitHub release tags use
-  `rust-v[codex-version]-apohl79-[build-number]`.
+  `[xedoc-version]-apohl79-[build-number]` and GitHub release tags use
+  `rust-v[xedoc-version]-apohl79-[build-number]`.
 - The installer targets GitHub releases in `apohl79/codex`, resolves the
   current fork tag from a checked-out tag or `[workspace.package].version` plus
   the tracked build number, and verifies the uploaded asset SHA-256 before
   installing.
-- Unix packages install the `codex-session` control CLI beside `codex`. On the
+- Unix packages install the `xedoc-session` control CLI beside `xedoc`. On the
   first interactive install, the installer asks whether `~/.zshrc` should
   start the local app-server daemon; the enabled or disabled choice is saved
-  under `CODEX_HOME/app-server-daemon/zshrc-start` and reused on updates.
+  under `XEDOC_HOME/app-server-daemon/zshrc-start` and reused on updates.
 - The release helper creates the matching GitHub release in `apohl79/codex` if
   it does not already exist.
 - The release helper uploads generated archives to the release with clobbering
@@ -476,9 +476,9 @@ The fork adds release helpers for building apohl79-branded packages from
 
 The macOS apohl79 standalone binary checks `apohl79/codex` for the latest
 release when an interactive TUI session starts. When a newer fork build is
-available, Codex offers the existing update prompt. Confirming the update runs
+available, Xedoc offers the existing update prompt. Confirming the update runs
 the fork installer, which verifies the release archive SHA-256, switches the
-standalone package symlink, and launches the new `codex` binary with the
+standalone package symlink, and launches the new `xedoc` binary with the
 original arguments.
 
 - This behavior is limited to macOS apohl79 release builds.
@@ -487,11 +487,11 @@ original arguments.
 
 Primary files:
 
-- `codex-rs/tui/src/update_action.rs`
-- `codex-rs/tui/src/update_prompt.rs`
-- `codex-rs/tui/src/updates.rs`
-- `codex-rs/tui/src/update_versions.rs`
-- `codex-rs/cli/src/main.rs`
+- `xedoc-rs/tui/src/update_action.rs`
+- `xedoc-rs/tui/src/update_prompt.rs`
+- `xedoc-rs/tui/src/updates.rs`
+- `xedoc-rs/tui/src/update_versions.rs`
+- `xedoc-rs/cli/src/main.rs`
 
 Primary files:
 
@@ -499,14 +499,14 @@ Primary files:
 - `scripts/apohl79_build_number.txt`
 - `scripts/build_apohl79_release.py`
 - `scripts/build_apohl79_release.sh`
-- `scripts/codex-session`
+- `scripts/xedoc-session`
 - `scripts/install/install-apohl79.sh`
 - `scripts/test_apohl79_release.py`
-- `scripts/codex_package/cli.py`
+- `scripts/xedoc_package/cli.py`
 
 ### Fork Upgrade Tooling
 
-The fork includes a local Codex skill for upgrading this fork from upstream
+The fork includes a local Xedoc skill for upgrading this fork from upstream
 OpenAI Codex release tags and a local report skill for checking upstream
 release drift.
 
@@ -535,10 +535,10 @@ release drift.
 
 Primary files:
 
-- `.codex/skills/upgrade-apohl79-fork/SKILL.md`
-- `.codex/skills/upgrade-apohl79-fork/agents/openai.yaml`
-- `.codex/skills/list-apohl79-fork-upstream-changes/SKILL.md`
-- `.codex/skills/list-apohl79-fork-upstream-changes/scripts/list_apohl79_fork_upstream_changes.py`
+- `.xedoc/skills/upgrade-apohl79-fork/SKILL.md`
+- `.xedoc/skills/upgrade-apohl79-fork/agents/openai.yaml`
+- `.xedoc/skills/list-apohl79-fork-upstream-changes/SKILL.md`
+- `.xedoc/skills/list-apohl79-fork-upstream-changes/scripts/list_apohl79_fork_upstream_changes.py`
 
 ### Repository Hygiene
 
@@ -557,14 +557,14 @@ development and release hygiene.
 Primary files:
 
 - `.gitleaksignore`
-- `codex-rs/Cargo.toml`
-- `codex-rs/tui/src/**/*.snap`
+- `xedoc-rs/Cargo.toml`
+- `xedoc-rs/tui/src/**/*.snap`
 - `scripts/apohl79_build_number.txt`
 
 ### Plugin Context
 
 Plugins can declare static, position-aware instruction blocks in `plugin.json`
-that Codex injects into every model API call via the `ContextContributor`
+that Xedoc injects into every model API call via the `ContextContributor`
 pipeline. This replaces hook-based periodic reminders with zero per-turn
 overhead.
 
@@ -610,18 +610,18 @@ there is no AGENTS.md ordering concept.
 Plugin context is thread-scoped — subagents automatically inherit it. Content is
 read once at plugin load time. An entry may add optional `condition_shell`: use
 syntax supported by the configured user shell (the example uses POSIX shell
-syntax). Codex runs it from the thread working directory, before
+syntax). Xedoc runs it from the thread working directory, before
 that entry is first injected. Exit code `0` injects the entry; any nonzero exit,
 launch failure, or a five-second timeout omits it. Standard input and output are
 disabled, and the shell is non-login, so conditions must not rely on profile
-initialization. Conditions are trusted plugin code and inherit Codex's process
+initialization. Conditions are trusted plugin code and inherit Xedoc's process
 environment. Because injected context is persistent, a later environment change
 does not remove an entry already present in the thread history.
 
 ## Removed Upstream Functionality
 
 The fork deliberately drops upstream features that only serve OpenAI-hosted
-products (ChatGPT/Codex desktop apps, Codex Cloud, telemetry) or that the fork
+products (ChatGPT/Xedoc desktop apps, Xedoc Cloud, telemetry) or that the fork
 owner does not use. During a fork upgrade, do not re-add these; drop the
 upstream changes that touch them instead.
 
@@ -629,34 +629,34 @@ Removed crates (with their `ext/*` and `core-*` companions):
 `analytics`, `backend-client`, `chatgpt`, `cli-doctor`, `cloud-config`,
 `cloud-tasks`, `cloud-tasks-client`, `cloud-tasks-mock-client`,
 `code-mode`, `code-mode-client`, `code-mode-host`, `code-mode-protocol`,
-`codex-backend-openapi-models`, `connectors`, `core-connectors-runtime`,
+`xedoc-backend-openapi-models`, `connectors`, `core-connectors-runtime`,
 `core-guardian-approval`, `core-mcp-openai-file`, `core-realtime`,
 `core-realtime-context`, `external-agent-migration`, `feedback`,
 `memories/read`, `memories/write`, `rollout-trace`, `tui-pet`, `tui-pet-ui`,
 `v8-poc`, `windows-sandbox-rs`. The `sdk/python*`, `sdk/typescript`, and
-`codex-cli` npm wrapper directories are gone.
+`xedoc-cli` npm wrapper directories are gone.
 
 Removed behavior:
 
 - External agent config migration (`externalAgentConfig/*` app-server methods,
   TUI import flow, `/import`).
-- Windows sandbox (`[windows]` config, `codex-windows-sandbox-setup` and
-  `codex-command-runner` binaries, `windowsSandbox/*`, `/elevate-sandbox`,
+- Windows sandbox (`[windows]` config, `xedoc-windows-sandbox-setup` and
+  `xedoc-command-runner` binaries, `windowsSandbox/*`, `/elevate-sandbox`,
   `/sandbox-read-root`). Windows now behaves as sandbox-disabled.
-- Remote control and attestation (`codex app-server remote-control`,
+- Remote control and attestation (`xedoc app-server remote-control`,
   `--remote-control`, `remoteControl/*`, `attestation/generate`, daemon
   `settings.json`).
-- Codex Cloud tasks (`codex cloud`, `codex apply`).
-- Codex Apps/connectors (`app/*` methods, `/apps`, `[apps]` runtime,
+- Xedoc Cloud tasks (`xedoc cloud`, `xedoc apply`).
+- Xedoc Apps/connectors (`app/*` methods, `/apps`, `[apps]` runtime,
   `apps_mcp_product_sku`, `include_apps_instructions`).
 - Analytics (`[analytics]`, `--analytics-default-enabled`, all `track_*`
   event plumbing) and the Statsig OTEL exporter; `otel.metrics_exporter` now
   defaults to `none` and `"statsig"` no longer parses.
-- `codex doctor`, rollout trace (`codex debug trace-reduce`), feedback upload
+- `xedoc doctor`, rollout trace (`xedoc debug trace-reduce`), feedback upload
   (`feedback/upload`, `/feedback`, `[feedback]`), terminal pets (`/pets`,
   `[tui].pet*`).
 - Memories (`[memories]`, `/memories`, `/memory-drop`, `/memory-update`,
-  `memory/reset`, `thread/memoryMode/set`, `codex debug clear-memories`).
+  `memory/reset`, `thread/memoryMode/set`, `xedoc debug clear-memories`).
   The `threads.memory_mode` DB column and migrations are kept for replay
   compatibility.
 - Guardian auto-review (`[auto_review]`, `approvals_reviewer`,
@@ -674,7 +674,7 @@ Removed behavior:
   require `marketplacePath`.
 - Code mode and the embedded V8 runtime (`features.code_mode*`,
   `execute`/`wait` tools, `ToolExposure::DirectModelOnly`, the
-  `codex-code-mode-host` binary, `third_party/v8`, the rusty_v8 Bazel layer
+  `xedoc-code-mode-host` binary, `third_party/v8`, the rusty_v8 Bazel layer
   and patches, `v8-canary`/`rusty-v8-release` workflows). `features.code_mode`,
   `code_mode_buffered_exec`, `code_mode_host`, `code_mode_only`, and
   `multi_agent_v2.non_code_mode_only` remain tolerated config keys; the
@@ -685,7 +685,7 @@ Removed behavior:
 
 Upstream release workflows and installers (`rust-release*.yml`,
 `.github/dotslash-config.json`, `.github/actions/windows-code-sign`,
-`.github/scripts/build-codex-package-archive.sh`, `scripts/install/install.sh`,
+`.github/scripts/build-xedoc-package-archive.sh`, `scripts/install/install.sh`,
 `scripts/install/install.ps1`) still reference the removed Windows sandbox and
 code-mode host binaries; the fork uses its own release packaging instead.
 

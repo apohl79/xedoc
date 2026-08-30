@@ -10,7 +10,7 @@ set +e
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
-codex_rs_root="${repo_root}/codex-rs"
+xedoc_rs_root="${repo_root}/xedoc-rs"
 failures=()
 
 configure_testcontainers() {
@@ -80,21 +80,21 @@ main() {
   run_stage "Node dependency installation" "${repo_root}" pnpm install --frozen-lockfile
   run_stage "Prettier formatting check" "${repo_root}" pnpm run format
 
-  run_stage "Cargo workspace compile" "${codex_rs_root}" cargo check --workspace --all-targets
-  run_stage "Cargo workspace clippy" "${codex_rs_root}" just clippy --workspace --all-targets -- -D warnings
-  run_stage "Cargo dependency lint" "${codex_rs_root}" cargo shear --deny-warnings
+  run_stage "Cargo workspace compile" "${xedoc_rs_root}" cargo check --workspace --all-targets
+  run_stage "Cargo workspace clippy" "${xedoc_rs_root}" just clippy --workspace --all-targets -- -D warnings
+  run_stage "Cargo dependency lint" "${xedoc_rs_root}" cargo shear --deny-warnings
   run_stage "Bazel lockfile check" "${repo_root}" just bazel-lock-check
   run_stage "argument-comment lint target discovery" "${repo_root}" verify_argument_comment_lint_targets
   run_stage "argument-comment lint" "${repo_root}" just argument-comment-lint
   run_stage "Bazel clippy" "${repo_root}" just bazel-clippy
 
-  run_stage "Cargo workspace tests" "${codex_rs_root}" just test
+  run_stage "Cargo workspace tests" "${xedoc_rs_root}" just test
   run_stage "Bazel tests" "${repo_root}" just bazel-test
-  run_stage "Rust benchmark smoke test" "${codex_rs_root}" just bench-smoke
+  run_stage "Rust benchmark smoke test" "${xedoc_rs_root}" just bench-smoke
   run_stage "release binary compile" "${repo_root}" just build-for-release
 
   run_stage "GitHub script tests" "${repo_root}" just test-github-scripts
-  run_stage "package-builder tests" "${repo_root}" python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
+  run_stage "package-builder tests" "${repo_root}" python3 -m unittest discover -s scripts/xedoc_package -p 'test_*.py'
   run_stage "installer tests" "${repo_root}" python3 -m unittest discover -s scripts/install -p 'test_*.py'
   run_stage "fork release-helper tests" "${repo_root}" uv run --frozen --project scripts python -m unittest discover -s scripts -p 'test_apohl79*_release.py'
   run_stage "argument-comment Python compilation" "${repo_root}" python3 -m py_compile tools/argument-comment-lint/wrapper_common.py tools/argument-comment-lint/run.py tools/argument-comment-lint/run-prebuilt-linter.py tools/argument-comment-lint/test_wrapper_common.py

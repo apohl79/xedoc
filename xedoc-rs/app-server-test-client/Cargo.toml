@@ -1,0 +1,36 @@
+[package]
+name = "xedoc-app-server-test-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "xedoc-app-server-test-client"
+path = "src/main.rs"
+test = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tungstenite = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

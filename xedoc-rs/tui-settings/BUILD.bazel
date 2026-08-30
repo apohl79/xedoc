@@ -1,0 +1,9 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-settings",
+    crate_name = "xedoc_tui_settings",
+    test_data_extra = glob([
+        "src/snapshots/**",
+    ]),
+)

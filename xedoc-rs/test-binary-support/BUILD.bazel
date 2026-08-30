@@ -1,0 +1,7 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "test-binary-support",
+    crate_name = "xedoc_test_binary_support",
+    crate_srcs = ["lib.rs"],
+)

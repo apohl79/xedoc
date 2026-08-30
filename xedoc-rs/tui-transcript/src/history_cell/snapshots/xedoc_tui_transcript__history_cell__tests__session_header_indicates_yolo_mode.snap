@@ -1,0 +1,11 @@
+---
+source: tui-transcript/src/history_cell/tests.rs
+expression: rendered
+---
+╭───────────────────────────────────────╮
+│ x_ E47 Xedoc (vtest)                  │
+│                                       │
+│ model:       gpt-5   /model to change │
+│ directory:   /tmp/project             │
+│ permissions: YOLO mode                │
+╰───────────────────────────────────────╯

@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "thread-manager-sample",
+    crate_name = "xedoc_thread_manager_sample",
+)

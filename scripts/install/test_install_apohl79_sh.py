@@ -17,7 +17,7 @@ INSTALL_SCRIPT = Path(__file__).with_name("install-apohl79.sh")
 TAG = "rust-v0.144.0-apohl79-17"
 VERSION = TAG.removeprefix("rust-v")
 TARGET = "aarch64-apple-darwin"
-ASSET = f"codex-{TARGET}-{VERSION}.zip"
+ASSET = f"xedoc-{TARGET}-{VERSION}.zip"
 
 
 class InstallApohl79ShTest(unittest.TestCase):
@@ -34,10 +34,10 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_REQUEST_LOG": str(request_log),
-                    "CODEX_NON_INTERACTIVE": "1",
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
+                    "XEDOC_NON_INTERACTIVE": "1",
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -57,14 +57,14 @@ class InstallApohl79ShTest(unittest.TestCase):
             install_bin = root / "install-bin"
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
-                os.readlink(install_bin / "codex"),
-                str(root / "codex-home/packages/standalone/current/bin/codex"),
+                os.readlink(install_bin / "xedoc"),
+                str(root / "xedoc-home/packages/standalone/current/bin/xedoc"),
             )
             self.assertIn("Installing local package ZIP", result.stdout)
             self.assertIn("Skipping statusline script for local package", result.stdout)
             self.assertFalse(request_log.exists())
 
-    def test_package_install_creates_visible_codex_and_host_symlinks(self) -> None:
+    def test_package_install_creates_visible_xedoc_and_host_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             archive_path = root / ASSET
@@ -77,13 +77,13 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -101,7 +101,7 @@ class InstallApohl79ShTest(unittest.TestCase):
             install_bin = root / "install-bin"
             release_dir = (
                 root
-                / "codex-home"
+                / "xedoc-home"
                 / "packages"
                 / "standalone"
                 / "releases"
@@ -110,20 +110,20 @@ class InstallApohl79ShTest(unittest.TestCase):
             self.assertEqual(
                 {
                     "returncode": result.returncode,
-                    "codex_link": os.readlink(install_bin / "codex"),
-                    "session_link": os.readlink(install_bin / "codex-session"),
-                    "codex_installed": (release_dir / "bin/codex").is_file(),
+                    "xedoc_link": os.readlink(install_bin / "xedoc"),
+                    "session_link": os.readlink(install_bin / "xedoc-session"),
+                    "xedoc_installed": (release_dir / "bin/xedoc").is_file(),
                 },
                 {
                     "returncode": 0,
-                    "codex_link": str(
-                        root / "codex-home/packages/standalone/current/bin/codex"
+                    "xedoc_link": str(
+                        root / "xedoc-home/packages/standalone/current/bin/xedoc"
                     ),
                     "session_link": str(
                         root
-                        / "codex-home/packages/standalone/current/bin/codex-session"
+                        / "xedoc-home/packages/standalone/current/bin/xedoc-session"
                     ),
-                    "codex_installed": True,
+                    "xedoc_installed": True,
                 },
             )
 
@@ -136,20 +136,20 @@ class InstallApohl79ShTest(unittest.TestCase):
             bin_dir = root / "fake-bin"
             bin_dir.mkdir()
             write_fake_curl(bin_dir / "curl")
-            choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             choice_path.parent.mkdir(parents=True)
             choice_path.write_text("enabled\n", encoding="utf-8")
 
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -167,7 +167,7 @@ class InstallApohl79ShTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             zshrc = (root / "home/.zshrc").read_text(encoding="utf-8")
-            expected_binary = root / "install-bin/codex"
+            expected_binary = root / "install-bin/xedoc"
             self.assertIn(
                 f'"{expected_binary}" app-server daemon start',
                 zshrc,
@@ -187,13 +187,13 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "CODEX_TEST_REQUEST_LOG": str(request_log),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -214,8 +214,8 @@ class InstallApohl79ShTest(unittest.TestCase):
                 {
                     "returncode": result.returncode,
                     "requests": request_log.read_text(encoding="utf-8").splitlines(),
-                    "codex_link": os.readlink(root / "install-bin/codex"),
-                    "statusline": (root / "codex-home/statusline.sh").read_text(
+                    "xedoc_link": os.readlink(root / "install-bin/xedoc"),
+                    "statusline": (root / "xedoc-home/statusline.sh").read_text(
                         encoding="utf-8"
                     ),
                 },
@@ -227,8 +227,8 @@ class InstallApohl79ShTest(unittest.TestCase):
                         f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
                         f"https://raw.githubusercontent.com/apohl79/codex/{TAG}/scripts/statusline.sh",
                     ],
-                    "codex_link": str(
-                        root / "codex-home/packages/standalone/current/bin/codex"
+                    "xedoc_link": str(
+                        root / "xedoc-home/packages/standalone/current/bin/xedoc"
                     ),
                     "statusline": "#!/bin/sh\n",
                 },
@@ -243,7 +243,7 @@ class InstallApohl79ShTest(unittest.TestCase):
             bin_dir = root / "fake-bin"
             bin_dir.mkdir()
             write_fake_curl(bin_dir / "curl")
-            existing_statusline = root / "codex-home/statusline.sh"
+            existing_statusline = root / "xedoc-home/statusline.sh"
             existing_statusline.parent.mkdir(parents=True)
             existing_statusline.write_text(
                 "#!/bin/sh\n# user customization\n",
@@ -253,13 +253,13 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -288,7 +288,7 @@ class InstallApohl79ShTest(unittest.TestCase):
                 },
             )
 
-    def test_accepting_codex_providers_prompt_runs_official_installer(self) -> None:
+    def test_accepting_xedoc_providers_prompt_runs_official_installer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             archive_path = root / ASSET
@@ -297,7 +297,7 @@ class InstallApohl79ShTest(unittest.TestCase):
             bin_dir = root / "fake-bin"
             bin_dir.mkdir()
             write_fake_curl(bin_dir / "curl")
-            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
             provider_installer = root / "codex-providers-install.sh"
@@ -308,16 +308,16 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "CODEX_TEST_PROVIDER_INSTALLER": str(provider_installer),
-                    "CODEX_TEST_PROVIDER_INSTALL_MARKER": str(provider_marker),
-                    "CODEX_TEST_REQUEST_LOG": str(request_log),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_PROVIDER_INSTALLER": str(provider_installer),
+                    "XEDOC_TEST_PROVIDER_INSTALL_MARKER": str(provider_marker),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -335,7 +335,7 @@ class InstallApohl79ShTest(unittest.TestCase):
                         root / "home/.local/bin/codex-providers"
                     ).is_file(),
                     "provider_choice_exists": (
-                        root / "codex-home/codex-providers/install"
+                        root / "xedoc-home/codex-providers/install"
                     ).exists(),
                 },
                 {
@@ -351,7 +351,7 @@ class InstallApohl79ShTest(unittest.TestCase):
                 },
             )
 
-    def test_rejected_codex_providers_prompt_is_not_asked_again(self) -> None:
+    def test_rejected_xedoc_providers_prompt_is_not_asked_again(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             archive_path = root / ASSET
@@ -360,7 +360,7 @@ class InstallApohl79ShTest(unittest.TestCase):
             bin_dir = root / "fake-bin"
             bin_dir.mkdir()
             write_fake_curl(bin_dir / "curl")
-            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
             request_log = root / "requests.log"
@@ -368,14 +368,14 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "CODEX_TEST_REQUEST_LOG": str(request_log),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -390,7 +390,7 @@ class InstallApohl79ShTest(unittest.TestCase):
                     "returncodes": [first_result.returncode, second_result.returncode],
                     "requests": request_log.read_text(encoding="utf-8").splitlines(),
                     "provider_choice": (
-                        root / "codex-home/codex-providers/install"
+                        root / "xedoc-home/codex-providers/install"
                     ).read_text(encoding="utf-8"),
                     "provider_prompts": [
                         "Install optional codex-providers" in first_result.stdout,
@@ -409,7 +409,7 @@ class InstallApohl79ShTest(unittest.TestCase):
                 },
             )
 
-    def test_existing_codex_providers_runner_is_not_prompted(self) -> None:
+    def test_existing_xedoc_providers_runner_is_not_prompted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             archive_path = root / ASSET
@@ -418,7 +418,7 @@ class InstallApohl79ShTest(unittest.TestCase):
             bin_dir = root / "fake-bin"
             bin_dir.mkdir()
             write_fake_curl(bin_dir / "curl")
-            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
             provider_runner = root / "home/.local/bin/codex-providers"
@@ -430,14 +430,14 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(root / "install-bin"),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "CODEX_TEST_REQUEST_LOG": str(request_log),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -474,14 +474,14 @@ class InstallApohl79ShTest(unittest.TestCase):
             write_fake_curl(bin_dir / "curl")
             install_bin = root / "install-bin"
             install_bin.mkdir()
-            old_codex = root / "old-codex"
-            write_fake_codex(old_codex)
-            old_codex.chmod(0o755)
-            os.symlink(old_codex, install_bin / "codex")
-            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            old_xedoc = root / "old-xedoc"
+            write_fake_xedoc(old_xedoc)
+            old_xedoc.chmod(0o755)
+            os.symlink(old_xedoc, install_bin / "xedoc")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_choice_path = root / "codex-home/codex-providers/install"
+            provider_choice_path = root / "xedoc-home/codex-providers/install"
             provider_choice_path.parent.mkdir(parents=True)
             provider_choice_path.write_text("disabled\n", encoding="utf-8")
             restart_log = root / "app-server-restart.log"
@@ -489,15 +489,15 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(install_bin),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "CODEX_TEST_APP_SERVER_RUNNING": "1",
-                    "CODEX_TEST_RESTART_LOG": str(restart_log),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(install_bin),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_APP_SERVER_RUNNING": "1",
+                    "XEDOC_TEST_RESTART_LOG": str(restart_log),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -533,14 +533,14 @@ class InstallApohl79ShTest(unittest.TestCase):
             write_fake_curl(bin_dir / "curl")
             install_bin = root / "install-bin"
             install_bin.mkdir()
-            old_codex = root / "old-codex"
-            write_fake_codex(old_codex)
-            old_codex.chmod(0o755)
-            os.symlink(old_codex, install_bin / "codex")
-            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            old_xedoc = root / "old-xedoc"
+            write_fake_xedoc(old_xedoc)
+            old_xedoc.chmod(0o755)
+            os.symlink(old_xedoc, install_bin / "xedoc")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_choice_path = root / "codex-home/codex-providers/install"
+            provider_choice_path = root / "xedoc-home/codex-providers/install"
             provider_choice_path.parent.mkdir(parents=True)
             provider_choice_path.write_text("disabled\n", encoding="utf-8")
             restart_log = root / "app-server-restart.log"
@@ -548,15 +548,15 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(install_bin),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "CODEX_TEST_APP_SERVER_RUNNING": "1",
-                    "CODEX_TEST_RESTART_LOG": str(restart_log),
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(install_bin),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_APP_SERVER_RUNNING": "1",
+                    "XEDOC_TEST_RESTART_LOG": str(restart_log),
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -580,14 +580,14 @@ class InstallApohl79ShTest(unittest.TestCase):
             write_fake_curl(bin_dir / "curl")
             install_bin = root / "install-bin"
             install_bin.mkdir()
-            old_codex = root / "old-codex"
-            write_fake_codex(old_codex)
-            old_codex.chmod(0o755)
-            os.symlink(old_codex, install_bin / "codex")
-            app_server_choice_path = root / "codex-home/app-server-daemon/zshrc-start"
+            old_xedoc = root / "old-xedoc"
+            write_fake_xedoc(old_xedoc)
+            old_xedoc.chmod(0o755)
+            os.symlink(old_xedoc, install_bin / "xedoc")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_choice_path = root / "codex-home/codex-providers/install"
+            provider_choice_path = root / "xedoc-home/codex-providers/install"
             provider_choice_path.parent.mkdir(parents=True)
             provider_choice_path.write_text("disabled\n", encoding="utf-8")
             restart_log = root / "app-server-restart.log"
@@ -595,16 +595,16 @@ class InstallApohl79ShTest(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "CODEX_APOHL79_REPO": "apohl79/codex",
-                    "CODEX_APOHL79_TAG": TAG,
-                    "CODEX_APOHL79_TARGET": TARGET,
-                    "CODEX_HOME": str(root / "codex-home"),
-                    "CODEX_INSTALL_DIR": str(install_bin),
-                    "CODEX_TEST_ARCHIVE": str(archive_path),
-                    "CODEX_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "CODEX_TEST_APP_SERVER_RUNNING": "1",
-                    "CODEX_TEST_RESTART_LOG": str(restart_log),
-                    "CODEX_NON_INTERACTIVE": "1",
+                    "XEDOC_APOHL79_REPO": "apohl79/codex",
+                    "XEDOC_APOHL79_TAG": TAG,
+                    "XEDOC_APOHL79_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(install_bin),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_APP_SERVER_RUNNING": "1",
+                    "XEDOC_TEST_RESTART_LOG": str(restart_log),
+                    "XEDOC_NON_INTERACTIVE": "1",
                     "HOME": str(root / "home"),
                     "PATH": f"{bin_dir}:/usr/bin:/bin",
                     "SHELL": "/bin/sh",
@@ -662,54 +662,54 @@ def write_package_archive(archive_path: Path) -> None:
     with zipfile.ZipFile(archive_path, "w") as archive:
         write_zip_text(
             archive,
-            "codex-package.json",
+            "xedoc-package.json",
             json.dumps(
                 {
                     "layoutVersion": 2,
                     "version": VERSION,
                     "target": TARGET,
-                    "variant": "codex",
-                    "entrypoint": "bin/codex",
-                    "resourcesDir": "codex-resources",
-                    "pathDir": "codex-path",
+                    "variant": "xedoc",
+                    "entrypoint": "bin/xedoc",
+                    "resourcesDir": "xedoc-resources",
+                    "pathDir": "xedoc-path",
                 }
             )
             + "\n",
         )
         write_zip_text(
             archive,
-            "bin/codex",
-            fake_codex_content(),
+            "bin/xedoc",
+            fake_xedoc_content(),
             mode=0o755,
         )
         write_zip_text(
             archive,
-            "bin/codex-session",
+            "bin/xedoc-session",
             "#!/bin/sh\nexit 0\n",
             mode=0o755,
         )
-        write_zip_text(archive, "codex-path/rg", "#!/bin/sh\nexit 0\n", mode=0o755)
+        write_zip_text(archive, "xedoc-path/rg", "#!/bin/sh\nexit 0\n", mode=0o755)
 
 
-def write_fake_codex(path: Path) -> None:
-    path.write_text(fake_codex_content(), encoding="utf-8")
+def write_fake_xedoc(path: Path) -> None:
+    path.write_text(fake_xedoc_content(), encoding="utf-8")
 
 
-def fake_codex_content() -> str:
+def fake_xedoc_content() -> str:
     return textwrap.dedent(
         """\
         #!/bin/sh
         case "$*" in
           "app-server daemon version")
-            [ "${CODEX_TEST_APP_SERVER_RUNNING:-}" = "1" ]
+            [ "${XEDOC_TEST_APP_SERVER_RUNNING:-}" = "1" ]
             ;;
           "app-server daemon restart")
-            if [ -n "${CODEX_TEST_RESTART_LOG:-}" ]; then
-              printf 'restarted\\n' > "$CODEX_TEST_RESTART_LOG"
+            if [ -n "${XEDOC_TEST_RESTART_LOG:-}" ]; then
+              printf 'restarted\\n' > "$XEDOC_TEST_RESTART_LOG"
             fi
             ;;
           *)
-            printf 'codex-cli 0.144.0-apohl79-17\\n'
+            printf 'xedoc-cli 0.144.0-apohl79-17\\n'
             ;;
         esac
         """
@@ -748,19 +748,19 @@ def write_fake_curl(path: Path) -> None:
               shift
             done
 
-            if [ -n "${CODEX_TEST_REQUEST_LOG:-}" ]; then
-              printf '%s\\n' "$url" >> "$CODEX_TEST_REQUEST_LOG"
+            if [ -n "${XEDOC_TEST_REQUEST_LOG:-}" ]; then
+              printf '%s\\n' "$url" >> "$XEDOC_TEST_REQUEST_LOG"
             fi
 
             case "$url" in
               https://api.github.com/*)
-                printf '%s\\n' "$CODEX_TEST_METADATA_JSON"
+                printf '%s\\n' "$XEDOC_TEST_METADATA_JSON"
                 ;;
               https://github.com/*)
-                cp "$CODEX_TEST_ARCHIVE" "$output"
+                cp "$XEDOC_TEST_ARCHIVE" "$output"
                 ;;
               https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh)
-                cat "$CODEX_TEST_PROVIDER_INSTALLER"
+                cat "$XEDOC_TEST_PROVIDER_INSTALLER"
                 ;;
               https://raw.githubusercontent.com/*)
                 printf '#!/bin/sh\\n' > "$output"
@@ -785,7 +785,7 @@ def write_fake_provider_installer(path: Path) -> None:
             mkdir -p "$HOME/.local/bin"
             printf '#!/usr/bin/env bash\\nexit 0\\n' > "$HOME/.local/bin/codex-providers"
             chmod +x "$HOME/.local/bin/codex-providers"
-            printf 'installed\\n' > "$CODEX_TEST_PROVIDER_INSTALL_MARKER"
+            printf 'installed\\n' > "$XEDOC_TEST_PROVIDER_INSTALL_MARKER"
             """
         ),
         encoding="utf-8",

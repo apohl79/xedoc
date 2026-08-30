@@ -1,0 +1,11 @@
+---
+source: tui/src/chatwidget/tests/status_and_layout.rs
+expression: normalized_backend_snapshot(terminal.backend())
+---
+"                                                                                "
+"• Compacting part 1/4 (0s • esc to interrupt)                                   "
+"                                                                                "
+"╭──────────────────────────────────────────────────────────────────────────────╮"
+"│❯ Ask Xedoc to do anything                                                    │"
+"╰────────────────────────────────────────────────────────────────gpt-5.6-sol─0s╯"
+"  gpt-5.6-sol default · /tmp/project                                            "

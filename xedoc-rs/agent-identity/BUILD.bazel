@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "agent-identity",
+    crate_name = "xedoc_agent_identity",
+)

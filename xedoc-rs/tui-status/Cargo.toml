@@ -1,0 +1,51 @@
+[package]
+name = "xedoc-tui-status"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_status"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+test-support = []
+
+[dependencies]
+chrono = { workspace = true }
+xedoc-ansi-escape = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-frame = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+xedoc-utils-sandbox-summary = { workspace = true }
+crossterm = { workspace = true }
+dunce = { workspace = true }
+dirs = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+serde = { workspace = true, features = ["derive"] }
+textwrap = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "process", "rt", "time"] }
+tracing = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

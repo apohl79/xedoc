@@ -1,0 +1,46 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-tui-bottom-pane"
+version.workspace = true
+
+[lib]
+name = "xedoc_tui_bottom_pane"
+path = "src/lib.rs"
+doctest = false
+
+[features]
+test-support = ["xedoc-tui-composer/test-support"]
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-file-search = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-completion = { workspace = true }
+xedoc-tui-composer = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-frame = { workspace = true }
+xedoc-tui-hooks = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-overlays = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-status = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+tokio = { workspace = true, features = ["rt", "time"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+xedoc-tui-composer = { workspace = true, features = ["test-support"] }
+xedoc-tui-status = { workspace = true, features = ["test-support"] }
+xedoc-tui-test-support = { workspace = true }
+xedoc-tui-transcript = { workspace = true, features = ["test-support"] }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

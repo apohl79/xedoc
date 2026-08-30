@@ -1,0 +1,12 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-input",
+    crate_name = "xedoc_tui_input",
+    test_data_extra = glob([
+        "src/**/snapshots/**",
+    ]),
+    test_shard_counts = {
+        "tui-input-unit-tests": 4,
+    },
+)

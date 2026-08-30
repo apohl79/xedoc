@@ -2,25 +2,25 @@
 
 set -eu
 
-APOHL79_REPO="${CODEX_APOHL79_REPO:-apohl79/codex}"
-APOHL79_TAG="${CODEX_APOHL79_TAG:-}"
-APOHL79_TARGET="${CODEX_APOHL79_TARGET:-}"
-LOCAL_ZIP="${CODEX_APOHL79_LOCAL_ZIP:-}"
-BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
-BIN_PATH="$BIN_DIR/codex"
-SESSION_CONTROL_BIN_PATH="$BIN_DIR/codex-session"
-CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
-NON_INTERACTIVE="${CODEX_NON_INTERACTIVE:-false}"
+APOHL79_REPO="${XEDOC_APOHL79_REPO:-apohl79/codex}"
+APOHL79_TAG="${XEDOC_APOHL79_TAG:-}"
+APOHL79_TARGET="${XEDOC_APOHL79_TARGET:-}"
+LOCAL_ZIP="${XEDOC_APOHL79_LOCAL_ZIP:-}"
+BIN_DIR="${XEDOC_INSTALL_DIR:-$HOME/.local/bin}"
+BIN_PATH="$BIN_DIR/xedoc"
+SESSION_CONTROL_BIN_PATH="$BIN_DIR/xedoc-session"
+XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
+NON_INTERACTIVE="${XEDOC_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
-ZSHRC_APP_SERVER_CHOICE_PATH="$CODEX_HOME_DIR/app-server-daemon/zshrc-start"
-CODEX_PROVIDERS_INSTALL_CHOICE_PATH="$CODEX_HOME_DIR/codex-providers/install"
-CODEX_PROVIDERS_INSTALL_URL="https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh"
-STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
+ZSHRC_APP_SERVER_CHOICE_PATH="$XEDOC_HOME_DIR/app-server-daemon/zshrc-start"
+XEDOC_PROVIDERS_INSTALL_CHOICE_PATH="$XEDOC_HOME_DIR/codex-providers/install"
+XEDOC_PROVIDERS_INSTALL_URL="https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh"
+STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
 CHECK_ONLY=false
 tmp_dir=""
-codex_providers_action="skipped"
+xedoc_providers_action="skipped"
 app_server_was_running=false
 
 script_dir="$(CDPATH='' cd "$(dirname "$0")" && pwd)"
@@ -39,7 +39,7 @@ usage() {
   cat <<EOF
 Usage: install-apohl79.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--check]
 
-Downloads and installs the apohl79 Codex fork binary release for the current fork tag,
+Downloads and installs the apohl79 Xedoc fork binary release for the current fork tag,
 or installs a local release ZIP without contacting GitHub.
 
 Options:
@@ -48,19 +48,19 @@ Options:
   --repo OWNER/REPO
                    GitHub repository to read releases from. Defaults to apohl79/codex.
   --local-zip PATH  Install a local release ZIP instead of downloading one from GitHub.
-                   The ZIP must contain codex-package.json.
+                   The ZIP must contain xedoc-package.json.
   --check          Verify that the release asset exists, then print the plan and exit.
   -h, --help       Show this help.
 
 Environment:
-  CODEX_APOHL79_TAG     Same as --tag.
-  CODEX_APOHL79_TARGET  Same as --target.
-  CODEX_APOHL79_REPO    Same as --repo.
-  CODEX_APOHL79_LOCAL_ZIP
+  XEDOC_APOHL79_TAG     Same as --tag.
+  XEDOC_APOHL79_TARGET  Same as --target.
+  XEDOC_APOHL79_REPO    Same as --repo.
+  XEDOC_APOHL79_LOCAL_ZIP
                        Same as --local-zip.
-  CODEX_INSTALL_DIR     Directory for the visible codex symlinks. Defaults to ~/.local/bin.
-  CODEX_HOME            Codex home directory. Defaults to ~/.codex.
-  CODEX_NON_INTERACTIVE  Set to 1, true, or yes to skip prompts.
+  XEDOC_INSTALL_DIR     Directory for the visible xedoc symlinks. Defaults to ~/.local/bin.
+  XEDOC_HOME            Xedoc home directory. Defaults to ~/.xedoc.
+  XEDOC_NON_INTERACTIVE  Set to 1, true, or yes to skip prompts.
   GH_TOKEN/GITHUB_TOKEN Optional GitHub token for API requests.
 EOF
 }
@@ -160,16 +160,16 @@ restart_running_app_server() {
     return
   fi
 
-  if ! prompt_yes_no "The Codex app-server is running. Restart it to use the upgraded version?"; then
-    step "Leaving the running Codex app-server unchanged"
+  if ! prompt_yes_no "The Xedoc app-server is running. Restart it to use the upgraded version?"; then
+    step "Leaving the running Xedoc app-server unchanged"
     return
   fi
 
-  step "Restarting Codex app-server"
+  step "Restarting Xedoc app-server"
   if "$BIN_PATH" app-server daemon restart >/dev/null 2>&1; then
-    step "Codex app-server restarted"
+    step "Xedoc app-server restarted"
   else
-    printf 'WARNING: Could not restart the running Codex app-server. Run: "%s" app-server daemon restart\n' \
+    printf 'WARNING: Could not restart the running Xedoc app-server. Run: "%s" app-server daemon restart\n' \
       "$BIN_PATH" >&2
   fi
 }
@@ -196,8 +196,8 @@ write_zshrc_app_server_choice() {
 }
 
 rewrite_zshrc_app_server_block() {
-  zshrc_begin_marker="# >>> Codex app-server installer >>>"
-  zshrc_end_marker="# <<< Codex app-server installer <<<"
+  zshrc_begin_marker="# >>> Xedoc app-server installer >>>"
+  zshrc_end_marker="# <<< Xedoc app-server installer <<<"
   zshrc_start_line="  \"$BIN_PATH\" app-server daemon start >/dev/null 2>&1 &!"
   tmp_profile="$tmp_dir/zshrc.$$.tmp"
 
@@ -241,8 +241,8 @@ rewrite_zshrc_app_server_block() {
 }
 
 append_zshrc_app_server_block() {
-  zshrc_begin_marker="# >>> Codex app-server installer >>>"
-  zshrc_end_marker="# <<< Codex app-server installer <<<"
+  zshrc_begin_marker="# >>> Xedoc app-server installer >>>"
+  zshrc_end_marker="# <<< Xedoc app-server installer <<<"
 
   {
     printf '\n%s\n' "$zshrc_begin_marker"
@@ -263,7 +263,7 @@ configure_zshrc_app_server() {
       if ! prompt_user_available; then
         return
       fi
-      if prompt_yes_no "Start the Codex app-server automatically from ~/.zshrc?"; then
+      if prompt_yes_no "Start the Xedoc app-server automatically from ~/.zshrc?"; then
         choice="enabled"
       else
         choice="disabled"
@@ -277,8 +277,8 @@ configure_zshrc_app_server() {
     return
   fi
 
-  zshrc_begin_marker="# >>> Codex app-server installer >>>"
-  zshrc_end_marker="# <<< Codex app-server installer <<<"
+  zshrc_begin_marker="# >>> Xedoc app-server installer >>>"
+  zshrc_end_marker="# <<< Xedoc app-server installer <<<"
   zshrc_start_line="  \"$BIN_PATH\" app-server daemon start >/dev/null 2>&1 &!"
   if [ -f "$ZSHRC_PATH" ] &&
     grep -F "$zshrc_begin_marker" "$ZSHRC_PATH" >/dev/null 2>&1 &&
@@ -299,24 +299,24 @@ configure_zshrc_app_server() {
   zshrc_app_server_action="added"
 }
 
-codex_providers_is_installed() {
+xedoc_providers_is_installed() {
   command -v codex-providers >/dev/null 2>&1 ||
     [ -x "$HOME/bin/codex-providers" ] ||
     [ -x "$HOME/.local/bin/codex-providers" ]
 }
 
-configure_codex_providers() {
-  if codex_providers_is_installed; then
-    codex_providers_action="already-installed"
+configure_xedoc_providers() {
+  if xedoc_providers_is_installed; then
+    xedoc_providers_action="already-installed"
     return
   fi
 
   choice=""
-  if [ -f "$CODEX_PROVIDERS_INSTALL_CHOICE_PATH" ]; then
-    choice="$(sed -n '1p' "$CODEX_PROVIDERS_INSTALL_CHOICE_PATH" 2>/dev/null || true)"
+  if [ -f "$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH" ]; then
+    choice="$(sed -n '1p' "$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH" 2>/dev/null || true)"
   fi
   if [ "$choice" = "disabled" ]; then
-    codex_providers_action="disabled"
+    xedoc_providers_action="disabled"
     return
   fi
 
@@ -328,19 +328,19 @@ configure_codex_providers() {
     require_command curl
     require_command bash
     step "Installing codex-providers"
-    if ! bash -o pipefail -c 'curl -fsSL "$1" | bash' codex-providers-installer "$CODEX_PROVIDERS_INSTALL_URL"; then
+    if ! bash -o pipefail -c 'curl -fsSL "$1" | bash' codex-providers-installer "$XEDOC_PROVIDERS_INSTALL_URL"; then
       die "codex-providers installation failed."
     fi
-    if ! codex_providers_is_installed; then
+    if ! xedoc_providers_is_installed; then
       die "codex-providers installer completed without installing the codex-providers command."
     fi
-    codex_providers_action="installed"
+    xedoc_providers_action="installed"
     return
   fi
 
-  mkdir -p "$(dirname "$CODEX_PROVIDERS_INSTALL_CHOICE_PATH")"
-  printf '%s\n' "disabled" >"$CODEX_PROVIDERS_INSTALL_CHOICE_PATH"
-  codex_providers_action="disabled"
+  mkdir -p "$(dirname "$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH")"
+  printf '%s\n' "disabled" >"$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH"
+  xedoc_providers_action="disabled"
 }
 
 github_token() {
@@ -427,7 +427,7 @@ validate_target() {
 }
 
 read_workspace_version() {
-  cargo_toml="$repo_root/codex-rs/Cargo.toml"
+  cargo_toml="$repo_root/xedoc-rs/Cargo.toml"
   [ -f "$cargo_toml" ] || return 1
 
   awk '
@@ -544,11 +544,11 @@ latest_release_metadata_url() {
 
 latest_fork_tag() {
   if ! release_json="$(download_text "$(latest_release_metadata_url)")"; then
-    die "Could not fetch the latest apohl79 Codex release metadata. GitHub API may be unavailable or rate limited."
+    die "Could not fetch the latest apohl79 Xedoc release metadata. GitHub API may be unavailable or rate limited."
   fi
 
   tag="$(printf '%s\n' "$release_json" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
-  [ -n "$tag" ] || die "Could not resolve the latest apohl79 Codex release tag."
+  [ -n "$tag" ] || die "Could not resolve the latest apohl79 Xedoc release tag."
   validate_tag "$tag"
   printf '%s\n' "$tag"
 }
@@ -569,9 +569,9 @@ prepare_local_package() {
   esac
 
   LOCAL_ZIP="$(CDPATH='' cd "$(dirname "$LOCAL_ZIP")" && pwd)/$(basename "$LOCAL_ZIP")"
-  local_package_metadata="$(unzip -p "$LOCAL_ZIP" codex-package.json 2>/dev/null || true)"
+  local_package_metadata="$(unzip -p "$LOCAL_ZIP" xedoc-package.json 2>/dev/null || true)"
   [ -n "$local_package_metadata" ] ||
-    die "Local package ZIP is missing codex-package.json: $LOCAL_ZIP"
+    die "Local package ZIP is missing xedoc-package.json: $LOCAL_ZIP"
 
   local_version="$(local_package_metadata_field version)"
   local_target="$(local_package_metadata_field target)"
@@ -715,11 +715,11 @@ release_dir_is_complete() {
 
   [ -d "$release_dir" ] &&
     [ "$(basename "$release_dir")" = "$expected_name" ] &&
-    [ -f "$release_dir/codex-package.json" ] &&
-    [ -x "$release_dir/bin/codex" ] &&
-    [ -x "$release_dir/bin/codex-session" ] &&
-    [ -x "$release_dir/codex" ] &&
-    [ -x "$release_dir/codex-path/rg" ]
+    [ -f "$release_dir/xedoc-package.json" ] &&
+    [ -x "$release_dir/bin/xedoc" ] &&
+    [ -x "$release_dir/bin/xedoc-session" ] &&
+    [ -x "$release_dir/xedoc" ] &&
+    [ -x "$release_dir/xedoc-path/rg" ]
 }
 
 install_zip_release() {
@@ -732,17 +732,17 @@ install_zip_release() {
   mkdir -p "$stage_release"
   unzip -q "$archive_path" -d "$stage_release"
 
-  [ -f "$stage_release/bin/codex" ] || die "Archive is missing bin/codex."
-  [ -f "$stage_release/bin/codex-session" ] || die "Archive is missing bin/codex-session."
-  [ -f "$stage_release/codex-path/rg" ] || die "Archive is missing codex-path/rg."
+  [ -f "$stage_release/bin/xedoc" ] || die "Archive is missing bin/xedoc."
+  [ -f "$stage_release/bin/xedoc-session" ] || die "Archive is missing bin/xedoc-session."
+  [ -f "$stage_release/xedoc-path/rg" ] || die "Archive is missing xedoc-path/rg."
   chmod 0755 \
-    "$stage_release/bin/codex" \
-    "$stage_release/bin/codex-session" \
-    "$stage_release/codex-path/rg"
-  if [ -f "$stage_release/codex-resources/zsh/bin/zsh" ]; then
-    chmod 0755 "$stage_release/codex-resources/zsh/bin/zsh"
+    "$stage_release/bin/xedoc" \
+    "$stage_release/bin/xedoc-session" \
+    "$stage_release/xedoc-path/rg"
+  if [ -f "$stage_release/xedoc-resources/zsh/bin/zsh" ]; then
+    chmod 0755 "$stage_release/xedoc-resources/zsh/bin/zsh"
   fi
-  ln -sf "bin/codex" "$stage_release/codex"
+  ln -sf "bin/xedoc" "$stage_release/xedoc"
 
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
     rm -rf "$release_dir"
@@ -760,18 +760,18 @@ update_current_link() {
 
 update_visible_command() {
   mkdir -p "$BIN_DIR"
-  tmp_link="$BIN_DIR/.codex.$$"
-  tmp_session_link="$BIN_DIR/.codex-session.$$"
+  tmp_link="$BIN_DIR/.xedoc.$$"
+  tmp_session_link="$BIN_DIR/.xedoc-session.$$"
 
-  replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/bin/codex" "$tmp_link"
+  replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/bin/xedoc" "$tmp_link"
   replace_path_with_symlink \
     "$SESSION_CONTROL_BIN_PATH" \
-    "$CURRENT_LINK/bin/codex-session" \
+    "$CURRENT_LINK/bin/xedoc-session" \
     "$tmp_session_link"
-  # Older fork releases shipped a codex-code-mode-host symlink; drop it if stale.
-  if [ "$(readlink "$BIN_DIR/codex-code-mode-host" 2>/dev/null || true)" = \
-    "$CURRENT_LINK/bin/codex-code-mode-host" ]; then
-    rm -f "$BIN_DIR/codex-code-mode-host"
+  # Older fork releases shipped a xedoc-code-mode-host symlink; drop it if stale.
+  if [ "$(readlink "$BIN_DIR/xedoc-code-mode-host" 2>/dev/null || true)" = \
+    "$CURRENT_LINK/bin/xedoc-code-mode-host" ]; then
+    rm -f "$BIN_DIR/xedoc-code-mode-host"
   fi
 }
 
@@ -809,8 +809,8 @@ print_zshrc_app_server_instructions() {
   esac
 }
 
-print_codex_providers_instructions() {
-  case "$codex_providers_action" in
+print_xedoc_providers_instructions() {
+  case "$xedoc_providers_action" in
     installed)
       step "codex-providers installed. Run: codex-providers setup"
       ;;
@@ -831,19 +831,19 @@ fi
 tag="$(current_fork_tag)"
 target="$(detect_target)"
 fork_version="${tag#rust-v}"
-asset="codex-$target-$fork_version.zip"
+asset="xedoc-$target-$fork_version.zip"
 release_name="$fork_version-$target"
 release_dir="$RELEASES_DIR/$release_name"
 
 if [ -n "$LOCAL_ZIP" ]; then
   local_digest="$(file_sha256 "$LOCAL_ZIP")"
-  step "Found local apohl79 Codex package"
+  step "Found local apohl79 Xedoc package"
   printf 'Package:    %s\n' "$LOCAL_ZIP"
   printf 'SHA256:     %s\n' "$local_digest"
 else
   download_url="$(release_url_for_asset "$tag" "$asset")"
   expected_digest="$(release_asset_digest "$tag" "$asset")"
-  step "Found apohl79 Codex release asset"
+  step "Found apohl79 Xedoc release asset"
   printf 'Repository: %s\n' "$APOHL79_REPO"
   printf 'Asset:      %s\n' "$asset"
   printf 'SHA256:     %s\n' "$expected_digest"
@@ -886,10 +886,10 @@ update_visible_command
 "$BIN_PATH" --version >/dev/null
 restart_running_app_server
 configure_zshrc_app_server
-configure_codex_providers
+configure_xedoc_providers
 
 # Deploy statusline script
-STATUSLINE_DST="$CODEX_HOME_DIR/statusline.sh"
+STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"
 if [ -f "$STATUSLINE_DST" ]; then
   step "Keeping existing statusline script at $STATUSLINE_DST"
 else
@@ -902,7 +902,7 @@ else
   fi
   if [ -f "$STATUSLINE_SRC" ]; then
     step "Deploying statusline script to $STATUSLINE_DST"
-    mkdir -p "$CODEX_HOME_DIR"
+    mkdir -p "$XEDOC_HOME_DIR"
     cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
     chmod +x "$STATUSLINE_DST"
   elif [ -n "$LOCAL_ZIP" ]; then
@@ -912,5 +912,5 @@ fi
 
 print_path_note
 print_zshrc_app_server_instructions
-print_codex_providers_instructions
-printf 'apohl79 Codex CLI %s installed successfully.\n' "$fork_version"
+print_xedoc_providers_instructions
+printf 'apohl79 Xedoc CLI %s installed successfully.\n' "$fork_version"
