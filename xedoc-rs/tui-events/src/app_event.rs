@@ -280,11 +280,6 @@ pub enum AppEvent {
         url: String,
     },
 
-    /// Open the current thread in Xedoc Desktop.
-    OpenDesktopThread {
-        thread_id: ThreadId,
-    },
-
     /// Fetch plugin marketplace state for the provided working directory.
     FetchPluginsList {
         cwd: PathBuf,

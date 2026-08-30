@@ -27,12 +27,8 @@ use xedoc_utils_cli::CliConfigOverrides;
 use xedoc_utils_cli::ProfileV2Name;
 use xedoc_utils_cli::SharedCliOptions;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-mod app_cmd;
 mod commands;
 pub(crate) mod debug_sandbox;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-mod desktop_app;
 mod exec_server_telemetry;
 mod exit_status;
 pub(crate) mod login;
@@ -142,10 +138,6 @@ enum Subcommand {
 
     /// [experimental] Run the app server or related tooling.
     AppServer(AppServerCommand),
-
-    /// Launch the Desktop app (opens the app installer if missing).
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    App(app_cmd::AppCommand),
 
     /// Generate shell completion scripts.
     Completion(CompletionCommand),
@@ -1135,15 +1127,6 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 }
             }
         }
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        Some(Subcommand::App(app_cli)) => {
-            reject_remote_mode_for_subcommand(
-                root_remote.as_deref(),
-                root_remote_auth_token_env.as_deref(),
-                "app",
-            )?;
-            app_cmd::run_app(app_cli).await?;
-        }
         Some(Subcommand::Resume(ResumeCommand {
             session_id,
             last,
@@ -1912,8 +1895,6 @@ fn unsupported_subcommand_name_for_strict_config(
         }
         Some(Subcommand::Mcp(_)) => Some("mcp"),
         Some(Subcommand::Plugin(_)) => Some("plugin"),
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        Some(Subcommand::App(_)) => Some("app"),
         Some(Subcommand::Login(_)) => Some("login"),
         Some(Subcommand::Logout(_)) => Some("logout"),
         Some(Subcommand::Completion(_)) => Some("completion"),
