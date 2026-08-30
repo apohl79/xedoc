@@ -1,11 +1,11 @@
 use super::*;
 
 use crate::permission_profile_sandbox_tag;
-use codex_analytics::CompactionImplementation;
-use codex_analytics::CompactionPhase;
-use codex_analytics::CompactionReason;
-use codex_analytics::CompactionTrigger;
 use codex_core_client::responses_metadata::CodexResponsesRequestKind;
+use codex_core_client::responses_metadata::CompactionImplementation;
+use codex_core_client::responses_metadata::CompactionPhase;
+use codex_core_client::responses_metadata::CompactionReason;
+use codex_core_client::responses_metadata::CompactionTrigger;
 use codex_core_client::responses_metadata::CompactionTurnMetadata;
 use codex_core_client::responses_metadata::INSTALLATION_ID_KEY;
 use codex_core_client::responses_metadata::WINDOW_ID_KEY;

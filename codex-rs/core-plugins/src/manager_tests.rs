@@ -6,6 +6,7 @@ use crate::PluginLoadOutcome;
 use crate::installed_marketplaces::marketplace_install_root;
 use crate::loader::load_plugin_skills;
 use crate::loader::load_plugins_from_layer_stack;
+use crate::loader::plugin_capability_summary_from_root;
 use crate::loader::refresh_non_curated_plugin_cache;
 use crate::loader::refresh_non_curated_plugin_cache_force_reinstall;
 use crate::marketplace::MarketplacePluginInstallPolicy;
@@ -643,32 +644,6 @@ approval_mode = "approve"
         Some(&McpServerToolConfig {
             approval_mode: Some(AppToolApproval::Approve),
         })
-    );
-}
-
-#[tokio::test]
-async fn installed_plugin_telemetry_metadata_collects_capabilities() {
-    let codex_home = TempDir::new().unwrap();
-    write_cached_plugin(codex_home.path(), "test", "sample");
-    let manager = PluginsManager::new(codex_home.path().to_path_buf());
-    let plugin_id = PluginId::parse("sample@test").expect("plugin id should parse");
-
-    let metadata = manager
-        .telemetry_metadata_for_installed_plugin(&plugin_id)
-        .await;
-
-    assert_eq!(
-        metadata,
-        PluginTelemetryMetadata {
-            plugin_id: Some(plugin_id),
-            capability_summary: Some(PluginCapabilitySummary {
-                config_name: "sample@test".to_string(),
-                display_name: "sample".to_string(),
-                description: None,
-                has_skills: true,
-                mcp_server_names: Vec::new(),
-            }),
-        }
     );
 }
 

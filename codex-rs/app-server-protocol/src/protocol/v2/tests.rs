@@ -1623,7 +1623,6 @@ fn config_granular_approval_policy_is_marked_experimental() {
         model_reasoning_summary: None,
         model_verbosity: None,
         service_tier: None,
-        analytics: None,
         apps: None,
         desktop: None,
         additional: HashMap::new(),

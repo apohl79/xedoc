@@ -1643,7 +1643,7 @@ async fn on_request_permissions_response(
         request_permissions_guard,
     } = pending_response;
     let response = receiver.await;
-    resolve_server_request_on_thread_listener(&thread_state, pending_request_id.clone()).await;
+    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
     drop(request_permissions_guard);
     let response = match request_permissions_response_from_client_result(
         requested_permissions,
@@ -1674,7 +1674,6 @@ async fn on_request_permissions_response(
             return;
         }
     };
-    outgoing.track_effective_permissions_approval_response(pending_request_id, response.clone());
 
     if let Err(err) = conversation
         .submit(Op::RequestPermissionsResponse {
@@ -2126,10 +2125,7 @@ mod tests {
         let conversation_id = ThreadId::new();
         let thread_state = new_thread_state();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2198,10 +2194,7 @@ mod tests {
         let conversation_id = ThreadId::new();
         let thread_state = new_thread_state();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2640,10 +2633,7 @@ mod tests {
         }
         let thread_watch_manager = ThreadWatchManager::new();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2704,10 +2694,7 @@ mod tests {
         let thread_state = new_thread_state();
         let thread_watch_manager = ThreadWatchManager::new();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2766,10 +2753,7 @@ mod tests {
             .await;
         assert_eq!(thread_watch_manager.running_turn_count().await, 1);
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2853,10 +2837,7 @@ mod tests {
             ..
         } = thread_manager.start_thread(config).await?;
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2924,10 +2905,7 @@ mod tests {
         let conversation_id = ThreadId::new();
         let event_turn_id = "complete1".to_string();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2995,10 +2973,7 @@ mod tests {
         )
         .await;
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -3045,10 +3020,7 @@ mod tests {
         )
         .await;
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -3089,10 +3061,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_turn_plan_update_emits_notification_for_v2() -> Result<()> {
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -3139,10 +3108,7 @@ mod tests {
         let conversation_id = ThreadId::new();
         let turn_id = "turn-123".to_string();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -3232,10 +3198,7 @@ mod tests {
         let conversation_id = ThreadId::new();
         let turn_id = "turn-456".to_string();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -3269,10 +3232,7 @@ mod tests {
         let thread_state = new_thread_state();
 
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -3386,10 +3346,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_turn_diff_emits_v2_notification() -> Result<()> {
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let outgoing = Arc::new(OutgoingMessageSender::new(
-            tx,
-            codex_analytics::AnalyticsEventsClient::disabled(),
-        ));
+        let outgoing = Arc::new(OutgoingMessageSender::new(tx));
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],

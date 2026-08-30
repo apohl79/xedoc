@@ -46,11 +46,6 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-use super::analytics::assert_basic_thread_initialized_event;
-use super::analytics::mount_analytics_capture;
-use super::analytics::thread_initialized_event;
-use super::analytics::wait_for_analytics_payload;
-
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const INVALID_REQUEST_ERROR_CODE: i64 = -32600;
 const EXEC_POLICY_PARSE_WARNING_SUMMARY: &str = "Error parsing rules; custom rules not applied.";
@@ -922,50 +917,6 @@ fn normalize_path_for_comparison(path: impl AsRef<Path>) -> PathBuf {
 }
 
 #[tokio::test]
-async fn thread_start_tracks_thread_initialized_analytics() -> Result<()> {
-    let server = create_mock_responses_server_repeating_assistant("Done").await;
-
-    let codex_home = TempDir::new()?;
-    create_config_toml_with_chatgpt_base_url(codex_home.path(), &server.uri(), &server.uri())?;
-    mount_analytics_capture(&server, codex_home.path()).await?;
-
-    let mut mcp = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .without_managed_config()
-        .build()
-        .await?;
-    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
-
-    let req_id = mcp
-        .send_thread_start_request_with_auto_env(ThreadStartParams {
-            thread_source: Some(ThreadSource::User),
-            service_name: Some("codex_work_desktop".to_string()),
-            ..Default::default()
-        })
-        .await?;
-    let resp: JSONRPCResponse = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(req_id)),
-    )
-    .await??;
-    let ThreadStartResponse { thread, .. } = to_response::<ThreadStartResponse>(resp)?;
-
-    let payload = wait_for_analytics_payload(&server, DEFAULT_READ_TIMEOUT).await?;
-    assert_eq!(payload["events"].as_array().expect("events array").len(), 1);
-    let event = thread_initialized_event(&payload)?;
-    assert_basic_thread_initialized_event(
-        event,
-        &thread.id,
-        &thread.session_id,
-        "codex_work_desktop",
-        "mock-model",
-        "new",
-        "user",
-    );
-    Ok(())
-}
-
-#[tokio::test]
 async fn thread_start_respects_project_config_from_cwd() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
 
@@ -1657,34 +1608,6 @@ stream_max_retries = 0
 [permissions.dev.filesystem.":workspace_roots"]
 "." = "write"
 "#,
-        ),
-    )
-}
-
-fn create_config_toml_with_chatgpt_base_url(
-    codex_home: &Path,
-    server_uri: &str,
-    chatgpt_base_url: &str,
-) -> std::io::Result<()> {
-    let config_toml = codex_home.join("config.toml");
-    std::fs::write(
-        config_toml,
-        format!(
-            r#"
-model = "mock-model"
-approval_policy = "never"
-sandbox_mode = "read-only"
-chatgpt_base_url = "{chatgpt_base_url}"
-
-model_provider = "mock_provider"
-
-[model_providers.mock_provider]
-name = "Mock provider for test"
-base_url = "{server_uri}/v1"
-wire_api = "responses"
-request_max_retries = 0
-stream_max_retries = 0
-"#
         ),
     )
 }

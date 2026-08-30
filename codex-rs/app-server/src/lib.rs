@@ -22,7 +22,6 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
-use crate::analytics_utils::analytics_events_client_from_config;
 use crate::config_manager::ConfigManager;
 use crate::connection_cleanup::ConnectionCleanupTasks;
 use crate::message_processor::MessageProcessor;
@@ -43,7 +42,6 @@ use crate::transport::route_outgoing_envelope;
 use crate::transport::start_control_socket_acceptor;
 use crate::transport::start_stdio_connection;
 use crate::transport::start_websocket_acceptor;
-use codex_analytics::AppServerRpcTransport;
 use codex_app_server_protocol::ConfigWarningNotification;
 use codex_app_server_protocol::JSONRPCMessage;
 use codex_app_server_protocol::TextPosition as AppTextPosition;
@@ -73,7 +71,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 const SQLITE_RECOVERY_CONFIG_WARNING_SUMMARY: &str = "Codex rebuilt its local database.";
 
-mod analytics_utils;
 mod app_server_tracing;
 mod auth_mode;
 mod auto_session_name;
@@ -398,14 +395,12 @@ pub async fn run_main(
     cli_config_overrides: CliConfigOverrides,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
-    default_analytics_enabled: bool,
 ) -> IoResult<()> {
     run_main_with_transport_options(
         arg0_paths,
         cli_config_overrides,
         loader_overrides,
         strict_config,
-        default_analytics_enabled,
         AppServerTransport::Stdio,
         SessionSource::VSCode,
         AppServerWebsocketAuthSettings::default(),
@@ -441,7 +436,6 @@ pub async fn run_main_with_transport_options(
     cli_config_overrides: CliConfigOverrides,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
-    default_analytics_enabled: bool,
     transport: AppServerTransport,
     session_source: SessionSource,
     auth: AppServerWebsocketAuthSettings,
@@ -525,7 +519,6 @@ pub async fn run_main_with_transport_options(
         &config,
         env!("CARGO_PKG_VERSION"),
         Some(OTEL_SERVICE_NAME),
-        default_analytics_enabled,
     )
     .map_err(|e| {
         std::io::Error::new(
@@ -727,16 +720,10 @@ pub async fn run_main_with_transport_options(
 
     let processor_handle = tokio::spawn({
         let auth_manager = Arc::clone(&auth_manager);
-        let analytics_events_client =
-            analytics_events_client_from_config(Arc::clone(&auth_manager), &config);
-        let outgoing_message_sender = Arc::new(OutgoingMessageSender::new(
-            outgoing_tx,
-            analytics_events_client.clone(),
-        ));
+        let outgoing_message_sender = Arc::new(OutgoingMessageSender::new(outgoing_tx));
         let outbound_control_tx = outbound_control_tx;
         let processor = Arc::new(MessageProcessor::new(MessageProcessorArgs {
             outgoing: outgoing_message_sender,
-            analytics_events_client,
             arg0_paths,
             config: Arc::new(config),
             config_manager,
@@ -747,7 +734,6 @@ pub async fn run_main_with_transport_options(
             session_source,
             auth_manager,
             installation_id,
-            rpc_transport: analytics_rpc_transport(&transport),
             plugin_startup_tasks: runtime_options.plugin_startup_tasks,
         }));
         let mut thread_created_rx = processor.thread_created_receiver();
@@ -1177,15 +1163,6 @@ fn apply_debug_test_user_config(
     _test_user_config_file: Option<std::path::PathBuf>,
 ) -> IoResult<LoaderOverrides> {
     Ok(overrides)
-}
-
-fn analytics_rpc_transport(transport: &AppServerTransport) -> AppServerRpcTransport {
-    match transport {
-        AppServerTransport::Stdio => AppServerRpcTransport::Stdio,
-        AppServerTransport::UnixSocket { .. }
-        | AppServerTransport::WebSocket { .. }
-        | AppServerTransport::Off => AppServerRpcTransport::Websocket,
-    }
 }
 
 #[cfg(test)]

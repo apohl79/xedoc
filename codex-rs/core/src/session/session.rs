@@ -97,9 +97,9 @@ pub(crate) struct SessionConfiguration {
     pub(super) forked_from_thread_id: Option<ThreadId>,
     /// Immediate control/spawn parent for this thread, when it has one.
     pub(super) parent_thread_id: Option<ThreadId>,
-    /// Optional analytics source classification for this thread.
+    /// Optional source classification for this thread.
     pub(super) thread_source: Option<ThreadSource>,
-    /// Effective originator used for this thread's Responses requests and analytics events.
+    /// Effective originator used for this thread's Responses requests.
     pub(super) originator: String,
     pub(super) dynamic_tools: Vec<DynamicToolSpec>,
     pub(super) user_shell_override: Option<shell::Shell>,
@@ -440,11 +440,6 @@ pub(crate) struct SessionSettingsUpdate {
     pub(crate) model_provider_id: Option<String>,
 }
 
-pub(crate) struct AppServerClientMetadata {
-    pub(crate) client_name: Option<String>,
-    pub(crate) client_version: Option<String>,
-}
-
 async fn warm_plugins_and_skills_for_session_init(
     config: Arc<Config>,
     plugins_manager: Arc<PluginsManager>,
@@ -543,7 +538,6 @@ impl Session {
         agent_control: AgentControl,
         environment_manager: Arc<EnvironmentManager>,
         inherited_environments: Option<TurnEnvironmentSnapshot>,
-        analytics_events_client: Option<AnalyticsEventsClient>,
         thread_store: Arc<dyn ThreadStore>,
         external_time_provider: Option<Arc<dyn TimeProvider>>,
         multi_agent_version: Option<MultiAgentVersion>,
@@ -1034,13 +1028,6 @@ impl Session {
                 });
             }
 
-            let analytics_events_client = analytics_events_client.unwrap_or_else(|| {
-                AnalyticsEventsClient::new(
-                    Arc::clone(&auth_manager),
-                    config.chatgpt_base_url.trim_end_matches('/').to_string(),
-                    config.analytics_enabled,
-                )
-            });
             let mcp_runtime = Arc::new(McpRuntime::new(Arc::new(
                 McpConnectionManager::new_uninitialized_with_permission_profile(
                     &config.permissions.approval_policy,
@@ -1085,7 +1072,6 @@ impl Session {
                 elicitations: crate::elicitation::ElicitationService::new(),
                 shell_zsh_path: config.zsh_path.clone(),
                 main_execve_wrapper_exe: config.main_execve_wrapper_exe.clone(),
-                analytics_events_client,
                 hooks: arc_swap::ArcSwap::from_pointee(hooks),
                 user_shell: Arc::new(default_shell),
                 show_raw_agent_reasoning: config.show_raw_agent_reasoning,

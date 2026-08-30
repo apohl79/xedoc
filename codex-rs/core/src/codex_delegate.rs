@@ -32,7 +32,6 @@ use crate::config::Config;
 use crate::session::SUBMISSION_CHANNEL_CAPACITY;
 use crate::session::SessionIo;
 use crate::session::SessionSpawnArgs;
-use crate::session::emit_subagent_session_started;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use codex_login::AuthManager;
@@ -86,7 +85,7 @@ pub(crate) async fn run_codex_thread_interactive(
         extensions: Arc::clone(&parent_session.services.extensions),
         conversation_history,
         requested_history_mode: None,
-        session_source: SessionSource::SubAgent(subagent_source.clone()),
+        session_source: SessionSource::SubAgent(subagent_source),
         forked_from_thread_id,
         parent_thread_id: Some(parent_session.thread_id),
         thread_source: Some(ThreadSource::Subagent),
@@ -104,24 +103,12 @@ pub(crate) async fn run_codex_thread_interactive(
             .services
             .supports_openai_form_elicitation
             .load(std::sync::atomic::Ordering::Relaxed),
-        analytics_events_client: Some(parent_session.services.analytics_events_client.clone()),
         thread_store: Arc::clone(&parent_session.services.thread_store),
         external_time_provider: Some(Arc::clone(&parent_session.services.time_provider)),
         inherited_multi_agent_version: Some(MultiAgentVersion::Disabled),
     }))
     .or_cancel(&cancel_token)
     .await??;
-    let thread_config = session.thread_config_snapshot().await;
-    let client_metadata = parent_session.app_server_client_metadata().await;
-    emit_subagent_session_started(
-        &parent_session.services.analytics_events_client,
-        client_metadata,
-        session.session_id(),
-        session.thread_id(),
-        Some(parent_session.thread_id),
-        thread_config,
-        subagent_source,
-    );
     // Use a child token so parent cancel cascades but we can scope it to this task
     let cancel_token_events = cancel_token.child_token();
     let cancel_token_ops = cancel_token.child_token();

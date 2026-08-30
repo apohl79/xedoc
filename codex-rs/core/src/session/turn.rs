@@ -56,11 +56,9 @@ use crate::tools::spec_plan::search_tool_enabled;
 use crate::turn_diff_tracker::TurnDiffTracker;
 use crate::turn_timing::record_turn_ttft_metric;
 use crate::util::error_or_panic;
-use codex_analytics::CompactionPhase;
-use codex_analytics::CompactionReason;
-use codex_analytics::TurnResolvedConfigFact;
-use codex_analytics::build_track_events_context;
 use codex_async_utils::OrCancelExt;
+use codex_core_client::responses_metadata::CompactionPhase;
+use codex_core_client::responses_metadata::CompactionReason;
 use codex_core_skills::injection::InjectedHostSkillPrompts;
 use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputEnvironment;
@@ -70,7 +68,6 @@ use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_protocol::ResponseItemId;
 use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::ModeKind;
-use codex_protocol::config_types::ServiceTier;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::PlanItem;
@@ -205,7 +202,6 @@ pub(crate) async fn run_turn(
         comp_hash: turn_context.model_info.comp_hash.clone(),
     }))
     .await;
-    track_turn_resolved_config_analytics(&sess, &turn_context, &input).await;
 
     let mut last_agent_message: Option<String> = None;
     let mut stop_hook_active = false;
@@ -311,7 +307,6 @@ pub(crate) async fn run_turn(
                             error.to_codex_protocol_error(),
                         )
                         .await;
-                        sess.track_turn_codex_error(turn_context.as_ref(), &error);
                         sess.send_event(
                             &turn_context,
                             EventMsg::Error(error.to_error_event(/*message_prefix*/ None)),
@@ -460,8 +455,7 @@ pub(crate) async fn run_turn(
             Err(err @ CodexErr::TurnAborted) => {
                 return Err(err);
             }
-            Err(codex_error @ CodexErr::InvalidImageRequest()) => {
-                sess.track_turn_codex_error(turn_context.as_ref(), &codex_error);
+            Err(CodexErr::InvalidImageRequest()) => {
                 let error = CodexErrorInfo::BadRequest;
                 sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())
                     .await;
@@ -504,7 +498,6 @@ pub(crate) async fn run_turn(
                 let error = e.to_codex_protocol_error();
                 sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())
                     .await;
-                sess.track_turn_codex_error(turn_context.as_ref(), &e);
                 let event = EventMsg::Error(e.to_error_event(/*message_prefix*/ None));
                 sess.send_event(&turn_context, event).await;
                 // let the user continue the conversation
@@ -581,12 +574,6 @@ async fn build_skills_and_plugins(
         .flatten()
         .cloned()
         .collect::<Vec<_>>();
-    let tracking = build_track_events_context(
-        turn_context.model_info.slug.clone(),
-        sess.thread_id.to_string(),
-        turn_context.sub_id.clone(),
-        turn_context.originator.clone(),
-    );
     let loaded_plugins = sess
         .services
         .plugins_manager
@@ -637,8 +624,6 @@ async fn build_skills_and_plugins(
         &mentioned_skills,
         Some(skills_outcome),
         Some(&turn_context.session_telemetry),
-        &sess.services.analytics_events_client,
-        tracking.clone(),
     )
     .await;
 
@@ -652,17 +637,6 @@ async fn build_skills_and_plugins(
         .map(|skill| ContextualUserFragment::into(crate::context::SkillInstructions::from(skill)))
         .collect();
     let plugin_items = build_plugin_injections(&mentioned_plugins, &mcp_tools);
-    for summary in &mentioned_plugins {
-        if let Some(plugin) = sess
-            .services
-            .plugins_manager
-            .telemetry_metadata_for_capability_summary(summary)
-        {
-            sess.services
-                .analytics_events_client
-                .track_plugin_used(tracking.clone(), plugin);
-        }
-    }
 
     let mut injection_items: Vec<ResponseItem> = match injected_host_skill_prompts {
         Some(injected_host_skill_prompts) => skill_injections
@@ -736,64 +710,6 @@ async fn build_extension_turn_input_items(
     }
 
     Some(items)
-}
-
-#[tracing::instrument(
-    level = "trace",
-    skip_all,
-    fields(input_count = input.len())
-)]
-async fn track_turn_resolved_config_analytics(
-    sess: &Session,
-    turn_context: &TurnContext,
-    input: &[TurnInput],
-) {
-    let thread_config = {
-        let state = sess.state.lock().await;
-        state.session_configuration.thread_config_snapshot()
-    };
-    let is_first_turn = {
-        let mut state = sess.state.lock().await;
-        state.take_next_turn_is_first()
-    };
-    sess.services
-        .analytics_events_client
-        .track_turn_resolved_config(TurnResolvedConfigFact {
-            turn_id: turn_context.sub_id.clone(),
-            thread_id: sess.thread_id.to_string(),
-            num_input_images: input
-                .iter()
-                .filter_map(|item| match item {
-                    TurnInput::UserInput { content, .. } => Some(content.as_slice()),
-                    TurnInput::ResponseItem(_) | TurnInput::InterAgentCommunication(_) => None,
-                })
-                .flatten()
-                .filter(|item| {
-                    matches!(item, UserInput::Image { .. } | UserInput::LocalImage { .. })
-                })
-                .count(),
-            submission_type: None,
-            ephemeral: thread_config.ephemeral,
-            session_source: thread_config.session_source,
-            model: turn_context.model_info.slug.clone(),
-            model_provider: turn_context.config.model_provider_id.clone(),
-            permission_profile: turn_context.permission_profile(),
-            #[allow(deprecated)]
-            permission_profile_cwd: turn_context.cwd.to_path_buf(),
-            reasoning_effort: turn_context.reasoning_effort.clone(),
-            reasoning_summary: Some(turn_context.reasoning_summary),
-            service_tier: turn_context
-                .config
-                .service_tier
-                .as_deref()
-                .and_then(ServiceTier::from_request_value),
-            approval_policy: turn_context.approval_policy.value(),
-            sandbox_network_access: turn_context.network_sandbox_policy().is_enabled(),
-            collaboration_mode: turn_context.mode,
-            personality: turn_context.personality,
-            workspace_kind: turn_context.turn_metadata_state.workspace_kind(),
-            is_first_turn,
-        });
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -1211,7 +1127,6 @@ async fn run_sampling_request(
             ResponsesStreamRequest::Sampling,
         )
         .await?;
-        turn_context.turn_timing_state.record_sampling_retry();
     }
 }
 
@@ -1779,7 +1694,6 @@ async fn try_run_sampling_request(
     prompt: &Prompt,
     cancellation_token: CancellationToken,
 ) -> CodexResult<SamplingRequestResult> {
-    let sampling_timing_guard = turn_context.turn_timing_state.begin_sampling();
     let uses_sequential_cutoff_reasoning_summaries = turn_context
         .config
         .features
@@ -2320,8 +2234,6 @@ async fn try_run_sampling_request(
             }
         }
     };
-    drop(sampling_timing_guard);
-
     flush_assistant_text_segments_all(
         &sess,
         &turn_context,
@@ -2330,13 +2242,7 @@ async fn try_run_sampling_request(
     )
     .await;
 
-    let tool_blocking_timing_guard = if in_flight.is_empty() {
-        None
-    } else {
-        Some(turn_context.turn_timing_state.begin_tool_blocking())
-    };
     drain_in_flight(&mut in_flight, sess.clone(), turn_context.clone()).await?;
-    drop(tool_blocking_timing_guard);
 
     if should_emit_token_count {
         // A tool call such as request_user_input can intentionally pause the turn. Emit token

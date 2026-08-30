@@ -13,7 +13,6 @@ doctest = false
 workspace = true
 
 [dependencies]
-codex-analytics = { workspace = true }
 codex-app-server-protocol = { workspace = true }
 codex-app-server-transport = { workspace = true }
 codex-otel = { workspace = true }

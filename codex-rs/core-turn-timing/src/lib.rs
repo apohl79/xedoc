@@ -4,6 +4,5 @@
 
 mod turn_timing;
 
-pub use turn_timing::TurnProfileTimingGuard;
 pub use turn_timing::TurnTimingState;
 pub use turn_timing::now_unix_timestamp_ms;

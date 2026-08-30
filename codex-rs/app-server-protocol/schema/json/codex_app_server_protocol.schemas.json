@@ -5676,18 +5676,6 @@
       "AgentPath": {
         "type": "string"
       },
-      "AnalyticsConfig": {
-        "additionalProperties": true,
-        "properties": {
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          }
-        },
-        "type": "object"
-      },
       "AppConfig": {
         "properties": {
           "default_tools_approval_mode": {
@@ -6737,16 +6725,6 @@
       "Config": {
         "additionalProperties": true,
         "properties": {
-          "analytics": {
-            "anyOf": [
-              {
-                "$ref": "#/definitions/v2/AnalyticsConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "approval_policy": {
             "anyOf": [
               {

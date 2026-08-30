@@ -11,7 +11,6 @@ use crate::config::Config;
 use crate::config::RolloutBudgetConfig;
 use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::rollout_budget::RolloutBudget;
-use crate::session::emit_subagent_session_started;
 use crate::session::session::Session;
 use crate::session::turn::generate_sub_agent_activity_summary;
 use crate::session::turn::sub_agent_activity::RecentSubAgentActivity;

@@ -1013,7 +1013,6 @@ pub async fn run_main(
             &config,
             codex_cli_version(),
             /*service_name_override*/ None,
-            /*default_analytics_enabled*/ true,
         )
     })) {
         Ok(Ok(otel)) => otel,

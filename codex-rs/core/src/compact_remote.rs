@@ -1,12 +1,9 @@
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use crate::compact::CompactionAnalyticsAttempt;
-use crate::compact::CompactionAnalyticsDetails;
 use crate::compact::InitialContextInjection;
 use crate::compact::RemoteCompactionHistoryEncryption;
 use crate::compact::build_compaction_initial_context;
-use crate::compact::compaction_status_from_result;
 use crate::compact::insert_initial_context_before_last_real_user_or_summary;
 use crate::compact_model_fallback::record_model_fallback;
 use crate::compact_model_fallback::should_retry_with_current_model;
@@ -23,10 +20,10 @@ use crate::responses_metadata::CompactionTurnMetadata;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
-use codex_analytics::CompactionImplementation;
-use codex_analytics::CompactionPhase;
-use codex_analytics::CompactionReason;
-use codex_analytics::CompactionTrigger;
+use codex_core_client::responses_metadata::CompactionImplementation;
+use codex_core_client::responses_metadata::CompactionPhase;
+use codex_core_client::responses_metadata::CompactionReason;
+use codex_core_client::responses_metadata::CompactionTrigger;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::ContextCompactionItem;
@@ -121,37 +118,12 @@ async fn run_remote_compact_task_inner(
 ) -> CodexResult<()> {
     let turn_context = &step_context.turn;
     let trigger = compaction_metadata.trigger();
-    let reason = compaction_metadata.reason();
-    let implementation = compaction_metadata.implementation();
-    let phase = compaction_metadata.phase();
     send_progress(sess, turn_context, CompactionStage::Preparing).await;
-    let mut analytics_details = CompactionAnalyticsDetails {
-        active_context_tokens_before: Some(sess.get_total_token_usage().await),
-        ..Default::default()
-    };
-    let attempt = CompactionAnalyticsAttempt::begin(
-        sess.as_ref(),
-        turn_context.as_ref(),
-        trigger,
-        reason,
-        implementation,
-        phase,
-    )
-    .await;
     let pre_compact_outcome = run_pre_compact_hooks(sess, turn_context, trigger).await;
     match pre_compact_outcome {
         PreCompactHookOutcome::Continue => {}
         PreCompactHookOutcome::Stopped => {
-            let error = CodexErr::TurnAborted;
-            attempt
-                .track(
-                    sess.as_ref(),
-                    codex_analytics::CompactionStatus::Interrupted,
-                    Some(&error),
-                    analytics_details,
-                )
-                .await;
-            return Err(error);
+            return Err(CodexErr::TurnAborted);
         }
     }
     let result = run_remote_compact_task_inner_impl(
@@ -162,30 +134,20 @@ async fn run_remote_compact_task_inner(
         initial_context_injection,
         history_encryption,
         compaction_metadata,
-        &mut analytics_details,
     )
     .await;
     if result.is_err() {
         send_progress(sess, turn_context, CompactionStage::Failed).await;
     }
-    let status = compaction_status_from_result(&result);
-    let codex_error = result.as_ref().err();
     if result.is_ok() {
         let post_compact_outcome = run_post_compact_hooks(sess, turn_context, trigger).await;
         if let PostCompactHookOutcome::Stopped = post_compact_outcome {
             send_progress(sess, turn_context, CompactionStage::Failed).await;
-            attempt
-                .track(sess.as_ref(), status, codex_error, analytics_details)
-                .await;
             return Err(CodexErr::TurnAborted);
         }
         send_progress(sess, turn_context, CompactionStage::Complete).await;
     }
-    attempt
-        .track(sess.as_ref(), status, codex_error, analytics_details)
-        .await;
     if let Err(err) = result {
-        sess.track_turn_codex_error(turn_context, &err);
         let event = EventMsg::Error(
             err.to_error_event(Some("Error running remote compact task".to_string())),
         );
@@ -203,7 +165,6 @@ async fn run_remote_compact_task_inner_impl(
     initial_context_injection: InitialContextInjection,
     history_encryption: RemoteCompactionHistoryEncryption,
     compaction_metadata: CompactionTurnMetadata,
-    analytics_details: &mut CompactionAnalyticsDetails,
 ) -> CodexResult<()> {
     let turn_context = &step_context.turn;
     let context_compaction_item = ContextCompactionItem::new();
@@ -217,7 +178,6 @@ async fn run_remote_compact_task_inner_impl(
         turn_state.clone(),
         history_encryption,
         compaction_metadata,
-        analytics_details,
     )
     .await;
     let (new_history, compaction_turn_context) = match attempt {
@@ -236,7 +196,6 @@ async fn run_remote_compact_task_inner_impl(
                 turn_state,
                 history_encryption,
                 compaction_metadata,
-                analytics_details,
             )
             .await;
             record_model_fallback(
@@ -359,9 +318,9 @@ pub(crate) fn trim_function_call_history_to_fit_context_window(
     history: &mut ContextManager,
     turn_context: &TurnContext,
     base_instructions: &BaseInstructions,
-) -> (usize, i64) {
+) -> usize {
     let Some(context_window) = turn_context.model_context_window() else {
-        return (0, 0);
+        return 0;
     };
     // Keep the unclamped total so replacing an item cannot lose an overflow hidden by i64
     // saturation in the normal history estimator.
@@ -377,7 +336,6 @@ pub(crate) fn trim_function_call_history_to_fit_context_window(
         .copied()
         .map(i128::from)
         .fold(base_tokens, i128::saturating_add);
-    let initial_estimated_tokens = i64::try_from(estimated_tokens).unwrap_or(i64::MAX);
     let mut rewritten_items = Vec::new();
 
     for (item, item_tokens) in original_items.iter().zip(item_token_estimates).rev() {
@@ -401,9 +359,7 @@ pub(crate) fn trim_function_call_history_to_fit_context_window(
         history.replace(items);
     }
 
-    let final_estimated_tokens = i64::try_from(estimated_tokens).unwrap_or(i64::MAX);
-    let estimated_deleted_tokens = initial_estimated_tokens.saturating_sub(final_estimated_tokens);
-    (rewritten_outputs, estimated_deleted_tokens)
+    rewritten_outputs
 }
 
 fn rewritten_output_for_context_window(item: &ResponseItem) -> Option<ResponseItem> {

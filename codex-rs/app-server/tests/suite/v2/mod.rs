@@ -1,5 +1,4 @@
 mod account;
-mod analytics;
 mod auto_env;
 mod auto_session_name;
 mod client_metadata;

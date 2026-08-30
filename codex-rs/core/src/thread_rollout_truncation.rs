@@ -1,5 +1,4 @@
 pub(crate) use codex_core_rollout_truncation::fork_turn_positions_in_rollout;
-pub(crate) use codex_core_rollout_truncation::initial_history_has_prior_user_turns;
 pub use codex_core_rollout_truncation::truncate_rollout_after_turn_id;
 pub(crate) use codex_core_rollout_truncation::truncate_rollout_before_nth_user_message_from_start;
 pub use codex_core_rollout_truncation::truncate_rollout_before_turn_id;

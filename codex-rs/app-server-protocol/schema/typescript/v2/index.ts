@@ -11,7 +11,6 @@ export type { AdditionalFileSystemPermissions } from "./AdditionalFileSystemPerm
 export type { AdditionalNetworkPermissions } from "./AdditionalNetworkPermissions";
 export type { AdditionalPermissionProfile } from "./AdditionalPermissionProfile";
 export type { AgentMessageDeltaNotification } from "./AgentMessageDeltaNotification";
-export type { AnalyticsConfig } from "./AnalyticsConfig";
 export type { AppToolApproval } from "./AppToolApproval";
 export type { AppToolsConfig } from "./AppToolsConfig";
 export type { AppsConfig } from "./AppsConfig";

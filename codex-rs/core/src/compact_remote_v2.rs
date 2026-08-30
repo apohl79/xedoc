@@ -4,11 +4,8 @@ use crate::Prompt;
 use crate::ResponseStream;
 use crate::client::ModelClientSession;
 use crate::client_common::ResponseEvent;
-use crate::compact::CompactionAnalyticsAttempt;
-use crate::compact::CompactionAnalyticsDetails;
 use crate::compact::InitialContextInjection;
 use crate::compact::RemoteCompactionHistoryEncryption;
-use crate::compact::compaction_status_from_result;
 use crate::compact_model_fallback::record_model_fallback;
 use crate::compact_model_fallback::should_retry_with_current_model;
 use crate::compact_progress::CompactionStage;
@@ -26,10 +23,10 @@ use crate::responses_retry::handle_retryable_response_stream_error;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
-use codex_analytics::CompactionImplementation;
-use codex_analytics::CompactionPhase;
-use codex_analytics::CompactionReason;
-use codex_analytics::CompactionTrigger;
+use codex_core_client::responses_metadata::CompactionImplementation;
+use codex_core_client::responses_metadata::CompactionPhase;
+use codex_core_client::responses_metadata::CompactionReason;
+use codex_core_client::responses_metadata::CompactionTrigger;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::ContextCompactionItem;
@@ -129,37 +126,12 @@ async fn run_remote_compact_task_inner(
 ) -> CodexResult<()> {
     let turn_context = &step_context.turn;
     let trigger = compaction_metadata.trigger();
-    let reason = compaction_metadata.reason();
-    let implementation = compaction_metadata.implementation();
-    let phase = compaction_metadata.phase();
     send_progress(sess, turn_context, CompactionStage::Preparing).await;
-    let mut analytics_details = CompactionAnalyticsDetails {
-        active_context_tokens_before: Some(sess.get_total_token_usage().await),
-        ..Default::default()
-    };
-    let attempt = CompactionAnalyticsAttempt::begin(
-        sess.as_ref(),
-        turn_context.as_ref(),
-        trigger,
-        reason,
-        implementation,
-        phase,
-    )
-    .await;
     let pre_compact_outcome = run_pre_compact_hooks(sess, turn_context, trigger).await;
     match pre_compact_outcome {
         PreCompactHookOutcome::Continue => {}
         PreCompactHookOutcome::Stopped => {
-            let error = CodexErr::TurnAborted;
-            attempt
-                .track(
-                    sess.as_ref(),
-                    codex_analytics::CompactionStatus::Interrupted,
-                    Some(&error),
-                    analytics_details,
-                )
-                .await;
-            return Err(error);
+            return Err(CodexErr::TurnAborted);
         }
     }
     let result = run_remote_compact_task_inner_impl(
@@ -170,33 +142,23 @@ async fn run_remote_compact_task_inner(
         initial_context_injection,
         history_encryption,
         compaction_metadata,
-        &mut analytics_details,
     )
     .await;
     if result.is_err() {
         send_progress(sess, turn_context, CompactionStage::Failed).await;
     }
-    let status = compaction_status_from_result(&result);
-    let codex_error = result.as_ref().err();
     if result.is_ok() {
         let post_compact_outcome = run_post_compact_hooks(sess, turn_context, trigger).await;
         if let PostCompactHookOutcome::Stopped = post_compact_outcome {
             send_progress(sess, turn_context, CompactionStage::Failed).await;
-            attempt
-                .track(sess.as_ref(), status, codex_error, analytics_details)
-                .await;
             return Err(CodexErr::TurnAborted);
         }
         send_progress(sess, turn_context, CompactionStage::Complete).await;
     }
-    attempt
-        .track(sess.as_ref(), status, codex_error, analytics_details)
-        .await;
     match result {
         Ok(()) => Ok(()),
         Err(err @ CodexErr::TurnAborted) => Err(err),
         Err(err) => {
-            sess.track_turn_codex_error(turn_context, &err);
             let event = EventMsg::Error(
                 err.to_error_event(Some("Error running remote compact task".to_string())),
             );
@@ -214,7 +176,6 @@ async fn run_remote_compact_task_inner_impl(
     initial_context_injection: InitialContextInjection,
     history_encryption: RemoteCompactionHistoryEncryption,
     compaction_metadata: CompactionTurnMetadata,
-    analytics_details: &mut CompactionAnalyticsDetails,
 ) -> CodexResult<()> {
     let turn_context = &step_context.turn;
     let context_compaction_item = ContextCompactionItem::new();
@@ -229,7 +190,6 @@ async fn run_remote_compact_task_inner_impl(
         client_session.as_deref_mut(),
         history_encryption,
         compaction_metadata,
-        analytics_details,
     )
     .await;
     let (attempt, compaction_turn_context) = match attempt {
@@ -248,7 +208,6 @@ async fn run_remote_compact_task_inner_impl(
                 client_session,
                 history_encryption,
                 compaction_metadata,
-                analytics_details,
             )
             .await;
             record_model_fallback(
@@ -273,14 +232,9 @@ async fn run_remote_compact_task_inner_impl(
     } = attempt;
     if let Some(token_usage) = token_usage {
         sess.record_rollout_budget_usage(&token_usage)?;
-        analytics_details.active_context_tokens_before = Some(token_usage.input_tokens);
-        analytics_details.compaction_summary_tokens = Some(token_usage.output_tokens);
-        analytics_details.cached_input_tokens = Some(token_usage.cached_input_tokens);
-        analytics_details.cache_write_input_tokens = Some(token_usage.cache_write_input_tokens);
     }
-    let (compacted_history, retained_images) =
+    let (compacted_history, _retained_images) =
         build_v2_compacted_history(&prompt_input, compaction_output);
-    analytics_details.retained_image_count = Some(retained_images);
     let (new_window_number, new_window_ids) = sess.advance_auto_compact_window().await;
     let (new_history, world_state_baseline) = process_compacted_history(
         sess.as_ref(),

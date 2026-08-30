@@ -4,7 +4,6 @@ mod provider;
 pub mod startup_sync;
 #[cfg(test)]
 mod test_support;
-pub mod toggles;
 
 pub use codex_core_plugin_marketplace::OPENAI_API_CURATED_MARKETPLACE_NAME;
 pub use codex_core_plugin_marketplace::OPENAI_BUNDLED_MARKETPLACE_NAME;

@@ -133,7 +133,6 @@ async fn run_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
         environment_manager,
         Arc::new(extensions.build()),
         user_instructions_provider,
-        /*analytics_events_client*/ None,
         Arc::clone(&thread_store),
         local_agent_graph_store_from_state_db(state_db.as_ref()),
         installation_id,
@@ -281,7 +280,6 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         check_for_update_on_startup: false,
         disable_paste_burst: false,
         auto_session_name: true,
-        analytics_enabled: Some(false),
         otel: OtelConfig::default(),
     };
     config

@@ -1,11 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use codex_analytics::CompactionImplementation;
-use codex_analytics::CompactionPhase;
-use codex_analytics::CompactionReason;
-use codex_analytics::CompactionStrategy;
-use codex_analytics::CompactionTrigger;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
@@ -63,12 +58,50 @@ const RESERVED_METADATA_KEYS: &[&str] = &[
     WORKSPACES_KEY,
 ];
 
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionTrigger {
+    Manual,
+    Auto,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionReason {
+    UserRequested,
+    ContextLimit,
+    ModelDownshift,
+    CompHashChanged,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionImplementation {
+    Responses,
+    ResponsesCompactionV2,
+    ResponsesCompact,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionPhase {
+    StandaloneTurn,
+    PreTurn,
+    MidTurn,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionStrategy {
+    Memento,
+    PrefixCompaction,
+}
+
 /// Metadata attached to model requests whose purpose is conversation compaction.
 ///
 /// This covers both local compaction requests sent through the normal `/responses` path and remote
 /// compaction requests sent through `/responses/compact`. These fields describe the operation at
-/// dispatch time. Post-response outcomes such as status, error, duration, and token deltas remain
-/// in compaction analytics events.
+/// dispatch time.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct CompactionTurnMetadata {
     trigger: CompactionTrigger,

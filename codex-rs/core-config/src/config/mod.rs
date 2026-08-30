@@ -1005,10 +1005,6 @@ pub struct Config {
     /// Whether Codex should generate short session names automatically.
     pub auto_session_name: bool,
 
-    /// When `false`, disables analytics across Codex product surfaces in this machine.
-    /// Voluntarily left as Optional because the default value might depend on the client.
-    pub analytics_enabled: Option<bool>,
-
     /// OTEL configuration (exporter type, endpoint, headers, etc.).
     pub otel: codex_config::types::OtelConfig,
 }
@@ -3895,7 +3891,6 @@ impl Config {
             check_for_update_on_startup,
             disable_paste_burst: cfg.disable_paste_burst.unwrap_or(false),
             auto_session_name: cfg.auto_session_name.unwrap_or(true),
-            analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
             tui_notifications: cfg
                 .tui
                 .as_ref()

@@ -41,11 +41,3 @@ pub struct PluginHookSource {
     pub source_relative_path: String,
     pub hooks: HookEventsToml,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginTelemetryMetadata {
-    /// Local plugin identifier used by Codex configuration and the plugin cache,
-    /// when it has been resolved.
-    pub plugin_id: Option<PluginId>,
-    pub capability_summary: Option<PluginCapabilitySummary>,
-}

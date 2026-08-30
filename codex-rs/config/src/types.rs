@@ -186,16 +186,6 @@ pub enum HistoryPersistence {
     None,
 }
 
-// ===== Analytics configuration =====
-
-/// Analytics settings loaded from config.toml. Fields are optional so we can apply defaults.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
-#[schemars(deny_unknown_fields)]
-pub struct AnalyticsConfigToml {
-    /// When `false`, disables analytics across Codex product surfaces in this profile.
-    pub enabled: Option<bool>,
-}
-
 /// Default settings that apply to all apps.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]

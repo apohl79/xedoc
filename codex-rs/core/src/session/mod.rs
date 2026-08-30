@@ -46,9 +46,6 @@ use async_channel::Receiver;
 use async_channel::Sender;
 use chrono::Local;
 use chrono::Utc;
-use codex_analytics::AnalyticsEventsClient;
-use codex_analytics::SubAgentThreadStartedInput;
-use codex_analytics::TurnCodexErrorFact;
 use codex_config::types::AuthKeyringBackendKind;
 use codex_config::types::OAuthCredentialsStoreMode;
 use codex_core_skills::injection::HostSkillsCatalogInWorldState;
@@ -181,7 +178,6 @@ use crate::config::PermissionProfileState;
 use crate::config::StartedNetworkProxy;
 use crate::config::resolve_web_search_mode_for_turn;
 use crate::context_manager::ContextManager;
-use crate::thread_rollout_truncation::initial_history_has_prior_user_turns;
 use codex_config::CONFIG_TOML_FILE;
 use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStackOrdering;
@@ -226,7 +222,6 @@ pub use self::mcp_runtime::McpRuntimeSnapshot;
 #[cfg(test)]
 pub(crate) use self::mcp_runtime::new_uninitialized_mcp_runtime_snapshot_for_test;
 use self::review::spawn_review_thread;
-use self::session::AppServerClientMetadata;
 use self::session::Session;
 use self::session::SessionConfiguration;
 pub(crate) use self::session::SessionSettingsUpdate;
@@ -418,7 +413,6 @@ pub(crate) struct SessionSpawnArgs {
     pub(crate) environment_selections: Vec<TurnEnvironmentSelection>,
     pub(crate) thread_extension_init: ExtensionDataInit,
     pub(crate) supports_openai_form_elicitation: bool,
-    pub(crate) analytics_events_client: Option<AnalyticsEventsClient>,
     pub(crate) thread_store: Arc<dyn ThreadStore>,
     pub(crate) external_time_provider: Option<Arc<dyn TimeProvider>>,
     pub(crate) inherited_multi_agent_version: Option<MultiAgentVersion>,
@@ -504,7 +498,6 @@ impl Session {
             environment_selections,
             thread_extension_init,
             supports_openai_form_elicitation,
-            analytics_events_client,
             thread_store,
             external_time_provider,
             inherited_multi_agent_version,
@@ -686,7 +679,6 @@ impl Session {
             agent_control,
             environment_manager,
             inherited_environments,
-            analytics_events_client,
             thread_store,
             external_time_provider,
             multi_agent_version,
@@ -923,17 +915,6 @@ fn push_prompt_fragment(
 }
 
 impl Session {
-    pub(crate) async fn app_server_client_metadata(&self) -> AppServerClientMetadata {
-        let state = self.state.lock().await;
-        AppServerClientMetadata {
-            client_name: state.session_configuration.app_server_client_name.clone(),
-            client_version: state
-                .session_configuration
-                .app_server_client_version
-                .clone(),
-        }
-    }
-
     fn managed_network_proxy_active_for_permission_profile(
         permission_profile: &PermissionProfile,
     ) -> bool {
@@ -1148,13 +1129,6 @@ impl Session {
         state.auto_compact_window_snapshot()
     }
 
-    pub(crate) async fn estimated_tokens_after_last_model_generated_item(&self) -> i64 {
-        let state = self.state.lock().await;
-        state
-            .history
-            .estimated_tokens_after_last_model_generated_item()
-    }
-
     pub(crate) async fn total_token_usage(&self) -> Option<TokenUsage> {
         let state = self.state.lock().await;
         state.token_info().map(|info| info.total_token_usage)
@@ -1264,11 +1238,6 @@ impl Session {
                 ),
             )
         };
-        let has_prior_user_turns = initial_history_has_prior_user_turns(&conversation_history);
-        {
-            let mut state = self.state.lock().await;
-            state.set_next_turn_is_first(!has_prior_user_turns);
-        }
         match conversation_history {
             InitialHistory::New | InitialHistory::Cleared => {
                 // Defer initial context insertion until the first real turn starts so
@@ -1794,17 +1763,6 @@ impl Session {
             current_context,
             self.features.enabled(Feature::Personality),
         )
-    }
-
-    /// Record a terminal CodexErr before the app-server completion notification is reduced.
-    pub(crate) fn track_turn_codex_error(&self, turn_context: &TurnContext, error: &CodexErr) {
-        self.services
-            .analytics_events_client
-            .track_turn_codex_error(TurnCodexErrorFact::from_codex_err(
-                self.thread_id.to_string(),
-                turn_context.sub_id.clone(),
-                error,
-            ));
     }
 
     /// Persist the event to rollout and send it to clients.
@@ -3903,44 +3861,6 @@ impl Session {
     fn show_raw_agent_reasoning(&self) -> bool {
         self.services.show_raw_agent_reasoning
     }
-}
-
-pub(crate) fn emit_subagent_session_started(
-    analytics_events_client: &AnalyticsEventsClient,
-    client_metadata: AppServerClientMetadata,
-    session_id: SessionId,
-    thread_id: ThreadId,
-    parent_thread_id: Option<ThreadId>,
-    thread_config: ThreadConfigSnapshot,
-    subagent_source: SubAgentSource,
-) {
-    let AppServerClientMetadata {
-        client_name,
-        client_version,
-    } = client_metadata;
-    let (Some(client_name), Some(client_version)) = (client_name, client_version) else {
-        tracing::warn!("skipping subagent thread analytics: missing inherited client metadata");
-        return;
-    };
-    let created_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    analytics_events_client.track_subagent_thread_started(SubAgentThreadStartedInput {
-        session_id: session_id.to_string(),
-        thread_id: thread_id.to_string(),
-        parent_thread_id: parent_thread_id.map(|thread_id| thread_id.to_string()),
-        forked_from_thread_id: thread_config
-            .forked_from_thread_id
-            .map(|thread_id| thread_id.to_string()),
-        product_client_id: thread_config.originator.clone(),
-        client_name,
-        client_version,
-        model: thread_config.model,
-        ephemeral: thread_config.ephemeral,
-        subagent_source,
-        created_at,
-    });
 }
 
 /// Builds the hook engine for one config snapshot, including any enabled plugin hooks.

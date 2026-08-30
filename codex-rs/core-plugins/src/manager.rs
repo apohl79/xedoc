@@ -12,7 +12,6 @@ use crate::loader::load_plugin_skills;
 use crate::loader::load_plugins_from_layer_stack;
 use crate::loader::log_plugin_load_errors;
 use crate::loader::materialize_marketplace_plugin_source;
-use crate::loader::plugin_capability_summary_from_root;
 use crate::loader::refresh_curated_plugin_cache;
 use crate::loader::refresh_non_curated_plugin_cache_detailed;
 use crate::loader::refresh_non_curated_plugin_cache_force_reinstall_detailed;
@@ -45,8 +44,6 @@ use crate::startup_sync::sync_openai_plugins_repo;
 use crate::store::PluginInstallResult as StorePluginInstallResult;
 use crate::store::PluginStore;
 use crate::store::PluginStoreError;
-use codex_analytics::AnalyticsEventsClient;
-use codex_analytics::PluginInstallSource;
 use codex_config::ConfigLayerStack;
 use codex_config::clear_user_plugin;
 use codex_config::set_user_plugin_enabled;
@@ -58,7 +55,6 @@ use codex_hooks::plugin_hook_declarations;
 use codex_plugin::PluginCapabilitySummary;
 use codex_plugin::PluginId;
 use codex_plugin::PluginIdError;
-use codex_plugin::PluginTelemetryMetadata;
 use codex_plugin::prompt_safe_plugin_description;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::protocol::HookEventName;
@@ -235,8 +231,6 @@ pub struct PluginsManager {
     skill_root_scan_slots: Arc<Semaphore>,
     restriction_product: Option<Product>,
     auth_mode: RwLock<Option<AuthMode>>,
-    analytics_events_client: RwLock<Option<AnalyticsEventsClient>>,
-    plugin_install_source: PluginInstallSource,
 }
 
 #[derive(Clone)]
@@ -299,14 +293,7 @@ impl PluginsManager {
             skill_root_scan_slots: Arc::new(Semaphore::new(MAX_CONCURRENT_ROOT_SCANS)),
             restriction_product,
             auth_mode: RwLock::new(auth_mode),
-            analytics_events_client: RwLock::new(None),
-            plugin_install_source: PluginInstallSource::Manual,
         }
-    }
-
-    pub fn with_plugin_install_source(mut self, source: PluginInstallSource) -> Self {
-        self.plugin_install_source = source;
-        self
     }
 
     pub fn set_auth_mode(&self, auth_mode: Option<AuthMode>) -> bool {
@@ -326,14 +313,6 @@ impl PluginsManager {
             Ok(auth_mode_guard) => *auth_mode_guard,
             Err(err) => *err.into_inner(),
         }
-    }
-
-    pub fn set_analytics_events_client(&self, analytics_events_client: AnalyticsEventsClient) {
-        let mut stored_client = match self.analytics_events_client.write() {
-            Ok(client_guard) => client_guard,
-            Err(err) => err.into_inner(),
-        };
-        *stored_client = Some(analytics_events_client);
     }
 
     fn restriction_product_matches(&self, products: Option<&[Product]>) -> bool {
@@ -522,39 +501,6 @@ impl PluginsManager {
         }
     }
 
-    pub async fn telemetry_metadata_for_installed_plugin(
-        &self,
-        plugin_id: &PluginId,
-    ) -> PluginTelemetryMetadata {
-        let mut metadata = self.telemetry_metadata_for_plugin_id(plugin_id);
-        metadata.capability_summary = match self.store.active_plugin_root(plugin_id) {
-            Some(plugin_root) => plugin_capability_summary_from_root(plugin_id, &plugin_root).await,
-            None => None,
-        };
-        metadata
-    }
-
-    pub fn telemetry_metadata_for_plugin_id(
-        &self,
-        plugin_id: &PluginId,
-    ) -> PluginTelemetryMetadata {
-        PluginTelemetryMetadata {
-            plugin_id: Some(plugin_id.clone()),
-            capability_summary: None,
-        }
-    }
-
-    pub fn telemetry_metadata_for_capability_summary(
-        &self,
-        summary: &PluginCapabilitySummary,
-    ) -> Option<PluginTelemetryMetadata> {
-        let plugin_id = PluginId::parse(&summary.config_name).ok()?;
-        Some(PluginTelemetryMetadata {
-            plugin_id: Some(plugin_id),
-            capability_summary: Some(summary.clone()),
-        })
-    }
-
     pub async fn install_plugin(
         &self,
         config_layer_stack: &ConfigLayerStack,
@@ -565,11 +511,12 @@ impl PluginsManager {
         match self.install_resolved_plugin(resolved).await {
             Ok(outcome) => Ok(outcome),
             Err(err) => {
-                self.track_plugin_install_failed(
-                    &plugin_id,
-                    plugin_install_error_type(&err),
-                    err.sub_error_type(),
-                    err.to_string(),
+                tracing::warn!(
+                    plugin_id = %plugin_id.as_key(),
+                    error_type = %plugin_install_error_type(&err),
+                    sub_error_type = err.sub_error_type().as_deref(),
+                    error = %err,
+                    "plugin install failed"
                 );
                 Err(err)
             }
@@ -588,7 +535,11 @@ impl PluginsManager {
         ) {
             Ok(resolved) => resolved,
             Err(err) => {
-                self.track_plugin_install_resolution_failed(&err);
+                tracing::warn!(
+                    error_type = %marketplace_error_type(&err),
+                    error = %err,
+                    "plugin install failed while resolving marketplace plugin"
+                );
                 return Err(err.into());
             }
         };
@@ -605,70 +556,14 @@ impl PluginsManager {
                 path: request.marketplace_path.to_path_buf(),
                 message,
             };
-            self.track_plugin_install_resolution_failed(&err);
-            return Err(err.into());
-        }
-        Ok(resolved)
-    }
-
-    fn track_plugin_install_resolution_failed(&self, err: &MarketplaceError) {
-        let plugin_id = match err {
-            MarketplaceError::PluginNotFound {
-                plugin_name,
-                marketplace_name,
-            }
-            | MarketplaceError::PluginNotAvailable {
-                plugin_name,
-                marketplace_name,
-            } => PluginId::new(plugin_name.clone(), marketplace_name.clone()).ok(),
-            MarketplaceError::Io { .. }
-            | MarketplaceError::MarketplaceNotFound { .. }
-            | MarketplaceError::InvalidMarketplaceFile { .. }
-            | MarketplaceError::PluginsDisabled
-            | MarketplaceError::InvalidPlugin(_) => None,
-        };
-        if let Some(plugin_id) = plugin_id {
-            self.track_plugin_install_failed(
-                &plugin_id,
-                marketplace_error_type(err),
-                /*sub_error_type*/ None,
-                err.to_string(),
-            );
-        } else {
             tracing::warn!(
-                error_type = %marketplace_error_type(err),
+                error_type = %marketplace_error_type(&err),
                 error = %err,
                 "plugin install failed while resolving marketplace plugin"
             );
+            return Err(err.into());
         }
-    }
-
-    fn track_plugin_install_failed(
-        &self,
-        plugin_id: &PluginId,
-        error_type: &'static str,
-        sub_error_type: Option<String>,
-        error_message: String,
-    ) {
-        tracing::warn!(
-            plugin_id = %plugin_id.as_key(),
-            error_type = %error_type,
-            sub_error_type = sub_error_type.as_deref(),
-            error = %error_message,
-            "plugin install failed"
-        );
-        let analytics_events_client = match self.analytics_events_client.read() {
-            Ok(client) => client.clone(),
-            Err(err) => err.into_inner().clone(),
-        };
-        if let Some(analytics_events_client) = analytics_events_client {
-            analytics_events_client.track_plugin_install_failed(
-                self.telemetry_metadata_for_plugin_id(plugin_id),
-                self.plugin_install_source,
-                error_type.to_string(),
-                sub_error_type,
-            );
-        }
+        Ok(resolved)
     }
 
     async fn install_resolved_plugin(
@@ -729,17 +624,6 @@ impl PluginsManager {
         .await
         .map_err(anyhow::Error::from)?;
 
-        let analytics_events_client = match self.analytics_events_client.read() {
-            Ok(client) => client.clone(),
-            Err(err) => err.into_inner().clone(),
-        };
-        if let Some(analytics_events_client) = analytics_events_client {
-            analytics_events_client.track_plugin_installed(
-                self.telemetry_metadata_for_installed_plugin(&result.plugin_id)
-                    .await,
-            );
-        }
-
         Ok(PluginInstallOutcome {
             plugin_id: result.plugin_id,
             plugin_version: result.plugin_version,
@@ -754,14 +638,6 @@ impl PluginsManager {
     }
 
     async fn uninstall_plugin_id(&self, plugin_id: PluginId) -> Result<(), PluginUninstallError> {
-        let plugin_telemetry = if self.store.active_plugin_root(&plugin_id).is_some() {
-            Some(
-                self.telemetry_metadata_for_installed_plugin(&plugin_id)
-                    .await,
-            )
-        } else {
-            None
-        };
         let store = self.store.clone();
         let plugin_id_for_store = plugin_id.clone();
         tokio::task::spawn_blocking(move || store.uninstall(&plugin_id_for_store))
@@ -771,16 +647,6 @@ impl PluginsManager {
         clear_user_plugin(&self.codex_home, plugin_id.as_key())
             .await
             .map_err(anyhow::Error::from)?;
-
-        let analytics_events_client = match self.analytics_events_client.read() {
-            Ok(client) => client.clone(),
-            Err(err) => err.into_inner().clone(),
-        };
-        if let Some(plugin_telemetry) = plugin_telemetry
-            && let Some(analytics_events_client) = analytics_events_client
-        {
-            analytics_events_client.track_plugin_uninstalled(plugin_telemetry);
-        }
 
         Ok(())
     }
