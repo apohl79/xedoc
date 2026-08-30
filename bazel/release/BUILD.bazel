@@ -1,4 +1,0 @@
-exports_files(
-    ["apohl79_release.env"],
-    visibility = ["//visibility:public"],
-)

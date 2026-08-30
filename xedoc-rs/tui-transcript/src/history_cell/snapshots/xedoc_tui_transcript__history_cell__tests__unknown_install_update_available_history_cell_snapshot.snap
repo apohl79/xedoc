@@ -1,0 +1,11 @@
+---
+source: tui-transcript/src/history_cell/tests.rs
+expression: rendered
+---
+╭────────────────────────────────────────────────────────────────╮
+│ ✨ Update available! <version> -> 9.9.9                        │
+│ See https://github.com/apohl79/codex for installation options. │
+│                                                                │
+│ See full release notes:                                        │
+│ https://github.com/apohl79/codex/releases/latest               │
+╰────────────────────────────────────────────────────────────────╯

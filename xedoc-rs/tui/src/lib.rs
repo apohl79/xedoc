@@ -127,8 +127,6 @@ mod model_migration;
 pub(crate) use xedoc_tui_transcript::motion;
 mod multi_agents;
 mod notifications;
-#[cfg(any(not(debug_assertions), test))]
-mod npm_registry;
 pub(crate) mod onboarding;
 mod oss_selection;
 mod pager_overlay;
@@ -149,7 +147,6 @@ pub(crate) use xedoc_tui_render::terminal_palette;
 pub(crate) use xedoc_tui_render::terminal_probe;
 pub(crate) use xedoc_tui_transcript::text_formatting;
 mod token_usage;
-pub(crate) use xedoc_tui_transcript::tooltips;
 mod transcript_reflow;
 mod tui;
 pub use xedoc_tui_transcript::UpdateAction;
@@ -1181,8 +1178,6 @@ async fn run_ratatui_app(
 ) -> color_eyre::Result<AppExitInfo> {
     let uses_remote_workspace = app_server_target.uses_remote_workspace();
     color_eyre::install()?;
-
-    tooltips::announcement::prewarm();
 
     // Forward panic reports through tracing so they appear in the UI status
     // line, but do not swallow the default/color-eyre panic handler.

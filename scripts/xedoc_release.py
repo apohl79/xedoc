@@ -1,4 +1,4 @@
-"""Build helpers for apohl79 fork release packages."""
+"""Build helpers for Xedoc release packages."""
 
 import argparse
 from dataclasses import dataclass
@@ -20,28 +20,22 @@ from xedoc_package.targets import default_target
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_REF = "main-fork"
-DEFAULT_SUFFIX = "apohl79"
 DEFAULT_GITHUB_REPO = "apohl79/codex"
 DEFAULT_GITHUB_ACCOUNT = "apohl79"
 DEFAULT_BUILD_SYSTEM = "bazel"
-FORK_BUILD_NUMBER_RELATIVE_PATH = Path("scripts/apohl79_build_number.txt")
-FORK_BUILD_NUMBER_PATH = REPO_ROOT / FORK_BUILD_NUMBER_RELATIVE_PATH
-FORK_CARGO_BUILD_JOBS_ENV_VAR = "APOHL79_CARGO_BUILD_JOBS"
+CARGO_BUILD_JOBS_ENV_VAR = "XEDOC_CARGO_BUILD_JOBS"
 PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
 DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
-WORKSPACE_VERSION_SENTINEL = "0.0.0"
 VERSION_RE = re.compile(
     r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)"
     r"(?:-(?P<pre_label>alpha|beta)(?:\.(?P<pre_number>[0-9]+))?)?$"
 )
-LS_REMOTE_TAG_RE = re.compile(
-    r"^[0-9a-fA-F]+\s+refs/tags/rust-v(?P<version>"
-    r"[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta)(?:\.[0-9]+)?)?"
-    r")(?:\^\{\})?$"
+RELEASE_TAG_RE = re.compile(
+    r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta)(?:\.[0-9]+)?)?$"
 )
 WORKSPACE_VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*)"[^"]+"(.*)$')
-BAZEL_RELEASE_CONFIG = "apohl79-release"
-BAZEL_RELEASE_BUNDLE = "//xedoc-rs:apohl79-release-binaries"
+BAZEL_RELEASE_CONFIG = "xedoc-release"
+BAZEL_RELEASE_BUNDLE = "//xedoc-rs:xedoc-release-binaries"
 BAZEL_RELEASE_STARTUP_OPTIONS = ["--noexperimental_remote_repo_contents_cache"]
 BAZEL_RELEASE_CACHE_OPTIONS = ["--repo_contents_cache="]
 BAZEL_PLATFORM_BY_TARGET = {
@@ -57,26 +51,19 @@ class ReleaseBinaries:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Build a signed local release package for the apohl79 Xedoc fork."
-        ),
+        description="Build a signed local release package for Xedoc.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--ref",
         default=DEFAULT_REF,
-        help="Git ref to build. Defaults to the fork main branch.",
+        help="Git ref to build. Defaults to the Xedoc main branch.",
     )
     parser.add_argument(
         "--target",
         choices=sorted(TARGET_SPECS),
         default=default_target(),
         help="Rust target triple to package.",
-    )
-    parser.add_argument(
-        "--version-suffix",
-        default=DEFAULT_SUFFIX,
-        help="Suffix appended to the base Xedoc version.",
     )
     parser.add_argument(
         "--codesign-identity",
@@ -90,7 +77,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("dist/apohl79"),
+        default=Path("dist/xedoc"),
         help="Directory for release package output.",
     )
     parser.add_argument(
@@ -145,7 +132,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_int_arg,
         help=(
             "Maximum parallel Cargo jobs for the release compile. Can also be "
-            f"set with {FORK_CARGO_BUILD_JOBS_ENV_VAR}; existing "
+            f"set with {CARGO_BUILD_JOBS_ENV_VAR}; existing "
             "CARGO_BUILD_JOBS is still respected."
         ),
     )
@@ -182,7 +169,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--allow-dirty",
         action="store_true",
         help=(
-            "Allow local manifest and build-number changes. Requires "
+            "Allow local manifest changes. Requires "
             "--skip-github-release because a GitHub release must match its "
             "committed target."
         ),
@@ -212,7 +199,7 @@ def build_release(args: argparse.Namespace) -> None:
     spec = TARGET_SPECS[args.target]
     if not args.target.endswith("apple-darwin"):
         raise RuntimeError(
-            "apohl79 release signing uses Apple codesign and supports only "
+            "Xedoc release signing uses Apple codesign and supports only "
             "macOS targets. Pass an *-apple-darwin target."
         )
     if getattr(args, "allow_dirty", False) and not args.skip_github_release:
@@ -233,15 +220,8 @@ def build_release(args: argparse.Namespace) -> None:
     if not getattr(args, "allow_dirty", False):
         ensure_git_path_clean(cargo_toml)
         ensure_git_path_clean(cargo_lock)
-        ensure_git_path_clean(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
-    base_version = resolve_base_version(cargo_toml, ls_remote_stdout=None)
-    build_number = read_fork_build_number(source_root / FORK_BUILD_NUMBER_RELATIVE_PATH)
-    fork_version = fork_version_from_base(
-        base_version,
-        args.version_suffix,
-        build_number,
-    )
-    release_tag = github_release_tag(fork_version)
+    version = validate_release_version(read_workspace_version(cargo_toml))
+    release_tag = github_release_tag(version)
     release_target = None
     github_env = None
     if not args.skip_github_release:
@@ -271,11 +251,10 @@ def build_release(args: argparse.Namespace) -> None:
             bazel_max_heap_mb=getattr(args, "bazel_max_heap_mb", None),
             source_root=source_root,
             target=args.target,
-            fork_version=fork_version,
         )
         release_binaries = stage_release_binaries(
             release_binaries,
-            output_dir / ".bazel-release" / fork_version / args.target,
+            output_dir / ".bazel-release" / version / args.target,
         )
     elif build_system == "cargo":
         release_binaries = build_cargo_release_binaries(
@@ -284,7 +263,6 @@ def build_release(args: argparse.Namespace) -> None:
             source_root=source_root,
             spec=spec,
             target=args.target,
-            fork_version=fork_version,
         )
     else:
         raise RuntimeError(f"Unsupported release build system: {build_system}")
@@ -309,10 +287,10 @@ def build_release(args: argparse.Namespace) -> None:
     package_dir = (
         resolve_repo_path(args.package_dir)
         if args.package_dir is not None
-        else output_dir / fork_version / f"xedoc-package-{args.target}"
+        else output_dir / version / f"xedoc-package-{args.target}"
     )
     archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
-        output_dir / fork_version / f"xedoc-{args.target}-{fork_version}.zip"
+        output_dir / version / f"xedoc-{args.target}-{version}.zip"
     ]
 
     package_args = [
@@ -323,7 +301,7 @@ def build_release(args: argparse.Namespace) -> None:
         "--variant",
         "xedoc",
         "--version",
-        fork_version,
+        version,
         "--entrypoint-bin",
         str(entrypoint),
         "--cargo-profile",
@@ -344,13 +322,13 @@ def build_release(args: argparse.Namespace) -> None:
             gh=args.gh,
             repo=args.github_repo,
             tag=release_tag,
-            title=fork_version,
+            title=version,
             target=release_target,
             archive_outputs=archive_outputs,
             env=github_env,
             notes=generate_release_notes(
                 release_tag,
-                fork_version,
+                version,
                 gh=args.gh,
                 repo=args.github_repo,
                 env=github_env,
@@ -358,7 +336,7 @@ def build_release(args: argparse.Namespace) -> None:
             ),
         )
 
-    print(f"Built apohl79 Xedoc release {fork_version}")
+    print(f"Built Xedoc release {version}")
     print(f"GitHub release: {release_tag}")
     print(f"Package directory: {package_dir}")
     for archive_output in archive_outputs:
@@ -372,14 +350,12 @@ def build_cargo_release_binaries(
     source_root: Path,
     spec: TargetSpec,
     target: str,
-    fork_version: str,
 ) -> ReleaseBinaries:
     target_dir = Path(
         os.environ.get("CARGO_TARGET_DIR", source_root / "xedoc-rs" / "target")
     ).resolve()
     env = os.environ.copy()
     env["CARGO_TARGET_DIR"] = str(target_dir)
-    env["XEDOC_RELEASE_VERSION"] = fork_version
     resolved_cargo_build_jobs = resolve_cargo_build_jobs(cargo_build_jobs)
     if resolved_cargo_build_jobs is not None:
         env["CARGO_BUILD_JOBS"] = resolved_cargo_build_jobs
@@ -422,7 +398,6 @@ def build_bazel_release_binaries(
     bazel_max_heap_mb: int | None = None,
     source_root: Path,
     target: str,
-    fork_version: str,
 ) -> ReleaseBinaries:
     options = bazel_release_options(target)
     startup_options = [
@@ -438,9 +413,6 @@ def build_bazel_release_binaries(
         if bazel_build_jobs is not None
         else []
     )
-    env = os.environ.copy()
-    env["XEDOC_RELEASE_VERSION"] = fork_version
-
     run(
         [
             bazel,
@@ -453,7 +425,6 @@ def build_bazel_release_binaries(
             BAZEL_RELEASE_BUNDLE,
         ],
         cwd=source_root,
-        env=env,
     )
     execution_root = bazel_execution_root(
         command_output(
@@ -465,7 +436,6 @@ def build_bazel_release_binaries(
                 "execution_root",
             ],
             cwd=source_root,
-            env=env,
         )
     )
     outputs = command_output(
@@ -480,7 +450,6 @@ def build_bazel_release_binaries(
             BAZEL_RELEASE_BUNDLE,
         ],
         cwd=source_root,
-        env=env,
     )
     return resolve_bazel_release_binaries(outputs, execution_root)
 
@@ -547,7 +516,7 @@ def ensure_current_checkout_matches_ref(ref: str) -> None:
         raise RuntimeError(
             f"Current checkout HEAD ({head_commit[:12]}) does not match "
             f"--ref {ref} ({ref_commit[:12]}). Check out {ref} before running "
-            "the incremental apohl79 release build."
+            "the incremental Xedoc release build."
         )
 
 
@@ -573,7 +542,7 @@ def ensure_git_path_clean(path: Path) -> None:
         if result.returncode == 1:
             raise RuntimeError(
                 f"{relative_path} has local changes. Commit or stash them before "
-                "running the apohl79 release build."
+                "running the Xedoc release build."
             )
         if result.returncode != 0:
             raise RuntimeError(f"Could not check git status for {relative_path}.")
@@ -588,9 +557,6 @@ def repair_stale_release_lockfiles(
     target: str,
 ) -> None:
     expected_version = read_workspace_version(cargo_toml)
-    if expected_version == WORKSPACE_VERSION_SENTINEL:
-        return
-
     stale_packages = stale_workspace_lock_packages(cargo_lock, expected_version)
     if not stale_packages:
         return
@@ -802,11 +768,11 @@ def resolve_cargo_build_jobs(explicit_jobs: int | None) -> str | None:
     if explicit_jobs is not None:
         return str(explicit_jobs)
 
-    env_jobs = os.environ.get(FORK_CARGO_BUILD_JOBS_ENV_VAR)
+    env_jobs = os.environ.get(CARGO_BUILD_JOBS_ENV_VAR)
     if env_jobs is None:
         return None
 
-    return str(positive_int_env(FORK_CARGO_BUILD_JOBS_ENV_VAR, env_jobs))
+    return str(positive_int_env(CARGO_BUILD_JOBS_ENV_VAR, env_jobs))
 
 
 def positive_int_arg(value: str) -> int:
@@ -852,78 +818,12 @@ def sysctl_int(name: str) -> int | None:
     return value if value > 0 else None
 
 
-def resolve_base_version(
-    cargo_toml: Path,
-    *,
-    ls_remote_stdout: str | None,
-) -> str:
-    cargo_version = read_workspace_version(cargo_toml)
-    if cargo_version != WORKSPACE_VERSION_SENTINEL:
-        return validate_release_version(cargo_version)
-
-    if ls_remote_stdout is None:
-        ls_remote_stdout = subprocess.check_output(
-            [
-                "git",
-                "ls-remote",
-                "--tags",
-                "--sort=v:refname",
-                "upstream",
-                "rust-v[0-9]*",
-            ],
-            cwd=REPO_ROOT,
-            text=True,
-            timeout=60,
-        )
-    return latest_release_version_from_ls_remote(ls_remote_stdout)
+def github_release_tag(version: str) -> str:
+    return f"v{version}"
 
 
-def derive_fork_version(
-    cargo_version: str,
-    *,
-    describe_tag: str | None = None,
-    ls_remote_stdout: str,
-    suffix: str = DEFAULT_SUFFIX,
-    build_number: int,
-) -> str:
-    _ = describe_tag
-    if cargo_version != WORKSPACE_VERSION_SENTINEL:
-        base_version = validate_release_version(cargo_version)
-    else:
-        base_version = latest_release_version_from_ls_remote(ls_remote_stdout)
-    return fork_version_from_base(base_version, suffix, build_number)
-
-
-def read_fork_build_number(path: Path = FORK_BUILD_NUMBER_PATH) -> int:
-    try:
-        raw_value = path.read_text(encoding="utf-8").strip()
-    except FileNotFoundError as err:
-        raise RuntimeError(f"Fork build number file not found: {path}") from err
-
-    if not raw_value:
-        raise RuntimeError(f"Fork build number file is empty: {path}")
-    try:
-        build_number = int(raw_value)
-    except ValueError as err:
-        raise RuntimeError(
-            f"Fork build number must be a positive integer in {path}: {raw_value!r}"
-        ) from err
-    if build_number <= 0:
-        raise RuntimeError(f"Fork build number must be at least 1 in {path}.")
-    return build_number
-
-
-def fork_version_from_base(base_version: str, suffix: str, build_number: int) -> str:
-    validate_release_version(base_version)
-    if not suffix:
-        raise RuntimeError("Version suffix must not be empty.")
-    if build_number <= 0:
-        raise RuntimeError("Fork build number must be at least 1.")
-    return f"{base_version}-{suffix}-{build_number}"
-
-
-def github_release_tag(fork_version: str) -> str:
-    return f"rust-v{fork_version}"
+def is_release_tag(tag: str) -> bool:
+    return RELEASE_TAG_RE.match(tag) is not None
 
 
 def ensure_github_release_target_exists(
@@ -954,7 +854,7 @@ def ensure_github_release_target_exists(
 
 def generate_release_notes(
     tag: str,
-    fork_version: str,
+    version: str,
     *,
     gh: str = "gh",
     repo: str = DEFAULT_GITHUB_REPO,
@@ -963,12 +863,9 @@ def generate_release_notes(
 ) -> str:
     """Generate a changelog body for the GitHub release from git history."""
     if not _is_git_repo():
-        return f"apohl79 Xedoc {fork_version}"
+        return f"Xedoc {version}"
 
-    previous_release = find_previous_published_fork_release(
-        tag, gh=gh, repo=repo, env=env
-    )
-    upstream_base = upstream_base_from_fork_version(fork_version)
+    previous_release = find_previous_published_release(tag, gh=gh, repo=repo, env=env)
     date = subprocess.check_output(
         ["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d", target],
         cwd=REPO_ROOT,
@@ -976,27 +873,18 @@ def generate_release_notes(
     ).strip()
 
     if previous_release is None:
-        return initial_release_notes(upstream_base, date, fork_version)
+        return initial_release_notes(date, version)
 
-    prev_tag, previous_target = previous_release
-    fork_commits = fork_commits_between(previous_target, target)
-    prev_upstream = (
-        upstream_base_from_fork_version(prev_tag.replace("rust-v", ""))
-        if prev_tag
-        else None
-    )
-
+    _prev_tag, previous_target = previous_release
     return incremental_release_notes(
-        fork_version=fork_version,
-        upstream_base=upstream_base,
+        version=version,
         date=date,
-        fork_commits=fork_commits,
-        prev_upstream=prev_upstream,
+        commits=release_commits_between(previous_target, target),
     )
 
 
-def find_previous_fork_tag(tag: str) -> str | None:
-    """Return the most recent apohl79 release tag before *tag*, or None."""
+def find_previous_release_tag(tag: str) -> str | None:
+    """Return the most recent Xedoc release tag before *tag*, or None."""
     try:
         all_tags = (
             subprocess.check_output(
@@ -1010,22 +898,22 @@ def find_previous_fork_tag(tag: str) -> str | None:
     except subprocess.CalledProcessError:
         return None
 
-    fork_tags = [t for t in all_tags if "apohl79" in t and t.startswith("rust-v")]
+    release_tags = [t for t in all_tags if is_release_tag(t)]
     try:
-        idx = fork_tags.index(tag)
+        idx = release_tags.index(tag)
     except ValueError:
-        return fork_tags[-1] if fork_tags else None
-    return fork_tags[idx - 1] if idx > 0 else None
+        return release_tags[-1] if release_tags else None
+    return release_tags[idx - 1] if idx > 0 else None
 
 
-def find_previous_published_fork_release(
+def find_previous_published_release(
     tag: str,
     *,
     gh: str,
     repo: str,
     env: dict[str, str] | None,
 ) -> tuple[str, str] | None:
-    """Return the previous published fork release tag and target commit."""
+    """Return the previous published release tag and target commit."""
     try:
         releases = json.loads(
             subprocess.check_output(
@@ -1041,29 +929,14 @@ def find_previous_published_fork_release(
             )
         )
     except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError):
-        previous_tag = find_previous_fork_tag(tag)
+        previous_tag = find_previous_release_tag(tag)
         return (previous_tag, previous_tag) if previous_tag else None
 
     for release in releases:
         previous_tag = release["tag_name"]
-        if (
-            previous_tag != tag
-            and previous_tag.startswith("rust-v")
-            and "apohl79" in previous_tag
-        ):
+        if previous_tag != tag and is_release_tag(previous_tag):
             return previous_tag, release["target_commitish"]
     return None
-
-
-def upstream_base_from_fork_version(fork_version: str) -> str:
-    """Extract the upstream base version from a fork version string.
-
-    "0.144.0-apohl79-30" -> "0.144.0"
-    """
-    match = re.match(r"^([0-9]+\.[0-9]+\.[0-9]+(?:-[a-z]+\.[0-9]+)?)", fork_version)
-    if match is None:
-        return fork_version.rsplit("-", maxsplit=1)[0]
-    return match.group(1)
 
 
 def _is_git_repo() -> bool:
@@ -1080,17 +953,18 @@ def _is_git_repo() -> bool:
         return False
 
 
-FORK_AUTHOR_ENV_VAR = "FORK_AUTHOR"
+RELEASE_AUTHOR_ENV_VAR = "XEDOC_RELEASE_AUTHOR"
 
 
-def fork_author(prev_tag: str) -> str:
-    """Return the author pattern used to identify fork commits.
+def release_author(prev_tag: str) -> str:
+    """Return the author pattern used to identify Xedoc commits.
 
-    Prefers the FORK_AUTHOR environment variable, then auto-detects from the
-    author of the previous fork release tag's tip commit, and falls back to a
-    hard-coded default when neither is available.
+    Prefers the XEDOC_RELEASE_AUTHOR environment variable, then auto-detects
+    from the author of the previous release's tip commit, and falls back to a
+    hard-coded default when neither is available. Upstream Codex commits merged
+    into the tree are excluded this way.
     """
-    env_author = os.environ.get(FORK_AUTHOR_ENV_VAR)
+    env_author = os.environ.get(RELEASE_AUTHOR_ENV_VAR)
     if env_author:
         return env_author
     try:
@@ -1103,13 +977,13 @@ def fork_author(prev_tag: str) -> str:
         return "Andreas Pohl"
 
 
-def fork_commits_between(prev_tag: str, ref: str) -> list[str]:
-    """Return fork-specific commit messages between *prev_tag* and *ref*.
+def release_commits_between(prev_tag: str, ref: str) -> list[str]:
+    """Return Xedoc commit subjects between *prev_tag* and *ref*.
 
     Filters by commit author so upstream commits are excluded without a
     manually maintained keyword list.
     """
-    author = fork_author(prev_tag)
+    author = release_author(prev_tag)
     try:
         raw = subprocess.check_output(
             [
@@ -1136,52 +1010,38 @@ def _bullet_list(items: list[str], indent: str = "") -> str:
     return "\n".join(f"{indent}- {item}" for item in items)
 
 
-def initial_release_notes(upstream_base: str, date: str, fork_version: str) -> str:
+def initial_release_notes(date: str, version: str) -> str:
     return textwrap.dedent(f"""\
-        ## apohl79 Xedoc {fork_version}
+        ## Xedoc {version}
 
-        **Upstream base:** OpenAI Codex {upstream_base}
         **Release date:** {date}
 
-        ### Initial Fork Release
+        ### Initial Release
 
-        This is the initial apohl79 fork release, tracking OpenAI Codex \
-{upstream_base}.""")
+        This is the initial Xedoc release.""")
 
 
 def incremental_release_notes(
     *,
-    fork_version: str,
-    upstream_base: str,
+    version: str,
     date: str,
-    fork_commits: list[str],
-    prev_upstream: str | None = None,
+    commits: list[str],
 ) -> str:
     header = textwrap.dedent(f"""\
-        ## apohl79 Xedoc {fork_version}
+        ## Xedoc {version}
 
-        **Upstream base:** OpenAI Codex {upstream_base}
         **Release date:** {date}""")
 
-    if not fork_commits:
+    if not commits:
         return header
 
     sections: list[str] = [header]
 
-    is_rebase = prev_upstream is not None and prev_upstream != upstream_base
-
-    if is_rebase and prev_upstream is not None:
-        sections.append("")
-        sections.append(f"### Rebase to {upstream_base}")
-        sections.append("")
-        sections.append(f"Rebased fork onto OpenAI Codex {upstream_base}.")
-
-    # Categorize commits
     features: list[str] = []
     fixes: list[str] = []
     other: list[str] = []
 
-    for msg in fork_commits:
+    for msg in commits:
         lower = msg.lower()
         if lower.startswith("fix") or lower.startswith("hotfix"):
             fixes.append(msg)
@@ -1189,14 +1049,12 @@ def incremental_release_notes(
             kw in lower for kw in ["add ", "support ", "introduce", "implement"]
         ):
             features.append(msg)
-        elif lower.startswith("chore: bump build number"):
-            continue
         else:
             other.append(msg)
 
     if features:
         sections.append("")
-        sections.append("### Fork Changes")
+        sections.append("### Features")
         sections.append("")
         sections.append(_bullet_list(features))
 
@@ -1231,7 +1089,7 @@ def publish_github_release(
     else:
         print(f"Creating GitHub release {tag} in {repo}.", flush=True)
         if notes is None:
-            notes = f"apohl79 Xedoc {title}"
+            notes = f"Xedoc {title}"
         run(
             [
                 gh,
@@ -1309,35 +1167,6 @@ def github_release_env(*, gh: str, account: str | None) -> dict[str, str] | None
     env = os.environ.copy()
     env["GH_TOKEN"] = token
     return env
-
-
-def latest_release_version_from_ls_remote(stdout: str) -> str:
-    versions = {
-        match.group("version")
-        for line in stdout.splitlines()
-        if (match := LS_REMOTE_TAG_RE.match(line.strip())) is not None
-    }
-    if not versions:
-        raise RuntimeError("No valid upstream rust release tags found.")
-    return max(versions, key=release_version_sort_key)
-
-
-def release_version_sort_key(version: str) -> tuple[int, int, int, int, int]:
-    match = VERSION_RE.match(version)
-    if match is None:
-        raise RuntimeError(f"Invalid Xedoc release version: {version}")
-
-    major = int(match.group("major"))
-    minor = int(match.group("minor"))
-    patch = int(match.group("patch"))
-    pre_label = match.group("pre_label")
-    pre_number = match.group("pre_number")
-    if pre_label is None:
-        return (major, minor, patch, 3, 0)
-
-    pre_rank = {"alpha": 1, "beta": 2}[pre_label]
-    pre_number_value = int(pre_number) if pre_number is not None else -1
-    return (major, minor, patch, pre_rank, pre_number_value)
 
 
 def validate_release_version(version: str) -> str:

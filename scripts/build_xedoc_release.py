@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a signed local release package for the apohl79 Xedoc fork."""
+"""Build a signed local release package for Xedoc."""
 
 import os
 from pathlib import Path
@@ -38,7 +38,7 @@ reexec_with_uv_if_needed()
 
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from apohl79_release import main
+from xedoc_release import main
 
 
 if __name__ == "__main__":

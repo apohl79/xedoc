@@ -1,11 +1,9 @@
-# apohl79 Xedoc Fork Notes
+# Xedoc Fork Notes
 
-`main-fork` is the canonical `apohl79/codex` fork branch. It tracks OpenAI
-Xedoc while carrying fork-local features, release tooling, and fixes.
+`main-fork` is the canonical `apohl79/codex` branch. Xedoc is a fork of OpenAI
+Codex that carries its own features, release tooling, and fixes.
 
-This file is the single source of truth for the fork feature/fix inventory used
-by `.xedoc/skills/upgrade-apohl79-fork`. The upgrade skill must read this file
-instead of maintaining a second feature list or a durable feature-branch list.
+This file is the single source of truth for the fork feature/fix inventory.
 
 The inventory below lists behavior that is present on the fork and not in the
 upstream release baseline being compared during a fork upgrade.
@@ -411,30 +409,28 @@ Primary files:
 - `xedoc-rs/tui/src/chatwidget/input_submission.rs`
 - `xedoc-rs/tui/src/chatwidget/user_messages.rs`
 
-### apohl79 Release Packaging
+### Xedoc Release Packaging
 
-The fork adds release helpers for building apohl79-branded packages from
-`main-fork`.
+The fork adds release helpers for building Xedoc packages from `main-fork`.
 
-- `scripts/build_apohl79_release.py` and
-  `scripts/build_apohl79_release.sh` provide release entry points.
-- `scripts/apohl79_release.py` contains the shared release implementation.
-- `scripts/install/install-apohl79.sh` installs the fork binary release for the
-  current `rust-v*-apohl79` tag.
+- `scripts/build_xedoc_release.py` and `scripts/build_xedoc_release.sh` provide
+  release entry points.
+- `scripts/xedoc_release.py` contains the shared release implementation.
+- `scripts/install/install.sh` installs the Xedoc binary release for the
+  current `v*` tag.
 - The default release ref is `main-fork`.
-- The default fork suffix is `apohl79`.
-- The default output directory is `dist/apohl79`.
+- The default output directory is `dist/xedoc`.
 - The release helper verifies that the current checkout matches the requested
   ref.
 - The helper requires `xedoc-rs/Cargo.toml` and `xedoc-rs/Cargo.lock` to be
   clean before packaging by default. Pass `--allow-dirty --skip-github-release`
-  to build a local package from uncommitted manifest or build-number changes;
-  dirty builds cannot create or upload a GitHub release.
+  to build a local package from uncommitted manifest changes; dirty builds
+  cannot create or upload a GitHub release.
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
 - The helper builds `xedoc-cli` with Bazel by default.
   Pass `--build-system cargo` to use the previous Cargo `--locked` path.
-- Bazel builds use the `apohl79-release` configuration, which matches the Cargo
+- Bazel builds use the `xedoc-release` configuration, which matches the Cargo
   release profile's optimization, ThinLTO, codegen-unit, and unstripped
   line-table settings. Split debug info is disabled so macOS linking works on
   Linux remote executors. A configured remote executor/cache is used
@@ -442,25 +438,25 @@ The fork adds release helpers for building apohl79-branded packages from
 - `--bazel-build-jobs` limits only Bazel's local action scheduler, without
   changing remote action concurrency. `--bazel-max-heap-mb` caps the local
   Bazel server JVM heap. Omitting either flag preserves the Bazel configuration.
-- The fork version is stamped only into the CLI and TUI Rust actions so changing
-  a release version does not invalidate cached compilation for every dependency.
 - Bazel outputs are downloaded and copied to a local staging directory before
   codesign mutates them. Signing, verification, packaging, and publishing remain
   local.
 - Cargo fallback builds preserve incremental artifacts by using the current
   checkout and `xedoc-rs/target` as the default target directory. They limit
   default Cargo parallelism while respecting `--cargo-build-jobs`,
-  `APOHL79_CARGO_BUILD_JOBS`, and Cargo's native `CARGO_BUILD_JOBS`.
+  `XEDOC_CARGO_BUILD_JOBS`, and Cargo's native `CARGO_BUILD_JOBS`.
 - The helper can auto-repair stale workspace package versions in
   `xedoc-rs/Cargo.lock` before a locked release build.
-- `scripts/apohl79_build_number.txt` stores the monotonically increasing fork
-  build number. Fork release versions use
-  `[xedoc-version]-apohl79-[build-number]` and GitHub release tags use
-  `rust-v[xedoc-version]-apohl79-[build-number]`.
+- The release version is `[workspace.package].version` in
+  `xedoc-rs/Cargo.toml`; GitHub release tags are `v[version]`. Release notes
+  list Xedoc commits grouped by Conventional Commit type and do not mention the
+  upstream Codex version.
 - The installer targets GitHub releases in `apohl79/codex`, resolves the
-  current fork tag from a checked-out tag or `[workspace.package].version` plus
-  the tracked build number, and verifies the uploaded asset SHA-256 before
+  current tag from a checked-out `v*` tag, `[workspace.package].version`, or
+  the latest GitHub release, and verifies the uploaded asset SHA-256 before
   installing.
+- Packages bundle `rg` from the ripgrep DotSlash manifest; the upstream
+  `codex-zsh` artifact is not fetched or shipped.
 - Unix packages install the `xedoc-session` control CLI beside `xedoc`. On the
   first interactive install, the installer asks whether `~/.zshrc` should
   start the local app-server daemon; the enabled or disabled choice is saved
@@ -474,71 +470,36 @@ The fork adds release helpers for building apohl79-branded packages from
 
 ### macOS Binary Auto-Updates
 
-The macOS apohl79 standalone binary checks `apohl79/codex` for the latest
-release when an interactive TUI session starts. When a newer fork build is
-available, Xedoc offers the existing update prompt. Confirming the update runs
-the fork installer, which verifies the release archive SHA-256, switches the
-standalone package symlink, and launches the new `xedoc` binary with the
-original arguments.
+The macOS standalone binary checks `apohl79/codex` for the latest release when
+an interactive TUI session starts. When a newer release is available, Xedoc
+offers the update prompt. Confirming the update runs
+`scripts/install/install.sh`, which verifies the release archive SHA-256,
+switches the standalone package symlink, and launches the new `xedoc` binary
+with the original arguments.
 
-- This behavior is limited to macOS apohl79 release builds.
-- Other installation methods and all non-macOS targets retain the upstream
-  update behavior.
+- Self-update is limited to macOS release builds; other targets are told to
+  update manually from the GitHub releases page.
+- The upstream npm, Homebrew, and `chatgpt.com/codex` installer update paths
+  and the announcement-tip fetch are removed.
 
 Primary files:
 
-- `xedoc-rs/tui/src/update_action.rs`
+- `xedoc-rs/tui-transcript/src/update_action.rs`
+- `xedoc-rs/tui-transcript/src/update_versions.rs`
 - `xedoc-rs/tui/src/update_prompt.rs`
 - `xedoc-rs/tui/src/updates.rs`
-- `xedoc-rs/tui/src/update_versions.rs`
-- `xedoc-rs/cli/src/main.rs`
+- `xedoc-rs/cli-runtime/src/lib.rs`
+- `xedoc-rs/app-server-daemon/src/update_loop.rs`
 
 Primary files:
 
-- `scripts/apohl79_release.py`
-- `scripts/apohl79_build_number.txt`
-- `scripts/build_apohl79_release.py`
-- `scripts/build_apohl79_release.sh`
+- `scripts/xedoc_release.py`
+- `scripts/build_xedoc_release.py`
+- `scripts/build_xedoc_release.sh`
 - `scripts/xedoc-session`
-- `scripts/install/install-apohl79.sh`
-- `scripts/test_apohl79_release.py`
+- `scripts/install/install.sh`
+- `scripts/test_xedoc_release.py`
 - `scripts/xedoc_package/cli.py`
-
-### Fork Upgrade Tooling
-
-The fork includes a local Xedoc skill for upgrading this fork from upstream
-OpenAI Codex release tags and a local report skill for checking upstream
-release drift.
-
-- The upgrade skill discovers stable upstream `rust-vX.Y.Z` tags newer than the
-  fork baseline, recommends the latest, and asks the user to select the target
-  before changing branches.
-- It creates `upgrade-<target-release>` from `main-fork` and keeps that branch
-  checked out; the workflow neither merges into nor moves `main-fork`.
-- `upgrade-fork.md` records every upstream commit from the current stable base
-  to the target, marks alpha-tag heads as sequential checkpoints, and records
-  interval completion and validation outcomes.
-- A high-effort `gpt-luna` subagent replays each alpha/stable interval one
-  upstream commit at a time, while preserving and auditing every behavior in
-  this inventory.
-- It runs `scripts/run-full-validation.sh` with `CARGO_BUILD_JOBS=2` only at
-  every tenth alpha checkpoint and each stable-release checkpoint. Failures are
-  fixed and rerun before replay continues; rebuildable development and test
-  artifacts are cleaned after every checkpoint test without deleting release
-  artifacts.
-- The upstream-changes skill lists stable upstream `rust-vX.Y.Z` releases
-  between the current apohl79 fork base and the latest non-alpha OpenAI Codex
-  tag.
-- The upstream-changes report excludes fork-added behavior from the main
-  changelog and uses this file only to flag heuristic overlaps with fork
-  features/fixes.
-
-Primary files:
-
-- `.xedoc/skills/upgrade-apohl79-fork/SKILL.md`
-- `.xedoc/skills/upgrade-apohl79-fork/agents/openai.yaml`
-- `.xedoc/skills/list-apohl79-fork-upstream-changes/SKILL.md`
-- `.xedoc/skills/list-apohl79-fork-upstream-changes/scripts/list_apohl79_fork_upstream_changes.py`
 
 ### Repository Hygiene
 
@@ -549,17 +510,18 @@ development and release hygiene.
   local scans.
 - Generated files and TUI snapshots are refreshed after release rebases when
   upstream changes require it.
-- The workspace version is pinned to the current fork release line.
-- `scripts/apohl79_build_number.txt` is incremented in every `main-fork` commit
-  that changes binary-shipped code. Documentation, installer-only, test-only,
-  and instruction-only commits do not require a bump.
+- Xedoc uses its own semantic version, starting at `1.0.0`, stored in
+  `[workspace.package].version` in `xedoc-rs/Cargo.toml` (and mirrored in
+  `xedoc-rs/Cargo.lock`). Every `main-fork` commit that changes binary-shipped
+  code bumps it per Conventional Commits: `feat` → minor, `fix`/`perf`/
+  `refactor` → patch, `!`/`BREAKING CHANGE` → major. Documentation,
+  installer-only, test-only, and instruction-only commits do not bump it.
 
 Primary files:
 
 - `.gitleaksignore`
 - `xedoc-rs/Cargo.toml`
 - `xedoc-rs/tui/src/**/*.snap`
-- `scripts/apohl79_build_number.txt`
 
 ### Plugin Context
 
@@ -683,11 +645,13 @@ Removed behavior:
   macOS signing entitlements no longer include
   `allow-unsigned-executable-memory`.
 
-Upstream release workflows and installers (`rust-release*.yml`,
+Upstream release workflows (`rust-release*.yml`,
 `.github/dotslash-config.json`, `.github/actions/windows-code-sign`,
-`.github/scripts/build-xedoc-package-archive.sh`, `scripts/install/install.sh`,
-`scripts/install/install.ps1`) still reference the removed Windows sandbox and
-code-mode host binaries; the fork uses its own release packaging instead.
+`.github/scripts/build-xedoc-package-archive.sh`) still reference the removed
+Windows sandbox, code-mode host, and upstream installer files; the fork uses
+its own release packaging instead. The upstream `scripts/install/install.sh`
+and `install.ps1` are replaced by the Xedoc installer at
+`scripts/install/install.sh`.
 
 ## Notes For Maintainers
 

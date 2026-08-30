@@ -8,7 +8,6 @@ from pathlib import Path
 from .targets import PackageInputs
 from .targets import PackageVariant
 from .targets import TargetSpec
-from .zsh import ZSH_RESOURCE_PATH
 
 LAYOUT_VERSION = 1
 SESSION_CONTROL_LAYOUT_VERSION = 2
@@ -69,13 +68,6 @@ def build_package_dir(
         )
     copy_executable(inputs.rg_bin, path_dir / spec.rg_name, is_windows=spec.is_windows)
 
-    if inputs.zsh_bin is not None:
-        copy_executable(
-            inputs.zsh_bin,
-            resources_dir / ZSH_RESOURCE_PATH,
-            is_windows=False,
-        )
-
     if inputs.bwrap_bin is not None:
         copy_executable(inputs.bwrap_bin, resources_dir / "bwrap", is_windows=False)
 
@@ -100,7 +92,6 @@ def validate_package_dir(
     variant: PackageVariant,
     spec: TargetSpec,
     *,
-    include_zsh: bool,
     include_session_control: bool = False,
 ) -> None:
     required_dirs = [
@@ -151,11 +142,6 @@ def validate_package_dir(
         session_control_path = Path("bin") / SESSION_CONTROL_NAME
         required_files.append(session_control_path)
         executable_files.append(session_control_path)
-
-    if include_zsh:
-        zsh_path = Path("xedoc-resources") / ZSH_RESOURCE_PATH
-        required_files.append(zsh_path)
-        executable_files.append(zsh_path)
 
     if spec.is_linux:
         required_files.append(Path("xedoc-resources") / "bwrap")

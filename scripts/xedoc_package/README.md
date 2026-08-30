@@ -13,8 +13,7 @@ The builder creates a canonical Xedoc package directory:
 │   ├── <entrypoint>[.exe]
 │   └── xedoc-session                    # Unix fork packages only
 ├── xedoc-resources
-│   ├── bwrap                             # Linux only
-│   └── zsh/bin/zsh                       # supported Unix targets only
+│   └── bwrap                             # Linux only
 └── xedoc-path
     └── rg[.exe]
 ```
@@ -60,11 +59,3 @@ DotSlash manifest at `scripts/xedoc_package/rg`. Downloaded archives are cached
 under `$TMPDIR/xedoc-package/<target>-rg` and are reused only after the recorded
 size and SHA-256 digest have been verified. Pass `--rg-bin` to use a local
 ripgrep executable instead.
-
-The patched zsh fork used by `shell_zsh_fork` is fetched from the DotSlash
-manifest at `scripts/xedoc_package/xedoc-zsh` when the selected target has a
-matching prebuilt artifact. Downloaded archives are cached under
-`$TMPDIR/xedoc-package/<target>-zsh` and installed at
-`xedoc-resources/zsh/bin/zsh`. Pass `--zsh-manifest` to use a different
-DotSlash manifest, such as the manifest published with a standalone zsh
-artifact release.

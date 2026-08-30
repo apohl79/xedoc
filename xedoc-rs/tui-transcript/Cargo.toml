@@ -25,7 +25,6 @@ xedoc-app-server-protocol = { workspace = true }
 xedoc-config = { workspace = true }
 xedoc-core-config = { workspace = true }
 xedoc-features = { workspace = true }
-xedoc-install-context = { workspace = true }
 xedoc-mcp = { workspace = true }
 xedoc-otel = { workspace = true }
 xedoc-protocol = { workspace = true }

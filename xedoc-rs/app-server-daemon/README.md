@@ -32,7 +32,7 @@ running app-server version when applicable.
 For a new remote machine:
 
 ```sh
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh | sh
 $HOME/.xedoc/packages/standalone/current/xedoc app-server daemon bootstrap
 ```
 

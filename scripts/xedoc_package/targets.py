@@ -39,7 +39,6 @@ class PackageVariant:
 class PackageInputs:
     entrypoint_bin: Path
     rg_bin: Path
-    zsh_bin: Path | None
     bwrap_bin: Path | None
 
 

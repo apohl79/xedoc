@@ -191,10 +191,6 @@ def xedoc_rust_crate(
         lib_data_extra = [],
         rustc_flags_extra = [],
         rustc_env = {},
-        rustc_env_files_extra = [],
-        stamp = 0,
-        binary_rustc_env_files_extra = None,
-        binary_stamp = None,
         deps_extra = [],
         integration_compile_data_extra = [],
         integration_test_args = [],
@@ -231,12 +227,6 @@ def xedoc_rust_crate(
         compile_data: Non-Rust compile-time data for the library target.
         lib_data_extra: Extra runtime data for the library target.
         rustc_env: Extra rustc_env entries to merge with defaults.
-        rustc_env_files_extra: Extra rustc environment files for crate targets.
-        stamp: Workspace-status stamping mode for crate targets.
-        binary_rustc_env_files_extra: Optional rustc environment files used only
-            by binary targets. Defaults to rustc_env_files_extra.
-        binary_stamp: Optional workspace-status stamping mode used only by
-            binary targets. Defaults to stamp.
         deps_extra: Extra normal deps beyond @crates resolution.
             Typically only needed when features add additional deps.
         integration_compile_data_extra: Extra compile_data for integration tests.
@@ -265,11 +255,6 @@ def xedoc_rust_crate(
             Wine-exec variant for each integration test. Variants inherit the
             native test's timeout, tags, and shard count.
     """
-    if binary_rustc_env_files_extra == None:
-        binary_rustc_env_files_extra = rustc_env_files_extra
-    if binary_stamp == None:
-        binary_stamp = stamp
-
     test_env = {
         # The launcher resolves an absolute workspace root at runtime so
         # manifest-only platforms like macOS still point Insta at the real
@@ -332,9 +317,7 @@ def xedoc_rust_crate(
             edition = crate_edition,
             rustc_flags = rustc_flags_extra,
             rustc_env = rustc_env,
-            rustc_env_files = rustc_env_files_extra,
             visibility = ["//visibility:public"],
-            stamp = stamp,
         )
 
         unit_test_name = name + "-unit-tests"
@@ -400,10 +383,8 @@ def xedoc_rust_crate(
             crate_root = main,
             deps = all_crate_deps() + maybe_deps + deps_extra,
             edition = crate_edition,
-            rustc_env_files = binary_rustc_env_files_extra,
             rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS,
             srcs = native.glob(["src/**/*.rs"]),
-            stamp = binary_stamp,
             visibility = ["//visibility:public"],
         )
 
