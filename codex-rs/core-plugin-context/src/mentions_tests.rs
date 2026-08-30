@@ -18,7 +18,6 @@ fn plugin(config_name: &str, display_name: &str) -> PluginCapabilitySummary {
         description: None,
         has_skills: true,
         mcp_server_names: Vec::new(),
-        app_connector_ids: Vec::new(),
     }
 }
 

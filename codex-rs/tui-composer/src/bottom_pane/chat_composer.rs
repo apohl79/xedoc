@@ -7015,7 +7015,6 @@ mod tests {
             description: None,
             has_skills: true,
             mcp_server_names: vec!["sample".to_string()],
-            app_connector_ids: Vec::new(),
         }]));
 
         let ActivePopup::Skill(popup) = &composer.popups.active else {
@@ -7067,7 +7066,6 @@ mod tests {
             description: Some(description.to_string()),
             has_skills: false,
             mcp_server_names: vec![name.to_string()],
-            app_connector_ids: Vec::new(),
         }
     }
 
@@ -7716,7 +7714,6 @@ mod tests {
                     ),
                     has_skills: true,
                     mcp_server_names: vec!["sample".to_string()],
-                    app_connector_ids: Vec::new(),
                 }]));
             },
         );
@@ -7738,7 +7735,6 @@ mod tests {
                     description: Some("Plugin with skills and an MCP server".to_string()),
                     has_skills: true,
                     mcp_server_names: vec!["sample".to_string()],
-                    app_connector_ids: Vec::new(),
                 }]));
             },
         );
@@ -7778,7 +7774,6 @@ mod tests {
                 ),
                 has_skills: false,
                 mcp_server_names: vec!["google-calendar".to_string()],
-                app_connector_ids: Vec::new(),
             }]));
             },
         );
@@ -8288,7 +8283,6 @@ mod tests {
                 description: None,
                 has_skills: true,
                 mcp_server_names: vec!["sample".to_string()],
-                app_connector_ids: Vec::new(),
             }]));
 
             composer.set_text_content_with_mention_bindings(

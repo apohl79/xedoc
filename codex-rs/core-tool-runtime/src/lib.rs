@@ -5,7 +5,6 @@
 mod current_time;
 mod get_context_remaining;
 mod invocation;
-mod list_available_plugins_to_install;
 mod new_context_window;
 mod plan;
 mod request_user_input;
@@ -33,7 +32,6 @@ pub use invocation::ToolPayload;
 pub use invocation::ToolSearchOutput;
 pub use invocation::ToolStepContext;
 pub use invocation::boxed_tool_output;
-pub use list_available_plugins_to_install::ListAvailablePluginsToInstallHandler;
 pub use new_context_window::NEW_CONTEXT_WINDOW_MESSAGE;
 pub use new_context_window::NewContextWindowHandler;
 pub use new_context_window::NewContextWindowHost;

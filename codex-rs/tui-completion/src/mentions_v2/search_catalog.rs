@@ -171,14 +171,6 @@ fn plugin_capability_labels(plugin: &PluginCapabilitySummary) -> Vec<String> {
             format!("{mcp_server_count} MCP servers")
         });
     }
-    if !plugin.app_connector_ids.is_empty() {
-        let app_count = plugin.app_connector_ids.len();
-        labels.push(if app_count == 1 {
-            "1 app".to_string()
-        } else {
-            format!("{app_count} apps")
-        });
-    }
     labels
 }
 

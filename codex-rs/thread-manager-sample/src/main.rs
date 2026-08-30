@@ -43,7 +43,6 @@ use codex_core_api::SessionSource;
 use codex_core_api::TerminalResizeReflowConfig;
 use codex_core_api::ThreadManager;
 use codex_core_api::ThreadStoreConfig;
-use codex_core_api::ToolSuggestConfig;
 use codex_core_api::TuiKeymap;
 use codex_core_api::TuiNotificationSettings;
 use codex_core_api::UriBasedFileOpener;
@@ -283,7 +282,6 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         disable_paste_burst: false,
         auto_session_name: true,
         analytics_enabled: Some(false),
-        tool_suggest: ToolSuggestConfig::default(),
         otel: OtelConfig::default(),
     };
     config

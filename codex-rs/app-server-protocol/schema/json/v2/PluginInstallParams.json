@@ -8,26 +8,14 @@
   },
   "properties": {
     "marketplacePath": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/AbsolutePathBuf"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/definitions/AbsolutePathBuf"
     },
     "pluginName": {
       "type": "string"
-    },
-    "remoteMarketplaceName": {
-      "type": [
-        "string",
-        "null"
-      ]
     }
   },
   "required": [
+    "marketplacePath",
     "pluginName"
   ],
   "title": "PluginInstallParams",

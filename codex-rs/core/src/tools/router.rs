@@ -11,7 +11,6 @@ use crate::tools::registry::ToolRegistry;
 use crate::tools::spec_plan::build_tool_router;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::models::ResponseItem;
-use codex_tools::DiscoverableTool;
 use codex_tools::ToolCall as ExtensionToolCall;
 use codex_tools::ToolExecutor;
 use codex_tools::ToolSpec;
@@ -27,17 +26,8 @@ pub(crate) struct ToolRouter(CoreToolRouter);
 
 pub(crate) struct ToolRouterParams<'a> {
     pub(crate) tool_runtimes: Vec<Arc<dyn CoreToolRuntime>>,
-    pub(crate) tool_suggest_candidates: Option<ToolSuggestCandidates>,
     pub(crate) extension_tool_executors: Vec<Arc<dyn ToolExecutor<ExtensionToolCall>>>,
     pub(crate) dynamic_tools: &'a [DynamicToolSpec],
-}
-
-pub(crate) use codex_core_tool_specs::ToolSuggestPresentation;
-
-#[derive(Clone, Debug)]
-pub(crate) struct ToolSuggestCandidates {
-    pub(crate) tools: Vec<DiscoverableTool>,
-    pub(crate) presentation: ToolSuggestPresentation,
 }
 
 impl ToolRouter {

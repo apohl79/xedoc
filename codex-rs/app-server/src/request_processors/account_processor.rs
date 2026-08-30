@@ -169,58 +169,13 @@ impl AccountRequestProcessor {
         }
     }
 
-    async fn maybe_refresh_plugin_caches_for_current_config(
-        config_manager: &ConfigManager,
-        thread_manager: &Arc<ThreadManager>,
+    fn maybe_refresh_plugin_caches_for_current_config(
+        thread_manager: &ThreadManager,
         auth: Option<CodexAuth>,
     ) {
         thread_manager
             .plugins_manager()
             .set_auth_mode(auth.as_ref().map(CodexAuth::api_auth_mode));
-        thread_manager
-            .plugins_manager()
-            .clear_recommended_plugins_cache();
-
-        match config_manager
-            .load_latest_config(/*fallback_cwd*/ None)
-            .await
-        {
-            Ok(config) => {
-                let refresh_thread_manager = Arc::clone(thread_manager);
-                let refresh_config_manager = config_manager.clone();
-                thread_manager
-                    .plugins_manager()
-                    .maybe_start_remote_plugin_caches_refresh(
-                        &config.plugins_config_input(),
-                        auth,
-                        Some(Arc::new(move |_change| {
-                            Self::spawn_effective_plugins_changed_task(
-                                Arc::clone(&refresh_thread_manager),
-                                refresh_config_manager.clone(),
-                            );
-                        })),
-                    );
-            }
-            Err(err) => {
-                warn!(
-                    "failed to reload config after account changed, skipping remote installed plugins cache refresh: {err}"
-                );
-            }
-        }
-    }
-
-    fn spawn_effective_plugins_changed_task(
-        thread_manager: Arc<ThreadManager>,
-        config_manager: ConfigManager,
-    ) {
-        tokio::spawn(async move {
-            thread_manager.plugins_manager().clear_cache();
-            thread_manager.skills_service().clear_cache();
-            if thread_manager.list_thread_ids().await.is_empty() {
-                return;
-            }
-            crate::mcp_refresh::queue_best_effort_refresh(&thread_manager, &config_manager).await;
-        });
     }
 
     async fn login_v2(
@@ -714,11 +669,9 @@ impl AccountRequestProcessor {
 
     async fn send_login_success_notifications(&self, login_id: Option<Uuid>) {
         Self::maybe_refresh_plugin_caches_for_current_config(
-            &self.config_manager,
             &self.thread_manager,
             self.auth_manager.auth_cached(),
-        )
-        .await;
+        );
 
         let payload_login_completed = AccountLoginCompletedNotification {
             login_id: login_id.map(|id| id.to_string()),
@@ -763,12 +716,7 @@ impl AccountRequestProcessor {
                 .await;
 
             let auth = auth_manager.auth_cached();
-            Self::maybe_refresh_plugin_caches_for_current_config(
-                &config_manager,
-                &thread_manager,
-                auth.clone(),
-            )
-            .await;
+            Self::maybe_refresh_plugin_caches_for_current_config(&thread_manager, auth.clone());
             let payload_v2 = AccountUpdatedNotification {
                 auth_mode: auth
                     .as_ref()
@@ -814,11 +762,9 @@ impl AccountRequestProcessor {
         }
 
         Self::maybe_refresh_plugin_caches_for_current_config(
-            &self.config_manager,
             &self.thread_manager,
             self.auth_manager.auth_cached(),
-        )
-        .await;
+        );
 
         // Reflect the current auth method after logout (likely None).
         Ok(self

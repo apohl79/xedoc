@@ -777,12 +777,11 @@ fn codex_plugin_metadata_with_product_client_id(
 ) -> CodexPluginMetadata {
     let PluginTelemetryMetadata {
         plugin_id,
-        remote_plugin_id,
         capability_summary,
     } = plugin;
     CodexPluginMetadata {
         plugin_id: plugin_id.as_ref().map(PluginId::as_key),
-        remote_plugin_id,
+        remote_plugin_id: None,
         plugin_name: plugin_id
             .as_ref()
             .map(|plugin_id| plugin_id.plugin_name.clone()),
@@ -793,13 +792,7 @@ fn codex_plugin_metadata_with_product_client_id(
         mcp_server_count: capability_summary
             .as_ref()
             .map(|summary| summary.mcp_server_names.len()),
-        connector_ids: capability_summary.map(|summary| {
-            summary
-                .app_connector_ids
-                .into_iter()
-                .map(|connector_id| connector_id.0)
-                .collect()
-        }),
+        connector_ids: capability_summary.map(|_| Vec::new()),
         product_client_id: Some(product_client_id),
     }
 }

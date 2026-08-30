@@ -6,12 +6,10 @@ pub mod apply_patch_spec;
 pub mod execute_spec;
 pub mod get_context_remaining_spec;
 pub mod hosted_spec;
-pub mod list_available_plugins_to_install_spec;
 pub mod mcp_resource_spec;
 pub mod multi_agents_spec;
 pub mod new_context_window_spec;
 pub mod plan_spec;
-pub mod request_plugin_install_spec;
 pub mod request_user_input_spec;
 pub mod shell_spec;
 pub mod test_sync_spec;
@@ -21,12 +19,6 @@ pub mod wait_spec;
 
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::protocol::MultiAgentVersion;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ToolSuggestPresentation {
-    ListTool,
-    RecommendationContext,
-}
 
 #[doc(hidden)]
 pub mod multi_agents_common {

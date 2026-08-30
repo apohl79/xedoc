@@ -567,9 +567,6 @@ pub struct ChatWidget {
     ide_context: IdeContextState,
     plugins_cache: PluginsCacheState,
     plugins_fetch_state: PluginListFetchState,
-    plugin_remote_sections_loading: bool,
-    plugin_remote_sections_loaded: bool,
-    plugin_remote_section_errors: Vec<crate::app_event::PluginRemoteSectionError>,
     plugins_active_tab_id: Option<String>,
     newly_installed_marketplace_tab_id: Option<String>,
     // Queue of interruptive UI events deferred during an active write cycle

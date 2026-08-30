@@ -17,7 +17,6 @@ use codex_app_server_protocol::McpServerStatus;
 use codex_app_server_protocol::McpServerStatusDetail;
 use codex_app_server_protocol::PluginInstallResponse;
 use codex_app_server_protocol::PluginListResponse;
-use codex_app_server_protocol::PluginMarketplaceEntry;
 use codex_app_server_protocol::PluginReadParams;
 use codex_app_server_protocol::PluginReadResponse;
 use codex_app_server_protocol::PluginUninstallResponse;
@@ -96,28 +95,6 @@ pub enum HistoryLookupResponse {
 pub enum ConsolidationScrollbackReflow {
     IfResizeReflowRan,
     Required,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PluginLocation {
-    Local { marketplace_path: AbsolutePathBuf },
-    Remote { marketplace_name: String },
-}
-
-impl PluginLocation {
-    pub fn into_request_params(self) -> (Option<AbsolutePathBuf>, Option<String>) {
-        match self {
-            PluginLocation::Local { marketplace_path } => (Some(marketplace_path), None),
-            PluginLocation::Remote { marketplace_name } => (None, Some(marketplace_name)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginRemoteSectionError {
-    pub section_id: String,
-    pub label: String,
-    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -330,13 +307,6 @@ pub enum AppEvent {
         response: PluginListResponse,
     },
 
-    /// Result of explicitly fetching remote-backed plugin sections.
-    PluginRemoteSectionsLoaded {
-        cwd: PathBuf,
-        marketplaces: Vec<PluginMarketplaceEntry>,
-        section_errors: Vec<PluginRemoteSectionError>,
-    },
-
     /// Result of fetching lifecycle hook inventory.
     HooksLoaded {
         cwd: PathBuf,
@@ -437,7 +407,7 @@ pub enum AppEvent {
     /// Install a specific plugin from a marketplace.
     FetchPluginInstall {
         cwd: PathBuf,
-        location: PluginLocation,
+        marketplace_path: AbsolutePathBuf,
         plugin_name: String,
         plugin_display_name: String,
     },
@@ -445,7 +415,7 @@ pub enum AppEvent {
     /// Result of installing a plugin.
     PluginInstallLoaded {
         cwd: PathBuf,
-        location: PluginLocation,
+        marketplace_path: AbsolutePathBuf,
         plugin_name: String,
         plugin_display_name: String,
         result: Result<PluginInstallResponse, String>,

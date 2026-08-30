@@ -2,7 +2,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use codex_core_plugins::EffectivePluginsChange;
 use codex_core_plugins::store::PLUGINS_CACHE_DIR;
 use codex_file_watcher::DebouncedWatchReceiver;
 use codex_file_watcher::FileWatcher;
@@ -19,7 +18,7 @@ const WATCHER_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(250);
 #[cfg(test)]
 const WATCHER_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(50);
 
-type EffectivePluginsChangedCallback = Arc<dyn Fn(EffectivePluginsChange) + Send + Sync + 'static>;
+use crate::effective_plugin_change::EffectivePluginsChangedCallback;
 
 pub(crate) struct PluginWatcher {
     _subscriber: FileWatcherSubscriber,
@@ -90,7 +89,7 @@ impl PluginWatcher {
                 if event.is_none() {
                     break;
                 }
-                on_effective_plugins_changed(EffectivePluginsChange::default());
+                on_effective_plugins_changed();
             }
         });
     }

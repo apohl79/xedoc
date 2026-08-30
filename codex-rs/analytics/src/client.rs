@@ -175,12 +175,7 @@ impl AnalyticsEventsQueue {
         if emitted.len() >= ANALYTICS_EVENT_DEDUPE_MAX_KEYS {
             emitted.clear();
         }
-        let Some(plugin_id) = plugin
-            .plugin_id
-            .as_ref()
-            .map(PluginId::as_key)
-            .or_else(|| plugin.remote_plugin_id.clone())
-        else {
+        let Some(plugin_id) = plugin.plugin_id.as_ref().map(PluginId::as_key) else {
             return true;
         };
         emitted.insert((tracking.turn_id.clone(), plugin_id))

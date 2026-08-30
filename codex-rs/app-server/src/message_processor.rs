@@ -286,12 +286,10 @@ impl MessageProcessor {
         );
         let on_effective_plugins_changed =
             crate::effective_plugin_change::effective_plugins_changed_callback(
-                auth_manager.clone(),
                 Arc::clone(&thread_manager),
                 outgoing.clone(),
                 config_manager.clone(),
                 config_processor.clone(),
-                request_serialization_queues.clone(),
             );
         let plugin_watcher = PluginWatcher::new(
             config.codex_home.as_path(),
@@ -345,7 +343,6 @@ impl MessageProcessor {
             auth_manager.clone(),
             Arc::clone(&thread_manager),
             outgoing.clone(),
-            analytics_events_client.clone(),
             config_manager.clone(),
             on_effective_plugins_changed,
         );
@@ -391,15 +388,9 @@ impl MessageProcessor {
         );
         if matches!(plugin_startup_tasks, crate::PluginStartupTasks::Start) {
             // Keep plugin startup warmups aligned at app-server startup.
-            let on_effective_plugins_changed =
-                plugin_processor.effective_plugins_changed_callback();
             thread_manager
                 .plugins_manager()
-                .maybe_start_plugin_startup_tasks_for_config(
-                    &config.plugins_config_input(),
-                    auth_manager,
-                    Some(on_effective_plugins_changed),
-                );
+                .maybe_start_plugin_startup_tasks_for_config(&config.plugins_config_input());
         }
         let environment_processor =
             EnvironmentRequestProcessor::new(thread_manager.environment_manager());
@@ -1045,26 +1036,6 @@ impl MessageProcessor {
             }
             ClientRequest::PluginRead { params, .. } => {
                 self.plugin_processor.plugin_read(params).await
-            }
-            ClientRequest::PluginSkillRead { params, .. } => {
-                self.plugin_processor.plugin_skill_read(params).await
-            }
-            ClientRequest::PluginShareSave { params, .. } => {
-                self.plugin_processor.plugin_share_save(params).await
-            }
-            ClientRequest::PluginShareUpdateTargets { params, .. } => {
-                self.plugin_processor
-                    .plugin_share_update_targets(params)
-                    .await
-            }
-            ClientRequest::PluginShareList { params, .. } => {
-                self.plugin_processor.plugin_share_list(params).await
-            }
-            ClientRequest::PluginShareCheckout { params, .. } => {
-                self.plugin_processor.plugin_share_checkout(params).await
-            }
-            ClientRequest::PluginShareDelete { params, .. } => {
-                self.plugin_processor.plugin_share_delete(params).await
             }
             ClientRequest::SkillsConfigWrite { params, .. } => {
                 self.catalog_processor.skills_config_write(params).await

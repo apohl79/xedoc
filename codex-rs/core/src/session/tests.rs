@@ -28,7 +28,6 @@ use codex_config::Sourced;
 use codex_config::loader::project_trust_key;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerTransportConfig;
-use codex_config::types::ToolSuggestDisabledTool;
 use codex_core_skills::HostSkillsSnapshot;
 
 use codex_features::Feature;
@@ -694,7 +693,6 @@ fn test_tool_runtime(session: Arc<Session>, turn_context: Arc<TurnContext>) -> T
     let router = Arc::new(ToolRouter::from_context(
         step_context.as_ref(),
         crate::tools::router::ToolRouterParams {
-            tool_suggest_candidates: None,
             tool_runtimes: Vec::new(),
             extension_tool_executors: Vec::new(),
             dynamic_tools: turn_context.dynamic_tools.as_slice(),
@@ -1550,35 +1548,6 @@ async fn refresh_runtime_config_refreshes_hooks() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn reload_user_config_layer_updates_effective_tool_suggest_config() {
-    let (session, _turn_context) = make_session_and_context().await;
-    let codex_home = session.codex_home().await;
-    std::fs::create_dir_all(&codex_home).expect("create codex home");
-    let config_toml_path = codex_home.join(CONFIG_TOML_FILE);
-    std::fs::write(
-        &config_toml_path,
-        r#"[tool_suggest]
-disabled_tools = [
-  { type = "connector", id = " calendar " },
-  { type = "plugin", id = "slack@openai-curated" },
-]
-"#,
-    )
-    .expect("write user config");
-
-    session.reload_user_config_layer().await;
-
-    let config = session.get_config().await;
-    assert_eq!(
-        config.tool_suggest.disabled_tools,
-        vec![
-            ToolSuggestDisabledTool::connector("calendar"),
-            ToolSuggestDisabledTool::plugin("slack@openai-curated"),
-        ]
-    );
-}
-
-#[tokio::test]
 async fn refresh_runtime_config_updates_runtime_refreshable_fields_and_keeps_session_static_settings()
  {
     let (session, _turn_context) = make_session_and_context().await;
@@ -1589,12 +1558,6 @@ async fn refresh_runtime_config_updates_runtime_refreshable_fields_and_keeps_ses
         r#"[apps.calendar]
 enabled = false
 destructive_enabled = false
-
-[tool_suggest]
-disabled_tools = [
-  { type = "connector", id = " calendar " },
-  { type = "plugin", id = "slack@openai-curated" },
-]
 "#,
     )
     .expect("write user config");
@@ -1625,13 +1588,6 @@ disabled_tools = [
     assert_eq!(app.destructive_enabled, Some(false));
     assert_eq!(config.model, original.model);
     assert_eq!(config.notify, original.notify);
-    assert_eq!(
-        config.tool_suggest.disabled_tools,
-        vec![
-            ToolSuggestDisabledTool::connector("calendar"),
-            ToolSuggestDisabledTool::plugin("slack@openai-curated"),
-        ]
-    );
 }
 
 #[tokio::test]
@@ -2690,8 +2646,8 @@ async fn config_change_contributor_observes_effective_config_changes() {
     struct RecordedConfigChange {
         previous_model: Option<String>,
         new_model: Option<String>,
-        previous_disabled_tools: Vec<ToolSuggestDisabledTool>,
-        new_disabled_tools: Vec<ToolSuggestDisabledTool>,
+        previous_auto_session_name: bool,
+        new_auto_session_name: bool,
         saw_session_store: bool,
         saw_thread_store: bool,
     }
@@ -2714,8 +2670,8 @@ async fn config_change_contributor_observes_effective_config_changes() {
                 .push(RecordedConfigChange {
                     previous_model: previous_config.model.clone(),
                     new_model: new_config.model.clone(),
-                    previous_disabled_tools: previous_config.tool_suggest.disabled_tools.clone(),
-                    new_disabled_tools: new_config.tool_suggest.disabled_tools.clone(),
+                    previous_auto_session_name: previous_config.auto_session_name,
+                    new_auto_session_name: new_config.auto_session_name,
                     saw_session_store: session_store.get::<SessionConfigMarker>().is_some(),
                     saw_thread_store: thread_store.get::<ThreadConfigMarker>().is_some(),
                 });
@@ -2739,12 +2695,7 @@ async fn config_change_contributor_observes_effective_config_changes() {
         .insert(ThreadConfigMarker);
 
     let original_model = session.collaboration_mode().await.model().to_string();
-    let original_disabled_tools = session
-        .get_config()
-        .await
-        .tool_suggest
-        .disabled_tools
-        .clone();
+    let original_auto_session_name = session.get_config().await.auto_session_name;
     let next_model = if original_model == "gpt-5.4" {
         "gpt-5.2"
     } else {
@@ -2767,35 +2718,26 @@ async fn config_change_contributor_observes_effective_config_changes() {
     std::fs::create_dir_all(&codex_home).expect("create codex home");
     std::fs::write(
         codex_home.join(CONFIG_TOML_FILE),
-        r#"[tool_suggest]
-disabled_tools = [
-  { type = "connector", id = " calendar " },
-  { type = "plugin", id = "slack@openai-curated" },
-]
-"#,
+        "auto_session_name = false\n",
     )
     .expect("write user config");
     let next_config = load_latest_config_for_session(&session).await;
     session.refresh_runtime_config(next_config).await;
 
-    let expected_disabled_tools = vec![
-        ToolSuggestDisabledTool::connector("calendar"),
-        ToolSuggestDisabledTool::plugin("slack@openai-curated"),
-    ];
     let expected = vec![
         RecordedConfigChange {
             previous_model: Some(original_model),
             new_model: Some(next_model.to_string()),
-            previous_disabled_tools: original_disabled_tools.clone(),
-            new_disabled_tools: original_disabled_tools.clone(),
+            previous_auto_session_name: original_auto_session_name,
+            new_auto_session_name: original_auto_session_name,
             saw_session_store: true,
             saw_thread_store: true,
         },
         RecordedConfigChange {
             previous_model: Some(next_model.to_string()),
             new_model: Some(next_model.to_string()),
-            previous_disabled_tools: original_disabled_tools,
-            new_disabled_tools: expected_disabled_tools,
+            previous_auto_session_name: original_auto_session_name,
+            new_auto_session_name: false,
             saw_session_store: true,
             saw_thread_store: true,
         },
@@ -9980,7 +9922,6 @@ async fn fatal_tool_error_stops_turn_and_reports_error() {
     let router = ToolRouter::from_context(
         step_context.as_ref(),
         crate::tools::router::ToolRouterParams {
-            tool_suggest_candidates: None,
             tool_runtimes: Vec::new(),
             extension_tool_executors: Vec::new(),
             dynamic_tools: turn_context.dynamic_tools.as_slice(),

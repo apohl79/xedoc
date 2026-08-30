@@ -695,36 +695,6 @@ client_request_definitions! {
         serialization: None,
         response: v2::PluginReadResponse,
     },
-    PluginSkillRead => "plugin/skill/read" {
-        params: v2::PluginSkillReadParams,
-        serialization: global("config"),
-        response: v2::PluginSkillReadResponse,
-    },
-    PluginShareSave => "plugin/share/save" {
-        params: v2::PluginShareSaveParams,
-        serialization: global("config"),
-        response: v2::PluginShareSaveResponse,
-    },
-    PluginShareUpdateTargets => "plugin/share/updateTargets" {
-        params: v2::PluginShareUpdateTargetsParams,
-        serialization: global("config"),
-        response: v2::PluginShareUpdateTargetsResponse,
-    },
-    PluginShareList => "plugin/share/list" {
-        params: v2::PluginShareListParams,
-        serialization: global("config"),
-        response: v2::PluginShareListResponse,
-    },
-    PluginShareCheckout => "plugin/share/checkout" {
-        params: v2::PluginShareCheckoutParams,
-        serialization: global("config"),
-        response: v2::PluginShareCheckoutResponse,
-    },
-    PluginShareDelete => "plugin/share/delete" {
-        params: v2::PluginShareDeleteParams,
-        serialization: global("config"),
-        response: v2::PluginShareDeleteResponse,
-    },
     // File system requests are intentionally concurrent. Desktop already treats local
     // file system operations as concurrent, and app-server remote fs mirrors that model.
     FsReadFile => "fs/readFile" {
@@ -1695,8 +1665,7 @@ mod tests {
         let plugin_install = ClientRequest::PluginInstall {
             request_id: request_id(),
             params: v2::PluginInstallParams {
-                marketplace_path: Some(absolute_path("/tmp/marketplace")),
-                remote_marketplace_name: None,
+                marketplace_path: absolute_path("/tmp/marketplace"),
                 plugin_name: "plugin-a".to_string(),
             },
         };
@@ -1730,18 +1699,14 @@ mod tests {
 
         let plugin_list = ClientRequest::PluginList {
             request_id: request_id(),
-            params: v2::PluginListParams {
-                cwds: None,
-                marketplace_kinds: None,
-            },
+            params: v2::PluginListParams { cwds: None },
         };
         assert_eq!(plugin_list.serialization_scope(), None);
 
         let plugin_read = ClientRequest::PluginRead {
             request_id: request_id(),
             params: v2::PluginReadParams {
-                marketplace_path: Some(absolute_path("/tmp/marketplace")),
-                remote_marketplace_name: None,
+                marketplace_path: absolute_path("/tmp/marketplace"),
                 plugin_name: "plugin-a".to_string(),
             },
         };

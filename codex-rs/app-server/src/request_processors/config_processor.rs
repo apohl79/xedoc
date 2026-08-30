@@ -46,12 +46,7 @@ use codex_protocol::config_types::WebSearchMode;
 use serde_json::json;
 use std::path::PathBuf;
 
-const SUPPORTED_EXPERIMENTAL_FEATURE_ENABLEMENT: &[&str] = &[
-    "auth_elicitation",
-    "mentions_v2",
-    "remote_plugin",
-    "tool_suggest",
-];
+const SUPPORTED_EXPERIMENTAL_FEATURE_ENABLEMENT: &[&str] = &["auth_elicitation", "mentions_v2"];
 
 #[derive(Clone)]
 pub(crate) struct ConfigRequestProcessor {

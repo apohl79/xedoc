@@ -15,7 +15,7 @@ async fn plugin_version_installed_outside_codex_triggers_reload() {
     let callback_reloaded = Arc::clone(&reloaded);
     let watcher = PluginWatcher::new(
         codex_home.path(),
-        Arc::new(move |_change| {
+        Arc::new(move || {
             callback_reload_count.fetch_add(1, Ordering::Relaxed);
             callback_reloaded.notify_one();
         }),

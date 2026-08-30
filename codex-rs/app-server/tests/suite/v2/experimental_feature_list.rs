@@ -299,22 +299,14 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
     .await?;
     let actual = set_experimental_feature_enablement(
         &mut mcp,
-        BTreeMap::from([
-            ("auth_elicitation".to_string(), true),
-            ("remote_plugin".to_string(), true),
-            ("tool_suggest".to_string(), false),
-        ]),
+        BTreeMap::from([("auth_elicitation".to_string(), true)]),
     )
     .await?;
 
     assert_eq!(
         actual,
         ExperimentalFeatureEnablementSetResponse {
-            enablement: BTreeMap::from([
-                ("auth_elicitation".to_string(), true),
-                ("remote_plugin".to_string(), true),
-                ("tool_suggest".to_string(), false),
-            ]),
+            enablement: BTreeMap::from([("auth_elicitation".to_string(), true)]),
         }
     );
 
@@ -333,20 +325,6 @@ async fn experimental_feature_enablement_set_only_updates_named_features() -> Re
             .get("features")
             .and_then(|features| features.get("auth_elicitation")),
         Some(&json!(true))
-    );
-    assert_eq!(
-        config
-            .additional
-            .get("features")
-            .and_then(|features| features.get("remote_plugin")),
-        Some(&json!(true))
-    );
-    assert_eq!(
-        config
-            .additional
-            .get("features")
-            .and_then(|features| features.get("tool_suggest")),
-        Some(&json!(false))
     );
 
     Ok(())

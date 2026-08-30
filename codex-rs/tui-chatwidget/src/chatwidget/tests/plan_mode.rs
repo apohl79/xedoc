@@ -1326,7 +1326,6 @@ async fn submit_user_message_emits_structured_plugin_mentions_from_bindings() {
             description: None,
             has_skills: true,
             mcp_server_names: Vec::new(),
-            app_connector_ids: Vec::new(),
         }]));
 
     chat.submit_user_message(UserMessage {

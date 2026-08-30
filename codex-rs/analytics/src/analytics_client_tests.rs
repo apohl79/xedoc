@@ -133,7 +133,6 @@ use codex_app_server_protocol::UserInput;
 use codex_app_server_protocol::WebSearchItem;
 use codex_login::default_client::DEFAULT_ORIGINATOR;
 use codex_login::default_client::originator;
-use codex_plugin::AppConnectorId;
 use codex_plugin::PluginCapabilitySummary;
 use codex_plugin::PluginId;
 use codex_plugin::PluginTelemetryMetadata;
@@ -2967,7 +2966,7 @@ fn plugin_used_event_serializes_expected_shape() {
                 "marketplace_name": "test",
                 "has_skills": true,
                 "mcp_server_count": 2,
-                "connector_ids": ["calendar", "drive"],
+                "connector_ids": [],
                 "product_client_id": TEST_PRODUCT_CLIENT_ID,
                 "mcp_server_names": ["mcp-1", "mcp-2"],
                 "thread_id": "thread-3",
@@ -2998,7 +2997,7 @@ fn plugin_management_event_serializes_expected_shape() {
                 "marketplace_name": "test",
                 "has_skills": true,
                 "mcp_server_count": 2,
-                "connector_ids": ["calendar", "drive"],
+                "connector_ids": [],
                 "product_client_id": originator().value
             }
         })
@@ -3030,40 +3029,11 @@ fn plugin_install_failed_event_serializes_expected_shape() {
                 "marketplace_name": "test",
                 "has_skills": true,
                 "mcp_server_count": 2,
-                "connector_ids": ["calendar", "drive"],
+                "connector_ids": [],
                 "product_client_id": originator().value,
                 "source": "manual",
                 "error_type": "store_io",
                 "sub_error_type": "failed_to_copy_plugin_file"
-            }
-        })
-    );
-}
-
-#[test]
-fn plugin_management_event_keeps_plugin_id_local_when_remote_id_exists() {
-    let mut plugin = sample_plugin_metadata();
-    plugin.remote_plugin_id = Some("plugins~Plugin_remote".to_string());
-    let event = TrackEventRequest::PluginInstalled(CodexPluginEventRequest {
-        event_type: "codex_plugin_installed",
-        event_params: codex_plugin_metadata(plugin),
-    });
-
-    let payload = serde_json::to_value(&event).expect("serialize plugin installed event");
-
-    assert_eq!(
-        payload,
-        json!({
-            "event_type": "codex_plugin_installed",
-            "event_params": {
-                "plugin_id": "sample@test",
-                "remote_plugin_id": "plugins~Plugin_remote",
-                "plugin_name": "sample",
-                "marketplace_name": "test",
-                "has_skills": true,
-                "mcp_server_count": 2,
-                "connector_ids": ["calendar", "drive"],
-                "product_client_id": originator().value
             }
         })
     );
@@ -3388,7 +3358,7 @@ async fn reducer_ingests_plugin_state_changed_fact() {
                 "marketplace_name": "test",
                 "has_skills": true,
                 "mcp_server_count": 2,
-                "connector_ids": ["calendar", "drive"],
+                "connector_ids": [],
                 "product_client_id": originator().value
             }
         }])
@@ -3486,57 +3456,11 @@ async fn reducer_ingests_plugin_install_failed_fact() {
                 "marketplace_name": "test",
                 "has_skills": true,
                 "mcp_server_count": 2,
-                "connector_ids": ["calendar", "drive"],
+                "connector_ids": [],
                 "product_client_id": originator().value,
                 "source": "external_agent_migration",
                 "error_type": "invalid_plugin",
                 "sub_error_type": "failed_to_copy_plugin_file"
-            }
-        }])
-    );
-}
-
-#[tokio::test]
-async fn reducer_ingests_plugin_install_failed_fact_without_detail() {
-    let mut reducer = AnalyticsReducer::default();
-    let mut events = Vec::new();
-    let plugin = PluginTelemetryMetadata {
-        plugin_id: None,
-        remote_plugin_id: Some("plugins~Plugin_00000000000000000000000000000000".to_string()),
-        capability_summary: None,
-    };
-
-    reducer
-        .ingest(
-            AnalyticsFact::Custom(CustomAnalyticsFact::PluginInstallFailed(
-                PluginInstallFailedInput {
-                    plugin,
-                    source: PluginInstallSource::Manual,
-                    error_type: "remote_catalog_unexpected_status".to_string(),
-                    sub_error_type: None,
-                },
-            )),
-            &mut events,
-        )
-        .await;
-
-    let payload = serde_json::to_value(&events).expect("serialize events");
-    assert_eq!(
-        payload,
-        json!([{
-            "event_type": "codex_plugin_install_failed",
-            "event_params": {
-                "plugin_id": null,
-                "remote_plugin_id": "plugins~Plugin_00000000000000000000000000000000",
-                "plugin_name": null,
-                "marketplace_name": null,
-                "has_skills": null,
-                "mcp_server_count": null,
-                "connector_ids": null,
-                "product_client_id": originator().value,
-                "source": "manual",
-                "error_type": "remote_catalog_unexpected_status",
-                "sub_error_type": null
             }
         }])
     );
@@ -4627,17 +4551,12 @@ async fn turn_completed_without_started_notification_emits_null_started_at() {
 fn sample_plugin_metadata() -> PluginTelemetryMetadata {
     PluginTelemetryMetadata {
         plugin_id: Some(PluginId::parse("sample@test").expect("valid plugin id")),
-        remote_plugin_id: None,
         capability_summary: Some(PluginCapabilitySummary {
             config_name: "sample@test".to_string(),
             display_name: "sample".to_string(),
             description: None,
             has_skills: true,
             mcp_server_names: vec!["mcp-1".to_string(), "mcp-2".to_string()],
-            app_connector_ids: vec![
-                AppConnectorId("calendar".to_string()),
-                AppConnectorId("drive".to_string()),
-            ],
         }),
     }
 }

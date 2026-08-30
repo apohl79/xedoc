@@ -529,17 +529,6 @@ impl App {
             AppEvent::OpenPluginsList { cwd, response } => {
                 self.chat_widget.open_plugins_list(cwd, response);
             }
-            AppEvent::PluginRemoteSectionsLoaded {
-                cwd,
-                marketplaces,
-                section_errors,
-            } => {
-                self.chat_widget.on_plugin_remote_sections_loaded(
-                    cwd,
-                    marketplaces,
-                    section_errors,
-                );
-            }
             AppEvent::HooksLoaded { cwd, result } => {
                 self.chat_widget.on_hooks_loaded(cwd, result);
             }
@@ -615,14 +604,14 @@ impl App {
             }
             AppEvent::FetchPluginInstall {
                 cwd,
-                location,
+                marketplace_path,
                 plugin_name,
                 plugin_display_name,
             } => {
                 self.fetch_plugin_install(
                     app_server,
                     cwd,
-                    location,
+                    marketplace_path,
                     plugin_name,
                     plugin_display_name,
                 );
@@ -643,7 +632,7 @@ impl App {
             }
             AppEvent::PluginInstallLoaded {
                 cwd,
-                location,
+                marketplace_path,
                 plugin_name,
                 plugin_display_name,
                 result,
@@ -654,7 +643,7 @@ impl App {
                 }
                 let should_refresh_plugin_detail = self.chat_widget.on_plugin_install_loaded(
                     cwd.clone(),
-                    location.clone(),
+                    marketplace_path.clone(),
                     plugin_name.clone(),
                     plugin_display_name,
                     result,
@@ -663,14 +652,11 @@ impl App {
                 {
                     self.fetch_plugins_list(app_server, cwd.clone());
                     if should_refresh_plugin_detail {
-                        let (marketplace_path, remote_marketplace_name) =
-                            location.into_request_params();
                         self.fetch_plugin_detail(
                             app_server,
                             cwd,
                             PluginReadParams {
                                 marketplace_path,
-                                remote_marketplace_name,
                                 plugin_name,
                             },
                         );

@@ -11,8 +11,6 @@ use crate::marketplace::list_marketplaces_with_home;
 use crate::marketplace::load_marketplace;
 use crate::marketplace_policy::configured_plugins_from_stack;
 use crate::npm_source::materialize_npm_plugin_source;
-use crate::remote::REMOTE_GLOBAL_MARKETPLACE_NAME;
-use crate::remote::RemoteInstalledPlugin;
 use crate::store::PluginStore;
 use crate::store::plugin_version_for_source;
 use crate::store::plugin_version_for_source_with_fallback_manifest;
@@ -107,19 +105,15 @@ pub(crate) fn log_plugin_load_errors(plugins: &[LoadedPlugin<McpServerConfig>]) 
 #[instrument(level = "trace", skip_all)]
 pub(crate) async fn load_plugins_from_layer_stack(
     config_layer_stack: &ConfigLayerStack,
-    extra_plugins: HashMap<String, PluginConfig>,
     store: &PluginStore,
     plugin_skill_snapshots: Option<&PluginSkillSnapshots>,
     restriction_product: Option<Product>,
-    remote_global_catalog_active: bool,
     root_scan_slots: Arc<Semaphore>,
 ) -> Vec<LoadedPlugin<McpServerConfig>> {
     let skill_config_rules = skill_config_rules_from_stack(config_layer_stack);
     load_plugins_from_layer_stack_with_scope(
         config_layer_stack,
-        extra_plugins,
         store,
-        remote_global_catalog_active,
         PluginLoadScope::AllCapabilities {
             restriction_product,
             skill_config_rules: &skill_config_rules,
@@ -132,18 +126,13 @@ pub(crate) async fn load_plugins_from_layer_stack(
 
 async fn load_plugins_from_layer_stack_with_scope(
     config_layer_stack: &ConfigLayerStack,
-    extra_plugins: HashMap<String, PluginConfig>,
     store: &PluginStore,
-    remote_global_catalog_active: bool,
     scope: PluginLoadScope<'_>,
 ) -> Vec<LoadedPlugin<McpServerConfig>> {
-    let configured_plugins = merge_configured_plugins_with_remote_installed(
-        configured_plugins_from_stack(config_layer_stack, store.codex_home().as_path()),
-        extra_plugins,
-        store,
-        remote_global_catalog_active,
-    );
-    let mut configured_plugins: Vec<_> = configured_plugins.into_iter().collect();
+    let mut configured_plugins: Vec<_> =
+        configured_plugins_from_stack(config_layer_stack, store.codex_home().as_path())
+            .into_iter()
+            .collect();
     configured_plugins.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
 
     let mut plugins = Vec::with_capacity(configured_plugins.len());
@@ -171,15 +160,11 @@ async fn load_plugins_from_layer_stack_with_scope(
 /// Load hooks from enabled plugins without loading their skills, MCP servers, or apps.
 pub async fn load_plugin_hooks_from_layer_stack(
     config_layer_stack: &ConfigLayerStack,
-    extra_plugins: HashMap<String, PluginConfig>,
     store: &PluginStore,
-    remote_global_catalog_active: bool,
 ) -> PluginHookLoadOutcome {
     let plugins = load_plugins_from_layer_stack_with_scope(
         config_layer_stack,
-        extra_plugins,
         store,
-        remote_global_catalog_active,
         PluginLoadScope::HooksOnly,
     )
     .await;
@@ -195,105 +180,6 @@ pub async fn load_plugin_hooks_from_layer_stack(
             .flat_map(|plugin| plugin.hook_load_warnings.iter().cloned())
             .collect(),
     }
-}
-
-fn merge_configured_plugins_with_remote_installed(
-    mut configured_plugins: HashMap<String, PluginConfig>,
-    extra_plugins: HashMap<String, PluginConfig>,
-    store: &PluginStore,
-    remote_global_catalog_active: bool,
-) -> HashMap<String, PluginConfig> {
-    if remote_global_catalog_active {
-        configured_plugins.retain(|plugin_key, _| match PluginId::parse(plugin_key) {
-            Ok(plugin_id) => plugin_id.marketplace_name != crate::OPENAI_CURATED_MARKETPLACE_NAME,
-            Err(_) => true,
-        });
-        configured_plugins.extend(extra_plugins);
-        return configured_plugins;
-    }
-
-    let mut local_curated_installed_plugin_keys = HashMap::<String, Vec<String>>::new();
-    for plugin_key in configured_plugins.keys() {
-        let Ok(plugin_id) = PluginId::parse(plugin_key) else {
-            continue;
-        };
-        if !is_openai_curated_marketplace_name(&plugin_id.marketplace_name)
-            || store.active_plugin_version(&plugin_id).is_none()
-        {
-            continue;
-        }
-        local_curated_installed_plugin_keys
-            .entry(plugin_id.plugin_name)
-            .or_default()
-            .push(plugin_key.clone());
-    }
-
-    for (plugin_key, plugin_config) in extra_plugins {
-        let remote_curated_plugin_name = installed_plugin_name_for_marketplace(
-            &plugin_key,
-            REMOTE_GLOBAL_MARKETPLACE_NAME,
-            store,
-        );
-        let local_curated_plugin_keys = remote_curated_plugin_name
-            .as_ref()
-            .and_then(|plugin_name| local_curated_installed_plugin_keys.get(plugin_name));
-
-        if local_curated_plugin_keys.is_some() {
-            continue;
-        }
-
-        configured_plugins.insert(plugin_key, plugin_config);
-    }
-
-    configured_plugins
-}
-
-fn installed_plugin_name_for_marketplace(
-    plugin_key: &str,
-    marketplace_name: &str,
-    store: &PluginStore,
-) -> Option<String> {
-    let plugin_id = PluginId::parse(plugin_key).ok()?;
-    if plugin_id.marketplace_name != marketplace_name {
-        return None;
-    }
-    store.active_plugin_root(&plugin_id)?;
-    Some(plugin_id.plugin_name)
-}
-
-pub fn remote_installed_plugins_to_config(
-    plugins: &[RemoteInstalledPlugin],
-    store: &PluginStore,
-) -> HashMap<String, PluginConfig> {
-    plugins
-        .iter()
-        .filter_map(|plugin| {
-            let plugin_id =
-                match PluginId::new(plugin.name.clone(), plugin.marketplace_name.clone()) {
-                    Ok(plugin_id) => plugin_id,
-                    Err(err) => {
-                        warn!(
-                            plugin = %plugin.name,
-                            remote_id = %plugin.id,
-                            error = %err,
-                            "ignoring invalid remote installed plugin name"
-                        );
-                        return None;
-                    }
-                };
-            // TODO(remote plugins): download or update missing local bundles during remote
-            // installed reconciliation. Until then, only publish remote installed state for
-            // bundles already present in the local plugin cache.
-            store.active_plugin_root(&plugin_id)?;
-            Some((
-                plugin_id.as_key(),
-                PluginConfig {
-                    enabled: plugin.enabled,
-                    mcp_servers: HashMap::new(),
-                },
-            ))
-        })
-        .collect()
 }
 
 pub fn refresh_curated_plugin_cache(
@@ -764,7 +650,6 @@ async fn load_plugin(
         disabled_skill_paths: HashSet::new(),
         has_enabled_skills: false,
         mcp_servers: HashMap::new(),
-        apps: Vec::new(),
         hook_sources: Vec::new(),
         hook_load_warnings: Vec::new(),
         error: None,
@@ -868,13 +753,6 @@ pub(crate) struct PluginSkillInventory {
 }
 
 impl PluginSkillInventory {
-    pub(crate) fn has_enabled_skills(&self, skill_config_rules: &SkillConfigRules) -> bool {
-        contains_enabled_skill(
-            &self.skills,
-            &resolve_disabled_skill_paths(&self.skills, skill_config_rules),
-        )
-    }
-
     fn resolve(self, skill_config_rules: &SkillConfigRules) -> ResolvedPluginSkills {
         let disabled_skill_paths = resolve_disabled_skill_paths(&self.skills, skill_config_rules);
         ResolvedPluginSkills {
@@ -1168,7 +1046,6 @@ pub async fn plugin_capability_summary_from_root(
         description: None,
         has_skills,
         mcp_server_names,
-        app_connector_ids: Vec::new(),
     })
 }
 

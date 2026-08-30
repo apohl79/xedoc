@@ -170,7 +170,7 @@ pub enum Feature {
     NonPrefixedMcpToolNames,
     /// Enable OpenAI developer docs MCP server.
     OpenaiDeveloperDocs,
-    /// Enable discoverable tool suggestions for apps.
+    /// Removed: discoverable tool suggestions. Retained as a no-op key.
     ToolSuggest,
     /// Enable plugins.
     Plugins,
@@ -198,9 +198,9 @@ pub enum Feature {
     ///
     /// Requirements-only gate: this should be set from requirements, not user config.
     ComputerUse,
-    /// Enable the PS-backed remote plugin catalog.
+    /// Removed: remote plugin catalog. Retained as a no-op key.
     RemotePlugin,
-    /// Enable remote plugin sharing flows.
+    /// Removed: remote plugin sharing flows. Retained as a no-op key.
     PluginSharing,
     /// Removed compatibility flag retained as a no-op.
     ExternalMigration,
@@ -1118,8 +1118,8 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::ToolSuggest,
         key: "tool_suggest",
-        stage: Stage::Stable,
-        default_enabled: true,
+        stage: Stage::Removed,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::Plugins,
@@ -1172,14 +1172,14 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::RemotePlugin,
         key: "remote_plugin",
-        stage: Stage::Stable,
-        default_enabled: true,
+        stage: Stage::Removed,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::PluginSharing,
         key: "plugin_sharing",
-        stage: Stage::Stable,
-        default_enabled: true,
+        stage: Stage::Removed,
+        default_enabled: false,
     },
     FeatureSpec {
         id: Feature::ExternalMigration,
