@@ -4,6 +4,7 @@ load("//bazel/rules:e2e_benchmark.bzl", "xedoc_e2e_benchmark")
 
 xedoc_rust_crate(
     name = "cli",
+    binary_rustc_env_files = ["@xedoc_version//:xedoc_release.env"],
     crate_name = "xedoc_cli",
     extra_binaries = [
         "//xedoc-rs/bwrap:bwrap",

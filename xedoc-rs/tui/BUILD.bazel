@@ -2,6 +2,7 @@ load("//:defs.bzl", "MACOS_WEBRTC_RUSTC_LINK_FLAGS", "xedoc_rust_crate")
 
 xedoc_rust_crate(
     name = "tui",
+    binary_rustc_env_files = ["@xedoc_version//:xedoc_release.env"],
     compile_data = glob(
         include = ["**"],
         allow_empty = True,
