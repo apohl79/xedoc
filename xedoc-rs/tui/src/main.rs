@@ -47,8 +47,14 @@ struct TopCli {
     inner: Cli,
 }
 
+// Bazel reports 0.0.0 as CARGO_PKG_VERSION; the workspace version arrives via rustc_env_files.
+const XEDOC_CLI_VERSION: &str = match option_env!("XEDOC_RELEASE_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 fn main() -> anyhow::Result<()> {
-    xedoc_tui::set_xedoc_cli_version(env!("CARGO_PKG_VERSION"));
+    xedoc_tui::set_xedoc_cli_version(XEDOC_CLI_VERSION);
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
         let mut inner = top_cli.inner;
