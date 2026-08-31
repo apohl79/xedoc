@@ -381,6 +381,59 @@ async fn load_plugins_from_config(
         .await
 }
 
+#[tokio::test]
+async fn load_plugins_includes_configured_legacy_home_plugins() {
+    let xedoc_home = TempDir::new().expect("create Xedoc home");
+    let legacy_home = TempDir::new().expect("create legacy home");
+    let xedoc_plugin_root = xedoc_home
+        .path()
+        .join("plugins/cache/primary/primary/local");
+    let legacy_plugin_root = legacy_home.path().join("plugins/cache/legacy/legacy/local");
+    write_file(
+        &xedoc_home.path().join(CONFIG_TOML_FILE),
+        r#"
+[plugins."primary@primary"]
+enabled = true
+"#,
+    );
+    write_file(
+        &legacy_home.path().join(CONFIG_TOML_FILE),
+        r#"
+[plugins."legacy@legacy"]
+enabled = true
+"#,
+    );
+    write_file(
+        &xedoc_plugin_root.join(".xedoc-plugin/plugin.json"),
+        r#"{"name":"primary"}"#,
+    );
+    write_file(
+        &legacy_plugin_root.join(".codex-plugin/plugin.json"),
+        r#"{"name":"legacy"}"#,
+    );
+
+    let config = load_config(xedoc_home.path(), xedoc_home.path()).await;
+    let manager = PluginsManager::new_with_options_and_legacy_store(
+        xedoc_home.path().to_path_buf(),
+        Some(Product::Xedoc),
+        /*auth_mode*/ None,
+        Some(PluginStore::new(legacy_home.path().to_path_buf())),
+    );
+    let plugins = manager.plugins_for_config(&config).await;
+
+    assert_eq!(
+        plugins
+            .plugins()
+            .iter()
+            .map(|plugin| (plugin.config_name.clone(), plugin.root.clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("legacy@legacy".to_string(), legacy_plugin_root.abs()),
+            ("primary@primary".to_string(), xedoc_plugin_root.abs()),
+        ]
+    );
+}
+
 async fn load_config(xedoc_home: &Path, cwd: &Path) -> PluginsConfigInput {
     load_plugins_config_input(xedoc_home, cwd).await
 }

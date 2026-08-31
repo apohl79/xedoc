@@ -4,12 +4,13 @@ use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;
 use crate::is_openai_curated_marketplace_name;
 use crate::loader::PluginHookLoadOutcome;
 use crate::loader::configured_curated_plugin_ids_from_xedoc_home;
+use crate::loader::configured_plugins_from_layer_stack_with_legacy_store;
 use crate::loader::curated_plugin_cache_version;
 use crate::loader::load_plugin_hooks;
-use crate::loader::load_plugin_hooks_from_layer_stack;
+use crate::loader::load_plugin_hooks_from_layer_stack_with_legacy_store;
 use crate::loader::load_plugin_mcp_servers_from_manifest;
 use crate::loader::load_plugin_skills;
-use crate::loader::load_plugins_from_layer_stack;
+use crate::loader::load_plugins_from_layer_stack_with_legacy_store;
 use crate::loader::log_plugin_load_errors;
 use crate::loader::materialize_marketplace_plugin_source;
 use crate::loader::refresh_curated_plugin_cache;
@@ -76,6 +77,18 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 use xedoc_utils_plugins::PluginSkillRoot;
 
 static CURATED_REPO_SYNC_STARTED: AtomicBool = AtomicBool::new(false);
+
+fn legacy_plugin_store(xedoc_home: &Path) -> Option<PluginStore> {
+    let home = dirs::home_dir()?;
+    if xedoc_home != home.join(".xedoc") {
+        return None;
+    }
+    let legacy_home = home.join(".codex");
+    legacy_home
+        .is_dir()
+        .then(|| PluginStore::try_new(legacy_home).ok())
+        .flatten()
+}
 
 #[derive(Debug, Clone)]
 pub struct PluginsConfigInput {
@@ -223,6 +236,7 @@ impl From<PluginDetail> for PluginCapabilitySummary {
 pub struct PluginsManager {
     xedoc_home: PathBuf,
     store: PluginStore,
+    legacy_store: Option<PluginStore>,
     configured_marketplace_upgrade_state: RwLock<ConfiguredMarketplaceUpgradeState>,
     non_curated_cache_refresh_state: RwLock<NonCuratedCacheRefreshState>,
     // Keep the cache auth-independent so auth changes only need to resolve capabilities again.
@@ -253,11 +267,16 @@ struct PluginLoadCacheKey {
 }
 
 impl PluginLoadCacheKey {
-    fn from_config(config: &PluginsConfigInput, xedoc_home: &Path) -> Self {
+    fn from_config(
+        config: &PluginsConfigInput,
+        store: &PluginStore,
+        legacy_store: Option<&PluginStore>,
+    ) -> Self {
         Self {
-            configured_plugins: configured_plugins_from_stack(
+            configured_plugins: configured_plugins_from_layer_stack_with_legacy_store(
                 &config.config_layer_stack,
-                xedoc_home,
+                store,
+                legacy_store,
             ),
             skill_config_rules: skill_config_rules_from_stack(&config.config_layer_stack),
         }
@@ -274,6 +293,21 @@ impl PluginsManager {
         restriction_product: Option<Product>,
         auth_mode: Option<AuthMode>,
     ) -> Self {
+        let legacy_store = legacy_plugin_store(xedoc_home.as_path());
+        Self::new_with_options_and_legacy_store(
+            xedoc_home,
+            restriction_product,
+            auth_mode,
+            legacy_store,
+        )
+    }
+
+    pub(crate) fn new_with_options_and_legacy_store(
+        xedoc_home: PathBuf,
+        restriction_product: Option<Product>,
+        auth_mode: Option<AuthMode>,
+        legacy_store: Option<PluginStore>,
+    ) -> Self {
         // Product restrictions are enforced at marketplace admission time for a given XEDOC_HOME:
         // listing, install, and curated refresh all consult this restriction context before new
         // plugins enter local config or cache. After admission, runtime plugin loading trusts the
@@ -284,6 +318,7 @@ impl PluginsManager {
         Self {
             xedoc_home: xedoc_home.clone(),
             store: PluginStore::new(xedoc_home),
+            legacy_store,
             configured_marketplace_upgrade_state: RwLock::new(
                 ConfiguredMarketplaceUpgradeState::default(),
             ),
@@ -338,7 +373,7 @@ impl PluginsManager {
         if !config.plugins_enabled {
             return None;
         }
-        let key = PluginLoadCacheKey::from_config(config, self.xedoc_home.as_path());
+        let key = PluginLoadCacheKey::from_config(config, &self.store, self.legacy_store.as_ref());
         self.loaded_plugins_cache
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -367,7 +402,8 @@ impl PluginsManager {
             return PluginLoadOutcome::default();
         }
 
-        let cache_key = PluginLoadCacheKey::from_config(config, self.xedoc_home.as_path());
+        let cache_key =
+            PluginLoadCacheKey::from_config(config, &self.store, self.legacy_store.as_ref());
         if !force_reload && let Some(plugins) = self.cached_loaded_plugins(&cache_key) {
             return PluginLoadOutcome::from_plugins(plugins);
         }
@@ -381,9 +417,10 @@ impl PluginsManager {
         }
         let cache_generation = self.loaded_plugins_cache_generation();
         let plugin_skill_snapshots = PluginSkillSnapshots::for_plugin_load();
-        let plugins = load_plugins_from_layer_stack(
+        let plugins = load_plugins_from_layer_stack_with_legacy_store(
             &config.config_layer_stack,
             &self.store,
+            self.legacy_store.as_ref(),
             Some(&plugin_skill_snapshots),
             self.restriction_product,
             Arc::clone(&self.skill_root_scan_slots),
@@ -430,9 +467,10 @@ impl PluginsManager {
         if !config.plugins_enabled {
             return PluginLoadOutcome::default();
         }
-        let plugins = load_plugins_from_layer_stack(
+        let plugins = load_plugins_from_layer_stack_with_legacy_store(
             config_layer_stack,
             &self.store,
+            self.legacy_store.as_ref(),
             /*plugin_skill_snapshots*/ None,
             self.restriction_product,
             Arc::clone(&self.skill_root_scan_slots),
@@ -450,7 +488,12 @@ impl PluginsManager {
         if !config.plugins_enabled {
             return PluginHookLoadOutcome::default();
         }
-        load_plugin_hooks_from_layer_stack(config_layer_stack, &self.store).await
+        load_plugin_hooks_from_layer_stack_with_legacy_store(
+            config_layer_stack,
+            &self.store,
+            self.legacy_store.as_ref(),
+        )
+        .await
     }
 
     /// Resolve plugin skill roots for a config layer stack without touching the plugins cache.
