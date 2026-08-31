@@ -78,16 +78,18 @@ use xedoc_utils_plugins::PluginSkillRoot;
 
 static CURATED_REPO_SYNC_STARTED: AtomicBool = AtomicBool::new(false);
 
-fn legacy_plugin_store(xedoc_home: &Path) -> Option<PluginStore> {
+/// Returns the legacy plugin home when Xedoc uses its default home.
+pub fn legacy_plugin_home(xedoc_home: &Path) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     if xedoc_home != home.join(".xedoc") {
         return None;
     }
     let legacy_home = home.join(".codex");
-    legacy_home
-        .is_dir()
-        .then(|| PluginStore::try_new(legacy_home).ok())
-        .flatten()
+    legacy_home.is_dir().then_some(legacy_home)
+}
+
+fn legacy_plugin_store(xedoc_home: &Path) -> Option<PluginStore> {
+    legacy_plugin_home(xedoc_home).and_then(|legacy_home| PluginStore::try_new(legacy_home).ok())
 }
 
 #[derive(Debug, Clone)]
