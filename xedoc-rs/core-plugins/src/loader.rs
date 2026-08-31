@@ -124,21 +124,69 @@ pub(crate) async fn load_plugins_from_layer_stack(
     .await
 }
 
+pub(crate) async fn load_plugins_from_layer_stack_with_legacy_store(
+    config_layer_stack: &ConfigLayerStack,
+    store: &PluginStore,
+    legacy_store: Option<&PluginStore>,
+    plugin_skill_snapshots: Option<&PluginSkillSnapshots>,
+    restriction_product: Option<Product>,
+    root_scan_slots: Arc<Semaphore>,
+) -> Vec<LoadedPlugin<McpServerConfig>> {
+    let skill_config_rules = skill_config_rules_from_stack(config_layer_stack);
+    load_plugins_from_layer_stack_with_scope_and_legacy_store(
+        config_layer_stack,
+        store,
+        legacy_store,
+        PluginLoadScope::AllCapabilities {
+            restriction_product,
+            skill_config_rules: &skill_config_rules,
+            plugin_skill_snapshots,
+            root_scan_slots,
+        },
+    )
+    .await
+}
+
 async fn load_plugins_from_layer_stack_with_scope(
     config_layer_stack: &ConfigLayerStack,
     store: &PluginStore,
     scope: PluginLoadScope<'_>,
 ) -> Vec<LoadedPlugin<McpServerConfig>> {
-    let mut configured_plugins: Vec<_> =
-        configured_plugins_from_stack(config_layer_stack, store.xedoc_home().as_path())
-            .into_iter()
-            .collect();
+    load_plugins_from_layer_stack_with_scope_and_legacy_store(
+        config_layer_stack,
+        store,
+        /*legacy_store*/ None,
+        scope,
+    )
+    .await
+}
+
+async fn load_plugins_from_layer_stack_with_scope_and_legacy_store(
+    config_layer_stack: &ConfigLayerStack,
+    store: &PluginStore,
+    legacy_store: Option<&PluginStore>,
+    scope: PluginLoadScope<'_>,
+) -> Vec<LoadedPlugin<McpServerConfig>> {
+    let mut configured_plugins: Vec<_> = configured_plugins_from_layer_stack_with_legacy_store(
+        config_layer_stack,
+        store,
+        legacy_store,
+    )
+    .into_iter()
+    .collect();
     configured_plugins.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
 
     let mut plugins = Vec::with_capacity(configured_plugins.len());
     let mut seen_mcp_server_names = HashMap::<String, String>::new();
     for (configured_name, plugin) in configured_plugins {
-        let loaded_plugin = load_plugin(configured_name.clone(), &plugin, store, &scope).await;
+        let loaded_plugin = load_plugin(
+            configured_name.clone(),
+            &plugin,
+            store,
+            legacy_store,
+            &scope,
+        )
+        .await;
         for name in loaded_plugin.mcp_servers.keys() {
             if let Some(previous_plugin) =
                 seen_mcp_server_names.insert(name.clone(), configured_name.clone())
@@ -162,9 +210,23 @@ pub async fn load_plugin_hooks_from_layer_stack(
     config_layer_stack: &ConfigLayerStack,
     store: &PluginStore,
 ) -> PluginHookLoadOutcome {
-    let plugins = load_plugins_from_layer_stack_with_scope(
+    load_plugin_hooks_from_layer_stack_with_legacy_store(
         config_layer_stack,
         store,
+        /*legacy_store*/ None,
+    )
+    .await
+}
+
+pub(crate) async fn load_plugin_hooks_from_layer_stack_with_legacy_store(
+    config_layer_stack: &ConfigLayerStack,
+    store: &PluginStore,
+    legacy_store: Option<&PluginStore>,
+) -> PluginHookLoadOutcome {
+    let plugins = load_plugins_from_layer_stack_with_scope_and_legacy_store(
+        config_layer_stack,
+        store,
+        legacy_store,
         PluginLoadScope::HooksOnly,
     )
     .await;
@@ -180,6 +242,27 @@ pub async fn load_plugin_hooks_from_layer_stack(
             .flat_map(|plugin| plugin.hook_load_warnings.iter().cloned())
             .collect(),
     }
+}
+
+pub(crate) fn configured_plugins_from_layer_stack_with_legacy_store(
+    config_layer_stack: &ConfigLayerStack,
+    store: &PluginStore,
+    legacy_store: Option<&PluginStore>,
+) -> HashMap<String, PluginConfig> {
+    let mut configured_plugins = legacy_store
+        .map(|legacy_store| {
+            configured_plugins_from_xedoc_home(
+                legacy_store.xedoc_home().as_path(),
+                "failed to read legacy plugin config",
+                "failed to parse legacy plugin config",
+            )
+        })
+        .unwrap_or_default();
+    configured_plugins.extend(configured_plugins_from_stack(
+        config_layer_stack,
+        store.xedoc_home().as_path(),
+    ));
+    configured_plugins
 }
 
 pub fn refresh_curated_plugin_cache(
@@ -626,15 +709,25 @@ async fn load_plugin(
     config_name: String,
     plugin: &PluginConfig,
     store: &PluginStore,
+    legacy_store: Option<&PluginStore>,
     scope: &PluginLoadScope<'_>,
 ) -> LoadedPlugin<McpServerConfig> {
     let plugin_id = PluginId::parse(&config_name);
-    let active_plugin_root = plugin_id
+    let active_plugin = plugin_id.as_ref().ok().and_then(|plugin_id| {
+        store
+            .active_plugin_root(plugin_id)
+            .map(|root| (store, root))
+            .or_else(|| {
+                legacy_store.and_then(|legacy_store| {
+                    legacy_store
+                        .active_plugin_root(plugin_id)
+                        .map(|root| (legacy_store, root))
+                })
+            })
+    });
+    let root = active_plugin
         .as_ref()
-        .ok()
-        .and_then(|plugin_id| store.active_plugin_root(plugin_id));
-    let root = active_plugin_root
-        .clone()
+        .map(|(_, root)| root.clone())
         .unwrap_or_else(|| match &plugin_id {
             Ok(plugin_id) => store.plugin_base_root(plugin_id),
             Err(_) => store.root().clone(),
@@ -659,13 +752,13 @@ async fn load_plugin(
         return loaded_plugin;
     }
 
-    let (loaded_plugin_id, plugin_root) = match plugin_id {
+    let (loaded_plugin_id, plugin_store, plugin_root) = match plugin_id {
         Ok(plugin_id) => {
-            let Some(plugin_root) = active_plugin_root else {
+            let Some((plugin_store, plugin_root)) = active_plugin else {
                 loaded_plugin.error = Some("plugin is not installed".to_string());
                 return loaded_plugin;
             };
-            (plugin_id, plugin_root)
+            (plugin_id, plugin_store, plugin_root)
         }
         Err(err) => {
             loaded_plugin.error = Some(err.to_string());
@@ -720,7 +813,7 @@ async fn load_plugin(
     let (hook_sources, hook_load_warnings) = load_plugin_hooks(
         &plugin_root,
         &loaded_plugin_id,
-        &store.plugin_data_root(&loaded_plugin_id),
+        &plugin_store.plugin_data_root(&loaded_plugin_id),
         manifest_paths,
     );
     loaded_plugin.hook_sources = hook_sources;
