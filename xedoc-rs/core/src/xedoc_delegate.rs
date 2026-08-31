@@ -71,6 +71,7 @@ pub(crate) async fn run_xedoc_thread_interactive(
         config,
         allow_provider_model_fallback: false,
         user_instructions,
+        user_instructions_provider: None,
         installation_id: parent_session.installation_id.clone(),
         auth_manager,
         models_manager,

@@ -1661,6 +1661,8 @@ impl ThreadManagerState {
         let user_instructions = self
             .user_instructions_for_spawn(&session_source, parent_thread_id, forked_from_thread_id)
             .await;
+        let user_instructions_provider = (!session_source.is_non_root_agent())
+            .then(|| Arc::clone(&self.user_instructions_provider));
         let tracked_session_source = session_source.clone();
         let multi_agent_version = self
             .initial_multi_agent_version_for_spawn(
@@ -1683,6 +1685,7 @@ impl ThreadManagerState {
             config,
             allow_provider_model_fallback,
             user_instructions,
+            user_instructions_provider,
             installation_id: self.installation_id.clone(),
             auth_manager,
             models_manager: Arc::clone(&self.models_manager),
