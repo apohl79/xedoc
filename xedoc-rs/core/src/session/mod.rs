@@ -74,6 +74,7 @@ use xedoc_extension_api::LoadedUserInstructions;
 use xedoc_extension_api::PromptFragment;
 use xedoc_extension_api::PromptSlot;
 use xedoc_extension_api::TurnContextContributionInput;
+use xedoc_extension_api::UserInstructionsProvider;
 use xedoc_features::FEATURES;
 use xedoc_features::Feature;
 use xedoc_features::unstable_features_warning_event;
@@ -380,6 +381,7 @@ pub(crate) struct SessionSpawnArgs {
     pub(crate) config: Config,
     pub(crate) allow_provider_model_fallback: bool,
     pub(crate) user_instructions: LoadedUserInstructions,
+    pub(crate) user_instructions_provider: Option<Arc<dyn UserInstructionsProvider>>,
     pub(crate) installation_id: String,
     pub(crate) auth_manager: Arc<AuthManager>,
     pub(crate) models_manager: SharedModelsManager,
@@ -464,6 +466,7 @@ impl Session {
             mut config,
             allow_provider_model_fallback,
             user_instructions,
+            user_instructions_provider,
             installation_id,
             auth_manager,
             models_manager,
@@ -652,6 +655,7 @@ impl Session {
             session_configuration,
             config.clone(),
             user_instructions,
+            user_instructions_provider,
             installation_id,
             auth_manager.clone(),
             models_manager.clone(),
@@ -1593,7 +1597,7 @@ impl Session {
     }
 
     pub(crate) async fn user_instructions(&self) -> Option<xedoc_extension_api::UserInstructions> {
-        self.services.agents_md_manager.user_instructions()
+        self.services.agents_md_manager.user_instructions().await
     }
 
     pub(crate) async fn provider(&self) -> ModelProviderInfo {

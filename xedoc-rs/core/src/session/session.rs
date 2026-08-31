@@ -520,6 +520,7 @@ impl Session {
         mut session_configuration: SessionConfiguration,
         config: Arc<Config>,
         user_instructions: Option<xedoc_extension_api::UserInstructions>,
+        user_instructions_provider: Option<Arc<dyn xedoc_extension_api::UserInstructionsProvider>>,
         installation_id: String,
         auth_manager: Arc<AuthManager>,
         models_manager: SharedModelsManager,
@@ -917,7 +918,12 @@ impl Session {
             ));
             turn_environments.update_selections(session_configuration.environment_selections());
             let resolved_environments = turn_environments.snapshot().await;
-            let agents_md_manager = Arc::new(AgentsMdManager::new(user_instructions));
+            let agents_md_manager = Arc::new(
+                AgentsMdManager::new_with_user_instructions_provider(
+                    user_instructions,
+                    user_instructions_provider,
+                ),
+            );
             let plugin_skill_warmup = warm_plugins_and_skills_for_session_init(
                 Arc::clone(&config),
                 Arc::clone(&plugins_manager),

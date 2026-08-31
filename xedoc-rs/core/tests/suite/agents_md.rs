@@ -532,7 +532,7 @@ async fn loads_user_instructions_without_a_primary_environment() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fresh_thread_composes_global_before_project_and_reports_sources() -> Result<()> {
+async fn global_agents_md_reloads_without_reloading_project_docs() -> Result<()> {
     // Set up one global source, one project source, and two ordinary model turns.
     let server = responses::start_mock_server().await;
     let response_mock = responses::mount_sse_sequence(
@@ -596,17 +596,26 @@ async fn fresh_thread_composes_global_before_project_and_reports_sources() -> Re
     );
     test.submit_turn("second turn").await?;
 
-    // Assert the running thread keeps its original rendering and structured prefix even though
-    // both files at the reported source paths now contain different text.
     let requests = response_mock.requests();
     assert_eq!(requests.len(), 2);
-    let expected_contents =
+    let initial_contents =
         format!("{GLOBAL_INSTRUCTIONS}\n\n{PROJECT_SEPARATOR}\n\n{PROJECT_INSTRUCTIONS}");
-    let expected_fragment = expected_instruction_fragment(&test.config.cwd, &expected_contents);
-    let fragments = instruction_fragments(&requests[0]);
-    assert_eq!(fragments, vec![expected_fragment.clone()]);
-    assert_single_instruction_fragment(&requests[1], &expected_fragment);
-    let rendered = fragments
+    let replacement_contents =
+        format!("{NEW_GLOBAL_INSTRUCTIONS}\n\n{PROJECT_SEPARATOR}\n\n{PROJECT_INSTRUCTIONS}");
+    let initial_fragment = expected_instruction_fragment(&test.config.cwd, &initial_contents);
+    let replacement_fragment = expected_instruction_fragment(
+        &test.config.cwd,
+        &format!(
+            "These AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\n{replacement_contents}"
+        ),
+    );
+    let initial_fragments = instruction_fragments(&requests[0]);
+    assert_eq!(initial_fragments, vec![initial_fragment.clone()]);
+    assert_eq!(
+        instruction_fragments(&requests[1]),
+        vec![initial_fragment.clone(), replacement_fragment]
+    );
+    let rendered = initial_fragments
         .into_iter()
         .next()
         .ok_or_else(|| anyhow!("expected one rendered instruction fragment"))?;
@@ -631,7 +640,7 @@ async fn fresh_thread_composes_global_before_project_and_reports_sources() -> Re
     assert_eq!(
         test.xedoc.instruction_sources().await,
         creation_sources,
-        "ordinary turns retain the creation-time source list"
+        "same-path global updates retain the existing instruction sources"
     );
     let first_input = requests[0].input();
     let second_input = requests[1].input();
@@ -645,7 +654,7 @@ async fn fresh_thread_composes_global_before_project_and_reports_sources() -> Re
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn multi_environment_thread_loads_every_project_and_keeps_creation_snapshot() -> Result<()> {
+async fn multi_environment_thread_reloads_global_agents_md_only() -> Result<()> {
     skip_if_no_network!(Ok(()));
     skip_if_no_remote_env!(Ok(()));
 
@@ -717,7 +726,7 @@ async fn multi_environment_thread_loads_every_project_and_keeps_creation_snapsho
             supports_openai_form_elicitation: false,
         })
         .await?;
-    assert_eq!(provider.load_count(), 2);
+    assert_eq!(provider.load_count(), 4);
     assert_eq!(
         thread.thread.instruction_sources().await,
         vec![
@@ -729,7 +738,7 @@ async fn multi_environment_thread_loads_every_project_and_keeps_creation_snapsho
 
     submit_thread_turn(&thread.thread, "first multi-environment turn").await?;
 
-    write_global_file(
+    let new_global_source = write_global_file(
         home.as_ref(),
         GLOBAL_AGENTS_OVERRIDE_FILENAME,
         NEW_GLOBAL_INSTRUCTIONS,
@@ -747,22 +756,32 @@ async fn multi_environment_thread_loads_every_project_and_keeps_creation_snapsho
     )?;
     submit_thread_turn(&thread.thread, "second multi-environment turn").await?;
 
-    let contents = format!(
+    let initial_contents = format!(
         "{GLOBAL_INSTRUCTIONS}\n\nfor `{REMOTE_ENVIRONMENT_ID}` with root {}\n\nremote project instructions\n\nfor `{LOCAL_ENVIRONMENT_ID}` with root {}\n\nlocal project instructions",
         PathUri::from_abs_path(&test.config.cwd).inferred_native_path_string(),
         local_root.path().display(),
     );
-    let expected =
-        format!("# AGENTS.md instructions\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>");
+    let replacement_contents = format!(
+        "{NEW_GLOBAL_INSTRUCTIONS}\n\nfor `{REMOTE_ENVIRONMENT_ID}` with root {}\n\nremote project instructions\n\nfor `{LOCAL_ENVIRONMENT_ID}` with root {}\n\nlocal project instructions",
+        PathUri::from_abs_path(&test.config.cwd).inferred_native_path_string(),
+        local_root.path().display(),
+    );
+    let initial = expected_provider_only_instruction_fragment(&initial_contents);
+    let replacement = expected_provider_only_instruction_fragment(&format!(
+        "These AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\n{replacement_contents}"
+    ));
     let requests = response_mock.requests();
     assert_eq!(requests.len(), 2);
-    assert_single_instruction_fragment(&requests[0], &expected);
-    assert_single_instruction_fragment(&requests[1], &expected);
-    assert_eq!(provider.load_count(), 2);
+    assert_single_instruction_fragment(&requests[0], &initial);
+    assert_eq!(
+        instruction_fragments(&requests[1]),
+        vec![initial, replacement]
+    );
+    assert_eq!(provider.load_count(), 6);
     assert_eq!(
         thread.thread.instruction_sources().await,
         vec![
-            PathUri::from_abs_path(&global_source),
+            PathUri::from_abs_path(&new_global_source),
             PathUri::from_abs_path(&remote_source),
             PathUri::from_host_native_path(&local_source)?,
         ]
@@ -996,13 +1015,14 @@ async fn fork_injects_changed_agents_md_once() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn forked_subagent_replays_one_creation_time_global_instruction_fragment() -> Result<()> {
+async fn forked_subagent_inherits_reloaded_global_instructions() -> Result<()> {
     skip_if_no_network!(Ok(()));
     run_subagent_global_instruction_case(/*fork_context*/ true).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fresh_subagent_uses_creation_time_instructions_without_parent_history() -> Result<()> {
+async fn fresh_subagent_inherits_reloaded_global_instructions_without_parent_history() -> Result<()>
+{
     skip_if_no_network!(Ok(()));
     run_subagent_global_instruction_case(/*fork_context*/ false).await
 }
@@ -1122,20 +1142,33 @@ async fn run_subagent_global_instruction_case(fork_context: bool) -> Result<()> 
     .await
     .map_err(|_| anyhow!("timed out waiting for the subagent request"))?;
 
-    // Assert parent and child report and render the parent's creation-time snapshot exactly once.
-    let expected_fragment = expected_provider_only_instruction_fragment(OLD_GLOBAL_INSTRUCTIONS);
-    assert_single_instruction_fragment(&seed_request, &expected_fragment);
-    assert_single_instruction_fragment(&spawn_request, &expected_fragment);
-    assert_single_instruction_fragment(&child_request, &expected_fragment);
+    let initial_fragment = expected_provider_only_instruction_fragment(OLD_GLOBAL_INSTRUCTIONS);
+    let replacement_fragment = expected_provider_only_instruction_fragment(&format!(
+        "These AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\n{NEW_GLOBAL_INSTRUCTIONS}"
+    ));
+    let reloaded_fragment = expected_provider_only_instruction_fragment(NEW_GLOBAL_INSTRUCTIONS);
+    assert_single_instruction_fragment(&seed_request, &initial_fragment);
+    assert_eq!(
+        instruction_fragments(&spawn_request),
+        vec![initial_fragment.clone(), replacement_fragment.clone()]
+    );
+    assert_eq!(
+        instruction_fragments(&child_request),
+        if fork_context {
+            vec![initial_fragment, replacement_fragment]
+        } else {
+            vec![reloaded_fragment]
+        }
+    );
     assert_eq!(
         test.xedoc.instruction_sources().await,
-        vec![PathUri::from_abs_path(&source)],
-        "running parent retains the creation-time global source after spawning"
+        vec![PathUri::from_abs_path(&new_source)],
+        "parent reports the reloaded global source after spawning"
     );
     assert_eq!(
         child_thread.instruction_sources().await,
-        vec![PathUri::from_abs_path(&source)],
-        "subagent reports the parent's creation-time source"
+        vec![PathUri::from_abs_path(&new_source)],
+        "subagent reports the inherited reloaded global source"
     );
     if fork_context {
         let seed_input = seed_request.input();
