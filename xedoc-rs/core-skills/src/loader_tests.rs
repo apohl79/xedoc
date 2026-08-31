@@ -116,11 +116,15 @@ impl ExecutorFileSystem for BlockingRepoSkillRootFileSystem {
         path: &'a PathUri,
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, FileMetadata> {
-        let repo_skill_root_suffix = Path::new(AGENTS_DIR_NAME).join(SKILLS_DIR_NAME);
+        let repo_skill_root_suffixes = [AGENTS_DIR_NAME, LEGACY_CODEX_DIR_NAME]
+            .map(|directory_name| Path::new(directory_name).join(SKILLS_DIR_NAME));
         let Ok(path_abs) = path.to_abs_path() else {
             return self.inner.get_metadata(path, sandbox);
         };
-        if !path_abs.ends_with(repo_skill_root_suffix) {
+        if !repo_skill_root_suffixes
+            .iter()
+            .any(|suffix| path_abs.ends_with(suffix))
+        {
             return self.inner.get_metadata(path, sandbox);
         }
 
@@ -2165,6 +2169,45 @@ async fn loads_skills_from_agents_dir_without_xedoc_dir() {
 }
 
 #[tokio::test]
+async fn loads_skills_from_codex_dir_without_xedoc_dir() {
+    let xedoc_home = tempfile::tempdir().expect("tempdir");
+    let repo_dir = tempfile::tempdir().expect("tempdir");
+    mark_as_git_repo(repo_dir.path());
+
+    let skill_path = write_skill_at(
+        &repo_dir
+            .path()
+            .join(LEGACY_CODEX_DIR_NAME)
+            .join(SKILLS_DIR_NAME),
+        "legacy",
+        "legacy-skill",
+        "from Codex",
+    );
+    let cfg = make_config_for_cwd(&xedoc_home, repo_dir.path().to_path_buf()).await;
+
+    let outcome = load_skills_for_test(&cfg).await;
+    assert!(
+        outcome.errors.is_empty(),
+        "unexpected errors: {:?}",
+        outcome.errors
+    );
+    assert_eq!(
+        outcome.skills,
+        vec![SkillMetadata {
+            name: "legacy-skill".to_string(),
+            description: "from Codex".to_string(),
+            short_description: None,
+            interface: None,
+            dependencies: None,
+            policy: None,
+            path_to_skills_md: normalized(&skill_path),
+            scope: SkillScope::Repo,
+            plugin_id: None,
+        }]
+    );
+}
+
+#[tokio::test]
 async fn loads_skills_from_all_xedoc_dirs_under_project_root() {
     let xedoc_home = tempfile::tempdir().expect("tempdir");
     let repo_dir = tempfile::tempdir().expect("tempdir");
@@ -2258,8 +2301,14 @@ async fn repo_skill_root_search_limits_concurrent_probes_and_preserves_order() {
         });
     let expected_probes = directories
         .iter()
-        .map(|directory| {
-            PathUri::from_abs_path(&directory.join(AGENTS_DIR_NAME).join(SKILLS_DIR_NAME).abs())
+        .flat_map(|directory| {
+            [AGENTS_DIR_NAME, LEGACY_CODEX_DIR_NAME]
+                .into_iter()
+                .map(move |directory_name| {
+                    PathUri::from_abs_path(
+                        &directory.join(directory_name).join(SKILLS_DIR_NAME).abs(),
+                    )
+                })
         })
         .collect::<Vec<_>>();
     let cfg = make_config_for_cwd(&xedoc_home, cwd).await;
@@ -2324,13 +2373,13 @@ async fn repo_skill_root_search_limits_concurrent_probes_and_preserves_order() {
                 .lock()
                 .expect("metadata paths lock")
                 .as_slice(),
-            expected_probes.as_slice()
+            &expected_probes[..=CONCURRENCY_LIMIT]
         );
 
         metadata_calls.release.add_permits(expected_probes.len());
     };
     let (roots, ()) = tokio::join!(
-        super::repo_agents_skill_roots(Some(fs), &cfg.config_layer_stack, &cfg.cwd),
+        super::repo_compatibility_skill_roots(Some(fs), &cfg.config_layer_stack, &cfg.cwd),
         assertions
     );
 
