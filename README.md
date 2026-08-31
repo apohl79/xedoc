@@ -20,14 +20,10 @@ models and providers without giving up coordinated agent workflows.
 - **Terminal productivity** — file-path completion, session names, custom
   status lines, and a focused terminal UI.
 
-## Get started
-
-Build from a source checkout:
+## Install
 
 ```shell
-cd xedoc-rs
-cargo install --locked --path cli
-xedoc
+curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh | sh
 ```
 
 ## Project resources
