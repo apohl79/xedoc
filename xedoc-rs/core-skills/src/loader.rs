@@ -136,6 +136,7 @@ struct ParsedSkillFrontmatter {
 
 const SKILLS_FILENAME: &str = "SKILL.md";
 const AGENTS_DIR_NAME: &str = ".agents";
+const LEGACY_CODEX_DIR_NAME: &str = ".codex";
 const SKILLS_METADATA_DIR: &str = "agents";
 const SKILLS_METADATA_FILENAME: &str = "openai.yaml";
 const SKILLS_DIR_NAME: &str = "skills";
@@ -295,7 +296,7 @@ async fn skill_roots_with_home_dir(
         plugin_namespace: None,
         plugin_root: None,
     }));
-    roots.extend(repo_agents_skill_roots(fs, config_layer_stack, cwd).await);
+    roots.extend(repo_compatibility_skill_roots(fs, config_layer_stack, cwd).await);
     dedupe_skill_roots_by_path(&mut roots);
     roots
 }
@@ -386,7 +387,7 @@ fn skill_roots_from_layer_stack_inner(
     roots
 }
 
-async fn repo_agents_skill_roots(
+async fn repo_compatibility_skill_roots(
     fs: Option<Arc<dyn ExecutorFileSystem>>,
     config_layer_stack: &ConfigLayerStack,
     cwd: &AbsolutePathBuf,
@@ -398,21 +399,28 @@ async fn repo_agents_skill_roots(
     let project_root = find_project_root(fs.as_ref(), cwd, &project_root_markers).await;
     let dirs = dirs_between_project_root_and_cwd(cwd, &project_root);
     let mut roots = Vec::new();
-    let mut results = futures::stream::iter(dirs)
-        .map(|dir| {
+    let skill_roots = dirs
+        .into_iter()
+        .flat_map(|dir| {
+            [AGENTS_DIR_NAME, LEGACY_CODEX_DIR_NAME]
+                .into_iter()
+                .map(move |directory_name| dir.join(directory_name).join(SKILLS_DIR_NAME))
+        })
+        .collect::<Vec<_>>();
+    let mut results = futures::stream::iter(skill_roots)
+        .map(|skills_root| {
             let fs = Arc::clone(&fs);
             async move {
-                let agents_skills = dir.join(AGENTS_DIR_NAME).join(SKILLS_DIR_NAME);
-                let agents_skills_uri = PathUri::from_abs_path(&agents_skills);
-                let result = fs.get_metadata(&agents_skills_uri, /*sandbox*/ None).await;
-                (agents_skills, result)
+                let skills_root_uri = PathUri::from_abs_path(&skills_root);
+                let result = fs.get_metadata(&skills_root_uri, /*sandbox*/ None).await;
+                (skills_root, result)
             }
         })
         .buffered(MAX_CONCURRENT_ANCESTOR_PROBES);
-    while let Some((agents_skills, result)) = results.next().await {
+    while let Some((skills_root, result)) = results.next().await {
         match result {
             Ok(metadata) if metadata.is_directory => roots.push(SkillRoot {
-                path: agents_skills,
+                path: skills_root,
                 scope: SkillScope::Repo,
                 file_system: Arc::clone(&fs),
                 plugin_id: None,
@@ -424,7 +432,7 @@ async fn repo_agents_skill_roots(
             Err(err) => {
                 tracing::warn!(
                     "failed to stat repo skills root {}: {err:#}",
-                    agents_skills.display()
+                    skills_root.display()
                 );
             }
         }
