@@ -5,6 +5,12 @@ use std::sync::Arc;
 use xedoc_client::Request;
 use xedoc_client::TransportError;
 
+use crate::AuthHttpTransport;
+use crate::AuthRecoveryAction;
+use crate::AuthRecoveryFuture;
+use crate::AuthRecoveryIdentity;
+use crate::AuthRefreshPolicy;
+
 /// Error returned while applying authentication to an outbound request.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
@@ -58,6 +64,24 @@ pub trait AuthProvider: Send + Sync {
             self.add_auth_headers(&mut request.headers);
             Ok(request)
         })
+    }
+
+    /// Returns the opaque identity used to bound recovery for this credential.
+    fn recovery_identity(&self) -> Option<AuthRecoveryIdentity> {
+        None
+    }
+
+    /// Records a successful request for provider-owned account health.
+    fn record_success(&self) {}
+
+    /// Recovers a failed request when this credential manages refresh or failover.
+    fn recover_from_error<'a>(
+        &'a self,
+        _error: &'a TransportError,
+        _transport: &'a dyn AuthHttpTransport,
+        _refresh_policy: AuthRefreshPolicy,
+    ) -> AuthRecoveryFuture<'a> {
+        Box::pin(async { Ok(AuthRecoveryAction::Propagate) })
     }
 }
 
