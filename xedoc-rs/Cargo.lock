@@ -14065,6 +14065,7 @@ name = "xedoc-provider-anthropic"
 version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "eventsource-stream",
  "futures",
  "http 1.4.0",
@@ -14076,6 +14077,7 @@ dependencies = [
  "xedoc-api",
  "xedoc-client",
  "xedoc-protocol",
+ "xedoc-utils-path",
 ]
 
 [[package]]

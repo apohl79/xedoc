@@ -1,12 +1,16 @@
 use serde::Deserialize;
+use serde::Serialize;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
+use tokio::sync::Mutex as AsyncMutex;
+use xedoc_utils_path::write_atomically;
 
 const STICKY_ACCOUNT_DURATION: Duration = Duration::from_secs(20 * 60);
 
@@ -25,24 +29,48 @@ impl fmt::Debug for AnthropicOAuthCredential {
         f.debug_struct("AnthropicOAuthCredential")
             .field("access_token", &"<redacted>")
             .field("refresh_token", &"<redacted>")
-            .field("email", &self.email)
+            .field("email", &"<redacted>")
             .field("expires_at", &self.expires_at)
-            .field("account_id", &self.account_id)
+            .field("account_id", &"<redacted>")
             .field("last_refresh_at", &self.last_refresh_at)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct AnthropicOAuthAccount {
+    pub credential: AnthropicOAuthCredential,
+    pub source_path: PathBuf,
+}
+
+impl fmt::Debug for AnthropicOAuthAccount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AnthropicOAuthAccount")
+            .field("credential", &self.credential)
+            .field("source_path", &"<redacted>")
             .finish()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnthropicCredentialLoad {
-    pub credentials: Vec<AnthropicOAuthCredential>,
+    pub accounts: Vec<AnthropicOAuthAccount>,
     pub failures: Vec<AnthropicCredentialLoadFailure>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct AnthropicCredentialLoadFailure {
     pub path: PathBuf,
     pub message: String,
+}
+
+impl fmt::Debug for AnthropicCredentialLoadFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AnthropicCredentialLoadFailure")
+            .field("path", &"<redacted>")
+            .field("message", &self.message)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,15 +90,13 @@ pub struct AnthropicAccountUnavailable {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnthropicAccountPoolError {
-    DuplicateEmail(String),
+    DuplicateAccount,
 }
 
 impl fmt::Display for AnthropicAccountPoolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DuplicateEmail(email) => {
-                write!(f, "duplicate Anthropic OAuth account email: {email}")
-            }
+            Self::DuplicateAccount => f.write_str("duplicate Anthropic OAuth account"),
         }
     }
 }
@@ -100,13 +126,14 @@ struct PoolState {
 }
 
 struct AccountState {
-    credential: AnthropicOAuthCredential,
+    account: AnthropicOAuthAccount,
+    refresh_lock: Arc<AsyncMutex<()>>,
     cooldown_until: Instant,
     failure_count: u32,
     last_failure_kind: Option<AnthropicAccountFailureKind>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StoredAnthropicOAuthCredential {
     access_token: String,
@@ -123,25 +150,22 @@ struct StoredAnthropicOAuthCredential {
 }
 
 impl AnthropicAccountPool {
-    pub fn new(
-        credentials: Vec<AnthropicOAuthCredential>,
-    ) -> Result<Self, AnthropicAccountPoolError> {
+    pub fn new(accounts: Vec<AnthropicOAuthAccount>) -> Result<Self, AnthropicAccountPoolError> {
         let mut emails = std::collections::HashSet::new();
-        for credential in &credentials {
-            if !emails.insert(credential.email.clone()) {
-                return Err(AnthropicAccountPoolError::DuplicateEmail(
-                    credential.email.clone(),
-                ));
+        for account in &accounts {
+            if !emails.insert(account.credential.email.clone()) {
+                return Err(AnthropicAccountPoolError::DuplicateAccount);
             }
         }
 
         let now = Instant::now();
         Ok(Self {
             state: Mutex::new(PoolState {
-                accounts: credentials
+                accounts: accounts
                     .into_iter()
-                    .map(|credential| AccountState {
-                        credential,
+                    .map(|account| AccountState {
+                        account,
+                        refresh_lock: Arc::new(AsyncMutex::new(())),
                         cooldown_until: now,
                         failure_count: 0,
                         last_failure_kind: None,
@@ -161,7 +185,7 @@ impl AnthropicAccountPool {
             .len()
     }
 
-    pub fn select(&self) -> Result<AnthropicOAuthCredential, AnthropicAccountUnavailable> {
+    pub fn select(&self) -> Result<AnthropicOAuthAccount, AnthropicAccountUnavailable> {
         let now = Instant::now();
         let mut state = self
             .state
@@ -172,7 +196,7 @@ impl AnthropicAccountPool {
             && now < state.sticky_until
             && state.accounts[index].cooldown_until <= now
         {
-            return Ok(state.accounts[index].credential.clone());
+            return Ok(state.accounts[index].account.clone());
         }
 
         let count = state.accounts.len();
@@ -184,14 +208,14 @@ impl AnthropicAccountPool {
             if state.accounts[index].cooldown_until <= now {
                 state.current_index = Some(index);
                 state.sticky_until = now + STICKY_ACCOUNT_DURATION;
-                return Ok(state.accounts[index].credential.clone());
+                return Ok(state.accounts[index].account.clone());
             }
         }
 
         Err(unavailable_account(&state, now))
     }
 
-    pub fn record_failure(&self, email: &str, kind: AnthropicAccountFailureKind) -> bool {
+    pub fn record_failure(&self, source_path: &Path, kind: AnthropicAccountFailureKind) -> bool {
         let now = Instant::now();
         let mut state = self
             .state
@@ -200,7 +224,7 @@ impl AnthropicAccountPool {
         let Some(index) = state
             .accounts
             .iter()
-            .position(|account| account.credential.email == email)
+            .position(|account| account.account.source_path == source_path)
         else {
             return false;
         };
@@ -215,7 +239,7 @@ impl AnthropicAccountPool {
         true
     }
 
-    pub fn record_success(&self, email: &str) -> bool {
+    pub fn record_success(&self, source_path: &Path) -> bool {
         let now = Instant::now();
         let mut state = self
             .state
@@ -224,7 +248,7 @@ impl AnthropicAccountPool {
         let Some(account) = state
             .accounts
             .iter_mut()
-            .find(|account| account.credential.email == email)
+            .find(|account| account.account.source_path == source_path)
         else {
             return false;
         };
@@ -234,6 +258,56 @@ impl AnthropicAccountPool {
         account.last_failure_kind = None;
         true
     }
+
+    pub fn credential(&self, source_path: &Path) -> Option<AnthropicOAuthCredential> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .accounts
+            .iter()
+            .find(|account| account.account.source_path == source_path)
+            .map(|account| account.account.credential.clone())
+    }
+
+    pub fn update_credential(
+        &self,
+        source_path: &Path,
+        credential: AnthropicOAuthCredential,
+    ) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(account) = state
+            .accounts
+            .iter_mut()
+            .find(|account| account.account.source_path == source_path)
+        else {
+            return false;
+        };
+        account.account.credential = credential;
+        true
+    }
+
+    pub fn refresh_lock(&self, source_path: &Path) -> Option<Arc<AsyncMutex<()>>> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .accounts
+            .iter()
+            .find(|account| account.account.source_path == source_path)
+            .map(|account| Arc::clone(&account.refresh_lock))
+    }
+
+    pub fn has_available_account(&self) -> bool {
+        let now = Instant::now();
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .accounts
+            .iter()
+            .any(|account| account.cooldown_until <= now)
+    }
 }
 
 pub fn load_anthropic_oauth_credentials(directory: &Path) -> io::Result<AnthropicCredentialLoad> {
@@ -241,7 +315,7 @@ pub fn load_anthropic_oauth_credentials(directory: &Path) -> io::Result<Anthropi
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return Ok(AnthropicCredentialLoad {
-                credentials: Vec::new(),
+                accounts: Vec::new(),
                 failures: Vec::new(),
             });
         }
@@ -254,21 +328,39 @@ pub fn load_anthropic_oauth_credentials(directory: &Path) -> io::Result<Anthropi
         .collect::<Vec<_>>();
     paths.sort();
 
-    let mut credentials = Vec::new();
+    let mut accounts = Vec::new();
     let mut failures = Vec::new();
     for path in paths {
         match load_credential(&path) {
-            Ok(credential) => credentials.push(credential),
+            Ok(credential) => accounts.push(AnthropicOAuthAccount {
+                credential,
+                source_path: path,
+            }),
             Err(error) => failures.push(AnthropicCredentialLoadFailure {
                 path,
                 message: error.to_string(),
             }),
         }
     }
-    Ok(AnthropicCredentialLoad {
-        credentials,
-        failures,
-    })
+    Ok(AnthropicCredentialLoad { accounts, failures })
+}
+
+pub fn persist_anthropic_oauth_credential(
+    path: &Path,
+    credential: &AnthropicOAuthCredential,
+) -> io::Result<()> {
+    let stored = StoredAnthropicOAuthCredential {
+        access_token: credential.access_token.clone(),
+        refresh_token: credential.refresh_token.clone(),
+        email: credential.email.clone(),
+        expires_at: credential.expires_at.clone(),
+        account_id: credential.account_id.clone(),
+        last_refresh_at: credential.last_refresh_at.clone(),
+        credential_type: Some("anthropic".to_string()),
+    };
+    let contents = serde_json::to_string_pretty(&stored)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    write_atomically(path, &contents)
 }
 
 fn is_anthropic_credential_path(path: &Path) -> bool {
