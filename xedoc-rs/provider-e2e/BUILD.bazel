@@ -1,0 +1,14 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "provider-e2e",
+    crate_name = "xedoc_provider_e2e",
+    extra_binaries = [
+        "//xedoc-rs/exec:xedoc-exec",
+    ],
+    integration_test_timeout = "long",
+    test_tags = [
+        "manual",
+        "requires-network",
+    ],
+)
