@@ -36,7 +36,7 @@ use xedoc_response_debug_context::telemetry_transport_error_message;
 use crate::auth::agent_identity_telemetry;
 use crate::auth::resolve_provider_auth;
 
-const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 const MODELS_ENDPOINT: &str = "/models";
 
 /// Provider-owned OpenAI-compatible `/models` endpoint.
@@ -86,19 +86,12 @@ impl OpenAiModelsEndpoint {
         let api_auth = resolve_provider_auth(auth.as_ref(), &self.provider_info)?;
         let request_url =
             ModelsClient::<ReqwestTransport>::request_url(&api_provider, client_version);
-        let auth_telemetry = auth_header_telemetry(api_auth.as_ref());
-        let agent_identity_telemetry = if let Some(XedocAuth::AgentIdentity(auth)) = auth.as_ref() {
-            Some(agent_identity_telemetry(auth))
-        } else {
-            None
-        };
-        let request_telemetry: Arc<dyn RequestTelemetry> = Arc::new(ModelsRequestTelemetry {
-            auth_mode: auth_mode.map(|mode| TelemetryAuthMode::from(mode).to_string()),
-            auth_header_attached: auth_telemetry.attached,
-            auth_header_name: auth_telemetry.name,
-            agent_identity_telemetry,
-            auth_env: self.auth_env(),
-        });
+        let request_telemetry = models_request_telemetry(
+            &self.provider_info,
+            self.auth_manager.as_ref(),
+            auth.as_ref(),
+            api_auth.as_ref(),
+        );
         timeout(MODELS_REFRESH_TIMEOUT, async {
             let transport = self
                 .transport_builder
@@ -143,14 +136,6 @@ impl OpenAiModelsEndpoint {
         })
         .await
         .map_err(|_| XedocErr::Timeout)?
-    }
-
-    fn auth_env(&self) -> AuthEnvTelemetry {
-        let xedoc_api_key_env_enabled = self
-            .auth_manager
-            .as_ref()
-            .is_some_and(|auth_manager| auth_manager.xedoc_api_key_env_enabled());
-        collect_auth_env_telemetry(&self.provider_info, xedoc_api_key_env_enabled)
     }
 }
 
@@ -199,16 +184,47 @@ impl ModelsTransportBuilder for RouteAwareModelsTransportBuilder {
         http_client_factory: HttpClientFactory,
         request_url: String,
     ) -> ModelsTransportFuture<'_> {
-        Box::pin(async move {
-            build_default_reqwest_client_for_route_async(
-                http_client_factory,
-                request_url,
-                ClientRouteClass::Api,
-            )
-            .await
-            .map(ReqwestTransport::new)
-        })
+        Box::pin(build_models_transport(http_client_factory, request_url))
     }
+}
+
+pub(crate) async fn build_models_transport(
+    http_client_factory: HttpClientFactory,
+    request_url: String,
+) -> std::io::Result<ReqwestTransport> {
+    build_default_reqwest_client_for_route_async(
+        http_client_factory,
+        request_url,
+        ClientRouteClass::Api,
+    )
+    .await
+    .map(ReqwestTransport::new)
+}
+
+pub(crate) fn models_request_telemetry(
+    provider_info: &ModelProviderInfo,
+    auth_manager: Option<&Arc<AuthManager>>,
+    auth: Option<&XedocAuth>,
+    api_auth: &dyn xedoc_api::AuthProvider,
+) -> Arc<dyn RequestTelemetry> {
+    let auth_telemetry = auth_header_telemetry(api_auth);
+    let agent_identity_telemetry = if let Some(XedocAuth::AgentIdentity(auth)) = auth {
+        Some(agent_identity_telemetry(auth))
+    } else {
+        None
+    };
+    let xedoc_api_key_env_enabled =
+        auth_manager.is_some_and(|auth_manager| auth_manager.xedoc_api_key_env_enabled());
+
+    Arc::new(ModelsRequestTelemetry {
+        auth_mode: auth
+            .map(XedocAuth::auth_mode)
+            .map(|mode| TelemetryAuthMode::from(mode).to_string()),
+        auth_header_attached: auth_telemetry.attached,
+        auth_header_name: auth_telemetry.name,
+        agent_identity_telemetry,
+        auth_env: collect_auth_env_telemetry(provider_info, xedoc_api_key_env_enabled),
+    })
 }
 
 #[derive(Clone)]
