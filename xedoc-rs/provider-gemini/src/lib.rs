@@ -1,9 +1,12 @@
+mod catalog;
 mod client;
 mod request;
 mod stream;
 mod thought_signatures;
 mod types;
 
+pub use catalog::GeminiCatalogClient;
+pub use catalog::GeminiCatalogModel;
 pub use client::GeminiClient;
 pub use request::translate_request;
 pub use stream::GeminiStreamError;
