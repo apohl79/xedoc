@@ -14,9 +14,14 @@ workspace = true
 
 [dependencies]
 base64 = { workspace = true }
+eventsource-stream = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 xedoc-api = { workspace = true }
+xedoc-client = { workspace = true }
 xedoc-protocol = { workspace = true }
 
 [dev-dependencies]

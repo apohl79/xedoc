@@ -13,8 +13,10 @@ use crate::responses_metadata::XedocResponsesMetadata;
 use crate::responses_metadata::XedocResponsesRequestKind;
 use crate::responses_metadata::subagent_header_value;
 use crate::responses_metadata::subagent_metadata_kind;
+use futures::StreamExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -25,6 +27,7 @@ use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
 use xedoc_api::AgentIdentityTelemetry;
+use xedoc_api::ResponseEvent;
 use xedoc_api::TransportError;
 use xedoc_http_client::HttpClientFactory;
 use xedoc_http_client::OutboundProxyPolicy;
@@ -46,6 +49,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::protocol::SessionSource;
 use xedoc_protocol::protocol::SubAgentSource;
+use xedoc_protocol::protocol::TokenUsage;
 
 #[derive(Clone, Copy)]
 enum TestXedocResponsesRequestKind {
@@ -206,6 +210,230 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
             .get("ChatGPT-Account-ID")
             .and_then(|value| value.to_str().ok()),
         Some("account-123")
+    );
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq)]
+enum ObservedAnthropicEvent {
+    Created,
+    MessageAdded,
+    TextDelta(String),
+    MessageDone(String),
+    Completed {
+        usage: Option<TokenUsage>,
+        end_turn: Option<bool>,
+    },
+}
+
+#[tokio::test]
+async fn anthropic_wire_translates_request_and_stream_end_to_end() -> anyhow::Result<()> {
+    let server = MockServer::start().await;
+    let stream_body = [
+        r#"event: message_start
+data: {"type":"message_start","message":{}}
+
+"#,
+        r#"event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+"#,
+        r#"event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"native"}}
+
+"#,
+        r#"event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+"#,
+        r#"event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":21,"output_tokens":4,"cache_read_input_tokens":3}}
+
+"#,
+        r#"event: message_stop
+data: {"type":"message_stop"}
+
+"#,
+    ]
+    .concat();
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(
+            ResponseTemplate::new(/*status*/ 200)
+                .insert_header("content-type", "text/event-stream")
+                .insert_header("request-id", "req-anthropic-native")
+                .set_body_string(stream_body),
+        )
+        .expect(/*requests*/ 1)
+        .mount(&server)
+        .await;
+
+    let provider = ModelProviderInfo {
+        name: "Anthropic".to_string(),
+        base_url: Some(format!("{}/v1", server.uri())),
+        wire_api: WireApi::Anthropic,
+        http_headers: Some(HashMap::from([
+            ("anthropic-version".to_string(), "2023-06-01".to_string()),
+            ("x-api-key".to_string(), "test-anthropic-key".to_string()),
+        ])),
+        request_max_retries: Some(0),
+        stream_idle_timeout_ms: Some(5_000),
+        namespace_tools: false,
+        ..ModelProviderInfo::default()
+    };
+    let thread_id = ThreadId::new();
+    let client = ModelClient::new(
+        /*auth_manager*/ None,
+        AgentIdentityAuthPolicy::JwtOnly,
+        provider,
+        SessionSource::Cli,
+        "test_originator".to_string(),
+        /*model_verbosity*/ None,
+        /*enable_request_compression*/ false,
+        /*include_timing_metrics*/ false,
+        /*beta_features_header*/ None,
+        /*item_ids_enabled*/ false,
+        /*concurrent_reasoning_summaries_enabled*/ false,
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+    );
+    let prompt = Prompt {
+        input: vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "reply natively".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }],
+        base_instructions: BaseInstructions {
+            text: "Follow the test contract.".to_string(),
+        },
+        ..Prompt::default()
+    };
+    let mut model_info = test_model_info();
+    model_info.slug = "claude-fable-5".to_string();
+    model_info.display_name = "claude-fable-5".to_string();
+    let responses_metadata = test_responses_metadata_for_client(
+        &client,
+        thread_id,
+        /*turn_id*/ None,
+        format!("{thread_id}:0"),
+        /*parent_thread_id*/ None,
+        TestXedocResponsesRequestKind::Turn,
+    );
+
+    let mut session = client.new_session();
+    let mut stream = session
+        .stream(
+            &prompt,
+            &model_info,
+            &test_session_telemetry(),
+            Some(ReasoningEffort::Medium),
+            xedoc_protocol::config_types::ReasoningSummary::Auto,
+            /*service_tier*/ None,
+            &responses_metadata,
+        )
+        .await?;
+    let mut observed = Vec::new();
+    while let Some(event) = stream.next().await {
+        match event? {
+            ResponseEvent::Created => observed.push(ObservedAnthropicEvent::Created),
+            ResponseEvent::OutputItemAdded(ResponseItem::Message { .. }) => {
+                observed.push(ObservedAnthropicEvent::MessageAdded);
+            }
+            ResponseEvent::OutputTextDelta(delta) => {
+                observed.push(ObservedAnthropicEvent::TextDelta(delta));
+            }
+            ResponseEvent::OutputItemDone(ResponseItem::Message { content, .. }) => {
+                let text = content
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        ContentItem::OutputText { text } => Some(text),
+                        _ => None,
+                    })
+                    .collect::<String>();
+                observed.push(ObservedAnthropicEvent::MessageDone(text));
+            }
+            ResponseEvent::Completed {
+                token_usage,
+                end_turn,
+                ..
+            } => observed.push(ObservedAnthropicEvent::Completed {
+                usage: token_usage,
+                end_turn,
+            }),
+            event => panic!("unexpected Anthropic response event: {event:?}"),
+        }
+    }
+
+    assert_eq!(
+        observed,
+        vec![
+            ObservedAnthropicEvent::Created,
+            ObservedAnthropicEvent::MessageAdded,
+            ObservedAnthropicEvent::TextDelta("native".to_string()),
+            ObservedAnthropicEvent::MessageDone("native".to_string()),
+            ObservedAnthropicEvent::Completed {
+                usage: Some(TokenUsage {
+                    input_tokens: 21,
+                    cached_input_tokens: 3,
+                    cache_write_input_tokens: 0,
+                    output_tokens: 4,
+                    reasoning_output_tokens: 0,
+                    total_tokens: 25,
+                }),
+                end_turn: None,
+            },
+        ]
+    );
+    let requests = server
+        .received_requests()
+        .await
+        .expect("server should record requests");
+    let request = requests.first().expect("request should be captured");
+    assert_eq!(
+        request
+            .headers
+            .get("x-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("test-anthropic-key")
+    );
+    assert_eq!(
+        request
+            .headers
+            .get("anthropic-version")
+            .and_then(|value| value.to_str().ok()),
+        Some("2023-06-01")
+    );
+    assert_eq!(
+        request
+            .headers
+            .get("anthropic-beta")
+            .and_then(|value| value.to_str().ok()),
+        Some("thinking-binding-controls-2026-08-01")
+    );
+    let body: serde_json::Value = serde_json::from_slice(&request.body)?;
+    assert_eq!(
+        body,
+        json!({
+            "model": "claude-fable-5",
+            "max_tokens": 65536,
+            "stream": true,
+            "system": [{"type": "text", "text": "Follow the test contract."}],
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "text", "text": "reply natively"}]
+            }],
+            "tool_choice": {"type": "auto", "disable_parallel_tool_use": true},
+            "thinking": {
+                "type": "adaptive",
+                "display": "summarized",
+                "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+            },
+            "output_config": {"effort": "medium"}
+        })
     );
 
     Ok(())
