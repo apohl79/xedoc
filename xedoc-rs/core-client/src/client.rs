@@ -1542,6 +1542,9 @@ impl ModelClientSession {
                 )
                 .await
             }
+            WireApi::Gemini => Err(XedocErr::InvalidRequest(
+                "native Gemini runtime is not connected".to_string(),
+            )),
             WireApi::Responses => {
                 if self.client.responses_websocket_enabled() {
                     let request_trace = current_span_w3c_trace_context();

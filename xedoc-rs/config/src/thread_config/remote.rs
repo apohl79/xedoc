@@ -159,6 +159,7 @@ fn model_provider_from_proto(
     let id = provider.id;
     let wire_api = match proto::WireApi::try_from(provider.wire_api) {
         Ok(proto::WireApi::Anthropic) => WireApi::Anthropic,
+        Ok(proto::WireApi::Gemini) => WireApi::Gemini,
         Ok(proto::WireApi::Responses) => WireApi::Responses,
         Ok(proto::WireApi::Unspecified) => {
             return Err(parse_error("remote thread config omitted wire_api"));
@@ -295,6 +296,7 @@ fn proto_string_map(values: HashMap<String, String>) -> proto::StringMap {
 fn proto_wire_api(wire_api: WireApi) -> proto::WireApi {
     match wire_api {
         WireApi::Anthropic => proto::WireApi::Anthropic,
+        WireApi::Gemini => proto::WireApi::Gemini,
         WireApi::Responses => proto::WireApi::Responses,
     }
 }
@@ -435,6 +437,20 @@ mod tests {
         let (id, actual) = model_provider_from_proto(proto).expect("model provider from proto");
 
         assert_eq!(id, "local");
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn gemini_model_provider_proto_roundtrips_through_domain_type() {
+        let expected = ModelProviderInfo {
+            wire_api: WireApi::Gemini,
+            namespace_tools: false,
+            ..expected_provider()
+        };
+        let proto = model_provider_to_proto("google", expected.clone());
+        let (id, actual) = model_provider_from_proto(proto).expect("model provider from proto");
+
+        assert_eq!(id, "google");
         assert_eq!(actual, expected);
     }
 

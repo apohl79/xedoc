@@ -110,6 +110,8 @@ pub fn auth_header_telemetry(auth: &dyn AuthProvider) -> AuthHeaderTelemetry {
         Some("authorization")
     } else if headers.contains_key("x-api-key") {
         Some("x-api-key")
+    } else if headers.contains_key("x-goog-api-key") {
+        Some("x-goog-api-key")
     } else {
         None
     };
