@@ -25,7 +25,10 @@ use xedoc_utils_absolute_path::AbsolutePathBufGuard;
 const REFERENCE_HOME_ENV: &str = "XEDOC_PROVIDER_REFERENCE_HOME";
 const REFERENCE_AUTH_DIR_ENV: &str = "XEDOC_PROVIDER_REFERENCE_AUTH_DIR";
 const PROVIDERS: [&str; 3] = ["anthropic", "google", "deepseek"];
-const RETIRED_REFERENCE_MODELS: [(&str, &str); 1] = [("google", "gemini-3-pro-preview")];
+const RETIRED_REFERENCE_MODELS: [(&str, &str); 2] = [
+    ("anthropic", "claude-melon-lp-eap"),
+    ("google", "gemini-3-pro-preview"),
+];
 const TEXT_MARKER: &str = "XEDOC_PROVIDER_E2E_OK";
 const TOOL_MARKER: &str = "XEDOC_PROVIDER_TOOL_OK";
 
