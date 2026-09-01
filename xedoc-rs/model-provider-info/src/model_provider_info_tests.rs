@@ -147,6 +147,27 @@ wire_api = "anthropic"
 }
 
 #[test]
+fn test_deserialize_gemini_wire_api() {
+    let provider_toml = r#"
+name = "Gemini proxy"
+base_url = "http://127.0.0.1:8317/v1beta"
+wire_api = "gemini"
+        "#;
+
+    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+
+    assert_eq!(
+        provider,
+        ModelProviderInfo {
+            name: "Gemini proxy".to_string(),
+            base_url: Some("http://127.0.0.1:8317/v1beta".to_string()),
+            wire_api: WireApi::Gemini,
+            ..ModelProviderInfo::default()
+        }
+    );
+}
+
+#[test]
 fn test_deserialize_websocket_connect_timeout() {
     let provider_toml = r#"
 name = "OpenAI"

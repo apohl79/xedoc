@@ -4422,6 +4422,13 @@
           "type": "string"
         },
         {
+          "description": "The GenerateContent API exposed by Google Gemini.",
+          "enum": [
+            "gemini"
+          ],
+          "type": "string"
+        },
+        {
           "description": "The Responses API exposed by OpenAI at `/v1/responses`.",
           "enum": [
             "responses"

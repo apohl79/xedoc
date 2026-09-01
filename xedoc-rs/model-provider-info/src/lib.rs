@@ -62,6 +62,8 @@ pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer
 pub enum WireApi {
     /// The Messages API exposed by Anthropic at `/v1/messages`.
     Anthropic,
+    /// The GenerateContent API exposed by Google Gemini.
+    Gemini,
     /// The Responses API exposed by OpenAI at `/v1/responses`.
     #[default]
     Responses,
@@ -71,6 +73,7 @@ impl fmt::Display for WireApi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
             Self::Responses => "responses",
         };
         f.write_str(value)
@@ -85,11 +88,12 @@ impl<'de> Deserialize<'de> for WireApi {
         let value = String::deserialize(deserializer)?;
         match value.as_str() {
             "anthropic" => Ok(Self::Anthropic),
+            "gemini" => Ok(Self::Gemini),
             "responses" => Ok(Self::Responses),
             "chat" => Err(serde::de::Error::custom(CHAT_WIRE_API_REMOVED_ERROR)),
             _ => Err(serde::de::Error::unknown_variant(
                 &value,
-                &["anthropic", "responses"],
+                &["anthropic", "gemini", "responses"],
             )),
         }
     }

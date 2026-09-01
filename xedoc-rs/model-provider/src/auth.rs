@@ -22,6 +22,7 @@ use xedoc_protocol::protocol::SessionSource;
 
 use crate::anthropic_api_key_auth_provider::AnthropicApiKeyAuthProvider;
 use crate::bearer_auth_provider::BearerAuthProvider;
+use crate::gemini_api_key_auth_provider::GeminiApiKeyAuthProvider;
 
 const BEDROCK_API_KEY_UNSUPPORTED_MESSAGE: &str =
     "Bedrock API key auth is only supported by the Amazon Bedrock model provider";
@@ -272,6 +273,7 @@ fn configured_auth_for_provider(
     if let Some(api_key) = provider.api_key()? {
         let auth: SharedAuthProvider = match provider.wire_api {
             WireApi::Anthropic => Arc::new(AnthropicApiKeyAuthProvider::new(api_key)),
+            WireApi::Gemini => Arc::new(GeminiApiKeyAuthProvider::new(api_key)),
             WireApi::Responses => Arc::new(BearerAuthProvider::new(api_key)),
         };
         return Ok(Some(auth));
@@ -478,6 +480,36 @@ mod tests {
                 xedoc_api::AuthHeaderTelemetry {
                     attached: true,
                     name: Some("x-api-key"),
+                },
+            )
+        );
+    }
+
+    #[test]
+    fn gemini_env_key_uses_x_goog_api_key_auth() {
+        let api_key = std::env::var("PATH").expect("PATH should be set for the test");
+        let provider = ModelProviderInfo {
+            env_key: Some("PATH".to_string()),
+            wire_api: WireApi::Gemini,
+            ..ModelProviderInfo::default()
+        };
+        let auth = resolve_provider_auth(/*auth*/ None, &provider).expect("auth should resolve");
+        let mut expected = HeaderMap::new();
+        expected.insert(
+            "x-goog-api-key",
+            HeaderValue::from_str(&api_key).expect("PATH should be a valid header value"),
+        );
+
+        assert_eq!(
+            (
+                auth.to_auth_headers(),
+                xedoc_api::auth_header_telemetry(auth.as_ref()),
+            ),
+            (
+                expected,
+                xedoc_api::AuthHeaderTelemetry {
+                    attached: true,
+                    name: Some("x-goog-api-key"),
                 },
             )
         );
