@@ -75,6 +75,8 @@ pub struct ModelProvider {
     pub requires_openai_auth: bool,
     #[prost(bool, tag = "17")]
     pub supports_websockets: bool,
+    #[prost(bool, optional, tag = "18")]
+    pub namespace_tools: ::core::option::Option<bool>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringMap {
@@ -100,6 +102,7 @@ pub struct ModelProviderAuthInfo {
 pub enum WireApi {
     Unspecified = 0,
     Responses = 1,
+    Anthropic = 2,
 }
 impl WireApi {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -110,6 +113,7 @@ impl WireApi {
         match self {
             Self::Unspecified => "WIRE_API_UNSPECIFIED",
             Self::Responses => "WIRE_API_RESPONSES",
+            Self::Anthropic => "WIRE_API_ANTHROPIC",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -117,6 +121,7 @@ impl WireApi {
         match value {
             "WIRE_API_UNSPECIFIED" => Some(Self::Unspecified),
             "WIRE_API_RESPONSES" => Some(Self::Responses),
+            "WIRE_API_ANTHROPIC" => Some(Self::Anthropic),
             _ => None,
         }
     }

@@ -158,6 +158,7 @@ fn model_provider_from_proto(
     }
     let id = provider.id;
     let wire_api = match proto::WireApi::try_from(provider.wire_api) {
+        Ok(proto::WireApi::Anthropic) => WireApi::Anthropic,
         Ok(proto::WireApi::Responses) => WireApi::Responses,
         Ok(proto::WireApi::Unspecified) => {
             return Err(parse_error("remote thread config omitted wire_api"));
@@ -190,7 +191,7 @@ fn model_provider_from_proto(
         websocket_connect_timeout_ms: provider.websocket_connect_timeout_ms,
         requires_openai_auth: provider.requires_openai_auth,
         supports_websockets: provider.supports_websockets,
-        namespace_tools: true,
+        namespace_tools: provider.namespace_tools.unwrap_or(true),
         model_prices: None,
     };
     Ok((id, info))
@@ -219,7 +220,7 @@ fn model_provider_to_proto(
         websocket_connect_timeout_ms,
         requires_openai_auth,
         supports_websockets,
-        namespace_tools: _,
+        namespace_tools,
         model_prices: _,
     } = provider;
 
@@ -241,6 +242,7 @@ fn model_provider_to_proto(
         websocket_connect_timeout_ms,
         requires_openai_auth,
         supports_websockets,
+        namespace_tools: Some(namespace_tools),
     }
 }
 
@@ -292,6 +294,7 @@ fn proto_string_map(values: HashMap<String, String>) -> proto::StringMap {
 #[cfg(test)]
 fn proto_wire_api(wire_api: WireApi) -> proto::WireApi {
     match wire_api {
+        WireApi::Anthropic => proto::WireApi::Anthropic,
         WireApi::Responses => proto::WireApi::Responses,
     }
 }
@@ -423,7 +426,11 @@ mod tests {
 
     #[test]
     fn model_provider_proto_roundtrips_through_domain_type() {
-        let expected = expected_provider();
+        let expected = ModelProviderInfo {
+            wire_api: WireApi::Anthropic,
+            namespace_tools: false,
+            ..expected_provider()
+        };
         let proto = model_provider_to_proto("local", expected.clone());
         let (id, actual) = model_provider_from_proto(proto).expect("model provider from proto");
 
@@ -477,6 +484,7 @@ mod tests {
                             websocket_connect_timeout_ms: Some(10_000),
                             requires_openai_auth: false,
                             supports_websockets: true,
+                            namespace_tools: None,
                         }],
                         features: HashMap::from([
                             ("plugins".to_string(), false),
