@@ -14,6 +14,7 @@ use xedoc_protocol::error::EnvVarError;
 use xedoc_protocol::error::Result;
 use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::openai_models::ModelsResponse;
+use xedoc_provider_anthropic::ANTHROPIC_OAUTH_TOKEN_ENDPOINT;
 use xedoc_provider_anthropic::AnthropicAccountPool;
 use xedoc_provider_anthropic::AnthropicOAuthAuthProvider;
 use xedoc_provider_anthropic::load_anthropic_oauth_credentials;
@@ -109,7 +110,9 @@ impl AnthropicModelProvider {
             .select()
             .map_err(|_| self.missing_credentials_error())?;
         Ok(Arc::new(AnthropicOAuthAuthProvider::new(
-            credential.credential.access_token,
+            credential,
+            Arc::clone(accounts),
+            ANTHROPIC_OAUTH_TOKEN_ENDPOINT.to_string(),
         )))
     }
 
