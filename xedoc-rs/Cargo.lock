@@ -14057,6 +14057,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "xedoc-provider-anthropic"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "xedoc-api",
+ "xedoc-protocol",
+]
+
+[[package]]
 name = "xedoc-provider-e2e"
 version = "1.0.0"
 dependencies = [
