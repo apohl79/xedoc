@@ -10,6 +10,8 @@ use xedoc_api::SharedAuthProvider;
 use xedoc_login::AuthManager;
 use xedoc_login::XedocAuth;
 use xedoc_model_provider_info::ModelProviderInfo;
+use xedoc_model_provider_info::WireApi;
+use xedoc_models_manager::manager::ModelsEndpointClient;
 use xedoc_models_manager::manager::OpenAiModelsManager;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_models_manager::manager::StaticModelsManager;
@@ -18,11 +20,14 @@ use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::openai_models::ModelsResponse;
 
 use crate::amazon_bedrock::AmazonBedrockModelProvider;
+use crate::anthropic::AnthropicModelProvider;
 use crate::auth::ProviderAuthScope;
 use crate::auth::ResolvedProviderAuth;
 use crate::auth::auth_manager_for_provider;
 use crate::auth::resolve_provider_auth;
 use crate::auth::resolve_provider_auth_for_scope;
+use crate::deepseek_models_endpoint::DeepSeekModelsEndpoint;
+use crate::gemini_models_endpoint::GeminiModelsEndpoint;
 use crate::models_endpoint::OpenAiModelsEndpoint;
 
 /// Optional provider-backed features that Xedoc may expose at runtime.
@@ -208,6 +213,8 @@ pub fn create_model_provider(
 ) -> SharedModelProvider {
     if provider_info.is_amazon_bedrock() {
         Arc::new(AmazonBedrockModelProvider::new(provider_info, auth_manager))
+    } else if provider_info.is_native_anthropic() {
+        Arc::new(AnthropicModelProvider::new(provider_info, auth_manager))
     } else {
         Arc::new(ConfiguredModelProvider::new(provider_info, auth_manager))
     }
@@ -221,6 +228,8 @@ pub fn create_model_provider_for_configured_id(
 ) -> SharedModelProvider {
     if provider_info.is_amazon_bedrock() {
         Arc::new(AmazonBedrockModelProvider::new(provider_info, auth_manager))
+    } else if provider_info.is_native_anthropic() {
+        Arc::new(AnthropicModelProvider::new(provider_info, auth_manager))
     } else {
         Arc::new(ConfiguredModelProvider::new(provider_info, auth_manager))
     }
@@ -228,13 +237,16 @@ pub fn create_model_provider_for_configured_id(
 
 /// Runtime model provider backed by configured `ModelProviderInfo`.
 #[derive(Clone, Debug)]
-struct ConfiguredModelProvider {
+pub(crate) struct ConfiguredModelProvider {
     info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
 }
 
 impl ConfiguredModelProvider {
-    fn new(provider_info: ModelProviderInfo, auth_manager: Option<Arc<AuthManager>>) -> Self {
+    pub(crate) fn new(
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
         let auth_manager = auth_manager_for_provider(auth_manager, &provider_info);
         Self {
             info: provider_info,
@@ -322,7 +334,7 @@ impl ModelProvider for ConfiguredModelProvider {
                 model_catalog,
             )),
             None => {
-                let endpoint = Arc::new(self.models_endpoint());
+                let endpoint = self.models_endpoint();
                 Arc::new(OpenAiModelsManager::new(
                     xedoc_home,
                     endpoint,
@@ -342,7 +354,7 @@ impl ModelProvider for ConfiguredModelProvider {
                 model_catalog,
             )),
             None => {
-                let endpoint = Arc::new(self.models_endpoint());
+                let endpoint = self.models_endpoint();
                 Arc::new(OpenAiModelsManager::new_without_cache(
                     endpoint,
                     self.auth_manager.clone(),
@@ -353,8 +365,23 @@ impl ModelProvider for ConfiguredModelProvider {
 }
 
 impl ConfiguredModelProvider {
-    fn models_endpoint(&self) -> OpenAiModelsEndpoint {
-        OpenAiModelsEndpoint::new(self.info.clone(), self.auth_manager.clone())
+    fn models_endpoint(&self) -> Arc<dyn ModelsEndpointClient> {
+        if self.info.is_native_deepseek() {
+            return Arc::new(DeepSeekModelsEndpoint::new(
+                self.info.clone(),
+                self.auth_manager.clone(),
+            ));
+        }
+        match self.info.wire_api {
+            WireApi::Gemini => Arc::new(GeminiModelsEndpoint::new(
+                self.info.clone(),
+                self.auth_manager.clone(),
+            )),
+            WireApi::Anthropic | WireApi::Responses => Arc::new(OpenAiModelsEndpoint::new(
+                self.info.clone(),
+                self.auth_manager.clone(),
+            )),
+        }
     }
 }
 

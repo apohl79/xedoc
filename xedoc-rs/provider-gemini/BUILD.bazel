@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "provider-gemini",
+    crate_name = "xedoc_provider_gemini",
+)

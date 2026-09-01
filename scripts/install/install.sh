@@ -13,14 +13,11 @@ XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
 NON_INTERACTIVE="${XEDOC_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
 ZSHRC_APP_SERVER_CHOICE_PATH="$XEDOC_HOME_DIR/app-server-daemon/zshrc-start"
-XEDOC_PROVIDERS_INSTALL_CHOICE_PATH="$XEDOC_HOME_DIR/codex-providers/install"
-XEDOC_PROVIDERS_INSTALL_URL="https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh"
 STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
 CHECK_ONLY=false
 tmp_dir=""
-xedoc_providers_action="skipped"
 app_server_was_running=false
 
 script_dir="$(CDPATH='' cd "$(dirname "$0")" && pwd)"
@@ -296,50 +293,6 @@ configure_zshrc_app_server() {
 
   append_zshrc_app_server_block
   zshrc_app_server_action="added"
-}
-
-xedoc_providers_is_installed() {
-  command -v codex-providers >/dev/null 2>&1 ||
-    [ -x "$HOME/bin/codex-providers" ] ||
-    [ -x "$HOME/.local/bin/codex-providers" ]
-}
-
-configure_xedoc_providers() {
-  if xedoc_providers_is_installed; then
-    xedoc_providers_action="already-installed"
-    return
-  fi
-
-  choice=""
-  if [ -f "$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH" ]; then
-    choice="$(sed -n '1p' "$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH" 2>/dev/null || true)"
-  fi
-  if [ "$choice" = "disabled" ]; then
-    xedoc_providers_action="disabled"
-    return
-  fi
-
-  if ! prompt_user_available; then
-    return
-  fi
-
-  if prompt_yes_no "Install optional codex-providers for Claude, DeepSeek, and Gemini support?"; then
-    require_command curl
-    require_command bash
-    step "Installing codex-providers"
-    if ! bash -o pipefail -c 'curl -fsSL "$1" | bash' codex-providers-installer "$XEDOC_PROVIDERS_INSTALL_URL"; then
-      die "codex-providers installation failed."
-    fi
-    if ! xedoc_providers_is_installed; then
-      die "codex-providers installer completed without installing the codex-providers command."
-    fi
-    xedoc_providers_action="installed"
-    return
-  fi
-
-  mkdir -p "$(dirname "$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH")"
-  printf '%s\n' "disabled" >"$XEDOC_PROVIDERS_INSTALL_CHOICE_PATH"
-  xedoc_providers_action="disabled"
 }
 
 github_token() {
@@ -798,17 +751,6 @@ print_zshrc_app_server_instructions() {
   esac
 }
 
-print_xedoc_providers_instructions() {
-  case "$xedoc_providers_action" in
-    installed)
-      step "codex-providers installed. Run: codex-providers setup"
-      ;;
-    disabled)
-      step "codex-providers installation remains disabled by your saved installer choice"
-      ;;
-  esac
-}
-
 parse_args "$@"
 validate_repo "$RELEASE_REPO"
 
@@ -875,7 +817,6 @@ update_visible_command
 "$BIN_PATH" --version >/dev/null
 restart_running_app_server
 configure_zshrc_app_server
-configure_xedoc_providers
 
 # Deploy statusline script
 STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"
@@ -901,5 +842,4 @@ fi
 
 print_path_note
 print_zshrc_app_server_instructions
-print_xedoc_providers_instructions
 printf 'Xedoc CLI %s installed successfully.\n' "$release_version"

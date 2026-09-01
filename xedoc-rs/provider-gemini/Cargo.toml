@@ -1,0 +1,30 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-provider-gemini"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "xedoc_provider_gemini"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+eventsource-stream = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+urlencoding = { workspace = true }
+xedoc-api = { workspace = true }
+xedoc-client = { workspace = true }
+xedoc-protocol = { workspace = true }
+
+[dev-dependencies]
+bytes = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

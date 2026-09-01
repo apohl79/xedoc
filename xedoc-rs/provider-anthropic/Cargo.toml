@@ -1,0 +1,39 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-provider-anthropic"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "xedoc_provider_anthropic"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+chrono = { workspace = true }
+eventsource-stream = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tiny_http = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+url = { workspace = true }
+webbrowser = { workspace = true }
+xedoc-api = { workspace = true }
+xedoc-client = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-path = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+wiremock = { workspace = true }
+xedoc-http-client = { workspace = true }

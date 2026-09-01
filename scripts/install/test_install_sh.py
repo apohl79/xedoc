@@ -319,181 +319,6 @@ class InstallShTest(unittest.TestCase):
                 },
             )
 
-    def test_accepting_xedoc_providers_prompt_runs_official_installer(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            archive_path = root / ASSET
-            write_package_archive(archive_path)
-            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-            bin_dir = root / "fake-bin"
-            bin_dir.mkdir()
-            write_fake_curl(bin_dir / "curl")
-            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
-            app_server_choice_path.parent.mkdir(parents=True)
-            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_installer = root / "codex-providers-install.sh"
-            provider_marker = root / "provider-installed"
-            write_fake_provider_installer(provider_installer)
-            request_log = root / "requests.log"
-
-            env = os.environ.copy()
-            env.update(
-                {
-                    "XEDOC_RELEASE_REPO": "apohl79/codex",
-                    "XEDOC_RELEASE_TAG": TAG,
-                    "XEDOC_RELEASE_TARGET": TARGET,
-                    "XEDOC_HOME": str(root / "xedoc-home"),
-                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
-                    "XEDOC_TEST_ARCHIVE": str(archive_path),
-                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "XEDOC_TEST_PROVIDER_INSTALLER": str(provider_installer),
-                    "XEDOC_TEST_PROVIDER_INSTALL_MARKER": str(provider_marker),
-                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
-                    "HOME": str(root / "home"),
-                    "PATH": f"{bin_dir}:/usr/bin:/bin",
-                    "SHELL": "/bin/sh",
-                }
-            )
-
-            result = run_interactive_installer(env, "y\n")
-
-            self.assertEqual(
-                {
-                    "returncode": result.returncode,
-                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
-                    "provider_marker": provider_marker.read_text(encoding="utf-8"),
-                    "provider_runner": (
-                        root / "home/.local/bin/codex-providers"
-                    ).is_file(),
-                    "provider_choice_exists": (
-                        root / "xedoc-home/codex-providers/install"
-                    ).exists(),
-                },
-                {
-                    "returncode": 0,
-                    "requests": [
-                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
-                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
-                        "https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh",
-                    ],
-                    "provider_marker": "installed\n",
-                    "provider_runner": True,
-                    "provider_choice_exists": False,
-                },
-            )
-
-    def test_rejected_xedoc_providers_prompt_is_not_asked_again(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            archive_path = root / ASSET
-            write_package_archive(archive_path)
-            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-            bin_dir = root / "fake-bin"
-            bin_dir.mkdir()
-            write_fake_curl(bin_dir / "curl")
-            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
-            app_server_choice_path.parent.mkdir(parents=True)
-            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            request_log = root / "requests.log"
-
-            env = os.environ.copy()
-            env.update(
-                {
-                    "XEDOC_RELEASE_REPO": "apohl79/codex",
-                    "XEDOC_RELEASE_TAG": TAG,
-                    "XEDOC_RELEASE_TARGET": TARGET,
-                    "XEDOC_HOME": str(root / "xedoc-home"),
-                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
-                    "XEDOC_TEST_ARCHIVE": str(archive_path),
-                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
-                    "HOME": str(root / "home"),
-                    "PATH": f"{bin_dir}:/usr/bin:/bin",
-                    "SHELL": "/bin/sh",
-                }
-            )
-
-            first_result = run_interactive_installer(env, "n\n")
-            second_result = run_interactive_installer(env, "")
-
-            self.assertEqual(
-                {
-                    "returncodes": [first_result.returncode, second_result.returncode],
-                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
-                    "provider_choice": (
-                        root / "xedoc-home/codex-providers/install"
-                    ).read_text(encoding="utf-8"),
-                    "provider_prompts": [
-                        "Install optional codex-providers" in first_result.stdout,
-                        "Install optional codex-providers" in second_result.stdout,
-                    ],
-                },
-                {
-                    "returncodes": [0, 0],
-                    "requests": [
-                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
-                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
-                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
-                    ],
-                    "provider_choice": "disabled\n",
-                    "provider_prompts": [True, False],
-                },
-            )
-
-    def test_existing_xedoc_providers_runner_is_not_prompted(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            archive_path = root / ASSET
-            write_package_archive(archive_path)
-            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-            bin_dir = root / "fake-bin"
-            bin_dir.mkdir()
-            write_fake_curl(bin_dir / "curl")
-            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
-            app_server_choice_path.parent.mkdir(parents=True)
-            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_runner = root / "home/.local/bin/codex-providers"
-            provider_runner.parent.mkdir(parents=True)
-            provider_runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-            provider_runner.chmod(0o755)
-            request_log = root / "requests.log"
-
-            env = os.environ.copy()
-            env.update(
-                {
-                    "XEDOC_RELEASE_REPO": "apohl79/codex",
-                    "XEDOC_RELEASE_TAG": TAG,
-                    "XEDOC_RELEASE_TARGET": TARGET,
-                    "XEDOC_HOME": str(root / "xedoc-home"),
-                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
-                    "XEDOC_TEST_ARCHIVE": str(archive_path),
-                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
-                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
-                    "HOME": str(root / "home"),
-                    "PATH": f"{bin_dir}:/usr/bin:/bin",
-                    "SHELL": "/bin/sh",
-                }
-            )
-
-            result = run_interactive_installer(env, "")
-
-            self.assertEqual(
-                {
-                    "returncode": result.returncode,
-                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
-                    "provider_prompt_seen": "Install optional codex-providers"
-                    in result.stdout,
-                },
-                {
-                    "returncode": 0,
-                    "requests": [
-                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
-                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
-                    ],
-                    "provider_prompt_seen": False,
-                },
-            )
-
     def test_running_app_server_can_be_restarted_after_upgrade(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -512,9 +337,6 @@ class InstallShTest(unittest.TestCase):
             app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_choice_path = root / "xedoc-home/codex-providers/install"
-            provider_choice_path.parent.mkdir(parents=True)
-            provider_choice_path.write_text("disabled\n", encoding="utf-8")
             restart_log = root / "app-server-restart.log"
 
             env = os.environ.copy()
@@ -571,9 +393,6 @@ class InstallShTest(unittest.TestCase):
             app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_choice_path = root / "xedoc-home/codex-providers/install"
-            provider_choice_path.parent.mkdir(parents=True)
-            provider_choice_path.write_text("disabled\n", encoding="utf-8")
             restart_log = root / "app-server-restart.log"
 
             env = os.environ.copy()
@@ -618,9 +437,6 @@ class InstallShTest(unittest.TestCase):
             app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
             app_server_choice_path.parent.mkdir(parents=True)
             app_server_choice_path.write_text("disabled\n", encoding="utf-8")
-            provider_choice_path = root / "xedoc-home/codex-providers/install"
-            provider_choice_path.parent.mkdir(parents=True)
-            provider_choice_path.write_text("disabled\n", encoding="utf-8")
             restart_log = root / "app-server-restart.log"
 
             env = os.environ.copy()
@@ -818,9 +634,6 @@ def write_fake_curl(path: Path) -> None:
               https://github.com/*)
                 cp "$XEDOC_TEST_ARCHIVE" "$output"
                 ;;
-              https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh)
-                cat "$XEDOC_TEST_PROVIDER_INSTALLER"
-                ;;
               https://raw.githubusercontent.com/*)
                 printf '#!/bin/sh\\n' > "$output"
                 ;;
@@ -833,22 +646,6 @@ def write_fake_curl(path: Path) -> None:
         encoding="utf-8",
     )
     path.chmod(0o755)
-
-
-def write_fake_provider_installer(path: Path) -> None:
-    path.write_text(
-        textwrap.dedent(
-            """\
-            #!/usr/bin/env bash
-            set -euo pipefail
-            mkdir -p "$HOME/.local/bin"
-            printf '#!/usr/bin/env bash\\nexit 0\\n' > "$HOME/.local/bin/codex-providers"
-            chmod +x "$HOME/.local/bin/codex-providers"
-            printf 'installed\\n' > "$XEDOC_TEST_PROVIDER_INSTALL_MARKER"
-            """
-        ),
-        encoding="utf-8",
-    )
 
 
 def release_metadata(archive_digest: str) -> str:

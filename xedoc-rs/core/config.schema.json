@@ -1529,7 +1529,7 @@
           "description": "AWS SigV4 auth configuration for this provider."
         },
         "base_url": {
-          "description": "Base URL for the provider's OpenAI-compatible API.",
+          "description": "Base URL for the provider API.",
           "type": "string"
         },
         "env_http_headers": {
@@ -4414,6 +4414,20 @@
     "WireApi": {
       "description": "Wire protocol that the provider speaks.",
       "oneOf": [
+        {
+          "description": "The Messages API exposed by Anthropic at `/v1/messages`.",
+          "enum": [
+            "anthropic"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The GenerateContent API exposed by Google Gemini.",
+          "enum": [
+            "gemini"
+          ],
+          "type": "string"
+        },
         {
           "description": "The Responses API exposed by OpenAI at `/v1/responses`.",
           "enum": [

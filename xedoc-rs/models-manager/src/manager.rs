@@ -36,6 +36,11 @@ pub trait ModelsEndpointClient: fmt::Debug + Send + Sync {
     /// Returns whether this provider can authenticate command-scoped requests.
     fn has_command_auth(&self) -> bool;
 
+    /// Returns whether this endpoint's remote catalog fully replaces bundled models.
+    fn has_authoritative_remote_catalog(&self) -> bool {
+        false
+    }
+
     /// Returns whether the currently resolved auth can use Xedoc backend-only models.
     fn uses_xedoc_backend(&self) -> ModelsEndpointFuture<'_, bool>;
 
@@ -637,7 +642,9 @@ impl OpenAiModelsManager {
     }
 
     async fn should_refresh_models(&self) -> bool {
-        self.endpoint_client.uses_xedoc_backend().await || self.endpoint_client.has_command_auth()
+        self.endpoint_client.has_authoritative_remote_catalog()
+            || self.endpoint_client.uses_xedoc_backend().await
+            || self.endpoint_client.has_command_auth()
     }
 
     async fn get_etag(&self) -> Option<String> {
@@ -646,6 +653,11 @@ impl OpenAiModelsManager {
 
     /// Replace the cached remote models and rebuild the derived presets list.
     async fn apply_remote_models(&self, models: Vec<ModelInfo>) {
+        if self.endpoint_client.has_authoritative_remote_catalog() {
+            *self.remote_models.write().await = models;
+            return;
+        }
+
         // Use a visible remote catalog as the source of truth for ChatGPT and
         // command-authenticated providers.
         let should_use_remote_models_only = !models.is_empty()

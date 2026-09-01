@@ -77,6 +77,7 @@ fn assert_models_contain(actual: &[ModelInfo], expected: &[ModelInfo]) {
 #[derive(Debug)]
 struct TestModelsEndpoint {
     has_command_auth: bool,
+    has_authoritative_remote_catalog: bool,
     uses_xedoc_backend: bool,
     responses: Mutex<VecDeque<Vec<ModelInfo>>>,
     fetch_count: AtomicUsize,
@@ -87,6 +88,7 @@ impl TestModelsEndpoint {
     fn new(responses: Vec<Vec<ModelInfo>>) -> Arc<Self> {
         Arc::new(Self {
             has_command_auth: false,
+            has_authoritative_remote_catalog: false,
             uses_xedoc_backend: true,
             responses: Mutex::new(responses.into()),
             fetch_count: AtomicUsize::new(0),
@@ -97,6 +99,18 @@ impl TestModelsEndpoint {
     fn without_refresh(responses: Vec<Vec<ModelInfo>>) -> Arc<Self> {
         Arc::new(Self {
             has_command_auth: false,
+            has_authoritative_remote_catalog: false,
+            uses_xedoc_backend: false,
+            responses: Mutex::new(responses.into()),
+            fetch_count: AtomicUsize::new(0),
+            observed_proxy_policy: Mutex::new(None),
+        })
+    }
+
+    fn authoritative(responses: Vec<Vec<ModelInfo>>) -> Arc<Self> {
+        Arc::new(Self {
+            has_command_auth: false,
+            has_authoritative_remote_catalog: true,
             uses_xedoc_backend: false,
             responses: Mutex::new(responses.into()),
             fetch_count: AtomicUsize::new(0),
@@ -162,6 +176,10 @@ impl ExternalAuth for TestUnresolvedExternalApiKeyAuth {
 impl ModelsEndpointClient for TestModelsEndpoint {
     fn has_command_auth(&self) -> bool {
         self.has_command_auth
+    }
+
+    fn has_authoritative_remote_catalog(&self) -> bool {
+        self.has_authoritative_remote_catalog
     }
 
     fn uses_xedoc_backend(&self) -> ModelsEndpointFuture<'_, bool> {
@@ -788,6 +806,7 @@ async fn refresh_available_models_uses_remote_only_catalog_for_command_auth() {
     let xedoc_home = tempdir().expect("temp dir");
     let endpoint = Arc::new(TestModelsEndpoint {
         has_command_auth: true,
+        has_authoritative_remote_catalog: false,
         uses_xedoc_backend: false,
         responses: Mutex::new(vec![remote_models.clone()].into()),
         fetch_count: AtomicUsize::new(0),
@@ -1014,6 +1033,49 @@ async fn refresh_available_models_skips_network_without_chatgpt_auth() {
         0,
         "endpoint that cannot refresh should avoid model fetches"
     );
+}
+
+#[tokio::test]
+async fn refresh_available_models_replaces_bundled_models_for_authoritative_endpoint() {
+    let remote_models = vec![remote_model(
+        "native-only",
+        "Native Only",
+        /*priority*/ 0,
+    )];
+    let xedoc_home = tempdir().expect("temp dir");
+    let endpoint = TestModelsEndpoint::authoritative(vec![remote_models.clone()]);
+    let manager = openai_manager_for_tests_with_auth(
+        xedoc_home.path().to_path_buf(),
+        endpoint.clone(),
+        /*auth_manager*/ None,
+    );
+
+    manager
+        .refresh_available_models(RefreshStrategy::Online, &DEFAULT_HTTP_CLIENT_FACTORY)
+        .await
+        .expect("authoritative refresh should succeed");
+    let actual = (manager.get_remote_models().await, endpoint.fetch_count());
+
+    assert_eq!(actual, (remote_models, 1));
+}
+
+#[tokio::test]
+async fn refresh_available_models_keeps_empty_authoritative_catalog_empty() {
+    let xedoc_home = tempdir().expect("temp dir");
+    let endpoint = TestModelsEndpoint::authoritative(vec![Vec::new()]);
+    let manager = openai_manager_for_tests_with_auth(
+        xedoc_home.path().to_path_buf(),
+        endpoint.clone(),
+        /*auth_manager*/ None,
+    );
+
+    manager
+        .refresh_available_models(RefreshStrategy::Online, &DEFAULT_HTTP_CLIENT_FACTORY)
+        .await
+        .expect("authoritative refresh should succeed");
+    let actual = (manager.get_remote_models().await, endpoint.fetch_count());
+
+    assert_eq!(actual, (Vec::new(), 1));
 }
 
 #[derive(Debug)]
