@@ -14110,6 +14110,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "xedoc-provider-gemini"
+version = "1.0.0"
+dependencies = [
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "xedoc-api",
+ "xedoc-protocol",
+]
+
+[[package]]
 name = "xedoc-response-debug-context"
 version = "1.0.0"
 dependencies = [
