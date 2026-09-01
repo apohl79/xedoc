@@ -14113,10 +14113,17 @@ dependencies = [
 name = "xedoc-provider-gemini"
 version = "1.0.0"
 dependencies = [
+ "bytes",
+ "eventsource-stream",
+ "futures",
+ "http 1.4.0",
  "pretty_assertions",
  "serde",
  "serde_json",
+ "tokio",
+ "urlencoding",
  "xedoc-api",
+ "xedoc-client",
  "xedoc-protocol",
 ]
 
