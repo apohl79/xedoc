@@ -3,7 +3,7 @@
 use super::*;
 use crate::city_lights::CityLightsStylize;
 
-pub const SESSION_HEADER_MAX_INNER_WIDTH: usize = 56; // Just an eyeballed value
+pub const SESSION_HEADER_MAX_INNER_WIDTH: usize = 42;
 
 pub fn card_inner_width(width: u16, max_inner_width: usize) -> Option<usize> {
     if width < 4 {
@@ -323,6 +323,16 @@ impl SessionHeaderHistoryCell {
             .as_ref()
             .map(ReasoningEffortConfig::as_str)
     }
+
+    fn session_header_top_border(content_width: usize, version: &str) -> Line<'static> {
+        let title = "─ XEDOC ";
+        let version = format!(" {version} ─");
+        let separator_width = content_width.saturating_add(2).saturating_sub(
+            UnicodeWidthStr::width(title) + UnicodeWidthStr::width(version.as_str()),
+        );
+
+        vec![format!("╭{title}{}{version}╮", "─".repeat(separator_width)).dim()].into()
+    }
 }
 
 impl HistoryCell for SessionHeaderHistoryCell {
@@ -331,93 +341,67 @@ impl HistoryCell for SessionHeaderHistoryCell {
             return Vec::new();
         };
 
-        let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
-
-        // Title line rendered inside the box: "x_ E47 Xedoc (vX)"
-        let title_spans: Vec<Span<'static>> = vec![
-            Span::from("x_ ").dim(),
-            Span::from("E47 Xedoc").bold(),
-            Span::from(" ").dim(),
-            Span::from(format!("(v{})", self.version)).dim(),
+        let mut model_spans = vec![
+            Span::from(" "),
+            Span::styled(self.model.clone(), self.model_style),
         ];
-
-        const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
-        const CHANGE_MODEL_HINT_EXPLANATION: &str = " to change";
-        const DIR_LABEL: &str = "directory:";
-        const PERMISSIONS_LABEL: &str = "permissions:";
-        let label_width = if self.yolo_mode {
-            DIR_LABEL.len().max(PERMISSIONS_LABEL.len())
-        } else {
-            DIR_LABEL.len()
-        };
-
-        let model_label = format!(
-            "{model_label:<label_width$}",
-            model_label = "model:",
-            label_width = label_width
-        );
-        let reasoning_label = self.reasoning_label();
-        let model_spans: Vec<Span<'static>> = {
-            let mut spans = vec![
-                Span::from(format!("{model_label} ")).dim(),
-                Span::styled(self.model.clone(), self.model_style),
-            ];
-            if let Some(reasoning) = reasoning_label {
-                spans.push(Span::from(" "));
-                spans.push(Span::from(reasoning.to_owned()));
-            }
-            if self.show_fast_status {
-                spans.push("   ".into());
-                spans.push(Span::styled("fast", self.model_style.cl_magenta()));
-            }
-            spans.push("   ".dim());
-            spans.push(CHANGE_MODEL_HINT_COMMAND.cl_cyan());
-            spans.push(CHANGE_MODEL_HINT_EXPLANATION.dim());
-            spans
-        };
-
-        let dir_label = format!("{DIR_LABEL:<label_width$}");
-        let dir_prefix = format!("{dir_label} ");
-        let dir_prefix_width = UnicodeWidthStr::width(dir_prefix.as_str());
-        let dir_max_width = inner_width.saturating_sub(dir_prefix_width);
-        let dir = self.format_directory(Some(dir_max_width));
-        let dir_spans = vec![Span::from(dir_prefix).dim(), Span::from(dir)];
-
-        let mut lines = vec![
-            make_row(title_spans),
-            make_row(Vec::new()),
-            make_row(model_spans),
-            make_row(dir_spans),
-        ];
-
-        if self.yolo_mode {
-            let permissions_label = format!("{PERMISSIONS_LABEL:<label_width$}");
-            lines.push(make_row(vec![
-                Span::from(format!("{permissions_label} ")).dim(),
-                "YOLO mode".cl_magenta().bold(),
-            ]));
+        if let Some(reasoning) = self.reasoning_label() {
+            model_spans.push(" · ".dim());
+            model_spans.push(Span::from(reasoning.to_owned()));
+        }
+        if self.show_fast_status {
+            model_spans.push(" · ".dim());
+            model_spans.push(Span::styled("fast", self.model_style.cl_magenta()));
         }
 
-        with_border(lines)
+        let content_width = inner_width.max(
+            model_spans
+                .iter()
+                .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+                .sum(),
+        );
+        let yolo_width = self
+            .yolo_mode
+            .then_some(UnicodeWidthStr::width("YOLO"))
+            .unwrap_or_default();
+        let directory_gap_width = self.yolo_mode.then_some(1).unwrap_or_default();
+        let directory_width = content_width
+            .saturating_sub(1)
+            .saturating_sub(directory_gap_width)
+            .saturating_sub(yolo_width);
+        let directory = self.format_directory(Some(directory_width));
+        let directory_padding = content_width
+            .saturating_sub(1)
+            .saturating_sub(UnicodeWidthStr::width(directory.as_str()))
+            .saturating_sub(yolo_width);
+        let mut directory_spans = vec![Span::from(" "), Span::from(directory)];
+        if self.yolo_mode {
+            directory_spans.push(Span::from(" ".repeat(directory_padding)));
+            directory_spans.push("YOLO".cl_magenta().bold());
+        }
+
+        let mut lines = with_border_with_inner_width(
+            vec![Line::from(model_spans), Line::from(directory_spans)],
+            content_width,
+        );
+        lines[0] = Self::session_header_top_border(content_width, self.version);
+        lines
     }
 
     fn raw_lines(&self) -> Vec<Line<'static>> {
         let mut lines = vec![
-            Line::from(format!("E47 Xedoc (v{})", self.version)),
+            Line::from(format!("XEDOC {}", self.version)),
             Line::from(format!(
-                "model: {}{}",
+                "{}{}",
                 self.model,
                 self.reasoning_label()
-                    .map(|reasoning| format!(" {reasoning}"))
+                    .map(|reasoning| format!(" · {reasoning}"))
                     .unwrap_or_default()
             )),
-            Line::from(format!(
-                "directory: {}",
-                self.format_directory(/*max_width*/ None)
-            )),
+            Line::from(self.format_directory(/*max_width*/ None)),
         ];
         if self.yolo_mode {
-            lines.push(Line::from("permissions: YOLO mode"));
+            lines.push(Line::from("YOLO"));
         }
         lines
     }
