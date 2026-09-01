@@ -58,8 +58,12 @@ fn transport() -> RouteAwareAuthHttpTransport {
 }
 
 fn unauthorized() -> TransportError {
+    http_error(http::StatusCode::UNAUTHORIZED)
+}
+
+fn http_error(status: http::StatusCode) -> TransportError {
     TransportError::Http {
-        status: http::StatusCode::UNAUTHORIZED,
+        status,
         url: None,
         headers: None,
         body: None,
@@ -109,6 +113,83 @@ fn debug_output_redacts_access_token() {
 
     assert!(!actual.contains("private-access-token"));
     assert!(actual.contains("<redacted>"));
+}
+
+#[tokio::test]
+async fn retryable_account_failures_rotate_to_another_account() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    for error in [
+        http_error(http::StatusCode::UNAUTHORIZED),
+        http_error(http::StatusCode::FORBIDDEN),
+        http_error(http::StatusCode::TOO_MANY_REQUESTS),
+        http_error(http::StatusCode::INTERNAL_SERVER_ERROR),
+        TransportError::Timeout,
+        TransportError::Network("connection closed".to_string()),
+    ] {
+        let first = account(
+            &directory.path().join("anthropic-first.json"),
+            "first@example.com",
+            "first-access",
+        );
+        let second = account(
+            &directory.path().join("anthropic-second.json"),
+            "second@example.com",
+            "second-access",
+        );
+        let accounts = Arc::new(
+            AnthropicAccountPool::new(vec![first.clone(), second.clone()]).expect("account pool"),
+        );
+        let auth = AnthropicOAuthAuthProvider::new(
+            first,
+            Arc::clone(&accounts),
+            ANTHROPIC_OAUTH_TOKEN_ENDPOINT.to_string(),
+        );
+
+        let action = auth
+            .recover_from_error(&error, &transport(), AuthRefreshPolicy::AlreadyAttempted)
+            .await
+            .expect("recover account");
+
+        assert_eq!(
+            (action, accounts.select().expect("next account")),
+            (AuthRecoveryAction::RetryWithNextCredential, second)
+        );
+    }
+}
+
+#[tokio::test]
+async fn non_retryable_client_failure_propagates_without_rotation() {
+    let first = account(
+        Path::new("anthropic-first.json"),
+        "first@example.com",
+        "first-access",
+    );
+    let second = account(
+        Path::new("anthropic-second.json"),
+        "second@example.com",
+        "second-access",
+    );
+    let accounts =
+        Arc::new(AnthropicAccountPool::new(vec![first.clone(), second]).expect("account pool"));
+    let auth = AnthropicOAuthAuthProvider::new(
+        first.clone(),
+        Arc::clone(&accounts),
+        ANTHROPIC_OAUTH_TOKEN_ENDPOINT.to_string(),
+    );
+
+    let action = auth
+        .recover_from_error(
+            &http_error(http::StatusCode::BAD_REQUEST),
+            &transport(),
+            AuthRefreshPolicy::Allowed,
+        )
+        .await
+        .expect("recover account");
+
+    assert_eq!(
+        (action, accounts.select().expect("same account")),
+        (AuthRecoveryAction::Propagate, first)
+    );
 }
 
 #[tokio::test]
