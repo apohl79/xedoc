@@ -1,8 +1,10 @@
+mod client;
 mod history;
 mod request;
 mod stream;
 mod types;
 
+pub use client::AnthropicClient;
 pub use request::translate_request;
 pub use stream::AnthropicStreamTranslator;
 pub use types::AnthropicBlockBinding;

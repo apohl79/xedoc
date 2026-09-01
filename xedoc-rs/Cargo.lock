@@ -12694,6 +12694,7 @@ dependencies = [
  "xedoc-model-provider-info",
  "xedoc-otel",
  "xedoc-protocol",
+ "xedoc-provider-anthropic",
  "xedoc-response-debug-context",
  "xedoc-tools",
  "xedoc-utils-output-truncation",
@@ -14061,10 +14062,15 @@ name = "xedoc-provider-anthropic"
 version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
+ "eventsource-stream",
+ "futures",
+ "http 1.4.0",
  "pretty_assertions",
  "serde",
  "serde_json",
+ "tokio",
  "xedoc-api",
+ "xedoc-client",
  "xedoc-protocol",
 ]
 

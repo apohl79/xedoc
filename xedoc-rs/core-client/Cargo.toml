@@ -20,6 +20,7 @@ xedoc-login = { workspace = true }
 xedoc-model-provider = { workspace = true }
 xedoc-model-provider-info = { workspace = true }
 xedoc-otel = { workspace = true }
+xedoc-provider-anthropic = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-response-debug-context = { workspace = true }
 xedoc-tools = { workspace = true }
