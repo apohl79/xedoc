@@ -13842,6 +13842,7 @@ dependencies = [
  "http 1.4.0",
  "pretty_assertions",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "wiremock",
@@ -13854,7 +13855,9 @@ dependencies = [
  "xedoc-models-manager",
  "xedoc-otel",
  "xedoc-protocol",
+ "xedoc-provider-anthropic",
  "xedoc-response-debug-context",
+ "xedoc-utils-home-dir",
 ]
 
 [[package]]

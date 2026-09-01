@@ -23,6 +23,7 @@ use xedoc_protocol::config_types::ModelProviderAuthInfo;
 use xedoc_utils_absolute_path::AbsolutePathBufGuard;
 
 const REFERENCE_HOME_ENV: &str = "XEDOC_PROVIDER_REFERENCE_HOME";
+const REFERENCE_AUTH_DIR_ENV: &str = "XEDOC_PROVIDER_REFERENCE_AUTH_DIR";
 const PROVIDERS: [&str; 3] = ["anthropic", "google", "deepseek"];
 const RETIRED_REFERENCE_MODELS: [(&str, &str); 1] = [("google", "gemini-3-pro-preview")];
 const TEXT_MARKER: &str = "XEDOC_PROVIDER_E2E_OK";
@@ -38,6 +39,7 @@ enum Flow {
 enum WireContract {
     Responses,
     Anthropic,
+    AnthropicDirect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,10 +100,17 @@ struct ReferenceProviderConfig {
     query_params: HashMap<String, String>,
 }
 
+#[derive(Deserialize)]
+struct StoredReferenceCredential {
+    access_token: String,
+    account_uuid: String,
+}
+
 struct ProviderFixture {
     provider: String,
     wire_contract: WireContract,
     reference: ReferenceProviderConfig,
+    native_api_key: Option<String>,
     home: TempDir,
     cwd: TempDir,
 }
@@ -132,6 +141,16 @@ async fn proxy_reference_and_native_anthropic_match_provider_contracts() -> Resu
         )
         .await
         .context("run Anthropic native-wire cases")?,
+    );
+    actual.extend(
+        run_provider_cases(
+            &source_config,
+            &source_home,
+            "anthropic",
+            WireContract::AnthropicDirect,
+        )
+        .await
+        .context("run direct native Anthropic cases")?,
     );
     let expected = actual.iter().map(CaseOutcome::expected).collect::<Vec<_>>();
 
@@ -185,6 +204,9 @@ impl ProviderFixture {
         let cwd = tempfile::tempdir().context("create isolated provider workspace")?;
         let reference = reference_provider_config(source_config, source_home, provider)?;
         let config = isolated_provider_config(source_config, provider, wire_contract)?;
+        let native_api_key = (wire_contract == WireContract::AnthropicDirect)
+            .then(load_reference_anthropic_api_key)
+            .transpose()?;
         let path = home.path().join("config.toml");
         fs::write(&path, toml::to_string(&config)?)
             .with_context(|| format!("write {}", path.display()))?;
@@ -192,6 +214,7 @@ impl ProviderFixture {
             provider: provider.to_string(),
             wire_contract,
             reference,
+            native_api_key,
             home,
             cwd,
         })
@@ -264,6 +287,9 @@ impl ProviderFixture {
             .current_dir(self.cwd.path())
             .env("XEDOC_HOME", self.home.path())
             .env("XEDOC_SQLITE_HOME", self.home.path());
+        if let Some(api_key) = self.native_api_key.as_ref() {
+            command.env("ANTHROPIC_API_KEY", api_key);
+        }
         Ok(command)
     }
 }
@@ -313,7 +339,7 @@ fn exec_args(model: &str) -> [&str; 11] {
         "--ignore-rules",
         "--skip-git-repo-check",
         "--sandbox",
-        "workspace-write",
+        "danger-full-access",
         "-m",
         model,
         "-c",
@@ -327,6 +353,9 @@ fn isolated_provider_config(
     provider: &str,
     wire_contract: WireContract,
 ) -> Result<TomlValue> {
+    if wire_contract == WireContract::AnthropicDirect {
+        return Ok(direct_anthropic_config(provider));
+    }
     let mut provider_config = configured_provider(source, provider)?.clone();
     provider_config
         .as_table_mut()
@@ -344,6 +373,72 @@ fn isolated_provider_config(
     );
     root.insert("model_providers".to_string(), TomlValue::Table(providers));
     Ok(TomlValue::Table(root))
+}
+
+fn direct_anthropic_config(provider_id: &str) -> TomlValue {
+    let mut headers = toml::map::Map::new();
+    headers.insert(
+        "anthropic-version".to_string(),
+        TomlValue::String("2023-06-01".to_string()),
+    );
+    let mut provider = toml::map::Map::new();
+    provider.insert(
+        "name".to_string(),
+        TomlValue::String("Anthropic".to_string()),
+    );
+    provider.insert(
+        "base_url".to_string(),
+        TomlValue::String("https://api.anthropic.com/v1".to_string()),
+    );
+    provider.insert(
+        "env_key".to_string(),
+        TomlValue::String("ANTHROPIC_API_KEY".to_string()),
+    );
+    provider.insert(
+        "wire_api".to_string(),
+        TomlValue::String("anthropic".to_string()),
+    );
+    provider.insert("http_headers".to_string(), TomlValue::Table(headers));
+    let mut providers = toml::map::Map::new();
+    providers.insert(provider_id.to_string(), TomlValue::Table(provider));
+    let mut root = toml::map::Map::new();
+    root.insert(
+        "model_provider".to_string(),
+        TomlValue::String(provider_id.to_string()),
+    );
+    root.insert("model_providers".to_string(), TomlValue::Table(providers));
+    TomlValue::Table(root)
+}
+
+fn load_reference_anthropic_api_key() -> Result<String> {
+    let directory = std::env::var_os(REFERENCE_AUTH_DIR_ENV)
+        .map(PathBuf::from)
+        .context(format!(
+            "set {REFERENCE_AUTH_DIR_ENV} to the working proxy credential directory"
+        ))?;
+    let mut paths = fs::read_dir(&directory)
+        .with_context(|| format!("read {}", directory.display()))?
+        .filter_map(std::result::Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("claude-") && name.ends_with(".json"))
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let contents = fs::read_to_string(path).ok()?;
+            serde_json::from_str::<StoredReferenceCredential>(&contents).ok()
+        })
+        .find(|credential| {
+            credential.account_uuid == "anthropic-api-key"
+                && !credential.access_token.trim().is_empty()
+        })
+        .map(|credential| credential.access_token)
+        .context("reference proxy has no stored Anthropic API-key account")
 }
 
 fn preferred_tool_model(models: &[String]) -> Result<&str> {
@@ -384,7 +479,7 @@ impl WireContract {
     fn as_config_value(self) -> &'static str {
         match self {
             Self::Responses => "responses",
-            Self::Anthropic => "anthropic",
+            Self::Anthropic | Self::AnthropicDirect => "anthropic",
         }
     }
 }

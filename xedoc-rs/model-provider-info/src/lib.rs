@@ -539,6 +539,17 @@ impl ModelProviderInfo {
         self.name == AMAZON_BEDROCK_PROVIDER_NAME
     }
 
+    pub fn is_native_anthropic(&self) -> bool {
+        self.name == ANTHROPIC_PROVIDER_NAME
+            && self.base_url.as_deref() == Some(ANTHROPIC_DEFAULT_BASE_URL)
+            && self.env_key.as_deref() == Some("ANTHROPIC_API_KEY")
+            && self.experimental_bearer_token.is_none()
+            && self.auth.is_none()
+            && self.aws.is_none()
+            && self.wire_api == WireApi::Anthropic
+            && !self.requires_openai_auth
+    }
+
     pub fn supports_remote_compaction(&self) -> bool {
         self.is_openai() || is_azure_responses_provider(&self.name, self.base_url.as_deref())
     }
