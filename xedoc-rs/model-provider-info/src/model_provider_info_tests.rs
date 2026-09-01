@@ -388,6 +388,30 @@ fn test_built_in_model_providers_include_amazon_bedrock() {
 }
 
 #[test]
+fn built_in_anthropic_provider_uses_native_runtime() {
+    let providers = built_in_model_providers(/*openai_base_url*/ None);
+
+    assert_eq!(
+        providers
+            .get(ANTHROPIC_PROVIDER_ID)
+            .map(ModelProviderInfo::is_native_anthropic),
+        Some(true)
+    );
+}
+
+#[test]
+fn proxy_backed_anthropic_override_does_not_use_native_runtime() {
+    let provider = ModelProviderInfo {
+        name: "Anthropic proxy".to_string(),
+        base_url: Some("http://127.0.0.1:8317/v1".to_string()),
+        wire_api: WireApi::Responses,
+        ..ModelProviderInfo::default()
+    };
+
+    assert!(!provider.is_native_anthropic());
+}
+
+#[test]
 fn test_merge_configured_model_providers_adds_custom_provider() {
     let custom_provider = ModelProviderInfo {
         name: "Custom".to_string(),
