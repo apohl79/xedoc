@@ -19,10 +19,19 @@ pub fn import_anthropic_oauth_credentials(
     let accounts = load_source_accounts(source)?;
     validate_source_accounts(&accounts)?;
     let imports = plan_imports(accounts, destination_directory)?;
-    imports
-        .iter()
-        .try_for_each(|(path, credential)| persist_anthropic_oauth_credential(path, credential))?;
+    imports.iter().try_for_each(|(_, credential)| {
+        store_anthropic_oauth_credential(destination_directory, credential)
+    })?;
     Ok(imports.len())
+}
+
+pub fn store_anthropic_oauth_credential(
+    destination_directory: &Path,
+    credential: &AnthropicOAuthCredential,
+) -> io::Result<()> {
+    let destination = destination_directory.join(credential_file_name(&credential.email));
+    validate_destination(&destination, credential)?;
+    persist_anthropic_oauth_credential(&destination, credential)
 }
 
 fn load_source_accounts(source: &Path) -> io::Result<Vec<AnthropicOAuthAccount>> {

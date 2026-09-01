@@ -46,9 +46,11 @@ pub use commands::SandboxStateArgs;
 pub use commands::SeatbeltCommand;
 pub use debug_sandbox::run_command_under_landlock;
 pub use debug_sandbox::run_command_under_seatbelt;
+pub use login::AnthropicOAuthLoginMode;
 pub use login::read_access_token_from_stdin;
 pub use login::read_api_key_from_stdin;
 pub use login::run_login_anthropic_import;
+pub use login::run_login_anthropic_oauth;
 pub use login::run_login_status;
 pub use login::run_login_with_access_token;
 pub use login::run_login_with_api_key;
@@ -471,6 +473,12 @@ enum AnthropicLoginSubcommand {
     Import {
         /// Credential file or directory to import.
         path: PathBuf,
+    },
+    /// Sign in with Anthropic OAuth.
+    Oauth {
+        /// Paste the callback URL instead of running a local callback server.
+        #[arg(long)]
+        manual: bool,
     },
 }
 
@@ -1232,6 +1240,16 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     action: AnthropicLoginSubcommand::Import { path },
                 })) => {
                     run_login_anthropic_import(login_cli.config_overrides, path).await;
+                }
+                Some(LoginSubcommand::Anthropic(AnthropicLoginCommand {
+                    action: AnthropicLoginSubcommand::Oauth { manual },
+                })) => {
+                    let mode = if manual {
+                        AnthropicOAuthLoginMode::Manual
+                    } else {
+                        AnthropicOAuthLoginMode::Browser
+                    };
+                    run_login_anthropic_oauth(login_cli.config_overrides, mode).await;
                 }
                 None => {
                     if login_cli.with_api_key && login_cli.with_access_token {
