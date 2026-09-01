@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-provider-gemini"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "xedoc_provider_gemini"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+xedoc-api = { workspace = true }
+xedoc-protocol = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

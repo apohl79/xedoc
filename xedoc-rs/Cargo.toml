@@ -89,6 +89,7 @@ members = [
     "model-provider-info",
     "models-manager",
     "provider-anthropic",
+    "provider-gemini",
     "provider-e2e",
     "network-proxy",
     "ollama",
@@ -271,6 +272,7 @@ xedoc-otel = { path = "otel" }
 xedoc-plugin = { path = "plugin" }
 xedoc-model-provider = { path = "model-provider" }
 xedoc-provider-anthropic = { path = "provider-anthropic" }
+xedoc-provider-gemini = { path = "provider-gemini" }
 xedoc-process-hardening = { path = "process-hardening" }
 xedoc-protocol = { path = "protocol" }
 xedoc-prompts = { path = "prompts" }
