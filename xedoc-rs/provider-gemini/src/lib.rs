@@ -1,8 +1,11 @@
 mod request;
+mod stream;
 mod thought_signatures;
 mod types;
 
 pub use request::translate_request;
+pub use stream::GeminiStreamError;
+pub use stream::GeminiStreamTranslator;
 pub use thought_signatures::GeminiThoughtSignatureStore;
 pub use types::GeminiContent;
 pub use types::GeminiFunctionCall;
