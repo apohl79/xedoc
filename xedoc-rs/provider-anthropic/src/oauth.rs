@@ -331,7 +331,7 @@ pub fn load_anthropic_oauth_credentials(directory: &Path) -> io::Result<Anthropi
     let mut accounts = Vec::new();
     let mut failures = Vec::new();
     for path in paths {
-        match load_credential(&path) {
+        match load_anthropic_oauth_credential(&path) {
             Ok(credential) => accounts.push(AnthropicOAuthAccount {
                 credential,
                 source_path: path,
@@ -360,7 +360,12 @@ pub fn persist_anthropic_oauth_credential(
     };
     let contents = serde_json::to_string_pretty(&stored)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    write_atomically(path, &contents)
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+        set_private_directory_permissions(parent)?;
+    }
+    write_atomically(path, &contents)?;
+    set_private_file_permissions(path)
 }
 
 fn is_anthropic_credential_path(path: &Path) -> bool {
@@ -372,7 +377,7 @@ fn is_anthropic_credential_path(path: &Path) -> bool {
         && (name.starts_with("anthropic-") || name.starts_with("claude-"))
 }
 
-fn load_credential(path: &Path) -> io::Result<AnthropicOAuthCredential> {
+pub(crate) fn load_anthropic_oauth_credential(path: &Path) -> io::Result<AnthropicOAuthCredential> {
     let contents = fs::read_to_string(path)?;
     let stored: StoredAnthropicOAuthCredential = serde_json::from_str(&contents)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
@@ -412,6 +417,30 @@ fn load_credential(path: &Path) -> io::Result<AnthropicOAuthCredential> {
         expires_at: stored.expires_at,
         last_refresh_at: stored.last_refresh_at,
     })
+}
+
+#[cfg(unix)]
+fn set_private_directory_permissions(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(not(unix))]
+fn set_private_directory_permissions(_path: &Path) -> io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_private_file_permissions(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+}
+
+#[cfg(not(unix))]
+fn set_private_file_permissions(_path: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 fn unavailable_account(state: &PoolState, now: Instant) -> AnthropicAccountUnavailable {

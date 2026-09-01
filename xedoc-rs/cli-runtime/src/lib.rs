@@ -48,6 +48,7 @@ pub use debug_sandbox::run_command_under_landlock;
 pub use debug_sandbox::run_command_under_seatbelt;
 pub use login::read_access_token_from_stdin;
 pub use login::read_api_key_from_stdin;
+pub use login::run_login_anthropic_import;
 pub use login::run_login_status;
 pub use login::run_login_with_access_token;
 pub use login::run_login_with_api_key;
@@ -454,6 +455,23 @@ struct LoginCommand {
 enum LoginSubcommand {
     /// Show login status.
     Status,
+    /// Manage Anthropic credentials.
+    Anthropic(AnthropicLoginCommand),
+}
+
+#[derive(Debug, Args)]
+struct AnthropicLoginCommand {
+    #[command(subcommand)]
+    action: AnthropicLoginSubcommand,
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum AnthropicLoginSubcommand {
+    /// Import OAuth credentials from a file or legacy auth directory.
+    Import {
+        /// Credential file or directory to import.
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -1209,6 +1227,11 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
             match login_cli.action {
                 Some(LoginSubcommand::Status) => {
                     run_login_status(login_cli.config_overrides).await;
+                }
+                Some(LoginSubcommand::Anthropic(AnthropicLoginCommand {
+                    action: AnthropicLoginSubcommand::Import { path },
+                })) => {
+                    run_login_anthropic_import(login_cli.config_overrides, path).await;
                 }
                 None => {
                     if login_cli.with_api_key && login_cli.with_access_token {

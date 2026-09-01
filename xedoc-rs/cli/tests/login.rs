@@ -74,6 +74,56 @@ fn login_with_access_token_rejects_invalid_jwt() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn anthropic_import_migrates_a_legacy_credential() -> Result<()> {
+    let xedoc_home = TempDir::new()?;
+    let source = TempDir::new()?;
+    std::fs::write(
+        source.path().join("claude-user@example.com.json"),
+        serde_json::to_vec(&json!({
+            "access_token": "anthropic-access",
+            "refresh_token": "anthropic-refresh",
+            "email": "user@example.com",
+            "expired": "2030-01-01T00:00:00.000Z",
+            "account_uuid": "anthropic-account",
+            "type": "claude",
+        }))?,
+    )?;
+
+    let mut cmd = xedoc_command(xedoc_home.path())?;
+    cmd.args([
+        "login",
+        "anthropic",
+        "import",
+        source
+            .path()
+            .to_str()
+            .context("source path must be UTF-8")?,
+    ])
+    .assert()
+    .success()
+    .stderr(contains("Imported 1 Anthropic account(s)"));
+
+    let imported = std::fs::read_to_string(
+        xedoc_home
+            .path()
+            .join("providers/anthropic/accounts/anthropic-user@example.com.json"),
+    )?;
+    assert_eq!(
+        serde_json::from_str::<Value>(&imported)?,
+        json!({
+            "access_token": "anthropic-access",
+            "refresh_token": "anthropic-refresh",
+            "email": "user@example.com",
+            "expires_at": "2030-01-01T00:00:00.000Z",
+            "account_id": "anthropic-account",
+            "last_refresh_at": null,
+            "type": "anthropic",
+        })
+    );
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn device_login_revokes_existing_auth_before_requesting_new_tokens() -> Result<()> {
     let server = MockServer::start().await;

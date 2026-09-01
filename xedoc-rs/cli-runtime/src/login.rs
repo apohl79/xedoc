@@ -32,6 +32,7 @@ use xedoc_login::run_device_code_login;
 use xedoc_login::run_login_server;
 use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::ForcedLoginMethod;
+use xedoc_provider_anthropic::import_anthropic_oauth_credentials;
 use xedoc_utils_cli::CliConfigOverrides;
 
 const CHATGPT_LOGIN_DISABLED_MESSAGE: &str =
@@ -41,6 +42,7 @@ const API_KEY_LOGIN_DISABLED_MESSAGE: &str =
 const ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE: &str =
     "Access token login is disabled. Use API key login instead.";
 const LOGIN_SUCCESS_MESSAGE: &str = "Successfully logged in";
+const ANTHROPIC_ACCOUNTS_PATH: [&str; 3] = ["providers", "anthropic", "accounts"];
 
 /// Installs a small file-backed tracing layer for direct `xedoc login` flows.
 ///
@@ -256,6 +258,28 @@ pub async fn run_login_with_access_token(
         }
         Err(e) => {
             eprintln!("Error logging in with access token: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+pub async fn run_login_anthropic_import(
+    cli_config_overrides: CliConfigOverrides,
+    source: PathBuf,
+) -> ! {
+    let config = load_config_or_exit(cli_config_overrides).await;
+    let destination = ANTHROPIC_ACCOUNTS_PATH
+        .into_iter()
+        .fold(config.xedoc_home.to_path_buf(), |path, component| {
+            path.join(component)
+        });
+    match import_anthropic_oauth_credentials(&source, &destination) {
+        Ok(imported) => {
+            eprintln!("Imported {imported} Anthropic account(s)");
+            std::process::exit(0);
+        }
+        Err(error) => {
+            eprintln!("Error importing Anthropic credentials: {error}");
             std::process::exit(1);
         }
     }
