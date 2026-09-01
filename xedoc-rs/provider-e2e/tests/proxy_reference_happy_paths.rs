@@ -43,6 +43,7 @@ enum WireContract {
     Responses,
     Anthropic,
     AnthropicDirect,
+    GeminiDirect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,7 +120,7 @@ struct ProviderFixture {
 }
 
 #[tokio::test]
-async fn proxy_reference_and_native_anthropic_match_provider_contracts() -> Result<()> {
+async fn proxy_reference_and_native_providers_match_provider_contracts() -> Result<()> {
     let source_home = reference_home()?;
     let source_config = read_source_config(&source_home)?;
     let mut actual = Vec::new();
@@ -154,6 +155,16 @@ async fn proxy_reference_and_native_anthropic_match_provider_contracts() -> Resu
         )
         .await
         .context("run direct native Anthropic cases")?,
+    );
+    actual.extend(
+        run_provider_cases(
+            &source_config,
+            &source_home,
+            "google",
+            WireContract::GeminiDirect,
+        )
+        .await
+        .context("run direct native Gemini cases")?,
     );
     let expected = actual.iter().map(CaseOutcome::expected).collect::<Vec<_>>();
 
@@ -359,6 +370,9 @@ fn isolated_provider_config(
     if wire_contract == WireContract::AnthropicDirect {
         return Ok(direct_anthropic_config(provider));
     }
+    if wire_contract == WireContract::GeminiDirect {
+        return Ok(built_in_provider_config(provider));
+    }
     let mut provider_config = configured_provider(source, provider)?.clone();
     provider_config
         .as_table_mut()
@@ -376,6 +390,15 @@ fn isolated_provider_config(
     );
     root.insert("model_providers".to_string(), TomlValue::Table(providers));
     Ok(TomlValue::Table(root))
+}
+
+fn built_in_provider_config(provider_id: &str) -> TomlValue {
+    let mut root = toml::map::Map::new();
+    root.insert(
+        "model_provider".to_string(),
+        TomlValue::String(provider_id.to_string()),
+    );
+    TomlValue::Table(root)
 }
 
 fn direct_anthropic_config(provider_id: &str) -> TomlValue {
@@ -483,6 +506,7 @@ impl WireContract {
         match self {
             Self::Responses => "responses",
             Self::Anthropic | Self::AnthropicDirect => "anthropic",
+            Self::GeminiDirect => "gemini",
         }
     }
 }

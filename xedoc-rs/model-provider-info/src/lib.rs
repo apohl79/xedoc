@@ -52,6 +52,9 @@ pub const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
 const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+const GEMINI_PROVIDER_NAME: &str = "Gemini";
+pub const GEMINI_PROVIDER_ID: &str = "google";
+const GEMINI_DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
 pub const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
@@ -525,6 +528,20 @@ impl ModelProviderInfo {
         }
     }
 
+    fn create_gemini_provider() -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: GEMINI_PROVIDER_NAME.into(),
+            base_url: Some(GEMINI_DEFAULT_BASE_URL.into()),
+            env_key: Some("GEMINI_API_KEY".into()),
+            env_key_instructions: Some(
+                "Set GEMINI_API_KEY to a Google Gemini API key.".to_string(),
+            ),
+            wire_api: WireApi::Gemini,
+            namespace_tools: false,
+            ..ModelProviderInfo::default()
+        }
+    }
+
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
     }
@@ -577,11 +594,13 @@ pub fn built_in_model_providers(
     let openai_provider = P::create_openai_provider(openai_base_url);
     let amazon_bedrock_provider = P::create_amazon_bedrock_provider(/*aws*/ None);
     let anthropic_provider = P::create_anthropic_provider();
+    let gemini_provider = P::create_gemini_provider();
 
     [
         (OPENAI_PROVIDER_ID, openai_provider),
         (AMAZON_BEDROCK_PROVIDER_ID, amazon_bedrock_provider),
         (ANTHROPIC_PROVIDER_ID, anthropic_provider),
+        (GEMINI_PROVIDER_ID, gemini_provider),
         (
             OLLAMA_OSS_PROVIDER_ID,
             create_oss_provider(DEFAULT_OLLAMA_PORT, WireApi::Responses),
@@ -601,8 +620,8 @@ pub fn built_in_model_providers(
 /// Configured providers extend the built-in set. Built-in providers are not
 /// generally overridable, but the built-in Amazon Bedrock provider allows the
 /// user to customize its endpoint, authentication, headers, and AWS settings.
-/// The Anthropic provider is fully replaceable so existing proxy-backed
-/// configurations continue to work while native support is introduced.
+/// The Anthropic and Gemini providers are fully replaceable so existing
+/// proxy-backed configurations continue to work while native support is introduced.
 pub fn merge_configured_model_providers(
     mut model_providers: HashMap<String, ModelProviderInfo>,
     configured_model_providers: HashMap<String, ModelProviderInfo>,
@@ -647,7 +666,7 @@ other non-default provider fields are not supported"
             {
                 built_in_provider.model_prices = Some(model_prices);
             }
-        } else if key == ANTHROPIC_PROVIDER_ID {
+        } else if key == ANTHROPIC_PROVIDER_ID || key == GEMINI_PROVIDER_ID {
             model_providers.insert(key, provider);
         } else {
             model_providers.entry(key).or_insert(provider);
