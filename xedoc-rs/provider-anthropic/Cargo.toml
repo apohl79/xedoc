@@ -29,3 +29,5 @@ xedoc-utils-path = { workspace = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
+wiremock = { workspace = true }
+xedoc-http-client = { workspace = true }

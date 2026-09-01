@@ -14074,8 +14074,10 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "wiremock",
  "xedoc-api",
  "xedoc-client",
+ "xedoc-http-client",
  "xedoc-protocol",
  "xedoc-utils-path",
 ]
