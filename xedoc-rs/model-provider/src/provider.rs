@@ -26,6 +26,7 @@ use crate::auth::ResolvedProviderAuth;
 use crate::auth::auth_manager_for_provider;
 use crate::auth::resolve_provider_auth;
 use crate::auth::resolve_provider_auth_for_scope;
+use crate::deepseek_models_endpoint::DeepSeekModelsEndpoint;
 use crate::gemini_models_endpoint::GeminiModelsEndpoint;
 use crate::models_endpoint::OpenAiModelsEndpoint;
 
@@ -365,6 +366,12 @@ impl ModelProvider for ConfiguredModelProvider {
 
 impl ConfiguredModelProvider {
     fn models_endpoint(&self) -> Arc<dyn ModelsEndpointClient> {
+        if self.info.is_native_deepseek() {
+            return Arc::new(DeepSeekModelsEndpoint::new(
+                self.info.clone(),
+                self.auth_manager.clone(),
+            ));
+        }
         match self.info.wire_api {
             WireApi::Gemini => Arc::new(GeminiModelsEndpoint::new(
                 self.info.clone(),

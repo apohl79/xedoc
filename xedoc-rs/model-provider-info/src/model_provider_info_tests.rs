@@ -525,6 +525,31 @@ fn test_merge_configured_model_providers_replaces_built_in_gemini() {
 }
 
 #[test]
+fn test_merge_configured_model_providers_replaces_built_in_deepseek() {
+    let configured_provider = ModelProviderInfo {
+        name: "DeepSeek proxy".to_string(),
+        base_url: Some("http://127.0.0.1:8317/v1".to_string()),
+        wire_api: WireApi::Responses,
+        ..ModelProviderInfo::default()
+    };
+    let configured_model_providers = std::collections::HashMap::from([(
+        DEEPSEEK_PROVIDER_ID.to_string(),
+        configured_provider.clone(),
+    )]);
+
+    let mut expected = built_in_model_providers(/*openai_base_url*/ None);
+    expected.insert(DEEPSEEK_PROVIDER_ID.to_string(), configured_provider);
+
+    assert_eq!(
+        merge_configured_model_providers(
+            built_in_model_providers(/*openai_base_url*/ None),
+            configured_model_providers,
+        ),
+        Ok(expected)
+    );
+}
+
+#[test]
 fn test_merge_configured_model_providers_applies_amazon_bedrock_profile_override() {
     let configured_model_providers = std::collections::HashMap::from([(
         AMAZON_BEDROCK_PROVIDER_ID.to_string(),

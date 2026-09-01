@@ -3,6 +3,7 @@ mod anthropic;
 mod anthropic_api_key_auth_provider;
 mod auth;
 mod bearer_auth_provider;
+mod deepseek_models_endpoint;
 mod gemini_api_key_auth_provider;
 mod gemini_models_endpoint;
 mod models_endpoint;

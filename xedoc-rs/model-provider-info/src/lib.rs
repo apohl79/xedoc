@@ -52,6 +52,9 @@ pub const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
 const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+const DEEPSEEK_PROVIDER_NAME: &str = "DeepSeek";
+pub const DEEPSEEK_PROVIDER_ID: &str = "deepseek";
+const DEEPSEEK_DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic/v1";
 const GEMINI_PROVIDER_NAME: &str = "Gemini";
 pub const GEMINI_PROVIDER_ID: &str = "google";
 const GEMINI_DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -542,6 +545,22 @@ impl ModelProviderInfo {
         }
     }
 
+    fn create_deepseek_provider() -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: DEEPSEEK_PROVIDER_NAME.into(),
+            base_url: Some(DEEPSEEK_DEFAULT_BASE_URL.into()),
+            env_key: Some("DEEPSEEK_API_KEY".into()),
+            env_key_instructions: Some("Set DEEPSEEK_API_KEY to a DeepSeek API key.".to_string()),
+            wire_api: WireApi::Anthropic,
+            http_headers: Some(HashMap::from([(
+                ANTHROPIC_VERSION_HEADER.to_string(),
+                ANTHROPIC_VERSION.to_string(),
+            )])),
+            namespace_tools: false,
+            ..ModelProviderInfo::default()
+        }
+    }
+
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
     }
@@ -564,6 +583,17 @@ impl ModelProviderInfo {
         self.name == ANTHROPIC_PROVIDER_NAME
             && self.base_url.as_deref() == Some(ANTHROPIC_DEFAULT_BASE_URL)
             && self.env_key.as_deref() == Some("ANTHROPIC_API_KEY")
+            && self.experimental_bearer_token.is_none()
+            && self.auth.is_none()
+            && self.aws.is_none()
+            && self.wire_api == WireApi::Anthropic
+            && !self.requires_openai_auth
+    }
+
+    pub fn is_native_deepseek(&self) -> bool {
+        self.name == DEEPSEEK_PROVIDER_NAME
+            && self.base_url.as_deref() == Some(DEEPSEEK_DEFAULT_BASE_URL)
+            && self.env_key.as_deref() == Some("DEEPSEEK_API_KEY")
             && self.experimental_bearer_token.is_none()
             && self.auth.is_none()
             && self.aws.is_none()
@@ -594,12 +624,14 @@ pub fn built_in_model_providers(
     let openai_provider = P::create_openai_provider(openai_base_url);
     let amazon_bedrock_provider = P::create_amazon_bedrock_provider(/*aws*/ None);
     let anthropic_provider = P::create_anthropic_provider();
+    let deepseek_provider = P::create_deepseek_provider();
     let gemini_provider = P::create_gemini_provider();
 
     [
         (OPENAI_PROVIDER_ID, openai_provider),
         (AMAZON_BEDROCK_PROVIDER_ID, amazon_bedrock_provider),
         (ANTHROPIC_PROVIDER_ID, anthropic_provider),
+        (DEEPSEEK_PROVIDER_ID, deepseek_provider),
         (GEMINI_PROVIDER_ID, gemini_provider),
         (
             OLLAMA_OSS_PROVIDER_ID,
@@ -620,7 +652,7 @@ pub fn built_in_model_providers(
 /// Configured providers extend the built-in set. Built-in providers are not
 /// generally overridable, but the built-in Amazon Bedrock provider allows the
 /// user to customize its endpoint, authentication, headers, and AWS settings.
-/// The Anthropic and Gemini providers are fully replaceable so existing
+/// The Anthropic, DeepSeek, and Gemini providers are fully replaceable so existing
 /// proxy-backed configurations continue to work while native support is introduced.
 pub fn merge_configured_model_providers(
     mut model_providers: HashMap<String, ModelProviderInfo>,
@@ -666,7 +698,10 @@ other non-default provider fields are not supported"
             {
                 built_in_provider.model_prices = Some(model_prices);
             }
-        } else if key == ANTHROPIC_PROVIDER_ID || key == GEMINI_PROVIDER_ID {
+        } else if matches!(
+            key.as_str(),
+            ANTHROPIC_PROVIDER_ID | DEEPSEEK_PROVIDER_ID | GEMINI_PROVIDER_ID
+        ) {
             model_providers.insert(key, provider);
         } else {
             model_providers.entry(key).or_insert(provider);
