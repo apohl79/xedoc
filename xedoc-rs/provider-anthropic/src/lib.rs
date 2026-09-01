@@ -1,10 +1,19 @@
 mod client;
 mod history;
+mod oauth;
 mod request;
 mod stream;
 mod types;
 
 pub use client::AnthropicClient;
+pub use oauth::AnthropicAccountFailureKind;
+pub use oauth::AnthropicAccountPool;
+pub use oauth::AnthropicAccountPoolError;
+pub use oauth::AnthropicAccountUnavailable;
+pub use oauth::AnthropicCredentialLoad;
+pub use oauth::AnthropicCredentialLoadFailure;
+pub use oauth::AnthropicOAuthCredential;
+pub use oauth::load_anthropic_oauth_credentials;
 pub use request::translate_request;
 pub use stream::AnthropicStreamTranslator;
 pub use types::AnthropicBlockBinding;
