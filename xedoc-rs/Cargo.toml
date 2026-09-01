@@ -88,6 +88,7 @@ members = [
     "mcp-server",
     "model-provider-info",
     "models-manager",
+    "provider-e2e",
     "network-proxy",
     "ollama",
     "process-hardening",
