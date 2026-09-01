@@ -48,6 +48,7 @@ enum WireContract {
     Responses,
     Anthropic,
     AnthropicDirect,
+    DeepSeekDirect,
     GeminiDirect,
 }
 
@@ -134,11 +135,16 @@ struct StoredReferenceCredential {
     account_uuid: String,
 }
 
+struct NativeApiKey {
+    env_key: &'static str,
+    value: String,
+}
+
 struct ProviderFixture {
     provider: String,
     wire_contract: WireContract,
     reference: ReferenceProviderConfig,
-    native_api_key: Option<String>,
+    native_api_key: Option<NativeApiKey>,
     home: TempDir,
     cwd: TempDir,
 }
@@ -190,6 +196,16 @@ async fn proxy_reference_and_native_providers_match_provider_contracts() -> Resu
         .await
         .context("run direct native Gemini cases")?,
     );
+    actual.extend(
+        run_provider_cases(
+            &source_config,
+            &source_home,
+            "deepseek",
+            WireContract::DeepSeekDirect,
+        )
+        .await
+        .context("run direct native DeepSeek cases")?,
+    );
     let expected = actual.iter().map(CaseOutcome::expected).collect::<Vec<_>>();
 
     assert_eq!(actual, expected);
@@ -208,7 +224,27 @@ async fn native_gemini_catalog_covers_the_proxy_reference_catalog() -> Result<()
     )?;
     let reference_models = fixture.discover_models().await?;
     let native_models = discover_native_gemini_models().await?;
-    let actual = catalog_coverage(reference_models, native_models);
+    let actual = catalog_coverage(reference_models, native_models, "gemini-");
+    let expected = actual.expected();
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[tokio::test]
+async fn native_deepseek_catalog_covers_the_proxy_reference_catalog() -> Result<()> {
+    let source_home = reference_home()?;
+    let source_config = read_source_config(&source_home)?;
+    let fixture = ProviderFixture::new(
+        &source_config,
+        &source_home,
+        "deepseek",
+        WireContract::DeepSeekDirect,
+    )?;
+    let reference_models = fixture.discover_models().await?;
+    let api_key = load_reference_deepseek_api_key()?;
+    let native_models = discover_native_deepseek_models(&api_key).await?;
+    let actual = catalog_coverage(reference_models, native_models, "deepseek-");
     let expected = actual.expected();
 
     assert_eq!(actual, expected);
@@ -261,9 +297,17 @@ impl ProviderFixture {
         let cwd = tempfile::tempdir().context("create isolated provider workspace")?;
         let reference = reference_provider_config(source_config, source_home, provider)?;
         let config = isolated_provider_config(source_config, provider, wire_contract)?;
-        let native_api_key = (wire_contract == WireContract::AnthropicDirect)
-            .then(load_reference_anthropic_api_key)
-            .transpose()?;
+        let native_api_key = match wire_contract {
+            WireContract::AnthropicDirect => Some(NativeApiKey {
+                env_key: "ANTHROPIC_API_KEY",
+                value: load_reference_anthropic_api_key()?,
+            }),
+            WireContract::DeepSeekDirect => Some(NativeApiKey {
+                env_key: "DEEPSEEK_API_KEY",
+                value: load_reference_deepseek_api_key()?,
+            }),
+            WireContract::Responses | WireContract::Anthropic | WireContract::GeminiDirect => None,
+        };
         let path = home.path().join("config.toml");
         fs::write(&path, toml::to_string(&config)?)
             .with_context(|| format!("write {}", path.display()))?;
@@ -345,7 +389,7 @@ impl ProviderFixture {
             .env("XEDOC_HOME", self.home.path())
             .env("XEDOC_SQLITE_HOME", self.home.path());
         if let Some(api_key) = self.native_api_key.as_ref() {
-            command.env("ANTHROPIC_API_KEY", api_key);
+            command.env(api_key.env_key, &api_key.value);
         }
         Ok(command)
     }
@@ -366,9 +410,28 @@ async fn discover_native_gemini_models() -> Result<Vec<String>> {
     Ok(catalog.models.into_iter().map(|model| model.slug).collect())
 }
 
+async fn discover_native_deepseek_models(api_key: &str) -> Result<Vec<String>> {
+    let url = "https://api.deepseek.com/v1/models";
+    let client = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault)
+        .build_client(url, ClientRouteClass::Api)?;
+    let response = client.get(url).header("x-api-key", api_key).send().await?;
+    if !response.status().is_success() {
+        bail!(
+            "native DeepSeek catalog request failed: {}",
+            response.status()
+        );
+    }
+    let catalog: ModelCatalog = response
+        .json()
+        .await
+        .context("parse native DeepSeek model catalog")?;
+    Ok(catalog.data.into_iter().map(|model| model.id).collect())
+}
+
 fn catalog_coverage(
     mut reference_models: Vec<String>,
     mut native_models: Vec<String>,
+    native_model_prefix: &str,
 ) -> CatalogCoverageOutcome {
     reference_models.sort();
     reference_models.dedup();
@@ -382,7 +445,7 @@ fn catalog_coverage(
         .collect();
     let unexpected_native_models = native_models
         .iter()
-        .filter(|model| !model.starts_with("gemini-"))
+        .filter(|model| !model.starts_with(native_model_prefix))
         .cloned()
         .collect();
     CatalogCoverageOutcome {
@@ -455,7 +518,10 @@ fn isolated_provider_config(
     if wire_contract == WireContract::AnthropicDirect {
         return Ok(direct_anthropic_config(provider));
     }
-    if wire_contract == WireContract::GeminiDirect {
+    if matches!(
+        wire_contract,
+        WireContract::DeepSeekDirect | WireContract::GeminiDirect
+    ) {
         return Ok(built_in_provider_config(provider));
     }
     let mut provider_config = configured_provider(source, provider)?.clone();
@@ -522,6 +588,18 @@ fn direct_anthropic_config(provider_id: &str) -> TomlValue {
 }
 
 fn load_reference_anthropic_api_key() -> Result<String> {
+    load_reference_api_key("claude-", "anthropic-api-key", "Anthropic API-key account")
+}
+
+fn load_reference_deepseek_api_key() -> Result<String> {
+    load_reference_api_key("deepseek-", "deepseek-api-key", "DeepSeek API-key account")
+}
+
+fn load_reference_api_key(
+    file_prefix: &str,
+    account_uuid: &str,
+    account_description: &str,
+) -> Result<String> {
     let directory = std::env::var_os(REFERENCE_AUTH_DIR_ENV)
         .map(PathBuf::from)
         .context(format!(
@@ -534,7 +612,7 @@ fn load_reference_anthropic_api_key() -> Result<String> {
         .filter(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("claude-") && name.ends_with(".json"))
+                .is_some_and(|name| name.starts_with(file_prefix) && name.ends_with(".json"))
         })
         .collect::<Vec<_>>();
     paths.sort();
@@ -545,11 +623,10 @@ fn load_reference_anthropic_api_key() -> Result<String> {
             serde_json::from_str::<StoredReferenceCredential>(&contents).ok()
         })
         .find(|credential| {
-            credential.account_uuid == "anthropic-api-key"
-                && !credential.access_token.trim().is_empty()
+            credential.account_uuid == account_uuid && !credential.access_token.trim().is_empty()
         })
         .map(|credential| credential.access_token)
-        .context("reference proxy has no stored Anthropic API-key account")
+        .with_context(|| format!("reference proxy has no stored {account_description}"))
 }
 
 fn preferred_tool_model(models: &[String]) -> Result<&str> {
@@ -591,6 +668,7 @@ impl WireContract {
         match self {
             Self::Responses => "responses",
             Self::Anthropic | Self::AnthropicDirect => "anthropic",
+            Self::DeepSeekDirect => "anthropic",
             Self::GeminiDirect => "gemini",
         }
     }
