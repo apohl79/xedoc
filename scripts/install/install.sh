@@ -855,7 +855,7 @@ require_command unzip
 tmp_dir="$(mktemp -d)"
 trap cleanup EXIT INT TERM
 
-if ! release_dir_is_complete "$release_dir" "$release_name"; then
+if [ -n "$LOCAL_ZIP" ] || ! release_dir_is_complete "$release_dir" "$release_name"; then
   if [ -n "$LOCAL_ZIP" ]; then
     archive_path="$LOCAL_ZIP"
     step "Installing local package ZIP"

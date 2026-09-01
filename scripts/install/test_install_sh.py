@@ -64,6 +64,37 @@ class InstallShTest(unittest.TestCase):
             self.assertIn("Skipping statusline script for local package", result.stdout)
             self.assertFalse(request_log.exists())
 
+    def test_local_package_replaces_complete_same_version_install(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / "offline-package.zip"
+            write_package_archive(archive_path)
+            env = local_package_install_env(root)
+
+            initial_install = run_local_package_installer(env, archive_path)
+            installed_xedoc = (
+                root
+                / "xedoc-home/packages/standalone/releases"
+                / f"{VERSION}-{TARGET}/bin/xedoc"
+            )
+            installed_xedoc.write_text("#!/bin/sh\nprintf 'stale'\n", encoding="utf-8")
+            installed_xedoc.chmod(0o755)
+
+            reinstall = run_local_package_installer(env, archive_path)
+
+            self.assertEqual(
+                {
+                    "returncodes": [initial_install.returncode, reinstall.returncode],
+                    "installed_xedoc": installed_xedoc.read_text(encoding="utf-8"),
+                    "reinstalled": "Installing local package ZIP" in reinstall.stdout,
+                },
+                {
+                    "returncodes": [0, 0],
+                    "installed_xedoc": fake_xedoc_content(),
+                    "reinstalled": True,
+                },
+            )
+
     def test_package_install_creates_visible_xedoc_and_host_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -623,6 +654,34 @@ class InstallShTest(unittest.TestCase):
             self.assertNotIn("Restart it to use the upgraded version?", result.stdout)
             self.assertIn("leaving it running in non-interactive mode", result.stdout)
             self.assertFalse(restart_log.exists())
+
+
+def local_package_install_env(root: Path) -> dict[str, str]:
+    bin_dir = root / "fake-bin"
+    bin_dir.mkdir()
+    write_fake_curl(bin_dir / "curl")
+    return {
+        **os.environ,
+        "XEDOC_HOME": str(root / "xedoc-home"),
+        "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+        "XEDOC_NON_INTERACTIVE": "1",
+        "HOME": str(root / "home"),
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "SHELL": "/bin/sh",
+    }
+
+
+def run_local_package_installer(
+    env: dict[str, str], archive_path: Path
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["/bin/sh", str(INSTALL_SCRIPT), "--local-zip", str(archive_path)],
+        capture_output=True,
+        check=False,
+        cwd=archive_path.parent,
+        env=env,
+        text=True,
+    )
 
 
 def run_interactive_installer(
