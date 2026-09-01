@@ -12355,6 +12355,7 @@ dependencies = [
  "xedoc-models-manager",
  "xedoc-plugin",
  "xedoc-protocol",
+ "xedoc-provider-anthropic",
  "xedoc-responses-api-proxy",
  "xedoc-rmcp-client",
  "xedoc-sandboxing",

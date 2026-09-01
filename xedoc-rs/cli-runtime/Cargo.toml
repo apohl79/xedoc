@@ -37,6 +37,7 @@ xedoc-mcp-server = { workspace = true }
 xedoc-model-provider = { workspace = true }
 xedoc-models-manager = { workspace = true }
 xedoc-plugin = { workspace = true }
+xedoc-provider-anthropic = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-responses-api-proxy = { workspace = true }
 xedoc-rmcp-client = { workspace = true }
