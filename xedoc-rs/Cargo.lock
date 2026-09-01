@@ -12692,6 +12692,7 @@ dependencies = [
  "xedoc-login",
  "xedoc-model-provider",
  "xedoc-model-provider-info",
+ "xedoc-models-manager",
  "xedoc-otel",
  "xedoc-protocol",
  "xedoc-provider-anthropic",

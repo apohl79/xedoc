@@ -212,6 +212,21 @@ fn a_rate_limited_account_fails_over_to_the_next_account() {
 }
 
 #[test]
+fn success_restores_account_health() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let first = account(directory.path(), "first@example.com", "first");
+    let source_path = directory.path().join("anthropic-first@example.com.json");
+    let pool = AnthropicAccountPool::new(vec![first.clone()]).expect("account pool");
+    assert_eq!(pool.select().expect("initial selection"), first);
+    assert!(pool.record_failure(&source_path, AnthropicAccountFailureKind::RateLimit));
+    assert!(pool.select().is_err());
+
+    assert!(pool.record_success(&source_path));
+
+    assert_eq!(pool.select().expect("restored selection"), first);
+}
+
+#[test]
 fn all_unavailable_accounts_prefer_a_recoverable_failure() {
     let directory = tempfile::tempdir().expect("tempdir");
     let pool = AnthropicAccountPool::new(vec![

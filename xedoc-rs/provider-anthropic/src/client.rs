@@ -17,6 +17,7 @@ use xedoc_client::EncodedJsonBody;
 use xedoc_client::HttpTransport;
 use xedoc_client::RequestBody;
 use xedoc_client::RequestTelemetry;
+use xedoc_client::RetryPolicy;
 use xedoc_client::StreamResponse;
 use xedoc_client::TransportError;
 use xedoc_client::run_with_retry;
@@ -107,8 +108,16 @@ impl<T: HttpTransport> AnthropicClient<T> {
             .into_prepared()
             .map_err(|error| ApiError::Transport(TransportError::Build(error)))?;
 
+        let retry_policy = if self.auth.recovery_identity().is_some() {
+            RetryPolicy {
+                max_attempts: 0,
+                ..self.provider.retry.to_policy()
+            }
+        } else {
+            self.provider.retry.to_policy()
+        };
         let stream_response = run_with_retry(
-            self.provider.retry.to_policy(),
+            retry_policy,
             || outbound.clone(),
             |request, attempt| {
                 let auth = Arc::clone(&self.auth);
