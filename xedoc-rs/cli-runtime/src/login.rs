@@ -8,6 +8,7 @@
 //! support can request from users.
 
 use std::fs::OpenOptions;
+use std::io::BufRead;
 use std::io::IsTerminal;
 use std::io::Read;
 use std::path::Path;
@@ -18,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use xedoc_api::RouteAwareAuthHttpTransport;
 use xedoc_config::types::AuthCredentialsStoreMode;
 use xedoc_core::config::Config;
 use xedoc_login::AuthKeyringBackendKind;
@@ -32,7 +34,12 @@ use xedoc_login::run_device_code_login;
 use xedoc_login::run_login_server;
 use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::ForcedLoginMethod;
+use xedoc_provider_anthropic::AnthropicOAuthBrowserLogin;
+use xedoc_provider_anthropic::AnthropicOAuthCredential;
+use xedoc_provider_anthropic::AnthropicOAuthLoginError;
+use xedoc_provider_anthropic::AnthropicOAuthSession;
 use xedoc_provider_anthropic::import_anthropic_oauth_credentials;
+use xedoc_provider_anthropic::store_anthropic_oauth_credential;
 use xedoc_utils_cli::CliConfigOverrides;
 
 const CHATGPT_LOGIN_DISABLED_MESSAGE: &str =
@@ -43,6 +50,13 @@ const ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE: &str =
     "Access token login is disabled. Use API key login instead.";
 const LOGIN_SUCCESS_MESSAGE: &str = "Successfully logged in";
 const ANTHROPIC_ACCOUNTS_PATH: [&str; 3] = ["providers", "anthropic", "accounts"];
+const MAX_MANUAL_CALLBACK_BYTES: u64 = 16 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnthropicOAuthLoginMode {
+    Browser,
+    Manual,
+}
 
 /// Installs a small file-backed tracing layer for direct `xedoc login` flows.
 ///
@@ -268,11 +282,7 @@ pub async fn run_login_anthropic_import(
     source: PathBuf,
 ) -> ! {
     let config = load_config_or_exit(cli_config_overrides).await;
-    let destination = ANTHROPIC_ACCOUNTS_PATH
-        .into_iter()
-        .fold(config.xedoc_home.to_path_buf(), |path, component| {
-            path.join(component)
-        });
+    let destination = anthropic_accounts_directory(&config.xedoc_home);
     match import_anthropic_oauth_credentials(&source, &destination) {
         Ok(imported) => {
             eprintln!("Imported {imported} Anthropic account(s)");
@@ -283,6 +293,86 @@ pub async fn run_login_anthropic_import(
             std::process::exit(1);
         }
     }
+}
+
+pub async fn run_login_anthropic_oauth(
+    cli_config_overrides: CliConfigOverrides,
+    mode: AnthropicOAuthLoginMode,
+) -> ! {
+    let config = load_config_or_exit(cli_config_overrides).await;
+    let _login_log_guard = init_login_file_logging(&config);
+    tracing::info!("starting Anthropic OAuth login flow");
+    let transport = RouteAwareAuthHttpTransport::new(config.http_client_factory());
+    let credential = match complete_anthropic_oauth(mode, &transport).await {
+        Ok(credential) => credential,
+        Err(error) => {
+            eprintln!("Error logging in with Anthropic: {error}");
+            std::process::exit(1);
+        }
+    };
+    let destination = anthropic_accounts_directory(&config.xedoc_home);
+    match store_anthropic_oauth_credential(&destination, &credential) {
+        Ok(()) => {
+            eprintln!("{LOGIN_SUCCESS_MESSAGE}");
+            std::process::exit(0);
+        }
+        Err(error) => {
+            eprintln!("Error storing Anthropic credentials: {error}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn complete_anthropic_oauth(
+    mode: AnthropicOAuthLoginMode,
+    transport: &RouteAwareAuthHttpTransport,
+) -> Result<AnthropicOAuthCredential, AnthropicOAuthLoginError> {
+    match mode {
+        AnthropicOAuthLoginMode::Browser => {
+            let login = AnthropicOAuthBrowserLogin::start()?;
+            eprintln!(
+                "If your browser did not open, navigate to this URL:\n\n{}\n",
+                login.auth_url()
+            );
+            login.open_browser();
+            login.complete(transport).await
+        }
+        AnthropicOAuthLoginMode::Manual => {
+            let session = AnthropicOAuthSession::new()?;
+            eprintln!(
+                "Open this URL in your browser:\n\n{}\n\nPaste the full callback URL:",
+                session.auth_url()
+            );
+            let callback = read_manual_oauth_callback()
+                .map_err(|_| AnthropicOAuthLoginError::InvalidCallback)?;
+            session.exchange_callback(&callback, transport).await
+        }
+    }
+}
+
+fn read_manual_oauth_callback() -> std::io::Result<String> {
+    let stdin = std::io::stdin();
+    let mut input = String::new();
+    stdin
+        .lock()
+        .take(MAX_MANUAL_CALLBACK_BYTES)
+        .read_line(&mut input)?;
+    let input = input.trim().to_string();
+    if input.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "no callback URL provided",
+        ));
+    }
+    Ok(input)
+}
+
+fn anthropic_accounts_directory(xedoc_home: &Path) -> PathBuf {
+    ANTHROPIC_ACCOUNTS_PATH
+        .into_iter()
+        .fold(xedoc_home.to_path_buf(), |path, component| {
+            path.join(component)
+        })
 }
 
 pub fn read_api_key_from_stdin() -> String {

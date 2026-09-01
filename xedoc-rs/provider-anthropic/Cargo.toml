@@ -18,9 +18,15 @@ chrono = { workspace = true }
 eventsource-stream = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tiny_http = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
+url = { workspace = true }
+webbrowser = { workspace = true }
 xedoc-api = { workspace = true }
 xedoc-client = { workspace = true }
 xedoc-protocol = { workspace = true }
