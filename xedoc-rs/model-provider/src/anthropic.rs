@@ -109,7 +109,7 @@ impl AnthropicModelProvider {
             .select()
             .map_err(|_| self.missing_credentials_error())?;
         Ok(Arc::new(AnthropicOAuthAuthProvider::new(
-            credential.access_token,
+            credential.credential.access_token,
         )))
     }
 
@@ -209,7 +209,7 @@ fn load_accounts(directory: &std::path::Path) -> OAuthAccounts {
         Ok(loaded) => loaded,
         Err(error) => return OAuthAccounts::Unavailable(error.kind()),
     };
-    if loaded.credentials.is_empty() && !loaded.failures.is_empty() {
+    if loaded.accounts.is_empty() && !loaded.failures.is_empty() {
         return OAuthAccounts::Unavailable(io::ErrorKind::InvalidData);
     }
     if !loaded.failures.is_empty() {
@@ -218,7 +218,7 @@ fn load_accounts(directory: &std::path::Path) -> OAuthAccounts {
             "ignored invalid Anthropic OAuth credential files"
         );
     }
-    match AnthropicAccountPool::new(loaded.credentials) {
+    match AnthropicAccountPool::new(loaded.accounts) {
         Ok(accounts) => OAuthAccounts::Ready(Arc::new(accounts)),
         Err(_) => OAuthAccounts::Unavailable(io::ErrorKind::InvalidData),
     }
