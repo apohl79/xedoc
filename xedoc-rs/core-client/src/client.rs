@@ -112,6 +112,7 @@ use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_model_provider_info::WireApi;
 use xedoc_protocol::error::Result;
 use xedoc_protocol::error::XedocErr;
+use xedoc_provider_gemini::GeminiThoughtSignatureStore;
 use xedoc_response_debug_context::extract_response_debug_context;
 use xedoc_response_debug_context::extract_response_debug_context_from_api_error;
 use xedoc_response_debug_context::telemetry_api_error_message;
@@ -184,6 +185,7 @@ struct ModelClientState {
     beta_features_header: Option<String>,
     item_ids_enabled: bool,
     concurrent_reasoning_summaries_enabled: bool,
+    gemini_thought_signatures: Arc<GeminiThoughtSignatureStore>,
     disable_websockets: AtomicBool,
     agent_identity_session_fallback: AgentIdentitySessionFallback,
     cached_websocket_session: StdMutex<WebsocketSession>,
@@ -414,6 +416,7 @@ impl ModelClient {
                 beta_features_header,
                 item_ids_enabled,
                 concurrent_reasoning_summaries_enabled,
+                gemini_thought_signatures: Arc::new(GeminiThoughtSignatureStore::new()),
                 disable_websockets: AtomicBool::new(false),
                 agent_identity_session_fallback: AgentIdentitySessionFallback::default(),
                 cached_websocket_session: StdMutex::new(WebsocketSession::default()),
@@ -1542,9 +1545,18 @@ impl ModelClientSession {
                 )
                 .await
             }
-            WireApi::Gemini => Err(XedocErr::InvalidRequest(
-                "native Gemini runtime is not connected".to_string(),
-            )),
+            WireApi::Gemini => {
+                self.stream_gemini_api(
+                    prompt,
+                    model_info,
+                    session_telemetry,
+                    effort,
+                    summary,
+                    service_tier,
+                    responses_metadata,
+                )
+                .await
+            }
             WireApi::Responses => {
                 if self.client.responses_websocket_enabled() {
                     let request_trace = current_span_w3c_trace_context();
@@ -2008,6 +2020,9 @@ impl WebsocketTelemetry for ApiTelemetry {
 
 #[path = "client_anthropic.rs"]
 mod anthropic;
+
+#[path = "client_gemini.rs"]
+mod gemini;
 
 #[cfg(test)]
 #[path = "client_tests.rs"]
