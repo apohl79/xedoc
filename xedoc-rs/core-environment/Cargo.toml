@@ -1,0 +1,39 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-environment"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_environment"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+arc-swap = { workspace = true }
+async-channel = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-rollout = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+xedoc-utils-pty = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["fs", "process", "rt", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+core_test_support = { workspace = true }
+pretty_assertions = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "time"] }
+tokio-tungstenite = { workspace = true }

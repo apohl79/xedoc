@@ -1,0 +1,36 @@
+[package]
+name = "xedoc-apply-patch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_apply_patch"
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "apply_patch"
+path = "src/main.rs"
+test = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+similar = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+tree-sitter = { workspace = true }
+tree-sitter-bash = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+assert_matches = { workspace = true }
+xedoc-utils-cargo-bin = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

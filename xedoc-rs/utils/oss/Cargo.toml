@@ -1,0 +1,17 @@
+[package]
+name = "xedoc-utils-oss"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core = { workspace = true }
+xedoc-lmstudio = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-ollama = { workspace = true }
+
+[lib]
+doctest = false

@@ -1,0 +1,52 @@
+pub mod loader;
+mod manager;
+mod provider;
+pub mod startup_sync;
+#[cfg(test)]
+mod test_support;
+
+pub use xedoc_core_plugin_marketplace::OPENAI_API_CURATED_MARKETPLACE_NAME;
+pub use xedoc_core_plugin_marketplace::OPENAI_BUNDLED_MARKETPLACE_NAME;
+pub use xedoc_core_plugin_marketplace::OPENAI_CURATED_MARKETPLACE_NAME;
+pub(crate) use xedoc_core_plugin_marketplace::command_migration;
+pub use xedoc_core_plugin_marketplace::installed_marketplaces;
+pub use xedoc_core_plugin_marketplace::is_openai_curated_marketplace_name;
+pub use xedoc_core_plugin_marketplace::manifest;
+pub use xedoc_core_plugin_marketplace::marketplace;
+pub use xedoc_core_plugin_marketplace::marketplace_add;
+pub(crate) use xedoc_core_plugin_marketplace::marketplace_policy;
+pub use xedoc_core_plugin_marketplace::marketplace_remove;
+pub use xedoc_core_plugin_marketplace::marketplace_upgrade;
+pub(crate) use xedoc_core_plugin_marketplace::npm_source;
+pub use xedoc_core_plugin_marketplace::store;
+
+pub type LoadedPlugin = xedoc_plugin::LoadedPlugin<xedoc_config::McpServerConfig>;
+pub type PluginLoadOutcome = xedoc_plugin::PluginLoadOutcome<xedoc_config::McpServerConfig>;
+
+pub use command_migration::CommandDescriptionMode;
+pub use command_migration::CommandMigrationProfile;
+pub use command_migration::RewriteProfile as CommandRewriteProfile;
+pub use command_migration::count_missing_commands_with_profile;
+pub use command_migration::import_commands_with_profile;
+pub use command_migration::missing_command_names_with_profile;
+pub use loader::PluginHookLoadOutcome;
+pub use manager::ConfiguredMarketplace;
+pub use manager::ConfiguredMarketplaceListOutcome;
+pub use manager::ConfiguredMarketplacePlugin;
+pub use manager::PluginDetail;
+pub use manager::PluginDetailsUnavailableReason;
+pub use manager::PluginInstallError;
+pub use manager::PluginInstallOutcome;
+pub use manager::PluginInstallRequest;
+pub use manager::PluginReadOutcome;
+pub use manager::PluginReadRequest;
+pub use manager::PluginUninstallError;
+pub use manager::PluginsConfigInput;
+pub use manager::PluginsManager;
+pub use manager::legacy_plugin_home;
+pub use marketplace_policy::allowed_configured_marketplace_names;
+pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeError as PluginMarketplaceUpgradeError;
+pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome as PluginMarketplaceUpgradeOutcome;
+pub use provider::ExecutorPluginProvider;
+pub use provider::ExecutorPluginProviderError;
+pub use provider::ResolvedExecutorPlugin;

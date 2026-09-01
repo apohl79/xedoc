@@ -1,0 +1,28 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-config-runtime"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_config_runtime"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-config = { workspace = true }
+xedoc-execpolicy = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-network-proxy = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+toml = { workspace = true }

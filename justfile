@@ -1,4 +1,4 @@
-set working-directory := "codex-rs"
+set working-directory := "xedoc-rs"
 set positional-arguments := true
 
 export JUST_SHELL := justfile_directory() / "scripts/just-shell.py"
@@ -13,18 +13,18 @@ python := if os_family() == "windows" { "python" } else { "python3" }
 help:
     just -l
 
-# `codex`
+# `xedoc`
 
-alias c := codex
+alias c := xedoc
 
-codex *args:
-    cargo run --bin codex -- {args}
+xedoc *args:
+    cargo run --bin xedoc -- {args}
 
-# `codex exec`
+# `xedoc exec`
 exec *args:
-    cargo run --bin codex -- exec {args}
+    cargo run --bin xedoc -- exec {args}
 
-# Start `codex exec-server` and run codex-tui.
+# Start `xedoc exec-server` and run xedoc-tui.
 [no-cd]
 [positional-arguments]
 [unix]
@@ -33,12 +33,12 @@ tui-with-exec-server *args:
 
 # Run the CLI version of the file-search crate.
 file-search *args:
-    cargo run --bin codex-file-search -- {args}
+    cargo run --bin xedoc-file-search -- {args}
 
 # Build the CLI and run the app-server test client
 app-server-test-client *args:
-    cargo build -p codex-cli
-    cargo run -p codex-app-server-test-client -- --codex-bin ./target/debug/codex {args}
+    cargo build -p xedoc-cli
+    cargo run -p xedoc-app-server-test-client -- --xedoc-bin ./target/debug/xedoc {args}
 
 # Format the justfile, Rust, Bazel/Starlark, and Python scripts.
 fmt:
@@ -104,7 +104,7 @@ bench-smoke:
 # Run Bazel-backed end-to-end macrobenchmarks with optimized binaries.
 bench-e2e:
     # Keep measured binaries comparable to production-style optimized builds.
-    bazel test --compilation_mode=opt --cache_test_results=no --test_output=streamed //codex-rs:e2e-benchmarks
+    bazel test --compilation_mode=opt --cache_test_results=no --test_output=streamed //xedoc-rs:e2e-benchmarks
 
 # Run Bazel-backed end-to-end macrobenchmarks once per case with release-like
 
@@ -113,20 +113,20 @@ bench-e2e-smoke:
     # Avoid optimizer cost because smoke runs only check that benchmarks work.
     # Compile target Rust code through the same release-only cfg paths as opt.
     # Compile exec-platform Rust tools through those release-only cfg paths too.
-    bazel test --compilation_mode=fastbuild --@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no --cache_test_results=no --test_output=streamed --test_arg=--test //codex-rs:e2e-benchmarks
+    bazel test --compilation_mode=fastbuild --@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no --cache_test_results=no --test_output=streamed --test_arg=--test //xedoc-rs:e2e-benchmarks
 
-# Build and run Codex from source using Bazel.
+# Build and run Xedoc from source using Bazel.
 # On Unix, use `[no-cd]` and `--run_under="cd $PWD &&"` to ensure Bazel runs
 
 # the command in the current working directory.
 [no-cd]
 [unix]
-bazel-codex *args:
-    bazel run //codex-rs/cli:codex --run_under="cd $PWD &&" -- "$@"
+bazel-xedoc *args:
+    bazel run //xedoc-rs/cli:xedoc --run_under="cd $PWD &&" -- "$@"
 
 [windows]
-bazel-codex *args:
-    bazel run //codex-rs/cli:codex --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
+bazel-xedoc *args:
+    bazel run //xedoc-rs/cli:xedoc --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
 
 [no-cd]
 bazel-lock-update:
@@ -155,25 +155,25 @@ bazel-argument-comment-lint:
     bazel build --config=argument-comment-lint -- $({{ justfile_directory() }}/tools/argument-comment-lint/list-bazel-targets.sh)
 
 build-for-release:
-    bazel build //codex-rs/cli:release_binaries
+    bazel build //xedoc-rs/cli:release_binaries
 
 # Run the MCP server
 mcp-server-run *args:
-    cargo run -p codex-mcp-server -- {args}
+    cargo run -p xedoc-mcp-server -- {args}
 
 # Regenerate the json schema for config.toml from the current config types.
 write-config-schema:
-    cargo run -p codex-core --bin codex-write-config-schema
+    cargo run -p xedoc-core --bin xedoc-write-config-schema
 
 # Regenerate vendored app-server protocol schema artifacts.
 write-app-server-schema *args:
-    cargo run -p codex-app-server-protocol --bin write_schema_fixtures -- {args}
+    cargo run -p xedoc-app-server-protocol --bin write_schema_fixtures -- {args}
 
 [no-cd]
 write-hooks-schema:
-    cargo run --manifest-path {{ justfile_directory() }}/codex-rs/Cargo.toml -p codex-hooks --bin write_hooks_schema_fixtures
+    cargo run --manifest-path {{ justfile_directory() }}/xedoc-rs/Cargo.toml -p xedoc-hooks --bin write_hooks_schema_fixtures
 
-# Run the argument-comment Dylint checks across codex-rs.
+# Run the argument-comment Dylint checks across xedoc-rs.
 [no-cd]
 [unix]
 argument-comment-lint *args:
@@ -190,8 +190,8 @@ argument-comment-lint-from-source *args:
 # Tail logs from the state SQLite database
 [unix]
 log *args:
-    if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-state --bin logs_client -- "$@"
+    if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p xedoc-state --bin logs_client -- "$@"
 
 [windows]
 log *args:
-    $forwarded_args = @($args | Select-Object -Skip 1); if ($forwarded_args.Count -gt 0 -and $forwarded_args[0] -eq "--") { $forwarded_args = @($forwarded_args | Select-Object -Skip 1) }; cargo run -p codex-state --bin logs_client -- @forwarded_args
+    $forwarded_args = @($args | Select-Object -Skip 1); if ($forwarded_args.Count -gt 0 -and $forwarded_args[0] -eq "--") { $forwarded_args = @($forwarded_args | Select-Object -Skip 1) }; cargo run -p xedoc-state --bin logs_client -- @forwarded_args

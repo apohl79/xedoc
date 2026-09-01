@@ -1,0 +1,15 @@
+[package]
+name = "xedoc-utils-approval-presets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-protocol = { workspace = true }
+
+[lib]
+test = false
+doctest = false

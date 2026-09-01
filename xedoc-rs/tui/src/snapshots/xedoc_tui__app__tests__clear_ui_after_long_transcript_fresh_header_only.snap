@@ -1,0 +1,8 @@
+---
+source: tui/src/app/tests.rs
+expression: rendered
+---
+╭─ XEDOC ──────────────────────── <VERSION> ─╮
+│  gpt-test · high                           │
+│  /tmp/project                              │
+╰────────────────────────────────────────────╯

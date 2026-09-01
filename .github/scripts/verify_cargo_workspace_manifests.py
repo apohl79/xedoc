@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-"""Verify that codex-rs Cargo manifests follow workspace manifest policy.
+"""Verify that xedoc-rs Cargo manifests follow workspace manifest policy.
 
 Checks:
 - Crates inherit `[workspace.package]` metadata.
 - Crates opt into `[lints] workspace = true`.
-- Crate names follow the codex-rs directory naming conventions.
+- Crate names follow the xedoc-rs directory naming conventions.
 - Workspace manifests do not introduce workspace crate feature toggles.
 """
 
@@ -16,11 +16,11 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-CARGO_RS_ROOT = ROOT / "codex-rs"
+CARGO_RS_ROOT = ROOT / "xedoc-rs"
 WORKSPACE_PACKAGE_FIELDS = ("version", "edition", "license")
 TOP_LEVEL_NAME_EXCEPTIONS: dict[str, str] = {}
 UTILITY_NAME_EXCEPTIONS = {
-    "path-utils": "codex-utils-path",
+    "path-utils": "xedoc-utils-path",
 }
 MANIFEST_FEATURE_EXCEPTIONS: dict[str, dict[str, tuple[str, ...]]] = {}
 OPTIONAL_DEPENDENCY_EXCEPTIONS = set()
@@ -54,7 +54,7 @@ def main() -> int:
         return 0
 
     print(
-        "Cargo manifests under codex-rs must inherit workspace package metadata, "
+        "Cargo manifests under xedoc-rs must inherit workspace package metadata, "
         "opt into workspace lints, and avoid introducing new workspace crate "
         "features."
     )
@@ -65,7 +65,7 @@ def main() -> int:
         "permutations we want to avoid."
     )
     print(
-        "Cargo only applies `codex-rs/Cargo.toml` `[workspace.lints.clippy]` "
+        "Cargo only applies `xedoc-rs/Cargo.toml` `[workspace.lints.clippy]` "
         "entries to a crate when that crate declares:"
     )
     print()
@@ -78,8 +78,8 @@ def main() -> int:
     )
     print()
     print(
-        "Package-name checks apply to `codex-rs/<crate>/Cargo.toml` and "
-        "`codex-rs/utils/<crate>/Cargo.toml`."
+        "Package-name checks apply to `xedoc-rs/<crate>/Cargo.toml` and "
+        "`xedoc-rs/utils/<crate>/Cargo.toml`."
     )
     print(
         "Workspace crate features are forbidden; add a targeted exception here "
@@ -203,11 +203,11 @@ def expected_package_name(path: Path) -> str | None:
         directory = parts[0]
         return TOP_LEVEL_NAME_EXCEPTIONS.get(
             directory,
-            directory if directory.startswith("codex-") else f"codex-{directory}",
+            directory if directory.startswith("xedoc-") else f"xedoc-{directory}",
         )
     if len(parts) == 3 and parts[0] == "utils" and parts[2] == "Cargo.toml":
         directory = parts[1]
-        return UTILITY_NAME_EXCEPTIONS.get(directory, f"codex-utils-{directory}")
+        return UTILITY_NAME_EXCEPTIONS.get(directory, f"xedoc-utils-{directory}")
     return None
 
 def is_workspace_reference(value: object) -> bool:

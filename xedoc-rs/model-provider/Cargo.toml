@@ -1,0 +1,34 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-model-provider"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "xedoc_model_provider"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-api = { workspace = true }
+xedoc-agent-identity = { workspace = true }
+xedoc-aws-auth = { workspace = true }
+xedoc-http-client = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-response-debug-context = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing = { workspace = true, features = ["log"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+wiremock = { workspace = true }

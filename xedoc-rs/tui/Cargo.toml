@@ -1,0 +1,183 @@
+[package]
+name = "xedoc-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+autobins = false
+
+[[bin]]
+name = "xedoc-tui"
+path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "md-events"
+path = "src/bin/md-events.rs"
+test = false
+
+[lib]
+name = "xedoc_tui"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+clap = { workspace = true, features = ["derive"] }
+xedoc-ansi-escape = { workspace = true }
+xedoc-app-server-client = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-arg0 = { workspace = true }
+xedoc-install-context = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-plugins = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-file-search = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-message-history = { workspace = true }
+xedoc-model-provider = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-rollout = { workspace = true }
+xedoc-sandboxing = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-state = { workspace = true }
+xedoc-terminal-detection = { workspace = true }
+xedoc-tui-agents = { workspace = true }
+xedoc-tui-app-server-session = { workspace = true, features = ["test-support"] }
+xedoc-tui-bottom-pane = { workspace = true }
+xedoc-tui-chatwidget = { workspace = true, features = ["test-support"] }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-composer = { workspace = true }
+xedoc-tui-frame = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-hooks = { workspace = true }
+xedoc-tui-completion = { workspace = true }
+xedoc-tui-debug = { workspace = true }
+xedoc-tui-markdown = { workspace = true }
+xedoc-tui-overlays = { workspace = true }
+xedoc-tui-platform = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-session-picker = { workspace = true }
+xedoc-tui-settings = { workspace = true }
+xedoc-tui-status = { workspace = true }
+xedoc-tui-thread-state = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+xedoc-tui-workspace = { workspace = true }
+xedoc-utils-approval-presets = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+xedoc-utils-elapsed = { workspace = true }
+xedoc-utils-fuzzy-match = { workspace = true }
+xedoc-utils-home-dir = { workspace = true }
+xedoc-utils-oss = { workspace = true }
+xedoc-utils-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+xedoc-utils-plugins = { workspace = true }
+xedoc-utils-sandbox-summary = { workspace = true }
+xedoc-utils-sleep-inhibitor = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true, features = ["bracketed-paste", "event-stream"] }
+derive_more = { workspace = true, features = ["is_variant"] }
+dirs = { workspace = true }
+dunce = { workspace = true }
+image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+pulldown-cmark = { workspace = true }
+rand = { workspace = true }
+ratatui = { workspace = true, features = [
+    "scrolling-regions",
+    "unstable-backend-writer",
+    "unstable-rendered-line-info",
+    "unstable-widget-ref",
+] }
+ratatui-macros = { workspace = true }
+regex-lite = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "json"] }
+rmcp = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+sha2 = { workspace = true }
+shlex = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+supports-color = { workspace = true }
+tempfile = { workspace = true }
+textwrap = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+    "io-std",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "signal",
+    "test-util",
+    "time",
+] }
+tokio-stream = { workspace = true, features = ["sync"] }
+toml = { workspace = true }
+tracing = { workspace = true, features = ["log"] }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+webbrowser = { workspace = true }
+uuid = { workspace = true }
+
+tokio-util = { workspace = true, features = ["time"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+which = { workspace = true }
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+] }
+winsplit = "0.1"
+
+# Clipboard support via `arboard` is not available on Android/Termux.
+# Only include it for non-Android targets so the crate builds on Android.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard = { workspace = true }
+
+[dev-dependencies]
+app_test_support = { workspace = true }
+xedoc-cli = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-tui-bottom-pane = { workspace = true, features = ["test-support"] }
+xedoc-tui-composer = { workspace = true, features = ["test-support"] }
+xedoc-tui-platform = { workspace = true, features = ["test-support"] }
+xedoc-tui-status = { workspace = true, features = ["test-support"] }
+xedoc-tui-transcript = { workspace = true, features = ["test-support"] }
+core_test_support = { workspace = true }
+xedoc-utils-cargo-bin = { workspace = true }
+xedoc-tui-test-support = { workspace = true }
+assert_matches = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+futures = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+rand = { workspace = true }
+serial_test = { workspace = true }
+tokio-tungstenite = { workspace = true }
+vt100 = { workspace = true }
+uuid = { workspace = true }
+wiremock = { workspace = true }

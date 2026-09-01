@@ -1,0 +1,602 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use async_channel::Receiver;
+use async_channel::Sender;
+use serde_json::Value;
+use std::time::Duration;
+use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
+use xedoc_async_utils::OrCancelExt;
+use xedoc_extension_api::LoadedUserInstructions;
+use xedoc_protocol::protocol::ApplyPatchApprovalRequestEvent;
+use xedoc_protocol::protocol::Event;
+use xedoc_protocol::protocol::EventMsg;
+use xedoc_protocol::protocol::ExecApprovalRequestEvent;
+use xedoc_protocol::protocol::Op;
+use xedoc_protocol::protocol::RequestUserInputEvent;
+use xedoc_protocol::protocol::ReviewDecision;
+use xedoc_protocol::protocol::SessionSource;
+use xedoc_protocol::protocol::SubAgentSource;
+use xedoc_protocol::protocol::Submission;
+use xedoc_protocol::protocol::ThreadSource;
+use xedoc_protocol::request_permissions::PermissionGrantScope;
+use xedoc_protocol::request_permissions::RequestPermissionsArgs;
+use xedoc_protocol::request_permissions::RequestPermissionsEvent;
+use xedoc_protocol::request_permissions::RequestPermissionsResponse;
+use xedoc_protocol::request_user_input::RequestUserInputArgs;
+use xedoc_protocol::request_user_input::RequestUserInputResponse;
+use xedoc_protocol::user_input::UserInput;
+
+use crate::config::Config;
+use crate::session::SUBMISSION_CHANNEL_CAPACITY;
+use crate::session::SessionIo;
+use crate::session::SessionSpawnArgs;
+use crate::session::session::Session;
+use crate::session::turn_context::TurnContext;
+use xedoc_login::AuthManager;
+use xedoc_models_manager::manager::SharedModelsManager;
+use xedoc_protocol::error::XedocErr;
+use xedoc_protocol::protocol::InitialHistory;
+use xedoc_protocol::protocol::MultiAgentVersion;
+
+#[cfg(test)]
+use crate::session::completed_session_loop_termination;
+
+/// Start an interactive sub-Xedoc thread and return its runtime and IO channels.
+///
+/// The returned IO yields non-approval events emitted by the sub-agent.
+/// Approval requests are handled via `parent_session` and are not surfaced.
+/// Its submission channel accepts additional `Op`s for the sub-agent.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_xedoc_thread_interactive(
+    config: Config,
+    auth_manager: Arc<AuthManager>,
+    models_manager: SharedModelsManager,
+    parent_session: Arc<Session>,
+    parent_ctx: Arc<TurnContext>,
+    cancel_token: CancellationToken,
+    subagent_source: SubAgentSource,
+    initial_history: Option<InitialHistory>,
+) -> Result<(Arc<Session>, SessionIo), XedocErr> {
+    let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
+    let (tx_ops, rx_ops) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
+    let conversation_history = initial_history.unwrap_or(InitialHistory::New);
+    let forked_from_thread_id = conversation_history.forked_from_id();
+    let user_instructions = LoadedUserInstructions {
+        instructions: parent_session.user_instructions().await,
+        warnings: Vec::new(),
+    };
+    let (session, io) = Box::pin(Session::spawn(SessionSpawnArgs {
+        config,
+        allow_provider_model_fallback: false,
+        user_instructions,
+        user_instructions_provider: None,
+        installation_id: parent_session.installation_id.clone(),
+        auth_manager,
+        models_manager,
+        environment_manager: parent_session
+            .services
+            .turn_environments
+            .environment_manager(),
+        skills_service: Arc::clone(&parent_session.services.skills_service),
+        plugins_manager: Arc::clone(&parent_session.services.plugins_manager),
+        mcp_manager: Arc::clone(&parent_session.services.mcp_manager),
+        extensions: Arc::clone(&parent_session.services.extensions),
+        conversation_history,
+        requested_history_mode: None,
+        session_source: SessionSource::SubAgent(subagent_source),
+        forked_from_thread_id,
+        parent_thread_id: Some(parent_session.thread_id),
+        thread_source: Some(ThreadSource::Subagent),
+        originator: parent_ctx.originator.clone(),
+        agent_control: parent_session.services.agent_control.clone(),
+        dynamic_tools: Vec::new(),
+        metrics_service_name: None,
+        user_shell_override: None,
+        inherited_environments: Some(parent_ctx.environments.clone()),
+        inherited_exec_policy: Some(Arc::clone(&parent_session.services.exec_policy)),
+        parent_trace: None,
+        environment_selections: parent_ctx.environments.to_selections(),
+        thread_extension_init: xedoc_extension_api::ExtensionDataInit::default(),
+        supports_openai_form_elicitation: parent_session
+            .services
+            .supports_openai_form_elicitation
+            .load(std::sync::atomic::Ordering::Relaxed),
+        thread_store: Arc::clone(&parent_session.services.thread_store),
+        external_time_provider: Some(Arc::clone(&parent_session.services.time_provider)),
+        inherited_multi_agent_version: Some(MultiAgentVersion::Disabled),
+    }))
+    .or_cancel(&cancel_token)
+    .await??;
+    // Use a child token so parent cancel cascades but we can scope it to this task
+    let cancel_token_events = cancel_token.child_token();
+    let cancel_token_ops = cancel_token.child_token();
+
+    // Forward events from the sub-agent to the consumer, filtering approvals and
+    // routing them to the parent session for decisions.
+    let parent_session_clone = Arc::clone(&parent_session);
+    let parent_ctx_clone = Arc::clone(&parent_ctx);
+    let io = Arc::new(io);
+    let caller_io = SessionIo {
+        tx_sub: tx_ops,
+        rx_event: rx_sub,
+        agent_status: io.agent_status.clone(),
+        session_loop_termination: io.session_loop_termination.clone(),
+    };
+    let io_for_events = Arc::clone(&io);
+    tokio::spawn(async move {
+        forward_events(
+            io_for_events,
+            tx_sub,
+            parent_session_clone,
+            parent_ctx_clone,
+            cancel_token_events,
+        )
+        .await;
+    });
+
+    // Forward ops from the caller to the sub-agent.
+    tokio::spawn(async move {
+        forward_ops(io, rx_ops, cancel_token_ops).await;
+    });
+
+    Ok((session, caller_io))
+}
+
+/// Convenience wrapper for one-time use with an initial prompt.
+///
+/// Internally calls the interactive variant, then immediately submits the provided input.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_xedoc_thread_one_shot(
+    config: Config,
+    auth_manager: Arc<AuthManager>,
+    models_manager: SharedModelsManager,
+    input: Vec<UserInput>,
+    parent_session: Arc<Session>,
+    parent_ctx: Arc<TurnContext>,
+    cancel_token: CancellationToken,
+    subagent_source: SubAgentSource,
+    final_output_json_schema: Option<Value>,
+    initial_history: Option<InitialHistory>,
+) -> Result<(Arc<Session>, SessionIo), XedocErr> {
+    // Use a child token so we can stop the delegate after completion without
+    // requiring the caller to cancel the parent token.
+    let child_cancel = cancel_token.child_token();
+    let (session, io) = Box::pin(run_xedoc_thread_interactive(
+        config,
+        auth_manager,
+        models_manager,
+        parent_session,
+        parent_ctx,
+        child_cancel.clone(),
+        subagent_source,
+        initial_history,
+    ))
+    .await?;
+
+    // Send the initial input to kick off the one-shot turn.
+    io.submit(Op::UserInput {
+        items: input,
+        final_output_json_schema,
+        responsesapi_client_metadata: None,
+        additional_context: Default::default(),
+        thread_settings: Default::default(),
+    })
+    .await?;
+
+    // Bridge events so we can observe completion and shut down automatically.
+    let (tx_bridge, rx_bridge) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
+    let ops_tx = io.tx_sub.clone();
+    let agent_status = io.agent_status.clone();
+    let session_loop_termination = io.session_loop_termination.clone();
+    let io_for_bridge = io;
+    tokio::spawn(async move {
+        while let Ok(event) = io_for_bridge.next_event().await {
+            let should_shutdown = matches!(
+                event.msg,
+                EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_)
+            );
+            let _ = tx_bridge.send(event).await;
+            if should_shutdown {
+                let _ = ops_tx
+                    .send(Submission {
+                        id: "shutdown".to_string(),
+                        op: Op::Shutdown {},
+                        client_user_message_id: None,
+                        trace: None,
+                    })
+                    .await;
+                child_cancel.cancel();
+                break;
+            }
+        }
+    });
+
+    // For one-shot usage, return a closed `tx_sub` so callers cannot submit
+    // additional ops after the initial request. Create a channel and drop the
+    // receiver to close it immediately.
+    let (tx_closed, rx_closed) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
+    drop(rx_closed);
+
+    Ok((
+        session,
+        SessionIo {
+            rx_event: rx_bridge,
+            tx_sub: tx_closed,
+            agent_status,
+            session_loop_termination,
+        },
+    ))
+}
+
+async fn forward_events(
+    io: Arc<SessionIo>,
+    tx_sub: Sender<Event>,
+    parent_session: Arc<Session>,
+    parent_ctx: Arc<TurnContext>,
+    cancel_token: CancellationToken,
+) {
+    let cancelled = cancel_token.cancelled();
+    tokio::pin!(cancelled);
+
+    loop {
+        tokio::select! {
+            _ = &mut cancelled => {
+                shutdown_delegate(&io).await;
+                break;
+            }
+            event = io.next_event() => {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(_) => break,
+                };
+                match event {
+                    Event {
+                        id: _,
+                        msg:
+                            EventMsg::TokenCount(_)
+                            | EventMsg::SessionConfigured(_)
+                            | EventMsg::McpStartupUpdate(_)
+                            | EventMsg::McpStartupComplete(_),
+                    } => {}
+                    Event {
+                        id,
+                        msg: EventMsg::ExecApprovalRequest(event),
+                    } => {
+                        // Initiate approval via parent session; do not surface to consumer.
+                        handle_exec_approval(
+                            &io,
+                            id,
+                            &parent_session,
+                            &parent_ctx,
+                            event,
+                            &cancel_token,
+                        )
+                        .await;
+                    }
+                    Event {
+                        id,
+                        msg: EventMsg::ApplyPatchApprovalRequest(event),
+                    } => {
+                        handle_patch_approval(
+                            &io,
+                            id,
+                            &parent_session,
+                            &parent_ctx,
+                            event,
+                            &cancel_token,
+                        )
+                        .await;
+                    }
+                    Event {
+                        msg: EventMsg::RequestPermissions(event),
+                        ..
+                    } => {
+                        handle_request_permissions(
+                            &io,
+                            &parent_session,
+                            &parent_ctx,
+                            event,
+                            &cancel_token,
+                        )
+                        .await;
+                    }
+                    Event {
+                        id,
+                        msg: EventMsg::RequestUserInput(event),
+                    } => {
+                        handle_request_user_input(
+                            &io,
+                            id,
+                            &parent_session,
+                            &parent_ctx,
+                            event,
+                            &cancel_token,
+                        )
+                        .await;
+                    }
+                    other => {
+                        if !forward_event_or_shutdown(&io, &tx_sub, &cancel_token, other).await
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Ask the delegate to stop and drain its events so background sends do not hit a closed channel.
+async fn shutdown_delegate(io: &SessionIo) {
+    let _ = io.submit(Op::Interrupt).await;
+    let _ = io.submit(Op::Shutdown {}).await;
+
+    let _ = timeout(Duration::from_millis(500), async {
+        while let Ok(event) = io.next_event().await {
+            if matches!(
+                event.msg,
+                EventMsg::TurnAborted(_) | EventMsg::TurnComplete(_)
+            ) {
+                break;
+            }
+        }
+    })
+    .await;
+}
+
+async fn forward_event_or_shutdown(
+    io: &SessionIo,
+    tx_sub: &Sender<Event>,
+    cancel_token: &CancellationToken,
+    event: Event,
+) -> bool {
+    match tx_sub.send(event).or_cancel(cancel_token).await {
+        Ok(Ok(())) => true,
+        _ => {
+            shutdown_delegate(io).await;
+            false
+        }
+    }
+}
+
+/// Forward ops from a caller to a sub-agent, respecting cancellation.
+async fn forward_ops(
+    io: Arc<SessionIo>,
+    rx_ops: Receiver<Submission>,
+    cancel_token_ops: CancellationToken,
+) {
+    loop {
+        let submission = match rx_ops.recv().or_cancel(&cancel_token_ops).await {
+            Ok(Ok(submission)) => submission,
+            Ok(Err(_)) | Err(_) => break,
+        };
+        let _ = io.submit_with_id(submission).await;
+    }
+}
+
+/// Handle an ExecApprovalRequest by consulting the parent session and replying.
+async fn handle_exec_approval(
+    io: &SessionIo,
+    turn_id: String,
+    parent_session: &Arc<Session>,
+    parent_ctx: &Arc<TurnContext>,
+    event: ExecApprovalRequestEvent,
+    cancel_token: &CancellationToken,
+) {
+    let approval_id_for_op = event.effective_approval_id();
+    let ExecApprovalRequestEvent {
+        call_id,
+        approval_id,
+        environment_id,
+        command,
+        cwd,
+        reason,
+        network_approval_context,
+        proposed_execpolicy_amendment,
+        additional_permissions,
+        available_decisions,
+        ..
+    } = event;
+    let decision = await_approval_with_cancel(
+        parent_session.request_command_approval(
+            parent_ctx,
+            call_id,
+            approval_id,
+            environment_id,
+            command,
+            cwd,
+            reason,
+            network_approval_context,
+            proposed_execpolicy_amendment,
+            additional_permissions,
+            available_decisions,
+        ),
+        parent_session,
+        &approval_id_for_op,
+        cancel_token,
+    )
+    .await;
+
+    let _ = io
+        .submit(Op::ExecApproval {
+            id: approval_id_for_op,
+            turn_id: Some(turn_id),
+            decision,
+        })
+        .await;
+}
+
+/// Handle an ApplyPatchApprovalRequest by consulting the parent session and replying.
+async fn handle_patch_approval(
+    io: &SessionIo,
+    _id: String,
+    parent_session: &Arc<Session>,
+    parent_ctx: &Arc<TurnContext>,
+    event: ApplyPatchApprovalRequestEvent,
+    cancel_token: &CancellationToken,
+) {
+    let ApplyPatchApprovalRequestEvent {
+        call_id,
+        changes,
+        reason,
+        grant_root,
+        ..
+    } = event;
+    let approval_id = call_id.clone();
+    let decision =
+        parent_session.request_patch_approval(parent_ctx, call_id, changes, reason, grant_root);
+    let decision =
+        await_approval_with_cancel(decision, parent_session, &approval_id, cancel_token).await;
+    let _ = io
+        .submit(Op::PatchApproval {
+            id: approval_id,
+            decision,
+        })
+        .await;
+}
+
+async fn handle_request_user_input(
+    io: &SessionIo,
+    id: String,
+    parent_session: &Arc<Session>,
+    parent_ctx: &Arc<TurnContext>,
+    event: RequestUserInputEvent,
+    cancel_token: &CancellationToken,
+) {
+    let args = RequestUserInputArgs {
+        questions: event.questions,
+        auto_resolution_ms: event.auto_resolution_ms,
+    };
+    let response_fut =
+        parent_session.request_user_input(parent_ctx, parent_ctx.sub_id.clone(), args);
+    let response = await_user_input_with_cancel(
+        response_fut,
+        parent_session,
+        &parent_ctx.sub_id,
+        cancel_token,
+    )
+    .await;
+    let _ = io.submit(Op::UserInputAnswer { id, response }).await;
+}
+
+async fn handle_request_permissions(
+    io: &SessionIo,
+    parent_session: &Arc<Session>,
+    parent_ctx: &Arc<TurnContext>,
+    event: RequestPermissionsEvent,
+    cancel_token: &CancellationToken,
+) {
+    let call_id = event.call_id;
+    let args = RequestPermissionsArgs {
+        environment_id: event.environment_id,
+        reason: event.reason,
+        permissions: event.permissions,
+    };
+    let cwd = event.cwd.unwrap_or_else(|| {
+        #[allow(deprecated)]
+        parent_ctx.cwd.clone()
+    });
+    let response_fut = parent_session.request_permissions_for_cwd(
+        parent_ctx,
+        call_id.clone(),
+        args,
+        cwd,
+        cancel_token.clone(),
+    );
+    let response =
+        await_request_permissions_with_cancel(response_fut, parent_session, &call_id, cancel_token)
+            .await;
+    let _ = io
+        .submit(Op::RequestPermissionsResponse {
+            id: call_id,
+            response,
+        })
+        .await;
+}
+
+async fn await_user_input_with_cancel<F>(
+    fut: F,
+    parent_session: &Session,
+    sub_id: &str,
+    cancel_token: &CancellationToken,
+) -> RequestUserInputResponse
+where
+    F: core::future::Future<Output = Option<RequestUserInputResponse>>,
+{
+    tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => {
+            let empty = RequestUserInputResponse {
+                answers: HashMap::new(),
+            };
+            parent_session
+                .notify_user_input_response(sub_id, empty.clone())
+                .await;
+            empty
+        }
+        response = fut => response.unwrap_or_else(|| RequestUserInputResponse {
+            answers: HashMap::new(),
+        }),
+    }
+}
+
+async fn await_request_permissions_with_cancel<F>(
+    fut: F,
+    parent_session: &Session,
+    call_id: &str,
+    cancel_token: &CancellationToken,
+) -> RequestPermissionsResponse
+where
+    F: core::future::Future<Output = Option<RequestPermissionsResponse>>,
+{
+    tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => {
+            let empty = RequestPermissionsResponse {
+                permissions: Default::default(),
+                scope: PermissionGrantScope::Turn,
+            };
+            parent_session
+                .notify_request_permissions_response(call_id, empty.clone())
+                .await;
+            empty
+        }
+        response = fut => response.unwrap_or_else(|| RequestPermissionsResponse {
+            permissions: Default::default(),
+            scope: PermissionGrantScope::Turn,
+        }),
+    }
+}
+
+/// Await an approval decision, aborting on cancellation.
+async fn await_approval_with_cancel<F>(
+    fut: F,
+    parent_session: &Session,
+    approval_id: &str,
+    cancel_token: &CancellationToken,
+) -> ReviewDecision
+where
+    F: core::future::Future<Output = ReviewDecision>,
+{
+    tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => {
+            parent_session
+                .notify_approval(
+                    approval_id,
+                    xedoc_protocol::protocol::ReviewDecision::Abort,
+                )
+                .await;
+            xedoc_protocol::protocol::ReviewDecision::Abort
+        }
+        decision = fut => {
+            decision
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "xedoc_delegate_tests.rs"]
+mod tests;

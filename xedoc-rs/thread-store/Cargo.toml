@@ -1,0 +1,38 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-thread-store"
+version.workspace = true
+
+[lib]
+name = "xedoc_thread_store"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true, features = ["serde"] }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-install-context = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-rollout = { workspace = true }
+xedoc-state = { workspace = true }
+xedoc-utils-path = { workspace = true }
+futures = { workspace = true }
+pulldown-cmark = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+uuid = { workspace = true }

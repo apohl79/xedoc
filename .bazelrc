@@ -11,7 +11,7 @@ startup --experimental_remote_repo_contents_cache
 
 common --experimental_platform_in_output_dir
 
-# Runfiles strategy rationale: codex-rs/utils/cargo-bin/README.md
+# Runfiles strategy rationale: xedoc-rs/utils/cargo-bin/README.md
 common --noenable_runfiles
 
 common --enable_platform_specific_config
@@ -87,18 +87,16 @@ common:remote --jobs=800
 # Enable pipelined compilation since we are not bound by local CPU count.
 #common:remote --@rules_rust//rust/settings:pipelined_compilation
 
-# Signed apohl79 release builds preserve the Cargo release profile while
+# Signed Xedoc release builds preserve the Cargo release profile while
 # allowing the configured Bazel executor/cache to compile the target graph.
-common:apohl79-release --compilation_mode=opt
-common:apohl79-release --strip=never
-common:apohl79-release --remote_download_toplevel
-common:apohl79-release --define=apohl79_release=true
-common:apohl79-release --workspace_status_command=scripts/apohl79_bazel_status.py
-common:apohl79-release --@rules_rust//rust/settings:lto=thin
-common:apohl79-release --@rules_rust//rust/settings:codegen_units=4
-common:apohl79-release --@rules_rust//rust/settings:extra_rustc_flag=-Cdebuginfo=line-tables-only
-common:apohl79-release --@rules_rust//rust/settings:extra_rustc_flag=-Csplit-debuginfo=off
-common:apohl79-release --@rules_rust//rust/settings:extra_rustc_flag=-Cstrip=none
+common:xedoc-release --compilation_mode=opt
+common:xedoc-release --strip=never
+common:xedoc-release --remote_download_toplevel
+common:xedoc-release --@rules_rust//rust/settings:lto=thin
+common:xedoc-release --@rules_rust//rust/settings:codegen_units=4
+common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Cdebuginfo=line-tables-only
+common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Csplit-debuginfo=off
+common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Cstrip=none
 
 # GitHub Actions CI configs.
 common:ci --remote_download_minimal
@@ -120,13 +118,13 @@ common:ci-bazel --config=ci
 common:ci-bazel --build_metadata=TAG_workflow=bazel
 # Skip the ConPTY Ctrl-C integration test until Windows Bazel CI can reliably
 # interrupt foreground processes.
-common:ci-bazel --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
+common:ci-bazel --test_env=XEDOC_BAZEL_TEST_SKIP_FILTERS=tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
 
 # Shared config for Bazel-backed Rust linting.
 build:clippy --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
 build:clippy --output_groups=+clippy_checks
-build:clippy --@rules_rust//rust/settings:clippy.toml=//codex-rs:clippy.toml
-# Keep this deny-list in sync with `codex-rs/Cargo.toml` `[workspace.lints.clippy]`.
+build:clippy --@rules_rust//rust/settings:clippy.toml=//xedoc-rs:clippy.toml
+# Keep this deny-list in sync with `xedoc-rs/Cargo.toml` `[workspace.lints.clippy]`.
 # Cargo applies those lint levels to member crates that opt into `[lints] workspace = true`
 # in their own `Cargo.toml`, but `rules_rust` Bazel clippy does not read Cargo lint levels.
 # `clippy.toml` can configure lint behavior, but it cannot set allow/warn/deny/forbid levels.
@@ -204,7 +202,7 @@ common:ci-windows-cross --test_env=RUST_TEST_THREADS=1
 # cross-built gnullvm binaries currently hang in those tests when run on the
 # Windows runner. This config replaces the base skip list, so repeat the exact
 # ConPTY Ctrl-C test exclusion.
-common:ci-windows-cross --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
+common:ci-windows-cross --test_env=XEDOC_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
 common:ci-windows-cross --platforms=//:windows_x86_64_gnullvm
 common:ci-windows-cross --extra_execution_platforms=//:rbe,//:windows_x86_64_msvc
 common:ci-windows-cross --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain

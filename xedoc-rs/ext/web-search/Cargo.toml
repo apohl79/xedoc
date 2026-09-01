@@ -1,0 +1,32 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-web-search-extension"
+version.workspace = true
+
+[lib]
+name = "xedoc_web_search_extension"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-api = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-extension-items = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-model-provider = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tools = { workspace = true }
+http = { workspace = true }
+schemars = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

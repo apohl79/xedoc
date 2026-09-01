@@ -1,0 +1,10 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "core-config",
+    crate_name = "xedoc_core_config",
+    test_data_extra = ["//xedoc-rs/core:config.schema.json"],
+    test_shard_counts = {
+        "core-config-unit-tests": 8,
+    },
+)

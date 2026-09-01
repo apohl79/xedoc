@@ -1,0 +1,8 @@
+---
+source: tui-transcript/src/history_cell/tests.rs
+expression: rendered
+---
+╭─ XEDOC ───────────────────────────── test ─╮
+│  gpt-5                                     │
+│  /tmp/project                         YOLO │
+╰────────────────────────────────────────────╯

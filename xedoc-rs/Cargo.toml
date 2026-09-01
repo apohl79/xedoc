@@ -1,0 +1,654 @@
+[workspace]
+members = [
+    "aws-auth",
+    "agent-graph-store",
+    "agent-identity",
+    "bwrap",
+    "ansi-escape",
+    "async-utils",
+    "app-server",
+    "app-server-jsonrpc",
+    "app-server-transport",
+    "app-server-daemon",
+    "app-server-client",
+    "app-server-protocol",
+    "app-server-test-client",
+    "apply-patch",
+    "arg0",
+    "features",
+    "install-context",
+    "xedoc-home",
+    "cli",
+    "cli-runtime",
+    "collaboration-mode-templates",
+    "config",
+    "context-fragments",
+    "shell-command",
+    "shell-escalation",
+    "skills",
+    "core",
+    "core-client",
+    "core-config",
+    "core-config-runtime",
+    "core-context",
+    "core-auto-compact-window",
+    "core-plugin-context",
+    "core-session-name",
+    "core-agent-registry",
+    "core-agent-role",
+    "core-subagent-activity",
+    "core-context-manager",
+    "core-project-docs",
+    "core-utils",
+    "core-response-items",
+    "core-rollout-reconstruction",
+    "core-rollout-truncation",
+    "core-exec",
+    "core-approval-policy",
+    "core-mcp-runtime",
+    "core-mcp-skill-dependency",
+    "core-elicitation",
+    "core-time",
+    "installation-id",
+    "core-tool-specs",
+    "core-tool-output",
+    "core-tool-runtime",
+    "core-environment",
+    "core-turn-context",
+    "core-turn-metadata",
+    "core-turn-timing",
+    "core-turn-diff",
+    "core-api",
+    "core-plugin-marketplace",
+    "core-plugins",
+    "core-skills",
+    "hooks",
+    "http-client",
+    "secrets",
+    "exec",
+    "file-system",
+    "exec-server-protocol",
+    "exec-server",
+    "execpolicy",
+    "ext/agent",
+    "ext/extension-api",
+    "ext/goal",
+    "ext/image-generation",
+    "ext/items",
+    "ext/mcp",
+    "ext/skills",
+    "ext/web-search",
+    "keyring-store",
+    "file-search",
+    "file-watcher",
+    "linux-sandbox",
+    "lmstudio",
+    "login",
+    "xedoc-mcp",
+    "mcp-server",
+    "model-provider-info",
+    "models-manager",
+    "network-proxy",
+    "ollama",
+    "process-hardening",
+    "protocol",
+    "prompts",
+    "rollout",
+    "rmcp-client",
+    "responses-api-proxy",
+    "response-debug-context",
+    "sandboxing",
+    "stdio-to-uds",
+    "otel",
+    "tui",
+    "tui-agents",
+    "tui-app-server-session",
+    "tui-bottom-pane",
+    "tui-chatwidget",
+    "tui-composer",
+    "tui-completion",
+    "tui-debug",
+    "tui-events",
+    "tui-frame",
+    "tui-hooks",
+    "tui-input",
+    "tui-markdown",
+    "tui-overlays",
+    "tui-platform",
+    "tui-render",
+    "tui-session-picker",
+    "tui-settings",
+    "tui-status",
+    "tui-test-support",
+    "tui-thread-state",
+    "tui-transcript",
+    "tui-workspace",
+    "tools",
+    "websocket-client",
+    "utils/absolute-path",
+    "utils/path-uri",
+    "utils/cargo-bin",
+    "git-utils",
+    "utils/cache",
+    "utils/image",
+    "utils/json-to-toml",
+    "utils/home-dir",
+    "utils/pty",
+    "utils/readiness",
+    "utils/rustls-provider",
+    "utils/string",
+    "utils/cli",
+    "utils/elapsed",
+    "utils/sandbox-summary",
+    "utils/sleep-inhibitor",
+    "utils/approval-presets",
+    "utils/oss",
+    "utils/output-truncation",
+    "utils/path-utils",
+    "utils/plugins",
+    "utils/fuzzy-match",
+    "utils/stream-parser",
+    "utils/template",
+    "xedoc-client",
+    "xedoc-api",
+    "state",
+    "terminal-detection",
+    "test-binary-support",
+    "thread-manager-sample",
+    "thread-store",
+    "uds",
+    "xedoc-experimental-api-macros",
+    "plugin",
+    "model-provider",
+]
+resolver = "2"
+
+[workspace.package]
+version = "1.0.0"
+# Track the edition for all workspace crates in one place. Individual
+# crates can still override this value, but keeping it here means new
+# crates created with `cargo new -w ...` automatically inherit the 2024
+# edition.
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+# Internal
+app_test_support = { path = "app-server/tests/common" }
+xedoc-agent-graph-store = { path = "agent-graph-store" }
+xedoc-agent-identity = { path = "agent-identity" }
+xedoc-ansi-escape = { path = "ansi-escape" }
+xedoc-api = { path = "xedoc-api" }
+xedoc-aws-auth = { path = "aws-auth" }
+xedoc-app-server = { path = "app-server" }
+xedoc-app-server-jsonrpc = { path = "app-server-jsonrpc" }
+xedoc-app-server-transport = { path = "app-server-transport" }
+xedoc-app-server-daemon = { path = "app-server-daemon" }
+xedoc-app-server-client = { path = "app-server-client" }
+xedoc-app-server-protocol = { path = "app-server-protocol" }
+xedoc-app-server-test-client = { path = "app-server-test-client" }
+xedoc-apply-patch = { path = "apply-patch" }
+xedoc-arg0 = { path = "arg0" }
+xedoc-async-utils = { path = "async-utils" }
+xedoc-cli = { path = "cli" }
+xedoc-cli-runtime = { path = "cli-runtime" }
+xedoc-client = { path = "xedoc-client" }
+xedoc-collaboration-mode-templates = { path = "collaboration-mode-templates" }
+xedoc-home = { path = "xedoc-home" }
+xedoc-http-client = { path = "http-client" }
+xedoc-websocket-client = { path = "websocket-client" }
+xedoc-config = { path = "config" }
+xedoc-agent-extension = { path = "ext/agent" }
+xedoc-context-fragments = { path = "context-fragments" }
+xedoc-core = { path = "core" }
+xedoc-core-client = { path = "core-client" }
+xedoc-core-config = { path = "core-config" }
+xedoc-core-config-runtime = { path = "core-config-runtime" }
+xedoc-core-context = { path = "core-context" }
+xedoc-core-auto-compact-window = { path = "core-auto-compact-window" }
+xedoc-core-plugin-context = { path = "core-plugin-context" }
+xedoc-core-session-name = { path = "core-session-name" }
+xedoc-core-agent-registry = { path = "core-agent-registry" }
+xedoc-core-agent-role = { path = "core-agent-role" }
+xedoc-core-subagent-activity = { path = "core-subagent-activity" }
+xedoc-core-context-manager = { path = "core-context-manager" }
+xedoc-core-project-docs = { path = "core-project-docs" }
+xedoc-core-utils = { path = "core-utils" }
+xedoc-core-response-items = { path = "core-response-items" }
+xedoc-core-rollout-reconstruction = { path = "core-rollout-reconstruction" }
+xedoc-core-rollout-truncation = { path = "core-rollout-truncation" }
+xedoc-core-exec = { path = "core-exec" }
+xedoc-core-approval-policy = { path = "core-approval-policy" }
+xedoc-core-mcp-runtime = { path = "core-mcp-runtime" }
+xedoc-core-mcp-skill-dependency = { path = "core-mcp-skill-dependency" }
+xedoc-core-elicitation = { path = "core-elicitation" }
+xedoc-core-time = { path = "core-time" }
+xedoc-installation-id = { path = "installation-id" }
+xedoc-core-tool-specs = { path = "core-tool-specs" }
+xedoc-core-tool-output = { path = "core-tool-output" }
+xedoc-core-tool-runtime = { path = "core-tool-runtime" }
+xedoc-core-environment = { path = "core-environment" }
+xedoc-core-turn-context = { path = "core-turn-context" }
+xedoc-core-turn-metadata = { path = "core-turn-metadata" }
+xedoc-core-turn-timing = { path = "core-turn-timing" }
+xedoc-core-turn-diff = { path = "core-turn-diff" }
+xedoc-core-api = { path = "core-api" }
+xedoc-core-plugin-marketplace = { path = "core-plugin-marketplace" }
+xedoc-core-plugins = { path = "core-plugins" }
+xedoc-core-skills = { path = "core-skills" }
+xedoc-exec = { path = "exec" }
+xedoc-file-system = { path = "file-system" }
+xedoc-exec-server-protocol = { path = "exec-server-protocol" }
+xedoc-exec-server = { path = "exec-server" }
+xedoc-execpolicy = { path = "execpolicy" }
+xedoc-extension-api = { path = "ext/extension-api" }
+xedoc-extension-items = { path = "ext/items" }
+xedoc-goal-extension = { path = "ext/goal" }
+xedoc-image-generation-extension = { path = "ext/image-generation" }
+xedoc-experimental-api-macros = { path = "xedoc-experimental-api-macros" }
+xedoc-features = { path = "features" }
+xedoc-install-context = { path = "install-context" }
+xedoc-file-search = { path = "file-search" }
+xedoc-file-watcher = { path = "file-watcher" }
+xedoc-git-utils = { path = "git-utils" }
+xedoc-hooks = { path = "hooks" }
+xedoc-keyring-store = { path = "keyring-store" }
+xedoc-linux-sandbox = { path = "linux-sandbox" }
+xedoc-lmstudio = { path = "lmstudio" }
+xedoc-login = { path = "login" }
+xedoc-message-history = { path = "message-history" }
+xedoc-web-search-extension = { path = "ext/web-search" }
+xedoc-mcp = { path = "xedoc-mcp" }
+xedoc-mcp-extension = { path = "ext/mcp" }
+xedoc-mcp-server = { path = "mcp-server" }
+xedoc-model-provider-info = { path = "model-provider-info" }
+xedoc-models-manager = { path = "models-manager" }
+xedoc-network-proxy = { path = "network-proxy" }
+xedoc-ollama = { path = "ollama" }
+xedoc-otel = { path = "otel" }
+xedoc-plugin = { path = "plugin" }
+xedoc-model-provider = { path = "model-provider" }
+xedoc-process-hardening = { path = "process-hardening" }
+xedoc-protocol = { path = "protocol" }
+xedoc-prompts = { path = "prompts" }
+xedoc-responses-api-proxy = { path = "responses-api-proxy" }
+xedoc-response-debug-context = { path = "response-debug-context" }
+xedoc-rmcp-client = { path = "rmcp-client" }
+xedoc-rollout = { path = "rollout" }
+xedoc-sandboxing = { path = "sandboxing" }
+xedoc-secrets = { path = "secrets" }
+xedoc-shell-command = { path = "shell-command" }
+xedoc-shell-escalation = { path = "shell-escalation" }
+xedoc-skills-extension = { path = "ext/skills" }
+xedoc-skills = { path = "skills" }
+xedoc-state = { path = "state" }
+xedoc-stdio-to-uds = { path = "stdio-to-uds" }
+xedoc-terminal-detection = { path = "terminal-detection" }
+xedoc-test-binary-support = { path = "test-binary-support" }
+xedoc-thread-store = { path = "thread-store" }
+xedoc-tools = { path = "tools" }
+xedoc-tui = { path = "tui" }
+xedoc-tui-agents = { path = "tui-agents" }
+xedoc-tui-app-server-session = { path = "tui-app-server-session" }
+xedoc-tui-bottom-pane = { path = "tui-bottom-pane" }
+xedoc-tui-chatwidget = { path = "tui-chatwidget" }
+xedoc-tui-composer = { path = "tui-composer" }
+xedoc-tui-input = { path = "tui-input" }
+xedoc-tui-completion = { path = "tui-completion" }
+xedoc-tui-debug = { path = "tui-debug" }
+xedoc-tui-events = { path = "tui-events" }
+xedoc-tui-frame = { path = "tui-frame" }
+xedoc-tui-hooks = { path = "tui-hooks" }
+xedoc-tui-markdown = { path = "tui-markdown" }
+xedoc-tui-overlays = { path = "tui-overlays" }
+xedoc-tui-platform = { path = "tui-platform" }
+xedoc-tui-render = { path = "tui-render" }
+xedoc-tui-session-picker = { path = "tui-session-picker" }
+xedoc-tui-settings = { path = "tui-settings" }
+xedoc-tui-status = { path = "tui-status" }
+xedoc-tui-test-support = { path = "tui-test-support" }
+xedoc-tui-thread-state = { path = "tui-thread-state" }
+xedoc-tui-transcript = { path = "tui-transcript" }
+xedoc-tui-workspace = { path = "tui-workspace" }
+xedoc-uds = { path = "uds" }
+xedoc-utils-absolute-path = { path = "utils/absolute-path" }
+xedoc-utils-approval-presets = { path = "utils/approval-presets" }
+xedoc-utils-cache = { path = "utils/cache" }
+xedoc-utils-cargo-bin = { path = "utils/cargo-bin" }
+xedoc-utils-cli = { path = "utils/cli" }
+xedoc-utils-elapsed = { path = "utils/elapsed" }
+xedoc-utils-fuzzy-match = { path = "utils/fuzzy-match" }
+xedoc-utils-home-dir = { path = "utils/home-dir" }
+xedoc-utils-image = { path = "utils/image" }
+xedoc-utils-json-to-toml = { path = "utils/json-to-toml" }
+xedoc-utils-oss = { path = "utils/oss" }
+xedoc-utils-output-truncation = { path = "utils/output-truncation" }
+xedoc-utils-path = { path = "utils/path-utils" }
+xedoc-utils-path-uri = { path = "utils/path-uri" }
+xedoc-utils-plugins = { path = "utils/plugins" }
+xedoc-utils-pty = { path = "utils/pty" }
+xedoc-utils-rustls-provider = { path = "utils/rustls-provider" }
+xedoc-utils-sandbox-summary = { path = "utils/sandbox-summary" }
+xedoc-utils-sleep-inhibitor = { path = "utils/sleep-inhibitor" }
+xedoc-utils-stream-parser = { path = "utils/stream-parser" }
+xedoc-utils-string = { path = "utils/string" }
+xedoc-utils-template = { path = "utils/template" }
+core_test_support = { path = "core/tests/common" }
+mcp_test_support = { path = "mcp-server/tests/common" }
+
+# External
+age = "0.11.1"
+ansi-to-tui = "7.0.0"
+anyhow = "1"
+arboard = { version = "3", features = ["wayland-data-control"] }
+arc-swap = "1.9.0"
+assert_cmd = "2"
+assert_matches = "1.5.0"
+async-channel = "2.3.1"
+async-io = "2.6.0"
+async-stream = "0.3.6"
+aws-config = "1"
+aws-credential-types = "1"
+aws-sigv4 = "1"
+aws-types = "1"
+axum = { version = "0.8", default-features = false }
+base64 = "0.22.1"
+bm25 = "2.3.2"
+bytes = "1.10.1"
+chardetng = "0.1.17"
+chrono = "0.4.43"
+clap = "4"
+clap_complete = "4"
+clatter = { version = "2.2.0", default-features = false, features = [
+    "alloc",
+    "getrandom",
+    "use-25519",
+    "use-aes-gcm",
+    "use-rust-crypto-ml-kem",
+    "use-sha",
+] }
+color-eyre = "0.6.3"
+constant_time_eq = "0.3.1"
+crossbeam-channel = "0.5.15"
+crypto_box = { version = "0.9.1", features = ["seal"] }
+crossterm = "0.28.1"
+ctor = "0.6.3"
+derive_more = "2"
+diffy = "0.4.2"
+dirs = "6"
+divan = "0.1.21"
+dns-lookup = "3.0.1"
+dotenvy = "0.15.7"
+dunce = "1.0.4"
+ed25519-dalek = { version = "2.2.0", features = ["pkcs8"] }
+encoding_rs = "0.8.35"
+eventsource-stream = "0.2.3"
+flate2 = "1.1.8"
+futures = { version = "0.3", default-features = false }
+gethostname = "1.1.0"
+gix = { version = "0.81.0", default-features = false, features = ["sha1"] }
+glob = "0.3"
+globset = "0.4"
+hmac = "0.12.1"
+http = "1.3.1"
+httpdate = "1.0.3"
+iana-time-zone = "0.1.64"
+icu_decimal = "2.1"
+icu_locale_core = "2.1"
+icu_provider = { version = "2.1", features = ["sync"] }
+ignore = "0.4.23"
+image = { version = "^0.25.9", default-features = false }
+include_dir = "0.7.4"
+indexmap = "2.12.0"
+insta = "1.46.3"
+inventory = "0.3.19"
+itertools = "0.14.0"
+jsonptr = { version = "0.7.1", default-features = false }
+jsonwebtoken = "9.3.1"
+keyring = { version = "3.6", default-features = false }
+landlock = "0.4.4"
+lazy_static = "1"
+libc = "0.2.182"
+# Keep SQLx's bundled SQLite on a version containing the WAL-reset corruption fix:
+# https://www.sqlite.org/wal.html#the_wal_reset_bug
+libsqlite3-sys = { version = "0.37", default-features = false }
+log = "0.4"
+lru = "0.16.3"
+maplit = "1.0.2"
+memchr = "2.7.6"
+mime_guess = "2.0.5"
+multimap = "0.10.0"
+notify = "8.2.0"
+nucleo = { git = "https://github.com/helix-editor/nucleo.git", rev = "4253de9faabb4e5c6d81d946a5e35a90f87347ee" }
+once_cell = "1.20.2"
+openssl-sys = "*"
+opentelemetry = "0.31.0"
+opentelemetry-appender-tracing = "0.31.0"
+opentelemetry-otlp = "0.31.0"
+opentelemetry-semantic-conventions = "0.31.0"
+opentelemetry_sdk = "0.31.0"
+os_info = "3.12.0"
+owo-colors = "4.3.0"
+pathdiff = "0.2"
+portable-pty = "0.9.0"
+predicates = "3"
+pretty_assertions = "1.4.1"
+pulldown-cmark = { version = "0.10", default-features = false }
+quick-xml = "0.41.0"
+rand = "0.9"
+ratatui = "0.29.0"
+ratatui-macros = "0.6.0"
+rcgen = { version = "0.14.7", default-features = false, features = [
+    "aws_lc_rs",
+    "pem",
+] }
+regex = "1.12.3"
+regex-lite = "0.1.8"
+reqwest = { version = "0.12", features = ["cookies"] }
+rmcp = { version = "1.8.0", default-features = false }
+runfiles = { git = "https://github.com/dzbarsky/rules_rust", rev = "b56cbaa8465e74127f1ea216f813cd377295ad81" }
+rustls = { version = "0.23", default-features = false, features = [
+    "aws_lc_rs",
+    "std",
+] }
+rustls-native-certs = "0.8.3"
+rustls-pki-types = "1.14.0"
+schemars = "0.8.22"
+seccompiler = "0.5.0"
+semver = "1.0"
+sentry = "0.46.0"
+serde = { version = "1", features = ["rc"] }
+serde_ignored = "0.1.14"
+serde_json = "1"
+serde_path_to_error = "0.1.20"
+serde_with = "3.17"
+serde_yaml = "0.9"
+serial_test = "3.2.0"
+sha1 = "0.10.6"
+scopeguard = "1.2.0"
+sha2 = "0.10"
+shlex = "1.3.0"
+similar = "2.7.0"
+symphonia = { version = "0.6.0", default-features = false, features = [
+    "isomp4",
+    "mkv",
+    "mp3",
+    "ogg",
+    "wav",
+] }
+socket2 = "0.6.1"
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "chrono",
+    "json",
+    "macros",
+    "migrate",
+    "runtime-tokio",
+    "tls-rustls",
+    "sqlite-bundled",
+    "time",
+    "uuid",
+] }
+starlark = { version = "0.14.2", default-features = false }
+strum = "0.27.2"
+strum_macros = "0.28.0"
+supports-color = "3.0.2"
+syntect = "5"
+sys-locale = "0.3.2"
+system-configuration = "0.7"
+tar = { version = "=0.4.45", default-features = false }
+tempfile = "3.23.0"
+test-log = "0.2.19"
+textwrap = "0.16.2"
+thiserror = "2.0.17"
+time = "0.3.47"
+tiny_http = "0.12"
+tokio = "1"
+tokio-rustls = "0.26.4"
+tokio-stream = "0.1.18"
+tokio-test = "0.4"
+tokio-tungstenite = { version = "0.28.0", features = [
+    "proxy",
+    "rustls-tls-native-roots",
+] }
+tokio-util = "0.7.18"
+toml = "0.9.5"
+toml_edit = "0.24.0"
+tracing = "0.1.44"
+tracing-appender = "0.2.3"
+tracing-opentelemetry = "0.32.0"
+tracing-subscriber = "0.3.22"
+tracing-test = "0.2.5"
+tonic = { version = "0.14.3", default-features = false, features = ["channel", "codegen"] }
+tonic-prost = "0.14.3"
+tree-sitter = "0.25.10"
+tree-sitter-bash = "0.25"
+ts-rs = "11"
+tungstenite = { version = "0.27.0", features = ["deflate", "proxy"] }
+uds_windows = "1.1.0"
+unicode-segmentation = "1.12.0"
+unicode-width = "0.2"
+url = "2"
+urlencoding = "2.1"
+uuid = "1"
+vt100 = "0.16.2"
+walkdir = "2.5.0"
+webbrowser = "1.0"
+which = "8"
+whoami = "1.6.1"
+wildmatch = "2.6.1"
+winapi-util = "0.1.11"
+zip = "2.4.2"
+zstd = "0.13"
+
+wiremock = "0.6"
+zeroize = "1.8.2"
+
+[workspace.lints]
+rust = {}
+
+[workspace.lints.clippy]
+await_holding_invalid_type = "deny"
+await_holding_lock = "deny"
+expect_used = "deny"
+identity_op = "deny"
+manual_clamp = "deny"
+manual_filter = "deny"
+manual_find = "deny"
+manual_flatten = "deny"
+manual_map = "deny"
+manual_memcpy = "deny"
+manual_non_exhaustive = "deny"
+manual_ok_or = "deny"
+manual_range_contains = "deny"
+manual_retain = "deny"
+manual_strip = "deny"
+manual_try_fold = "deny"
+manual_unwrap_or = "deny"
+needless_borrow = "deny"
+needless_borrowed_reference = "deny"
+needless_collect = "deny"
+needless_late_init = "deny"
+needless_option_as_deref = "deny"
+needless_question_mark = "deny"
+needless_update = "deny"
+redundant_clone = "deny"
+redundant_closure = "deny"
+redundant_closure_for_method_calls = "deny"
+redundant_static_lifetimes = "deny"
+trivially_copy_pass_by_ref = "deny"
+uninlined_format_args = "deny"
+unnecessary_filter_map = "deny"
+unnecessary_lazy_evaluations = "deny"
+unnecessary_sort_by = "deny"
+unnecessary_to_owned = "deny"
+unwrap_used = "deny"
+
+# cargo-shear cannot see the platform-specific openssl-sys usage, so we
+# silence the false positive here instead of deleting a real dependency.
+[workspace.metadata.cargo-shear]
+ignored = [
+    "icu_provider",
+    "openssl-sys",
+]
+
+[profile.dev]
+# Keep line tables/backtraces while avoiding expensive full variable debug info
+# across local dev builds.
+debug = "limited"
+incremental = true
+
+[profile.dev.package."*"]
+debug = "none"
+
+[profile.test]
+incremental = true
+
+[profile.test.package."*"]
+debug = "none"
+
+[profile.dev-small]
+inherits = "dev"
+opt-level = 0
+debug = "none"
+strip = "symbols"
+
+[profile.release]
+lto = "thin"
+debug = "line-tables-only"
+split-debuginfo = "off"
+incremental = true
+# Keep release binaries symbolicateable until packaging has archived the
+# sidecar symbols and stripped the binaries.
+strip = false
+
+# Balance parallel release code generation against binary size.
+codegen-units = 4
+
+[profile.bench]
+incremental = true
+
+[profile.profiling]
+inherits = "release"
+debug = "full"
+lto = false
+strip = false
+
+[profile.ci-test]
+# Reduce binary size to reduce disk pressure.
+debug = "limited"
+inherits = "test"
+opt-level = 0
+
+[patch.crates-io]
+# Uncomment to debug local changes.
+# ratatui = { path = "../../ratatui" }
+crossterm = { git = "https://github.com/nornagon/crossterm", rev = "87db8bfa6dc99427fd3b071681b07fc31c6ce995" }
+ratatui = { git = "https://github.com/nornagon/ratatui", rev = "9b2ad1298408c45918ee9f8241a6f95498cdbed2" }
+tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186" }
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }
+
+# Uncomment to debug local changes.
+# rmcp = { path = "../../rust-sdk/crates/rmcp" }
+
+[patch."ssh://git@github.com/openai-oss-forks/tungstenite-rs.git"]
+tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }

@@ -1,0 +1,30 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-api"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "xedoc_core_api"
+path = "src/lib.rs"
+test = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-arg0 = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-home = { workspace = true }
+xedoc-image-generation-extension = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }

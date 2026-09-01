@@ -1,0 +1,12 @@
+---
+source: tui-transcript/src/history_cell/tests.rs
+expression: rendered
+---
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ✨ Update available! <version> -> 9.9.9                                                                    │
+│ Run sh -c 'curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh │
+│ | sh' to update.                                                                                           │
+│                                                                                                            │
+│ See full release notes:                                                                                    │
+│ https://github.com/apohl79/codex/releases/latest                                                           │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

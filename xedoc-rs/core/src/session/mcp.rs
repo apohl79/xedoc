@@ -1,0 +1,589 @@
+use super::*;
+use crate::mcp::McpRuntimeProjection;
+use xedoc_exec_server::ExecutorCapabilityDiscoveryCache;
+use xedoc_exec_server::ExecutorCapabilityDiscoverySnapshot;
+use xedoc_exec_server::MAX_SELECTED_CAPABILITY_ROOTS;
+use xedoc_exec_server::ResolvedSelectedCapabilityRoot;
+use xedoc_protocol::capabilities::CapabilityRootLocation;
+use xedoc_protocol::capabilities::SelectedCapabilityRoot;
+
+pub(crate) struct McpServerElicitationOutcome {
+    pub(crate) response: Option<ElicitationResponse>,
+}
+
+impl Session {
+    pub(crate) async fn runtime_mcp_config(&self, config: &Config) -> McpConfig {
+        let originator = self.originator().await;
+        let environments = self.services.turn_environments.snapshot().await;
+        let selected_capability_roots = self
+            .resolve_selected_capability_roots_for_step(&environments)
+            .await;
+        let ready_selected_capability_roots =
+            Self::ready_selected_capability_roots(&selected_capability_roots);
+        let executor_capability_discovery = self
+            .executor_capability_discovery_for_step(config, &ready_selected_capability_roots)
+            .await;
+        self.services
+            .mcp_manager
+            .runtime_config_for_step(
+                config,
+                &self.services.mcp_thread_init,
+                &self.services.thread_extension_data,
+                &originator,
+                &ready_selected_capability_roots,
+                executor_capability_discovery.as_deref(),
+            )
+            .await
+            .config
+    }
+
+    pub(crate) async fn runtime_mcp_servers(
+        &self,
+        config: &Config,
+    ) -> HashMap<String, McpServerConfig> {
+        xedoc_mcp::configured_mcp_servers(&self.runtime_mcp_config(config).await)
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "MCP runtime comparison and publication must remain serialized"
+    )]
+    #[tracing::instrument(name = "mcp.runtime.resolve_for_step", skip_all)]
+    pub(crate) async fn mcp_runtime_for_step(
+        self: &Arc<Self>,
+        turn_context: &TurnContext,
+        environments: &TurnEnvironmentSnapshot,
+        selected_capability_roots: &[ResolvedSelectedCapabilityRoot],
+        executor_capability_discovery: Option<&ExecutorCapabilityDiscoverySnapshot>,
+    ) -> Arc<McpRuntimeSnapshot> {
+        let ready_selected_capability_roots =
+            Self::ready_selected_capability_roots(selected_capability_roots);
+        let available_environment_ids =
+            Self::available_selected_environment_ids(selected_capability_roots);
+        let current = self.services.latest_mcp_runtime();
+        if current.ready_selected_capability_roots() == ready_selected_capability_roots {
+            return current;
+        }
+
+        let _guard = self.services.mcp_projection_lock.lock().await;
+        let current = self.services.latest_mcp_runtime();
+        if current.ready_selected_capability_roots() == ready_selected_capability_roots {
+            return current;
+        }
+        let mcp_projection = self
+            .services
+            .mcp_manager
+            .runtime_config_for_step(
+                &turn_context.config,
+                &self.services.mcp_thread_init,
+                &self.services.thread_extension_data,
+                &turn_context.originator,
+                &ready_selected_capability_roots,
+                executor_capability_discovery,
+            )
+            .await;
+        let mcp_config = &mcp_projection.config;
+        let changed_environment_is_used_by_mcp = mcp_config
+            .mcp_server_catalog
+            .configured_servers()
+            .values()
+            .any(|server| {
+                let was_available = current
+                    .ready_selected_capability_roots()
+                    .iter()
+                    .any(|root| {
+                        let CapabilityRootLocation::Environment { environment_id, .. } =
+                            &root.location;
+                        environment_id == &server.environment_id
+                    });
+                let is_available = available_environment_ids.contains(&server.environment_id);
+                server.enabled && was_available != is_available
+            });
+        if !changed_environment_is_used_by_mcp
+            && current
+                .config()
+                .mcp_server_catalog
+                .has_same_servers(&mcp_config.mcp_server_catalog)
+        {
+            // Selected roots are only an input to the MCP projection. When they change but the
+            // projected servers do not, advance the input key without
+            // replacing the live manager and restarting its processes.
+            let runtime = Arc::new(McpRuntimeSnapshot::new(
+                Arc::new(current.config().clone()),
+                mcp_projection.plugins_available,
+                current.manager_arc(),
+                current.runtime_context().clone(),
+                ready_selected_capability_roots,
+            ));
+            self.services
+                .mcp_runtime_snapshot
+                .store(Some(Arc::clone(&runtime)));
+            return runtime;
+        }
+        self.refresh_mcp_servers_inner(
+            turn_context,
+            mcp_projection,
+            environments,
+            &ready_selected_capability_roots,
+        )
+        .await
+    }
+
+    #[tracing::instrument(
+        name = "capability_roots.snapshot_for_step",
+        skip_all,
+        fields(root_count = ready_selected_capability_roots.len())
+    )]
+    pub(crate) async fn executor_capability_discovery_for_step(
+        &self,
+        config: &Config,
+        ready_selected_capability_roots: &[SelectedCapabilityRoot],
+    ) -> Option<Arc<ExecutorCapabilityDiscoverySnapshot>> {
+        if !config
+            .features
+            .enabled(Feature::ExecutorCapabilityDiscovery)
+        {
+            return None;
+        }
+        let environment_manager = self.services.turn_environments.environment_manager();
+        let cache = self
+            .services
+            .thread_extension_data
+            .get_or_init(|| ExecutorCapabilityDiscoveryCache::new(environment_manager));
+        Some(Arc::new(
+            cache.snapshot(ready_selected_capability_roots).await,
+        ))
+    }
+
+    pub(crate) async fn resolve_selected_capability_roots_for_step(
+        &self,
+        environments: &TurnEnvironmentSnapshot,
+    ) -> Vec<ResolvedSelectedCapabilityRoot> {
+        let thread_root_count = self.services.selected_capability_roots.len();
+        let mut root_locations_by_id = HashMap::new();
+        let mut selected_capability_roots = Vec::new();
+        let mut ready_environment_root_count = 0;
+        for (index, root) in self
+            .services
+            .selected_capability_roots
+            .iter()
+            .chain(
+                environments
+                    .turn_environments()
+                    .flat_map(|environment| environment.environment.selected_capability_roots()),
+            )
+            .enumerate()
+        {
+            if let Some(kept_location) = root_locations_by_id.get(&root.id) {
+                if kept_location != &root.location {
+                    tracing::warn!(
+                        root_id = root.id,
+                        ?kept_location,
+                        ignored_location = ?root.location,
+                        "ignoring selected capability root with conflicting location"
+                    );
+                }
+                continue;
+            }
+            if index >= thread_root_count {
+                if ready_environment_root_count == MAX_SELECTED_CAPABILITY_ROOTS {
+                    tracing::warn!(
+                        max_root_count = MAX_SELECTED_CAPABILITY_ROOTS,
+                        "ignoring excess selected capability roots from ready environments"
+                    );
+                    break;
+                }
+                ready_environment_root_count += 1;
+            }
+            root_locations_by_id.insert(root.id.clone(), root.location.clone());
+            selected_capability_roots.push(root.clone());
+        }
+        self.services
+            .turn_environments
+            .environment_manager()
+            .resolve_selected_capability_roots(
+                &selected_capability_roots,
+                &environments.captured_environments(),
+            )
+            .await
+    }
+
+    pub(crate) fn mcp_elicitation_lifecycle(&self) -> xedoc_mcp::ElicitationLifecycle {
+        let elicitations = self.services.elicitations.clone();
+        xedoc_mcp::ElicitationLifecycle::new(move || elicitations.register())
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and turn state updates must remain atomic"
+    )]
+    pub async fn request_mcp_server_elicitation(
+        &self,
+        turn_context: &TurnContext,
+        server_name: String,
+        request_id: RequestId,
+        request: ElicitationRequest,
+    ) -> McpServerElicitationOutcome {
+        if self
+            .services
+            .latest_mcp_runtime()
+            .manager()
+            .elicitations_auto_deny()
+        {
+            return McpServerElicitationOutcome {
+                response: Some(ElicitationResponse {
+                    action: xedoc_rmcp_client::ElicitationAction::Accept,
+                    content: Some(serde_json::json!({})),
+                    meta: None,
+                }),
+            };
+        }
+
+        let _elicitation = self.services.elicitations.register();
+        let (tx_response, rx_response) = oneshot::channel();
+        let prev_entry = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(at) => {
+                    let mut ts = at.turn_state.lock().await;
+                    ts.insert_pending_elicitation(
+                        server_name.clone(),
+                        request_id.clone(),
+                        tx_response,
+                    )
+                }
+                None => None,
+            }
+        };
+        if prev_entry.is_some() {
+            warn!(
+                "Overwriting existing pending elicitation for server_name: {server_name}, request_id: {request_id}"
+            );
+        }
+        let id = match request_id {
+            rmcp::model::NumberOrString::String(value) => {
+                xedoc_protocol::mcp::RequestId::String(value.to_string())
+            }
+            rmcp::model::NumberOrString::Number(value) => {
+                xedoc_protocol::mcp::RequestId::Integer(value)
+            }
+        };
+        let event = EventMsg::ElicitationRequest(ElicitationRequestEvent {
+            turn_id: Some(turn_context.sub_id.clone()),
+            server_name,
+            id,
+            request,
+        });
+        turn_context
+            .turn_metadata_state
+            .mark_user_input_requested_during_turn();
+        self.send_event(turn_context, event).await;
+        McpServerElicitationOutcome {
+            response: rx_response.await.ok(),
+        }
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active turn checks and manager fallback must stay serialized"
+    )]
+    pub async fn resolve_elicitation(
+        &self,
+        server_name: String,
+        id: RequestId,
+        response: ElicitationResponse,
+    ) -> anyhow::Result<()> {
+        let entry = {
+            let mut active = self.active_turn.lock().await;
+            match active.as_mut() {
+                Some(at) => {
+                    let mut ts = at.turn_state.lock().await;
+                    ts.remove_pending_elicitation(&server_name, &id)
+                }
+                None => None,
+            }
+        };
+        if let Some(tx_response) = entry {
+            tx_response
+                .send(response)
+                .map_err(|e| anyhow::anyhow!("failed to send elicitation response: {e:?}"))?;
+            return Ok(());
+        }
+
+        self.services
+            .latest_mcp_runtime()
+            .manager_arc()
+            .resolve_elicitation(server_name, id, response)
+            .await
+    }
+
+    #[tracing::instrument(name = "mcp.runtime.refresh", skip_all)]
+    async fn refresh_mcp_servers_inner(
+        &self,
+        turn_context: &TurnContext,
+        mcp_projection: McpRuntimeProjection,
+        environments: &TurnEnvironmentSnapshot,
+        ready_selected_capability_roots: &[SelectedCapabilityRoot],
+    ) -> Arc<McpRuntimeSnapshot> {
+        let auth = self.services.auth_manager.auth().await;
+        let McpRuntimeProjection {
+            config: mcp_config,
+            plugins_available,
+        } = mcp_projection;
+        let mcp_config = Arc::new(mcp_config);
+        let tool_plugin_provenance = xedoc_mcp::tool_plugin_provenance(&mcp_config);
+        let mcp_servers = effective_mcp_servers(&mcp_config);
+        let environment_manager = self.services.turn_environments.environment_manager();
+        // TODO(anp): Migrate MCP runtime cwd plumbing to PathUri so foreign environment cwd
+        // values can be used without falling back to the legacy host cwd.
+        let cwd = environments
+            .primary()
+            .and_then(|turn_environment| turn_environment.cwd().to_abs_path().ok())
+            .map(|cwd| cwd.to_path_buf())
+            .unwrap_or_else(|| {
+                #[allow(deprecated)]
+                turn_context.cwd.to_path_buf()
+            });
+        let mcp_runtime_context = McpRuntimeContext::new(environment_manager, cwd);
+        let mcp_startup_cancellation_token = {
+            let mut guard = self.services.mcp_startup_cancellation_token.lock().await;
+            // The previous runtime owns the old token and may still be serving an in-flight step.
+            // Its manager cancels that token when the last runtime handle is dropped.
+            let cancellation_token = CancellationToken::new();
+            *guard = cancellation_token.clone();
+            cancellation_token
+        };
+        let current_runtime = self.services.latest_mcp_runtime();
+        let refreshed_manager = McpConnectionManager::new(
+            &mcp_servers,
+            mcp_config.mcp_oauth_credentials_store_mode,
+            mcp_config.auth_keyring_backend_kind,
+            &turn_context.approval_policy,
+            turn_context.sub_id.clone(),
+            Some(self.get_tx_event()),
+            mcp_startup_cancellation_token,
+            turn_context.permission_profile(),
+            mcp_runtime_context.clone(),
+            self.services.mcp_manager.tool_catalog_cache(),
+            mcp_config.prefix_mcp_tool_names,
+            mcp_config.client_elicitation_capability.clone(),
+            self.services
+                .supports_openai_form_elicitation
+                .load(std::sync::atomic::Ordering::Relaxed),
+            tool_plugin_provenance,
+            auth.as_ref(),
+            /*elicitation_reviewer*/ None,
+            Some(self.mcp_elicitation_lifecycle()),
+            current_runtime.manager().elicitation_router(),
+        )
+        .await;
+        refreshed_manager
+            .set_elicitations_auto_deny(current_runtime.manager().elicitations_auto_deny());
+        self.services.publish_mcp_runtime(
+            mcp_config,
+            plugins_available,
+            mcp_runtime_context,
+            ready_selected_capability_roots.to_vec(),
+            refreshed_manager,
+        )
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "MCP runtime refresh and publication must remain serialized"
+    )]
+    pub(crate) async fn refresh_mcp_servers_if_requested(&self, turn_context: &TurnContext) {
+        let refresh_config = { self.pending_mcp_server_refresh_config.lock().await.take() };
+        let Some(refresh_config) = refresh_config else {
+            return;
+        };
+
+        let McpServerRefreshConfig {
+            mcp_servers,
+            mcp_oauth_credentials_store_mode,
+            auth_keyring_backend_kind,
+        } = refresh_config;
+
+        let mcp_servers =
+            match serde_json::from_value::<HashMap<String, McpServerConfig>>(mcp_servers) {
+                Ok(servers) => servers,
+                Err(err) => {
+                    warn!("failed to parse MCP server refresh config: {err}");
+                    return;
+                }
+            };
+        let store_mode = match serde_json::from_value::<OAuthCredentialsStoreMode>(
+            mcp_oauth_credentials_store_mode,
+        ) {
+            Ok(mode) => mode,
+            Err(err) => {
+                warn!("failed to parse MCP OAuth refresh config: {err}");
+                return;
+            }
+        };
+        let keyring_backend_kind =
+            match serde_json::from_value::<AuthKeyringBackendKind>(auth_keyring_backend_kind) {
+                Ok(kind) => kind,
+                Err(err) => {
+                    warn!("failed to parse MCP auth keyring backend refresh config: {err}");
+                    return;
+                }
+            };
+
+        let mut refresh_config = self.get_config().await.as_ref().clone();
+        refresh_config.mcp_oauth_credentials_store_mode = store_mode;
+        let secret_auth_storage_enabled = match keyring_backend_kind {
+            AuthKeyringBackendKind::Direct => false,
+            AuthKeyringBackendKind::Secrets => true,
+        };
+        if let Err(err) = refresh_config
+            .features
+            .set_enabled(Feature::SecretAuthStorage, secret_auth_storage_enabled)
+        {
+            warn!("failed to apply MCP auth keyring backend refresh config: {err}");
+            return;
+        }
+
+        let _guard = self.services.mcp_projection_lock.lock().await;
+        let current_runtime = self.services.latest_mcp_runtime();
+        let ready_selected_capability_roots =
+            current_runtime.ready_selected_capability_roots().to_vec();
+        let executor_capability_discovery = self
+            .executor_capability_discovery_for_step(
+                &refresh_config,
+                &ready_selected_capability_roots,
+            )
+            .await;
+        let mut mcp_projection = self
+            .services
+            .mcp_manager
+            .runtime_config_for_step(
+                &refresh_config,
+                &self.services.mcp_thread_init,
+                &self.services.thread_extension_data,
+                &turn_context.originator,
+                &ready_selected_capability_roots,
+                executor_capability_discovery.as_deref(),
+            )
+            .await;
+        mcp_projection.config.mcp_server_catalog = mcp_projection
+            .config
+            .mcp_server_catalog
+            .with_materialized_servers(mcp_servers);
+        self.refresh_mcp_servers_inner(
+            turn_context,
+            mcp_projection,
+            &turn_context.environments,
+            &ready_selected_capability_roots,
+        )
+        .await;
+    }
+
+    pub(crate) async fn set_openai_form_elicitation_support(
+        &self,
+        supported: bool,
+    ) -> anyhow::Result<()> {
+        if self
+            .services
+            .supports_openai_form_elicitation
+            .load(std::sync::atomic::Ordering::Relaxed)
+            == supported
+        {
+            return Ok(());
+        }
+
+        let config = self.get_config().await;
+        let refresh_config = McpServerRefreshConfig {
+            mcp_servers: serde_json::to_value(config.mcp_servers.get())?,
+            mcp_oauth_credentials_store_mode: serde_json::to_value(
+                config.mcp_oauth_credentials_store_mode,
+            )?,
+            auth_keyring_backend_kind: serde_json::to_value(config.auth_keyring_backend_kind())?,
+        };
+        self.services
+            .supports_openai_form_elicitation
+            .store(supported, std::sync::atomic::Ordering::Relaxed);
+        *self.pending_mcp_server_refresh_config.lock().await = Some(refresh_config);
+        Ok(())
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "MCP runtime refresh and publication must remain serialized"
+    )]
+    pub(crate) async fn refresh_mcp_servers_now(
+        &self,
+        turn_context: &TurnContext,
+        refresh_config: &Config,
+    ) {
+        let _guard = self.services.mcp_projection_lock.lock().await;
+        let current_runtime = self.services.latest_mcp_runtime();
+        let ready_selected_capability_roots =
+            current_runtime.ready_selected_capability_roots().to_vec();
+        let executor_capability_discovery = self
+            .executor_capability_discovery_for_step(
+                refresh_config,
+                &ready_selected_capability_roots,
+            )
+            .await;
+        let mcp_projection = self
+            .services
+            .mcp_manager
+            .runtime_config_for_step(
+                refresh_config,
+                &self.services.mcp_thread_init,
+                &self.services.thread_extension_data,
+                &turn_context.originator,
+                &ready_selected_capability_roots,
+                executor_capability_discovery.as_deref(),
+            )
+            .await;
+        self.refresh_mcp_servers_inner(
+            turn_context,
+            mcp_projection,
+            &turn_context.environments,
+            &ready_selected_capability_roots,
+        )
+        .await;
+    }
+
+    fn available_selected_environment_ids(
+        selected_capability_roots: &[ResolvedSelectedCapabilityRoot],
+    ) -> Vec<String> {
+        let mut available = Vec::new();
+        for root in selected_capability_roots {
+            let CapabilityRootLocation::Environment { environment_id, .. } =
+                &root.selected_root().location;
+            if !available.contains(environment_id) {
+                available.push(environment_id.clone());
+            }
+        }
+        available
+    }
+
+    pub(crate) fn ready_selected_capability_roots(
+        selected_capability_roots: &[ResolvedSelectedCapabilityRoot],
+    ) -> Vec<SelectedCapabilityRoot> {
+        selected_capability_roots
+            .iter()
+            .map(|root| root.selected_root().clone())
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn mcp_startup_cancellation_token(&self) -> CancellationToken {
+        self.services
+            .mcp_startup_cancellation_token
+            .lock()
+            .await
+            .clone()
+    }
+
+    pub(crate) async fn cancel_mcp_startup(&self) {
+        self.services
+            .mcp_startup_cancellation_token
+            .lock()
+            .await
+            .cancel();
+    }
+}

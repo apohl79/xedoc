@@ -1,0 +1,39 @@
+[package]
+name = "xedoc-tui-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_events"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-file-search = { workspace = true }
+xedoc-message-history = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-approval-presets = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+shlex = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+xedoc-utils-absolute-path = { workspace = true }
+pretty_assertions = { workspace = true }

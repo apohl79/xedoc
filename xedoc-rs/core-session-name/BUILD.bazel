@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "core-session-name",
+    crate_name = "xedoc_core_session_name",
+)

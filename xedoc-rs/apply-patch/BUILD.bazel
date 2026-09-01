@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "apply-patch",
+    crate_name = "xedoc_apply_patch",
+)

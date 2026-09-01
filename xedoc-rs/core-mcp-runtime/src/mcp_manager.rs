@@ -1,0 +1,217 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use xedoc_config::McpServerConfig;
+use xedoc_core_config::config::Config;
+use xedoc_core_plugins::PluginsManager;
+use xedoc_exec_server::ExecutorCapabilityDiscoverySnapshot;
+use xedoc_extension_api::ExtensionData;
+use xedoc_extension_api::ExtensionDataInit;
+use xedoc_extension_api::ExtensionRegistry;
+use xedoc_extension_api::McpServerContribution;
+use xedoc_extension_api::McpServerContributionContext;
+use xedoc_mcp::EffectiveMcpServer;
+use xedoc_mcp::McpConfig;
+use xedoc_mcp::McpPluginAttribution;
+use xedoc_mcp::McpServerRegistration;
+use xedoc_mcp::McpToolCatalogCache;
+use xedoc_mcp::configured_mcp_servers;
+use xedoc_mcp::effective_mcp_servers;
+use xedoc_protocol::capabilities::SelectedCapabilityRoot;
+
+/// MCP configuration and capability availability derived from the same inputs.
+pub struct McpRuntimeProjection {
+    /// MCP configuration projected from the active host and extension state.
+    pub config: McpConfig,
+    /// Whether the projection contains at least one available plugin capability.
+    pub plugins_available: bool,
+}
+
+enum OrderedMcpOverlay {
+    Set {
+        contributor_id: &'static str,
+        contribution_order: usize,
+        name: String,
+        config: Box<McpServerConfig>,
+    },
+    Remove {
+        contributor_id: &'static str,
+        contribution_order: usize,
+        name: String,
+    },
+}
+
+#[derive(Clone)]
+pub struct McpManager {
+    plugins_manager: Arc<PluginsManager>,
+    extensions: Arc<ExtensionRegistry<Config>>,
+    tool_catalog_cache: McpToolCatalogCache,
+}
+
+impl McpManager {
+    pub fn new(plugins_manager: Arc<PluginsManager>) -> Self {
+        Self::new_with_extensions(
+            plugins_manager,
+            xedoc_extension_api::empty_extension_registry(),
+        )
+    }
+
+    /// Creates a manager that resolves host-installed MCP contributions.
+    pub fn new_with_extensions(
+        plugins_manager: Arc<PluginsManager>,
+        extensions: Arc<ExtensionRegistry<Config>>,
+    ) -> Self {
+        Self {
+            plugins_manager,
+            extensions,
+            tool_catalog_cache: McpToolCatalogCache::default(),
+        }
+    }
+
+    pub fn tool_catalog_cache(&self) -> McpToolCatalogCache {
+        self.tool_catalog_cache.clone()
+    }
+
+    /// Returns the MCP config after applying runtime-only extension overlays.
+    pub async fn runtime_config(&self, config: &Config) -> McpConfig {
+        self.runtime_config_with_context(McpServerContributionContext::global(config))
+            .await
+            .config
+    }
+
+    #[tracing::instrument(name = "mcp.runtime_config.project_for_step", skip_all)]
+    pub async fn runtime_config_for_step(
+        &self,
+        config: &Config,
+        thread_init: &ExtensionDataInit,
+        thread_store: &ExtensionData,
+        originator: &str,
+        ready_selected_capability_roots: &[SelectedCapabilityRoot],
+        executor_capability_discovery: Option<&ExecutorCapabilityDiscoverySnapshot>,
+    ) -> McpRuntimeProjection {
+        self.runtime_config_with_context(McpServerContributionContext::for_step(
+            config,
+            thread_init,
+            thread_store,
+            originator,
+            ready_selected_capability_roots,
+            executor_capability_discovery,
+        ))
+        .await
+    }
+
+    async fn runtime_config_with_context(
+        &self,
+        context: McpServerContributionContext<'_, Config>,
+    ) -> McpRuntimeProjection {
+        let config = context.config();
+        let mut selected_plugin_available = false;
+        let mut selected_plugin_registrations = Vec::new();
+        let mut overlays = Vec::new();
+        // A contributor can emit multiple ordered actions, so order each action globally rather
+        // than enumerating contributors.
+        let mut contribution_order = 0;
+        for contributor in self.extensions.mcp_server_contributors() {
+            for contribution in contributor.contribute(context).await {
+                match contribution {
+                    McpServerContribution::Set { name, config } => {
+                        overlays.push(OrderedMcpOverlay::Set {
+                            contributor_id: contributor.id(),
+                            contribution_order,
+                            name,
+                            config,
+                        });
+                    }
+                    McpServerContribution::SelectedPlugin {
+                        name,
+                        plugin_id,
+                        plugin_display_name,
+                        selection_order,
+                        config,
+                    } => selected_plugin_registrations.push(
+                        McpServerRegistration::from_selected_plugin(
+                            name,
+                            McpPluginAttribution::new(plugin_id, plugin_display_name),
+                            selection_order,
+                            *config,
+                        ),
+                    ),
+                    McpServerContribution::SelectedPluginPackage { .. } => {
+                        selected_plugin_available = true;
+                    }
+                    McpServerContribution::Remove { name } => {
+                        overlays.push(OrderedMcpOverlay::Remove {
+                            contributor_id: contributor.id(),
+                            contribution_order,
+                            name,
+                        });
+                    }
+                }
+                contribution_order += 1;
+            }
+        }
+
+        let loaded_plugins = self
+            .plugins_manager
+            .plugins_for_config(&config.plugins_config_input())
+            .await;
+        let plugins_available =
+            selected_plugin_available || !loaded_plugins.capability_summaries().is_empty();
+        let mut mcp_config = config
+            .to_mcp_config_with_loaded_plugins(&loaded_plugins, selected_plugin_registrations);
+        let mut catalog = mcp_config.mcp_server_catalog.to_builder();
+
+        for overlay in overlays {
+            match overlay {
+                OrderedMcpOverlay::Set {
+                    contributor_id,
+                    contribution_order,
+                    name,
+                    config,
+                } => catalog.register(McpServerRegistration::from_extension(
+                    name,
+                    contributor_id,
+                    contribution_order,
+                    *config,
+                )),
+                OrderedMcpOverlay::Remove {
+                    contributor_id,
+                    contribution_order,
+                    name,
+                } => catalog.remove_extension(name, contributor_id, contribution_order),
+            }
+        }
+        let catalog = catalog.build();
+        for conflict in catalog.conflicts() {
+            tracing::warn!(
+                server = conflict.name,
+                outcome = ?conflict.outcome,
+                contenders = ?conflict.contenders,
+                "conflicting MCP server actions; using resolved catalog outcome"
+            );
+        }
+        mcp_config.mcp_server_catalog = catalog;
+        McpRuntimeProjection {
+            config: mcp_config,
+            plugins_available,
+        }
+    }
+
+    /// Returns config- and plugin-backed servers without runtime contributions.
+    pub async fn configured_servers(&self, config: &Config) -> HashMap<String, McpServerConfig> {
+        let mcp_config = config.to_mcp_config(self.plugins_manager.as_ref()).await;
+        configured_mcp_servers(&mcp_config)
+    }
+
+    /// Returns configured and host-contributed servers before auth gating.
+    pub async fn runtime_servers(&self, config: &Config) -> HashMap<String, McpServerConfig> {
+        let mcp_config = self.runtime_config(config).await;
+        configured_mcp_servers(&mcp_config)
+    }
+
+    /// Returns runtime servers after auth gating.
+    pub async fn effective_servers(&self, config: &Config) -> HashMap<String, EffectiveMcpServer> {
+        let mcp_config = self.runtime_config(config).await;
+        effective_mcp_servers(&mcp_config)
+    }
+}

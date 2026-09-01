@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "ansi-escape",
+    crate_name = "xedoc_ansi_escape",
+)

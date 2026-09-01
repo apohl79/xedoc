@@ -1,0 +1,30 @@
+[package]
+name = "xedoc-tui-debug"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_debug"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-config = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+ratatui = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

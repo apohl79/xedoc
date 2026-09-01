@@ -1,0 +1,26 @@
+[package]
+name = "xedoc-tui-agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_agents"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }

@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "core-auto-compact-window",
+    crate_name = "xedoc_core_auto_compact_window",
+)

@@ -1,0 +1,54 @@
+[package]
+name = "core_test_support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+assert_cmd = { workspace = true }
+base64 = { workspace = true }
+xedoc-arg0 = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-home = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-hooks = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-cargo-bin = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+ctor = { workspace = true }
+futures = { workspace = true }
+notify = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+regex-lite = { workspace = true }
+serde_json = { workspace = true }
+similar = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["net", "test-util", "time"] }
+tokio-tungstenite = { workspace = true }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+tracing-subscriber = { workspace = true }
+walkdir = { workspace = true }
+wiremock = { workspace = true }
+shlex = { workspace = true }
+zstd = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+reqwest = { workspace = true }

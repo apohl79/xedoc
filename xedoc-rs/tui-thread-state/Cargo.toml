@@ -1,0 +1,28 @@
+[package]
+name = "xedoc-tui-thread-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_thread_state"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-app-server-session = { workspace = true }
+xedoc-tui-chatwidget = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+xedoc-config = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+pretty_assertions = { workspace = true }

@@ -3,15 +3,15 @@
 version: 2
 updates:
   - package-ecosystem: bun
-    directory: .github/actions/codex
+    directory: .github/actions/xedoc
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
   - package-ecosystem: cargo
     directories:
-      - codex-rs
-      - codex-rs/*
+      - xedoc-rs
+      - xedoc-rs/*
     schedule:
       interval: weekly
     cooldown:
@@ -29,7 +29,7 @@ updates:
     cooldown:
       default-days: 7
   - package-ecosystem: rust-toolchain
-    directory: codex-rs
+    directory: xedoc-rs
     schedule:
       interval: weekly
     cooldown:

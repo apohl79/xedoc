@@ -1,0 +1,38 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-image-generation-extension"
+version.workspace = true
+
+[lib]
+name = "xedoc_image_generation_extension"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+xedoc-api = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-extension-items = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-model-provider = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tools = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-image = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+http = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
