@@ -1,0 +1,7 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "otel",
+    crate_name = "xedoc_otel",
+    integration_test_args = ["--test-threads=1"],
+)

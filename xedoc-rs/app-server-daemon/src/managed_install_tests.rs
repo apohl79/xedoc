@@ -1,0 +1,69 @@
+use pretty_assertions::assert_eq;
+use tempfile::TempDir;
+
+use super::executable_identity_from_bytes;
+use super::parse_xedoc_version;
+use super::resolved_managed_xedoc_bin;
+
+#[tokio::test]
+async fn resolves_managed_xedoc_symlink_to_release_binary() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let release_dir = temp_dir.path().join("releases").join("1.2.3").join("bin");
+    tokio::fs::create_dir_all(&release_dir)
+        .await
+        .expect("create release bin directory");
+    let release_bin = release_dir.join("xedoc");
+    tokio::fs::write(&release_bin, "release")
+        .await
+        .expect("write release binary");
+    let expected_release_bin = tokio::fs::canonicalize(&release_bin)
+        .await
+        .expect("resolve release binary");
+    let current_bin = temp_dir.path().join("current-xedoc");
+    std::os::unix::fs::symlink(&release_bin, &current_bin).expect("create current symlink");
+
+    assert_eq!(
+        resolved_managed_xedoc_bin(&current_bin)
+            .await
+            .expect("resolve managed binary"),
+        expected_release_bin
+    );
+}
+
+#[tokio::test]
+async fn resolving_missing_managed_xedoc_reports_input_path() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let missing_bin = temp_dir.path().join("missing-xedoc");
+
+    let err = resolved_managed_xedoc_bin(&missing_bin)
+        .await
+        .expect_err("missing managed binary");
+
+    assert!(
+        err.to_string().contains(&missing_bin.display().to_string()),
+        "error should identify the unresolved binary: {err:#}"
+    );
+}
+
+#[test]
+fn parses_xedoc_cli_version_output() {
+    assert_eq!(
+        parse_xedoc_version("xedoc 1.2.3\n").expect("version"),
+        "1.2.3"
+    );
+}
+
+#[test]
+fn rejects_malformed_xedoc_cli_version_output() {
+    assert!(parse_xedoc_version("xedoc\n").is_err());
+}
+
+#[test]
+fn executable_identity_uses_binary_contents() {
+    let old = executable_identity_from_bytes(b"old");
+    let same = executable_identity_from_bytes(b"old");
+    let new = executable_identity_from_bytes(b"new");
+
+    assert_eq!(old, same);
+    assert_ne!(old, new);
+}

@@ -1,0 +1,35 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-mcp-extension"
+version.workspace = true
+
+[lib]
+name = "xedoc_mcp_extension"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core = { workspace = true }
+xedoc-core-plugins = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

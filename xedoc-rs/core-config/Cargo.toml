@@ -1,0 +1,64 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-config"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_config"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-plugins = { workspace = true }
+xedoc-core-config-runtime = { workspace = true }
+xedoc-core-skills = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-execpolicy = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-http-client = { workspace = true }
+xedoc-install-context = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-mcp = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-network-proxy = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-rollout = { workspace = true }
+xedoc-sandboxing = { workspace = true }
+xedoc-state = { workspace = true }
+xedoc-thread-store = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-utils-home-dir = { workspace = true }
+xedoc-utils-path = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+dirs = { workspace = true }
+dunce = { workspace = true }
+indexmap = { workspace = true }
+rmcp = { workspace = true, default-features = false, features = [
+    "base64",
+    "macros",
+    "schemars",
+    "server",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+similar = { workspace = true }
+tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread"] }
+toml = { workspace = true }
+toml_edit = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+xedoc-utils-cargo-bin = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

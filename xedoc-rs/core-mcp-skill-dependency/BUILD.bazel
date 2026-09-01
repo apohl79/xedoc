@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "core-mcp-skill-dependency",
+    crate_name = "xedoc_core_mcp_skill_dependency",
+)

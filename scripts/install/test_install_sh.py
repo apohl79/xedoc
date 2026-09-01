@@ -1,188 +1,828 @@
 #!/usr/bin/env python3
 
+import errno
 import hashlib
 import json
 import os
 from pathlib import Path
+import pty
 import subprocess
-import tarfile
 import tempfile
 import textwrap
 import unittest
+import zipfile
 
 
 INSTALL_SCRIPT = Path(__file__).with_name("install.sh")
-VERSION = "0.142.5"
+TAG = "v1.0.0"
+VERSION = TAG.removeprefix("v")
+TARGET = "aarch64-apple-darwin"
+ASSET = f"xedoc-{TARGET}-{VERSION}.zip"
 
 
 class InstallShTest(unittest.TestCase):
-    def test_metadata_fetch_failure_is_not_reported_as_missing_assets(self) -> None:
-        result, requests = run_installer(VERSION, metadata_failure=True)
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(
-            requests,
-            [
-                "https://api.github.com/repos/openai/codex/releases/tags/"
-                f"rust-v{VERSION}"
-            ],
-        )
-        self.assertIn(
-            f"Could not fetch GitHub release metadata for Codex {VERSION}",
-            result.stderr,
-        )
-        self.assertNotIn("Could not find Codex package", result.stderr)
-
-    def test_exact_release_fetches_metadata_once(self) -> None:
-        result, requests = run_installer(VERSION)
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(
-            requests,
-            [
-                "https://api.github.com/repos/openai/codex/releases/tags/"
-                f"rust-v{VERSION}",
-                "https://github.com/openai/codex/releases/download/"
-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
-            ],
-        )
-        self.assertIn(f"Resolved version: {VERSION}", result.stdout)
-
-    def test_latest_release_reuses_version_metadata(self) -> None:
-        result, requests = run_installer("latest")
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(
-            requests,
-            [
-                "https://api.github.com/repos/openai/codex/releases/latest",
-                "https://github.com/openai/codex/releases/download/"
-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
-            ],
-        )
-        self.assertIn(f"Resolved version: {VERSION}", result.stdout)
-
-    def test_compact_metadata_is_independent_of_field_order(self) -> None:
-        result, requests = run_installer(
-            "latest", metadata_json=release_metadata(compact=True, reorder=True)
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(
-            requests,
-            [
-                "https://api.github.com/repos/openai/codex/releases/latest",
-                "https://github.com/openai/codex/releases/download/"
-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
-            ],
-        )
-        self.assertIn(f"Resolved version: {VERSION}", result.stdout)
-
-    def test_json_like_strings_and_nested_fields_do_not_define_assets(self) -> None:
-        result, requests = run_installer(
-            VERSION, metadata_json=legacy_release_metadata_with_decoys()
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(len(requests), 2)
-        self.assertIn("/codex-npm-", requests[1])
-        self.assertNotIn("codex-package_SHA256SUMS", requests[1])
-
-    def test_macos_install_exposes_code_mode_host_beside_codex(self) -> None:
+    def test_local_package_install_skips_github_requests(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            archive_path, checksum_path, metadata_json = create_package_release(root)
+            archive_path = root / "offline-package.zip"
+            write_package_archive(archive_path)
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            request_log = root / "requests.log"
 
-            result, _requests = run_installer_in(
-                root,
-                VERSION,
-                metadata_json=metadata_json,
-                archive_path=archive_path,
-                checksum_path=checksum_path,
-                force_macos=True,
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
+                    "XEDOC_NON_INTERACTIVE": "1",
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh", "-s", "--", "--local-zip", str(archive_path)],
+                capture_output=True,
+                check=False,
+                cwd=root,
+                env=env,
+                input=INSTALL_SCRIPT.read_text(encoding="utf-8"),
+                text=True,
+            )
+
+            install_bin = root / "install-bin"
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                os.readlink(install_bin / "xedoc"),
+                str(root / "xedoc-home/packages/standalone/current/bin/xedoc"),
+            )
+            self.assertIn("Installing local package ZIP", result.stdout)
+            self.assertIn("Skipping statusline script for local package", result.stdout)
+            self.assertFalse(request_log.exists())
+
+    def test_local_package_replaces_complete_same_version_install(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / "offline-package.zip"
+            write_package_archive(archive_path)
+            env = local_package_install_env(root)
+
+            initial_install = run_local_package_installer(env, archive_path)
+            installed_xedoc = (
+                root
+                / "xedoc-home/packages/standalone/releases"
+                / f"{VERSION}-{TARGET}/bin/xedoc"
+            )
+            installed_xedoc.write_text("#!/bin/sh\nprintf 'stale'\n", encoding="utf-8")
+            installed_xedoc.chmod(0o755)
+
+            reinstall = run_local_package_installer(env, archive_path)
+
+            self.assertEqual(
+                {
+                    "returncodes": [initial_install.returncode, reinstall.returncode],
+                    "installed_xedoc": installed_xedoc.read_text(encoding="utf-8"),
+                    "reinstalled": "Installing local package ZIP" in reinstall.stdout,
+                },
+                {
+                    "returncodes": [0, 0],
+                    "installed_xedoc": fake_xedoc_content(),
+                    "reinstalled": True,
+                },
+            )
+
+    def test_package_install_creates_visible_xedoc_and_host_symlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT)],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
+            )
+
+            install_bin = root / "install-bin"
+            release_dir = (
+                root
+                / "xedoc-home"
+                / "packages"
+                / "standalone"
+                / "releases"
+                / f"{VERSION}-{TARGET}"
+            )
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "xedoc_link": os.readlink(install_bin / "xedoc"),
+                    "session_link": os.readlink(install_bin / "xedoc-session"),
+                    "xedoc_installed": (release_dir / "bin/xedoc").is_file(),
+                },
+                {
+                    "returncode": 0,
+                    "xedoc_link": str(
+                        root / "xedoc-home/packages/standalone/current/bin/xedoc"
+                    ),
+                    "session_link": str(
+                        root
+                        / "xedoc-home/packages/standalone/current/bin/xedoc-session"
+                    ),
+                    "xedoc_installed": True,
+                },
+            )
+
+    def test_saved_zshrc_choice_adds_app_server_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
+            choice_path.parent.mkdir(parents=True)
+            choice_path.write_text("enabled\n", encoding="utf-8")
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+            (root / "home").mkdir()
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT)],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            install_bin = root / "install-bin"
-            current = root / "codex-home" / "packages" / "standalone" / "current"
-            codex_path = install_bin / "codex"
-            host_path = install_bin / "codex-code-mode-host"
-            self.assertEqual(os.readlink(codex_path), str(current / "bin" / "codex"))
-            self.assertEqual(
-                os.readlink(host_path),
-                str(current / "bin" / "codex-code-mode-host"),
+            zshrc = (root / "home/.zshrc").read_text(encoding="utf-8")
+            expected_binary = root / "install-bin/xedoc"
+            self.assertIn(
+                f'"{expected_binary}" app-server daemon start',
+                zshrc,
             )
-            self.assertTrue(os.access(host_path, os.X_OK))
+
+    def test_streamed_installer_uses_the_latest_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            request_log = root / "requests.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh"],
+                capture_output=True,
+                check=False,
+                cwd=root,
+                env=env,
+                input=INSTALL_SCRIPT.read_text(encoding="utf-8"),
+                text=True,
+            )
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
+                    "xedoc_link": os.readlink(root / "install-bin/xedoc"),
+                    "statusline": (root / "xedoc-home/statusline.sh").read_text(
+                        encoding="utf-8"
+                    ),
+                },
+                {
+                    "returncode": 0,
+                    "requests": [
+                        "https://api.github.com/repos/apohl79/codex/releases/latest",
+                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
+                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
+                        f"https://raw.githubusercontent.com/apohl79/codex/{TAG}/scripts/statusline.sh",
+                    ],
+                    "xedoc_link": str(
+                        root / "xedoc-home/packages/standalone/current/bin/xedoc"
+                    ),
+                    "statusline": "#!/bin/sh\n",
+                },
+            )
+
+    def test_existing_statusline_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            existing_statusline = root / "xedoc-home/statusline.sh"
+            existing_statusline.parent.mkdir(parents=True)
+            existing_statusline.write_text(
+                "#!/bin/sh\n# user customization\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT)],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
+            )
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "statusline": existing_statusline.read_text(encoding="utf-8"),
+                    "downloaded_statusline": "Downloading statusline script"
+                    in result.stdout,
+                },
+                {
+                    "returncode": 0,
+                    "statusline": "#!/bin/sh\n# user customization\n",
+                    "downloaded_statusline": False,
+                },
+            )
+
+    def test_accepting_xedoc_providers_prompt_runs_official_installer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_installer = root / "codex-providers-install.sh"
+            provider_marker = root / "provider-installed"
+            write_fake_provider_installer(provider_installer)
+            request_log = root / "requests.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_PROVIDER_INSTALLER": str(provider_installer),
+                    "XEDOC_TEST_PROVIDER_INSTALL_MARKER": str(provider_marker),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = run_interactive_installer(env, "y\n")
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
+                    "provider_marker": provider_marker.read_text(encoding="utf-8"),
+                    "provider_runner": (
+                        root / "home/.local/bin/codex-providers"
+                    ).is_file(),
+                    "provider_choice_exists": (
+                        root / "xedoc-home/codex-providers/install"
+                    ).exists(),
+                },
+                {
+                    "returncode": 0,
+                    "requests": [
+                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
+                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
+                        "https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh",
+                    ],
+                    "provider_marker": "installed\n",
+                    "provider_runner": True,
+                    "provider_choice_exists": False,
+                },
+            )
+
+    def test_rejected_xedoc_providers_prompt_is_not_asked_again(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            request_log = root / "requests.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            first_result = run_interactive_installer(env, "n\n")
+            second_result = run_interactive_installer(env, "")
+
+            self.assertEqual(
+                {
+                    "returncodes": [first_result.returncode, second_result.returncode],
+                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
+                    "provider_choice": (
+                        root / "xedoc-home/codex-providers/install"
+                    ).read_text(encoding="utf-8"),
+                    "provider_prompts": [
+                        "Install optional codex-providers" in first_result.stdout,
+                        "Install optional codex-providers" in second_result.stdout,
+                    ],
+                },
+                {
+                    "returncodes": [0, 0],
+                    "requests": [
+                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
+                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
+                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
+                    ],
+                    "provider_choice": "disabled\n",
+                    "provider_prompts": [True, False],
+                },
+            )
+
+    def test_existing_xedoc_providers_runner_is_not_prompted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_runner = root / "home/.local/bin/codex-providers"
+            provider_runner.parent.mkdir(parents=True)
+            provider_runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            provider_runner.chmod(0o755)
+            request_log = root / "requests.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_REQUEST_LOG": str(request_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = run_interactive_installer(env, "")
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "requests": request_log.read_text(encoding="utf-8").splitlines(),
+                    "provider_prompt_seen": "Install optional codex-providers"
+                    in result.stdout,
+                },
+                {
+                    "returncode": 0,
+                    "requests": [
+                        f"https://api.github.com/repos/apohl79/codex/releases/tags/{TAG}",
+                        f"https://github.com/apohl79/codex/releases/download/{TAG}/{ASSET}",
+                    ],
+                    "provider_prompt_seen": False,
+                },
+            )
+
+    def test_running_app_server_can_be_restarted_after_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            install_bin = root / "install-bin"
+            install_bin.mkdir()
+            old_xedoc = root / "old-xedoc"
+            write_fake_xedoc(old_xedoc)
+            old_xedoc.chmod(0o755)
+            os.symlink(old_xedoc, install_bin / "xedoc")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_choice_path = root / "xedoc-home/codex-providers/install"
+            provider_choice_path.parent.mkdir(parents=True)
+            provider_choice_path.write_text("disabled\n", encoding="utf-8")
+            restart_log = root / "app-server-restart.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(install_bin),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_APP_SERVER_RUNNING": "1",
+                    "XEDOC_TEST_RESTART_LOG": str(restart_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = run_interactive_installer(env, "y\n")
+
+            self.assertEqual(
+                {
+                    "returncode": result.returncode,
+                    "prompt_seen": "Restart it to use the upgraded version?"
+                    in result.stdout,
+                    "restart_log": restart_log.read_text(encoding="utf-8"),
+                },
+                {
+                    "returncode": 0,
+                    "prompt_seen": True,
+                    "restart_log": "restarted\n",
+                },
+            )
+
+    def test_running_app_server_is_left_unchanged_when_restart_is_declined(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            install_bin = root / "install-bin"
+            install_bin.mkdir()
+            old_xedoc = root / "old-xedoc"
+            write_fake_xedoc(old_xedoc)
+            old_xedoc.chmod(0o755)
+            os.symlink(old_xedoc, install_bin / "xedoc")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_choice_path = root / "xedoc-home/codex-providers/install"
+            provider_choice_path.parent.mkdir(parents=True)
+            provider_choice_path.write_text("disabled\n", encoding="utf-8")
+            restart_log = root / "app-server-restart.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(install_bin),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_APP_SERVER_RUNNING": "1",
+                    "XEDOC_TEST_RESTART_LOG": str(restart_log),
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = run_interactive_installer(env, "n\n")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Restart it to use the upgraded version?", result.stdout)
+            self.assertFalse(restart_log.exists())
+
+    def test_running_app_server_is_not_prompted_in_non_interactive_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / ASSET
+            write_package_archive(archive_path)
+            archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+            bin_dir = root / "fake-bin"
+            bin_dir.mkdir()
+            write_fake_curl(bin_dir / "curl")
+            install_bin = root / "install-bin"
+            install_bin.mkdir()
+            old_xedoc = root / "old-xedoc"
+            write_fake_xedoc(old_xedoc)
+            old_xedoc.chmod(0o755)
+            os.symlink(old_xedoc, install_bin / "xedoc")
+            app_server_choice_path = root / "xedoc-home/app-server-daemon/zshrc-start"
+            app_server_choice_path.parent.mkdir(parents=True)
+            app_server_choice_path.write_text("disabled\n", encoding="utf-8")
+            provider_choice_path = root / "xedoc-home/codex-providers/install"
+            provider_choice_path.parent.mkdir(parents=True)
+            provider_choice_path.write_text("disabled\n", encoding="utf-8")
+            restart_log = root / "app-server-restart.log"
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "XEDOC_RELEASE_REPO": "apohl79/codex",
+                    "XEDOC_RELEASE_TAG": TAG,
+                    "XEDOC_RELEASE_TARGET": TARGET,
+                    "XEDOC_HOME": str(root / "xedoc-home"),
+                    "XEDOC_INSTALL_DIR": str(install_bin),
+                    "XEDOC_TEST_ARCHIVE": str(archive_path),
+                    "XEDOC_TEST_METADATA_JSON": release_metadata(archive_digest),
+                    "XEDOC_TEST_APP_SERVER_RUNNING": "1",
+                    "XEDOC_TEST_RESTART_LOG": str(restart_log),
+                    "XEDOC_NON_INTERACTIVE": "1",
+                    "HOME": str(root / "home"),
+                    "PATH": f"{bin_dir}:/usr/bin:/bin",
+                    "SHELL": "/bin/sh",
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT)],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("Restart it to use the upgraded version?", result.stdout)
+            self.assertIn("leaving it running in non-interactive mode", result.stdout)
+            self.assertFalse(restart_log.exists())
 
 
-def run_installer(
-    release: str,
-    *,
-    metadata_failure: bool = False,
-    metadata_json: str | None = None,
-) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        return run_installer_in(
-            Path(temp_dir),
-            release,
-            metadata_failure=metadata_failure,
-            metadata_json=metadata_json,
-        )
-
-
-def run_installer_in(
-    root: Path,
-    release: str,
-    *,
-    metadata_failure: bool = False,
-    metadata_json: str | None = None,
-    archive_path: Path | None = None,
-    checksum_path: Path | None = None,
-    force_macos: bool = False,
-) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    bin_dir = root / "bin"
+def local_package_install_env(root: Path) -> dict[str, str]:
+    bin_dir = root / "fake-bin"
     bin_dir.mkdir()
-    request_log = root / "requests.log"
-    fake_curl = bin_dir / "curl"
-    fake_curl.write_text(
+    write_fake_curl(bin_dir / "curl")
+    return {
+        **os.environ,
+        "XEDOC_HOME": str(root / "xedoc-home"),
+        "XEDOC_INSTALL_DIR": str(root / "install-bin"),
+        "XEDOC_NON_INTERACTIVE": "1",
+        "HOME": str(root / "home"),
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "SHELL": "/bin/sh",
+    }
+
+
+def run_local_package_installer(
+    env: dict[str, str], archive_path: Path
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["/bin/sh", str(INSTALL_SCRIPT), "--local-zip", str(archive_path)],
+        capture_output=True,
+        check=False,
+        cwd=archive_path.parent,
+        env=env,
+        text=True,
+    )
+
+
+def run_interactive_installer(
+    env: dict[str, str], response: str
+) -> subprocess.CompletedProcess[str]:
+    child_pid, master_fd = pty.fork()
+    if child_pid == 0:
+        os.execvpe("/bin/sh", ["/bin/sh", str(INSTALL_SCRIPT)], env)
+
+    output_chunks: list[bytes] = []
+    try:
+        if response:
+            os.write(master_fd, response.encode())
+        while True:
+            try:
+                output = os.read(master_fd, 4096)
+            except OSError as error:
+                if error.errno == errno.EIO:
+                    break
+                raise
+            if not output:
+                break
+            output_chunks.append(output)
+    finally:
+        os.close(master_fd)
+
+    _, status = os.waitpid(child_pid, 0)
+    return subprocess.CompletedProcess(
+        ["/bin/sh", str(INSTALL_SCRIPT)],
+        os.waitstatus_to_exitcode(status),
+        b"".join(output_chunks).decode(),
+        "",
+    )
+
+
+def write_package_archive(archive_path: Path) -> None:
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        write_zip_text(
+            archive,
+            "xedoc-package.json",
+            json.dumps(
+                {
+                    "layoutVersion": 2,
+                    "version": VERSION,
+                    "target": TARGET,
+                    "variant": "xedoc",
+                    "entrypoint": "bin/xedoc",
+                    "resourcesDir": "xedoc-resources",
+                    "pathDir": "xedoc-path",
+                }
+            )
+            + "\n",
+        )
+        write_zip_text(
+            archive,
+            "bin/xedoc",
+            fake_xedoc_content(),
+            mode=0o755,
+        )
+        write_zip_text(
+            archive,
+            "bin/xedoc-session",
+            "#!/bin/sh\nexit 0\n",
+            mode=0o755,
+        )
+        write_zip_text(archive, "xedoc-path/rg", "#!/bin/sh\nexit 0\n", mode=0o755)
+
+
+def write_fake_xedoc(path: Path) -> None:
+    path.write_text(fake_xedoc_content(), encoding="utf-8")
+
+
+def fake_xedoc_content() -> str:
+    return textwrap.dedent(
+        """\
+        #!/bin/sh
+        case "$*" in
+          "app-server daemon version")
+            [ "${XEDOC_TEST_APP_SERVER_RUNNING:-}" = "1" ]
+            ;;
+          "app-server daemon restart")
+            if [ -n "${XEDOC_TEST_RESTART_LOG:-}" ]; then
+              printf 'restarted\\n' > "$XEDOC_TEST_RESTART_LOG"
+            fi
+            ;;
+          *)
+            printf 'xedoc-cli 1.0.0\\n'
+            ;;
+        esac
+        """
+    )
+
+
+def write_zip_text(
+    archive: zipfile.ZipFile,
+    name: str,
+    content: str,
+    *,
+    mode: int = 0o644,
+) -> None:
+    info = zipfile.ZipInfo(name)
+    info.external_attr = mode << 16
+    archive.writestr(info, content)
+
+
+def write_fake_curl(path: Path) -> None:
+    path.write_text(
         textwrap.dedent(
             """\
             #!/bin/sh
-            url=""
             output=""
-            previous=""
-            for arg in "$@"; do
-              case "$arg" in
-                https://*) url="$arg" ;;
+            url=""
+            while [ "$#" -gt 0 ]; do
+              case "$1" in
+                -o)
+                  output="$2"
+                  shift
+                  ;;
+                https://*)
+                  url="$1"
+                  ;;
               esac
-              if [ "$previous" = "-o" ]; then
-                output="$arg"
-              fi
-              previous="$arg"
+              shift
             done
-            printf '%s\n' "$url" >>"$CODEX_TEST_REQUEST_LOG"
+
+            if [ -n "${XEDOC_TEST_REQUEST_LOG:-}" ]; then
+              printf '%s\\n' "$url" >> "$XEDOC_TEST_REQUEST_LOG"
+            fi
 
             case "$url" in
               https://api.github.com/*)
-                if [ "$CODEX_TEST_METADATA_FAILURE" = "1" ]; then
-                  echo "curl: (22) The requested URL returned error: 403" >&2
-                  exit 22
-                fi
-                printf '%s\n' "$CODEX_TEST_METADATA_JSON"
+                printf '%s\\n' "$XEDOC_TEST_METADATA_JSON"
                 ;;
-              */codex-package_SHA256SUMS)
-                if [ -n "$CODEX_TEST_CHECKSUM_PATH" ]; then
-                  cp "$CODEX_TEST_CHECKSUM_PATH" "$output"
-                else
-                  exit 22
-                fi
+              https://github.com/*)
+                cp "$XEDOC_TEST_ARCHIVE" "$output"
                 ;;
-              */codex-package-*.tar.gz)
-                if [ -n "$CODEX_TEST_ARCHIVE_PATH" ]; then
-                  cp "$CODEX_TEST_ARCHIVE_PATH" "$output"
-                else
-                  exit 22
-                fi
+              https://raw.githubusercontent.com/apohl79/codex-providers/main/install.sh)
+                cat "$XEDOC_TEST_PROVIDER_INSTALLER"
+                ;;
+              https://raw.githubusercontent.com/*)
+                printf '#!/bin/sh\\n' > "$output"
                 ;;
               *)
                 exit 22
@@ -192,158 +832,37 @@ def run_installer_in(
         ),
         encoding="utf-8",
     )
-    fake_curl.chmod(0o755)
-    if force_macos:
-        fake_uname = bin_dir / "uname"
-        fake_uname.write_text(
-            "#!/bin/sh\n"
-            'case "$1" in\n'
-            "  -s) printf 'Darwin\\n' ;;\n"
-            "  -m) printf 'arm64\\n' ;;\n"
-            "esac\n",
-            encoding="utf-8",
-        )
-        fake_uname.chmod(0o755)
-
-    home = root / "home"
-    home.mkdir()
-    env = os.environ.copy()
-    env.update(
-        {
-            "CODEX_HOME": str(root / "codex-home"),
-            "CODEX_INSTALL_DIR": str(root / "install-bin"),
-            "CODEX_NON_INTERACTIVE": "1",
-            "CODEX_RELEASE": release,
-            "CODEX_TEST_ARCHIVE_PATH": str(archive_path or ""),
-            "CODEX_TEST_CHECKSUM_PATH": str(checksum_path or ""),
-            "CODEX_TEST_METADATA_FAILURE": "1" if metadata_failure else "0",
-            "CODEX_TEST_METADATA_JSON": (
-                metadata_json if metadata_json is not None else release_metadata()
-            ),
-            "CODEX_TEST_REQUEST_LOG": str(request_log),
-            "HOME": str(home),
-            "PATH": f"{bin_dir}:/usr/bin:/bin",
-            "SHELL": "/bin/sh",
-        }
-    )
-    result = subprocess.run(
-        ["/bin/sh", str(INSTALL_SCRIPT)],
-        capture_output=True,
-        check=False,
-        env=env,
-        text=True,
-    )
-    requests = (
-        request_log.read_text(encoding="utf-8").splitlines()
-        if request_log.exists()
-        else []
-    )
-    return result, requests
-
-
-def create_package_release(root: Path) -> tuple[Path, Path, str]:
-    package_dir = root / "package"
-    (package_dir / "bin").mkdir(parents=True)
-    (package_dir / "codex-path").mkdir()
-    (package_dir / "codex-package.json").write_text("{}\n", encoding="utf-8")
-    write_executable(
-        package_dir / "bin" / "codex",
-        f"#!/bin/sh\nprintf 'codex-cli {VERSION}\\n'\n",
-    )
-    write_executable(
-        package_dir / "bin" / "codex-code-mode-host",
-        "#!/bin/sh\nexit 0\n",
-    )
-    write_executable(package_dir / "codex-path" / "rg", "#!/bin/sh\nexit 0\n")
-
-    asset = "codex-package-aarch64-apple-darwin.tar.gz"
-    archive_path = root / asset
-    with tarfile.open(archive_path, "w:gz") as archive:
-        for path in package_dir.iterdir():
-            archive.add(path, arcname=path.name)
-
-    archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-    checksum_path = root / "codex-package_SHA256SUMS"
-    checksum_path.write_text(f"{archive_digest}  {asset}\n", encoding="utf-8")
-    checksum_digest = hashlib.sha256(checksum_path.read_bytes()).hexdigest()
-    metadata_json = json.dumps(
-        {
-            "assets": [
-                {"name": asset, "digest": f"sha256:{archive_digest}"},
-                {
-                    "name": "codex-package_SHA256SUMS",
-                    "digest": f"sha256:{checksum_digest}",
-                },
-            ],
-            "tag_name": f"rust-v{VERSION}",
-        },
-        indent=2,
-    )
-    return archive_path, checksum_path, metadata_json
-
-
-def write_executable(path: Path, contents: str) -> None:
-    path.write_text(contents, encoding="utf-8")
     path.chmod(0o755)
 
 
-def release_metadata(*, compact: bool = False, reorder: bool = False) -> str:
-    assets = [
-        asset_metadata(
-            f"codex-package-{target}.tar.gz",
-            f"sha256:{'a' * 64}",
-            reorder=reorder,
-        )
-        for target in (
-            "aarch64-apple-darwin",
-            "x86_64-apple-darwin",
-            "aarch64-unknown-linux-musl",
-            "x86_64-unknown-linux-musl",
-        )
-    ]
-    assets.append(
-        asset_metadata(
-            "codex-package_SHA256SUMS",
-            f"sha256:{'b' * 64}",
-            reorder=reorder,
-        )
-    )
-    separators = (",", ":") if compact else None
-    return json.dumps(
-        {"assets": assets, "body": "braces: { } [ ]", "tag_name": f"rust-v{VERSION}"},
-        indent=None if compact else 2,
-        separators=separators,
+def write_fake_provider_installer(path: Path) -> None:
+    path.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            mkdir -p "$HOME/.local/bin"
+            printf '#!/usr/bin/env bash\\nexit 0\\n' > "$HOME/.local/bin/codex-providers"
+            chmod +x "$HOME/.local/bin/codex-providers"
+            printf 'installed\\n' > "$XEDOC_TEST_PROVIDER_INSTALL_MARKER"
+            """
+        ),
+        encoding="utf-8",
     )
 
 
-def asset_metadata(name: str, digest: str, *, reorder: bool) -> dict[str, str]:
-    if reorder:
-        return {"digest": digest, "name": name}
-    return {"name": name, "digest": digest}
-
-
-def legacy_release_metadata_with_decoys() -> str:
-    fake_digest = f"sha256:{'0' * 64}"
-    assets = [
-        {
-            "metadata": {
-                "name": "codex-package-x86_64-unknown-linux-musl.tar.gz",
-                "digest": fake_digest,
-            },
-            "digest": f"sha256:{'c' * 64}",
-            "name": f"codex-npm-{target}-{VERSION}.tgz",
-        }
-        for target in ("darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64")
-    ]
+def release_metadata(archive_digest: str) -> str:
     return json.dumps(
         {
-            "body": (
-                f'fake: {{"name":"codex-package_SHA256SUMS","digest":"{fake_digest}"}}'
-            ),
-            "assets": assets,
-            "tag_name": f"rust-v{VERSION}",
+            "tag_name": TAG,
+            "assets": [
+                {
+                    "name": ASSET,
+                    "digest": f"sha256:{archive_digest}",
+                }
+            ],
         },
-        separators=(",", ":"),
+        indent=2,
     )
 
 

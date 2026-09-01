@@ -1,0 +1,47 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-mcp"
+version.workspace = true
+
+[lib]
+name = "xedoc_mcp"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+arc-swap = { workspace = true }
+async-channel = { workspace = true }
+xedoc-async-utils = { workspace = true }
+xedoc-api = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-model-provider = { workspace = true }
+xedoc-otel = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-rmcp-client = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+xedoc-utils-plugins = { workspace = true }
+futures = { workspace = true }
+lru = { workspace = true }
+regex-lite = { workspace = true }
+rmcp = { workspace = true, default-features = false, features = ["base64", "macros", "schemars", "server"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha1 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+xedoc-plugin = { workspace = true }
+pretty_assertions = { workspace = true }
+rmcp = { workspace = true, default-features = false, features = ["base64", "macros", "schemars", "server"] }
+tempfile = { workspace = true }

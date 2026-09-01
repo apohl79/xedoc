@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "core-turn-diff",
+    crate_name = "xedoc_core_turn_diff",
+)

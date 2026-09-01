@@ -1,0 +1,45 @@
+[package]
+name = "xedoc-tui-composer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_composer"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+test-support = []
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-file-search = { workspace = true }
+xedoc-message-history = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-completion = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-frame = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+crossterm = { workspace = true }
+dirs = { workspace = true }
+image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
+rand = { workspace = true }
+ratatui = { workspace = true, features = ["unstable-widget-ref"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+xedoc-tui-test-support = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }

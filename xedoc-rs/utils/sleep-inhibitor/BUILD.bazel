@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "sleep-inhibitor",
+    crate_name = "xedoc_utils_sleep_inhibitor",
+)

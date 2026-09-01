@@ -1,0 +1,56 @@
+[package]
+name = "xedoc-mcp-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "xedoc-mcp-server"
+path = "src/main.rs"
+test = false
+
+[lib]
+name = "xedoc_mcp_server"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+xedoc-arg0 = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core = { workspace = true }
+xedoc-home = { workspace = true }
+xedoc-image-generation-extension = { workspace = true }
+xedoc-exec-server = { workspace = true }
+xedoc-extension-api = { workspace = true }
+xedoc-login = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-cli = { workspace = true }
+xedoc-utils-json-to-toml = { workspace = true }
+rmcp = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+shlex = { workspace = true }
+tokio = { workspace = true, features = [
+    "io-std",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "signal",
+] }
+tracing = { workspace = true, features = ["log"] }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+xedoc-utils-absolute-path = { workspace = true }
+xedoc-shell-command = { workspace = true }
+core_test_support = { workspace = true }
+mcp_test_support = { workspace = true }
+os_info = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+wiremock = { workspace = true }

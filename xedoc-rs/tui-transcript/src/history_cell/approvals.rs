@@ -1,0 +1,253 @@
+//! Approval, denial, and review-status transcript cells.
+
+use super::*;
+use crate::city_lights::CityLightsStylize;
+
+fn truncate_exec_snippet(full_cmd: &str) -> String {
+    let mut snippet = match full_cmd.split_once('\n') {
+        Some((first, _)) => format!("{first} ..."),
+        None => full_cmd.to_string(),
+    };
+    snippet = truncate_text(&snippet, /*max_graphemes*/ 80);
+    snippet
+}
+
+fn exec_snippet(command: &[String]) -> String {
+    let full_cmd = strip_bash_lc_and_escape(command);
+    truncate_exec_snippet(&full_cmd)
+}
+
+fn non_empty_exec_snippet(command: &[String]) -> Option<String> {
+    let snippet = exec_snippet(command);
+    (!snippet.is_empty()).then_some(snippet)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewDecision {
+    Approved,
+    ApprovedExecpolicyAmendment {
+        proposed_execpolicy_amendment: ExecPolicyAmendment,
+    },
+    ApprovedForSession,
+    NetworkPolicyAmendment {
+        network_policy_amendment: NetworkPolicyAmendment,
+    },
+    Denied,
+    TimedOut,
+    Abort,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApprovalDecisionSubject {
+    Command(Vec<String>),
+    NetworkAccess { target: String },
+}
+
+pub fn new_approval_decision_cell(
+    subject: ApprovalDecisionSubject,
+    decision: ReviewDecision,
+) -> Box<dyn HistoryCell> {
+    use ReviewDecision::*;
+    use xedoc_protocol::approvals::NetworkPolicyRuleAction;
+
+    let (symbol, summary): (Span<'static>, Vec<Span<'static>>) = match decision {
+        Approved => match subject {
+            ApprovalDecisionSubject::Command(command) => {
+                let summary = if let Some(snippet) = non_empty_exec_snippet(&command) {
+                    vec![
+                        "You ".into(),
+                        "approved".bold(),
+                        " xedoc to run ".into(),
+                        Span::from(snippet).dim(),
+                        " this time".bold(),
+                    ]
+                } else {
+                    vec![
+                        "You ".into(),
+                        "approved".bold(),
+                        " this request".into(),
+                        " this time".bold(),
+                    ]
+                };
+                ("✔ ".cl_green(), summary)
+            }
+            ApprovalDecisionSubject::NetworkAccess { target } => (
+                "✔ ".cl_green(),
+                vec![
+                    "You ".into(),
+                    "approved".bold(),
+                    " xedoc network access to ".into(),
+                    Span::from(target).dim(),
+                    " this time".bold(),
+                ],
+            ),
+        },
+        ApprovedExecpolicyAmendment {
+            proposed_execpolicy_amendment,
+        } => {
+            let snippet = Span::from(exec_snippet(&proposed_execpolicy_amendment.command)).dim();
+            (
+                "✔ ".cl_green(),
+                vec![
+                    "You ".into(),
+                    "approved".bold(),
+                    " xedoc to always run commands that start with ".into(),
+                    snippet,
+                ],
+            )
+        }
+        ApprovedForSession => match subject {
+            ApprovalDecisionSubject::Command(command) => {
+                let summary = if let Some(snippet) = non_empty_exec_snippet(&command) {
+                    vec![
+                        "You ".into(),
+                        "approved".bold(),
+                        " xedoc to run ".into(),
+                        Span::from(snippet).dim(),
+                        " every time this session".bold(),
+                    ]
+                } else {
+                    vec![
+                        "You ".into(),
+                        "approved".bold(),
+                        " this request".into(),
+                        " every time this session".bold(),
+                    ]
+                };
+                ("✔ ".cl_green(), summary)
+            }
+            ApprovalDecisionSubject::NetworkAccess { target } => (
+                "✔ ".cl_green(),
+                vec![
+                    "You ".into(),
+                    "approved".bold(),
+                    " xedoc network access to ".into(),
+                    Span::from(target).dim(),
+                    " every time this session".bold(),
+                ],
+            ),
+        },
+        NetworkPolicyAmendment {
+            network_policy_amendment,
+        } => {
+            let target = match subject {
+                ApprovalDecisionSubject::NetworkAccess { target } => target,
+                ApprovalDecisionSubject::Command(_) => network_policy_amendment.host,
+            };
+            match network_policy_amendment.action {
+                NetworkPolicyRuleAction::Allow => (
+                    "✔ ".cl_green(),
+                    vec![
+                        "You ".into(),
+                        "persisted".bold(),
+                        " Xedoc network access to ".into(),
+                        Span::from(target).dim(),
+                    ],
+                ),
+                NetworkPolicyRuleAction::Deny => (
+                    "✗ ".cl_red(),
+                    vec![
+                        "You ".into(),
+                        "denied".bold(),
+                        " xedoc network access to ".into(),
+                        Span::from(target).dim(),
+                        " and saved that rule".into(),
+                    ],
+                ),
+            }
+        }
+        Denied => match subject {
+            ApprovalDecisionSubject::Command(command) => {
+                let summary = if let Some(snippet) = non_empty_exec_snippet(&command) {
+                    vec![
+                        "You ".into(),
+                        "did not approve".bold(),
+                        " xedoc to run ".into(),
+                        Span::from(snippet).dim(),
+                    ]
+                } else {
+                    vec![
+                        "You ".into(),
+                        "did not approve".bold(),
+                        " this request".into(),
+                    ]
+                };
+                ("✗ ".cl_red(), summary)
+            }
+            ApprovalDecisionSubject::NetworkAccess { target } => (
+                "✗ ".cl_red(),
+                vec![
+                    "You ".into(),
+                    "did not approve".bold(),
+                    " xedoc network access to ".into(),
+                    Span::from(target).dim(),
+                ],
+            ),
+        },
+        TimedOut => match subject {
+            ApprovalDecisionSubject::Command(command) => {
+                let summary = if let Some(snippet) = non_empty_exec_snippet(&command) {
+                    vec![
+                        "Review ".into(),
+                        "timed out".bold(),
+                        " before xedoc could run ".into(),
+                        Span::from(snippet).dim(),
+                    ]
+                } else {
+                    vec![
+                        "Review ".into(),
+                        "timed out".bold(),
+                        " before this request could be approved".into(),
+                    ]
+                };
+                ("✗ ".cl_red(), summary)
+            }
+            ApprovalDecisionSubject::NetworkAccess { target } => (
+                "✗ ".cl_red(),
+                vec![
+                    "Review ".into(),
+                    "timed out".bold(),
+                    " before xedoc could access ".into(),
+                    Span::from(target).dim(),
+                ],
+            ),
+        },
+        Abort => match subject {
+            ApprovalDecisionSubject::Command(command) => {
+                let summary = if let Some(snippet) = non_empty_exec_snippet(&command) {
+                    vec![
+                        "You ".into(),
+                        "canceled".bold(),
+                        " the request to run ".into(),
+                        Span::from(snippet).dim(),
+                    ]
+                } else {
+                    vec!["You ".into(), "canceled".bold(), " this request".into()]
+                };
+                ("✗ ".cl_red(), summary)
+            }
+            ApprovalDecisionSubject::NetworkAccess { target } => (
+                "✗ ".cl_red(),
+                vec![
+                    "You ".into(),
+                    "canceled".bold(),
+                    " the request for xedoc network access to ".into(),
+                    Span::from(target).dim(),
+                ],
+            ),
+        },
+    };
+
+    Box::new(PrefixedWrappedHistoryCell::new(
+        Line::from(summary),
+        symbol,
+        "  ",
+    ))
+}
+
+/// Cyan history cell line showing the current review status.
+pub fn new_review_status_line(message: String) -> PlainHistoryCell {
+    PlainHistoryCell {
+        lines: vec![Line::from(message.cl_cyan())],
+    }
+}

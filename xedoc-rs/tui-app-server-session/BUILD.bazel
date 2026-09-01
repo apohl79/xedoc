@@ -1,0 +1,7 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-app-server-session",
+    crate_features = ["test-support"],
+    crate_name = "xedoc_tui_app_server_session",
+)

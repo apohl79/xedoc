@@ -1,0 +1,37 @@
+[package]
+name = "xedoc-tui-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_settings"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-config = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-features = { workspace = true }
+xedoc-models-manager = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tui-bottom-pane = { workspace = true }
+xedoc-tui-events = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-status = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+textwrap = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+xedoc-tui-bottom-pane = { workspace = true, features = ["test-support"] }
+xedoc-tui-frame = { workspace = true }
+dirs = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

@@ -1,0 +1,43 @@
+[package]
+name = "xedoc-tui-session-picker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_session_picker"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+xedoc-app-server-protocol = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-core-config = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-rollout = { workspace = true }
+xedoc-tui-app-server-session = { workspace = true }
+xedoc-tui-frame = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-overlays = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-status = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+xedoc-utils-path = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+xedoc-tui-test-support = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

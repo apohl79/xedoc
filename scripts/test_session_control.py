@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 import unittest
 
-SCRIPT_PATH = Path(__file__).with_name("codex-session")
+SCRIPT_PATH = Path(__file__).with_name("xedoc-session")
 SCRIPT_SPEC = importlib.util.spec_from_loader(
     "session_control",
     SourceFileLoader("session_control", str(SCRIPT_PATH)),

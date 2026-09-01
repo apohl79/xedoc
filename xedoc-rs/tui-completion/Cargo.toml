@@ -1,0 +1,32 @@
+[package]
+name = "xedoc-tui-completion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_tui_completion"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-app-server-protocol = { workspace = true }
+xedoc-file-search = { workspace = true }
+xedoc-plugin = { workspace = true }
+xedoc-tui-input = { workspace = true }
+xedoc-tui-render = { workspace = true }
+xedoc-tui-transcript = { workspace = true }
+xedoc-utils-fuzzy-match = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+textwrap = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }

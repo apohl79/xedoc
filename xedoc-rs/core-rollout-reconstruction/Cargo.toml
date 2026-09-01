@@ -1,0 +1,21 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-rollout-reconstruction"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_rollout_reconstruction"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core-context = { workspace = true }
+xedoc-core-context-manager = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-utils-output-truncation = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }

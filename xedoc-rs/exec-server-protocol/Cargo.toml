@@ -1,0 +1,26 @@
+[package]
+name = "xedoc-exec-server-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "xedoc_exec_server_protocol"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+xedoc-file-system = { workspace = true }
+xedoc-network-proxy = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-shell-command = { workspace = true }
+xedoc-utils-path-uri = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

@@ -1,0 +1,27 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-core-turn-metadata"
+version.workspace = true
+
+[lib]
+name = "xedoc_core_turn_metadata"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-core-client = { workspace = true }
+xedoc-git-utils = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-sandboxing = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+
+[dev-dependencies]
+core_test_support = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread"] }

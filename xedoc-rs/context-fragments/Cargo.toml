@@ -1,0 +1,18 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-context-fragments"
+version.workspace = true
+
+[lib]
+name = "xedoc_context_fragments"
+path = "src/lib.rs"
+test = false
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-protocol = { workspace = true }
+xedoc-utils-string = { workspace = true }

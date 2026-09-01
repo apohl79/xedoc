@@ -1,0 +1,7 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "core-tool-specs",
+    compile_data = ["src/apply_patch.lark"],
+    crate_name = "xedoc_core_tool_specs",
+)

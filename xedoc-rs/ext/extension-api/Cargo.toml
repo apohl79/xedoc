@@ -1,0 +1,27 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-extension-api"
+version.workspace = true
+
+[lib]
+name = "xedoc_extension_api"
+path = "src/lib.rs"
+test = false
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+xedoc-config = { workspace = true }
+xedoc-context-fragments = { workspace = true }
+xedoc-exec-server-protocol = { workspace = true }
+xedoc-protocol = { workspace = true }
+xedoc-tools = { workspace = true }
+xedoc-utils-absolute-path = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

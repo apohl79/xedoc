@@ -1,0 +1,12 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tui-overlays",
+    crate_name = "xedoc_tui_overlays",
+    test_data_extra = glob([
+        "src/**/snapshots/**",
+    ]),
+    test_shard_counts = {
+        "tui-overlays-unit-tests": 4,
+    },
+)

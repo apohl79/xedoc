@@ -10,14 +10,14 @@
 
 ### DotSlash
 
-The GitHub Release also contains a [DotSlash](https://dotslash-cli.com/) file for the Codex CLI named `codex`. Using a DotSlash file makes it possible to make a lightweight commit to source control to ensure all contributors use the same version of an executable, regardless of what platform they use for development.
+The GitHub Release also contains a [DotSlash](https://dotslash-cli.com/) file for the Xedoc CLI named `xedoc`. Using a DotSlash file makes it possible to make a lightweight commit to source control to ensure all contributors use the same version of an executable, regardless of what platform they use for development.
 
 ### Build from source
 
 ```bash
 # Clone the repository and navigate to the root of the Cargo workspace.
 git clone https://github.com/openai/codex.git
-cd codex/codex-rs
+cd xedoc/xedoc-rs
 
 # Install the Rust toolchain, if necessary.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -31,18 +31,18 @@ cargo install --locked dotslash
 # Install nextest for the `just test` helper.
 cargo install --locked cargo-nextest
 
-# Build Codex.
+# Build Xedoc.
 cargo build
 
 # Launch the TUI with a sample prompt.
-cargo run --bin codex -- "explain this codebase to me"
+cargo run --bin xedoc -- "explain this codebase to me"
 
-# After making changes, use the root justfile helpers (they default to codex-rs):
+# After making changes, use the root justfile helpers (they default to xedoc-rs):
 just fmt
 just fix -p <crate-you-touched>
 
 # Run the relevant tests (project-specific is fastest), for example:
-just test -p codex-tui
+just test -p xedoc-tui
 # `just test` runs the test suite via nextest:
 just test
 # Avoid `--all-features` for routine local runs because it increases build
@@ -51,15 +51,15 @@ just test
 
 ## Tracing / verbose logging
 
-Codex is written in Rust, so it honors the `RUST_LOG` environment variable to configure its logging behavior.
+Xedoc is written in Rust, so it honors the `RUST_LOG` environment variable to configure its logging behavior.
 
 The TUI records diagnostics in bounded local stores by default. Set `log_dir` explicitly to enable a plaintext TUI log for a run:
 
 ```bash
-codex -c log_dir=./.codex-log
-tail -F ./.codex-log/codex-tui.log
+xedoc -c log_dir=./.xedoc-log
+tail -F ./.xedoc-log/xedoc-tui.log
 ```
 
-The non-interactive mode (`codex exec`) defaults to `RUST_LOG=error`, but messages are printed inline, so there is no need to monitor a separate file.
+The non-interactive mode (`xedoc exec`) defaults to `RUST_LOG=error`, but messages are printed inline, so there is no need to monitor a separate file.
 
 See the Rust documentation on [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/#enabling-logging) for more information on the configuration options.

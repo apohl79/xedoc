@@ -1,0 +1,9 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "app-server-jsonrpc",
+    crate_name = "xedoc_app_server_jsonrpc",
+    test_shard_counts = {
+        "app-server-jsonrpc-unit-tests": 4,
+    },
+)

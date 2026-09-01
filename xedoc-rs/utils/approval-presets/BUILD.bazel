@@ -1,0 +1,6 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "approval-presets",
+    crate_name = "xedoc_utils_approval_presets",
+)

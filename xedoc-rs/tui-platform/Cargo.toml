@@ -1,0 +1,32 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-tui-platform"
+version.workspace = true
+
+[lib]
+name = "xedoc_tui_platform"
+path = "src/lib.rs"
+doctest = false
+
+[features]
+test-support = []
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+xedoc-tui-input = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
