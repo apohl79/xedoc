@@ -3,6 +3,7 @@ use anyhow::Result;
 use anyhow::bail;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -19,6 +20,10 @@ use xedoc_http_client::ClientRouteClass;
 use xedoc_http_client::HttpClientFactory;
 use xedoc_http_client::OutboundProxyPolicy;
 use xedoc_login::AuthManager;
+use xedoc_model_provider::create_model_provider;
+use xedoc_model_provider_info::GEMINI_PROVIDER_ID;
+use xedoc_model_provider_info::built_in_model_providers;
+use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_protocol::config_types::ModelProviderAuthInfo;
 use xedoc_utils_absolute_path::AbsolutePathBufGuard;
 
@@ -60,6 +65,14 @@ struct CaseOutcome {
     diagnostic: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct CatalogCoverageOutcome {
+    reference_models: Vec<String>,
+    native_models: Vec<String>,
+    missing_reference_models: Vec<String>,
+    unexpected_native_models: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ContractState {
     process_succeeded: bool,
@@ -82,6 +95,17 @@ impl CaseOutcome {
             usage_reported: true,
             command_completed: (self.flow == Flow::Tool).then_some(true),
             diagnostic: None,
+        }
+    }
+}
+
+impl CatalogCoverageOutcome {
+    fn expected(&self) -> Self {
+        Self {
+            reference_models: self.reference_models.clone(),
+            native_models: self.native_models.clone(),
+            missing_reference_models: Vec::new(),
+            unexpected_native_models: Vec::new(),
         }
     }
 }
@@ -167,6 +191,25 @@ async fn proxy_reference_and_native_providers_match_provider_contracts() -> Resu
         .context("run direct native Gemini cases")?,
     );
     let expected = actual.iter().map(CaseOutcome::expected).collect::<Vec<_>>();
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[tokio::test]
+async fn native_gemini_catalog_covers_the_proxy_reference_catalog() -> Result<()> {
+    let source_home = reference_home()?;
+    let source_config = read_source_config(&source_home)?;
+    let fixture = ProviderFixture::new(
+        &source_config,
+        &source_home,
+        "google",
+        WireContract::GeminiDirect,
+    )?;
+    let reference_models = fixture.discover_models().await?;
+    let native_models = discover_native_gemini_models().await?;
+    let actual = catalog_coverage(reference_models, native_models);
+    let expected = actual.expected();
 
     assert_eq!(actual, expected);
     Ok(())
@@ -305,6 +348,48 @@ impl ProviderFixture {
             command.env("ANTHROPIC_API_KEY", api_key);
         }
         Ok(command)
+    }
+}
+
+async fn discover_native_gemini_models() -> Result<Vec<String>> {
+    let provider_info = built_in_model_providers(/*openai_base_url*/ None)
+        .remove(GEMINI_PROVIDER_ID)
+        .context("built-in Gemini provider is missing")?;
+    let provider = create_model_provider(provider_info, /*auth_manager*/ None);
+    let catalog = provider
+        .models_manager_without_cache(/*config_model_catalog*/ None)
+        .raw_model_catalog(
+            RefreshStrategy::Online,
+            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        )
+        .await;
+    Ok(catalog.models.into_iter().map(|model| model.slug).collect())
+}
+
+fn catalog_coverage(
+    mut reference_models: Vec<String>,
+    mut native_models: Vec<String>,
+) -> CatalogCoverageOutcome {
+    reference_models.sort();
+    reference_models.dedup();
+    native_models.sort();
+    native_models.dedup();
+    let native_set = native_models.iter().collect::<BTreeSet<_>>();
+    let missing_reference_models = reference_models
+        .iter()
+        .filter(|model| !native_set.contains(model))
+        .cloned()
+        .collect();
+    let unexpected_native_models = native_models
+        .iter()
+        .filter(|model| !model.starts_with("gemini-"))
+        .cloned()
+        .collect();
+    CatalogCoverageOutcome {
+        reference_models,
+        native_models,
+        missing_reference_models,
+        unexpected_native_models,
     }
 }
 

@@ -23,6 +23,9 @@ toml = { workspace = true }
 xedoc-exec = { workspace = true }
 xedoc-http-client = { workspace = true }
 xedoc-login = { workspace = true }
+xedoc-model-provider = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
+xedoc-models-manager = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-utils-cargo-bin = { workspace = true }
 xedoc-utils-absolute-path = { workspace = true }
