@@ -199,16 +199,18 @@ fn apply_reasoning(request: &ResponsesApiRequest, translated: &mut AnthropicMess
 }
 
 fn supports_adaptive_thinking(model: &str) -> bool {
-    matches!(
-        model.to_ascii_lowercase().as_str(),
-        "claude-opus-4-6"
-            | "claude-opus-4-7"
-            | "claude-opus-4-8"
-            | "claude-opus-5"
-            | "claude-sonnet-4-6"
-            | "claude-sonnet-5"
-            | "claude-fable-5"
-    )
+    let model = model.to_ascii_lowercase();
+    model.starts_with("claude-melon-")
+        || matches!(
+            model.as_str(),
+            "claude-opus-4-6"
+                | "claude-opus-4-7"
+                | "claude-opus-4-8"
+                | "claude-opus-5"
+                | "claude-sonnet-4-6"
+                | "claude-sonnet-5"
+                | "claude-fable-5"
+        )
 }
 
 fn supports_prefix_locked_thinking(model: &str) -> bool {

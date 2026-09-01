@@ -34,11 +34,18 @@ enum Flow {
     Tool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WireContract {
+    Responses,
+    Anthropic,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CaseOutcome {
     provider: String,
     model: String,
     flow: Flow,
+    wire_contract: WireContract,
     process_succeeded: bool,
     marker_seen: bool,
     turn_completed: bool,
@@ -62,6 +69,7 @@ impl CaseOutcome {
             provider: self.provider.clone(),
             model: self.model.clone(),
             flow: self.flow,
+            wire_contract: self.wire_contract,
             process_succeeded: true,
             marker_seen: true,
             turn_completed: true,
@@ -92,23 +100,39 @@ struct ReferenceProviderConfig {
 
 struct ProviderFixture {
     provider: String,
+    wire_contract: WireContract,
     reference: ReferenceProviderConfig,
     home: TempDir,
     cwd: TempDir,
 }
 
 #[tokio::test]
-async fn proxy_reference_matches_all_provider_model_contracts() -> Result<()> {
+async fn proxy_reference_and_native_anthropic_match_provider_contracts() -> Result<()> {
     let source_home = reference_home()?;
     let source_config = read_source_config(&source_home)?;
     let mut actual = Vec::new();
     for provider in PROVIDERS {
         actual.extend(
-            run_provider_cases(&source_config, &source_home, provider)
-                .await
-                .with_context(|| format!("run {provider} reference cases"))?,
+            run_provider_cases(
+                &source_config,
+                &source_home,
+                provider,
+                WireContract::Responses,
+            )
+            .await
+            .with_context(|| format!("run {provider} reference cases"))?,
         );
     }
+    actual.extend(
+        run_provider_cases(
+            &source_config,
+            &source_home,
+            "anthropic",
+            WireContract::Anthropic,
+        )
+        .await
+        .context("run Anthropic native-wire cases")?,
+    );
     let expected = actual.iter().map(CaseOutcome::expected).collect::<Vec<_>>();
 
     assert_eq!(actual, expected);
@@ -137,29 +161,36 @@ async fn run_provider_cases(
     source_config: &TomlValue,
     source_home: &Path,
     provider: &str,
+    wire_contract: WireContract,
 ) -> Result<Vec<CaseOutcome>> {
-    let fixture = ProviderFixture::new(source_config, source_home, provider)?;
+    let fixture = ProviderFixture::new(source_config, source_home, provider, wire_contract)?;
     let models = fixture.discover_models().await?;
     let mut cases = models
         .iter()
         .map(|model| fixture.run_case(model, Flow::Text))
         .collect::<Result<Vec<_>>>()?;
-    let tool_model = preferred_tool_model(&models);
+    let tool_model = preferred_tool_model(&models)?;
     cases.push(fixture.run_case(tool_model, Flow::Tool)?);
     Ok(cases)
 }
 
 impl ProviderFixture {
-    fn new(source_config: &TomlValue, source_home: &Path, provider: &str) -> Result<Self> {
+    fn new(
+        source_config: &TomlValue,
+        source_home: &Path,
+        provider: &str,
+        wire_contract: WireContract,
+    ) -> Result<Self> {
         let home = tempfile::tempdir().context("create isolated XEDOC_HOME")?;
         let cwd = tempfile::tempdir().context("create isolated provider workspace")?;
         let reference = reference_provider_config(source_config, source_home, provider)?;
-        let config = isolated_provider_config(source_config, provider)?;
+        let config = isolated_provider_config(source_config, provider, wire_contract)?;
         let path = home.path().join("config.toml");
         fs::write(&path, toml::to_string(&config)?)
             .with_context(|| format!("write {}", path.display()))?;
         Ok(Self {
             provider: provider.to_string(),
+            wire_contract,
             reference,
             home,
             cwd,
@@ -208,7 +239,14 @@ impl ProviderFixture {
     fn run_case(&self, model: &str, flow: Flow) -> Result<CaseOutcome> {
         let marker = flow.marker();
         let output = self.run_exec(model, flow.prompt(marker))?;
-        observe_case(&self.provider, model, flow, marker, output)
+        observe_case(
+            &self.provider,
+            model,
+            flow,
+            self.wire_contract,
+            marker,
+            output,
+        )
     }
 
     fn run_exec(&self, model: &str, prompt: String) -> Result<Output> {
@@ -284,8 +322,19 @@ fn exec_args(model: &str) -> [&str; 11] {
     ]
 }
 
-fn isolated_provider_config(source: &TomlValue, provider: &str) -> Result<TomlValue> {
-    let provider_config = configured_provider(source, provider)?.clone();
+fn isolated_provider_config(
+    source: &TomlValue,
+    provider: &str,
+    wire_contract: WireContract,
+) -> Result<TomlValue> {
+    let mut provider_config = configured_provider(source, provider)?.clone();
+    provider_config
+        .as_table_mut()
+        .context("provider config must be a table")?
+        .insert(
+            "wire_api".to_string(),
+            TomlValue::String(wire_contract.as_config_value().to_string()),
+        );
     let mut providers = toml::map::Map::new();
     providers.insert(provider.to_string(), provider_config);
     let mut root = toml::map::Map::new();
@@ -297,19 +346,20 @@ fn isolated_provider_config(source: &TomlValue, provider: &str) -> Result<TomlVa
     Ok(TomlValue::Table(root))
 }
 
-fn preferred_tool_model(models: &[String]) -> &str {
+fn preferred_tool_model(models: &[String]) -> Result<&str> {
     models
         .iter()
         .find(|model| model.contains("haiku") || model.contains("flash"))
         .or_else(|| models.first())
         .map(String::as_str)
-        .expect("model catalog is non-empty")
+        .context("model catalog is empty")
 }
 
 fn observe_case(
     provider: &str,
     model: &str,
     flow: Flow,
+    wire_contract: WireContract,
     marker: &str,
     output: Output,
 ) -> Result<CaseOutcome> {
@@ -320,6 +370,7 @@ fn observe_case(
         provider: provider.to_string(),
         model: model.to_string(),
         flow,
+        wire_contract,
         process_succeeded: state.process_succeeded,
         marker_seen: state.marker_seen,
         turn_completed: state.turn_completed,
@@ -327,6 +378,15 @@ fn observe_case(
         command_completed: state.command_completed,
         diagnostic,
     })
+}
+
+impl WireContract {
+    fn as_config_value(self) -> &'static str {
+        match self {
+            Self::Responses => "responses",
+            Self::Anthropic => "anthropic",
+        }
+    }
 }
 
 impl ContractState {
