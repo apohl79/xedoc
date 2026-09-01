@@ -431,7 +431,7 @@ fn downgrades_forced_tool_choice_for_new_fable_models() {
         actual,
         AnthropicMessagesRequest {
             model: "claude-melon-lp-eap".to_string(),
-            max_tokens: 28672,
+            max_tokens: 65536,
             stream: true,
             system: vec![AnthropicSystemBlock::Text {
                 text: "You must respond by calling one of the available tools.".to_string(),
@@ -446,11 +446,16 @@ fn downgrades_forced_tool_choice_for_new_fable_models() {
             tool_choice: Some(AnthropicToolChoice::Auto {
                 disable_parallel_tool_use: true,
             }),
-            thinking: Some(AnthropicThinking::Enabled {
-                budget_tokens: 24576,
+            thinking: Some(AnthropicThinking::Adaptive {
                 display: None,
+                block_binding: Some(crate::AnthropicBlockBinding {
+                    prefix_mismatch_behavior: "drop_block".to_string(),
+                }),
             }),
-            output_config: None,
+            output_config: Some(AnthropicOutputConfig {
+                effort: Some("high".to_string()),
+                format: None,
+            }),
         }
     );
 }
