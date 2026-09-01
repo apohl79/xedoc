@@ -1539,11 +1539,11 @@ fn session_header_includes_reasoning_level_when_present() {
     let lines = render_lines(&cell.display_lines(/*width*/ 80));
     let model_line = lines
         .iter()
-        .find(|line| line.contains("model:"))
+        .find(|line| line.contains("gpt-4o"))
         .expect("model line");
 
-    assert!(model_line.contains("gpt-4o high   fast"));
-    assert!(model_line.contains("/model to change"));
+    assert!(model_line.contains("gpt-4o · high · fast"));
+    assert!(!model_line.contains("/model"));
 }
 
 #[test]
@@ -1559,10 +1559,10 @@ fn session_header_hides_fast_status_when_disabled() {
     let lines = render_lines(&cell.display_lines(/*width*/ 80));
     let model_line = lines
         .iter()
-        .find(|line| line.contains("model:"))
+        .find(|line| line.contains("gpt-4o"))
         .expect("model line");
 
-    assert!(model_line.contains("gpt-4o high"));
+    assert!(model_line.contains("gpt-4o · high"));
     assert!(!model_line.contains("fast"));
 }
 

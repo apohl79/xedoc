@@ -2,9 +2,7 @@
 source: tui/src/app/tests.rs
 expression: rendered
 ---
-╭─────────────────────────────────────────────╮
-│ x_ E47 Xedoc (v<VERSION>)                   │
-│                                             │
-│ model:     gpt-test high   /model to change │
-│ directory: /tmp/project                     │
-╰─────────────────────────────────────────────╯
+╭─ XEDOC ──────────────────────── <VERSION> ─╮
+│  gpt-test · high                           │
+│  /tmp/project                              │
+╰────────────────────────────────────────────╯
