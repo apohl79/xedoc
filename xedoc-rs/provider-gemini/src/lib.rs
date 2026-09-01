@@ -1,6 +1,8 @@
+mod request;
 mod thought_signatures;
 mod types;
 
+pub use request::translate_request;
 pub use thought_signatures::GeminiThoughtSignatureStore;
 pub use types::GeminiContent;
 pub use types::GeminiFunctionCall;
