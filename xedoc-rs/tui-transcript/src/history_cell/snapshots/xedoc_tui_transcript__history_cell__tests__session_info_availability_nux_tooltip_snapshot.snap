@@ -2,9 +2,7 @@
 source: tui-transcript/src/history_cell/tests.rs
 expression: rendered
 ---
-╭─────────────────────────────────────╮
-│ x_ E47 Xedoc (v<version>)           │
-│                                     │
-│ model:     gpt-5   /model to change │
-│ directory: /tmp/project             │
-╰─────────────────────────────────────╯
+╭─ XEDOC ──────────────────────── <version> ─╮
+│  gpt-5                                     │
+│  /tmp/project                              │
+╰────────────────────────────────────────────╯
