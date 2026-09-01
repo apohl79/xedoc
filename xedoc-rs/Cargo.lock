@@ -13859,6 +13859,7 @@ dependencies = [
  "xedoc-otel",
  "xedoc-protocol",
  "xedoc-provider-anthropic",
+ "xedoc-provider-gemini",
  "xedoc-response-debug-context",
  "xedoc-utils-home-dir",
 ]

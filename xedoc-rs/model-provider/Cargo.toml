@@ -22,6 +22,7 @@ xedoc-model-provider-info = { workspace = true }
 xedoc-models-manager = { workspace = true }
 xedoc-otel = { workspace = true }
 xedoc-provider-anthropic = { workspace = true }
+xedoc-provider-gemini = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-response-debug-context = { workspace = true }
 xedoc-utils-home-dir = { workspace = true }

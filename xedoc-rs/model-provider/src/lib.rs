@@ -4,8 +4,13 @@ mod anthropic_api_key_auth_provider;
 mod auth;
 mod bearer_auth_provider;
 mod gemini_api_key_auth_provider;
+mod gemini_models_endpoint;
 mod models_endpoint;
 mod provider;
+
+#[cfg(test)]
+#[path = "gemini_models_endpoint_tests.rs"]
+mod gemini_models_endpoint_tests;
 
 pub use amazon_bedrock::is_supported_amazon_bedrock_region;
 pub use auth::AgentIdentitySessionFallback;
