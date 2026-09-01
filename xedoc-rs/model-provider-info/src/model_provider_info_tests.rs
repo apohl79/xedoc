@@ -126,6 +126,27 @@ wire_api = "chat"
 }
 
 #[test]
+fn test_deserialize_anthropic_wire_api() {
+    let provider_toml = r#"
+name = "Anthropic proxy"
+base_url = "http://127.0.0.1:8317/v1"
+wire_api = "anthropic"
+        "#;
+
+    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+
+    assert_eq!(
+        provider,
+        ModelProviderInfo {
+            name: "Anthropic proxy".to_string(),
+            base_url: Some("http://127.0.0.1:8317/v1".to_string()),
+            wire_api: WireApi::Anthropic,
+            ..ModelProviderInfo::default()
+        }
+    );
+}
+
+#[test]
 fn test_deserialize_websocket_connect_timeout() {
     let provider_toml = r#"
 name = "OpenAI"
@@ -378,6 +399,31 @@ fn test_merge_configured_model_providers_adds_custom_provider() {
 
     let mut expected = built_in_model_providers(/*openai_base_url*/ None);
     expected.insert("custom".to_string(), custom_provider);
+
+    assert_eq!(
+        merge_configured_model_providers(
+            built_in_model_providers(/*openai_base_url*/ None),
+            configured_model_providers,
+        ),
+        Ok(expected)
+    );
+}
+
+#[test]
+fn test_merge_configured_model_providers_replaces_built_in_anthropic() {
+    let configured_provider = ModelProviderInfo {
+        name: "Anthropic proxy".to_string(),
+        base_url: Some("http://127.0.0.1:8317/v1".to_string()),
+        wire_api: WireApi::Responses,
+        ..ModelProviderInfo::default()
+    };
+    let configured_model_providers = std::collections::HashMap::from([(
+        ANTHROPIC_PROVIDER_ID.to_string(),
+        configured_provider.clone(),
+    )]);
+
+    let mut expected = built_in_model_providers(/*openai_base_url*/ None);
+    expected.insert(ANTHROPIC_PROVIDER_ID.to_string(), configured_provider);
 
     assert_eq!(
         merge_configured_model_providers(

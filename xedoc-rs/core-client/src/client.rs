@@ -1501,6 +1501,9 @@ impl ModelClientSession {
     ) -> Result<ResponseStream> {
         let wire_api = self.client.state.provider.info().wire_api;
         match wire_api {
+            WireApi::Anthropic => Err(XedocErr::UnsupportedOperation(
+                "Anthropic Messages transport is not connected yet".to_string(),
+            )),
             WireApi::Responses => {
                 if self.client.responses_websocket_enabled() {
                     let request_trace = current_span_w3c_trace_context();
