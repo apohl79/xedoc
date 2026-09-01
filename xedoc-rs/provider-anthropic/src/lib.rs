@@ -1,8 +1,10 @@
 mod history;
 mod request;
+mod stream;
 mod types;
 
 pub use request::translate_request;
+pub use stream::AnthropicStreamTranslator;
 pub use types::AnthropicBlockBinding;
 pub use types::AnthropicContentBlock;
 pub use types::AnthropicImageSource;
