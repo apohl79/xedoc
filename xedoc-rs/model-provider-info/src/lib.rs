@@ -47,6 +47,17 @@ pub const AMAZON_BEDROCK_DEFAULT_BASE_URL: &str =
     "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER: &str = "x-amzn-mantle-client-agent";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE: &str = "xedoc";
+const ANTHROPIC_PROVIDER_NAME: &str = "Anthropic";
+pub const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
+const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
+const ANTHROPIC_VERSION_HEADER: &str = "anthropic-version";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+const DEEPSEEK_PROVIDER_NAME: &str = "DeepSeek";
+pub const DEEPSEEK_PROVIDER_ID: &str = "deepseek";
+const DEEPSEEK_DEFAULT_BASE_URL: &str = "https://api.deepseek.com/anthropic/v1";
+const GEMINI_PROVIDER_NAME: &str = "Gemini";
+pub const GEMINI_PROVIDER_ID: &str = "google";
+const GEMINI_DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
 pub const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
@@ -55,6 +66,10 @@ pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WireApi {
+    /// The Messages API exposed by Anthropic at `/v1/messages`.
+    Anthropic,
+    /// The GenerateContent API exposed by Google Gemini.
+    Gemini,
     /// The Responses API exposed by OpenAI at `/v1/responses`.
     #[default]
     Responses,
@@ -63,6 +78,8 @@ pub enum WireApi {
 impl fmt::Display for WireApi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
+            Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
             Self::Responses => "responses",
         };
         f.write_str(value)
@@ -76,9 +93,14 @@ impl<'de> Deserialize<'de> for WireApi {
     {
         let value = String::deserialize(deserializer)?;
         match value.as_str() {
+            "anthropic" => Ok(Self::Anthropic),
+            "gemini" => Ok(Self::Gemini),
             "responses" => Ok(Self::Responses),
             "chat" => Err(serde::de::Error::custom(CHAT_WIRE_API_REMOVED_ERROR)),
-            _ => Err(serde::de::Error::unknown_variant(&value, &["responses"])),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &["anthropic", "gemini", "responses"],
+            )),
         }
     }
 }
@@ -90,7 +112,7 @@ pub struct ModelProviderInfo {
     /// Friendly display name.
     #[serde(default)]
     pub name: String,
-    /// Base URL for the provider's OpenAI-compatible API.
+    /// Base URL for the provider API.
     pub base_url: Option<String>,
     /// Environment variable that stores the user's API key for this provider.
     pub env_key: Option<String>,
@@ -480,6 +502,65 @@ impl ModelProviderInfo {
         }
     }
 
+    fn create_anthropic_provider() -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: ANTHROPIC_PROVIDER_NAME.into(),
+            base_url: Some(ANTHROPIC_DEFAULT_BASE_URL.into()),
+            env_key: Some("ANTHROPIC_API_KEY".into()),
+            env_key_instructions: Some(
+                "Set ANTHROPIC_API_KEY to an Anthropic API key.".to_string(),
+            ),
+            experimental_bearer_token: None,
+            auth: None,
+            aws: None,
+            wire_api: WireApi::Anthropic,
+            query_params: None,
+            http_headers: Some(HashMap::from([(
+                ANTHROPIC_VERSION_HEADER.to_string(),
+                ANTHROPIC_VERSION.to_string(),
+            )])),
+            env_http_headers: None,
+            request_max_retries: None,
+            stream_max_retries: None,
+            stream_idle_timeout_ms: None,
+            websocket_connect_timeout_ms: None,
+            requires_openai_auth: false,
+            supports_websockets: false,
+            namespace_tools: false,
+            model_prices: None,
+        }
+    }
+
+    fn create_gemini_provider() -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: GEMINI_PROVIDER_NAME.into(),
+            base_url: Some(GEMINI_DEFAULT_BASE_URL.into()),
+            env_key: Some("GEMINI_API_KEY".into()),
+            env_key_instructions: Some(
+                "Set GEMINI_API_KEY to a Google Gemini API key.".to_string(),
+            ),
+            wire_api: WireApi::Gemini,
+            namespace_tools: false,
+            ..ModelProviderInfo::default()
+        }
+    }
+
+    fn create_deepseek_provider() -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: DEEPSEEK_PROVIDER_NAME.into(),
+            base_url: Some(DEEPSEEK_DEFAULT_BASE_URL.into()),
+            env_key: Some("DEEPSEEK_API_KEY".into()),
+            env_key_instructions: Some("Set DEEPSEEK_API_KEY to a DeepSeek API key.".to_string()),
+            wire_api: WireApi::Anthropic,
+            http_headers: Some(HashMap::from([(
+                ANTHROPIC_VERSION_HEADER.to_string(),
+                ANTHROPIC_VERSION.to_string(),
+            )])),
+            namespace_tools: false,
+            ..ModelProviderInfo::default()
+        }
+    }
+
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
     }
@@ -496,6 +577,28 @@ impl ModelProviderInfo {
 
     pub fn is_amazon_bedrock(&self) -> bool {
         self.name == AMAZON_BEDROCK_PROVIDER_NAME
+    }
+
+    pub fn is_native_anthropic(&self) -> bool {
+        self.name == ANTHROPIC_PROVIDER_NAME
+            && self.base_url.as_deref() == Some(ANTHROPIC_DEFAULT_BASE_URL)
+            && self.env_key.as_deref() == Some("ANTHROPIC_API_KEY")
+            && self.experimental_bearer_token.is_none()
+            && self.auth.is_none()
+            && self.aws.is_none()
+            && self.wire_api == WireApi::Anthropic
+            && !self.requires_openai_auth
+    }
+
+    pub fn is_native_deepseek(&self) -> bool {
+        self.name == DEEPSEEK_PROVIDER_NAME
+            && self.base_url.as_deref() == Some(DEEPSEEK_DEFAULT_BASE_URL)
+            && self.env_key.as_deref() == Some("DEEPSEEK_API_KEY")
+            && self.experimental_bearer_token.is_none()
+            && self.auth.is_none()
+            && self.aws.is_none()
+            && self.wire_api == WireApi::Anthropic
+            && !self.requires_openai_auth
     }
 
     pub fn supports_remote_compaction(&self) -> bool {
@@ -520,14 +623,16 @@ pub fn built_in_model_providers(
     use ModelProviderInfo as P;
     let openai_provider = P::create_openai_provider(openai_base_url);
     let amazon_bedrock_provider = P::create_amazon_bedrock_provider(/*aws*/ None);
+    let anthropic_provider = P::create_anthropic_provider();
+    let deepseek_provider = P::create_deepseek_provider();
+    let gemini_provider = P::create_gemini_provider();
 
-    // We do not want to be in the business of adjucating which third-party
-    // providers are bundled with Xedoc CLI, so we only include the OpenAI and
-    // open source ("oss") providers by default. Users are encouraged to add to
-    // `model_providers` in config.toml to add their own providers.
     [
         (OPENAI_PROVIDER_ID, openai_provider),
         (AMAZON_BEDROCK_PROVIDER_ID, amazon_bedrock_provider),
+        (ANTHROPIC_PROVIDER_ID, anthropic_provider),
+        (DEEPSEEK_PROVIDER_ID, deepseek_provider),
+        (GEMINI_PROVIDER_ID, gemini_provider),
         (
             OLLAMA_OSS_PROVIDER_ID,
             create_oss_provider(DEFAULT_OLLAMA_PORT, WireApi::Responses),
@@ -547,6 +652,8 @@ pub fn built_in_model_providers(
 /// Configured providers extend the built-in set. Built-in providers are not
 /// generally overridable, but the built-in Amazon Bedrock provider allows the
 /// user to customize its endpoint, authentication, headers, and AWS settings.
+/// The Anthropic, DeepSeek, and Gemini providers are fully replaceable so existing
+/// proxy-backed configurations continue to work while native support is introduced.
 pub fn merge_configured_model_providers(
     mut model_providers: HashMap<String, ModelProviderInfo>,
     configured_model_providers: HashMap<String, ModelProviderInfo>,
@@ -591,6 +698,11 @@ other non-default provider fields are not supported"
             {
                 built_in_provider.model_prices = Some(model_prices);
             }
+        } else if matches!(
+            key.as_str(),
+            ANTHROPIC_PROVIDER_ID | DEEPSEEK_PROVIDER_ID | GEMINI_PROVIDER_ID
+        ) {
+            model_providers.insert(key, provider);
         } else {
             model_providers.entry(key).or_insert(provider);
         }
