@@ -435,7 +435,7 @@ mod tests {
                 "data": [
                     {"id": "claude-opus-5", "owned_by": "anthropic"},
                     {"id": "claude-sonnet-5", "owned_by": "anthropic"},
-                    {"id": "claude-fable-5", "owned_by": "anthropic"},
+                    {"id": "claude-fable-5-1", "owned_by": "anthropic"},
                     {"id": "opus", "owned_by": "anthropic"},
                     {"id": "deepseek-v4-pro", "owned_by": "deepseek"}
                 ]
@@ -450,7 +450,7 @@ mod tests {
         let expected = [
             "claude-opus-5",
             "claude-sonnet-5",
-            "claude-fable-5",
+            "claude-fable-5-1",
             "opus",
             "deepseek-v4-pro",
         ]

@@ -49,7 +49,7 @@ fn resolve_model(model: &str) -> String {
         .or_else(|| trimmed.strip_suffix("[1M]"))
         .unwrap_or(trimmed);
     match without_long_context {
-        "fable" => "claude-fable-5",
+        "fable" => "claude-fable-5-1",
         "opus" | "opus-4.8" | "claude-opus-4-7" => "claude-opus-4-8",
         "opus-5" => "claude-opus-5",
         "sonnet" | "claude-sonnet-4-6" => "claude-sonnet-5",
@@ -200,22 +200,21 @@ fn apply_reasoning(request: &ResponsesApiRequest, translated: &mut AnthropicMess
 
 fn supports_adaptive_thinking(model: &str) -> bool {
     let model = model.to_ascii_lowercase();
-    model.starts_with("claude-melon-")
-        || matches!(
-            model.as_str(),
-            "claude-opus-4-6"
-                | "claude-opus-4-7"
-                | "claude-opus-4-8"
-                | "claude-opus-5"
-                | "claude-sonnet-4-6"
-                | "claude-sonnet-5"
-                | "claude-fable-5"
-        )
+    matches!(
+        model.as_str(),
+        "claude-opus-4-6"
+            | "claude-opus-4-7"
+            | "claude-opus-4-8"
+            | "claude-opus-5"
+            | "claude-sonnet-4-6"
+            | "claude-sonnet-5"
+            | "claude-fable-5-1"
+    )
 }
 
 fn supports_prefix_locked_thinking(model: &str) -> bool {
     let model = model.to_ascii_lowercase();
-    model.starts_with("claude-melon-") || model.starts_with("claude-fable-")
+    model.starts_with("claude-fable-")
 }
 
 fn fixed_thinking_budget(effort: &ReasoningEffort) -> u32 {
@@ -260,7 +259,7 @@ fn reconcile_forced_tool_choice(translated: &mut AnthropicMessagesRequest) {
 }
 
 fn rejects_forced_tool_choice(model: &str) -> bool {
-    supports_prefix_locked_thinking(model) && !model.eq_ignore_ascii_case("claude-fable-5")
+    supports_prefix_locked_thinking(model)
 }
 
 #[cfg(test)]

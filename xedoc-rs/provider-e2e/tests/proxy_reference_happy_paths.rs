@@ -30,10 +30,7 @@ use xedoc_utils_absolute_path::AbsolutePathBufGuard;
 const REFERENCE_HOME_ENV: &str = "XEDOC_PROVIDER_REFERENCE_HOME";
 const REFERENCE_AUTH_DIR_ENV: &str = "XEDOC_PROVIDER_REFERENCE_AUTH_DIR";
 const PROVIDERS: [&str; 3] = ["anthropic", "google", "deepseek"];
-const RETIRED_REFERENCE_MODELS: [(&str, &str); 2] = [
-    ("anthropic", "claude-melon-lp-eap"),
-    ("google", "gemini-3-pro-preview"),
-];
+const RETIRED_REFERENCE_MODELS: [(&str, &str); 1] = [("google", "gemini-3-pro-preview")];
 const TEXT_MARKER: &str = "XEDOC_PROVIDER_E2E_OK";
 const TOOL_MARKER: &str = "XEDOC_PROVIDER_TOOL_OK";
 
@@ -213,6 +210,23 @@ async fn proxy_reference_and_native_providers_match_provider_contracts() -> Resu
 }
 
 #[tokio::test]
+async fn native_fable_5_1_satisfies_provider_contract() -> Result<()> {
+    let source_home = reference_home()?;
+    let source_config = read_source_config(&source_home)?;
+    let native = ProviderFixture::new(
+        &source_config,
+        &source_home,
+        "anthropic",
+        WireContract::AnthropicDirect,
+    )?;
+    let actual = native.run_case("claude-fable-5-1", Flow::Text)?;
+    let expected = actual.expected();
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[tokio::test]
 async fn native_gemini_catalog_covers_the_proxy_reference_catalog() -> Result<()> {
     let source_home = reference_home()?;
     let source_config = read_source_config(&source_home)?;
@@ -351,7 +365,11 @@ impl ProviderFixture {
             .into_iter()
             .map(|model| model.id)
             .filter(|model| {
+                let is_retired_anthropic_fable = self.provider == "anthropic"
+                    && (model.starts_with("claude-melon-")
+                        || (model.starts_with("claude-fable-") && model != "claude-fable-5-1"));
                 !RETIRED_REFERENCE_MODELS.contains(&(self.provider.as_str(), model.as_str()))
+                    && !is_retired_anthropic_fable
             })
             .collect::<Vec<_>>();
         if models.is_empty() {
