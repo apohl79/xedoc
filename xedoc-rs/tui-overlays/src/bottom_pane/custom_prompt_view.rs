@@ -35,6 +35,7 @@ pub struct CustomPromptView {
     placeholder: String,
     context_label: Option<String>,
     on_submit: PromptSubmitted,
+    masked: bool,
 
     // UI state
     textarea: TextArea,
@@ -62,11 +63,23 @@ impl CustomPromptView {
             placeholder,
             context_label,
             on_submit,
+            masked: false,
             textarea,
             textarea_state: RefCell::new(TextAreaState::default()),
             paste_burst: PasteBurst::default(),
             completion: None,
         }
+    }
+
+    pub fn new_secret(
+        title: String,
+        placeholder: String,
+        context_label: Option<String>,
+        on_submit: PromptSubmitted,
+    ) -> Self {
+        let mut view = Self::new(title, placeholder, String::new(), context_label, on_submit);
+        view.masked = true;
+        view
     }
 
     fn handle_key_event_at(&mut self, key_event: KeyEvent, now: Instant) {
@@ -232,8 +245,20 @@ impl Renderable for CustomPromptView {
                     width: input_area.width.saturating_sub(2),
                     height: text_area_height,
                 };
-                let mut state = self.textarea_state.borrow_mut();
-                StatefulWidgetRef::render_ref(&(&self.textarea), textarea_rect, buf, &mut state);
+                if self.masked && !self.textarea.text().is_empty() {
+                    let visible_width = usize::from(textarea_rect.width.saturating_sub(1));
+                    let masked =
+                        "•".repeat(self.textarea.text().chars().count().min(visible_width));
+                    Paragraph::new(masked).render(textarea_rect, buf);
+                } else {
+                    let mut state = self.textarea_state.borrow_mut();
+                    StatefulWidgetRef::render_ref(
+                        &(&self.textarea),
+                        textarea_rect,
+                        buf,
+                        &mut state,
+                    );
+                }
                 if self.textarea.text().is_empty() {
                     Paragraph::new(Line::from(self.placeholder.clone().dim()))
                         .render(textarea_rect, buf);
@@ -282,6 +307,18 @@ impl Renderable for CustomPromptView {
             width: area.width.saturating_sub(2),
             height: text_area_height,
         };
+        if self.masked {
+            let prefix_chars = self.textarea.text()[..self.textarea.cursor()]
+                .chars()
+                .count();
+            let visible_width = usize::from(textarea_rect.width.saturating_sub(1));
+            return Some((
+                textarea_rect
+                    .x
+                    .saturating_add(prefix_chars.min(visible_width) as u16),
+                textarea_rect.y,
+            ));
+        }
         let state = *self.textarea_state.borrow();
         self.textarea.cursor_pos_with_state(textarea_rect, state)
     }
@@ -289,6 +326,9 @@ impl Renderable for CustomPromptView {
 
 impl CustomPromptView {
     fn input_height(&self, width: u16) -> u16 {
+        if self.masked {
+            return 2;
+        }
         let usable_width = width.saturating_sub(2);
         let text_height = self.textarea.desired_height(usable_width).clamp(1, 8);
         text_height.saturating_add(1).min(9)

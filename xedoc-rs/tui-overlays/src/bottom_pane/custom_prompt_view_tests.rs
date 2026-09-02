@@ -74,6 +74,39 @@ fn delayed_enter_after_typing_submits() {
     assert!(view.is_complete());
 }
 
+#[test]
+fn secret_prompt_masks_api_key_while_preserving_submitted_value() {
+    let secret = "sk-ant-secret-value";
+    let (submitted, submitted_rx) = std::sync::mpsc::channel();
+    let mut view = CustomPromptView::new_secret(
+        "Anthropic API key".to_string(),
+        "Paste API key".to_string(),
+        /*context_label*/ None,
+        Box::new(move |text| {
+            submitted.send(text).expect("send submitted text");
+        }),
+    );
+    view.handle_paste(secret.to_string());
+
+    let area = Rect::new(0, 0, 40, view.desired_height(/*width*/ 40));
+    let mut buffer = Buffer::empty(area);
+    view.render(area, &mut buffer);
+    let rendered = buffer
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect::<String>();
+
+    assert!(!rendered.contains(secret));
+    assert!(rendered.contains("••••"));
+
+    view.handle_key_event_at(
+        KeyEvent::from(KeyCode::Enter),
+        Instant::now() + elapsed(/*ms*/ 200),
+    );
+    assert_eq!(submitted_rx.try_recv(), Ok(secret.to_string()));
+}
+
 fn custom_prompt_view() -> (CustomPromptView, Receiver<String>) {
     let (submitted, submitted_rx) = std::sync::mpsc::channel();
     let view = CustomPromptView::new(

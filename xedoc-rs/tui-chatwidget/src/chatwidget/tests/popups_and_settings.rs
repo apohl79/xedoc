@@ -3,9 +3,72 @@ use pretty_assertions::assert_eq;
 use xedoc_app_server_protocol::HookErrorInfo;
 use xedoc_app_server_protocol::HooksListEntry;
 use xedoc_app_server_protocol::HooksListResponse;
+use xedoc_app_server_protocol::ManagedModelSettings;
+use xedoc_app_server_protocol::ManagedProviderSettings;
 use xedoc_app_server_protocol::MarketplaceLoadErrorInfo;
 use xedoc_app_server_protocol::MarketplaceRemoveResponse;
+use xedoc_app_server_protocol::ModelManagerReadResponse;
 use xedoc_app_server_protocol::PluginSource;
+use xedoc_protocol::openai_models::ReasoningEffort;
+
+#[tokio::test]
+async fn model_manager_root_popup_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.open_model_manager(ModelManagerReadResponse {
+        providers: vec![
+            managed_provider(
+                "openai",
+                "OpenAI",
+                "gpt-5.6-sol",
+                "gpt-5.6-luna",
+                /*api_key_configured*/ false,
+                /*oauth_configured*/ true,
+            ),
+            managed_provider(
+                "anthropic",
+                "Anthropic",
+                "claude-fable-5-1",
+                "claude-haiku-4-5-20251001",
+                /*api_key_configured*/ true,
+                /*oauth_configured*/ false,
+            ),
+        ],
+    });
+
+    assert_chatwidget_snapshot!(
+        "model_manager_root_popup",
+        render_bottom_popup(&chat, /*width*/ 100)
+    );
+}
+
+fn managed_provider(
+    id: &str,
+    display_name: &str,
+    default_model: &str,
+    fast_model: &str,
+    api_key_configured: bool,
+    oauth_configured: bool,
+) -> ManagedProviderSettings {
+    ManagedProviderSettings {
+        id: id.to_string(),
+        display_name: display_name.to_string(),
+        default_model: default_model.to_string(),
+        fast_model: fast_model.to_string(),
+        default_reasoning_effort: ReasoningEffort::High,
+        api_key_configured,
+        oauth_supported: true,
+        oauth_configured,
+        models: vec![ManagedModelSettings {
+            id: default_model.to_string(),
+            display_name: default_model.to_string(),
+            context_window: 400_000,
+            max_context_window: 1_000_000,
+            auto_compact_token_limit: 360_000,
+            base_instructions: "Use tools carefully.".to_string(),
+            supported_reasoning_efforts: vec![ReasoningEffort::High],
+        }],
+    }
+}
 
 #[tokio::test]
 async fn experimental_mode_plan_is_ignored_on_startup() {

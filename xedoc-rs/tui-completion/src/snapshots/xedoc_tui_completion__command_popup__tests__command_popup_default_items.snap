@@ -3,6 +3,7 @@ source: tui-completion/src/command_popup.rs
 expression: commands
 ---
 /model - choose what model and reasoning effort to use
+/model-manager - manage providers, credentials, model defaults, and limits
 /ide - include current selection, open files, and other context from your IDE
 /permissions - choose what Xedoc is allowed to do
 /keymap - remap TUI shortcuts

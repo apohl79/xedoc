@@ -184,6 +184,7 @@ mod event_dispatch;
 mod history_ui;
 mod input;
 mod loaded_threads;
+mod model_manager_requests;
 mod platform_actions;
 mod plugin_mentions;
 mod replay_filter;
