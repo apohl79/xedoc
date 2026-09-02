@@ -795,6 +795,31 @@ client_request_definitions! {
         serialization: None,
         response: v2::ModelProviderCapabilitiesReadResponse,
     },
+    ModelManagerRead => "modelManager/read" {
+        params: v2::ModelManagerReadParams,
+        serialization: global_shared_read("model-manager"),
+        response: v2::ModelManagerReadResponse,
+    },
+    ModelManagerUpdate => "modelManager/update" {
+        params: v2::ModelManagerUpdateParams,
+        serialization: global("model-manager"),
+        response: v2::ModelManagerUpdateResponse,
+    },
+    ModelProviderApiKeySet => "modelProvider/apiKey/set" {
+        params: v2::ModelProviderApiKeySetParams,
+        serialization: global("model-manager"),
+        response: v2::ModelProviderApiKeySetResponse,
+    },
+    ModelProviderApiKeyDelete => "modelProvider/apiKey/delete" {
+        params: v2::ModelProviderApiKeyDeleteParams,
+        serialization: global("model-manager"),
+        response: v2::ModelProviderApiKeyDeleteResponse,
+    },
+    ModelProviderOauthStart => "modelProvider/oauth/start" {
+        params: v2::ModelProviderOauthStartParams,
+        serialization: global("model-manager"),
+        response: v2::ModelProviderOauthStartResponse,
+    },
     ExperimentalFeatureList => "experimentalFeature/list" {
         params: v2::ExperimentalFeatureListParams,
         serialization: global("config"),

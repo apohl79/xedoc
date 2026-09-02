@@ -27,6 +27,7 @@ use crate::request_processors::GitRequestProcessor;
 use crate::request_processors::InitializeRequestProcessor;
 use crate::request_processors::MarketplaceRequestProcessor;
 use crate::request_processors::McpRequestProcessor;
+use crate::request_processors::ModelManagerRequestProcessor;
 use crate::request_processors::PluginRequestProcessor;
 use crate::request_processors::ProcessExecRequestProcessor;
 use crate::request_processors::SearchRequestProcessor;
@@ -101,6 +102,7 @@ pub(crate) struct MessageProcessor {
     initialize_processor: InitializeRequestProcessor,
     marketplace_processor: MarketplaceRequestProcessor,
     mcp_processor: McpRequestProcessor,
+    model_manager_processor: ModelManagerRequestProcessor,
     plugin_processor: PluginRequestProcessor,
     search_processor: SearchRequestProcessor,
     thread_goal_processor: ThreadGoalRequestProcessor,
@@ -325,6 +327,8 @@ impl MessageProcessor {
             outgoing.clone(),
             config_manager.clone(),
         );
+        let model_manager_processor =
+            ModelManagerRequestProcessor::new(Arc::clone(&config), auth_manager.clone());
         let plugin_processor = PluginRequestProcessor::new(
             auth_manager.clone(),
             Arc::clone(&thread_manager),
@@ -400,6 +404,7 @@ impl MessageProcessor {
             initialize_processor,
             marketplace_processor,
             mcp_processor,
+            model_manager_processor,
             plugin_processor,
             search_processor,
             thread_goal_processor,
@@ -841,6 +846,26 @@ impl MessageProcessor {
                 .config_processor
                 .model_provider_capabilities_read()
                 .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelManagerRead { params: _, .. } => self
+                .model_manager_processor
+                .read()
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelManagerUpdate { params, .. } => self
+                .model_manager_processor
+                .update(params)
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelProviderApiKeySet { params, .. } => self
+                .model_manager_processor
+                .set_api_key(params)
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelProviderApiKeyDelete { params, .. } => self
+                .model_manager_processor
+                .delete_api_key(params)
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelProviderOauthStart { params, .. } => self
+                .model_manager_processor
+                .start_oauth(params)
                 .map(|response| Some(response.into())),
             ClientRequest::ThreadStart { params, .. } => {
                 self.thread_processor

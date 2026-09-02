@@ -124,6 +124,39 @@ async fn oauth_account_uses_bearer_profile_and_beta_endpoint() {
 }
 
 #[tokio::test]
+async fn oauth_account_added_after_provider_creation_is_loaded() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let accounts = home.path().join("accounts");
+    let provider = AnthropicModelProvider::from_runtime_sources(
+        provider_info(),
+        /*auth_manager*/ None,
+        /*api_key*/ None,
+        Ok(accounts.clone()),
+    );
+
+    write_oauth_credential(&accounts);
+
+    let api_provider = ModelProvider::api_provider(&provider)
+        .await
+        .expect("API provider");
+    let auth = ModelProvider::api_auth(&provider).await.expect("API auth");
+    assert_eq!(
+        api_provider
+            .query_params
+            .as_ref()
+            .and_then(|params| params.get("beta"))
+            .map(String::as_str),
+        Some("true")
+    );
+    assert_eq!(
+        auth.to_auth_headers()
+            .get(http::header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer oauth-access")
+    );
+}
+
+#[tokio::test]
 async fn missing_native_credentials_reports_both_supported_sources() {
     let home = tempfile::tempdir().expect("tempdir");
     let accounts = home.path().join("accounts");

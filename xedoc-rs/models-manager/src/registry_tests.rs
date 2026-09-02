@@ -79,7 +79,7 @@ fn invalid_compaction_limit_is_rejected() -> TestResult {
         .expect("DeepSeek defaults should exist")
         .template
         .info
-        .auto_compact_token_limit = Some(DEFAULT_CONTEXT_WINDOW + 1);
+        .auto_compact_token_limit = Some(DEFAULT_COMPACT_LIMIT + 1);
     fs::write(
         home.path().join(MODEL_REGISTRY_FILE),
         serde_json::to_vec_pretty(&registry)?,
@@ -92,6 +92,32 @@ fn invalid_compaction_limit_is_rejected() -> TestResult {
         error
             .to_string()
             .contains("compaction limit must be between")
+    );
+    Ok(())
+}
+
+#[test]
+fn maximum_context_window_below_context_window_is_rejected() -> TestResult {
+    let home = TempDir::new()?;
+    let mut registry = ModelRegistry::load_or_create(home.path())?;
+    let model = &mut registry
+        .provider_mut("deepseek")
+        .expect("DeepSeek defaults should exist")
+        .template
+        .info;
+    model.max_context_window = Some(DEFAULT_CONTEXT_WINDOW - 1);
+    fs::write(
+        home.path().join(MODEL_REGISTRY_FILE),
+        serde_json::to_vec_pretty(&registry)?,
+    )?;
+
+    let error = ModelRegistry::load(home.path()).expect_err("invalid maximum should fail");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert!(
+        error
+            .to_string()
+            .contains("maximum context window must be at least")
     );
     Ok(())
 }

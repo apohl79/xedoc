@@ -1577,7 +1577,126 @@
       },
       "type": "object"
     },
+    "ModelManagerReadParams": {
+      "type": "object"
+    },
+    "ModelManagerUpdateParams": {
+      "oneOf": [
+        {
+          "properties": {
+            "default_model": {
+              "type": "string"
+            },
+            "default_reasoning_effort": {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            "fast_model": {
+              "type": "string"
+            },
+            "provider_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "providerDefaults"
+              ],
+              "title": "ProviderDefaultsModelManagerUpdateParamsType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "default_model",
+            "default_reasoning_effort",
+            "fast_model",
+            "provider_id",
+            "type"
+          ],
+          "title": "ProviderDefaultsModelManagerUpdateParams",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "auto_compact_token_limit": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "base_instructions": {
+              "type": "string"
+            },
+            "context_window": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "max_context_window": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "model_id": {
+              "type": "string"
+            },
+            "provider_id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "modelSettings"
+              ],
+              "title": "ModelSettingsModelManagerUpdateParamsType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "auto_compact_token_limit",
+            "base_instructions",
+            "context_window",
+            "max_context_window",
+            "model_id",
+            "provider_id",
+            "type"
+          ],
+          "title": "ModelSettingsModelManagerUpdateParams",
+          "type": "object"
+        }
+      ]
+    },
+    "ModelProviderApiKeyDeleteParams": {
+      "properties": {
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId"
+      ],
+      "type": "object"
+    },
+    "ModelProviderApiKeySetParams": {
+      "properties": {
+        "apiKey": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "apiKey",
+        "providerId"
+      ],
+      "type": "object"
+    },
     "ModelProviderCapabilitiesReadParams": {
+      "type": "object"
+    },
+    "ModelProviderOauthStartParams": {
+      "properties": {
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId"
+      ],
       "type": "object"
     },
     "MultiAgentMode": {
@@ -5335,6 +5454,126 @@
         "params"
       ],
       "title": "ModelProvider/capabilities/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelManager/read"
+          ],
+          "title": "ModelManager/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelManagerReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelManager/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelManager/update"
+          ],
+          "title": "ModelManager/updateRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelManagerUpdateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelManager/updateRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelProvider/apiKey/set"
+          ],
+          "title": "ModelProvider/apiKey/setRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelProviderApiKeySetParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelProvider/apiKey/setRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelProvider/apiKey/delete"
+          ],
+          "title": "ModelProvider/apiKey/deleteRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelProviderApiKeyDeleteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelProvider/apiKey/deleteRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelProvider/oauth/start"
+          ],
+          "title": "ModelProvider/oauth/startRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelProviderOauthStartParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelProvider/oauth/startRequest",
       "type": "object"
     },
     {

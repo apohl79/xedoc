@@ -1398,6 +1398,126 @@
             },
             "method": {
               "enum": [
+                "modelManager/read"
+              ],
+              "title": "ModelManager/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ModelManagerReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelManager/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "modelManager/update"
+              ],
+              "title": "ModelManager/updateRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ModelManagerUpdateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelManager/updateRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "modelProvider/apiKey/set"
+              ],
+              "title": "ModelProvider/apiKey/setRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ModelProviderApiKeySetParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelProvider/apiKey/setRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "modelProvider/apiKey/delete"
+              ],
+              "title": "ModelProvider/apiKey/deleteRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ModelProviderApiKeyDeleteParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelProvider/apiKey/deleteRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "modelProvider/oauth/start"
+              ],
+              "title": "ModelProvider/oauth/startRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ModelProviderOauthStartParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelProvider/oauth/startRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "experimentalFeature/list"
               ],
               "title": "ExperimentalFeature/listRequestMethod",
@@ -9720,6 +9840,93 @@
         ],
         "type": "object"
       },
+      "ManagedModelSettings": {
+        "properties": {
+          "autoCompactTokenLimit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "baseInstructions": {
+            "type": "string"
+          },
+          "contextWindow": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "maxContextWindow": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "supportedReasoningEfforts": {
+            "items": {
+              "$ref": "#/definitions/v2/ReasoningEffort"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "autoCompactTokenLimit",
+          "baseInstructions",
+          "contextWindow",
+          "displayName",
+          "id",
+          "maxContextWindow",
+          "supportedReasoningEfforts"
+        ],
+        "type": "object"
+      },
+      "ManagedProviderSettings": {
+        "properties": {
+          "apiKeyConfigured": {
+            "type": "boolean"
+          },
+          "defaultModel": {
+            "type": "string"
+          },
+          "defaultReasoningEffort": {
+            "$ref": "#/definitions/v2/ReasoningEffort"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "fastModel": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/definitions/v2/ManagedModelSettings"
+            },
+            "type": "array"
+          },
+          "oauthConfigured": {
+            "type": "boolean"
+          },
+          "oauthSupported": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "apiKeyConfigured",
+          "defaultModel",
+          "defaultReasoningEffort",
+          "displayName",
+          "fastModel",
+          "id",
+          "models",
+          "oauthConfigured",
+          "oauthSupported"
+        ],
+        "type": "object"
+      },
       "MarketplaceAddParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -10513,6 +10720,161 @@
         "title": "ModelListResponse",
         "type": "object"
       },
+      "ModelManagerReadParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "ModelManagerReadParams",
+        "type": "object"
+      },
+      "ModelManagerReadResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/definitions/v2/ManagedProviderSettings"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "ModelManagerReadResponse",
+        "type": "object"
+      },
+      "ModelManagerUpdateParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "oneOf": [
+          {
+            "properties": {
+              "default_model": {
+                "type": "string"
+              },
+              "default_reasoning_effort": {
+                "$ref": "#/definitions/v2/ReasoningEffort"
+              },
+              "fast_model": {
+                "type": "string"
+              },
+              "provider_id": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "providerDefaults"
+                ],
+                "title": "ProviderDefaultsv2::ModelManagerUpdateParamsType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "default_model",
+              "default_reasoning_effort",
+              "fast_model",
+              "provider_id",
+              "type"
+            ],
+            "title": "ProviderDefaultsv2::ModelManagerUpdateParams",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "auto_compact_token_limit": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "base_instructions": {
+                "type": "string"
+              },
+              "context_window": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "max_context_window": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "model_id": {
+                "type": "string"
+              },
+              "provider_id": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "modelSettings"
+                ],
+                "title": "ModelSettingsv2::ModelManagerUpdateParamsType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "auto_compact_token_limit",
+              "base_instructions",
+              "context_window",
+              "max_context_window",
+              "model_id",
+              "provider_id",
+              "type"
+            ],
+            "title": "ModelSettingsv2::ModelManagerUpdateParams",
+            "type": "object"
+          }
+        ],
+        "title": "ModelManagerUpdateParams"
+      },
+      "ModelManagerUpdateResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "ModelManagerUpdateResponse",
+        "type": "object"
+      },
+      "ModelProviderApiKeyDeleteParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "providerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerId"
+        ],
+        "title": "ModelProviderApiKeyDeleteParams",
+        "type": "object"
+      },
+      "ModelProviderApiKeyDeleteResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "ModelProviderApiKeyDeleteResponse",
+        "type": "object"
+      },
+      "ModelProviderApiKeySetParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "apiKey": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiKey",
+          "providerId"
+        ],
+        "title": "ModelProviderApiKeySetParams",
+        "type": "object"
+      },
+      "ModelProviderApiKeySetResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "ModelProviderApiKeySetResponse",
+        "type": "object"
+      },
       "ModelProviderCapabilitiesReadParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "title": "ModelProviderCapabilitiesReadParams",
@@ -10537,6 +10899,32 @@
           "webSearch"
         ],
         "title": "ModelProviderCapabilitiesReadResponse",
+        "type": "object"
+      },
+      "ModelProviderOauthStartParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "providerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "providerId"
+        ],
+        "title": "ModelProviderOauthStartParams",
+        "type": "object"
+      },
+      "ModelProviderOauthStartResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "authUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "authUrl"
+        ],
+        "title": "ModelProviderOauthStartResponse",
         "type": "object"
       },
       "ModelRerouteReason": {

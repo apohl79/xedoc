@@ -37,6 +37,123 @@ pub struct ModelProviderCapabilitiesReadResponse {
     pub web_search: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelManagerReadParams {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelManagerReadResponse {
+    pub providers: Vec<ManagedProviderSettings>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ManagedProviderSettings {
+    pub id: String,
+    pub display_name: String,
+    pub default_model: String,
+    pub fast_model: String,
+    pub default_reasoning_effort: ReasoningEffort,
+    pub api_key_configured: bool,
+    pub oauth_supported: bool,
+    pub oauth_configured: bool,
+    pub models: Vec<ManagedModelSettings>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ManagedModelSettings {
+    pub id: String,
+    pub display_name: String,
+    pub context_window: i64,
+    pub max_context_window: i64,
+    pub auto_compact_token_limit: i64,
+    pub base_instructions: String,
+    pub supported_reasoning_efforts: Vec<ReasoningEffort>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(tag = "type", rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ModelManagerUpdateParams {
+    ProviderDefaults {
+        provider_id: String,
+        default_model: String,
+        fast_model: String,
+        default_reasoning_effort: ReasoningEffort,
+    },
+    ModelSettings {
+        provider_id: String,
+        model_id: String,
+        context_window: i64,
+        max_context_window: i64,
+        auto_compact_token_limit: i64,
+        base_instructions: String,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelManagerUpdateResponse {}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderApiKeySetParams {
+    pub provider_id: String,
+    pub api_key: String,
+}
+
+impl std::fmt::Debug for ModelProviderApiKeySetParams {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ModelProviderApiKeySetParams")
+            .field("provider_id", &self.provider_id)
+            .field("api_key", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderApiKeySetResponse {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderApiKeyDeleteParams {
+    pub provider_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderApiKeyDeleteResponse {
+    pub deleted: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderOauthStartParams {
+    pub provider_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelProviderOauthStartResponse {
+    pub auth_url: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]

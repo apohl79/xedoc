@@ -51,7 +51,7 @@ impl fmt::Debug for AnthropicModelProvider {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum OAuthAccounts {
     Ready(Arc<AnthropicAccountPool>),
     Unavailable(io::ErrorKind),
@@ -114,18 +114,19 @@ impl AnthropicModelProvider {
     fn uses_oauth(&self) -> bool {
         self.configured.provider_api_key().ok().flatten().is_none()
             && matches!(
-                &self.oauth_accounts,
+                self.current_oauth_accounts(),
                 OAuthAccounts::Ready(accounts) if accounts.account_count() > 0
             )
     }
 
     fn oauth_auth(&self) -> Result<SharedAuthProvider> {
-        let OAuthAccounts::Ready(accounts) = &self.oauth_accounts else {
-            return Err(self.missing_credentials_error());
+        let oauth_accounts = self.current_oauth_accounts();
+        let OAuthAccounts::Ready(accounts) = &oauth_accounts else {
+            return Err(self.missing_credentials_error(&oauth_accounts));
         };
         let credential = accounts
             .select()
-            .map_err(|_| self.missing_credentials_error())?;
+            .map_err(|_| self.missing_credentials_error(&oauth_accounts))?;
         Ok(Arc::new(AnthropicOAuthAuthProvider::new(
             credential,
             Arc::clone(accounts),
@@ -133,8 +134,21 @@ impl AnthropicModelProvider {
         )))
     }
 
-    fn missing_credentials_error(&self) -> XedocErr {
-        match &self.oauth_accounts {
+    fn current_oauth_accounts(&self) -> OAuthAccounts {
+        if matches!(
+            &self.oauth_accounts,
+            OAuthAccounts::Ready(accounts) if accounts.account_count() > 0
+        ) {
+            return self.oauth_accounts.clone();
+        }
+        self.credential_directory
+            .as_deref()
+            .map(load_accounts)
+            .unwrap_or_else(|| self.oauth_accounts.clone())
+    }
+
+    fn missing_credentials_error(&self, oauth_accounts: &OAuthAccounts) -> XedocErr {
+        match oauth_accounts {
             OAuthAccounts::Unavailable(kind) => XedocErr::Io(io::Error::new(
                 *kind,
                 "failed to load Anthropic OAuth credentials",
