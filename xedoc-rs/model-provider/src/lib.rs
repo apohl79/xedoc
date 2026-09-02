@@ -8,6 +8,7 @@ mod gemini_api_key_auth_provider;
 mod gemini_models_endpoint;
 mod models_endpoint;
 mod provider;
+mod provider_api_key;
 
 #[cfg(test)]
 #[path = "gemini_models_endpoint_tests.rs"]

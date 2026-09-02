@@ -5,6 +5,7 @@ pub mod token_data;
 mod device_code_auth;
 mod outbound_proxy;
 mod pkce;
+mod provider_credentials;
 mod server;
 mod success_page;
 
@@ -58,4 +59,5 @@ pub use auth::save_auth;
 pub use auth_env_telemetry::AuthEnvTelemetry;
 pub use auth_env_telemetry::collect_auth_env_telemetry;
 pub use outbound_proxy::AuthRouteConfig;
+pub use provider_credentials::ProviderCredentialStore;
 pub use token_data::TokenData;

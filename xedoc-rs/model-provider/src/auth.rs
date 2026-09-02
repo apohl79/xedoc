@@ -183,13 +183,22 @@ pub(crate) fn resolve_provider_auth(
     auth: Option<&XedocAuth>,
     provider: &ModelProviderInfo,
 ) -> xedoc_protocol::error::Result<SharedAuthProvider> {
+    let api_key = provider.api_key()?;
+    resolve_provider_auth_with_api_key(auth, provider, api_key)
+}
+
+pub(crate) fn resolve_provider_auth_with_api_key(
+    auth: Option<&XedocAuth>,
+    provider: &ModelProviderInfo,
+    api_key: Option<String>,
+) -> xedoc_protocol::error::Result<SharedAuthProvider> {
     if matches!(auth, Some(XedocAuth::BedrockApiKey(_))) {
         return Err(XedocErr::UnsupportedOperation(
             BEDROCK_API_KEY_UNSUPPORTED_MESSAGE.to_string(),
         ));
     }
 
-    if let Some(auth) = configured_auth_for_provider(provider)? {
+    if let Some(auth) = configured_auth_for_provider(provider, api_key) {
         return Ok(auth);
     }
 
@@ -269,21 +278,22 @@ fn should_bootstrap_chatgpt_agent_identity(
 
 fn configured_auth_for_provider(
     provider: &ModelProviderInfo,
-) -> xedoc_protocol::error::Result<Option<SharedAuthProvider>> {
-    if let Some(api_key) = provider.api_key()? {
+    api_key: Option<String>,
+) -> Option<SharedAuthProvider> {
+    if let Some(api_key) = api_key {
         let auth: SharedAuthProvider = match provider.wire_api {
             WireApi::Anthropic => Arc::new(AnthropicApiKeyAuthProvider::new(api_key)),
             WireApi::Gemini => Arc::new(GeminiApiKeyAuthProvider::new(api_key)),
             WireApi::Responses => Arc::new(BearerAuthProvider::new(api_key)),
         };
-        return Ok(Some(auth));
+        return Some(auth);
     }
 
     if let Some(token) = provider.experimental_bearer_token.clone() {
-        return Ok(Some(Arc::new(BearerAuthProvider::new(token))));
+        return Some(Arc::new(BearerAuthProvider::new(token)));
     }
 
-    Ok(None)
+    None
 }
 
 /// Builds request-header auth for a first-party Xedoc auth snapshot.

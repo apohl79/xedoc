@@ -13897,6 +13897,7 @@ dependencies = [
  "xedoc-otel",
  "xedoc-protocol",
  "xedoc-utils-output-truncation",
+ "xedoc-utils-path",
  "xedoc-utils-template",
 ]
 
