@@ -9,6 +9,7 @@ use xedoc_protocol::error::Result as CoreResult;
 use xedoc_protocol::openai_models::ModelInfo;
 
 use crate::models_endpoint::OpenAiModelsEndpoint;
+use crate::provider_api_key::ProviderApiKeySource;
 
 const DEEPSEEK_MESSAGES_BASE_SUFFIX: &str = "/anthropic/v1";
 const DEEPSEEK_CATALOG_BASE_SUFFIX: &str = "/v1";
@@ -21,9 +22,18 @@ pub(crate) struct DeepSeekModelsEndpoint {
 }
 
 impl DeepSeekModelsEndpoint {
+    #[cfg(test)]
     pub(crate) fn new(
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
+        Self::new_with_api_key_source(provider_info, auth_manager, /*api_key_source*/ None)
+    }
+
+    pub(crate) fn new_with_api_key_source(
         mut provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
+        api_key_source: Option<ProviderApiKeySource>,
     ) -> Self {
         let catalog_base_url = provider_info
             .base_url
@@ -35,7 +45,11 @@ impl DeepSeekModelsEndpoint {
             );
         provider_info.base_url = Some(catalog_base_url);
         Self {
-            inner: OpenAiModelsEndpoint::new(provider_info, auth_manager),
+            inner: OpenAiModelsEndpoint::new_with_api_key_source(
+                provider_info,
+                auth_manager,
+                api_key_source,
+            ),
         }
     }
 }

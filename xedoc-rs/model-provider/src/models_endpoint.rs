@@ -35,6 +35,8 @@ use xedoc_response_debug_context::telemetry_transport_error_message;
 
 use crate::auth::agent_identity_telemetry;
 use crate::auth::resolve_provider_auth;
+use crate::auth::resolve_provider_auth_with_api_key;
+use crate::provider_api_key::ProviderApiKeySource;
 
 pub(crate) const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 const MODELS_ENDPOINT: &str = "/models";
@@ -44,17 +46,28 @@ const MODELS_ENDPOINT: &str = "/models";
 pub(crate) struct OpenAiModelsEndpoint {
     provider_info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
+    api_key_source: Option<ProviderApiKeySource>,
     transport_builder: Arc<dyn ModelsTransportBuilder>,
 }
 
 impl OpenAiModelsEndpoint {
+    #[cfg(test)]
     pub(crate) fn new(
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
+        Self::new_with_api_key_source(provider_info, auth_manager, /*api_key_source*/ None)
+    }
+
+    pub(crate) fn new_with_api_key_source(
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+        api_key_source: Option<ProviderApiKeySource>,
+    ) -> Self {
         Self {
             provider_info,
             auth_manager,
+            api_key_source,
             transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
         }
     }
@@ -83,7 +96,17 @@ impl OpenAiModelsEndpoint {
         let auth = self.auth().await;
         let auth_mode = auth.as_ref().map(XedocAuth::auth_mode);
         let api_provider = self.provider_info.to_api_provider(auth_mode)?;
-        let api_auth = resolve_provider_auth(auth.as_ref(), &self.provider_info)?;
+        let api_auth = match &self.api_key_source {
+            Some(source) => match source.resolve(&self.provider_info)? {
+                Some(api_key) => resolve_provider_auth_with_api_key(
+                    auth.as_ref(),
+                    &self.provider_info,
+                    Some(api_key),
+                )?,
+                None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+            },
+            None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+        };
         let request_url =
             ModelsClient::<ReqwestTransport>::request_url(&api_provider, client_version);
         let request_telemetry = models_request_telemetry(
@@ -401,6 +424,7 @@ mod tests {
         let endpoint = OpenAiModelsEndpoint {
             provider_info: ModelProviderInfo::create_openai_provider(Some(server.uri())),
             auth_manager: None,
+            api_key_source: None,
             transport_builder: Arc::new(RecordingTransportBuilder {
                 observed_request: Arc::clone(&observed_request),
             }),

@@ -33,7 +33,6 @@ const ANTHROPIC_ACCOUNTS_PATH: [&str; 3] = ["providers", "anthropic", "accounts"
 
 pub(crate) struct AnthropicModelProvider {
     configured: ConfiguredModelProvider,
-    api_key: Option<String>,
     oauth_accounts: OAuthAccounts,
     credential_directory: Option<PathBuf>,
 }
@@ -42,7 +41,10 @@ impl fmt::Debug for AnthropicModelProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AnthropicModelProvider")
             .field("configured", &self.configured)
-            .field("api_key_configured", &self.api_key.is_some())
+            .field(
+                "api_key_configured",
+                &self.configured.provider_api_key().ok().flatten().is_some(),
+            )
             .field("oauth_accounts", &self.oauth_accounts)
             .field("credential_directory", &self.credential_directory)
             .finish()
@@ -60,25 +62,41 @@ impl AnthropicModelProvider {
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
-        let api_key = std::env::var(ANTHROPIC_API_KEY_ENV)
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        let credential_directory = find_xedoc_home().map(|home| {
-            ANTHROPIC_ACCOUNTS_PATH
-                .into_iter()
-                .fold(home, |path, component| path.join(component))
-                .into_path_buf()
-        });
-        Self::from_runtime_sources(provider_info, auth_manager, api_key, credential_directory)
+        let credential_directory = credential_directory(auth_manager.as_ref());
+        let configured = ConfiguredModelProvider::new(provider_info, auth_manager);
+        Self::from_configured(configured, credential_directory)
     }
 
+    pub(crate) fn new_for_configured_id(
+        provider_id: String,
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
+        let credential_directory = credential_directory(auth_manager.as_ref());
+        let configured = ConfiguredModelProvider::new_for_configured_id(
+            provider_id,
+            provider_info,
+            auth_manager,
+        );
+        Self::from_configured(configured, credential_directory)
+    }
+
+    #[cfg(test)]
     fn from_runtime_sources(
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
         api_key: Option<String>,
         credential_directory: io::Result<PathBuf>,
     ) -> Self {
-        let configured = ConfiguredModelProvider::new(provider_info, auth_manager);
+        let configured =
+            ConfiguredModelProvider::new_with_fixed_api_key(provider_info, auth_manager, api_key);
+        Self::from_configured(configured, credential_directory)
+    }
+
+    fn from_configured(
+        configured: ConfiguredModelProvider,
+        credential_directory: io::Result<PathBuf>,
+    ) -> Self {
         let (oauth_accounts, credential_directory) = match credential_directory {
             Ok(directory) => {
                 let accounts = load_accounts(&directory);
@@ -88,14 +106,13 @@ impl AnthropicModelProvider {
         };
         Self {
             configured,
-            api_key,
             oauth_accounts,
             credential_directory,
         }
     }
 
     fn uses_oauth(&self) -> bool {
-        self.api_key.is_none()
+        self.configured.provider_api_key().ok().flatten().is_none()
             && matches!(
                 &self.oauth_accounts,
                 OAuthAccounts::Ready(accounts) if accounts.account_count() > 0
@@ -161,7 +178,12 @@ impl ModelProvider for AnthropicModelProvider {
 
     fn account_state(&self) -> ProviderAccountResult {
         Ok(ProviderAccountState {
-            account: self.api_key.as_ref().map(|_| ProviderAccount::ApiKey),
+            account: self
+                .configured
+                .provider_api_key()
+                .ok()
+                .flatten()
+                .map(|_| ProviderAccount::ApiKey),
             requires_openai_auth: false,
         })
     }
@@ -181,9 +203,10 @@ impl ModelProvider for AnthropicModelProvider {
 
     fn api_auth(&self) -> ModelProviderFuture<'_, Result<SharedAuthProvider>> {
         Box::pin(async move {
-            match self.api_key.as_ref() {
-                Some(api_key) => Ok(Arc::new(AnthropicApiKeyAuthProvider::new(api_key.clone()))
-                    as SharedAuthProvider),
+            match self.configured.provider_api_key()? {
+                Some(api_key) => {
+                    Ok(Arc::new(AnthropicApiKeyAuthProvider::new(api_key)) as SharedAuthProvider)
+                }
                 None => self.oauth_auth(),
             }
         })
@@ -205,6 +228,16 @@ impl ModelProvider for AnthropicModelProvider {
         self.configured
             .models_manager_without_cache(config_model_catalog)
     }
+}
+
+fn credential_directory(auth_manager: Option<&Arc<AuthManager>>) -> io::Result<PathBuf> {
+    let home = match auth_manager {
+        Some(auth_manager) => auth_manager.xedoc_home().to_path_buf(),
+        None => find_xedoc_home()?.into_path_buf(),
+    };
+    Ok(ANTHROPIC_ACCOUNTS_PATH
+        .into_iter()
+        .fold(home, |path, component| path.join(component)))
 }
 
 fn load_accounts(directory: &std::path::Path) -> OAuthAccounts {

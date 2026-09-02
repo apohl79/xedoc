@@ -26,9 +26,11 @@ use crate::auth::ResolvedProviderAuth;
 use crate::auth::auth_manager_for_provider;
 use crate::auth::resolve_provider_auth;
 use crate::auth::resolve_provider_auth_for_scope;
+use crate::auth::resolve_provider_auth_with_api_key;
 use crate::deepseek_models_endpoint::DeepSeekModelsEndpoint;
 use crate::gemini_models_endpoint::GeminiModelsEndpoint;
 use crate::models_endpoint::OpenAiModelsEndpoint;
+use crate::provider_api_key::ProviderApiKeySource;
 
 /// Optional provider-backed features that Xedoc may expose at runtime.
 ///
@@ -222,16 +224,24 @@ pub fn create_model_provider(
 
 /// Creates a runtime model provider for a configured provider ID and metadata.
 pub fn create_model_provider_for_configured_id(
-    _provider_id: String,
+    provider_id: String,
     provider_info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
 ) -> SharedModelProvider {
     if provider_info.is_amazon_bedrock() {
         Arc::new(AmazonBedrockModelProvider::new(provider_info, auth_manager))
     } else if provider_info.is_native_anthropic() {
-        Arc::new(AnthropicModelProvider::new(provider_info, auth_manager))
+        Arc::new(AnthropicModelProvider::new_for_configured_id(
+            provider_id,
+            provider_info,
+            auth_manager,
+        ))
     } else {
-        Arc::new(ConfiguredModelProvider::new(provider_info, auth_manager))
+        Arc::new(ConfiguredModelProvider::new_for_configured_id(
+            provider_id,
+            provider_info,
+            auth_manager,
+        ))
     }
 }
 
@@ -240,6 +250,7 @@ pub fn create_model_provider_for_configured_id(
 pub(crate) struct ConfiguredModelProvider {
     info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
+    api_key_source: ProviderApiKeySource,
 }
 
 impl ConfiguredModelProvider {
@@ -247,10 +258,53 @@ impl ConfiguredModelProvider {
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
+        Self::new_with_provider_id(/*provider_id*/ None, provider_info, auth_manager)
+    }
+
+    pub(crate) fn new_for_configured_id(
+        provider_id: String,
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
+        Self::new_with_provider_id(Some(provider_id), provider_info, auth_manager)
+    }
+
+    fn new_with_provider_id(
+        provider_id: Option<String>,
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+    ) -> Self {
+        let api_key_source = ProviderApiKeySource::new(provider_id, auth_manager.as_ref());
         let auth_manager = auth_manager_for_provider(auth_manager, &provider_info);
         Self {
             info: provider_info,
             auth_manager,
+            api_key_source,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_fixed_api_key(
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+        api_key: Option<String>,
+    ) -> Self {
+        let auth_manager = auth_manager_for_provider(auth_manager, &provider_info);
+        Self {
+            info: provider_info,
+            auth_manager,
+            api_key_source: ProviderApiKeySource::fixed(api_key),
+        }
+    }
+
+    pub(crate) fn provider_api_key(&self) -> xedoc_protocol::error::Result<Option<String>> {
+        self.api_key_source.resolve(&self.info)
+    }
+
+    fn required_provider_api_key(&self) -> xedoc_protocol::error::Result<Option<String>> {
+        match self.provider_api_key()? {
+            Some(api_key) => Ok(Some(api_key)),
+            None => self.info.api_key(),
         }
     }
 }
@@ -277,6 +331,16 @@ impl ModelProvider for ConfiguredModelProvider {
                 Some(auth_manager) => auth_manager.auth().await,
                 None => None,
             }
+        })
+    }
+
+    fn api_auth(
+        &self,
+    ) -> ModelProviderFuture<'_, xedoc_protocol::error::Result<SharedAuthProvider>> {
+        Box::pin(async move {
+            let auth = self.auth().await;
+            let api_key = self.required_provider_api_key()?;
+            resolve_provider_auth_with_api_key(auth.as_ref(), self.info(), api_key)
         })
     }
 
@@ -367,20 +431,25 @@ impl ModelProvider for ConfiguredModelProvider {
 impl ConfiguredModelProvider {
     fn models_endpoint(&self) -> Arc<dyn ModelsEndpointClient> {
         if self.info.is_native_deepseek() {
-            return Arc::new(DeepSeekModelsEndpoint::new(
+            return Arc::new(DeepSeekModelsEndpoint::new_with_api_key_source(
                 self.info.clone(),
                 self.auth_manager.clone(),
+                Some(self.api_key_source.clone()),
             ));
         }
         match self.info.wire_api {
-            WireApi::Gemini => Arc::new(GeminiModelsEndpoint::new(
+            WireApi::Gemini => Arc::new(GeminiModelsEndpoint::new_with_api_key_source(
                 self.info.clone(),
                 self.auth_manager.clone(),
+                Some(self.api_key_source.clone()),
             )),
-            WireApi::Anthropic | WireApi::Responses => Arc::new(OpenAiModelsEndpoint::new(
-                self.info.clone(),
-                self.auth_manager.clone(),
-            )),
+            WireApi::Anthropic | WireApi::Responses => {
+                Arc::new(OpenAiModelsEndpoint::new_with_api_key_source(
+                    self.info.clone(),
+                    self.auth_manager.clone(),
+                    Some(self.api_key_source.clone()),
+                ))
+            }
         }
     }
 }

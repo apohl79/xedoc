@@ -17,25 +17,30 @@ use xedoc_protocol::openai_models::ModelVisibility;
 use xedoc_provider_gemini::GeminiCatalogClient;
 
 use crate::auth::resolve_provider_auth;
+use crate::auth::resolve_provider_auth_with_api_key;
 use crate::models_endpoint::MODELS_REFRESH_TIMEOUT;
 use crate::models_endpoint::build_models_transport;
 use crate::models_endpoint::models_request_telemetry;
+use crate::provider_api_key::ProviderApiKeySource;
 
 /// Provider-owned native Google model-catalog endpoint.
 #[derive(Debug)]
 pub(crate) struct GeminiModelsEndpoint {
     provider_info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
+    api_key_source: Option<ProviderApiKeySource>,
 }
 
 impl GeminiModelsEndpoint {
-    pub(crate) fn new(
+    pub(crate) fn new_with_api_key_source(
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
+        api_key_source: Option<ProviderApiKeySource>,
     ) -> Self {
         Self {
             provider_info,
             auth_manager,
+            api_key_source,
         }
     }
 
@@ -51,7 +56,17 @@ impl GeminiModelsEndpoint {
         };
         let auth_mode = auth.as_ref().map(XedocAuth::auth_mode);
         let api_provider = self.provider_info.to_api_provider(auth_mode)?;
-        let api_auth = resolve_provider_auth(auth.as_ref(), &self.provider_info)?;
+        let api_auth = match &self.api_key_source {
+            Some(source) => match source.resolve(&self.provider_info)? {
+                Some(api_key) => resolve_provider_auth_with_api_key(
+                    auth.as_ref(),
+                    &self.provider_info,
+                    Some(api_key),
+                )?,
+                None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+            },
+            None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+        };
         let request_telemetry = models_request_telemetry(
             &self.provider_info,
             self.auth_manager.as_ref(),
