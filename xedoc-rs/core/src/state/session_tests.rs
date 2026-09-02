@@ -6,6 +6,32 @@ use xedoc_protocol::protocol::CreditsSnapshot;
 use xedoc_protocol::protocol::RateLimitWindow;
 use xedoc_protocol::protocol::SpendControlLimitSnapshot;
 
+#[test]
+fn cost_tracker_reports_only_new_cost_to_parent() {
+    let mut tracker = SessionCostTracker::default();
+    tracker.add_subagent_cost(1.25);
+
+    let first_report = tracker.unreported_cost_usd();
+    tracker.mark_cost_reported_to_parent(1.25);
+    let after_first_report = tracker.unreported_cost_usd();
+    tracker.add_subagent_cost(0.75);
+    let second_report = tracker.unreported_cost_usd();
+
+    assert_eq!(
+        (first_report, after_first_report, second_report),
+        (Some(1.25), None, Some(0.75))
+    );
+}
+
+#[test]
+fn restored_cost_is_not_reported_to_parent_again() {
+    let mut tracker = SessionCostTracker::default();
+    tracker.restore_total_cost_usd(Some(1.25));
+    tracker.add_subagent_cost(0.75);
+
+    assert_eq!(tracker.unreported_cost_usd(), Some(0.75));
+}
+
 #[tokio::test]
 async fn set_rate_limits_defaults_limit_id_to_xedoc_when_missing() {
     let session_configuration = make_session_configuration_for_tests().await;

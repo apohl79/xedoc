@@ -1805,6 +1805,52 @@ async fn inactive_agent_token_usage_updates_active_agent_display_metadata() -> R
 }
 
 #[tokio::test]
+async fn active_agent_usage_is_not_added_to_its_own_display_totals() -> Result<()> {
+    let mut app = make_test_app().await;
+    let agent_thread_id = ThreadId::new();
+    app.upsert_agent_picker_thread(
+        agent_thread_id,
+        Some("reviewer".to_string()),
+        Some("worker".to_string()),
+        /*is_closed*/ false,
+    );
+    app.ensure_thread_channel(agent_thread_id);
+    app.activate_thread_channel(agent_thread_id).await;
+
+    app.enqueue_thread_notification(
+        agent_thread_id,
+        token_usage_notification_with_cost(agent_thread_id, "turn-1", None, Some(1.25)),
+    )
+    .await?;
+    let event = app
+        .active_thread_rx
+        .as_mut()
+        .expect("active thread should have a receiver")
+        .recv()
+        .await
+        .expect("active thread should receive its usage update");
+    app.handle_thread_event_now(event);
+
+    assert_eq!(
+        (
+            app.chat_widget.token_usage(),
+            app.chat_widget.session_cost_usd()
+        ),
+        (
+            TokenUsage {
+                input_tokens: 4,
+                cached_input_tokens: 1,
+                output_tokens: 5,
+                reasoning_output_tokens: 0,
+                total_tokens: 10,
+            },
+            Some(1.25),
+        )
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn completed_agent_usage_keeps_tokens_but_drops_live_cost() -> Result<()> {
     let mut app = make_test_app().await;
     let parent_thread_id = ThreadId::new();

@@ -229,7 +229,9 @@ impl App {
         let mut agent_session_cost_usd = 0.0;
         let mut has_agent_session_cost = false;
         for (thread_id, entry) in self.agent_navigation.ordered_threads() {
-            if let Some(usage) = self.agent_usage.get(&thread_id) {
+            if Some(thread_id) != self.active_thread_id
+                && let Some(usage) = self.agent_usage.get(&thread_id)
+            {
                 agent_token_usage.add_assign(&usage.token_usage);
                 if let Some(session_cost_usd) = usage.session_cost_usd {
                     agent_session_cost_usd += session_cost_usd;

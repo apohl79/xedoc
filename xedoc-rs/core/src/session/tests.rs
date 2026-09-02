@@ -6383,7 +6383,9 @@ async fn turn_environments_set_primary_environment() {
             .turn_environments
             .snapshot()
             .await
-            .primary_environment()
+            .turn_environments()
+            .next()
+            .map(|environment| Arc::clone(&environment.environment))
             .expect("stored primary environment")
     };
     assert!(Arc::ptr_eq(
