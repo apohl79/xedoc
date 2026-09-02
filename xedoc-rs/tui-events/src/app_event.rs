@@ -11,11 +11,15 @@
 use std::path::PathBuf;
 
 use ratatui::text::Line;
+use xedoc_app_server_protocol::ManagedModelSettings;
+use xedoc_app_server_protocol::ManagedProviderSettings;
 use xedoc_app_server_protocol::MarketplaceAddResponse;
 use xedoc_app_server_protocol::MarketplaceRemoveResponse;
 use xedoc_app_server_protocol::MarketplaceUpgradeResponse;
 use xedoc_app_server_protocol::McpServerStatus;
 use xedoc_app_server_protocol::McpServerStatusDetail;
+use xedoc_app_server_protocol::ModelManagerReadResponse;
+use xedoc_app_server_protocol::ModelManagerUpdateParams;
 use xedoc_app_server_protocol::PluginInstallResponse;
 use xedoc_app_server_protocol::PluginListResponse;
 use xedoc_app_server_protocol::PluginReadParams;
@@ -102,6 +106,52 @@ pub enum KeymapEditIntent {
     ReplaceAll,
     AddAlternate,
     ReplaceOne { old_key: String },
+}
+
+#[derive(Debug, Clone)]
+pub enum ModelManagerUiAction {
+    OpenProvider(ManagedProviderSettings),
+    OpenAuthentication(ManagedProviderSettings),
+    PromptApiKey(ManagedProviderSettings),
+    OpenSmartModel(ManagedProviderSettings),
+    OpenFastModel(ManagedProviderSettings),
+    OpenReasoning(ManagedProviderSettings),
+    OpenModels(ManagedProviderSettings),
+    OpenModel {
+        provider: ManagedProviderSettings,
+        model: ManagedModelSettings,
+    },
+    PromptModelSetting {
+        provider: ManagedProviderSettings,
+        model: ManagedModelSettings,
+        setting: ModelManagerSetting,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ModelManagerSetting {
+    ContextWindow,
+    MaxContextWindow,
+    AutoCompactTokenLimit,
+    BaseInstructions,
+}
+
+pub struct ProviderApiKey(String);
+
+impl ProviderApiKey {
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for ProviderApiKey {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("<redacted>")
+    }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -279,6 +329,45 @@ pub enum AppEvent {
     OpenUrlInBrowser {
         url: String,
     },
+
+    /// Fetch provider, model, authentication, and model-limit settings.
+    FetchModelManager,
+
+    /// Result of fetching model-manager settings.
+    ModelManagerLoaded {
+        result: Result<ModelManagerReadResponse, String>,
+    },
+
+    /// Navigate within the model-manager popup.
+    ModelManagerUi(ModelManagerUiAction),
+
+    /// Persist provider defaults or model-specific settings.
+    UpdateModelManager(ModelManagerUpdateParams),
+
+    /// Store a provider API key without exposing it through event debug output.
+    SetProviderApiKey {
+        provider_id: String,
+        api_key: ProviderApiKey,
+    },
+
+    /// Remove the configured API key for a provider.
+    DeleteProviderApiKey {
+        provider_id: String,
+    },
+
+    /// Start the OAuth login flow for a provider.
+    StartProviderOauth {
+        provider_id: String,
+    },
+
+    /// Result of starting provider OAuth.
+    ProviderOauthStarted {
+        provider_id: String,
+        result: Result<String, String>,
+    },
+
+    /// Show a model-manager validation or persistence error.
+    ModelManagerError(String),
 
     /// Fetch plugin marketplace state for the provided working directory.
     FetchPluginsList {

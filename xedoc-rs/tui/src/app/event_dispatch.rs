@@ -471,6 +471,53 @@ impl App {
             AppEvent::OpenUrlInBrowser { url } => {
                 self.open_url_in_browser(url);
             }
+            AppEvent::FetchModelManager => {
+                self.fetch_model_manager(app_server);
+            }
+            AppEvent::ModelManagerLoaded { result } => match result {
+                Ok(response) => self.chat_widget.open_model_manager(response),
+                Err(error) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to load model manager: {error}")),
+            },
+            AppEvent::ModelManagerUi(action) => {
+                self.chat_widget.handle_model_manager_ui(action);
+            }
+            AppEvent::UpdateModelManager(params) => {
+                self.update_model_manager(app_server, params);
+            }
+            AppEvent::SetProviderApiKey {
+                provider_id,
+                api_key,
+            } => {
+                self.set_provider_api_key(app_server, provider_id, api_key);
+            }
+            AppEvent::DeleteProviderApiKey { provider_id } => {
+                self.delete_provider_api_key(app_server, provider_id);
+            }
+            AppEvent::StartProviderOauth { provider_id } => {
+                self.start_provider_oauth(app_server, provider_id);
+            }
+            AppEvent::ProviderOauthStarted {
+                provider_id,
+                result,
+            } => match result {
+                Ok(url) => {
+                    self.open_url_in_browser(url);
+                    self.chat_widget.add_info_message(
+                        format!(
+                            "Complete the {provider_id} login in your browser, then reopen /model-manager."
+                        ),
+                        /*hint*/ None,
+                    );
+                }
+                Err(error) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to start {provider_id} OAuth: {error}")),
+            },
+            AppEvent::ModelManagerError(error) => {
+                self.chat_widget.add_error_message(error);
+            }
             AppEvent::FetchPluginsList { cwd } => {
                 self.fetch_plugins_list(app_server, cwd);
             }

@@ -13,6 +13,7 @@ pub enum SlashCommand {
     // DO NOT ALPHA-SORT! Enum order is presentation order in the popup, so
     // more frequently used commands should be listed first.
     Model,
+    ModelManager,
     Ide,
     Permissions,
     Keymap,
@@ -88,6 +89,9 @@ impl SlashCommand {
             SlashCommand::Ps => "list background terminals",
             SlashCommand::Stop => "stop all background terminals",
             SlashCommand::Model => "choose what model and reasoning effort to use",
+            SlashCommand::ModelManager => {
+                "manage providers, credentials, model defaults, and limits"
+            }
             SlashCommand::Ide => {
                 "include current selection, open files, and other context from your IDE"
             }
@@ -156,6 +160,7 @@ impl SlashCommand {
             | SlashCommand::Fork
             | SlashCommand::Init
             | SlashCommand::Compact
+            | SlashCommand::ModelManager
             | SlashCommand::Keymap
             | SlashCommand::Vim
             | SlashCommand::Experimental

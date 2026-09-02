@@ -376,6 +376,7 @@ mod tests {
             cmds,
             vec![
                 "model".to_string(),
+                "model-manager".to_string(),
                 "mention".to_string(),
                 "mcp".to_string()
             ]

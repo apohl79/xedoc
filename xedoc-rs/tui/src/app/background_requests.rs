@@ -12,7 +12,6 @@ use xedoc_app_server_protocol::MarketplaceRemoveParams;
 use xedoc_app_server_protocol::MarketplaceRemoveResponse;
 use xedoc_app_server_protocol::MarketplaceUpgradeParams;
 use xedoc_app_server_protocol::MarketplaceUpgradeResponse;
-
 use xedoc_app_server_protocol::RequestId;
 
 use crate::hooks_rpc::fetch_hooks_list;
