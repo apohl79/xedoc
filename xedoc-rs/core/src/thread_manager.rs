@@ -51,6 +51,7 @@ use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
+use xedoc_models_manager::registry_manager::RegistryModelsManager;
 use xedoc_protocol::ThreadId;
 use xedoc_protocol::config_types::CollaborationModeMask;
 use xedoc_protocol::error::Result as XedocResult;
@@ -311,6 +312,11 @@ pub fn build_models_manager(
                 .flatten()
         });
         let manager = provider.models_manager(xedoc_home, model_catalog);
+        let manager = Arc::new(RegistryModelsManager::new(
+            provider_id.clone(),
+            config.model_registry.clone(),
+            manager,
+        ));
         managers.push((provider_id.clone(), manager));
     }
     if managers.is_empty() {
@@ -324,7 +330,7 @@ pub fn build_models_manager(
             .get(&config.model_provider_id)
             .cloned()
             .or(config.model_catalog.clone());
-        return provider.models_manager(
+        let manager = provider.models_manager(
             config
                 .xedoc_home
                 .join("models_cache")
@@ -332,6 +338,11 @@ pub fn build_models_manager(
                 .to_path_buf(),
             model_catalog,
         );
+        return Arc::new(RegistryModelsManager::new(
+            config.model_provider_id.clone(),
+            config.model_registry.clone(),
+            manager,
+        ));
     }
     Arc::new(xedoc_models_manager::manager::MultiProviderModelsManager::new(managers))
 }

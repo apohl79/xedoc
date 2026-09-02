@@ -257,6 +257,48 @@ async fn load_config_resolves_model_fast_setting() -> std::io::Result<()> {
 }
 
 #[tokio::test]
+async fn load_config_uses_provider_defaults_from_model_registry() -> std::io::Result<()> {
+    let home = tempdir()?;
+    let cfg: ConfigToml = toml::from_str(r#"model_provider = "anthropic""#)
+        .expect("TOML deserialization should succeed");
+
+    let config =
+        Config::load_from_base_config_with_overrides(cfg, ConfigOverrides::default(), home.abs())
+            .await?;
+
+    assert_eq!(
+        config.model_fast,
+        Some("claude-haiku-4-5-20251001".to_string())
+    );
+    assert_eq!(config.model_reasoning_effort, Some(ReasoningEffort::Medium));
+    assert!(home.path().join("models.json").is_file());
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_model_defaults_override_model_registry() -> std::io::Result<()> {
+    let cfg: ConfigToml = toml::from_str(
+        r#"
+model_provider = "anthropic"
+model_fast = "claude-opus-5"
+model_reasoning_effort = "high"
+"#,
+    )
+    .expect("TOML deserialization should succeed");
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        tempdir()?.abs(),
+    )
+    .await?;
+
+    assert_eq!(config.model_fast, Some("claude-opus-5".to_string()));
+    assert_eq!(config.model_reasoning_effort, Some(ReasoningEffort::High));
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_toml_parsing() {
     let history_with_persistence = r#"
 [history]
