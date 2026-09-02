@@ -449,9 +449,8 @@ pub struct InterAgentCommunication {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
-    /// Accumulated session cost in USD at the time this communication
-    /// was sent. Only populated on subagent completion messages so the
-    /// parent can aggregate descendant costs into its own tracker.
+    /// Session cost in USD not previously reported to the parent.
+    /// Only populated on subagent completion messages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub session_cost_usd: Option<f64>,

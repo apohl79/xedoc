@@ -2213,6 +2213,25 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
     let first_turn = thread.session.new_default_turn().await;
     thread
         .session
+        .record_inter_agent_communication(
+            first_turn.as_ref(),
+            InterAgentCommunication {
+                id: None,
+                author: worker_path
+                    .join("nested")
+                    .expect("nested worker path should be valid"),
+                recipient: worker_path.clone(),
+                other_recipients: Vec::new(),
+                content: "nested child done".to_string(),
+                encrypted_content: None,
+                internal_chat_message_metadata_passthrough: None,
+                session_cost_usd: Some(1.25),
+                trigger_turn: false,
+            },
+        )
+        .await;
+    thread
+        .session
         .send_event(
             first_turn.as_ref(),
             EventMsg::TurnComplete(TurnCompleteEvent {
@@ -2254,6 +2273,25 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
     }));
 
     let second_turn = thread.session.new_default_turn().await;
+    thread
+        .session
+        .record_inter_agent_communication(
+            second_turn.as_ref(),
+            InterAgentCommunication {
+                id: None,
+                author: worker_path
+                    .join("nested")
+                    .expect("nested worker path should be valid"),
+                recipient: worker_path.clone(),
+                other_recipients: Vec::new(),
+                content: "nested child done again".to_string(),
+                encrypted_content: None,
+                internal_chat_message_metadata_passthrough: None,
+                session_cost_usd: Some(0.75),
+                trigger_turn: false,
+            },
+        )
+        .await;
     thread
         .session
         .send_event(
@@ -2298,7 +2336,7 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
                                     && communication.other_recipients.is_empty()
                                     && !communication.trigger_turn =>
                             {
-                                Some(communication.content)
+                                Some((communication.content, communication.session_cost_usd))
                             }
                             _ => None,
                         })
@@ -2306,11 +2344,11 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
                 .collect::<Vec<_>>();
             let first_count = notifications
                 .iter()
-                .filter(|message| **message == first_notification)
+                .filter(|(message, _)| *message == first_notification)
                 .count();
             let second_count = notifications
                 .iter()
-                .filter(|message| **message == second_notification)
+                .filter(|(message, _)| *message == second_notification)
                 .count();
             if first_count == 1 && second_count == 1 {
                 break notifications;
@@ -2321,7 +2359,13 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
     .await
     .expect("parent should receive one completion notification per child turn");
 
-    assert_eq!(notifications.len(), 2);
+    assert_eq!(
+        notifications,
+        vec![
+            (first_notification, Some(1.25)),
+            (second_notification, Some(0.75)),
+        ]
+    );
 }
 
 #[tokio::test]

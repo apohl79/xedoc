@@ -280,7 +280,18 @@ async fn output_collection_stays_bounded_across_repeated_drains() {
             crate::unified_exec::UNIFIED_EXEC_OUTPUT_MAX_BYTES
         ]);
     }
-    assert_eq!(collected, expected);
+    assert_eq!(
+        (
+            collected.to_bytes(),
+            collected.omitted_bytes(),
+            collected.total_bytes(),
+        ),
+        (
+            expected.to_bytes(),
+            expected.omitted_bytes(),
+            expected.total_bytes(),
+        )
+    );
 }
 
 #[tokio::test]
@@ -315,7 +326,18 @@ async fn output_collection_preserves_omissions_from_drained_buffer() {
     )
     .await;
 
-    assert_eq!(collected, expected);
+    assert_eq!(
+        (
+            collected.to_bytes(),
+            collected.omitted_bytes(),
+            collected.total_bytes(),
+        ),
+        (
+            expected.to_bytes(),
+            expected.omitted_bytes(),
+            expected.total_bytes(),
+        )
+    );
 }
 
 #[tokio::test]

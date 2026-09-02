@@ -1875,7 +1875,7 @@ impl Session {
         };
         let child_cost = {
             let state = self.state.lock().await;
-            state.cost_tracker.available_cost_usd()
+            state.cost_tracker.unreported_cost_usd()
         };
         let communication = InterAgentCommunication {
             id: None,
@@ -1898,6 +1898,10 @@ impl Session {
         {
             debug!("failed to notify parent thread {parent_thread_id}: {err}");
             return;
+        }
+        if let Some(child_cost) = child_cost {
+            let mut state = self.state.lock().await;
+            state.cost_tracker.mark_cost_reported_to_parent(child_cost);
         }
         // Notify the parent that this child has completed so the TUI can
         // remove it from the active agent list.

@@ -33,6 +33,8 @@ pub(crate) struct SessionCostTracker {
     pub(crate) subagent_cost_usd: f64,
     /// Cost accumulated before this session was resumed.
     pub(crate) restored_cost_usd: Option<f64>,
+    /// Cost already transferred to this session's parent.
+    reported_to_parent_cost_usd: f64,
     /// Whether any configured pricing has contributed to the total.
     pub(crate) has_priced_usage: bool,
 }
@@ -63,7 +65,17 @@ impl SessionCostTracker {
 
     pub(crate) fn restore_total_cost_usd(&mut self, cost_usd: Option<f64>) {
         self.restored_cost_usd = cost_usd;
+        self.reported_to_parent_cost_usd = cost_usd.unwrap_or_default();
         self.has_priced_usage = cost_usd.is_some();
+    }
+
+    pub(crate) fn unreported_cost_usd(&self) -> Option<f64> {
+        let unreported = self.total_cost_usd() - self.reported_to_parent_cost_usd;
+        (self.has_priced_usage && unreported > 0.0).then_some(unreported)
+    }
+
+    pub(crate) fn mark_cost_reported_to_parent(&mut self, cost_usd: f64) {
+        self.reported_to_parent_cost_usd += cost_usd;
     }
 
     /// Record token usage for a model using the provider's pricing table.

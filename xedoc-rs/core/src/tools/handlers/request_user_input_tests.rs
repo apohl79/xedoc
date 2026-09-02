@@ -1,4 +1,5 @@
 use super::*;
+use crate::function_tool::FunctionCallError;
 use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
 use crate::tools::context::ToolInvocation;
@@ -11,6 +12,7 @@ use tokio::sync::Mutex;
 use xedoc_protocol::ThreadId;
 use xedoc_protocol::protocol::SessionSource;
 use xedoc_protocol::protocol::SubAgentSource;
+use xedoc_tools::ToolExecutor;
 
 #[tokio::test]
 async fn multi_agent_v2_request_user_input_rejects_subagent_threads() {
