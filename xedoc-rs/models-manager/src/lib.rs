@@ -4,6 +4,9 @@ pub(crate) mod config;
 pub mod manager;
 pub mod model_info;
 pub mod model_presets;
+pub mod registry;
+mod registry_defaults;
+pub mod registry_manager;
 pub mod test_support;
 
 pub use config::ModelsManagerConfig;

@@ -84,10 +84,13 @@ use xedoc_mcp::McpServerRegistration;
 use xedoc_mcp::ResolvedMcpCatalog;
 use xedoc_model_provider_info::LEGACY_OLLAMA_CHAT_PROVIDER_ID;
 use xedoc_model_provider_info::ModelProviderInfo;
+use xedoc_model_provider_info::ModelTokenPrices as ProviderModelTokenPrices;
 use xedoc_model_provider_info::OLLAMA_CHAT_PROVIDER_REMOVED_ERROR;
 use xedoc_model_provider_info::built_in_model_providers;
 use xedoc_model_provider_info::merge_configured_model_providers;
 use xedoc_models_manager::ModelsManagerConfig;
+use xedoc_models_manager::registry::ModelTokenPrices as RegistryModelTokenPrices;
+use xedoc_models_manager::registry::SharedModelRegistry;
 use xedoc_protocol::config_types::AltScreenMode;
 use xedoc_protocol::config_types::AutoCompactTokenLimitScope;
 use xedoc_protocol::config_types::ForcedLoginMethod;
@@ -165,6 +168,17 @@ pub use xedoc_core_config_runtime::network_proxy_spec::StartedNetworkProxy;
 pub use xedoc_network_proxy::NetworkProxyAuditMetadata;
 use xedoc_sandboxing::compatibility_sandbox_policy_for_permission_profile;
 pub use xedoc_sandboxing::system_bwrap_warning;
+
+fn model_token_prices(prices: RegistryModelTokenPrices) -> ProviderModelTokenPrices {
+    ProviderModelTokenPrices {
+        input_price_per_1m_tokens: prices.input,
+        cached_input_price_per_1m_tokens: prices.cached_input,
+        long_context_input_price_per_1m_tokens: prices.long_context_input,
+        long_context_cached_input_price_per_1m_tokens: prices.long_context_cached_input,
+        long_context_output_price_per_1m_tokens: prices.long_context_output,
+        output_price_per_1m_tokens: prices.output,
+    }
+}
 
 const DEFAULT_IGNORE_LARGE_UNTRACKED_DIRS: i64 = 200;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_FILES: i64 = 10 * 1024 * 1024;
@@ -618,6 +632,9 @@ pub struct Config {
 
     /// Info needed to make an API request to the model.
     pub model_provider: ModelProviderInfo,
+
+    /// User-managed provider and model settings from `$XEDOC_HOME/models.json`.
+    pub model_registry: SharedModelRegistry,
 
     /// Optionally specify the personality of the model
     pub personality: Option<Personality>,
@@ -3376,9 +3393,24 @@ impl Config {
             .clone()
             .filter(|value| !value.is_empty());
 
-        let model_providers =
+        let model_registry = SharedModelRegistry::load_or_create(xedoc_home.as_path())?;
+        let registry_snapshot = model_registry.snapshot();
+        let mut model_providers =
             merge_configured_model_providers(built_in_model_providers(openai_base_url), cfg.model_providers)
                 .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?;
+        for (provider_id, provider) in &mut model_providers {
+            let registry_prices = registry_snapshot.model_prices(provider_id);
+            if registry_prices.is_empty() {
+                continue;
+            }
+            let configured_prices = provider.model_prices.take().unwrap_or_default();
+            let mut prices = registry_prices
+                .into_iter()
+                .map(|(model, prices)| (model, model_token_prices(prices)))
+                .collect::<HashMap<_, _>>();
+            prices.extend(configured_prices);
+            provider.model_prices = Some(prices);
+        }
 
         let model_provider_id = model_provider
             .or(cfg.model_provider)
@@ -3394,6 +3426,13 @@ impl Config {
                 std::io::Error::new(std::io::ErrorKind::NotFound, message)
             })?
             .clone();
+        let registry_provider = registry_snapshot.provider(&model_provider_id);
+        let model_fast = cfg
+            .model_fast
+            .or_else(|| registry_provider.map(|provider| provider.fast_model.clone()));
+        let model_reasoning_effort = cfg.model_reasoning_effort.or_else(|| {
+            registry_provider.map(|provider| provider.default_reasoning_effort.clone())
+        });
 
         let shell_environment_policy = cfg.shell_environment_policy.into();
         let allow_login_shell = cfg.allow_login_shell.unwrap_or(true);
@@ -3707,7 +3746,7 @@ impl Config {
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
             model,
-            model_fast: cfg.model_fast,
+            model_fast,
             service_tier,
             review_model,
             model_context_window: cfg.model_context_window,
@@ -3717,6 +3756,7 @@ impl Config {
                 .unwrap_or_default(),
             model_provider_id,
             model_provider,
+            model_registry,
             cwd: resolved_cwd,
             workspace_roots: workspace_roots.clone(),
             workspace_roots_explicit,
@@ -3819,7 +3859,7 @@ impl Config {
                 .or(show_raw_agent_reasoning)
                 .unwrap_or(false),
             show_hook_output: cfg.show_hook_output.unwrap_or(false),
-            model_reasoning_effort: cfg.model_reasoning_effort,
+            model_reasoning_effort,
             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
             model_reasoning_summary: cfg.model_reasoning_summary,
             model_catalog,
