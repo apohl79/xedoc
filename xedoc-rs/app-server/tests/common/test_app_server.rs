@@ -62,6 +62,8 @@ use xedoc_app_server_protocol::McpResourceReadParams;
 use xedoc_app_server_protocol::McpServerToolCallParams;
 use xedoc_app_server_protocol::MockExperimentalMethodParams;
 use xedoc_app_server_protocol::ModelListParams;
+use xedoc_app_server_protocol::ModelManagerReadParams;
+use xedoc_app_server_protocol::ModelManagerUpdateParams;
 use xedoc_app_server_protocol::ModelProviderCapabilitiesReadParams;
 use xedoc_app_server_protocol::PermissionProfileListParams;
 use xedoc_app_server_protocol::PluginInstallParams;
@@ -606,6 +608,24 @@ impl TestAppServer {
         let params = Some(serde_json::to_value(params)?);
         self.send_request("modelProvider/capabilities/read", params)
             .await
+    }
+
+    /// Send a `modelManager/read` JSON-RPC request.
+    pub async fn send_model_manager_read_request(
+        &mut self,
+        params: ModelManagerReadParams,
+    ) -> anyhow::Result<i64> {
+        let params = Some(serde_json::to_value(params)?);
+        self.send_request("modelManager/read", params).await
+    }
+
+    /// Send a `modelManager/update` JSON-RPC request.
+    pub async fn send_model_manager_update_request(
+        &mut self,
+        params: ModelManagerUpdateParams,
+    ) -> anyhow::Result<i64> {
+        let params = Some(serde_json::to_value(params)?);
+        self.send_request("modelManager/update", params).await
     }
 
     /// Send an `experimentalFeature/list` JSON-RPC request.

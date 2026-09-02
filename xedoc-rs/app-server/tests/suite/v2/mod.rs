@@ -32,6 +32,7 @@ mod marketplace_upgrade;
 mod mcp_server_status;
 mod mcp_tool;
 mod model_list;
+mod model_manager;
 mod model_provider_capabilities_read;
 mod output_schema;
 mod permission_profile_list;

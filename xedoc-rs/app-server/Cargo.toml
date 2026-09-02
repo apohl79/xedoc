@@ -41,6 +41,7 @@ axum = { workspace = true, default-features = false, features = [
     "ws",
 ] }
 xedoc-agent-extension = { workspace = true }
+xedoc-api = { workspace = true }
 xedoc-app-server-jsonrpc = { workspace = true }
 xedoc-arg0 = { workspace = true }
 xedoc-config = { workspace = true }
@@ -69,7 +70,9 @@ xedoc-web-search-extension = { workspace = true }
 xedoc-mcp = { workspace = true }
 xedoc-mcp-extension = { workspace = true }
 xedoc-model-provider = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
 xedoc-models-manager = { workspace = true }
+xedoc-provider-anthropic = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-app-server-protocol = { workspace = true }
 xedoc-app-server-transport = { workspace = true }

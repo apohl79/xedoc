@@ -80,7 +80,7 @@ impl SharedModelRegistry {
     pub fn snapshot(&self) -> ModelRegistry {
         self.registry
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
 
@@ -91,7 +91,7 @@ impl SharedModelRegistry {
         let mut registry = self
             .registry
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let previous = registry.clone();
         let result = match edit(&mut registry) {
             Ok(result) => result,
@@ -274,11 +274,18 @@ fn validate_managed_model(
             "provider {provider_id} model `{model_id}` context window must be positive"
         )));
     }
+    let max_context_window = model.info.max_context_window.unwrap_or(context_window);
+    if max_context_window < context_window {
+        return Err(invalid_registry(format!(
+            "provider {provider_id} model `{model_id}` maximum context window must be at least {context_window}"
+        )));
+    }
+    let max_compact_limit = context_window.saturating_mul(9) / 10;
     if let Some(compact_limit) = model.info.auto_compact_token_limit
-        && (compact_limit <= 0 || compact_limit > context_window)
+        && (compact_limit <= 0 || compact_limit > max_compact_limit)
     {
         return Err(invalid_registry(format!(
-            "provider {provider_id} model `{model_id}` compaction limit must be between 1 and {context_window}"
+            "provider {provider_id} model `{model_id}` compaction limit must be between 1 and {max_compact_limit}"
         )));
     }
     if model.info.base_instructions.trim().is_empty() {

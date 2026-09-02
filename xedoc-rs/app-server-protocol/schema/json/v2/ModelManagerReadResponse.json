@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ManagedModelSettings": {
+      "properties": {
+        "autoCompactTokenLimit": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "baseInstructions": {
+          "type": "string"
+        },
+        "contextWindow": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "maxContextWindow": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "supportedReasoningEfforts": {
+          "items": {
+            "$ref": "#/definitions/ReasoningEffort"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "autoCompactTokenLimit",
+        "baseInstructions",
+        "contextWindow",
+        "displayName",
+        "id",
+        "maxContextWindow",
+        "supportedReasoningEfforts"
+      ],
+      "type": "object"
+    },
+    "ManagedProviderSettings": {
+      "properties": {
+        "apiKeyConfigured": {
+          "type": "boolean"
+        },
+        "defaultModel": {
+          "type": "string"
+        },
+        "defaultReasoningEffort": {
+          "$ref": "#/definitions/ReasoningEffort"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "fastModel": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/definitions/ManagedModelSettings"
+          },
+          "type": "array"
+        },
+        "oauthConfigured": {
+          "type": "boolean"
+        },
+        "oauthSupported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "apiKeyConfigured",
+        "defaultModel",
+        "defaultReasoningEffort",
+        "displayName",
+        "fastModel",
+        "id",
+        "models",
+        "oauthConfigured",
+        "oauthSupported"
+      ],
+      "type": "object"
+    },
+    "ReasoningEffort": {
+      "description": "A non-empty reasoning effort value advertised by the model.",
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "properties": {
+    "providers": {
+      "items": {
+        "$ref": "#/definitions/ManagedProviderSettings"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "providers"
+  ],
+  "title": "ModelManagerReadResponse",
+  "type": "object"
+}
