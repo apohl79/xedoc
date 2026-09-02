@@ -313,8 +313,8 @@ data: {"type":"message_stop"}
         ..Prompt::default()
     };
     let mut model_info = test_model_info();
-    model_info.slug = "claude-fable-5".to_string();
-    model_info.display_name = "claude-fable-5".to_string();
+    model_info.slug = "claude-fable-5-1".to_string();
+    model_info.display_name = "claude-fable-5-1".to_string();
     let responses_metadata = test_responses_metadata_for_client(
         &client,
         thread_id,
@@ -418,7 +418,7 @@ data: {"type":"message_stop"}
     assert_eq!(
         body,
         json!({
-            "model": "claude-fable-5",
+            "model": "claude-fable-5-1",
             "max_tokens": 65536,
             "stream": true,
             "system": [{"type": "text", "text": "Follow the test contract."}],

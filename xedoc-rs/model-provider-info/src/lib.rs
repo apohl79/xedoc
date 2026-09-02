@@ -527,7 +527,17 @@ impl ModelProviderInfo {
             requires_openai_auth: false,
             supports_websockets: false,
             namespace_tools: false,
-            model_prices: None,
+            model_prices: Some(HashMap::from([(
+                "claude-fable-5-1".to_string(),
+                ModelTokenPrices {
+                    input_price_per_1m_tokens: 10.0,
+                    cached_input_price_per_1m_tokens: Some(1.0),
+                    long_context_input_price_per_1m_tokens: None,
+                    long_context_cached_input_price_per_1m_tokens: None,
+                    long_context_output_price_per_1m_tokens: None,
+                    output_price_per_1m_tokens: 50.0,
+                },
+            )])),
         }
     }
 

@@ -147,10 +147,12 @@ fn translates_adaptive_thinking_and_filters_tools() {
     assert_eq!(
         actual,
         AnthropicMessagesRequest {
-            model: "claude-fable-5".to_string(),
+            model: "claude-fable-5-1".to_string(),
             max_tokens: 65536,
             stream: true,
-            system: Vec::new(),
+            system: vec![AnthropicSystemBlock::Text {
+                text: "You must respond by calling one of the available tools.".to_string(),
+            }],
             messages: vec![AnthropicMessage {
                 role: AnthropicRole::User,
                 content: vec![AnthropicContentBlock::Text {
@@ -179,10 +181,15 @@ fn translates_adaptive_thinking_and_filters_tools() {
                     }),
                 },
             ],
-            tool_choice: Some(AnthropicToolChoice::Any {
+            tool_choice: Some(AnthropicToolChoice::Auto {
                 disable_parallel_tool_use: false,
             }),
-            thinking: None,
+            thinking: Some(AnthropicThinking::Adaptive {
+                display: Some("summarized".to_string()),
+                block_binding: Some(crate::AnthropicBlockBinding {
+                    prefix_mismatch_behavior: "drop_block".to_string(),
+                }),
+            }),
             output_config: Some(AnthropicOutputConfig {
                 effort: Some("high".to_string()),
                 format: None,
@@ -415,8 +422,8 @@ fn masks_fernet_agent_content_and_appends_continuation() {
 }
 
 #[test]
-fn downgrades_forced_tool_choice_for_new_fable_models() {
-    let mut request = request("claude-melon-lp-eap", vec![message("user", "Weather?")]);
+fn canonical_fable_5_1_preserves_preview_forced_tool_behavior() {
+    let mut request = request("claude-fable-5-1", vec![message("user", "Weather?")]);
     request.reasoning = Some(Reasoning {
         effort: Some(ReasoningEffort::High),
         summary: None,
@@ -430,7 +437,7 @@ fn downgrades_forced_tool_choice_for_new_fable_models() {
     assert_eq!(
         actual,
         AnthropicMessagesRequest {
-            model: "claude-melon-lp-eap".to_string(),
+            model: "claude-fable-5-1".to_string(),
             max_tokens: 65536,
             stream: true,
             system: vec![AnthropicSystemBlock::Text {
