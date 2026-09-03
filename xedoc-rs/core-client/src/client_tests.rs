@@ -233,7 +233,7 @@ async fn anthropic_wire_translates_request_and_stream_end_to_end() -> anyhow::Re
     let server = MockServer::start().await;
     let stream_body = [
         r#"event: message_start
-data: {"type":"message_start","message":{}}
+data: {"type":"message_start","message":{"usage":{"input_tokens":21,"cache_creation_input_tokens":2,"cache_read_input_tokens":3}}}
 
 "#,
         r#"event: content_block_start
@@ -249,7 +249,7 @@ data: {"type":"content_block_stop","index":0}
 
 "#,
         r#"event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":21,"output_tokens":4,"cache_read_input_tokens":3}}
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}
 
 "#,
         r#"event: message_stop
@@ -378,12 +378,12 @@ data: {"type":"message_stop"}
             ObservedAnthropicEvent::MessageDone("native".to_string()),
             ObservedAnthropicEvent::Completed {
                 usage: Some(TokenUsage {
-                    input_tokens: 21,
+                    input_tokens: 26,
                     cached_input_tokens: 3,
-                    cache_write_input_tokens: 0,
+                    cache_write_input_tokens: 2,
                     output_tokens: 4,
                     reasoning_output_tokens: 0,
-                    total_tokens: 25,
+                    total_tokens: 30,
                 }),
                 end_turn: None,
             },

@@ -173,12 +173,12 @@ fn translates_text_stream_and_terminal_usage() {
             ObservedEvent::Completed {
                 response_id,
                 usage: Some(TokenUsage {
-                    input_tokens: 100,
+                    input_tokens: 130,
                     cached_input_tokens: 10,
-                    cache_write_input_tokens: 0,
+                    cache_write_input_tokens: 20,
                     output_tokens: 50,
                     reasoning_output_tokens: 0,
-                    total_tokens: 150,
+                    total_tokens: 180,
                 }),
                 end_turn: None,
             },
@@ -385,12 +385,12 @@ fn maps_max_tokens_to_partial_completion() {
         vec![ObservedEvent::Completed {
             response_id,
             usage: Some(TokenUsage {
-                input_tokens: 69360,
+                input_tokens: 77217,
                 cached_input_tokens: 7857,
                 cache_write_input_tokens: 0,
                 output_tokens: 8192,
                 reasoning_output_tokens: 0,
-                total_tokens: 77552,
+                total_tokens: 85409,
             }),
             end_turn: Some(false),
         }]

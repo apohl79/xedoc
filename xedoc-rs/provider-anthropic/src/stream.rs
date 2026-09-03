@@ -12,7 +12,7 @@ pub struct AnthropicStreamTranslator {
     message_id: ResponseItemId,
     active_block: Option<ActiveBlock>,
     stop_reason: Option<String>,
-    usage: TokenUsage,
+    usage: AnthropicAccumulatedUsage,
 }
 
 impl AnthropicStreamTranslator {
@@ -22,7 +22,7 @@ impl AnthropicStreamTranslator {
             message_id: ResponseItemId::new("msg"),
             active_block: None,
             stop_reason: None,
-            usage: TokenUsage::default(),
+            usage: AnthropicAccumulatedUsage::default(),
         }
     }
 
@@ -33,7 +33,10 @@ impl AnthropicStreamTranslator {
 
     fn translate(&mut self, event: AnthropicStreamEvent) -> Vec<ResponseEvent> {
         match event {
-            AnthropicStreamEvent::MessageStart {} => vec![ResponseEvent::Created],
+            AnthropicStreamEvent::MessageStart { message } => {
+                self.apply_usage(message.usage);
+                vec![ResponseEvent::Created]
+            }
             AnthropicStreamEvent::ContentBlockStart { content_block, .. } => {
                 self.start_block(content_block)
             }
@@ -225,22 +228,19 @@ impl AnthropicStreamTranslator {
         if let Some(stop_reason) = delta.stop_reason.filter(|reason| !reason.is_empty()) {
             self.stop_reason = Some(stop_reason);
         }
+        self.apply_usage(usage);
+    }
+
+    fn apply_usage(&mut self, usage: Option<AnthropicUsage>) {
         if let Some(usage) = usage {
-            self.usage = TokenUsage {
-                input_tokens: usage.input_tokens,
-                cached_input_tokens: usage.cache_read_input_tokens,
-                cache_write_input_tokens: 0,
-                output_tokens: usage.output_tokens,
-                reasoning_output_tokens: 0,
-                total_tokens: usage.input_tokens + usage.output_tokens,
-            };
+            self.usage.update(usage);
         }
     }
 
     fn completed_event(&self) -> ResponseEvent {
         ResponseEvent::Completed {
             response_id: self.response_id.clone(),
-            token_usage: Some(self.usage.clone()),
+            token_usage: Some(self.usage.token_usage()),
             end_turn: (self.stop_reason.as_deref() == Some("max_tokens")).then_some(false),
         }
     }
@@ -283,7 +283,9 @@ enum ActiveBlock {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AnthropicStreamEvent {
-    MessageStart {},
+    MessageStart {
+        message: AnthropicMessageStart,
+    },
     ContentBlockStart {
         #[serde(rename = "index")]
         _index: i64,
@@ -345,14 +347,56 @@ struct AnthropicMessageDelta {
     stop_reason: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
+struct AnthropicMessageStart {
+    #[serde(default)]
+    usage: Option<AnthropicUsage>,
+}
+
+#[derive(Debug, Deserialize)]
 struct AnthropicUsage {
     #[serde(default)]
+    input_tokens: Option<i64>,
+    #[serde(default)]
+    output_tokens: Option<i64>,
+    #[serde(default)]
+    cache_creation_input_tokens: Option<i64>,
+    #[serde(default)]
+    cache_read_input_tokens: Option<i64>,
+}
+
+#[derive(Debug, Default)]
+struct AnthropicAccumulatedUsage {
     input_tokens: i64,
-    #[serde(default)]
     output_tokens: i64,
-    #[serde(default)]
+    cache_creation_input_tokens: i64,
     cache_read_input_tokens: i64,
+}
+
+impl AnthropicAccumulatedUsage {
+    fn update(&mut self, usage: AnthropicUsage) {
+        self.input_tokens = usage.input_tokens.unwrap_or(self.input_tokens);
+        self.output_tokens = usage.output_tokens.unwrap_or(self.output_tokens);
+        self.cache_creation_input_tokens = usage
+            .cache_creation_input_tokens
+            .unwrap_or(self.cache_creation_input_tokens);
+        self.cache_read_input_tokens = usage
+            .cache_read_input_tokens
+            .unwrap_or(self.cache_read_input_tokens);
+    }
+
+    fn token_usage(&self) -> TokenUsage {
+        let input_tokens =
+            self.input_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens;
+        TokenUsage {
+            input_tokens,
+            cached_input_tokens: self.cache_read_input_tokens,
+            cache_write_input_tokens: self.cache_creation_input_tokens,
+            output_tokens: self.output_tokens,
+            reasoning_output_tokens: 0,
+            total_tokens: input_tokens + self.output_tokens,
+        }
+    }
 }
 
 fn reasoning_item(id: ResponseItemId, text: String, signature: Option<String>) -> ResponseItem {
