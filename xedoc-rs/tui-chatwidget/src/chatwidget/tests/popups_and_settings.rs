@@ -41,6 +41,111 @@ async fn model_manager_root_popup_snapshot() {
     );
 }
 
+#[tokio::test]
+async fn model_manager_loading_popup_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let _generation = chat.open_model_manager_loading();
+
+    assert_chatwidget_snapshot!(
+        "model_manager_loading_popup",
+        render_bottom_popup(&chat, /*width*/ 100)
+    );
+}
+
+#[tokio::test]
+async fn model_manager_loading_does_not_reopen_after_escape() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let first_generation = chat.open_model_manager_loading();
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Esc));
+
+    let second_generation = chat.open_model_manager_loading();
+    let response = ModelManagerReadResponse {
+        providers: vec![managed_provider(
+            "anthropic",
+            "Anthropic",
+            "claude-fable-5-1",
+            "claude-haiku-4-5-20251001",
+            /*api_key_configured*/ true,
+            /*oauth_configured*/ false,
+        )],
+    };
+    assert!(!chat.finish_opening_model_manager(first_generation, Ok(response.clone())));
+    assert!(chat.finish_opening_model_manager(second_generation, Ok(response)));
+}
+
+#[tokio::test]
+async fn model_manager_escape_returns_to_the_previous_screen() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.open_model_manager(ModelManagerReadResponse {
+        providers: vec![managed_provider(
+            "anthropic",
+            "Anthropic",
+            "claude-fable-5-1",
+            "claude-haiku-4-5-20251001",
+            /*api_key_configured*/ true,
+            /*oauth_configured*/ false,
+        )],
+    });
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+    let action = rx
+        .try_recv()
+        .expect("selecting a provider should navigate to it");
+    let AppEvent::ModelManagerUi(action) = action else {
+        panic!("expected a model-manager navigation event");
+    };
+    chat.handle_model_manager_ui(action);
+
+    let provider_popup = render_bottom_popup(&chat, /*width*/ 100);
+    assert!(provider_popup.contains("Choose what to configure."));
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Esc));
+
+    let root_popup = render_bottom_popup(&chat, /*width*/ 100);
+    assert!(root_popup.contains("Model Manager"));
+    assert!(!root_popup.contains("Choose what to configure."));
+}
+
+#[tokio::test]
+async fn model_manager_keeps_the_model_picker_open_while_saving_a_default() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.open_model_manager(ModelManagerReadResponse {
+        providers: vec![managed_provider(
+            "anthropic",
+            "Anthropic",
+            "claude-fable-5-1",
+            "claude-haiku-4-5-20251001",
+            /*api_key_configured*/ true,
+            /*oauth_configured*/ false,
+        )],
+    });
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+    let action = rx
+        .try_recv()
+        .expect("selecting a provider should navigate to it");
+    let AppEvent::ModelManagerUi(action) = action else {
+        panic!("expected a model-manager navigation event");
+    };
+    chat.handle_model_manager_ui(action);
+    chat.handle_key_event(KeyEvent::from(KeyCode::Down));
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+    let action = rx
+        .try_recv()
+        .expect("selecting the smart-model setting should open its picker");
+    let AppEvent::ModelManagerUi(action) = action else {
+        panic!("expected a model-manager navigation event");
+    };
+    chat.handle_model_manager_ui(action);
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+    let saving_popup = render_bottom_popup(&chat, /*width*/ 100);
+    assert!(saving_popup.contains("Default Smart Model"));
+    assert!(matches!(rx.try_recv(), Ok(AppEvent::UpdateModelManager(_))));
+}
+
 fn managed_provider(
     id: &str,
     display_name: &str,

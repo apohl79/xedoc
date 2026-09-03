@@ -14,8 +14,33 @@ use super::SelectionViewParams;
 use super::standard_popup_hint_line;
 use crate::app_event::ModelManagerSetting;
 use crate::app_event::ModelManagerUiAction;
+use crate::render::renderable::Renderable;
+
+const MODEL_MANAGER_LOADING_VIEW_ID: &str = "model-manager-loading";
 
 impl ChatWidget {
+    pub fn open_model_manager_loading(&mut self) -> u64 {
+        self.model_manager_loading_generation =
+            self.model_manager_loading_generation.wrapping_add(1);
+        self.bottom_pane
+            .dismiss_view_by_id(MODEL_MANAGER_LOADING_VIEW_ID);
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            view_id: Some(MODEL_MANAGER_LOADING_VIEW_ID),
+            footer_hint: Some(standard_popup_hint_line()),
+            items: vec![SelectionItem {
+                name: "Loading provider settings…".to_string(),
+                is_disabled: true,
+                ..Default::default()
+            }],
+            header: Self::model_manager_header(
+                "Loading Model Manager",
+                "Reading provider settings and credentials.",
+            ),
+            ..Default::default()
+        });
+        self.model_manager_loading_generation
+    }
+
     pub fn open_model_manager(&mut self, response: ModelManagerReadResponse) {
         let items = response
             .providers
@@ -35,7 +60,7 @@ impl ChatWidget {
                             ModelManagerUiAction::OpenProvider(action_provider.clone()),
                         ));
                     })],
-                    dismiss_on_select: true,
+                    dismiss_on_select: false,
                     ..Default::default()
                 }
             })
@@ -46,6 +71,29 @@ impl ChatWidget {
             items,
             /*is_searchable*/ false,
         );
+    }
+
+    pub fn finish_opening_model_manager(
+        &mut self,
+        generation: u64,
+        result: Result<ModelManagerReadResponse, String>,
+    ) -> bool {
+        if generation != self.model_manager_loading_generation {
+            return false;
+        }
+
+        if !self
+            .bottom_pane
+            .dismiss_active_view_if_id(MODEL_MANAGER_LOADING_VIEW_ID)
+        {
+            return false;
+        }
+
+        match result {
+            Ok(response) => self.open_model_manager(response),
+            Err(error) => self.add_error_message(format!("Failed to load model manager: {error}")),
+        }
+        true
     }
 
     pub fn handle_model_manager_ui(&mut self, action: ModelManagerUiAction) {
@@ -131,7 +179,7 @@ impl ChatWidget {
                     ModelManagerUiAction::PromptApiKey(prompt_provider.clone()),
                 ));
             })],
-            dismiss_on_select: true,
+            dismiss_on_select: false,
             ..Default::default()
         });
 
@@ -145,7 +193,7 @@ impl ChatWidget {
                         provider_id: provider_id.clone(),
                     });
                 })],
-                dismiss_on_select: true,
+                dismiss_on_select: false,
                 ..Default::default()
             });
         }
@@ -164,7 +212,7 @@ impl ChatWidget {
                         provider_id: provider_id.clone(),
                     });
                 })],
-                dismiss_on_select: true,
+                dismiss_on_select: false,
                 ..Default::default()
             });
         }
@@ -209,7 +257,7 @@ impl ChatWidget {
                     description: Some(model.id.clone()),
                     is_current: model.id == *current,
                     actions: vec![provider_update_action(updated)],
-                    dismiss_on_select: true,
+                    dismiss_on_select: false,
                     ..Default::default()
                 }
             })
@@ -245,7 +293,7 @@ impl ChatWidget {
                     name: effort.to_string(),
                     is_current: effort == provider.default_reasoning_effort,
                     actions: vec![provider_update_action(updated)],
-                    dismiss_on_select: true,
+                    dismiss_on_select: false,
                     ..Default::default()
                 }
             })
@@ -277,7 +325,7 @@ impl ChatWidget {
                             model: action_model.clone(),
                         }));
                     })],
-                    dismiss_on_select: true,
+                    dismiss_on_select: false,
                     ..Default::default()
                 }
             })
@@ -340,17 +388,21 @@ impl ChatWidget {
         items: Vec<SelectionItem>,
         is_searchable: bool,
     ) {
-        let mut header = ColumnRenderable::new();
-        header.push(Line::from(title.to_string().bold()));
-        header.push(Line::from(subtitle.to_string().dim()));
         self.bottom_pane.show_selection_view(SelectionViewParams {
             footer_hint: Some(standard_popup_hint_line()),
             items,
             is_searchable,
             search_placeholder: is_searchable.then(|| "Search models".to_string()),
-            header: Box::new(header),
+            header: Self::model_manager_header(title, subtitle),
             ..Default::default()
         });
+    }
+
+    fn model_manager_header(title: &str, subtitle: &str) -> Box<dyn Renderable> {
+        let mut header = ColumnRenderable::new();
+        header.push(Line::from(title.to_string().bold()));
+        header.push(Line::from(subtitle.to_string().dim()));
+        Box::new(header)
     }
 }
 
@@ -367,7 +419,7 @@ fn navigation_item(name: &str, description: String, action: ModelManagerUiAction
         actions: vec![Box::new(move |tx| {
             tx.send(AppEvent::ModelManagerUi(action.clone()));
         })],
-        dismiss_on_select: true,
+        dismiss_on_select: false,
         ..Default::default()
     }
 }
@@ -408,7 +460,7 @@ fn model_setting_item(
                 },
             ));
         })],
-        dismiss_on_select: true,
+        dismiss_on_select: false,
         ..Default::default()
     }
 }

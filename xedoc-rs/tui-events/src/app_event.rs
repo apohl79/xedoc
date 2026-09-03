@@ -333,7 +333,13 @@ pub enum AppEvent {
     /// Fetch provider, model, authentication, and model-limit settings.
     FetchModelManager,
 
-    /// Result of fetching model-manager settings.
+    /// Result of opening the model manager.
+    ModelManagerOpenLoaded {
+        generation: u64,
+        result: Result<ModelManagerReadResponse, String>,
+    },
+
+    /// Result of refreshing model-manager settings after a change.
     ModelManagerLoaded {
         result: Result<ModelManagerReadResponse, String>,
     },
