@@ -17,8 +17,9 @@ use xedoc_app_server_protocol::ServerRequest;
 use xedoc_app_server_protocol::TurnCompletedNotification;
 use xedoc_app_server_protocol::TurnStatus;
 
-const LOCAL_DAEMON_RECONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const LOCAL_DAEMON_RECONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(100);
+const APP_SERVER_RECONNECT_ATTEMPTS: u8 = 3;
+const APP_SERVER_RECONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+const APP_SERVER_RECONNECT_BACKOFF: Duration = Duration::from_secs(2);
 
 impl App {
     pub(super) fn refresh_mcp_startup_expected_servers_from_config(&mut self) {
@@ -68,60 +69,64 @@ impl App {
         message: String,
     ) {
         tracing::warn!("app-server event stream disconnected: {message}");
-        if let Err(recovery_error) = self
-            .recover_local_daemon_connection(app_server_client)
-            .await
-        {
-            tracing::warn!(
-                "failed to recover local app-server daemon connection: {recovery_error}"
-            );
+        if let Err(recovery_error) = self.recover_app_server_connection(app_server_client).await {
+            tracing::warn!("failed to recover app-server connection: {recovery_error}");
             self.chat_widget.add_error_message(message.clone());
             self.app_event_tx.send(AppEvent::FatalExitRequest(message));
         }
     }
 
-    async fn recover_local_daemon_connection(
+    async fn recover_app_server_connection(
         &mut self,
         app_server_client: &mut AppServerSession,
     ) -> Result<(), String> {
         let endpoint = match &self.app_server_target {
-            AppServerTarget::LocalDaemon { endpoint } => endpoint.clone(),
-            _ => return Err("disconnected app server is not the local daemon".to_string()),
+            AppServerTarget::LocalDaemon { endpoint } | AppServerTarget::Remote { endpoint } => {
+                endpoint.clone()
+            }
+            AppServerTarget::Embedded => {
+                return Err("disconnected app server does not support reconnection".to_string());
+            }
         };
 
-        let deadline = tokio::time::Instant::now() + LOCAL_DAEMON_RECONNECT_TIMEOUT;
         let mut last_error = None;
-        loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            match tokio::time::timeout(remaining, async {
+        for attempt in 1..=APP_SERVER_RECONNECT_ATTEMPTS {
+            match tokio::time::timeout(APP_SERVER_RECONNECT_ATTEMPT_TIMEOUT, async {
                 app_server_client
                     .reconnect_remote(endpoint.clone())
                     .await
                     .map_err(|err| format!("{err:#}"))?;
-                self.restore_local_daemon_threads(app_server_client).await
+                self.restore_reconnected_threads(app_server_client).await
             })
             .await
             {
                 Ok(Ok(())) => return Ok(()),
                 Ok(Err(err)) => last_error = Some(err),
-                Err(_) => break,
+                Err(_) => {
+                    last_error = Some(format!(
+                        "attempt timed out after {} seconds",
+                        APP_SERVER_RECONNECT_ATTEMPT_TIMEOUT.as_secs()
+                    ));
+                }
             }
 
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                break;
+            if attempt < APP_SERVER_RECONNECT_ATTEMPTS {
+                tracing::warn!(
+                    attempt,
+                    max_attempts = APP_SERVER_RECONNECT_ATTEMPTS,
+                    "retrying app-server connection after backoff"
+                );
+                tokio::time::sleep(APP_SERVER_RECONNECT_BACKOFF).await;
             }
-            tokio::time::sleep(LOCAL_DAEMON_RECONNECT_RETRY_INTERVAL.min(remaining)).await;
         }
 
         let detail = last_error.unwrap_or_else(|| "connection attempt timed out".to_string());
         Err(format!(
-            "local app-server daemon did not recover the TUI session within {} seconds: {detail}",
-            LOCAL_DAEMON_RECONNECT_TIMEOUT.as_secs()
+            "app server did not recover the TUI session after {APP_SERVER_RECONNECT_ATTEMPTS} attempts: {detail}"
         ))
     }
 
-    async fn restore_local_daemon_threads(
+    async fn restore_reconnected_threads(
         &mut self,
         app_server_client: &mut AppServerSession,
     ) -> Result<(), String> {
