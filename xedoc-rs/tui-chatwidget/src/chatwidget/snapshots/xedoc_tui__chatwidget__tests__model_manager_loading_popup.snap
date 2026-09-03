@@ -1,0 +1,10 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/popups_and_settings.rs
+expression: "render_bottom_popup(&chat, 100)"
+---
+  Loading Model Manager
+  Reading provider settings and credentials.
+
+›    Loading provider settings…
+
+  Press enter to confirm or esc to go back

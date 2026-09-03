@@ -472,7 +472,12 @@ impl App {
                 self.open_url_in_browser(url);
             }
             AppEvent::FetchModelManager => {
-                self.fetch_model_manager(app_server);
+                let generation = self.chat_widget.open_model_manager_loading();
+                self.fetch_model_manager(app_server, generation);
+            }
+            AppEvent::ModelManagerOpenLoaded { generation, result } => {
+                self.chat_widget
+                    .finish_opening_model_manager(generation, result);
             }
             AppEvent::ModelManagerLoaded { result } => match result {
                 Ok(response) => self.chat_widget.open_model_manager(response),

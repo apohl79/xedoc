@@ -571,6 +571,7 @@ pub struct ChatWidget {
     plugins_fetch_state: PluginListFetchState,
     plugins_active_tab_id: Option<String>,
     newly_installed_marketplace_tab_id: Option<String>,
+    model_manager_loading_generation: u64,
     // Queue of interruptive UI events deferred during an active write cycle
     interrupts: InterruptManager,
     // Accumulates the current reasoning block text to extract a header

@@ -152,6 +152,7 @@ impl ChatWidget {
             plugins_fetch_state: PluginListFetchState::default(),
             plugins_active_tab_id: None,
             newly_installed_marketplace_tab_id: None,
+            model_manager_loading_generation: 0,
             interrupts: InterruptManager::new(),
             reasoning_buffer: String::new(),
             reasoning_header: None,

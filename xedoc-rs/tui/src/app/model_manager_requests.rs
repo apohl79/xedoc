@@ -21,14 +21,14 @@ use xedoc_app_server_protocol::RequestId;
 const OPENAI_PROVIDER_ID: &str = "openai";
 
 impl App {
-    pub(super) fn fetch_model_manager(&mut self, app_server: &AppServerSession) {
+    pub(super) fn fetch_model_manager(&mut self, app_server: &AppServerSession, generation: u64) {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();
         tokio::spawn(async move {
             let result = read_model_manager(request_handle)
                 .await
                 .map_err(|error| error.to_string());
-            app_event_tx.send(AppEvent::ModelManagerLoaded { result });
+            app_event_tx.send(AppEvent::ModelManagerOpenLoaded { generation, result });
         });
     }
 
