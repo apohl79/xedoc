@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -27,6 +28,8 @@ pub(crate) use xedoc_app_server_transport::prepare_control_socket_path;
 pub(crate) use xedoc_app_server_transport::start_control_socket_acceptor;
 pub(crate) use xedoc_app_server_transport::start_stdio_connection;
 pub(crate) use xedoc_app_server_transport::start_websocket_acceptor;
+
+const OUTBOUND_QUEUE_BYTE_CAPACITY: usize = 16 * 1024 * 1024;
 
 pub(crate) struct ConnectionState {
     pub(crate) outbound_initialized: Arc<AtomicBool>,
@@ -52,11 +55,13 @@ impl ConnectionState {
 }
 
 pub(crate) struct OutboundConnectionState {
+    origin: ConnectionOrigin,
     pub(crate) initialized: Arc<AtomicBool>,
     pub(crate) experimental_api_enabled: Arc<AtomicBool>,
     pub(crate) opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
     pub(crate) writer: mpsc::Sender<QueuedOutgoingMessage>,
     disconnect_sender: Option<CancellationToken>,
+    byte_budget: Arc<Semaphore>,
 }
 
 impl OutboundConnectionState {
@@ -67,17 +72,37 @@ impl OutboundConnectionState {
         opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
         disconnect_sender: Option<CancellationToken>,
     ) -> Self {
+        Self::new_with_origin(
+            ConnectionOrigin::InProcess,
+            writer,
+            initialized,
+            experimental_api_enabled,
+            opted_out_notification_methods,
+            disconnect_sender,
+        )
+    }
+
+    pub(crate) fn new_with_origin(
+        origin: ConnectionOrigin,
+        writer: mpsc::Sender<QueuedOutgoingMessage>,
+        initialized: Arc<AtomicBool>,
+        experimental_api_enabled: Arc<AtomicBool>,
+        opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
+        disconnect_sender: Option<CancellationToken>,
+    ) -> Self {
         Self {
+            origin,
             initialized,
             experimental_api_enabled,
             opted_out_notification_methods,
             writer,
             disconnect_sender,
+            byte_budget: Arc::new(Semaphore::new(OUTBOUND_QUEUE_BYTE_CAPACITY)),
         }
     }
 
     fn can_disconnect(&self) -> bool {
-        self.disconnect_sender.is_some()
+        self.origin != ConnectionOrigin::Stdio && self.disconnect_sender.is_some()
     }
 
     pub(crate) fn request_disconnect(&self) {
@@ -139,11 +164,47 @@ async fn send_message_to_connection(
     }
 
     let writer = connection_state.writer.clone();
-    let queued_message = QueuedOutgoingMessage {
-        message,
-        write_complete_tx,
+    let can_disconnect = connection_state.can_disconnect();
+    let origin = connection_state.origin;
+    let byte_budget = Arc::clone(&connection_state.byte_budget);
+    let queued_message = if origin == ConnectionOrigin::InProcess {
+        let mut queued_message = QueuedOutgoingMessage::new(message);
+        queued_message.write_complete_tx = write_complete_tx;
+        queued_message
+    } else {
+        let serialized_json = match serde_json::to_string(&message) {
+            Ok(serialized_json) => serialized_json,
+            Err(err) => {
+                warn!("dropping outbound message that failed serialization: {err}");
+                return false;
+            }
+        };
+        if serialized_json.len() > OUTBOUND_QUEUE_BYTE_CAPACITY {
+            warn!(
+                "disconnecting connection after a single outbound message exceeded the byte budget: {connection_id:?}"
+            );
+            return disconnect_connection(connections, connection_id);
+        }
+        let permits = serialized_json.len().max(1) as u32;
+        let byte_permit = if can_disconnect {
+            match byte_budget.try_acquire_many_owned(permits) {
+                Ok(byte_permit) => byte_permit,
+                Err(_) => {
+                    warn!(
+                        "disconnecting slow connection after outbound byte budget filled: {connection_id:?}"
+                    );
+                    return disconnect_connection(connections, connection_id);
+                }
+            }
+        } else {
+            match byte_budget.acquire_many_owned(permits).await {
+                Ok(byte_permit) => byte_permit,
+                Err(_) => return disconnect_connection(connections, connection_id),
+            }
+        };
+        QueuedOutgoingMessage::serialized(serialized_json, byte_permit, write_complete_tx)
     };
-    if connection_state.can_disconnect() {
+    if can_disconnect {
         match writer.try_send(queued_message) {
             Ok(()) => false,
             Err(mpsc::error::TrySendError::Full(_)) => {

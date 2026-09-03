@@ -49,6 +49,7 @@ use xedoc_app_server_protocol::ReviewTarget;
 use xedoc_app_server_protocol::SessionSource;
 use xedoc_app_server_protocol::SkillsListParams;
 use xedoc_app_server_protocol::SkillsListResponse;
+use xedoc_app_server_protocol::SortDirection;
 use xedoc_app_server_protocol::Thread;
 use xedoc_app_server_protocol::ThreadArchiveParams;
 use xedoc_app_server_protocol::ThreadArchiveResponse;
@@ -67,6 +68,7 @@ use xedoc_app_server_protocol::ThreadGoalGetResponse;
 use xedoc_app_server_protocol::ThreadGoalSetParams;
 use xedoc_app_server_protocol::ThreadGoalSetResponse;
 use xedoc_app_server_protocol::ThreadGoalStatus;
+use xedoc_app_server_protocol::ThreadHistoryMode;
 use xedoc_app_server_protocol::ThreadInjectItemsParams;
 use xedoc_app_server_protocol::ThreadInjectItemsResponse;
 use xedoc_app_server_protocol::ThreadListParams;
@@ -78,6 +80,7 @@ use xedoc_app_server_protocol::ThreadMetadataUpdateParams;
 use xedoc_app_server_protocol::ThreadMetadataUpdateResponse;
 use xedoc_app_server_protocol::ThreadReadParams;
 use xedoc_app_server_protocol::ThreadReadResponse;
+use xedoc_app_server_protocol::ThreadResumeInitialTurnsPageParams;
 use xedoc_app_server_protocol::ThreadResumeParams;
 use xedoc_app_server_protocol::ThreadResumeResponse;
 use xedoc_app_server_protocol::ThreadSetNameParams;
@@ -94,14 +97,17 @@ use xedoc_app_server_protocol::ThreadUnarchiveParams;
 use xedoc_app_server_protocol::ThreadUnarchiveResponse;
 use xedoc_app_server_protocol::ThreadUnsubscribeParams;
 use xedoc_app_server_protocol::ThreadUnsubscribeResponse;
+use xedoc_app_server_protocol::Turn;
 use xedoc_app_server_protocol::TurnInterruptParams;
 use xedoc_app_server_protocol::TurnInterruptResponse;
+use xedoc_app_server_protocol::TurnItemsView;
 use xedoc_app_server_protocol::TurnStartParams;
 use xedoc_app_server_protocol::TurnStartResponse;
 use xedoc_app_server_protocol::TurnSteerCancelParams;
 use xedoc_app_server_protocol::TurnSteerCancelResponse;
 use xedoc_app_server_protocol::TurnSteerParams;
 use xedoc_app_server_protocol::TurnSteerResponse;
+use xedoc_app_server_protocol::TurnsPage;
 use xedoc_app_server_protocol::UserInput;
 use xedoc_core_config::config::Config;
 use xedoc_otel::TelemetryAuthMode;
@@ -129,6 +135,7 @@ use xedoc_utils_path_uri::PathUri;
 const JSONRPC_INVALID_REQUEST: i64 = -32600;
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
 const THREAD_SETTINGS_UPDATE_METHOD: &str = "thread/settings/update";
+const INITIAL_TURNS_PAGE_LIMIT: u32 = 25;
 
 pub async fn connect_remote_app_server(
     endpoint: RemoteAppServerEndpoint,
@@ -1389,6 +1396,7 @@ fn thread_start_params_from_config(
         ephemeral: Some(config.ephemeral),
         session_start_source,
         thread_source: Some(ThreadSource::User),
+        history_mode: Some(ThreadHistoryMode::Paginated),
         developer_instructions: with_terminal_visualization_instructions(
             config, /*control_instructions*/ None,
         ),
@@ -1443,6 +1451,12 @@ fn thread_resume_params_from_config(
         developer_instructions: with_terminal_visualization_instructions(
             &config, /*control_instructions*/ None,
         ),
+        exclude_turns: true,
+        initial_turns_page: Some(ThreadResumeInitialTurnsPageParams {
+            limit: Some(INITIAL_TURNS_PAGE_LIMIT),
+            sort_direction: Some(SortDirection::Desc),
+            items_view: Some(TurnItemsView::Full),
+        }),
         ..ThreadResumeParams::default()
     }
 }
@@ -1525,10 +1539,21 @@ async fn started_thread_from_resume_response(
         thread_session_state_from_thread_resume_response(&response, config, thread_params_mode)
             .await
             .map_err(color_eyre::eyre::Report::msg)?;
+    let turns = hydrated_resume_turns(response.thread.turns, response.initial_turns_page);
     Ok(AppServerStartedThread {
         session,
-        turns: response.thread.turns,
+        turns,
         blocks_direct_input,
+    })
+}
+
+fn hydrated_resume_turns(
+    thread_turns: Vec<Turn>,
+    initial_turns_page: Option<TurnsPage>,
+) -> Vec<Turn> {
+    initial_turns_page.map_or(thread_turns, |mut page| {
+        page.data.reverse();
+        page.data
     })
 }
 
@@ -1732,7 +1757,6 @@ mod tests {
     use xedoc_app_server_client::InProcessAppServerClient;
     use xedoc_app_server_client::InProcessClientStartArgs;
     use xedoc_app_server_protocol::ThreadStatus;
-    use xedoc_app_server_protocol::Turn;
     use xedoc_app_server_protocol::TurnStatus;
     use xedoc_arg0::Arg0DispatchPaths;
     use xedoc_config::CloudConfigBundleLoader;
@@ -1800,6 +1824,89 @@ mod tests {
             .build()
             .await
             .expect("config should build")
+    }
+
+    fn test_turn(id: &str) -> Turn {
+        Turn {
+            id: id.to_string(),
+            items_view: TurnItemsView::Full,
+            items: Vec::new(),
+            status: TurnStatus::Completed,
+            error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn thread_lifecycle_params_use_paginated_bounded_history() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config = build_config(&temp_dir).await;
+        let start = thread_start_params_from_config(
+            &config,
+            ThreadParamsMode::Embedded,
+            /*remote_cwd_override*/ None,
+            /*session_start_source*/ None,
+        );
+        let resume = thread_resume_params_from_config(
+            config,
+            ThreadId::new(),
+            ThreadParamsMode::Embedded,
+            /*remote_cwd_override*/ None,
+            ResumeModelSettings::RestoreFromThread,
+        );
+
+        assert_eq!(
+            (
+                start.history_mode,
+                resume.exclude_turns,
+                resume.initial_turns_page,
+            ),
+            (
+                Some(ThreadHistoryMode::Paginated),
+                true,
+                Some(ThreadResumeInitialTurnsPageParams {
+                    limit: Some(INITIAL_TURNS_PAGE_LIMIT),
+                    sort_direction: Some(SortDirection::Desc),
+                    items_view: Some(TurnItemsView::Full),
+                }),
+            )
+        );
+    }
+
+    #[test]
+    fn hydrated_resume_turns_orders_initial_page_chronologically() {
+        let older = test_turn("older");
+        let newer = test_turn("newer");
+        let page = TurnsPage {
+            data: vec![newer.clone(), older.clone()],
+            next_cursor: Some("next".to_string()),
+            backwards_cursor: Some("backwards".to_string()),
+        };
+
+        let actual = hydrated_resume_turns(vec![test_turn("legacy")], Some(page));
+
+        assert_eq!(actual, vec![older, newer]);
+    }
+
+    #[test]
+    fn hydrated_resume_turns_supports_empty_pages_and_legacy_responses() {
+        let legacy_turn = test_turn("legacy");
+        let empty_page = TurnsPage {
+            data: Vec::new(),
+            next_cursor: None,
+            backwards_cursor: None,
+        };
+
+        assert_eq!(
+            hydrated_resume_turns(vec![legacy_turn.clone()], Some(empty_page)),
+            Vec::<Turn>::new()
+        );
+        assert_eq!(
+            hydrated_resume_turns(vec![legacy_turn.clone()], None),
+            vec![legacy_turn]
+        );
     }
 
     #[test]

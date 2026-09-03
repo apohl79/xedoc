@@ -208,6 +208,7 @@ impl Default for GhostSnapshotConfig {
 pub(crate) const AGENTS_MD_MAX_BYTES: usize = DEFAULT_PROJECT_DOC_MAX_BYTES; // 32 KiB
 pub(crate) const DEFAULT_AGENT_MAX_THREADS: Option<usize> = Some(6);
 pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_CONCURRENT_THREADS_PER_SESSION: usize = 8;
+pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_LOADED_THREADS_PER_SESSION: usize = 16;
 #[doc(hidden)]
 pub const DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS: i64 = 10_000;
 pub(crate) const DEFAULT_MULTI_AGENT_V2_MAX_WAIT_TIMEOUT_MS: i64 = 3600 * 1000;
@@ -1093,6 +1094,7 @@ impl Default for CurrentTimeReminderConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MultiAgentV2Config {
     pub max_concurrent_threads_per_session: usize,
+    pub max_loaded_threads_per_session: usize,
     pub min_wait_timeout_ms: i64,
     pub max_wait_timeout_ms: i64,
     pub default_wait_timeout_ms: i64,
@@ -1109,6 +1111,7 @@ impl MultiAgentV2Config {
     fn defaults_for_max_concurrency(max_concurrent_threads_per_session: usize) -> Self {
         Self {
             max_concurrent_threads_per_session,
+            max_loaded_threads_per_session: DEFAULT_MULTI_AGENT_V2_MAX_LOADED_THREADS_PER_SESSION,
             min_wait_timeout_ms: DEFAULT_MULTI_AGENT_V2_MIN_WAIT_TIMEOUT_MS,
             max_wait_timeout_ms: DEFAULT_MULTI_AGENT_V2_MAX_WAIT_TIMEOUT_MS,
             default_wait_timeout_ms: DEFAULT_MULTI_AGENT_V2_DEFAULT_WAIT_TIMEOUT_MS,
@@ -2477,6 +2480,9 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
                 .map(|max_threads| max_threads.saturating_add(1))
         })
         .unwrap_or(DEFAULT_MULTI_AGENT_V2_MAX_CONCURRENT_THREADS_PER_SESSION);
+    let max_loaded_threads_per_session = base
+        .and_then(|config| config.max_loaded_threads_per_session)
+        .unwrap_or(DEFAULT_MULTI_AGENT_V2_MAX_LOADED_THREADS_PER_SESSION);
     let default =
         MultiAgentV2Config::defaults_for_max_concurrency(max_concurrent_threads_per_session);
     let min_wait_timeout_ms = base
@@ -2529,6 +2535,7 @@ fn resolve_multi_agent_v2_config(config_toml: &ConfigToml) -> MultiAgentV2Config
 
     MultiAgentV2Config {
         max_concurrent_threads_per_session,
+        max_loaded_threads_per_session,
         min_wait_timeout_ms,
         max_wait_timeout_ms,
         default_wait_timeout_ms,
@@ -3443,6 +3450,12 @@ impl Config {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "features.multi_agent_v2.max_concurrent_threads_per_session must be at least 1",
+            ));
+        }
+        if multi_agent_v2.max_loaded_threads_per_session == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "features.multi_agent_v2.max_loaded_threads_per_session must be at least 1",
             ));
         }
         validate_multi_agent_v2_wait_timeout(

@@ -23,6 +23,7 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 /// plenty for an interactive CLI.
 pub const CHANNEL_CAPACITY: usize = 128;
 
+mod allocator_pressure;
 mod stdio;
 mod unix_socket;
 #[cfg(test)]
@@ -243,15 +244,8 @@ async fn enqueue_incoming_message(
     }
 }
 
-fn serialize_outgoing_message(outgoing_message: OutgoingMessage) -> Option<String> {
-    let value = match serde_json::to_value(outgoing_message) {
-        Ok(value) => value,
-        Err(err) => {
-            error!("Failed to convert OutgoingMessage to JSON value: {err}");
-            return None;
-        }
-    };
-    match serde_json::to_string(&value) {
+fn serialize_outgoing_message(outgoing_message: &OutgoingMessage) -> Option<String> {
+    match serde_json::to_string(outgoing_message) {
         Ok(json) => Some(json),
         Err(err) => {
             error!("Failed to serialize JSONRPCMessage: {err}");
@@ -330,8 +324,12 @@ mod tests {
             .recv()
             .await
             .expect("request should receive overload error");
-        let overload_json =
-            serde_json::to_value(overload.message).expect("serialize overload error");
+        let overload_json = serde_json::to_value(
+            overload
+                .into_typed_message()
+                .expect("overload response should remain typed"),
+        )
+        .expect("serialize overload error");
         assert_eq!(
             overload_json,
             json!({
@@ -464,8 +462,12 @@ mod tests {
             .recv()
             .await
             .expect("writer queue should still contain original message");
-        let queued_json =
-            serde_json::to_value(queued_outgoing.message).expect("serialize queued message");
+        let queued_json = serde_json::to_value(
+            queued_outgoing
+                .into_typed_message()
+                .expect("queued notification should remain typed"),
+        )
+        .expect("serialize queued message");
         assert_eq!(
             queued_json,
             json!({

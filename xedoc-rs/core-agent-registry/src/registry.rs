@@ -10,6 +10,7 @@ use xedoc_protocol::AgentPath;
 use xedoc_protocol::ThreadId;
 use xedoc_protocol::error::Result;
 use xedoc_protocol::error::XedocErr;
+use xedoc_protocol::protocol::AgentStatus;
 use xedoc_protocol::protocol::SessionSource;
 use xedoc_protocol::protocol::SubAgentSource;
 
@@ -32,13 +33,14 @@ struct ActiveAgents {
     nickname_reset_count: usize,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AgentMetadata {
     pub agent_id: Option<ThreadId>,
     pub agent_path: Option<AgentPath>,
     pub agent_nickname: Option<String>,
     pub agent_role: Option<String>,
     pub last_task_message: Option<String>,
+    pub last_status: Option<AgentStatus>,
 }
 
 fn format_agent_nickname(name: &str, nickname_reset_count: usize) -> String {
@@ -191,6 +193,20 @@ impl AgentRegistry {
             .find(|metadata| metadata.agent_id == Some(thread_id))
         {
             metadata.last_task_message = None;
+        }
+    }
+
+    pub fn update_last_status(&self, thread_id: ThreadId, last_status: AgentStatus) {
+        let mut active_agents = self
+            .active_agents
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(metadata) = active_agents
+            .agent_tree
+            .values_mut()
+            .find(|metadata| metadata.agent_id == Some(thread_id))
+        {
+            metadata.last_status = Some(last_status);
         }
     }
 

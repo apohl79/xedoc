@@ -1693,6 +1693,12 @@
           "minimum": 1.0,
           "type": "integer"
         },
+        "max_loaded_threads_per_session": {
+          "description": "Per-root-session cap for loaded MultiAgentV2 subagent threads; the root is not counted.",
+          "format": "uint",
+          "minimum": 1.0,
+          "type": "integer"
+        },
         "max_wait_timeout_ms": {
           "format": "int64",
           "maximum": 3600000.0,

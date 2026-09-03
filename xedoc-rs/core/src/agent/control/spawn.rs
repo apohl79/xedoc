@@ -247,7 +247,21 @@ impl AgentControl {
         .await
     }
 
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "the per-agent I/O lock serializes the complete reload lifecycle operation"
+    )]
     pub(crate) async fn ensure_v2_agent_loaded(
+        &self,
+        config: Config,
+        thread_id: ThreadId,
+    ) -> XedocResult<()> {
+        let io_lock = self.v2_agent_io_lock(thread_id);
+        let _guard = io_lock.lock().await;
+        self.ensure_v2_agent_loaded_locked(config, thread_id).await
+    }
+
+    pub(super) async fn ensure_v2_agent_loaded_locked(
         &self,
         mut config: Config,
         thread_id: ThreadId,
@@ -268,6 +282,9 @@ impl AgentControl {
                 include_history: false,
             })
             .await?;
+        let stored_model_provider_id = stored_thread.model_provider.clone();
+        let stored_model = stored_thread.model.clone();
+        let stored_reasoning_effort = stored_thread.reasoning_effort.clone();
         let stored_source = stored_thread.source.clone();
         let stored_parent_thread_id = stored_thread.parent_thread_id;
         let history = load_agent_model_context(&state, thread_id, stored_thread.history_mode)
@@ -318,6 +335,19 @@ impl AgentControl {
                     XedocErr::InvalidRequest(format!("permission_profile is invalid: {err}"))
                 })?;
         }
+        let stored_model_provider = config
+            .model_providers
+            .get(&stored_model_provider_id)
+            .cloned()
+            .ok_or_else(|| {
+                XedocErr::InvalidRequest(format!(
+                    "model provider `{stored_model_provider_id}` for thread {thread_id} is unavailable"
+                ))
+            })?;
+        config.model_provider_id = stored_model_provider_id;
+        config.model_provider = stored_model_provider;
+        config.model = stored_model;
+        config.model_reasoning_effort = stored_reasoning_effort;
         let residency_slot = self
             .reserve_v2_residency_slot(&state, &config, Some(thread_id))
             .await?;
@@ -575,41 +605,70 @@ impl AgentControl {
 
         let parent_thread_id = *parent_thread_id;
         let parent_thread = state.get_thread(parent_thread_id).await.ok();
-        if let Some(parent_thread) = parent_thread.as_ref() {
-            // `record_conversation_items` only queues persistence writes asynchronously.
-            // Flush before snapshotting store history for a fork.
-            parent_thread.ensure_rollout_materialized().await;
-            parent_thread.flush_rollout().await?;
-        }
-        let parent_metadata = state
-            .read_stored_thread(ReadThreadParams {
-                thread_id: parent_thread_id,
-                include_archived: true,
-                include_history: false,
-            })
-            .await?;
-
-        let destination_history_mode =
-            matches!(parent_metadata.history_mode, ThreadHistoryMode::Paginated)
-                .then_some(ThreadHistoryMode::Paginated);
-        let mut forked_rollout_items =
-            load_agent_model_context(state, parent_thread_id, parent_metadata.history_mode)
-                .await?
-                .ok_or_else(|| {
-                    XedocErr::Fatal(format!(
-                        "parent thread history unavailable for fork: {parent_thread_id}"
-                    ))
-                })?;
-
-        let selected_capability_roots = forked_rollout_items
-            .iter()
-            .find_map(|item| {
-                let RolloutItem::SessionMeta(meta_line) = item else {
-                    return None;
-                };
-                Some(meta_line.meta.selected_capability_roots.clone())
-            })
-            .unwrap_or_default();
+        let preserve_reference_context_item = matches!(fork_mode, SpawnAgentForkMode::FullHistory);
+        let (
+            parent_history_mode,
+            mut forked_rollout_items,
+            selected_capability_roots,
+            live_fork_hydration,
+        ) = if let Some(parent_thread) = parent_thread.as_ref() {
+            let config_snapshot = parent_thread.config_snapshot().await;
+            let history = parent_thread.session.clone_history().await;
+            let live_fork_hydration =
+                preserve_reference_context_item.then(|| crate::session::LiveForkHydration {
+                    reference_context_item: history.reference_context_item(),
+                    world_state_baseline: history.world_state_baseline(),
+                    token_info: history.token_info(),
+                });
+            let forked_rollout_items = history
+                .into_raw_items()
+                .into_iter()
+                .map(RolloutItem::ResponseItem)
+                .collect();
+            (
+                config_snapshot.history_mode,
+                forked_rollout_items,
+                parent_thread
+                    .session
+                    .services
+                    .selected_capability_roots
+                    .clone(),
+                live_fork_hydration,
+            )
+        } else {
+            let parent_metadata = state
+                .read_stored_thread(ReadThreadParams {
+                    thread_id: parent_thread_id,
+                    include_archived: true,
+                    include_history: false,
+                })
+                .await?;
+            let forked_rollout_items =
+                load_agent_model_context(state, parent_thread_id, parent_metadata.history_mode)
+                    .await?
+                    .ok_or_else(|| {
+                        XedocErr::Fatal(format!(
+                            "parent thread history unavailable for fork: {parent_thread_id}"
+                        ))
+                    })?;
+            let selected_capability_roots = forked_rollout_items
+                .iter()
+                .find_map(|item| {
+                    let RolloutItem::SessionMeta(meta_line) = item else {
+                        return None;
+                    };
+                    Some(meta_line.meta.selected_capability_roots.clone())
+                })
+                .unwrap_or_default();
+            (
+                parent_metadata.history_mode,
+                forked_rollout_items,
+                selected_capability_roots,
+                None,
+            )
+        };
+        let destination_history_mode = matches!(parent_history_mode, ThreadHistoryMode::Paginated)
+            .then_some(ThreadHistoryMode::Paginated);
         if let SpawnAgentForkMode::LastNTurns(last_n_turns) = fork_mode {
             forked_rollout_items =
                 truncate_rollout_to_last_n_fork_turns(&forked_rollout_items, *last_n_turns);
@@ -645,7 +704,6 @@ impl AgentControl {
             } else {
                 Vec::new()
             };
-        let preserve_reference_context_item = matches!(fork_mode, SpawnAgentForkMode::FullHistory);
         forked_rollout_items.retain(|item| {
             keep_forked_rollout_item(item, preserve_reference_context_item)
                 && !matches!(
@@ -696,7 +754,7 @@ impl AgentControl {
         let mut thread_extension_init = ExtensionDataInit::new();
         thread_extension_init.insert(selected_capability_roots);
 
-        state
+        let new_thread = state
             .fork_thread_with_source(
                 config.clone(),
                 InitialHistory::Forked(forked_rollout_items),
@@ -711,7 +769,15 @@ impl AgentControl {
                 options.environments.clone(),
                 thread_extension_init,
             )
-            .await
+            .await?;
+        if let Some(hydration) = live_fork_hydration {
+            new_thread
+                .thread
+                .session
+                .restore_live_fork_hydration(hydration)
+                .await;
+        }
+        Ok(new_thread)
     }
 
     /// Resume an existing agent thread from a recorded rollout file.

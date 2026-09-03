@@ -42,6 +42,7 @@ use xedoc_otel::TURN_NETWORK_PROXY_METRIC;
 use xedoc_otel::TURN_TOKEN_USAGE_METRIC;
 use xedoc_otel::TURN_TOOL_CALL_METRIC;
 use xedoc_protocol::models::ResponseItem;
+use xedoc_protocol::protocol::AgentStatus;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::MultiAgentVersion;
 use xedoc_protocol::protocol::TokenUsage;
@@ -712,6 +713,17 @@ impl Session {
         }
         if cleared_active_turn {
             self.maybe_start_turn_for_pending_work().await;
+        }
+        if cleared_active_turn
+            && turn_context.multi_agent_version == MultiAgentVersion::V2
+            && turn_context.session_source.is_non_root_agent()
+        {
+            let status = self.services.agent_control.get_status(self.thread_id).await;
+            if matches!(status, AgentStatus::Completed(_) | AgentStatus::Errored(_)) {
+                self.services
+                    .agent_control
+                    .schedule_terminal_v2_unload(self.thread_id, status);
+            }
         }
     }
 

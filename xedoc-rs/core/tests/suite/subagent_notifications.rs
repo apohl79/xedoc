@@ -32,6 +32,7 @@ use std::time::Duration;
 use test_case::test_case;
 use tokio::time::Instant;
 use tokio::time::sleep;
+use tokio::time::timeout;
 use tracing::Level;
 use tracing_test::internal::MockWriter;
 use wiremock::MockServer;
@@ -2056,7 +2057,7 @@ async fn multi_agent_v2_followup_restarts_parent_activity_tracking() -> Result<(
         .await?;
 
     test.submit_turn(TURN_1_PROMPT).await?;
-    wait_for_event_with_timeout(
+    let completed_event = wait_for_event_with_timeout(
         &test.xedoc,
         |event| {
             matches!(
@@ -2068,6 +2069,25 @@ async fn multi_agent_v2_followup_restarts_parent_activity_tracking() -> Result<(
         Duration::from_secs(5),
     )
     .await;
+    let EventMsg::SubAgentActivity(completed_activity) = completed_event else {
+        anyhow::bail!("event matcher must return a sub-agent activity event");
+    };
+    let child_thread_id = completed_activity.agent_thread_id;
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if test
+                .thread_manager
+                .get_thread(child_thread_id)
+                .await
+                .is_err()
+            {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("completed child should unload from resident memory");
 
     sleep(Duration::from_secs(13)).await;
 
@@ -2099,6 +2119,13 @@ async fn multi_agent_v2_followup_restarts_parent_activity_tracking() -> Result<(
             Some(ACTIVITY_SUMMARY),
             "/root/worker".to_string(),
         )
+    );
+    assert!(
+        test.thread_manager
+            .get_thread(child_thread_id)
+            .await
+            .is_ok(),
+        "follow-up communication should transparently reload the completed child"
     );
 
     Ok(())

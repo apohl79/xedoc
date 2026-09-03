@@ -1,6 +1,7 @@
 use super::CHANNEL_CAPACITY;
 use super::ConnectionOrigin;
 use super::TransportEvent;
+use super::allocator_pressure::release_after_large_write;
 use super::auth::WebsocketAuthPolicy;
 use super::auth::authorize_upgrade;
 use super::auth::is_unauthenticated_non_loopback_listener;
@@ -310,18 +311,28 @@ async fn run_websocket_outbound_loop<M, SinkError>(
                 }
             }
             queued_message = writer_rx.recv() => {
-                let Some(queued_message) = queued_message else {
+                let Some(mut queued_message) = queued_message else {
                     break;
                 };
-                let Some(json) = serialize_outgoing_message(queued_message.message) else {
+                let Some(json) = queued_message
+                    .take_serialized_json()
+                    .or_else(|| {
+                        queued_message
+                            .typed_message()
+                            .and_then(serialize_outgoing_message)
+                    })
+                else {
                     continue;
                 };
+                let serialized_bytes = json.len();
                 if websocket_writer.send(M::text(json)).await.is_err() {
                     break;
                 }
-                if let Some(write_complete_tx) = queued_message.write_complete_tx {
+                if let Some(write_complete_tx) = queued_message.write_complete_tx.take() {
                     let _ = write_complete_tx.send(());
                 }
+                drop(queued_message);
+                release_after_large_write(serialized_bytes);
             }
         }
     }
