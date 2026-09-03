@@ -1,0 +1,12 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/popups_and_settings.rs
+expression: "render_bottom_popup(&chat, 100)"
+---
+  Anthropic Authentication
+  Current: API key + OAuth
+
+› 1. Use API key      Remove OAuth credentials and keep the stored API key.
+  2. Remove API key   Delete the stored key for this provider.
+  3. Switch to OAuth  Continue authentication in your browser. Replaces the API key.
+
+  Press enter to confirm or esc to go back

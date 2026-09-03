@@ -1,6 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use xedoc_api::RouteAwareAuthHttpTransport;
 use xedoc_app_server_protocol::JSONRPCErrorError;
@@ -13,6 +14,8 @@ use xedoc_app_server_protocol::ModelProviderApiKeyDeleteParams;
 use xedoc_app_server_protocol::ModelProviderApiKeyDeleteResponse;
 use xedoc_app_server_protocol::ModelProviderApiKeySetParams;
 use xedoc_app_server_protocol::ModelProviderApiKeySetResponse;
+use xedoc_app_server_protocol::ModelProviderOauthDeleteParams;
+use xedoc_app_server_protocol::ModelProviderOauthDeleteResponse;
 use xedoc_app_server_protocol::ModelProviderOauthStartParams;
 use xedoc_app_server_protocol::ModelProviderOauthStartResponse;
 use xedoc_core::config::Config;
@@ -24,13 +27,22 @@ use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 use xedoc_models_manager::registry::ModelRegistry;
 use xedoc_models_manager::registry::SharedModelRegistry;
 use xedoc_provider_anthropic::AnthropicOAuthBrowserLogin;
+use xedoc_provider_anthropic::AnthropicOAuthCredential;
+use xedoc_provider_anthropic::clear_anthropic_oauth_credentials;
 use xedoc_provider_anthropic::load_anthropic_oauth_credentials;
-use xedoc_provider_anthropic::store_anthropic_oauth_credential;
+use xedoc_provider_anthropic::restore_anthropic_oauth_credentials;
+use xedoc_provider_anthropic::store_anthropic_oauth_credential_with_status;
+use xedoc_provider_anthropic::take_anthropic_oauth_credentials;
 
 use crate::error_code::internal_error;
 use crate::error_code::invalid_params;
 
 const ANTHROPIC_ACCOUNTS_PATH: [&str; 3] = ["providers", "anthropic", "accounts"];
+
+#[derive(Default)]
+struct AnthropicOauthLoginState {
+    generation: u64,
+}
 
 #[derive(Clone)]
 pub(crate) struct ModelManagerRequestProcessor {
@@ -38,6 +50,7 @@ pub(crate) struct ModelManagerRequestProcessor {
     auth_manager: Arc<AuthManager>,
     registry: SharedModelRegistry,
     credentials: ProviderCredentialStore,
+    anthropic_oauth_login_state: Arc<Mutex<AnthropicOauthLoginState>>,
 }
 
 impl ModelManagerRequestProcessor {
@@ -45,6 +58,7 @@ impl ModelManagerRequestProcessor {
         Self {
             registry: config.model_registry.clone(),
             credentials: ProviderCredentialStore::new(config.xedoc_home.to_path_buf()),
+            anthropic_oauth_login_state: Arc::new(Mutex::new(AnthropicOauthLoginState::default())),
             config,
             auth_manager,
         }
@@ -147,9 +161,19 @@ impl ModelManagerRequestProcessor {
         params: ModelProviderApiKeySetParams,
     ) -> Result<ModelProviderApiKeySetResponse, JSONRPCErrorError> {
         self.require_external_provider(&params.provider_id)?;
-        self.credentials
-            .set_api_key(&params.provider_id, &params.api_key)
+        if params.provider_id == ANTHROPIC_PROVIDER_ID {
+            replace_anthropic_oauth_with_api_key(
+                &anthropic_accounts_directory(&self.config.xedoc_home),
+                &self.credentials,
+                &self.anthropic_oauth_login_state,
+                &params.api_key,
+            )
             .map_err(credential_error)?;
+        } else {
+            self.credentials
+                .set_api_key(&params.provider_id, &params.api_key)
+                .map_err(credential_error)?;
+        }
         Ok(ModelProviderApiKeySetResponse {})
     }
 
@@ -165,6 +189,29 @@ impl ModelManagerRequestProcessor {
         Ok(ModelProviderApiKeyDeleteResponse { deleted })
     }
 
+    pub(crate) fn delete_oauth(
+        &self,
+        params: ModelProviderOauthDeleteParams,
+    ) -> Result<ModelProviderOauthDeleteResponse, JSONRPCErrorError> {
+        self.require_external_provider(&params.provider_id)?;
+        if params.provider_id != ANTHROPIC_PROVIDER_ID {
+            return Err(invalid_params(
+                "modelProvider/oauth/delete currently supports only Anthropic",
+            ));
+        }
+        let mut oauth_login_state = self
+            .anthropic_oauth_login_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        oauth_login_state.generation += 1;
+        let deleted = clear_anthropic_oauth_credentials(&anthropic_accounts_directory(
+            &self.config.xedoc_home,
+        ))
+        .map_err(credential_error)?;
+        drop(oauth_login_state);
+        Ok(ModelProviderOauthDeleteResponse { deleted })
+    }
+
     pub(crate) fn start_oauth(
         &self,
         params: ModelProviderOauthStartParams,
@@ -174,18 +221,38 @@ impl ModelManagerRequestProcessor {
                 "modelProvider/oauth/start currently supports only Anthropic",
             ));
         }
+        let oauth_login_generation = {
+            let mut oauth_login_state = self
+                .anthropic_oauth_login_state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            oauth_login_state.generation += 1;
+            oauth_login_state.generation
+        };
         let login = AnthropicOAuthBrowserLogin::start()
             .map_err(|error| internal_error(format!("failed to start Anthropic OAuth: {error}")))?;
         let auth_url = login.auth_url().to_string();
         let transport = RouteAwareAuthHttpTransport::new(self.config.http_client_factory());
         let accounts_directory = anthropic_accounts_directory(&self.config.xedoc_home);
+        let credentials = self.credentials.clone();
+        let oauth_login_state = Arc::clone(&self.anthropic_oauth_login_state);
         tokio::spawn(async move {
             match login.complete(&transport).await {
                 Ok(credential) => {
-                    if let Err(error) =
-                        store_anthropic_oauth_credential(&accounts_directory, &credential)
-                    {
-                        tracing::warn!("failed to store Anthropic OAuth credentials: {error}");
+                    match complete_anthropic_oauth_login(
+                        &accounts_directory,
+                        &credentials,
+                        &oauth_login_state,
+                        oauth_login_generation,
+                        &credential,
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            tracing::info!("ignored stale Anthropic OAuth login completion");
+                        }
+                        Err(error) => {
+                            tracing::warn!("failed to complete Anthropic OAuth login: {error}");
+                        }
                     }
                 }
                 Err(error) => tracing::warn!("Anthropic OAuth login failed: {error}"),
@@ -242,6 +309,71 @@ impl ModelManagerRequestProcessor {
     }
 }
 
+fn complete_anthropic_oauth_login(
+    accounts_directory: &std::path::Path,
+    credentials: &ProviderCredentialStore,
+    oauth_login_state: &Mutex<AnthropicOauthLoginState>,
+    oauth_login_generation: u64,
+    credential: &AnthropicOAuthCredential,
+) -> io::Result<bool> {
+    let oauth_login_state = oauth_login_state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if oauth_login_state.generation != oauth_login_generation {
+        return Ok(false);
+    }
+
+    let previous_api_key = credentials.api_key(ANTHROPIC_PROVIDER_ID)?;
+    if previous_api_key.is_some() {
+        credentials.delete_api_key(ANTHROPIC_PROVIDER_ID)?;
+    }
+    if let Err(store_error) =
+        store_anthropic_oauth_credential_with_status(accounts_directory, credential)
+    {
+        if store_error.destination_is_unchanged()
+            && let Some(api_key) = previous_api_key
+            && let Err(restore_error) = credentials.set_api_key(ANTHROPIC_PROVIDER_ID, &api_key)
+        {
+            return Err(io::Error::other(format!(
+                "failed to store Anthropic OAuth credentials: {store_error}; failed to restore the API key: {restore_error}"
+            )));
+        }
+        return Err(store_error.into_io_error());
+    }
+    drop(oauth_login_state);
+    Ok(true)
+}
+
+fn replace_anthropic_oauth_with_api_key(
+    accounts_directory: &std::path::Path,
+    credentials: &ProviderCredentialStore,
+    oauth_login_state: &Mutex<AnthropicOauthLoginState>,
+    api_key: &str,
+) -> io::Result<()> {
+    let mut oauth_login_state = oauth_login_state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    oauth_login_state.generation += 1;
+    let previous_oauth_credentials = take_anthropic_oauth_credentials(accounts_directory)?;
+    if let Err(api_key_error) = credentials.set_api_key(ANTHROPIC_PROVIDER_ID, api_key) {
+        if let Err(delete_api_key_error) = credentials.delete_api_key(ANTHROPIC_PROVIDER_ID) {
+            return Err(io::Error::other(format!(
+                "failed to store the Anthropic API key: {api_key_error}; failed to remove the possibly stored API key: {delete_api_key_error}"
+            )));
+        }
+        if let Err(restore_oauth_error) =
+            restore_anthropic_oauth_credentials(&previous_oauth_credentials)
+        {
+            return Err(io::Error::other(format!(
+                "failed to store the Anthropic API key: {api_key_error}; failed to restore OAuth credentials: {restore_oauth_error}"
+            )));
+        }
+        return Err(api_key_error);
+    }
+    drop(oauth_login_state);
+    Ok(())
+}
+
 fn provider_mut<'a>(
     registry: &'a mut ModelRegistry,
     provider_id: &str,
@@ -277,3 +409,7 @@ fn credential_error(error: io::Error) -> JSONRPCErrorError {
         _ => internal_error(format!("failed to update provider credentials: {error}")),
     }
 }
+
+#[cfg(test)]
+#[path = "model_manager_processor_tests.rs"]
+mod tests;

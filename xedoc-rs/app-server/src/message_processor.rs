@@ -863,6 +863,10 @@ impl MessageProcessor {
                 .model_manager_processor
                 .delete_api_key(params)
                 .map(|response| Some(response.into())),
+            ClientRequest::ModelProviderOauthDelete { params, .. } => self
+                .model_manager_processor
+                .delete_oauth(params)
+                .map(|response| Some(response.into())),
             ClientRequest::ModelProviderOauthStart { params, .. } => self
                 .model_manager_processor
                 .start_oauth(params)

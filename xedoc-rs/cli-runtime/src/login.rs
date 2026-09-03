@@ -25,6 +25,7 @@ use xedoc_core::config::Config;
 use xedoc_login::AuthKeyringBackendKind;
 use xedoc_login::AuthRouteConfig;
 use xedoc_login::CLIENT_ID;
+use xedoc_login::ProviderCredentialStore;
 use xedoc_login::ServerOptions;
 use xedoc_login::XedocAuth;
 use xedoc_login::login_with_access_token;
@@ -32,14 +33,17 @@ use xedoc_login::login_with_api_key;
 use xedoc_login::logout_with_revoke;
 use xedoc_login::run_device_code_login;
 use xedoc_login::run_login_server;
+use xedoc_model_provider_info::ANTHROPIC_PROVIDER_ID;
 use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::ForcedLoginMethod;
 use xedoc_provider_anthropic::AnthropicOAuthBrowserLogin;
 use xedoc_provider_anthropic::AnthropicOAuthCredential;
+use xedoc_provider_anthropic::AnthropicOAuthCredentialStoreError;
+use xedoc_provider_anthropic::AnthropicOAuthImportError;
 use xedoc_provider_anthropic::AnthropicOAuthLoginError;
 use xedoc_provider_anthropic::AnthropicOAuthSession;
-use xedoc_provider_anthropic::import_anthropic_oauth_credentials;
-use xedoc_provider_anthropic::store_anthropic_oauth_credential;
+use xedoc_provider_anthropic::import_anthropic_oauth_credentials_with_rollback_status;
+use xedoc_provider_anthropic::store_anthropic_oauth_credential_with_status;
 use xedoc_utils_cli::CliConfigOverrides;
 
 const CHATGPT_LOGIN_DISABLED_MESSAGE: &str =
@@ -283,7 +287,10 @@ pub async fn run_login_anthropic_import(
 ) -> ! {
     let config = load_config_or_exit(cli_config_overrides).await;
     let destination = anthropic_accounts_directory(&config.xedoc_home);
-    match import_anthropic_oauth_credentials(&source, &destination) {
+    let credentials = ProviderCredentialStore::new(config.xedoc_home.to_path_buf());
+    match replace_anthropic_api_key_with_oauth_import(&credentials, || {
+        import_anthropic_oauth_credentials_with_rollback_status(&source, &destination)
+    }) {
         Ok(imported) => {
             eprintln!("Imported {imported} Anthropic account(s)");
             std::process::exit(0);
@@ -311,7 +318,10 @@ pub async fn run_login_anthropic_oauth(
         }
     };
     let destination = anthropic_accounts_directory(&config.xedoc_home);
-    match store_anthropic_oauth_credential(&destination, &credential) {
+    let credentials = ProviderCredentialStore::new(config.xedoc_home.to_path_buf());
+    match replace_anthropic_api_key_with_oauth(&credentials, || {
+        store_anthropic_oauth_credential_with_status(&destination, &credential)
+    }) {
         Ok(()) => {
             eprintln!("{LOGIN_SUCCESS_MESSAGE}");
             std::process::exit(0);
@@ -319,6 +329,54 @@ pub async fn run_login_anthropic_oauth(
         Err(error) => {
             eprintln!("Error storing Anthropic credentials: {error}");
             std::process::exit(1);
+        }
+    }
+}
+
+fn replace_anthropic_api_key_with_oauth<T>(
+    credentials: &ProviderCredentialStore,
+    persist_oauth: impl FnOnce() -> Result<T, AnthropicOAuthCredentialStoreError>,
+) -> std::io::Result<T> {
+    let previous_api_key = credentials.api_key(ANTHROPIC_PROVIDER_ID)?;
+    if previous_api_key.is_some() {
+        credentials.delete_api_key(ANTHROPIC_PROVIDER_ID)?;
+    }
+    match persist_oauth() {
+        Ok(result) => Ok(result),
+        Err(persist_error) => {
+            if persist_error.destination_is_unchanged()
+                && let Some(api_key) = previous_api_key
+                && let Err(restore_error) = credentials.set_api_key(ANTHROPIC_PROVIDER_ID, &api_key)
+            {
+                return Err(std::io::Error::other(format!(
+                    "failed to store Anthropic OAuth credentials: {persist_error}; failed to restore the API key: {restore_error}"
+                )));
+            }
+            Err(persist_error.into_io_error())
+        }
+    }
+}
+
+fn replace_anthropic_api_key_with_oauth_import<T>(
+    credentials: &ProviderCredentialStore,
+    import_oauth: impl FnOnce() -> Result<T, AnthropicOAuthImportError>,
+) -> std::io::Result<T> {
+    let previous_api_key = credentials.api_key(ANTHROPIC_PROVIDER_ID)?;
+    if previous_api_key.is_some() {
+        credentials.delete_api_key(ANTHROPIC_PROVIDER_ID)?;
+    }
+    match import_oauth() {
+        Ok(result) => Ok(result),
+        Err(import_error) => {
+            if import_error.destination_is_unchanged()
+                && let Some(api_key) = previous_api_key
+                && let Err(restore_error) = credentials.set_api_key(ANTHROPIC_PROVIDER_ID, &api_key)
+            {
+                return Err(std::io::Error::other(format!(
+                    "failed to import Anthropic OAuth credentials: {import_error}; failed to restore the API key: {restore_error}"
+                )));
+            }
+            Err(import_error.into_io_error())
         }
     }
 }
@@ -646,15 +704,24 @@ fn safe_format_key(key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use pretty_assertions::assert_eq;
     use tempfile::tempdir;
     use xedoc_config::types::AuthCredentialsStoreMode;
+    use xedoc_keyring_store::tests::MockKeyringStore;
     use xedoc_login::AuthKeyringBackendKind;
+    use xedoc_login::ProviderCredentialStore;
     use xedoc_login::load_auth_dot_json;
     use xedoc_login::login_with_api_key;
+    use xedoc_provider_anthropic::AnthropicOAuthCredentialStoreError;
+    use xedoc_provider_anthropic::AnthropicOAuthImportError;
 
     use super::clear_existing_auth_before_login;
+    use super::replace_anthropic_api_key_with_oauth;
+    use super::replace_anthropic_api_key_with_oauth_import;
     use super::safe_format_key;
+    use xedoc_model_provider_info::ANTHROPIC_PROVIDER_ID;
 
     #[tokio::test]
     async fn clears_existing_auth_before_login() {
@@ -694,5 +761,108 @@ mod tests {
     fn short_key_returns_stars() {
         let key = "sk-proj-12345";
         assert_eq!(safe_format_key(key), "***");
+    }
+
+    #[test]
+    fn anthropic_oauth_replaces_an_api_key() {
+        let xedoc_home = tempdir().expect("create temporary Xedoc home");
+        let credentials = ProviderCredentialStore::new_with_keyring_store(
+            xedoc_home.path().to_path_buf(),
+            Arc::new(MockKeyringStore::default()),
+        );
+        credentials
+            .set_api_key(ANTHROPIC_PROVIDER_ID, "api-key")
+            .expect("store API key");
+
+        replace_anthropic_api_key_with_oauth(&credentials, || Ok(()))
+            .expect("replace API key with OAuth");
+
+        assert_eq!(
+            credentials
+                .api_key(ANTHROPIC_PROVIDER_ID)
+                .expect("load API key"),
+            None
+        );
+    }
+
+    #[test]
+    fn failed_anthropic_oauth_storage_restores_the_api_key() {
+        let xedoc_home = tempdir().expect("create temporary Xedoc home");
+        let credentials = ProviderCredentialStore::new_with_keyring_store(
+            xedoc_home.path().to_path_buf(),
+            Arc::new(MockKeyringStore::default()),
+        );
+        credentials
+            .set_api_key(ANTHROPIC_PROVIDER_ID, "api-key")
+            .expect("store API key");
+
+        let error = replace_anthropic_api_key_with_oauth(&credentials, || {
+            Err::<(), _>(AnthropicOAuthCredentialStoreError::DestinationUnchanged(
+                std::io::Error::other("OAuth storage failure"),
+            ))
+        })
+        .expect_err("OAuth storage should fail");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(
+            credentials
+                .api_key(ANTHROPIC_PROVIDER_ID)
+                .expect("load API key"),
+            Some("api-key".to_string())
+        );
+    }
+
+    #[test]
+    fn possibly_persisted_anthropic_oauth_does_not_restore_the_api_key() {
+        let xedoc_home = tempdir().expect("create temporary Xedoc home");
+        let credentials = ProviderCredentialStore::new_with_keyring_store(
+            xedoc_home.path().to_path_buf(),
+            Arc::new(MockKeyringStore::default()),
+        );
+        credentials
+            .set_api_key(ANTHROPIC_PROVIDER_ID, "api-key")
+            .expect("store API key");
+
+        let error = replace_anthropic_api_key_with_oauth(&credentials, || {
+            Err::<(), _>(AnthropicOAuthCredentialStoreError::MayHavePersisted(
+                std::io::Error::other("OAuth storage failure"),
+            ))
+        })
+        .expect_err("OAuth storage should fail");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(
+            credentials
+                .api_key(ANTHROPIC_PROVIDER_ID)
+                .expect("load API key"),
+            None
+        );
+    }
+
+    #[test]
+    fn failed_anthropic_oauth_import_rollback_does_not_restore_the_api_key() {
+        let xedoc_home = tempdir().expect("create temporary Xedoc home");
+        let credentials = ProviderCredentialStore::new_with_keyring_store(
+            xedoc_home.path().to_path_buf(),
+            Arc::new(MockKeyringStore::default()),
+        );
+        credentials
+            .set_api_key(ANTHROPIC_PROVIDER_ID, "api-key")
+            .expect("store API key");
+
+        let error = replace_anthropic_api_key_with_oauth_import(&credentials, || {
+            Err::<(), _>(AnthropicOAuthImportError::RollbackFailed(
+                std::io::Error::other("OAuth import rollback failure"),
+            ))
+        })
+        .expect_err("OAuth import should fail");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(
+            credentials
+                .api_key(ANTHROPIC_PROVIDER_ID)
+                .expect("load API key"),
+            None
+        );
     }
 }

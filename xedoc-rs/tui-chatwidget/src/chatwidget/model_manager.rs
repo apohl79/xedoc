@@ -166,22 +166,48 @@ impl ChatWidget {
 
     fn open_model_manager_authentication(&mut self, provider: ManagedProviderSettings) {
         let mut items = Vec::new();
-        let prompt_provider = provider.clone();
-        items.push(SelectionItem {
-            name: if provider.api_key_configured {
-                "Replace API key".to_string()
-            } else {
-                "Set API key".to_string()
-            },
-            description: Some("Stored in Xedoc's encrypted credential store.".to_string()),
-            actions: vec![Box::new(move |tx| {
-                tx.send(AppEvent::ModelManagerUi(
-                    ModelManagerUiAction::PromptApiKey(prompt_provider.clone()),
-                ));
-            })],
-            dismiss_on_select: false,
-            ..Default::default()
-        });
+        if provider.api_key_configured && provider.oauth_configured {
+            let provider_id = provider.id.clone();
+            items.push(SelectionItem {
+                name: "Use API key".to_string(),
+                description: Some(
+                    "Remove OAuth credentials and keep the stored API key.".to_string(),
+                ),
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::DeleteProviderOauth {
+                        provider_id: provider_id.clone(),
+                    });
+                })],
+                dismiss_on_select: false,
+                ..Default::default()
+            });
+        } else {
+            let prompt_provider = provider.clone();
+            items.push(SelectionItem {
+                name: if provider.oauth_configured {
+                    "Switch to API key".to_string()
+                } else if provider.api_key_configured {
+                    "Replace API key".to_string()
+                } else {
+                    "Set API key".to_string()
+                },
+                description: Some(
+                    if provider.oauth_configured {
+                        "Stored in Xedoc's encrypted credential store. Replaces OAuth."
+                    } else {
+                        "Stored in Xedoc's encrypted credential store."
+                    }
+                    .to_string(),
+                ),
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::ModelManagerUi(
+                        ModelManagerUiAction::PromptApiKey(prompt_provider.clone()),
+                    ));
+                })],
+                dismiss_on_select: false,
+                ..Default::default()
+            });
+        }
 
         if provider.api_key_configured {
             let provider_id = provider.id.clone();
@@ -201,14 +227,40 @@ impl ChatWidget {
         if provider.oauth_supported {
             let provider_id = provider.id.clone();
             items.push(SelectionItem {
-                name: if provider.oauth_configured {
+                name: if provider.api_key_configured {
+                    "Switch to OAuth".to_string()
+                } else if provider.oauth_configured {
                     "Log in again with OAuth".to_string()
                 } else {
                     "Log in with OAuth".to_string()
                 },
-                description: Some("Continue authentication in your browser.".to_string()),
+                description: Some(
+                    if provider.api_key_configured {
+                        "Continue authentication in your browser. Replaces the API key."
+                    } else {
+                        "Continue authentication in your browser."
+                    }
+                    .to_string(),
+                ),
                 actions: vec![Box::new(move |tx| {
                     tx.send(AppEvent::StartProviderOauth {
+                        provider_id: provider_id.clone(),
+                    });
+                })],
+                dismiss_on_select: false,
+                ..Default::default()
+            });
+        }
+
+        if provider.oauth_configured && !provider.api_key_configured {
+            let provider_id = provider.id.clone();
+            items.push(SelectionItem {
+                name: "Remove OAuth login".to_string(),
+                description: Some(
+                    "Delete the stored OAuth credentials for this provider.".to_string(),
+                ),
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::DeleteProviderOauth {
                         provider_id: provider_id.clone(),
                     });
                 })],

@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -12,26 +13,131 @@ use crate::load_anthropic_oauth_credentials;
 use crate::oauth::load_anthropic_oauth_credential;
 use crate::persist_anthropic_oauth_credential;
 
+/// Describes whether a failed OAuth credential write may have reached disk.
+#[derive(Debug)]
+pub enum AnthropicOAuthCredentialStoreError {
+    DestinationUnchanged(io::Error),
+    MayHavePersisted(io::Error),
+}
+
+impl AnthropicOAuthCredentialStoreError {
+    pub fn destination_is_unchanged(&self) -> bool {
+        matches!(self, Self::DestinationUnchanged(_))
+    }
+
+    pub fn into_io_error(self) -> io::Error {
+        match self {
+            Self::DestinationUnchanged(error) | Self::MayHavePersisted(error) => error,
+        }
+    }
+}
+
+impl fmt::Display for AnthropicOAuthCredentialStoreError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DestinationUnchanged(error) | Self::MayHavePersisted(error) => {
+                error.fmt(formatter)
+            }
+        }
+    }
+}
+
+impl std::error::Error for AnthropicOAuthCredentialStoreError {}
+
+/// Describes whether a failed OAuth import left the destination unchanged.
+#[derive(Debug)]
+pub enum AnthropicOAuthImportError {
+    RolledBack(io::Error),
+    RollbackFailed(io::Error),
+}
+
+impl AnthropicOAuthImportError {
+    pub fn destination_is_unchanged(&self) -> bool {
+        matches!(self, Self::RolledBack(_))
+    }
+
+    pub fn into_io_error(self) -> io::Error {
+        match self {
+            Self::RolledBack(error) | Self::RollbackFailed(error) => error,
+        }
+    }
+}
+
+impl fmt::Display for AnthropicOAuthImportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RolledBack(error) | Self::RollbackFailed(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for AnthropicOAuthImportError {}
+
 pub fn import_anthropic_oauth_credentials(
     source: &Path,
     destination_directory: &Path,
 ) -> io::Result<usize> {
-    let accounts = load_source_accounts(source)?;
-    validate_source_accounts(&accounts)?;
-    let imports = plan_imports(accounts, destination_directory)?;
-    imports.iter().try_for_each(|(_, credential)| {
-        store_anthropic_oauth_credential(destination_directory, credential)
-    })?;
-    Ok(imports.len())
+    import_anthropic_oauth_credentials_with_rollback_status(source, destination_directory)
+        .map_err(AnthropicOAuthImportError::into_io_error)
+}
+
+pub fn import_anthropic_oauth_credentials_with_rollback_status(
+    source: &Path,
+    destination_directory: &Path,
+) -> Result<usize, AnthropicOAuthImportError> {
+    let accounts = load_source_accounts(source).map_err(AnthropicOAuthImportError::RolledBack)?;
+    validate_source_accounts(&accounts).map_err(AnthropicOAuthImportError::RolledBack)?;
+    let imports = plan_imports(accounts, destination_directory)
+        .map_err(AnthropicOAuthImportError::RolledBack)?;
+    let mut applied_imports: Vec<PlannedImport> = Vec::new();
+    for import in imports {
+        if let Err(import_error) =
+            persist_anthropic_oauth_credential(&import.destination, &import.credential)
+        {
+            for rollback_import in std::iter::once(&import).chain(applied_imports.iter().rev()) {
+                let rollback = match &rollback_import.previous_credential {
+                    Some(credential) => {
+                        persist_anthropic_oauth_credential(&rollback_import.destination, credential)
+                    }
+                    None => match fs::remove_file(&rollback_import.destination) {
+                        Ok(()) => Ok(()),
+                        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+                        Err(error) => Err(error),
+                    },
+                };
+                if let Err(rollback_error) = rollback {
+                    return Err(AnthropicOAuthImportError::RollbackFailed(io::Error::other(
+                        format!(
+                            "failed to import Anthropic OAuth credentials: {import_error}; failed to roll back {}: {rollback_error}",
+                            rollback_import.destination.display()
+                        ),
+                    )));
+                }
+            }
+            return Err(AnthropicOAuthImportError::RolledBack(import_error));
+        }
+        applied_imports.push(import);
+    }
+    Ok(applied_imports.len())
 }
 
 pub fn store_anthropic_oauth_credential(
     destination_directory: &Path,
     credential: &AnthropicOAuthCredential,
 ) -> io::Result<()> {
+    store_anthropic_oauth_credential_with_status(destination_directory, credential)
+        .map_err(AnthropicOAuthCredentialStoreError::into_io_error)
+}
+
+pub fn store_anthropic_oauth_credential_with_status(
+    destination_directory: &Path,
+    credential: &AnthropicOAuthCredential,
+) -> Result<(), AnthropicOAuthCredentialStoreError> {
     let destination = destination_directory.join(credential_file_name(&credential.email));
-    validate_destination(&destination, credential)?;
+    validate_destination(&destination, credential)
+        .map_err(AnthropicOAuthCredentialStoreError::DestinationUnchanged)?;
     persist_anthropic_oauth_credential(&destination, credential)
+        .map_err(AnthropicOAuthCredentialStoreError::MayHavePersisted)
 }
 
 fn load_source_accounts(source: &Path) -> io::Result<Vec<AnthropicOAuthAccount>> {
@@ -89,7 +195,7 @@ fn validate_source_accounts(accounts: &[AnthropicOAuthAccount]) -> io::Result<()
 fn plan_imports(
     accounts: Vec<AnthropicOAuthAccount>,
     destination_directory: &Path,
-) -> io::Result<Vec<(PathBuf, AnthropicOAuthCredential)>> {
+) -> io::Result<Vec<PlannedImport>> {
     accounts
         .into_iter()
         .try_fold(
@@ -103,8 +209,21 @@ fn plan_imports(
                         "multiple Anthropic accounts use the same credential filename",
                     ));
                 }
-                validate_destination(&destination, &account.credential)?;
-                imports.push((destination, account.credential));
+                let previous_credential = destination_credential(&destination)?;
+                if previous_credential
+                    .as_ref()
+                    .is_some_and(|credential| credential.email != account.credential.email)
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        "an Anthropic credential filename is already used by another account",
+                    ));
+                }
+                imports.push(PlannedImport {
+                    destination,
+                    credential: account.credential,
+                    previous_credential,
+                });
                 Ok((destinations, imports))
             },
         )
@@ -115,10 +234,9 @@ fn validate_destination(
     destination: &Path,
     credential: &AnthropicOAuthCredential,
 ) -> io::Result<()> {
-    if !destination.exists() {
+    let Some(existing) = destination_credential(destination)? else {
         return Ok(());
-    }
-    let existing = load_anthropic_oauth_credential(destination)?;
+    };
     if existing.email == credential.email {
         return Ok(());
     }
@@ -126,6 +244,19 @@ fn validate_destination(
         io::ErrorKind::AlreadyExists,
         "an Anthropic credential filename is already used by another account",
     ))
+}
+
+fn destination_credential(destination: &Path) -> io::Result<Option<AnthropicOAuthCredential>> {
+    if !destination.exists() {
+        return Ok(None);
+    }
+    load_anthropic_oauth_credential(destination).map(Some)
+}
+
+struct PlannedImport {
+    destination: PathBuf,
+    credential: AnthropicOAuthCredential,
+    previous_credential: Option<AnthropicOAuthCredential>,
 }
 
 fn credential_file_name(email: &str) -> String {

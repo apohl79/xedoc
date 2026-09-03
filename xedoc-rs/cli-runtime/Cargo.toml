@@ -35,6 +35,7 @@ xedoc-login = { workspace = true }
 xedoc-mcp = { workspace = true }
 xedoc-mcp-server = { workspace = true }
 xedoc-model-provider = { workspace = true }
+xedoc-model-provider-info = { workspace = true }
 xedoc-models-manager = { workspace = true }
 xedoc-plugin = { workspace = true }
 xedoc-provider-anthropic = { workspace = true }
@@ -73,3 +74,4 @@ url = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 pretty_assertions = { workspace = true }
+xedoc-keyring-store = { workspace = true }

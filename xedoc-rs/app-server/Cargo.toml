@@ -116,6 +116,7 @@ axum = { workspace = true, default-features = false, features = [
 ] }
 base64 = { workspace = true }
 xedoc-model-provider-info = { workspace = true }
+xedoc-keyring-store = { workspace = true }
 xedoc-utils-cargo-bin = { workspace = true }
 core_test_support = { workspace = true }
 hmac = { workspace = true }
