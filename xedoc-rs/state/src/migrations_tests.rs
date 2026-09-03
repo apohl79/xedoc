@@ -1,5 +1,6 @@
 use sqlx::Connection;
 use sqlx::Row;
+use sqlx::SqlStr;
 use sqlx::migrate::Migration;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -128,6 +129,69 @@ ORDER BY name
             .await
             .expect("preserved agent job should load");
     assert_eq!(agent_job_count, 1);
+
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn pre_rebrand_agent_jobs_migration_remains_compatible() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory database should open");
+    migrator_through(/*version*/ 41)
+        .run(&pool)
+        .await
+        .expect("pre-agent-jobs migrations should apply");
+
+    let agent_jobs_migration = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .find(|migration| migration.version == 42)
+        .expect("agent jobs migration should exist");
+    let mut pre_rebrand_migrations = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .filter(|migration| migration.version <= 41)
+        .cloned()
+        .collect::<Vec<_>>();
+    let pre_rebrand_sql = concat!(
+        "-- Keep the legacy agent-job tables available to older Codex binaries.\n",
+        "--\n",
+        "-- This migration remains in the history so databases that already recorded\n",
+        "-- version 42 continue to validate, but it intentionally performs no schema\n",
+        "-- change. Removing these tables would make the database incompatible with the\n",
+        "-- previous stable fork release.\n",
+        "SELECT 1;\n",
+    );
+    pre_rebrand_migrations.push(Migration::new(
+        42,
+        agent_jobs_migration.description.clone(),
+        agent_jobs_migration.migration_type,
+        SqlStr::from_static(pre_rebrand_sql),
+        agent_jobs_migration.no_tx,
+    ));
+    Migrator::with_migrations(pre_rebrand_migrations)
+        .run(&pool)
+        .await
+        .expect("pre-rebrand agent jobs migration should apply");
+
+    STATE_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("current migrations should accept the pre-rebrand checksum");
+
+    let tables = sqlx::query_scalar::<_, String>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('agent_jobs', 'agent_job_items') ORDER BY name",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("agent job tables should load");
+    assert_eq!(
+        tables,
+        vec!["agent_job_items".to_string(), "agent_jobs".to_string()]
+    );
 
     pool.close().await;
 }
