@@ -9,6 +9,7 @@ use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::FunctionCallOutputBody;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::openai_models::ReasoningEffort;
+use xedoc_protocol::provider_item_metadata::ProviderItemMetadata;
 
 use crate::GeminiContent;
 use crate::GeminiFunctionCall;
@@ -75,6 +76,7 @@ fn translate_history(
                 name,
                 arguments,
                 call_id,
+                provider_metadata,
                 ..
             } => {
                 let call_id = resolved_call_id(
@@ -88,7 +90,11 @@ fn translate_history(
                     vec![function_call_part(
                         name,
                         parse_arguments(arguments),
-                        thought_signatures.signature(call_id),
+                        replay_thought_signature(
+                            provider_metadata.as_ref(),
+                            thought_signatures,
+                            call_id,
+                        ),
                     )],
                 );
             }
@@ -97,6 +103,7 @@ fn translate_history(
                 call_id,
                 name,
                 input,
+                provider_metadata,
                 ..
             } => {
                 let call_id = resolved_call_id(
@@ -110,7 +117,11 @@ fn translate_history(
                     vec![function_call_part(
                         name,
                         json!({"input": input}),
-                        thought_signatures.signature(call_id),
+                        replay_thought_signature(
+                            provider_metadata.as_ref(),
+                            thought_signatures,
+                            call_id,
+                        ),
                     )],
                 );
             }
@@ -151,6 +162,18 @@ fn translate_history(
         }
     }
     Ok(contents)
+}
+
+fn replay_thought_signature(
+    provider_metadata: Option<&ProviderItemMetadata>,
+    thought_signatures: &GeminiThoughtSignatureStore,
+    call_id: &str,
+) -> Option<String> {
+    provider_metadata
+        .and_then(ProviderItemMetadata::gemini_thought_signature)
+        .filter(|signature| !signature.is_empty())
+        .map(str::to_string)
+        .or_else(|| thought_signatures.signature(call_id))
 }
 
 fn append_message(

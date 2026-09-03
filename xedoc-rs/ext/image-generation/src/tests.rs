@@ -100,6 +100,7 @@ async fn recent_image_fallback_selects_newest_images_in_chronological_order() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "mcp-call".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCallOutput {
@@ -115,6 +116,7 @@ async fn recent_image_fallback_selects_newest_images_in_chronological_order() {
             name: "exec".to_string(),
             namespace: None,
             input: String::new(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::CustomToolCallOutput {

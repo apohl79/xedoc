@@ -29,6 +29,7 @@ pub mod parse_command;
 pub mod permissions;
 pub mod plan_tool;
 pub mod protocol;
+pub mod provider_item_metadata;
 pub mod request_permissions;
 pub mod request_user_input;
 pub mod review_format;

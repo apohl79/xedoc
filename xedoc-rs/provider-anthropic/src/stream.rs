@@ -86,6 +86,7 @@ impl AnthropicStreamTranslator {
                         name,
                         namespace: None,
                         input: String::new(),
+                        provider_metadata: None,
                         internal_chat_message_metadata_passthrough: None,
                     }
                 } else {
@@ -95,6 +96,7 @@ impl AnthropicStreamTranslator {
                         namespace: None,
                         arguments: String::new(),
                         call_id: id,
+                        provider_metadata: None,
                         internal_chat_message_metadata_passthrough: None,
                     }
                 };
@@ -199,6 +201,7 @@ impl AnthropicStreamTranslator {
                             name,
                             namespace: None,
                             input,
+                            provider_metadata: None,
                             internal_chat_message_metadata_passthrough: None,
                         }),
                     ]
@@ -209,6 +212,7 @@ impl AnthropicStreamTranslator {
                         namespace: None,
                         arguments,
                         call_id: id,
+                        provider_metadata: None,
                         internal_chat_message_metadata_passthrough: None,
                     })]
                 }

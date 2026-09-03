@@ -412,6 +412,31 @@
       ],
       "type": "string"
     },
+    "ProviderItemMetadata": {
+      "description": "Provider data required to replay a response item.",
+      "oneOf": [
+        {
+          "description": "Metadata required when replaying a Gemini tool call.",
+          "properties": {
+            "provider": {
+              "enum": [
+                "gemini"
+              ],
+              "type": "string"
+            },
+            "thought_signature": {
+              "description": "Opaque signature returned with the tool call.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "thought_signature"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "ReasoningItemContent": {
       "oneOf": [
         {
@@ -718,6 +743,16 @@
                 "null"
               ]
             },
+            "provider_metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProviderItemMetadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "enum": [
                 "function_call"
@@ -856,6 +891,16 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "provider_metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProviderItemMetadata"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "status": {

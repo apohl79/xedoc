@@ -106,6 +106,7 @@ fn response_item_records_turn_ttft_for_first_output_signals() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "call-1".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         }
     ));
@@ -117,6 +118,7 @@ fn response_item_records_turn_ttft_for_first_output_signals() {
             name: "custom".to_string(),
             namespace: None,
             input: "echo hi".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         }
     ));

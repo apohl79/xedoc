@@ -572,6 +572,7 @@ mod tests {
                 namespace: None,
                 arguments: "{}".to_string(),
                 call_id: "call_1".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::Compaction {

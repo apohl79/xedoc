@@ -121,6 +121,7 @@ fn spawn_agent_call(call_id: &str) -> ResponseItem {
         namespace: None,
         arguments: "{}".to_string(),
         call_id: call_id.to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }
 }

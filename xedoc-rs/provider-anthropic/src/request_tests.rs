@@ -217,6 +217,7 @@ fn replays_reasoning_tool_calls_and_parallel_results() {
             namespace: None,
             arguments: "{\"value\":1}".to_string(),
             call_id: String::new(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCall {
@@ -225,6 +226,7 @@ fn replays_reasoning_tool_calls_and_parallel_results() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "call_2".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCallOutput {
@@ -301,6 +303,7 @@ fn preserves_positional_developer_and_custom_tool_history() {
             name: "apply_patch".to_string(),
             namespace: None,
             input: patch.to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::CustomToolCallOutput {

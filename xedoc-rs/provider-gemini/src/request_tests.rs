@@ -112,6 +112,7 @@ fn translates_tool_history_schemas_and_thought_signatures() {
             namespace: None,
             arguments: r#"{"city":"Berlin"}"#.to_string(),
             call_id: "call_weather".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCallOutput {
@@ -127,6 +128,7 @@ fn translates_tool_history_schemas_and_thought_signatures() {
             name: "apply_patch".to_string(),
             namespace: None,
             input: "*** Begin Patch".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
     ]);
@@ -338,6 +340,7 @@ fn drops_empty_unsupported_and_malformed_inputs() {
             namespace: None,
             arguments: "{".to_string(),
             call_id: "call_broken".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::Other,

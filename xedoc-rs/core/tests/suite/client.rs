@@ -517,6 +517,7 @@ async fn synthetic_call_output_id_is_stable_across_resumes() -> anyhow::Result<(
                 namespace: None,
                 arguments: "{}".to_string(),
                 call_id: function_call_id.to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
         },
@@ -1012,6 +1013,7 @@ async fn resume_replays_legacy_js_repl_image_rollout_shapes() {
         name: "js_repl".to_string(),
         namespace: None,
         input: "console.log('legacy image flow')".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     };
     let legacy_image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
@@ -1184,6 +1186,7 @@ async fn resume_replays_image_tool_outputs_with_detail() {
                 namespace: None,
                 arguments: "{\"path\":\"/tmp/example.png\"}".to_string(),
                 call_id: function_call_id.to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
         },
@@ -1212,6 +1215,7 @@ async fn resume_replays_image_tool_outputs_with_detail() {
                 name: "js_repl".to_string(),
                 namespace: None,
                 input: "console.log('image flow')".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
         },
@@ -2987,6 +2991,7 @@ async fn azure_responses_request_includes_store_and_prefixed_item_ids() {
         namespace: None,
         arguments: "{}".into(),
         call_id: "function-call-id".into(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     });
     prompt.input.push(ResponseItem::FunctionCallOutput {
@@ -3015,6 +3020,7 @@ async fn azure_responses_request_includes_store_and_prefixed_item_ids() {
         name: "custom_tool".into(),
         namespace: None,
         input: "{}".into(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     });
     prompt.input.push(ResponseItem::CustomToolCallOutput {
