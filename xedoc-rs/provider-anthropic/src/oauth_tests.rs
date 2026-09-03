@@ -5,6 +5,7 @@ use super::AnthropicAccountUnavailable;
 use super::AnthropicCredentialLoad;
 use super::AnthropicOAuthAccount;
 use super::AnthropicOAuthCredential;
+use super::clear_anthropic_oauth_credentials;
 use super::load_anthropic_oauth_credentials;
 use super::persist_anthropic_oauth_credential;
 use pretty_assertions::assert_eq;
@@ -270,6 +271,36 @@ fn persists_refreshed_credentials_in_canonical_format() {
             }],
             failures: vec![],
         }
+    );
+}
+
+#[test]
+fn clears_only_valid_anthropic_oauth_credentials() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let anthropic_path = directory.path().join("anthropic-user@example.com.json");
+    let claude_path = directory.path().join("claude-legacy@example.com.json");
+    let unrelated_path = directory.path().join("deepseek-user@example.com.json");
+    let malformed_path = directory
+        .path()
+        .join("anthropic-malformed@example.com.json");
+    persist_anthropic_oauth_credential(&anthropic_path, &credential("user@example.com", "token"))
+        .expect("write Anthropic credential");
+    persist_anthropic_oauth_credential(&claude_path, &credential("legacy@example.com", "token"))
+        .expect("write legacy credential");
+    fs::write(&unrelated_path, "credential").expect("write unrelated credential");
+    fs::write(&malformed_path, "credential").expect("write malformed credential");
+
+    let deleted = clear_anthropic_oauth_credentials(directory.path()).expect("clear credentials");
+
+    assert!(deleted);
+    assert_eq!(
+        [
+            anthropic_path.exists(),
+            claude_path.exists(),
+            unrelated_path.exists(),
+            malformed_path.exists(),
+        ],
+        [false, false, true, true]
     );
 }
 

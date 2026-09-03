@@ -345,6 +345,70 @@ pub fn load_anthropic_oauth_credentials(directory: &Path) -> io::Result<Anthropi
     Ok(AnthropicCredentialLoad { accounts, failures })
 }
 
+/// Removes valid Xedoc-managed Anthropic OAuth credential files from `directory`.
+///
+/// Files for other providers are left untouched. Returns whether any credential
+/// files were removed.
+pub fn clear_anthropic_oauth_credentials(directory: &Path) -> io::Result<bool> {
+    take_anthropic_oauth_credentials(directory).map(|credentials| !credentials.is_empty())
+}
+
+/// Removes and returns valid Xedoc-managed Anthropic OAuth credential files.
+///
+/// Files for other providers and malformed files are left untouched. Credential
+/// files that cannot be read cause the operation to fail before any file is
+/// removed.
+pub fn take_anthropic_oauth_credentials(
+    directory: &Path,
+) -> io::Result<Vec<AnthropicOAuthAccount>> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let mut credentials = Vec::new();
+    for entry in entries {
+        let path = entry?.path();
+        if !is_anthropic_credential_file_name(&path) {
+            continue;
+        }
+        let metadata = fs::metadata(&path)?;
+        if !metadata.is_file() {
+            continue;
+        }
+        match load_anthropic_oauth_credential(&path) {
+            Ok(credential) => credentials.push(AnthropicOAuthAccount {
+                credential,
+                source_path: path,
+            }),
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {}
+            Err(error) => return Err(error),
+        }
+    }
+    for credential in &credentials {
+        if let Err(remove_error) = fs::remove_file(&credential.source_path) {
+            if let Err(restore_error) = restore_anthropic_oauth_credentials(&credentials) {
+                return Err(io::Error::other(format!(
+                    "failed to remove Anthropic OAuth credentials: {remove_error}; failed to restore credentials: {restore_error}"
+                )));
+            }
+            return Err(remove_error);
+        }
+    }
+    Ok(credentials)
+}
+
+/// Restores Anthropic OAuth credentials previously returned by
+/// [`take_anthropic_oauth_credentials`].
+pub fn restore_anthropic_oauth_credentials(
+    credentials: &[AnthropicOAuthAccount],
+) -> io::Result<()> {
+    for credential in credentials {
+        persist_anthropic_oauth_credential(&credential.source_path, &credential.credential)?;
+    }
+    Ok(())
+}
+
 pub fn persist_anthropic_oauth_credential(
     path: &Path,
     credential: &AnthropicOAuthCredential,
@@ -369,12 +433,14 @@ pub fn persist_anthropic_oauth_credential(
 }
 
 fn is_anthropic_credential_path(path: &Path) -> bool {
+    path.is_file() && is_anthropic_credential_file_name(path)
+}
+
+fn is_anthropic_credential_file_name(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
-    path.is_file()
-        && name.ends_with(".json")
-        && (name.starts_with("anthropic-") || name.starts_with("claude-"))
+    name.ends_with(".json") && (name.starts_with("anthropic-") || name.starts_with("claude-"))
 }
 
 pub(crate) fn load_anthropic_oauth_credential(path: &Path) -> io::Result<AnthropicOAuthCredential> {

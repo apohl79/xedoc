@@ -42,6 +42,44 @@ async fn model_manager_root_popup_snapshot() {
 }
 
 #[tokio::test]
+async fn model_manager_authentication_popup_switches_between_authentication_modes_snapshot() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.open_model_manager(ModelManagerReadResponse {
+        providers: vec![managed_provider(
+            "anthropic",
+            "Anthropic",
+            "claude-fable-5-1",
+            "claude-haiku-4-5-20251001",
+            /*api_key_configured*/ true,
+            /*oauth_configured*/ true,
+        )],
+    });
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+    let action = rx
+        .try_recv()
+        .expect("selecting a provider should navigate to it");
+    let AppEvent::ModelManagerUi(action) = action else {
+        panic!("expected a model-manager navigation event");
+    };
+    chat.handle_model_manager_ui(action);
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+    let action = rx
+        .try_recv()
+        .expect("selecting authentication should open its settings");
+    let AppEvent::ModelManagerUi(action) = action else {
+        panic!("expected a model-manager navigation event");
+    };
+    chat.handle_model_manager_ui(action);
+
+    assert_chatwidget_snapshot!(
+        "model_manager_authentication_popup_switches_between_authentication_modes",
+        render_bottom_popup(&chat, /*width*/ 100)
+    );
+}
+
+#[tokio::test]
 async fn model_manager_loading_popup_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let _generation = chat.open_model_manager_loading();

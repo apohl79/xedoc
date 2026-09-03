@@ -14,6 +14,8 @@ use xedoc_app_server_protocol::ModelProviderApiKeyDeleteParams;
 use xedoc_app_server_protocol::ModelProviderApiKeyDeleteResponse;
 use xedoc_app_server_protocol::ModelProviderApiKeySetParams;
 use xedoc_app_server_protocol::ModelProviderApiKeySetResponse;
+use xedoc_app_server_protocol::ModelProviderOauthDeleteParams;
+use xedoc_app_server_protocol::ModelProviderOauthDeleteResponse;
 use xedoc_app_server_protocol::ModelProviderOauthStartParams;
 use xedoc_app_server_protocol::ModelProviderOauthStartResponse;
 use xedoc_app_server_protocol::RequestId;
@@ -87,6 +89,24 @@ impl App {
         tokio::spawn(async move {
             let result = async {
                 remove_provider_api_key(request_handle.clone(), provider_id).await?;
+                read_model_manager(request_handle).await
+            }
+            .await
+            .map_err(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelManagerLoaded { result });
+        });
+    }
+
+    pub(super) fn delete_provider_oauth(
+        &mut self,
+        app_server: &AppServerSession,
+        provider_id: String,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = async {
+                remove_provider_oauth(request_handle.clone(), provider_id).await?;
                 read_model_manager(request_handle).await
             }
             .await
@@ -185,6 +205,34 @@ async fn remove_provider_api_key(
         )
         .await
         .wrap_err("modelProvider/apiKey/delete failed in TUI")?;
+    Ok(())
+}
+
+async fn remove_provider_oauth(
+    request_handle: AppServerRequestHandle,
+    provider_id: String,
+) -> Result<()> {
+    let request_id = RequestId::String(format!("model-provider-oauth-delete-{}", Uuid::new_v4()));
+    if provider_id == OPENAI_PROVIDER_ID {
+        request_handle
+            .request_typed::<LogoutAccountResponse>(ClientRequest::LogoutAccount {
+                request_id,
+                params: None,
+            })
+            .await
+            .wrap_err("account/logout failed while removing OpenAI OAuth credentials")?;
+        return Ok(());
+    }
+
+    request_handle
+        .request_typed::<ModelProviderOauthDeleteResponse>(
+            ClientRequest::ModelProviderOauthDelete {
+                request_id,
+                params: ModelProviderOauthDeleteParams { provider_id },
+            },
+        )
+        .await
+        .wrap_err("modelProvider/oauth/delete failed in TUI")?;
     Ok(())
 }
 

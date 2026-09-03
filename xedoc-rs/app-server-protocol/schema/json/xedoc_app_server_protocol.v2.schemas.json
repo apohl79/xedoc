@@ -1862,6 +1862,30 @@
             },
             "method": {
               "enum": [
+                "modelProvider/oauth/delete"
+              ],
+              "title": "ModelProvider/oauth/deleteRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ModelProviderOauthDeleteParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelProvider/oauth/deleteRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "modelProvider/oauth/start"
               ],
               "title": "ModelProvider/oauth/startRequestMethod",
@@ -7321,6 +7345,32 @@
         "webSearch"
       ],
       "title": "ModelProviderCapabilitiesReadResponse",
+      "type": "object"
+    },
+    "ModelProviderOauthDeleteParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId"
+      ],
+      "title": "ModelProviderOauthDeleteParams",
+      "type": "object"
+    },
+    "ModelProviderOauthDeleteResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "title": "ModelProviderOauthDeleteResponse",
       "type": "object"
     },
     "ModelProviderOauthStartParams": {

@@ -217,6 +217,8 @@ export type { ModelProviderApiKeySetParams } from "./ModelProviderApiKeySetParam
 export type { ModelProviderApiKeySetResponse } from "./ModelProviderApiKeySetResponse";
 export type { ModelProviderCapabilitiesReadParams } from "./ModelProviderCapabilitiesReadParams";
 export type { ModelProviderCapabilitiesReadResponse } from "./ModelProviderCapabilitiesReadResponse";
+export type { ModelProviderOauthDeleteParams } from "./ModelProviderOauthDeleteParams";
+export type { ModelProviderOauthDeleteResponse } from "./ModelProviderOauthDeleteResponse";
 export type { ModelProviderOauthStartParams } from "./ModelProviderOauthStartParams";
 export type { ModelProviderOauthStartResponse } from "./ModelProviderOauthStartResponse";
 export type { ModelRerouteReason } from "./ModelRerouteReason";

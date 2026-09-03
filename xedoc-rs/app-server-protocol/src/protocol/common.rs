@@ -815,6 +815,11 @@ client_request_definitions! {
         serialization: global("model-manager"),
         response: v2::ModelProviderApiKeyDeleteResponse,
     },
+    ModelProviderOauthDelete => "modelProvider/oauth/delete" {
+        params: v2::ModelProviderOauthDeleteParams,
+        serialization: global("model-manager"),
+        response: v2::ModelProviderOauthDeleteResponse,
+    },
     ModelProviderOauthStart => "modelProvider/oauth/start" {
         params: v2::ModelProviderOauthStartParams,
         serialization: global("model-manager"),

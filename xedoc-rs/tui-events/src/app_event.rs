@@ -361,6 +361,11 @@ pub enum AppEvent {
         provider_id: String,
     },
 
+    /// Remove OAuth credentials configured for a provider.
+    DeleteProviderOauth {
+        provider_id: String,
+    },
+
     /// Start the OAuth login flow for a provider.
     StartProviderOauth {
         provider_id: String,

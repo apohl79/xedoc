@@ -500,6 +500,9 @@ impl App {
             AppEvent::DeleteProviderApiKey { provider_id } => {
                 self.delete_provider_api_key(app_server, provider_id);
             }
+            AppEvent::DeleteProviderOauth { provider_id } => {
+                self.delete_provider_oauth(app_server, provider_id);
+            }
             AppEvent::StartProviderOauth { provider_id } => {
                 self.start_provider_oauth(app_server, provider_id);
             }
