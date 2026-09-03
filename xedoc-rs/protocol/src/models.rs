@@ -20,6 +20,7 @@ use crate::permissions::FileSystemSandboxPolicy;
 use crate::permissions::FileSystemSpecialPath;
 use crate::permissions::NetworkSandboxPolicy;
 use crate::protocol::SandboxPolicy;
+use crate::provider_item_metadata::ProviderItemMetadata;
 use crate::user_input::UserInput;
 use schemars::JsonSchema;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
@@ -869,6 +870,9 @@ pub enum ResponseItem {
         call_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
+        provider_metadata: Option<ProviderItemMetadata>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
     },
     ToolSearchCall {
@@ -917,6 +921,9 @@ pub enum ResponseItem {
         #[ts(optional)]
         namespace: Option<String>,
         input: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        provider_metadata: Option<ProviderItemMetadata>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
@@ -1114,6 +1121,19 @@ impl ResponseItem {
     pub fn clear_internal_chat_message_metadata_passthrough(&mut self) {
         if let Some(metadata) = self.internal_chat_message_metadata_passthrough_mut() {
             *metadata = None;
+        }
+    }
+
+    /// Removes provider-owned metadata before sending an item over the Responses API.
+    pub fn clear_provider_metadata(&mut self) {
+        match self {
+            Self::FunctionCall {
+                provider_metadata, ..
+            }
+            | Self::CustomToolCall {
+                provider_metadata, ..
+            } => *provider_metadata = None,
+            _ => {}
         }
     }
 
@@ -2854,6 +2874,7 @@ mod tests {
                 namespace: Some("mcp__xedoc_apps__gmail".to_string()),
                 arguments: "{\"top_k\":5}".to_string(),
                 call_id: "call-1".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }
         );

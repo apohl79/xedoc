@@ -29,6 +29,7 @@ fn tracker_collects_message_reasoning_and_tool_activity() {
         namespace: Some("functions".to_string()),
         arguments: r#"{"cmd":"just test"}"#.to_string(),
         call_id: "call-1".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     });
 
@@ -52,6 +53,7 @@ fn tracker_retries_failed_summary_with_same_bounded_history() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: format!("call-{index}"),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         });
     }

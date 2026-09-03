@@ -178,7 +178,7 @@ fn text_stream() -> ResponseTemplate {
 }
 
 #[tokio::test]
-async fn gemini_wire_replays_thought_signatures_across_turns() -> anyhow::Result<()> {
+async fn gemini_wire_replays_thought_signatures_after_client_restart() -> anyhow::Result<()> {
     let server = MockServer::start().await;
     let attempts = Arc::new(AtomicUsize::new(0));
     let response_attempts = Arc::clone(&attempts);
@@ -204,6 +204,7 @@ async fn gemini_wire_replays_thought_signatures_across_turns() -> anyhow::Result
         .into_iter()
         .find(|item| matches!(item, ResponseItem::FunctionCall { .. }))
         .expect("Gemini should return a function call");
+    let function_call = serde_json::from_value(serde_json::to_value(function_call)?)?;
     let call_id = match &function_call {
         ResponseItem::FunctionCall {
             name,
@@ -219,8 +220,9 @@ async fn gemini_wire_replays_thought_signatures_across_turns() -> anyhow::Result
         }
         _ => unreachable!("function call was selected above"),
     };
+    let resumed_client = gemini_client(&server);
     let second_items = run_turn(
-        &client,
+        &resumed_client,
         &prompt(vec![
             user_message(),
             function_call,

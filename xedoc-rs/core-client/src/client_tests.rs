@@ -50,6 +50,7 @@ use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::protocol::SessionSource;
 use xedoc_protocol::protocol::SubAgentSource;
 use xedoc_protocol::protocol::TokenUsage;
+use xedoc_protocol::provider_item_metadata::ProviderItemMetadata;
 
 #[derive(Clone, Copy)]
 enum TestXedocResponsesRequestKind {
@@ -502,6 +503,59 @@ fn test_session_telemetry() -> SessionTelemetry {
         "test-terminal".to_string(),
         SessionSource::Cli,
     )
+}
+
+#[tokio::test]
+async fn responses_wire_strips_native_provider_metadata() -> anyhow::Result<()> {
+    let client = test_model_client(SessionSource::Cli);
+    let client_setup = client.current_client_setup().await?;
+    let thread_id = ThreadId::new();
+    let request = client.build_responses_request(
+        &client_setup.api_provider,
+        &Prompt {
+            input: vec![ResponseItem::FunctionCall {
+                id: None,
+                name: "weather".to_string(),
+                namespace: None,
+                arguments: r#"{"city":"Berlin"}"#.to_string(),
+                call_id: "call-1".to_string(),
+                provider_metadata: Some(ProviderItemMetadata::Gemini {
+                    thought_signature: "opaque-signature".to_string(),
+                }),
+                internal_chat_message_metadata_passthrough: None,
+            }],
+            base_instructions: BaseInstructions {
+                text: "base instructions".to_string(),
+            },
+            ..Default::default()
+        },
+        &test_model_info(),
+        Some(ReasoningEffort::Medium),
+        xedoc_protocol::config_types::ReasoningSummary::None,
+        /*service_tier*/ None,
+        &test_responses_metadata_for_client(
+            &client,
+            thread_id,
+            Some("turn-1"),
+            format!("{thread_id}:0"),
+            /*parent_thread_id*/ None,
+            TestXedocResponsesRequestKind::Turn,
+        ),
+    )?;
+
+    assert_eq!(
+        request.input,
+        vec![ResponseItem::FunctionCall {
+            id: None,
+            name: "weather".to_string(),
+            namespace: None,
+            arguments: r#"{"city":"Berlin"}"#.to_string(),
+            call_id: "call-1".to_string(),
+            provider_metadata: None,
+            internal_chat_message_metadata_passthrough: None,
+        }]
+    );
+    Ok(())
 }
 
 #[test]

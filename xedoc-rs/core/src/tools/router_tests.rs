@@ -154,6 +154,7 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
         namespace: Some("mcp__xedoc_apps__calendar".to_string()),
         arguments: "{}".to_string(),
         call_id: "call-namespace".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     })?
     .expect("function_call should produce a tool call");
@@ -184,6 +185,7 @@ async fn build_custom_tool_call_uses_namespace_for_registry_name() -> anyhow::Re
         name: tool_name.clone(),
         namespace: Some("mcp__python".to_string()),
         input: "print('hello')".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     })?
     .expect("custom_tool_call should produce a tool call");
@@ -408,6 +410,7 @@ async fn extension_tool_executors_are_model_visible_and_dispatchable() -> anyhow
         namespace: Some("extension/".to_string()),
         arguments: json!({ "message": "hello" }).to_string(),
         call_id: "call-extension".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     })?
     .expect("function_call should produce a tool call");

@@ -7,6 +7,7 @@ use xedoc_protocol::ResponseItemId;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::protocol::TokenUsage;
+use xedoc_protocol::provider_item_metadata::ProviderItemMetadata;
 
 use super::GeminiStreamError;
 use super::GeminiStreamTranslator;
@@ -197,6 +198,7 @@ fn translates_tool_only_chunk_and_preserves_thought_signatures() {
                 namespace: None,
                 arguments: String::new(),
                 call_id: shell_call_id.clone(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
             ObservedEvent::Done(ResponseItem::FunctionCall {
@@ -205,6 +207,9 @@ fn translates_tool_only_chunk_and_preserves_thought_signatures() {
                 namespace: None,
                 arguments: "{\"cmd\":\"ls\"}".to_string(),
                 call_id: shell_call_id.clone(),
+                provider_metadata: Some(ProviderItemMetadata::Gemini {
+                    thought_signature: "sig_shell".to_string(),
+                }),
                 internal_chat_message_metadata_passthrough: None,
             }),
             ObservedEvent::Added(ResponseItem::CustomToolCall {
@@ -214,6 +219,7 @@ fn translates_tool_only_chunk_and_preserves_thought_signatures() {
                 name: "apply_patch".to_string(),
                 namespace: None,
                 input: String::new(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
             ObservedEvent::ToolDelta {
@@ -228,6 +234,9 @@ fn translates_tool_only_chunk_and_preserves_thought_signatures() {
                 name: "apply_patch".to_string(),
                 namespace: None,
                 input: "*** Begin Patch".to_string(),
+                provider_metadata: Some(ProviderItemMetadata::Gemini {
+                    thought_signature: "sig_patch".to_string(),
+                }),
                 internal_chat_message_metadata_passthrough: None,
             }),
         ]

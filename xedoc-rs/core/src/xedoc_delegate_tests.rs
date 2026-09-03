@@ -79,6 +79,7 @@ async fn forward_events_filters_private_events_before_blocked_send_is_cancelled(
             name: "tool".to_string(),
             namespace: None,
             input: "{}".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
     });

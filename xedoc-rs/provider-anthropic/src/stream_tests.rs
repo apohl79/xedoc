@@ -321,6 +321,7 @@ fn translates_function_and_custom_tool_streams() {
                 namespace: None,
                 arguments: String::new(),
                 call_id: "toolu_shell".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
             ObservedEvent::Done(ResponseItem::FunctionCall {
@@ -329,6 +330,7 @@ fn translates_function_and_custom_tool_streams() {
                 namespace: None,
                 arguments: "{\"cmd\":\"ls\"}".to_string(),
                 call_id: "toolu_shell".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
             ObservedEvent::Added(ResponseItem::CustomToolCall {
@@ -338,6 +340,7 @@ fn translates_function_and_custom_tool_streams() {
                 name: "apply_patch".to_string(),
                 namespace: None,
                 input: String::new(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
             ObservedEvent::ToolDelta {
@@ -352,6 +355,7 @@ fn translates_function_and_custom_tool_streams() {
                 name: "apply_patch".to_string(),
                 namespace: None,
                 input: "*** Begin Patch".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
         ]

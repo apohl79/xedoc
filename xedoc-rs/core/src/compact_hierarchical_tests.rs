@@ -40,6 +40,7 @@ fn chunks_keep_matching_tool_call_and_output_together() {
         namespace: None,
         arguments: "{}".to_string(),
         call_id: "call-1".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     };
     let output = ResponseItem::FunctionCallOutput {

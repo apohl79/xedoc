@@ -675,6 +675,11 @@ impl ModelClient {
                 .iter_mut()
                 .for_each(ResponseItem::clear_internal_chat_message_metadata_passthrough);
         }
+        if self.state.provider.info().wire_api == WireApi::Responses {
+            input
+                .iter_mut()
+                .for_each(ResponseItem::clear_provider_metadata);
+        }
         let tools = create_tools_json_for_responses_api(&prompt.tools)?;
         let (instructions, tools) = if model_info.use_responses_lite {
             let mut prefix = vec![ResponseItem::AdditionalTools {

@@ -451,6 +451,7 @@ fn for_prompt_without_encrypted_content_preserves_plaintext_context() {
         namespace: None,
         arguments: "{}".to_string(),
         call_id: "call-1".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     };
     let history = create_history_with_items(vec![
@@ -652,6 +653,7 @@ fn for_prompt_strips_media_when_model_does_not_support_it() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "call-1".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCallOutput {
@@ -678,6 +680,7 @@ fn for_prompt_strips_media_when_model_does_not_support_it() {
             name: "js_repl".to_string(),
             namespace: None,
             input: "view_image".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::CustomToolCallOutput {
@@ -733,6 +736,7 @@ fn for_prompt_strips_media_when_model_does_not_support_it() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "call-1".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCallOutput {
@@ -760,6 +764,7 @@ fn for_prompt_strips_media_when_model_does_not_support_it() {
             name: "js_repl".to_string(),
             namespace: None,
             input: "view_image".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::CustomToolCallOutput {
@@ -953,6 +958,7 @@ fn remove_first_item_removes_matching_output_for_function_call() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "call-1".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCallOutput {
@@ -982,6 +988,7 @@ fn remove_first_item_removes_matching_call_for_output() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "call-2".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
     ];
@@ -1238,6 +1245,7 @@ fn remove_first_item_handles_custom_tool_pair() {
             name: "my_tool".to_string(),
             namespace: None,
             input: "{}".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::CustomToolCallOutput {
@@ -1490,6 +1498,7 @@ fn normalize_adds_missing_output_for_function_call() {
         namespace: None,
         arguments: "{}".to_string(),
         call_id: "call-x".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }];
     let mut h = create_history_with_items(items);
@@ -1505,6 +1514,7 @@ fn normalize_adds_missing_output_for_function_call() {
                 namespace: None,
                 arguments: "{}".to_string(),
                 call_id: "call-x".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::FunctionCallOutput {
@@ -1527,6 +1537,7 @@ fn normalize_adds_missing_output_for_custom_tool_call() {
         name: "custom".to_string(),
         namespace: None,
         input: "{}".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }];
     let mut h = create_history_with_items(items);
@@ -1543,6 +1554,7 @@ fn normalize_adds_missing_output_for_custom_tool_call() {
                 name: "custom".to_string(),
                 namespace: None,
                 input: "{}".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::CustomToolCallOutput {
@@ -1646,6 +1658,7 @@ fn normalize_mixed_inserts_and_removals() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "c1".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         // Orphan output that should be removed
@@ -1663,6 +1676,7 @@ fn normalize_mixed_inserts_and_removals() {
             name: "tool".to_string(),
             namespace: None,
             input: "{}".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         // Local shell call also gets an inserted function call output
@@ -1693,6 +1707,7 @@ fn normalize_mixed_inserts_and_removals() {
                 namespace: None,
                 arguments: "{}".to_string(),
                 call_id: "c1".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::FunctionCallOutput {
@@ -1708,6 +1723,7 @@ fn normalize_mixed_inserts_and_removals() {
                 name: "tool".to_string(),
                 namespace: None,
                 input: "{}".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::CustomToolCallOutput {
@@ -1748,6 +1764,7 @@ fn normalize_adds_missing_output_for_function_call_inserts_output() {
         namespace: None,
         arguments: "{}".to_string(),
         call_id: "call-x".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }];
     let mut h = create_history_with_items(items);
@@ -1761,6 +1778,7 @@ fn normalize_adds_missing_output_for_function_call_inserts_output() {
                 namespace: None,
                 arguments: "{}".to_string(),
                 call_id: "call-x".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::FunctionCallOutput {
@@ -1782,6 +1800,7 @@ fn for_prompt_assigns_stable_id_to_synthetic_output_without_reordering_history()
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "call-x".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::Message {
@@ -1864,6 +1883,7 @@ fn normalize_adds_missing_output_for_custom_tool_call_panics_in_debug() {
         name: "custom".to_string(),
         namespace: None,
         input: "{}".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }];
     let mut h = create_history_with_items(items);
@@ -1992,6 +2012,7 @@ fn normalize_mixed_inserts_and_removals_panics_in_debug() {
             namespace: None,
             arguments: "{}".to_string(),
             call_id: "c1".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCallOutput {
@@ -2007,6 +2028,7 @@ fn normalize_mixed_inserts_and_removals_panics_in_debug() {
             name: "tool".to_string(),
             namespace: None,
             input: "{}".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::LocalShellCall {

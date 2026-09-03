@@ -7,6 +7,7 @@ use xedoc_protocol::ResponseItemId;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::protocol::TokenUsage;
+use xedoc_protocol::provider_item_metadata::ProviderItemMetadata;
 
 use crate::GeminiThoughtSignatureStore;
 
@@ -155,6 +156,8 @@ impl GeminiStreamTranslator {
         };
         self.thought_signatures
             .remember(&call_id, &thought_signature);
+        let provider_metadata = (!thought_signature.is_empty())
+            .then_some(ProviderItemMetadata::Gemini { thought_signature });
 
         if name == "apply_patch" {
             let input = args
@@ -171,6 +174,7 @@ impl GeminiStreamTranslator {
                     name: name.clone(),
                     namespace: None,
                     input: String::new(),
+                    provider_metadata: None,
                     internal_chat_message_metadata_passthrough: None,
                 }),
                 ResponseEvent::ToolCallInputDelta {
@@ -185,6 +189,7 @@ impl GeminiStreamTranslator {
                     name,
                     namespace: None,
                     input,
+                    provider_metadata,
                     internal_chat_message_metadata_passthrough: None,
                 }),
             ]
@@ -197,6 +202,7 @@ impl GeminiStreamTranslator {
                     namespace: None,
                     arguments: String::new(),
                     call_id: call_id.clone(),
+                    provider_metadata: None,
                     internal_chat_message_metadata_passthrough: None,
                 }),
                 ResponseEvent::OutputItemDone(ResponseItem::FunctionCall {
@@ -205,6 +211,7 @@ impl GeminiStreamTranslator {
                     namespace: None,
                     arguments,
                     call_id,
+                    provider_metadata,
                     internal_chat_message_metadata_passthrough: None,
                 }),
             ]
