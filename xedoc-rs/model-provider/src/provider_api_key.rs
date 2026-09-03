@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use xedoc_login::AuthManager;
+use xedoc_login::ProviderCredentialStore;
 use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_protocol::error::Result;
 
