@@ -207,7 +207,7 @@ async fn forward_remote_app_server_message(
 }
 
 /// Starts a proxy that drops the first WebSocket client without a closing handshake, then drops
-/// the first replacement while restoring a thread before accepting the next replacement.
+/// two replacements while restoring a thread before accepting the third replacement.
 async fn start_reconnectable_app_server(
     config: &Config,
 ) -> Result<(
@@ -264,11 +264,11 @@ async fn start_reconnectable_app_server(
         }
         drop(first_websocket);
 
-        let (second_stream, _) = listener.accept().await?;
-        let mut second_websocket = accept_async(second_stream).await?;
-        let mut force_restore_disconnect = true;
+        let (replacement_stream, _) = listener.accept().await?;
+        let mut replacement_websocket = accept_async(replacement_stream).await?;
+        let mut remaining_restore_disconnects = 2;
         loop {
-            let Some(frame) = second_websocket.next().await else {
+            let Some(frame) = replacement_websocket.next().await else {
                 break;
             };
             let is_thread_resume = if let Ok(Message::Text(text)) = &frame {
@@ -284,15 +284,19 @@ async fn start_reconnectable_app_server(
             } else {
                 false
             };
-            if force_restore_disconnect && is_thread_resume {
-                force_restore_disconnect = false;
-                drop(second_websocket);
-                let (third_stream, _) = listener.accept().await?;
-                second_websocket = accept_async(third_stream).await?;
+            if remaining_restore_disconnects > 0 && is_thread_resume {
+                remaining_restore_disconnects -= 1;
+                request_sink
+                    .lock()
+                    .expect("request recorder lock")
+                    .push("thread/resume".to_string());
+                drop(replacement_websocket);
+                let (next_stream, _) = listener.accept().await?;
+                replacement_websocket = accept_async(next_stream).await?;
                 continue;
             }
             forward_remote_app_server_message(
-                &mut second_websocket,
+                &mut replacement_websocket,
                 &embedded,
                 &request_sink,
                 &xedoc_home,
@@ -494,7 +498,7 @@ supports_websockets = false
 }
 
 #[test]
-fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
+fn remote_app_server_reconnect_resumes_live_threads() -> Result<()> {
     const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
 
     std::thread::Builder::new()
@@ -538,7 +542,7 @@ fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
                 .await?;
                 let (mut app_server, endpoint, disconnect_tx, requests, proxy) =
                     start_reconnectable_app_server(&app.config).await?;
-                app.app_server_target = crate::AppServerTarget::LocalDaemon { endpoint };
+                app.app_server_target = crate::AppServerTarget::Remote { endpoint };
 
                 let started = app_server
                     .resume_thread(app.config.clone(), thread_id, app.resume_model_settings())
@@ -596,7 +600,7 @@ fn local_daemon_reconnect_resumes_live_threads() -> Result<()> {
                     .iter()
                     .filter(|method| method.as_str() == "thread/resume")
                     .count();
-                assert_eq!(resume_count, 2);
+                assert_eq!(resume_count, 4);
                 assert!(!app.chat_widget.is_task_running_for_test());
                 app_server.shutdown().await?;
                 proxy.await??;
