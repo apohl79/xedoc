@@ -111,11 +111,10 @@ impl OnboardingScreen {
         let cwd = config.cwd.to_path_buf();
         let forced_login_method = config.forced_login_method;
         let mut steps: Vec<Step> = Vec::new();
-        steps.push(Step::Welcome(WelcomeWidget::new(
-            !matches!(login_status, LoginStatus::NotAuthenticated),
-            tui.frame_requester(),
-            config.animations,
-        )));
+        steps.push(Step::Welcome(WelcomeWidget::new(!matches!(
+            login_status,
+            LoginStatus::NotAuthenticated
+        ))));
         if show_login_screen {
             let highlighted_mode = match forced_login_method {
                 Some(ForcedLoginMethod::Api) => SignInOption::ApiKey,
@@ -290,13 +289,6 @@ impl KeyboardHandler for OnboardingScreen {
             }
             self.is_done = true;
         } else {
-            if let Some(Step::Welcome(widget)) = self
-                .steps
-                .iter_mut()
-                .find(|step| matches!(step, Step::Welcome(_)))
-            {
-                widget.handle_key_event(key_event);
-            }
             if let Some(active_step) = self.current_steps_mut().into_iter().last() {
                 active_step.handle_key_event(key_event);
             }
@@ -349,7 +341,7 @@ impl WidgetRef for &OnboardingScreen {
         let suppress_animations = self.should_suppress_animations();
         for step in self.current_steps() {
             match step {
-                Step::Welcome(widget) => widget.set_animations_suppressed(suppress_animations),
+                Step::Welcome(_) => {}
                 Step::Auth(widget) => widget.set_animations_suppressed(suppress_animations),
                 Step::TrustDirectory(_) => {}
             }
@@ -398,9 +390,6 @@ impl WidgetRef for &OnboardingScreen {
             }
             let scratch_area = Rect::new(0, 0, width, max_h);
             let mut scratch = Buffer::empty(scratch_area);
-            if let Step::Welcome(widget) = step {
-                widget.update_layout_area(scratch_area);
-            }
             step.render_ref(scratch_area, &mut scratch);
             let h = used_rows(&scratch, width, max_h).min(max_h);
             if h > 0 {
@@ -422,7 +411,7 @@ impl WidgetRef for &OnboardingScreen {
 impl KeyboardHandler for Step {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match self {
-            Step::Welcome(widget) => widget.handle_key_event(key_event),
+            Step::Welcome(_) => {}
             Step::Auth(widget) => widget.handle_key_event(key_event),
             Step::TrustDirectory(widget) => widget.handle_key_event(key_event),
         }

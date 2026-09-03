@@ -163,6 +163,7 @@ assert_cmd = { workspace = true }
 assert_matches = { workspace = true }
 xedoc-image-generation-extension = { workspace = true }
 xedoc-home = { workspace = true }
+xedoc-keyring-store = { workspace = true }
 xedoc-otel = { workspace = true }
 xedoc-test-binary-support = { workspace = true }
 xedoc-utils-cargo-bin = { workspace = true }

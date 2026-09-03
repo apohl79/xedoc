@@ -44,8 +44,8 @@ impl ProviderCredentialStore {
         }
     }
 
-    #[cfg(test)]
-    fn new_with_keyring_store(
+    #[doc(hidden)]
+    pub fn new_with_keyring_store(
         xedoc_home: PathBuf,
         keyring_store: std::sync::Arc<dyn xedoc_keyring_store::KeyringStore>,
     ) -> Self {

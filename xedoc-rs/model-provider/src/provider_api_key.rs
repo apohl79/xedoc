@@ -2,7 +2,6 @@ use std::fmt;
 use std::sync::Arc;
 
 use xedoc_login::AuthManager;
-use xedoc_login::ProviderCredentialStore;
 use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_protocol::error::Result;
 
@@ -32,9 +31,7 @@ impl ProviderApiKeySource {
         provider_id: Option<String>,
         auth_manager: Option<&Arc<AuthManager>>,
     ) -> Self {
-        let credential_store = auth_manager.map(|auth_manager| {
-            ProviderCredentialStore::new(auth_manager.xedoc_home().to_path_buf())
-        });
+        let credential_store = auth_manager.map(|auth_manager| auth_manager.provider_credentials());
         Self {
             provider_id,
             credential_store,
