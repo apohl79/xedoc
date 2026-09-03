@@ -594,10 +594,13 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
                     }
                 }
                 queued_message = writer_rx.recv() => {
-                    let Some(queued_message) = queued_message else {
+                    let Some(mut queued_message) = queued_message else {
                         break;
                     };
-                    let outgoing_message = queued_message.message;
+                    let Some(outgoing_message) = queued_message.take_typed_message() else {
+                        warn!("dropping serialized message sent to in-process connection");
+                        continue;
+                    };
                     match outgoing_message {
                         OutgoingMessage::Response(response) => {
                             if let Some(response_tx) = pending_request_responses.remove(&response.id) {

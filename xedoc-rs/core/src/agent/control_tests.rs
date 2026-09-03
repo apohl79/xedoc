@@ -36,6 +36,7 @@ use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::MessagePhase;
 use xedoc_protocol::models::PermissionProfile;
 use xedoc_protocol::models::ResponseItem;
+use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::protocol::AskForApproval;
 use xedoc_protocol::protocol::CompactedItem;
 use xedoc_protocol::protocol::ErrorEvent;
@@ -643,17 +644,20 @@ async fn send_inter_agent_communication_without_turn_queues_message_without_trig
 }
 
 #[tokio::test]
-async fn ensure_v2_agent_loaded_reloads_registered_unloaded_agent() {
+async fn v2_communication_reloads_registered_unloaded_agent_and_preserves_status() {
     let (home, mut config) = test_config().await;
     let _ = config.features.enable(Feature::MultiAgentV2);
     let _ = config.features.enable(Feature::Sqlite);
     let harness = AgentControlHarness::new_with_config(home, config).await;
     let (parent_thread_id, _parent_thread) = harness.start_paginated_thread().await;
     let agent_path = AgentPath::try_from("/root/worker").expect("agent path");
+    let mut child_config = harness.config.clone();
+    child_config.model = Some("gpt-5.4".to_string());
+    child_config.model_reasoning_effort = Some(ReasoningEffort::Low);
     let spawned_agent = harness
         .control
         .spawn_agent_with_metadata(
-            harness.config.clone(),
+            child_config,
             text_input("hello child"),
             Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
                 parent_thread_id,
@@ -705,17 +709,14 @@ async fn ensure_v2_agent_loaded_reloads_registered_unloaded_agent() {
         Err(err) => panic!("expected ThreadNotFound, got {err:?}"),
         Ok(_) => panic!("expected thread to be removed"),
     }
-
-    harness
-        .control
-        .ensure_v2_agent_loaded(harness.config.clone(), spawned_agent.thread_id)
-        .await
-        .expect("known v2 agent should reload");
-    let _ = harness
-        .manager
-        .get_thread(spawned_agent.thread_id)
-        .await
-        .expect("reloaded child thread should exist");
+    harness.control.state.update_last_status(
+        spawned_agent.thread_id,
+        AgentStatus::Completed(Some("child persisted".to_string())),
+    );
+    assert_eq!(
+        harness.control.get_status(spawned_agent.thread_id).await,
+        AgentStatus::Completed(Some("child persisted".to_string()))
+    );
 
     let communication = InterAgentCommunication::new(
         AgentPath::root(),
@@ -724,15 +725,34 @@ async fn ensure_v2_agent_loaded_reloads_registered_unloaded_agent() {
         "hello after reload".to_string(),
         /*trigger_turn*/ false,
     );
+    let mut sender_config = harness.config.clone();
+    sender_config.model = Some("gpt-5.2".to_string());
+    sender_config.model_reasoning_effort = Some(ReasoningEffort::High);
     harness
         .control
-        .send_inter_agent_communication(
+        .send_v2_inter_agent_communication(
+            sender_config,
             spawned_agent.thread_id,
             communication.clone(),
             AgentCommunicationContext::new(AgentCommunicationKind::Message, ThreadId::new()),
         )
         .await
-        .expect("send_inter_agent_communication should succeed after reload");
+        .expect("v2 communication should reload the known agent");
+    let _ = harness
+        .manager
+        .get_thread(spawned_agent.thread_id)
+        .await
+        .expect("reloaded child thread should exist");
+    let reloaded_config = harness
+        .control
+        .get_agent_config_snapshot(spawned_agent.thread_id)
+        .await
+        .expect("reloaded child config should be available");
+    assert_eq!(
+        (reloaded_config.model, reloaded_config.reasoning_effort),
+        ("gpt-5.4".to_string(), Some(ReasoningEffort::Low))
+    );
+
     let expected = (
         spawned_agent.thread_id,
         Op::InterAgentCommunication { communication },
@@ -1088,21 +1108,23 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
         .session
         .record_conversation_items(
             turn_context.as_ref(),
-            &[spawn_agent_call(&parent_spawn_call_id)],
+            &[
+                ResponseItem::Message {
+                    id: None,
+                    role: "developer".to_string(),
+                    content: vec![ContentItem::InputText {
+                        text: "id-less inherited context".to_string(),
+                    }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                spawn_agent_call(&parent_spawn_call_id),
+            ],
         )
         .await;
     parent_thread
         .session
         .persist_rollout_items(&[
-            RolloutItem::ResponseItem(ResponseItem::Message {
-                id: None,
-                role: "developer".to_string(),
-                content: vec![ContentItem::InputText {
-                    text: "id-less inherited context".to_string(),
-                }],
-                phase: None,
-                internal_chat_message_metadata_passthrough: None,
-            }),
             RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
                 thread_id: parent_thread_id,
                 turn_id: "parent-turn".to_string(),
@@ -1332,6 +1354,19 @@ async fn spawn_agent_numeric_fork_from_compacted_paginated_parent_clamps_to_prov
             RolloutItem::ResponseItem(spawn_agent_call(&parent_spawn_call_id)),
         ])
         .await;
+    parent_thread.session.ensure_rollout_materialized().await;
+    parent_thread
+        .session
+        .flush_rollout()
+        .await
+        .expect("parent rollout should flush");
+    assert!(
+        harness
+            .manager
+            .remove_thread(&parent_thread_id)
+            .await
+            .is_some()
+    );
 
     let clamped_child_thread_id = harness
         .spawn_anonymous_child(
@@ -1450,6 +1485,14 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         )
         .await;
     let parent_reference_context_item = turn_context.to_turn_context_item();
+    parent_thread
+        .session
+        .restore_live_fork_hydration(crate::session::LiveForkHydration {
+            reference_context_item: Some(parent_reference_context_item.clone()),
+            world_state_baseline: None,
+            token_info: None,
+        })
+        .await;
     parent_thread
         .session
         .persist_rollout_items(&[RolloutItem::TurnContext(
@@ -1637,25 +1680,28 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
     ];
     parent_thread
         .session
-        .persist_rollout_items(&[
-            RolloutItem::Compacted(CompactedItem {
+        .replace_compacted_history(
+            turn_context.as_ref(),
+            replacement_history,
+            Some(turn_context.to_turn_context_item()),
+            /*world_state_baseline*/ None,
+            CompactedItem {
                 message: String::new(),
-                replacement_history: Some(replacement_history),
+                replacement_history: None,
                 window_number: None,
                 first_window_id: None,
                 previous_window_id: None,
                 window_id: None,
-            }),
-            RolloutItem::TurnContext(turn_context.to_turn_context_item()),
-            RolloutItem::ResponseItem(spawn_agent_call(&parent_spawn_call_id)),
-        ])
+            },
+        )
         .await;
-    parent_thread.session.ensure_rollout_materialized().await;
     parent_thread
         .session
-        .flush_rollout()
-        .await
-        .expect("parent rollout should flush");
+        .record_conversation_items(
+            turn_context.as_ref(),
+            &[spawn_agent_call(&parent_spawn_call_id)],
+        )
+        .await;
 
     let child_thread_id = harness
         .control
@@ -1710,8 +1756,10 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
 }
 
 #[tokio::test]
-async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
-    let harness = AgentControlHarness::new().await;
+async fn spawn_agent_fork_uses_live_ephemeral_parent_history() {
+    let (home, mut config) = test_config().await;
+    config.ephemeral = true;
+    let harness = AgentControlHarness::new_with_config(home, config).await;
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
     let turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-unflushed".to_string();
@@ -1745,7 +1793,7 @@ async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
             },
         )
         .await
-        .expect("forked spawn should flush parent rollout before loading history")
+        .expect("forked spawn should use the live parent history")
         .thread_id;
 
     let child_thread = harness
@@ -1756,7 +1804,7 @@ async fn spawn_agent_fork_flushes_parent_rollout_before_loading_history() {
     let history = child_thread.session.clone_history().await;
     assert!(
         history_contains_text(history.raw_items(), "unflushed final answer"),
-        "forked child history should include unflushed assistant final answers after flushing the parent rollout"
+        "forked child history should include an unpersisted assistant final answer"
     );
 
     let _ = harness
@@ -2491,6 +2539,147 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
         )
     ));
     assert!(!has_subagent_notification(&root_history_items));
+}
+
+#[tokio::test]
+async fn multi_agent_v2_completion_reloads_auto_unloaded_direct_parent() {
+    let (home, mut config) = test_config().await;
+    let _ = config.features.enable(Feature::MultiAgentV2);
+    let _ = config.features.enable(Feature::Sqlite);
+    let harness = AgentControlHarness::new_with_config(home, config).await;
+    let (root_thread_id, root_thread) = harness.start_paginated_thread().await;
+    let control = root_thread.session.services.agent_control.clone();
+    let worker_path = AgentPath::root().join("worker").expect("worker path");
+    let worker = control
+        .spawn_agent_with_metadata(
+            harness.config.clone(),
+            text_input("worker task"),
+            Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id: root_thread_id,
+                depth: 1,
+                agent_path: Some(worker_path.clone()),
+                agent_nickname: None,
+                agent_role: None,
+            })),
+            SpawnAgentOptions {
+                parent_thread_id: Some(root_thread_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("worker spawn should succeed");
+    let tester_path = worker_path.join("tester").expect("tester path");
+    let tester = control
+        .spawn_agent_with_metadata(
+            harness.config.clone(),
+            text_input("tester task"),
+            Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id: worker.thread_id,
+                depth: 2,
+                agent_path: Some(tester_path.clone()),
+                agent_nickname: None,
+                agent_role: None,
+            })),
+            SpawnAgentOptions {
+                parent_thread_id: Some(worker.thread_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("tester spawn should succeed");
+    let worker_thread = harness
+        .manager
+        .get_thread(worker.thread_id)
+        .await
+        .expect("worker thread should exist");
+    let tester_thread = harness
+        .manager
+        .get_thread(tester.thread_id)
+        .await
+        .expect("tester thread should exist");
+
+    let worker_turn = worker_thread.session.new_default_turn().await;
+    worker_thread
+        .session
+        .send_event(
+            worker_turn.as_ref(),
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: worker_turn.sub_id.clone(),
+                started_at: None,
+                last_agent_message: Some("worker done".to_string()),
+                error: None,
+                completed_at: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+            }),
+        )
+        .await;
+    control.schedule_terminal_v2_unload(
+        worker.thread_id,
+        AgentStatus::Completed(Some("worker done".to_string())),
+    );
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if harness.manager.get_thread(worker.thread_id).await.is_err() {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("completed worker should unload");
+
+    let tester_turn = tester_thread.session.new_default_turn().await;
+    tester_thread
+        .session
+        .send_event(
+            tester_turn.as_ref(),
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: tester_turn.sub_id.clone(),
+                started_at: None,
+                last_agent_message: Some("tester done".to_string()),
+                error: None,
+                completed_at: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+            }),
+        )
+        .await;
+
+    let expected_message = crate::session_prefix::format_inter_agent_completion_message(
+        worker_path.clone(),
+        tester_path.clone(),
+        &AgentStatus::Completed(Some("tester done".to_string())),
+    )
+    .expect("completed status should render");
+    let expected = (
+        worker.thread_id,
+        Op::InterAgentCommunication {
+            communication: InterAgentCommunication::new(
+                tester_path,
+                worker_path,
+                Vec::new(),
+                expected_message,
+                /*trigger_turn*/ false,
+            ),
+        },
+    );
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if harness
+                .manager
+                .captured_ops()
+                .into_iter()
+                .any(|entry| entry == expected)
+            {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("tester completion should reload and notify its direct parent");
+    assert!(harness.manager.get_thread(worker.thread_id).await.is_ok());
 }
 
 #[tokio::test]

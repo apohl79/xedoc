@@ -25,6 +25,22 @@ struct ThreadListFilters {
     relation_filter: Option<StoreThreadRelationFilter>,
 }
 
+async fn inherited_listener_subscription(
+    thread_state_manager: &ThreadStateManager,
+    parent_thread_id: ThreadId,
+) -> (Vec<ConnectionId>, bool) {
+    let connection_ids = thread_state_manager
+        .subscribed_connection_ids(parent_thread_id)
+        .await;
+    let raw_events_enabled = thread_state_manager
+        .thread_state(parent_thread_id)
+        .await
+        .lock()
+        .await
+        .experimental_raw_events;
+    (connection_ids, raw_events_enabled)
+}
+
 fn collect_resume_override_mismatches(
     request: &ThreadResumeParams,
     config_snapshot: &ThreadConfigSnapshot,
@@ -2891,11 +2907,12 @@ impl ThreadRequestProcessor {
         self.thread_watch_manager.subscribe_running_turn_count()
     }
 
-    /// Best-effort: ensure initialized connections are subscribed to this thread.
+    /// Best-effort: subscribe roots on initialized connections and children on their parent's
+    /// subscribed connections.
     pub(crate) async fn try_attach_thread_listener(
         &self,
         thread_id: ThreadId,
-        connection_ids: Vec<ConnectionId>,
+        mut connection_ids: Vec<ConnectionId>,
     ) {
         let mut raw_events_enabled = false;
         if let Ok(thread) = self.thread_manager.get_thread(thread_id).await {
@@ -2904,13 +2921,9 @@ impl ThreadRequestProcessor {
                 .upsert_thread(&thread_id.to_string())
                 .await;
             if let Some(parent_thread_id) = config_snapshot.parent_thread_id {
-                raw_events_enabled = self
-                    .thread_state_manager
-                    .thread_state(parent_thread_id)
-                    .await
-                    .lock()
-                    .await
-                    .experimental_raw_events;
+                (connection_ids, raw_events_enabled) =
+                    inherited_listener_subscription(&self.thread_state_manager, parent_thread_id)
+                        .await;
             }
         }
 

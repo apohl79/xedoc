@@ -138,6 +138,8 @@ pub(crate) struct AgentControl {
     rollout_budget: Arc<RolloutBudget>,
     /// Bounded raw activity retained for direct children until their parent summarizes it.
     sub_agent_activity: Arc<Mutex<SubAgentActivityRegistry>>,
+    v2_agent_io_locks: Arc<Mutex<HashMap<ThreadId, Arc<tokio::sync::Mutex<()>>>>>,
+    v2_agent_io_generations: Arc<Mutex<HashMap<ThreadId, u64>>>,
 }
 
 impl AgentControl {
@@ -504,6 +506,71 @@ impl AgentControl {
             .await
     }
 
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "the per-agent I/O lock serializes reload and communication for this lifecycle operation"
+    )]
+    pub(crate) fn send_v2_inter_agent_communication(
+        &self,
+        config: Config,
+        agent_id: ThreadId,
+        communication: InterAgentCommunication,
+        context: AgentCommunicationContext,
+    ) -> futures::future::BoxFuture<'static, XedocResult<String>> {
+        let control = self.clone();
+        Box::pin(async move {
+            let io_lock = control.v2_agent_io_lock(agent_id);
+            let _guard = io_lock.lock().await;
+            control
+                .ensure_v2_agent_loaded_locked(config, agent_id)
+                .await?;
+            let activity_tracking_parent_thread_id = if communication.trigger_turn {
+                let activity_source = control.get_agent_config_snapshot(agent_id).await;
+                let activity_source =
+                    activity_source.and_then(|snapshot| match snapshot.session_source {
+                        SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                            parent_thread_id,
+                            agent_path: Some(agent_path),
+                            ..
+                        }) => Some((parent_thread_id, agent_path)),
+                        _ => None,
+                    });
+                if let Some((parent_thread_id, agent_path)) = activity_source {
+                    control
+                        .start_sub_agent_activity_tracking(parent_thread_id, agent_id, agent_path)
+                        .await;
+                    Some(parent_thread_id)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let state = control.upgrade()?;
+            control.bump_v2_agent_io_generation(agent_id);
+            let result = async {
+                control
+                    .ensure_execution_capacity_for_turn_start(agent_id, communication.trigger_turn)
+                    .await?;
+                control
+                    .send_inter_agent_communication_after_capacity_check(
+                        agent_id,
+                        &state,
+                        communication,
+                        context,
+                    )
+                    .await
+            }
+            .await;
+            if result.is_err()
+                && let Some(parent_thread_id) = activity_tracking_parent_thread_id
+            {
+                control.stop_sub_agent_activity_tracking(parent_thread_id, agent_id);
+            }
+            result
+        })
+    }
+
     async fn submit_inter_agent_communication(
         &self,
         agent_id: ThreadId,
@@ -575,10 +642,14 @@ impl AgentControl {
             // No agent available if upgrade fails.
             return AgentStatus::NotFound;
         };
-        let Ok(thread) = state.get_thread(agent_id).await else {
-            return AgentStatus::NotFound;
-        };
-        thread.agent_status().await
+        match state.get_thread(agent_id).await {
+            Ok(thread) => thread.agent_status().await,
+            Err(_) => self
+                .state
+                .agent_metadata_for_thread(agent_id)
+                .and_then(|metadata| metadata.last_status)
+                .unwrap_or(AgentStatus::NotFound),
+        }
     }
 
     pub(crate) fn register_session_root(
@@ -732,23 +803,57 @@ impl AgentControl {
                 continue;
             }
 
-            let Ok(thread) = state.get_thread(thread_id).await else {
-                continue;
-            };
             let agent_name = metadata
                 .agent_path
                 .as_ref()
                 .map(ToString::to_string)
                 .unwrap_or_else(|| thread_id.to_string());
             let last_task_message = metadata.last_task_message.clone();
+            let agent_status = match state.get_thread(thread_id).await {
+                Ok(thread) => thread.agent_status().await,
+                Err(_) => match metadata.last_status {
+                    Some(status) => status,
+                    None => continue,
+                },
+            };
             agents.push(ListedAgent {
                 agent_name,
-                agent_status: thread.agent_status().await,
+                agent_status,
                 last_task_message,
             });
         }
 
         Ok(agents)
+    }
+
+    fn v2_agent_io_lock(&self, thread_id: ThreadId) -> Arc<tokio::sync::Mutex<()>> {
+        let mut locks = self
+            .v2_agent_io_locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Arc::clone(
+            locks
+                .entry(thread_id)
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+        )
+    }
+
+    fn v2_agent_io_generation(&self, thread_id: ThreadId) -> u64 {
+        self.v2_agent_io_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&thread_id)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn bump_v2_agent_io_generation(&self, thread_id: ThreadId) {
+        let mut generations = self
+            .v2_agent_io_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let generation = generations.entry(thread_id).or_default();
+        *generation = generation.saturating_add(1);
     }
 
     /// Starts a detached watcher for sub-agents spawned from another thread.
@@ -863,6 +968,7 @@ impl AgentControl {
             agent_nickname,
             agent_role,
             last_task_message: None,
+            last_status: None,
         })
     }
 

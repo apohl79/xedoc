@@ -29,6 +29,12 @@ fn app_server_notification(notification: ServerNotification) -> OutgoingMessage 
     })
 }
 
+fn typed_message(message: QueuedOutgoingMessage) -> OutgoingMessage {
+    message
+        .into_typed_message()
+        .expect("in-process messages should remain typed")
+}
+
 #[tokio::test]
 async fn to_connection_notification_respects_opt_out_filters() {
     let connection_id = ConnectionId(7);
@@ -151,7 +157,7 @@ async fn to_connection_notifications_are_preserved_for_non_opted_out_clients() {
         .await
         .expect("notification should reach non-opted-out clients");
     assert!(matches!(
-        message.message,
+        typed_message(message),
         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
             ..
@@ -224,7 +230,7 @@ async fn experimental_notifications_are_preserved_with_capability() {
         .await
         .expect("experimental notification should reach opted-in client");
     assert!(matches!(
-        message.message,
+        typed_message(message),
         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
             notification: ServerNotification::TurnModerationMetadata(_),
             ..
@@ -294,7 +300,7 @@ async fn command_execution_request_approval_strips_additional_permissions_withou
         .recv()
         .await
         .expect("request should be delivered to the connection");
-    let json = serde_json::to_value(message.message).expect("request should serialize");
+    let json = serde_json::to_value(typed_message(message)).expect("request should serialize");
     assert_eq!(json["params"].get("additionalPermissions"), None);
 }
 
@@ -360,7 +366,7 @@ async fn command_execution_request_approval_keeps_additional_permissions_with_ca
         .recv()
         .await
         .expect("request should be delivered to the connection");
-    let json = serde_json::to_value(message.message).expect("request should serialize");
+    let json = serde_json::to_value(typed_message(message)).expect("request should serialize");
     let allowed_path = absolute_path("/tmp/allowed").to_string_lossy().into_owned();
     assert_eq!(
         json["params"]["additionalPermissions"],
@@ -444,7 +450,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
         .try_recv()
         .expect("fast connection should receive the broadcast notification");
     assert!(matches!(
-        fast_message.message,
+        typed_message(fast_message),
         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
             ..
@@ -455,7 +461,7 @@ async fn broadcast_does_not_block_on_slow_connection() {
         .try_recv()
         .expect("slow connection should retain its original buffered message");
     assert!(matches!(
-        slow_message.message,
+        typed_message(slow_message),
         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
             ..
@@ -520,7 +526,7 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
         .expect("routing task should succeed");
 
     assert!(matches!(
-        first.message,
+        typed_message(first),
         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
             ..
@@ -530,10 +536,128 @@ async fn to_connection_stdio_waits_instead_of_disconnecting_when_writer_queue_is
         .try_recv()
         .expect("second notification should be delivered once the queue has room");
     assert!(matches!(
-        second.message,
+        typed_message(second),
         OutgoingMessage::AppServerNotification(ServerNotificationEnvelope {
             notification: ServerNotification::ConfigWarning(ConfigWarningNotification { summary, .. }),
             ..
         }) if summary == "second"
     ));
+}
+
+#[tokio::test]
+async fn websocket_disconnects_when_outbound_byte_budget_is_full() {
+    let connection_id = ConnectionId(4);
+    let (writer_tx, mut writer_rx) = mpsc::channel(1);
+    let disconnect_token = CancellationToken::new();
+    let connection = OutboundConnectionState::new_with_origin(
+        ConnectionOrigin::WebSocket,
+        writer_tx,
+        Arc::new(AtomicBool::new(true)),
+        Arc::new(AtomicBool::new(true)),
+        Arc::new(RwLock::new(HashSet::new())),
+        Some(disconnect_token.clone()),
+    );
+    let byte_budget = Arc::clone(&connection.byte_budget);
+    let _budget_guard = byte_budget
+        .try_acquire_many_owned(OUTBOUND_QUEUE_BYTE_CAPACITY as u32)
+        .expect("test should reserve the full byte budget");
+    let mut connections = HashMap::from([(connection_id, connection)]);
+
+    route_outgoing_envelope(
+        &mut connections,
+        OutgoingEnvelope::ToConnection {
+            connection_id,
+            message: app_server_notification(ServerNotification::ConfigWarning(
+                ConfigWarningNotification {
+                    summary: "over-budget".to_string(),
+                    details: None,
+                    path: None,
+                    range: None,
+                },
+            )),
+            write_complete_tx: None,
+        },
+    )
+    .await;
+
+    assert!(!connections.contains_key(&connection_id));
+    assert!(disconnect_token.is_cancelled());
+    assert!(writer_rx.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn websocket_queue_does_not_retain_typed_message_after_serialization() {
+    let connection_id = ConnectionId(5);
+    let (writer_tx, mut writer_rx) = mpsc::channel(1);
+    let disconnect_token = CancellationToken::new();
+    let mut connections = HashMap::from([(
+        connection_id,
+        OutboundConnectionState::new_with_origin(
+            ConnectionOrigin::WebSocket,
+            writer_tx,
+            Arc::new(AtomicBool::new(true)),
+            Arc::new(AtomicBool::new(true)),
+            Arc::new(RwLock::new(HashSet::new())),
+            Some(disconnect_token),
+        ),
+    )]);
+
+    route_outgoing_envelope(
+        &mut connections,
+        OutgoingEnvelope::ToConnection {
+            connection_id,
+            message: app_server_notification(ServerNotification::ConfigWarning(
+                ConfigWarningNotification {
+                    summary: "serialized-only".to_string(),
+                    details: None,
+                    path: None,
+                    range: None,
+                },
+            )),
+            write_complete_tx: None,
+        },
+    )
+    .await;
+
+    let queued_message = writer_rx.recv().await.expect("message should be queued");
+    assert!(queued_message.into_typed_message().is_none());
+}
+
+#[tokio::test]
+async fn websocket_disconnects_when_one_message_exceeds_outbound_byte_budget() {
+    let connection_id = ConnectionId(6);
+    let (writer_tx, mut writer_rx) = mpsc::channel(1);
+    let disconnect_token = CancellationToken::new();
+    let mut connections = HashMap::from([(
+        connection_id,
+        OutboundConnectionState::new_with_origin(
+            ConnectionOrigin::WebSocket,
+            writer_tx,
+            Arc::new(AtomicBool::new(true)),
+            Arc::new(AtomicBool::new(true)),
+            Arc::new(RwLock::new(HashSet::new())),
+            Some(disconnect_token.clone()),
+        ),
+    )]);
+
+    route_outgoing_envelope(
+        &mut connections,
+        OutgoingEnvelope::ToConnection {
+            connection_id,
+            message: app_server_notification(ServerNotification::ConfigWarning(
+                ConfigWarningNotification {
+                    summary: "x".repeat(OUTBOUND_QUEUE_BYTE_CAPACITY),
+                    details: None,
+                    path: None,
+                    range: None,
+                },
+            )),
+            write_complete_tx: None,
+        },
+    )
+    .await;
+
+    assert!(!connections.contains_key(&connection_id));
+    assert!(disconnect_token.is_cancelled());
+    assert!(writer_rx.try_recv().is_err());
 }

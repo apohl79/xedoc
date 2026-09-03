@@ -1,6 +1,7 @@
 use super::CHANNEL_CAPACITY;
 use super::ConnectionOrigin;
 use super::TransportEvent;
+use super::allocator_pressure::release_after_large_write;
 use super::forward_incoming_message;
 use super::next_connection_id;
 use super::serialize_outgoing_message;
@@ -13,6 +14,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -24,12 +26,13 @@ pub async fn start_stdio_connection(
     let connection_id = next_connection_id();
     let (writer_tx, mut writer_rx) = mpsc::channel::<QueuedOutgoingMessage>(CHANNEL_CAPACITY);
     let writer_tx_for_reader = writer_tx.clone();
+    let disconnect_token = CancellationToken::new();
     transport_event_tx
         .send(TransportEvent::ConnectionOpened {
             connection_id,
             origin: ConnectionOrigin::Stdio,
             writer: writer_tx,
-            disconnect_sender: None,
+            disconnect_sender: Some(disconnect_token.clone()),
         })
         .await
         .map_err(|_| std::io::Error::new(ErrorKind::BrokenPipe, "processor unavailable"))?;
@@ -41,7 +44,11 @@ pub async fn start_stdio_connection(
         let mut lines = reader.lines();
 
         loop {
-            match lines.next_line().await {
+            let next_line = tokio::select! {
+                _ = disconnect_token.cancelled() => break,
+                next_line = lines.next_line() => next_line,
+            };
+            match next_line {
                 Ok(Some(line)) => {
                     if !forward_incoming_message(
                         &transport_event_tx_for_reader,
@@ -70,18 +77,26 @@ pub async fn start_stdio_connection(
 
     stdio_handles.push(tokio::spawn(async move {
         let mut stdout = io::stdout();
-        while let Some(queued_message) = writer_rx.recv().await {
-            let Some(mut json) = serialize_outgoing_message(queued_message.message) else {
+        while let Some(mut queued_message) = writer_rx.recv().await {
+            let Some(mut json) = queued_message.take_serialized_json().or_else(|| {
+                queued_message
+                    .typed_message()
+                    .and_then(serialize_outgoing_message)
+            }) else {
                 continue;
             };
+            let serialized_bytes = json.len();
             json.push('\n');
             if let Err(err) = stdout.write_all(json.as_bytes()).await {
                 error!("Failed to write to stdout: {err}");
                 break;
             }
-            if let Some(write_complete_tx) = queued_message.write_complete_tx {
+            if let Some(write_complete_tx) = queued_message.write_complete_tx.take() {
                 let _ = write_complete_tx.send(());
             }
+            drop(json);
+            drop(queued_message);
+            release_after_large_write(serialized_bytes);
         }
         info!("stdout writer exited (channel closed)");
     }));

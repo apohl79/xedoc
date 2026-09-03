@@ -1,6 +1,7 @@
 use std::fmt;
 
 use serde::Serialize;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::oneshot;
 use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::RequestId;
@@ -44,15 +45,66 @@ pub struct OutgoingError {
 
 #[derive(Debug)]
 pub struct QueuedOutgoingMessage {
-    pub message: OutgoingMessage,
     pub write_complete_tx: Option<oneshot::Sender<()>>,
+    payload: Option<QueuedOutgoingPayload>,
+    _byte_permit: Option<OwnedSemaphorePermit>,
+}
+
+#[derive(Debug)]
+enum QueuedOutgoingPayload {
+    Typed(Box<OutgoingMessage>),
+    Serialized(String),
 }
 
 impl QueuedOutgoingMessage {
     pub fn new(message: OutgoingMessage) -> Self {
         Self {
-            message,
             write_complete_tx: None,
+            payload: Some(QueuedOutgoingPayload::Typed(Box::new(message))),
+            _byte_permit: None,
+        }
+    }
+
+    pub fn serialized(
+        serialized_json: String,
+        byte_permit: OwnedSemaphorePermit,
+        write_complete_tx: Option<oneshot::Sender<()>>,
+    ) -> Self {
+        Self {
+            write_complete_tx,
+            payload: Some(QueuedOutgoingPayload::Serialized(serialized_json)),
+            _byte_permit: Some(byte_permit),
+        }
+    }
+
+    pub fn into_typed_message(mut self) -> Option<OutgoingMessage> {
+        self.take_typed_message()
+    }
+
+    pub fn take_typed_message(&mut self) -> Option<OutgoingMessage> {
+        match self.payload.take()? {
+            QueuedOutgoingPayload::Typed(message) => Some(*message),
+            serialized @ QueuedOutgoingPayload::Serialized(_) => {
+                self.payload = Some(serialized);
+                None
+            }
+        }
+    }
+
+    pub(crate) fn typed_message(&self) -> Option<&OutgoingMessage> {
+        match self.payload.as_ref()? {
+            QueuedOutgoingPayload::Typed(message) => Some(message.as_ref()),
+            QueuedOutgoingPayload::Serialized(_) => None,
+        }
+    }
+
+    pub(crate) fn take_serialized_json(&mut self) -> Option<String> {
+        match self.payload.take()? {
+            QueuedOutgoingPayload::Serialized(serialized_json) => Some(serialized_json),
+            typed @ QueuedOutgoingPayload::Typed(_) => {
+                self.payload = Some(typed);
+                None
+            }
         }
     }
 }

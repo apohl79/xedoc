@@ -14,7 +14,7 @@ use xedoc_protocol::protocol::MultiAgentVersion;
 use xedoc_protocol::protocol::SessionSource;
 
 #[derive(Default)]
-pub(super) struct V2Residency {
+pub(crate) struct V2Residency {
     state: Mutex<V2ResidencyState>,
 }
 
@@ -51,11 +51,12 @@ impl AgentControl {
         config: &Config,
         protected_thread_id: Option<ThreadId>,
     ) -> XedocResult<V2ResidencySlot> {
-        let capacity = config
-            .effective_agent_max_threads(MultiAgentVersion::V2)
-            .unwrap_or(usize::MAX);
         Arc::clone(&self.v2_residency)
-            .reserve_slot(state, capacity, protected_thread_id)
+            .reserve_slot(
+                state,
+                config.multi_agent_v2.max_loaded_threads_per_session,
+                protected_thread_id,
+            )
             .await
     }
 
@@ -73,6 +74,66 @@ impl AgentControl {
 
     pub(super) fn forget_v2_residency(&self, thread_id: ThreadId) {
         self.v2_residency.remove(thread_id);
+    }
+
+    pub(crate) fn schedule_terminal_v2_unload(&self, thread_id: ThreadId, status: AgentStatus) {
+        self.state.update_last_status(thread_id, status);
+        let expected_io_generation = self.v2_agent_io_generation(thread_id);
+        let control = self.clone();
+        tokio::spawn(async move {
+            let Ok(state) = control.upgrade() else {
+                return;
+            };
+            if !control
+                .try_unload_v2_agent(&state, thread_id, Some(expected_io_generation))
+                .await
+            {
+                control.touch_loaded_v2_residency(&state, thread_id).await;
+            }
+        });
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "the per-agent I/O lock serializes the complete unload lifecycle operation"
+    )]
+    async fn try_unload_v2_agent(
+        &self,
+        manager: &Arc<ThreadManagerState>,
+        thread_id: ThreadId,
+        expected_io_generation: Option<u64>,
+    ) -> bool {
+        let io_lock = self.v2_agent_io_lock(thread_id);
+        let _guard = io_lock.lock().await;
+        if expected_io_generation
+            .is_some_and(|expected| self.v2_agent_io_generation(thread_id) != expected)
+        {
+            return false;
+        }
+        let Some(thread) = manager
+            .get_thread(thread_id)
+            .await
+            .ok()
+            .filter(|thread| is_resident_candidate(thread))
+        else {
+            return false;
+        };
+        if !is_unloadable(thread.as_ref()).await {
+            return false;
+        }
+        self.state
+            .update_last_status(thread_id, thread.agent_status().await);
+        thread.ensure_rollout_materialized().await;
+        if let Err(err) = thread.shutdown_and_wait().await {
+            warn!("failed to shut down v2 resident thread before unloading {thread_id}: {err}");
+            return false;
+        }
+        let _ = manager.remove_thread(&thread_id).await;
+        self.forget_v2_residency(thread_id);
+        thread.session.release_resident_memory().await;
+        drop(thread);
+        release_unused_allocator_memory();
+        true
     }
 }
 
@@ -123,27 +184,24 @@ impl V2Residency {
             let Some(candidate_thread_id) = self.pop_lru_candidate(protected_thread_id) else {
                 return false;
             };
-            let Some(candidate_thread) = manager
+            let Some(candidate_control) = manager
                 .get_thread(candidate_thread_id)
                 .await
                 .ok()
                 .filter(|thread| is_resident_candidate(thread))
+                .map(|thread| thread.session.services.agent_control.clone())
             else {
-                continue;
+                return true;
             };
-            if !is_unloadable(candidate_thread.as_ref()).await {
+            let expected_io_generation =
+                candidate_control.v2_agent_io_generation(candidate_thread_id);
+            if !candidate_control
+                .try_unload_v2_agent(manager, candidate_thread_id, Some(expected_io_generation))
+                .await
+            {
                 self.touch(candidate_thread_id);
                 continue;
             }
-            candidate_thread.ensure_rollout_materialized().await;
-            if let Err(err) = candidate_thread.shutdown_and_wait().await {
-                warn!(
-                    "failed to shut down v2 resident thread before unloading {candidate_thread_id}: {err}"
-                );
-                self.touch(candidate_thread_id);
-                continue;
-            }
-            let _ = manager.remove_thread(&candidate_thread_id).await;
             return true;
         }
         false
@@ -229,6 +287,22 @@ async fn is_unloadable(thread: &XedocThread) -> bool {
     ) && thread.session.active_turn.lock().await.is_none()
         && !thread.session.input_queue.has_pending_mailbox_items().await
 }
+
+#[cfg(target_os = "macos")]
+fn release_unused_allocator_memory() {
+    unsafe extern "C" {
+        fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
+    }
+
+    // SAFETY: A null zone asks the system allocator to inspect every registered zone. A zero
+    // goal is the documented request to release as many unused pages as practical.
+    unsafe {
+        malloc_zone_pressure_relief(/*zone*/ std::ptr::null_mut(), /*goal*/ 0);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn release_unused_allocator_memory() {}
 
 #[cfg(test)]
 #[path = "residency_tests.rs"]

@@ -1384,6 +1384,29 @@ mod thread_processor_behavior_tests {
     }
 
     #[tokio::test]
+    async fn child_listener_inherits_only_parent_subscribers() -> Result<()> {
+        let manager = ThreadStateManager::new();
+        let parent_thread_id = ThreadId::from_string("ad7f0408-99b8-4f6e-a46f-bd0eec433370")?;
+        let parent_connection = ConnectionId(1);
+        let unrelated_connection = ConnectionId(2);
+        manager.connection_initialized(parent_connection).await;
+        manager.connection_initialized(unrelated_connection).await;
+        manager
+            .try_ensure_connection_subscribed(
+                parent_thread_id,
+                parent_connection,
+                /*experimental_raw_events*/ true,
+            )
+            .await
+            .expect("parent connection should be live");
+
+        let actual = inherited_listener_subscription(&manager, parent_thread_id).await;
+
+        assert_eq!(actual, (vec![parent_connection], true));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn removing_auto_attached_connection_preserves_listener_for_other_connections()
     -> Result<()> {
         let manager = ThreadStateManager::new();

@@ -348,3 +348,27 @@ fn committed_agent_path_is_indexed_until_release() {
         None
     );
 }
+
+#[test]
+fn update_last_status_preserves_terminal_state_for_registered_agent() {
+    let registry = Arc::new(AgentRegistry::default());
+    let thread_id = ThreadId::new();
+    let reservation = registry
+        .reserve_spawn_slot(/*max_threads*/ None)
+        .expect("reserve slot");
+    reservation.commit(agent_metadata(thread_id));
+
+    registry.update_last_status(
+        thread_id,
+        AgentStatus::Completed(Some("finished".to_string())),
+    );
+
+    assert_eq!(
+        registry.agent_metadata_for_thread(thread_id),
+        Some(AgentMetadata {
+            agent_id: Some(thread_id),
+            last_status: Some(AgentStatus::Completed(Some("finished".to_string()))),
+            ..Default::default()
+        })
+    );
+}

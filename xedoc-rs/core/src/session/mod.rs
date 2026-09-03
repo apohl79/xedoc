@@ -25,6 +25,7 @@ use crate::context::MultiAgentModeInstructions;
 use crate::context::NetworkRuleSaved;
 use crate::context::PersonalitySpecInstructions;
 use crate::context::world_state::WorldState;
+use crate::context::world_state::WorldStateSnapshot;
 use crate::current_time::TimeProvider;
 use crate::default_skill_metadata_budget;
 use crate::environment_selection::TurnEnvironmentSnapshot;
@@ -275,6 +276,12 @@ impl SteerInputError {
 pub(crate) struct PreviousTurnSettings {
     pub(crate) model: String,
     pub(crate) comp_hash: Option<String>,
+}
+
+pub(crate) struct LiveForkHydration {
+    pub(crate) reference_context_item: Option<TurnContextItem>,
+    pub(crate) world_state_baseline: Option<WorldStateSnapshot>,
+    pub(crate) token_info: Option<TokenUsageInfo>,
 }
 
 #[cfg(test)]
@@ -1847,13 +1854,19 @@ impl Session {
             .agent_control
             .stop_sub_agent_activity_tracking(*parent_thread_id, self.thread_id);
 
-        self.forward_child_completion_to_parent(*parent_thread_id, child_agent_path, status)
-            .await;
+        self.forward_child_completion_to_parent(
+            (*turn_context.config).clone(),
+            *parent_thread_id,
+            child_agent_path,
+            status,
+        )
+        .await;
     }
 
     /// Sends the standard completion envelope from a spawned MultiAgentV2 child to its parent.
     async fn forward_child_completion_to_parent(
         &self,
+        config: Config,
         parent_thread_id: ThreadId,
         child_agent_path: &xedoc_protocol::AgentPath,
         status: AgentStatus,
@@ -1893,7 +1906,7 @@ impl Session {
         if let Err(err) = self
             .services
             .agent_control
-            .send_inter_agent_communication(parent_thread_id, communication, context)
+            .send_v2_inter_agent_communication(config, parent_thread_id, communication, context)
             .await
         {
             debug!("failed to notify parent thread {parent_thread_id}: {err}");
@@ -3327,6 +3340,31 @@ impl Session {
     pub(crate) async fn clone_history(&self) -> ContextManager {
         let state = self.state.lock().await;
         state.clone_history()
+    }
+
+    pub(crate) async fn release_resident_memory(&self) {
+        let mut state = self.state.lock().await;
+        state.replace_history(Vec::new(), None);
+        state.set_token_info(None);
+        state.set_previous_turn_settings(None);
+    }
+
+    pub(crate) async fn restore_live_fork_hydration(&self, hydration: LiveForkHydration) {
+        let previous_turn_settings =
+            hydration
+                .reference_context_item
+                .as_ref()
+                .map(|item| PreviousTurnSettings {
+                    model: item.model.clone(),
+                    comp_hash: item.comp_hash.clone(),
+                });
+        let mut state = self.state.lock().await;
+        state.set_reference_context_item(hydration.reference_context_item);
+        if let Some(world_state_baseline) = hydration.world_state_baseline {
+            state.history.set_world_state_baseline(world_state_baseline);
+        }
+        state.set_token_info(hydration.token_info);
+        state.set_previous_turn_settings(previous_turn_settings);
     }
 
     pub(crate) async fn current_window_id(&self) -> String {
