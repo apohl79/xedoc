@@ -22,6 +22,7 @@ use std::process::Command;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Semaphore;
+#[cfg(test)]
 use tracing::instrument;
 use tracing::warn;
 use xedoc_config::ConfigLayerStack;
@@ -102,6 +103,7 @@ pub(crate) fn log_plugin_load_errors(plugins: &[LoadedPlugin<McpServerConfig>]) 
 }
 
 /// Load configured plugins without applying auth-dependent runtime policies.
+#[cfg(test)]
 #[instrument(level = "trace", skip_all)]
 pub(crate) async fn load_plugins_from_layer_stack(
     config_layer_stack: &ConfigLayerStack,
@@ -147,6 +149,7 @@ pub(crate) async fn load_plugins_from_layer_stack_with_legacy_store(
     .await
 }
 
+#[cfg(test)]
 async fn load_plugins_from_layer_stack_with_scope(
     config_layer_stack: &ConfigLayerStack,
     store: &PluginStore,
