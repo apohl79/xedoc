@@ -1766,6 +1766,7 @@ impl UnauthorizedRecovery {
 /// different parts of the program seeing inconsistent auth data mid‑run.
 pub struct AuthManager {
     xedoc_home: PathBuf,
+    provider_credentials: Option<crate::ProviderCredentialStore>,
     inner: RwLock<CachedAuth>,
     auth_change_tx: watch::Sender<u64>,
     enable_xedoc_api_key_env: bool,
@@ -1838,6 +1839,13 @@ impl AuthManager {
         &self.xedoc_home
     }
 
+    #[doc(hidden)]
+    pub fn provider_credentials(&self) -> crate::ProviderCredentialStore {
+        self.provider_credentials
+            .clone()
+            .unwrap_or_else(|| crate::ProviderCredentialStore::new(self.xedoc_home.clone()))
+    }
+
     /// Create a new manager loading the initial auth using the provided
     /// preferred auth method. Errors loading auth are swallowed; `auth()` will
     /// simply return `None` in that case so callers can treat it as an
@@ -1869,6 +1877,7 @@ impl AuthManager {
         let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Self {
             xedoc_home,
+            provider_credentials: None,
             inner: RwLock::new(CachedAuth {
                 auth: managed_auth,
                 permanent_refresh_failure: None,
@@ -1898,6 +1907,7 @@ impl AuthManager {
 
         Arc::new(Self {
             xedoc_home: PathBuf::from("non-existent"),
+            provider_credentials: None,
             inner: RwLock::new(cached),
             auth_change_tx,
             enable_xedoc_api_key_env: false,
@@ -1923,6 +1933,37 @@ impl AuthManager {
         let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Arc::new(Self {
             xedoc_home,
+            provider_credentials: None,
+            inner: RwLock::new(cached),
+            auth_change_tx,
+            enable_xedoc_api_key_env: false,
+            auth_credentials_store_mode: AuthCredentialsStoreMode::File,
+            keyring_backend_kind: AuthKeyringBackendKind::default(),
+            forced_chatgpt_workspace_id: RwLock::new(None),
+            chatgpt_base_url: None,
+            agent_identity_authapi_base_url: default_agent_identity_authapi_base_url(),
+            refresh_lock: Semaphore::new(/*permits*/ 1),
+            agent_identity_lock: Semaphore::new(/*permits*/ 1),
+            agent_identity_bootstrap_cooldown: Mutex::default(),
+            external_auth: RwLock::new(None),
+            auth_route_config: None,
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn from_auth_for_testing_with_provider_credentials(
+        auth: XedocAuth,
+        xedoc_home: PathBuf,
+        provider_credentials: crate::ProviderCredentialStore,
+    ) -> Arc<Self> {
+        let cached = CachedAuth {
+            auth: Some(auth),
+            permanent_refresh_failure: None,
+        };
+        let (auth_change_tx, _auth_change_rx) = watch::channel(0);
+        Arc::new(Self {
+            xedoc_home,
+            provider_credentials: Some(provider_credentials),
             inner: RwLock::new(cached),
             auth_change_tx,
             enable_xedoc_api_key_env: false,
@@ -1952,6 +1993,7 @@ impl AuthManager {
         let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Arc::new(Self {
             xedoc_home: PathBuf::from("non-existent"),
+            provider_credentials: None,
             inner: RwLock::new(cached),
             auth_change_tx,
             enable_xedoc_api_key_env: false,
@@ -1976,6 +2018,7 @@ impl AuthManager {
         let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Arc::new(Self {
             xedoc_home: PathBuf::from("non-existent"),
+            provider_credentials: None,
             inner: RwLock::new(CachedAuth {
                 auth: None,
                 permanent_refresh_failure: None,
