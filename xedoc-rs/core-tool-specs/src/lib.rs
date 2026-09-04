@@ -29,6 +29,8 @@ pub mod multi_agents_common {
         multi_agent_version: MultiAgentVersion,
     ) -> bool {
         multi_agent_version != MultiAgentVersion::V2
-            || model.multi_agent_version == Some(multi_agent_version)
+            || model
+                .multi_agent_version
+                .is_none_or(|version| version == multi_agent_version)
     }
 }
