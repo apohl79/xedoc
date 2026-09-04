@@ -42,14 +42,15 @@ use xedoc_extension_api::UserInstructionsProvider;
 use xedoc_extension_api::empty_extension_registry;
 use xedoc_features::Feature;
 use xedoc_login::AuthManager;
-use xedoc_login::ProviderCredentialStore;
 use xedoc_login::XedocAuth;
 use xedoc_login::default_client::XEDOC_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR;
 use xedoc_login::default_client::originator;
+use xedoc_model_provider::configured_provider_has_credentials;
 use xedoc_model_provider::create_model_provider;
 use xedoc_model_provider::create_model_provider_for_configured_id;
 use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
+use xedoc_models_manager::availability::AvailabilityGatedModelsManager;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_models_manager::registry_manager::RegistryModelsManager;
@@ -270,7 +271,6 @@ pub fn build_models_manager(
 ) -> SharedModelsManager {
     let mut managers: Vec<(String, SharedModelsManager)> = Vec::new();
     let model_catalogs = model_catalogs_for_config(config);
-    let credentials = ProviderCredentialStore::new(config.xedoc_home.to_path_buf());
     let configured_provider_ids = config
         .config_layer_stack
         .effective_user_config()
@@ -282,27 +282,7 @@ pub fn build_models_manager(
                 .unwrap_or_default()
         })
         .unwrap_or_default();
-    let mut provider_infos = config
-        .model_providers
-        .iter()
-        .filter(|(provider_id, _)| {
-            let has_stored_api_key = credentials
-                .has_api_key(provider_id)
-                .unwrap_or_else(|error| {
-                    warn!(
-                        provider_id,
-                        "failed to inspect stored model-provider credentials: {error}"
-                    );
-                    false
-                });
-            model_provider_is_enabled(
-                provider_id,
-                &config.model_provider_id,
-                &configured_provider_ids,
-                has_stored_api_key,
-            )
-        })
-        .collect::<Vec<_>>();
+    let mut provider_infos = config.model_providers.iter().collect::<Vec<_>>();
     provider_infos.sort_by(|(left_id, _), (right_id, _)| {
         (*left_id != &config.model_provider_id)
             .cmp(&(*right_id != &config.model_provider_id))
@@ -325,11 +305,32 @@ pub fn build_models_manager(
                 .flatten()
         });
         let manager = provider.models_manager(xedoc_home, model_catalog);
-        let manager = Arc::new(RegistryModelsManager::new(
+        let manager: SharedModelsManager = Arc::new(RegistryModelsManager::new(
             provider_id.clone(),
             config.model_registry.clone(),
             manager,
         ));
+        let manager = if model_provider_is_always_enabled(
+            provider_id,
+            &config.model_provider_id,
+            &configured_provider_ids,
+        ) {
+            manager
+        } else {
+            let auth_manager = Arc::clone(&auth_manager);
+            let provider_id = provider_id.clone();
+            let provider_info = provider_info.clone();
+            Arc::new(AvailabilityGatedModelsManager::new(manager, move || {
+                configured_provider_has_credentials(&provider_id, &provider_info, &auth_manager)
+                    .unwrap_or_else(|error| {
+                        warn!(
+                            provider_id,
+                            "failed to inspect model-provider credentials: {error}"
+                        );
+                        false
+                    })
+            }))
+        };
         managers.push((provider_id.clone(), manager));
     }
     if managers.is_empty() {
@@ -360,16 +361,14 @@ pub fn build_models_manager(
     Arc::new(xedoc_models_manager::manager::MultiProviderModelsManager::new(managers))
 }
 
-fn model_provider_is_enabled(
+fn model_provider_is_always_enabled(
     provider_id: &str,
     active_provider_id: &str,
     configured_provider_ids: &HashSet<String>,
-    has_stored_api_key: bool,
 ) -> bool {
     provider_id == active_provider_id
         || provider_id == OPENAI_PROVIDER_ID
         || configured_provider_ids.contains(provider_id)
-        || has_stored_api_key
 }
 
 pub fn thread_store_from_config(

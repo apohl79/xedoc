@@ -1,4 +1,6 @@
 use std::fmt;
+use std::sync::Arc;
+use std::sync::Weak;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -16,6 +18,7 @@ use sha2::Sha256;
 use tiny_http::Request as CallbackRequest;
 use tiny_http::Response as CallbackResponse;
 use tiny_http::Server as CallbackServer;
+use tokio::sync::watch;
 use url::Url;
 use xedoc_api::AuthHttpError;
 use xedoc_api::AuthHttpTransport;
@@ -82,8 +85,10 @@ impl fmt::Debug for AnthropicOAuthSession {
 
 pub struct AnthropicOAuthBrowserLogin {
     session: AnthropicOAuthSession,
-    server: CallbackServer,
+    server: Arc<CallbackServer>,
     callback_origin: String,
+    cancellation: AnthropicOAuthBrowserLoginCancellation,
+    receiver_stopped_tx: watch::Sender<bool>,
 }
 
 impl fmt::Debug for AnthropicOAuthBrowserLogin {
@@ -93,6 +98,53 @@ impl fmt::Debug for AnthropicOAuthBrowserLogin {
             .field("session", &self.session)
             .field("callback_origin", &self.callback_origin)
             .finish_non_exhaustive()
+    }
+}
+
+/// Handle used to stop a pending Anthropic browser callback and release its listener.
+#[derive(Clone)]
+pub struct AnthropicOAuthBrowserLoginCancellation {
+    server: Weak<CallbackServer>,
+    receiver_stopped: watch::Receiver<bool>,
+}
+
+impl fmt::Debug for AnthropicOAuthBrowserLoginCancellation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AnthropicOAuthBrowserLoginCancellation")
+            .field("receiver_stopped", &*self.receiver_stopped.borrow())
+            .finish_non_exhaustive()
+    }
+}
+
+impl AnthropicOAuthBrowserLoginCancellation {
+    /// Stops the callback receiver and waits until its listener has been released.
+    pub async fn cancel(&self) {
+        let mut receiver_stopped = self.receiver_stopped.clone();
+        if *receiver_stopped.borrow() {
+            return;
+        }
+        let Some(server) = self.server.upgrade() else {
+            return;
+        };
+        server.unblock();
+        drop(server);
+
+        while !*receiver_stopped.borrow() {
+            if receiver_stopped.changed().await.is_err() {
+                return;
+            }
+        }
+    }
+}
+
+struct CallbackReceiverGuard {
+    receiver_stopped_tx: watch::Sender<bool>,
+}
+
+impl Drop for CallbackReceiverGuard {
+    fn drop(&mut self) {
+        let _ = self.receiver_stopped_tx.send(true);
     }
 }
 
@@ -188,6 +240,10 @@ impl AnthropicOAuthBrowserLogin {
         self.session.auth_url()
     }
 
+    pub fn cancellation_handle(&self) -> AnthropicOAuthBrowserLoginCancellation {
+        self.cancellation.clone()
+    }
+
     pub fn open_browser(&self) {
         let _ = webbrowser::open(self.auth_url());
     }
@@ -201,8 +257,10 @@ impl AnthropicOAuthBrowserLogin {
     }
 
     fn start_on_port(port: u16) -> Result<Self, AnthropicOAuthLoginError> {
-        let server = CallbackServer::http(("127.0.0.1", port))
-            .map_err(|_| AnthropicOAuthLoginError::CallbackBind)?;
+        let server = Arc::new(
+            CallbackServer::http(("127.0.0.1", port))
+                .map_err(|_| AnthropicOAuthLoginError::CallbackBind)?,
+        );
         let actual_port = server
             .server_addr()
             .to_ip()
@@ -214,10 +272,17 @@ impl AnthropicOAuthBrowserLogin {
             generate_secret(32),
             generate_secret(64),
         )?;
+        let (receiver_stopped_tx, receiver_stopped) = watch::channel(false);
+        let cancellation = AnthropicOAuthBrowserLoginCancellation {
+            server: Arc::downgrade(&server),
+            receiver_stopped,
+        };
         Ok(Self {
             session,
             server,
             callback_origin,
+            cancellation,
+            receiver_stopped_tx,
         })
     }
 
@@ -227,9 +292,15 @@ impl AnthropicOAuthBrowserLogin {
         transport: &dyn AuthHttpTransport,
     ) -> Result<AnthropicOAuthCredential, AnthropicOAuthLoginError> {
         let callback_origin = self.callback_origin;
-        let request = tokio::task::spawn_blocking(move || receive_callback(self.server))
-            .await
-            .map_err(|_| AnthropicOAuthLoginError::CallbackReceive)??;
+        let receiver_stopped_tx = self.receiver_stopped_tx;
+        let request = tokio::task::spawn_blocking(move || {
+            let _receiver_guard = CallbackReceiverGuard {
+                receiver_stopped_tx,
+            };
+            receive_callback(self.server)
+        })
+        .await
+        .map_err(|_| AnthropicOAuthLoginError::CallbackReceive)??;
         let callback_url = format!("{callback_origin}{}", request.url());
         let result = self
             .session
@@ -370,7 +441,9 @@ fn credential_from_response(
     })
 }
 
-fn receive_callback(server: CallbackServer) -> Result<CallbackRequest, AnthropicOAuthLoginError> {
+fn receive_callback(
+    server: Arc<CallbackServer>,
+) -> Result<CallbackRequest, AnthropicOAuthLoginError> {
     let deadline = Instant::now() + CALLBACK_TIMEOUT;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());

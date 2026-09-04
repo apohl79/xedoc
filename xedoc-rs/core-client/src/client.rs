@@ -107,6 +107,7 @@ use xedoc_model_provider::AgentIdentitySessionFallback;
 use xedoc_model_provider::ProviderAuthScope;
 use xedoc_model_provider::SharedModelProvider;
 use xedoc_model_provider::create_model_provider;
+use xedoc_model_provider::create_model_provider_for_configured_id;
 use xedoc_model_provider_info::DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS;
 use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_model_provider_info::WireApi;
@@ -376,6 +377,40 @@ impl ModelClient {
         http_client_factory: HttpClientFactory,
     ) -> Self {
         let model_provider = create_model_provider(provider_info, auth_manager);
+        Self::from_model_provider(
+            model_provider,
+            agent_identity_policy,
+            session_source,
+            originator,
+            model_verbosity,
+            enable_request_compression,
+            include_timing_metrics,
+            beta_features_header,
+            item_ids_enabled,
+            concurrent_reasoning_summaries_enabled,
+            http_client_factory,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    /// Creates a session-scoped client that resolves credentials for a configured provider ID.
+    pub fn new_for_configured_provider(
+        auth_manager: Option<Arc<AuthManager>>,
+        agent_identity_policy: AgentIdentityAuthPolicy,
+        provider_id: String,
+        provider_info: ModelProviderInfo,
+        session_source: SessionSource,
+        originator: String,
+        model_verbosity: Option<VerbosityConfig>,
+        enable_request_compression: bool,
+        include_timing_metrics: bool,
+        beta_features_header: Option<String>,
+        item_ids_enabled: bool,
+        concurrent_reasoning_summaries_enabled: bool,
+        http_client_factory: HttpClientFactory,
+    ) -> Self {
+        let model_provider =
+            create_model_provider_for_configured_id(provider_id, provider_info, auth_manager);
         Self::from_model_provider(
             model_provider,
             agent_identity_policy,

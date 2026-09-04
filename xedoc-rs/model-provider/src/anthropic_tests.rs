@@ -157,6 +157,31 @@ async fn oauth_account_added_after_provider_creation_is_loaded() {
 }
 
 #[tokio::test]
+async fn oauth_account_removed_after_provider_creation_is_not_reused() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let accounts = home.path().join("accounts");
+    write_oauth_credential(&accounts);
+    let provider = AnthropicModelProvider::from_runtime_sources(
+        provider_info(),
+        /*auth_manager*/ None,
+        /*api_key*/ None,
+        Ok(accounts.clone()),
+    );
+    ModelProvider::api_auth(&provider)
+        .await
+        .expect("initial OAuth auth");
+
+    fs::remove_file(accounts.join("anthropic-user@example.com.json"))
+        .expect("remove OAuth credential");
+    let error = ModelProvider::api_auth(&provider)
+        .await
+        .err()
+        .expect("missing credentials");
+
+    assert!(error.to_string().contains("ANTHROPIC_API_KEY"));
+}
+
+#[tokio::test]
 async fn missing_native_credentials_reports_both_supported_sources() {
     let home = tempfile::tempdir().expect("tempdir");
     let accounts = home.path().join("accounts");

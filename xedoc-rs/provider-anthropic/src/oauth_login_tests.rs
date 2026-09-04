@@ -220,6 +220,29 @@ async fn browser_callback_completes_the_same_token_exchange() {
     );
 }
 
+#[tokio::test]
+async fn cancelling_browser_login_releases_the_callback_port() {
+    let login = AnthropicOAuthBrowserLogin::start_on_port(0).expect("start callback server");
+    let port = Url::parse(&login.callback_origin)
+        .expect("parse callback origin")
+        .port()
+        .expect("callback port");
+    let cancellation = login.cancellation_handle();
+    let completion = tokio::spawn(async move {
+        login
+            .complete_at("http://unused.invalid/token", &transport())
+            .await
+    });
+
+    cancellation.cancel().await;
+    assert_eq!(
+        completion.await.expect("join callback receiver"),
+        Err(AnthropicOAuthLoginError::CallbackTimeout)
+    );
+    let replacement = AnthropicOAuthBrowserLogin::start_on_port(port).expect("reuse callback port");
+    drop(replacement);
+}
+
 fn send_callback(port: u16, state: &str) -> std::io::Result<String> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     write!(

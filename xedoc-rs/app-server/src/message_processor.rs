@@ -858,6 +858,7 @@ impl MessageProcessor {
             ClientRequest::ModelProviderApiKeySet { params, .. } => self
                 .model_manager_processor
                 .set_api_key(params)
+                .await
                 .map(|response| Some(response.into())),
             ClientRequest::ModelProviderApiKeyDelete { params, .. } => self
                 .model_manager_processor
@@ -866,10 +867,12 @@ impl MessageProcessor {
             ClientRequest::ModelProviderOauthDelete { params, .. } => self
                 .model_manager_processor
                 .delete_oauth(params)
+                .await
                 .map(|response| Some(response.into())),
             ClientRequest::ModelProviderOauthStart { params, .. } => self
                 .model_manager_processor
                 .start_oauth(params)
+                .await
                 .map(|response| Some(response.into())),
             ClientRequest::ThreadStart { params, .. } => {
                 self.thread_processor

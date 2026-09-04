@@ -1422,18 +1422,6 @@ requires_openai_auth = false
     Ok(())
 }
 
-#[test]
-fn stored_provider_api_key_enables_the_provider() {
-    let configured_provider_ids = HashSet::new();
-
-    assert!(model_provider_is_enabled(
-        "anthropic",
-        "openai",
-        &configured_provider_ids,
-        /*has_stored_api_key*/ true,
-    ));
-}
-
 #[tokio::test]
 async fn active_provider_ignores_legacy_shared_models_cache() {
     let server = MockServer::start().await;

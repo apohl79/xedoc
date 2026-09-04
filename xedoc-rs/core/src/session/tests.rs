@@ -5286,9 +5286,10 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
             /*state_db*/ None,
         )),
         time_provider: Arc::new(crate::current_time::SystemTimeProvider),
-        model_client: arc_swap::ArcSwap::from_pointee(ModelClient::new(
+        model_client: arc_swap::ArcSwap::from_pointee(ModelClient::new_for_configured_provider(
             Some(auth_manager.clone()),
             AgentIdentityAuthPolicy::JwtOnly,
+            config.model_provider_id.clone(),
             session_configuration.provider.clone(),
             session_configuration.session_source.clone(),
             session_configuration.originator.clone(),
@@ -7127,9 +7128,10 @@ where
             state_db,
         )),
         time_provider: Arc::new(crate::current_time::SystemTimeProvider),
-        model_client: arc_swap::ArcSwap::from_pointee(ModelClient::new(
+        model_client: arc_swap::ArcSwap::from_pointee(ModelClient::new_for_configured_provider(
             Some(Arc::clone(&auth_manager)),
             AgentIdentityAuthPolicy::JwtOnly,
+            config.model_provider_id.clone(),
             session_configuration.provider.clone(),
             session_configuration.session_source.clone(),
             session_configuration.originator.clone(),
