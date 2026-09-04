@@ -2396,7 +2396,9 @@ pub(crate) async fn generate_sub_agent_activity_summary(
                     break;
                 }
             }
-            Ok(ResponseEvent::Completed { .. }) => {
+            Ok(ResponseEvent::Completed { token_usage, .. }) => {
+                sess.record_auxiliary_token_usage(&turn_context, token_usage.as_ref())
+                    .await;
                 let summary = normalize_activity_summary(&generated);
                 tracing::info!(
                     elapsed_ms = request_started_at.elapsed().as_millis(),

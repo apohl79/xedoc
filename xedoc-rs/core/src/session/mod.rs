@@ -3584,6 +3584,27 @@ impl Session {
         Ok(())
     }
 
+    pub(crate) async fn record_auxiliary_token_usage(
+        &self,
+        turn_context: &TurnContext,
+        token_usage: Option<&TokenUsage>,
+    ) {
+        let Some(token_usage) = token_usage else {
+            return;
+        };
+        let mut state = self.state.lock().await;
+        let model_prices = turn_context
+            .config
+            .model_providers
+            .get(&turn_context.config.model_provider_id)
+            .and_then(|provider| provider.model_prices.as_ref());
+        state
+            .cost_tracker
+            .record_usage(&turn_context.model_info.slug, token_usage, model_prices);
+        drop(state);
+        self.send_token_count_event(turn_context).await;
+    }
+
     pub(crate) async fn recompute_token_usage(&self, turn_context: &TurnContext) {
         let history = self.clone_history().await;
         let base_instructions = self.get_base_instructions().await;
