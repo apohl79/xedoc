@@ -29,7 +29,6 @@ use xedoc_otel::TelemetryAuthMode;
 use xedoc_protocol::error::Result as CoreResult;
 use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::openai_models::ModelInfo;
-use xedoc_protocol::openai_models::ModelVisibility;
 use xedoc_response_debug_context::extract_response_debug_context;
 use xedoc_response_debug_context::telemetry_transport_error_message;
 
@@ -350,6 +349,7 @@ mod tests {
     use xedoc_login::default_client::build_reqwest_client;
     use xedoc_model_provider_info::WireApi;
     use xedoc_protocol::config_types::ModelProviderAuthInfo;
+    use xedoc_protocol::openai_models::ModelVisibility;
     use xedoc_protocol::openai_models::ModelsResponse;
 
     #[derive(Debug)]
