@@ -263,7 +263,7 @@ impl MultiProviderModelsManager {
         let active_provider_id = self
             .active_provider_id
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut managers = self.managers.clone();
         managers.sort_by(|(left_id, _), (right_id, _)| {
             (left_id != &*active_provider_id)
@@ -277,7 +277,7 @@ impl MultiProviderModelsManager {
         let active_provider_id = self
             .active_provider_id
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.managers
             .iter()
             .find(|(provider_id, _)| provider_id == &*active_provider_id)
@@ -402,7 +402,7 @@ impl ModelsManager for MultiProviderModelsManager {
             let mut active_provider_id = self
                 .active_provider_id
                 .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             active_provider_id.clear();
             active_provider_id.push_str(provider_id);
         }
@@ -486,7 +486,14 @@ impl OpenAiModelsManager {
         endpoint_client: Arc<dyn ModelsEndpointClient>,
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
-        let remote_models = load_remote_models_from_file().unwrap_or_default();
+        // Providers with an authoritative remote catalog must never advertise the bundled
+        // OpenAI models: a failed or pending fetch would otherwise make them claim OpenAI
+        // slugs in the aggregated multi-provider catalog.
+        let remote_models = if endpoint_client.has_authoritative_remote_catalog() {
+            Vec::new()
+        } else {
+            load_remote_models_from_file().unwrap_or_default()
+        };
         Self {
             remote_models: RwLock::new(remote_models),
             etag: RwLock::new(None),
