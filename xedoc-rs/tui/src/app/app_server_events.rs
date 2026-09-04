@@ -4,22 +4,13 @@ use super::App;
 use super::app_server_event_targets::ServerNotificationThreadTarget;
 use super::app_server_event_targets::server_notification_thread_target;
 use super::app_server_event_targets::server_request_thread_id;
-use super::thread_events::ThreadEventAttachment;
-use crate::AppServerTarget;
 use crate::app_event::AppEvent;
 use crate::app_server_session::AppServerSession;
 use crate::app_server_session::status_account_display_from_auth_mode;
-use std::time::Duration;
 use xedoc_app_server_client::AppServerEvent;
 use xedoc_app_server_protocol::AuthMode;
 use xedoc_app_server_protocol::ServerNotification;
 use xedoc_app_server_protocol::ServerRequest;
-use xedoc_app_server_protocol::TurnCompletedNotification;
-use xedoc_app_server_protocol::TurnStatus;
-
-const APP_SERVER_RECONNECT_ATTEMPTS: u8 = 3;
-const APP_SERVER_RECONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
-const APP_SERVER_RECONNECT_BACKOFF: Duration = Duration::from_secs(2);
 
 impl App {
     pub(super) fn refresh_mcp_startup_expected_servers_from_config(&mut self) {
@@ -63,130 +54,10 @@ impl App {
         }
     }
 
-    pub(super) async fn handle_app_server_disconnected(
+    pub(super) async fn handle_server_notification_event(
         &mut self,
-        app_server_client: &mut AppServerSession,
-        message: String,
+        notification: ServerNotification,
     ) {
-        tracing::warn!("app-server event stream disconnected: {message}");
-        if let Err(recovery_error) = self.recover_app_server_connection(app_server_client).await {
-            tracing::warn!("failed to recover app-server connection: {recovery_error}");
-            self.chat_widget.add_error_message(message.clone());
-            self.app_event_tx.send(AppEvent::FatalExitRequest(message));
-        }
-    }
-
-    async fn recover_app_server_connection(
-        &mut self,
-        app_server_client: &mut AppServerSession,
-    ) -> Result<(), String> {
-        let endpoint = match &self.app_server_target {
-            AppServerTarget::LocalDaemon { endpoint } | AppServerTarget::Remote { endpoint } => {
-                endpoint.clone()
-            }
-            AppServerTarget::Embedded => {
-                return Err("disconnected app server does not support reconnection".to_string());
-            }
-        };
-
-        let mut last_error = None;
-        for attempt in 1..=APP_SERVER_RECONNECT_ATTEMPTS {
-            match tokio::time::timeout(APP_SERVER_RECONNECT_ATTEMPT_TIMEOUT, async {
-                app_server_client
-                    .reconnect_remote(endpoint.clone())
-                    .await
-                    .map_err(|err| format!("{err:#}"))?;
-                self.restore_reconnected_threads(app_server_client).await
-            })
-            .await
-            {
-                Ok(Ok(())) => return Ok(()),
-                Ok(Err(err)) => last_error = Some(err),
-                Err(_) => {
-                    last_error = Some(format!(
-                        "attempt timed out after {} seconds",
-                        APP_SERVER_RECONNECT_ATTEMPT_TIMEOUT.as_secs()
-                    ));
-                }
-            }
-
-            if attempt < APP_SERVER_RECONNECT_ATTEMPTS {
-                tracing::warn!(
-                    attempt,
-                    max_attempts = APP_SERVER_RECONNECT_ATTEMPTS,
-                    "retrying app-server connection after backoff"
-                );
-                tokio::time::sleep(APP_SERVER_RECONNECT_BACKOFF).await;
-            }
-        }
-
-        let detail = last_error.unwrap_or_else(|| "connection attempt timed out".to_string());
-        Err(format!(
-            "app server did not recover the TUI session after {APP_SERVER_RECONNECT_ATTEMPTS} attempts: {detail}"
-        ))
-    }
-
-    async fn restore_reconnected_threads(
-        &mut self,
-        app_server_client: &mut AppServerSession,
-    ) -> Result<(), String> {
-        self.pending_app_server_requests.clear();
-        let mut thread_ids: Vec<_> = self
-            .thread_event_channels
-            .iter()
-            .filter_map(|(thread_id, channel)| {
-                (channel.attachment() == ThreadEventAttachment::Live).then_some(*thread_id)
-            })
-            .collect();
-        thread_ids.sort_by_key(|thread_id| Some(*thread_id) != self.primary_thread_id);
-
-        for thread_id in thread_ids {
-            let started = app_server_client
-                .resume_thread(self.config.clone(), thread_id, self.resume_model_settings())
-                .await
-                .map_err(|err| format!("failed to resume thread {thread_id}: {err:#}"))?;
-            if started.blocks_direct_input {
-                self.agent_navigation.mark_parent_owned(thread_id);
-            }
-            let session = started.session;
-            if self.primary_thread_id == Some(thread_id) {
-                self.primary_session_configured = Some(session.clone());
-            }
-            self.set_agent_model_metadata_from_session(&session);
-            let active_turn_id = if let Some(channel) = self.thread_event_channels.get(&thread_id) {
-                let mut store = channel.store.lock().await;
-                store.reset_after_app_server_reconnect();
-                store.active_turn_id().map(ToOwned::to_owned)
-            } else {
-                None
-            };
-            if let Some(turn) = active_turn_id.and_then(|active_turn_id| {
-                started
-                    .turns
-                    .iter()
-                    .find(|turn| {
-                        turn.id == active_turn_id && !matches!(turn.status, TurnStatus::InProgress)
-                    })
-                    .cloned()
-            }) {
-                self.handle_server_notification_event(ServerNotification::TurnCompleted(
-                    TurnCompletedNotification {
-                        thread_id: thread_id.to_string(),
-                        turn,
-                    },
-                ))
-                .await;
-            }
-            if let Some(channel) = self.thread_event_channels.get(&thread_id) {
-                let mut store = channel.store.lock().await;
-                store.set_session(session, started.turns);
-            }
-        }
-        self.refresh_pending_thread_approvals().await;
-        Ok(())
-    }
-
-    async fn handle_server_notification_event(&mut self, notification: ServerNotification) {
         match &notification {
             ServerNotification::ServerRequestResolved(notification) => {
                 if let Some(request) = self

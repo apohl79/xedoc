@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::app_server_recovery::INTERRUPTED_TURN_CONTINUATION_PROMPT;
 use app_test_support::create_fake_parented_rollout_with_source;
 use app_test_support::create_fake_rollout;
 use app_test_support::rollout_path;
@@ -509,7 +510,8 @@ fn remote_app_server_reconnect_resumes_live_threads() -> Result<()> {
                 .enable_all()
                 .build()?;
             runtime.block_on(async {
-                let mut app = make_test_app().await;
+                let (mut app, _app_event_rx, mut op_rx) = make_test_app_with_channels().await;
+                let mut tui = crate::tui::test_support::make_test_tui()?;
                 let xedoc_home = tempdir()?;
                 app.config.xedoc_home = xedoc_home.path().to_path_buf().abs();
                 app.config.sqlite_home = xedoc_home.path().to_path_buf();
@@ -584,7 +586,8 @@ fn remote_app_server_reconnect_resumes_live_threads() -> Result<()> {
                 let AppServerEvent::Disconnected { message } = event else {
                     panic!("expected app-server disconnect event");
                 };
-                app.handle_app_server_disconnected(&mut app_server, message)
+                while op_rx.try_recv().is_ok() {}
+                app.handle_app_server_disconnected(&mut tui, &mut app_server, message)
                     .await;
                 while let Some(event) = app
                     .active_thread_rx
@@ -601,7 +604,21 @@ fn remote_app_server_reconnect_resumes_live_threads() -> Result<()> {
                     .filter(|method| method.as_str() == "thread/resume")
                     .count();
                 assert_eq!(resume_count, 4);
-                assert!(!app.chat_widget.is_task_running_for_test());
+                // The restart killed the stale turn, so the TUI asks the agent to continue it
+                // instead of leaving the interrupted turn behind.
+                let mut continuation_prompts = Vec::new();
+                while let Ok(op) = op_rx.try_recv() {
+                    if let Op::UserTurn { items, .. } = op {
+                        continuation_prompts.push(items);
+                    }
+                }
+                assert_eq!(
+                    continuation_prompts,
+                    vec![vec![UserInput::Text {
+                        text: INTERRUPTED_TURN_CONTINUATION_PROMPT.to_string(),
+                        text_elements: Vec::new(),
+                    }]]
+                );
                 app_server.shutdown().await?;
                 proxy.await??;
                 Ok(())
