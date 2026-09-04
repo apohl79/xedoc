@@ -19,6 +19,25 @@ use crate::render::renderable::Renderable;
 const MODEL_MANAGER_LOADING_VIEW_ID: &str = "model-manager-loading";
 
 impl ChatWidget {
+    pub fn open_model_manager_api_key_setting(&mut self) {
+        self.bottom_pane
+            .dismiss_view_by_id(MODEL_MANAGER_LOADING_VIEW_ID);
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            view_id: Some(MODEL_MANAGER_LOADING_VIEW_ID),
+            footer_hint: Some(standard_popup_hint_line()),
+            items: vec![SelectionItem {
+                name: "Setting API key...".to_string(),
+                is_disabled: true,
+                ..Default::default()
+            }],
+            header: Self::model_manager_header(
+                "Setting API key...",
+                "Storing the key securely and refreshing provider settings.",
+            ),
+            ..Default::default()
+        });
+    }
+
     pub fn open_model_manager_loading(&mut self) -> u64 {
         self.model_manager_loading_generation =
             self.model_manager_loading_generation.wrapping_add(1);

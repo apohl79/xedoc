@@ -91,6 +91,17 @@ async fn model_manager_loading_popup_snapshot() {
 }
 
 #[tokio::test]
+async fn model_manager_setting_api_key_popup_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.open_model_manager_api_key_setting();
+
+    assert_chatwidget_snapshot!(
+        "model_manager_setting_api_key_popup",
+        render_bottom_popup(&chat, /*width*/ 100)
+    );
+}
+
+#[tokio::test]
 async fn model_manager_loading_does_not_reopen_after_escape() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let first_generation = chat.open_model_manager_loading();

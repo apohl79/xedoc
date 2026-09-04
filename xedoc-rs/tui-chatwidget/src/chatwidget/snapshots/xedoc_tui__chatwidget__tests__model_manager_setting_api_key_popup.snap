@@ -1,0 +1,11 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/popups_and_settings.rs
+assertion_line: 98
+expression: "render_bottom_popup(&chat, 100)"
+---
+  Setting API key...
+  Storing the key securely and refreshing provider settings.
+
+›    Setting API key...
+
+  Press enter to confirm or esc to go back
