@@ -1574,12 +1574,12 @@ fn list_marketplaces_reads_marketplace_display_name() {
     )
     .unwrap();
 
-    let marketplaces = list_marketplaces_with_home(
+    let outcome = list_marketplaces_with_home(
         &[AbsolutePathBuf::try_from(repo_root).unwrap()],
         /*home_dir*/ None,
     )
-    .unwrap()
-    .marketplaces;
+    .unwrap();
+    let marketplaces = outcome.marketplaces;
 
     assert_eq!(
         marketplaces[0].interface,
@@ -1899,7 +1899,7 @@ fn list_marketplaces_resolves_plugin_interface_paths_to_absolute() {
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL",
-        "products": ["XEDOC", "CHATGPT", "ATLAS"]
+      "products": ["CODEX", "CHATGPT", "ATLAS"]
       },
       "category": "Design"
     }
@@ -1929,7 +1929,6 @@ fn list_marketplaces_resolves_plugin_interface_paths_to_absolute() {
     )
     .unwrap()
     .marketplaces;
-
     assert_eq!(
         marketplaces[0].plugins[0].policy.installation,
         MarketplacePluginInstallPolicy::Available

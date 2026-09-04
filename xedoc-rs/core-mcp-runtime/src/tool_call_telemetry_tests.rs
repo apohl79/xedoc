@@ -274,8 +274,8 @@ async fn mcp_tool_call_span_records_expected_fields() {
             && logs.contains("tool.call_id=\"call-123\"")
             && logs.contains("server.address=\"example.com\"")
             && logs.contains("server.port=8443")
-            && logs.contains("conversation.id=\"conversation-123\"")
-            && logs.contains("session.id=\"session-123\"")
+            && logs.contains("conversation.id=conversation-123")
+            && logs.contains("session.id=session-123")
             && logs.contains("turn.id=\"turn-123\""),
         "missing MCP tool span fields\nlogs:\n{logs}"
     );

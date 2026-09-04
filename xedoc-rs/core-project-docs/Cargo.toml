@@ -30,5 +30,6 @@ tracing = { workspace = true }
 [dev-dependencies]
 xedoc-features = { workspace = true }
 core_test_support = { workspace = true }
+libc = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
