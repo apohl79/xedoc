@@ -177,6 +177,7 @@ mod agent_message_consolidation;
 mod agent_navigation;
 mod app_server_event_targets;
 mod app_server_events;
+mod app_server_recovery;
 pub(crate) mod app_server_requests;
 mod background_requests;
 mod config_persistence;
@@ -1166,7 +1167,7 @@ See the Xedoc keymap documentation for supported actions and examples."
                     app_server_event = app_server.next_event(), if listen_for_app_server_events => {
                         match app_server_event {
                             Some(AppServerEvent::Disconnected { message }) => {
-                                app.handle_app_server_disconnected(&mut app_server, message).await;
+                                app.handle_app_server_disconnected(tui, &mut app_server, message).await;
                             }
                             Some(event) => app.handle_app_server_event(&app_server, event).await,
                             None => {
@@ -1281,7 +1282,7 @@ See the Xedoc keymap documentation for supported actions and examples."
         Ok(())
     }
 
-    fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui) -> Result<()> {
+    pub(super) fn render_chat_widget_frame(&mut self, tui: &mut tui::Tui) -> Result<()> {
         let width = tui.terminal.size()?.width;
         self.with_chat_widget_frame(width, |desired_height, chat_widget| {
             tui.draw_with_resize_reflow(desired_height, |frame| {
