@@ -27,6 +27,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
+use tracing::info;
 use tracing::instrument;
 use tracing::warn;
 use xedoc_agent_graph_store::AgentGraphStore;
@@ -48,7 +49,9 @@ use xedoc_login::default_client::originator;
 use xedoc_model_provider::configured_provider_has_credentials;
 use xedoc_model_provider::create_model_provider;
 use xedoc_model_provider::create_model_provider_for_configured_id;
+use xedoc_model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
 use xedoc_model_provider_info::ModelProviderInfo;
+use xedoc_model_provider_info::OLLAMA_OSS_PROVIDER_ID;
 use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 use xedoc_models_manager::availability::AvailabilityGatedModelsManager;
 use xedoc_models_manager::manager::RefreshStrategy;
@@ -288,6 +291,12 @@ pub fn build_models_manager(
             .cmp(&(*right_id != &config.model_provider_id))
             .then_with(|| left_id.cmp(right_id))
     });
+    info!(
+        active_provider_id = %config.model_provider_id,
+        configured_provider_ids = ?configured_provider_ids,
+        available_provider_ids = ?provider_infos.iter().map(|(provider_id, _)| provider_id).collect::<Vec<_>>(),
+        "model provider catalog configuration"
+    );
     for (provider_id, provider_info) in provider_infos {
         let xedoc_home = config
             .xedoc_home
@@ -310,25 +319,35 @@ pub fn build_models_manager(
             config.model_registry.clone(),
             manager,
         ));
-        let manager = if model_provider_is_always_enabled(
+        let always_enabled = model_provider_is_always_enabled(
             provider_id,
             &config.model_provider_id,
             &configured_provider_ids,
-        ) {
+        );
+        let manager = if always_enabled {
             manager
         } else {
             let auth_manager = Arc::clone(&auth_manager);
             let provider_id = provider_id.clone();
             let provider_info = provider_info.clone();
             Arc::new(AvailabilityGatedModelsManager::new(manager, move || {
-                configured_provider_has_credentials(&provider_id, &provider_info, &auth_manager)
-                    .unwrap_or_else(|error| {
-                        warn!(
-                            provider_id,
-                            "failed to inspect model-provider credentials: {error}"
-                        );
-                        false
-                    })
+                let available = configured_provider_has_credentials(
+                    &provider_id,
+                    &provider_info,
+                    &auth_manager,
+                )
+                .unwrap_or_else(|error| {
+                    warn!(
+                        provider_id,
+                        "failed to inspect model-provider credentials: {error}"
+                    );
+                    false
+                });
+                info!(
+                    provider_id,
+                    always_enabled, available, "model provider availability gate evaluated"
+                );
+                available
             }))
         };
         managers.push((provider_id.clone(), manager));
@@ -368,6 +387,8 @@ fn model_provider_is_always_enabled(
 ) -> bool {
     provider_id == active_provider_id
         || provider_id == OPENAI_PROVIDER_ID
+        || provider_id == OLLAMA_OSS_PROVIDER_ID
+        || provider_id == LMSTUDIO_OSS_PROVIDER_ID
         || configured_provider_ids.contains(provider_id)
 }
 

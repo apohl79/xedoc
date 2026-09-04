@@ -13,11 +13,14 @@ use core_test_support::PathExt;
 use core_test_support::responses::mount_models_once;
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::time::Duration;
 use tempfile::tempdir;
 use wiremock::MockServer;
 use xedoc_extension_api::empty_extension_registry;
 use xedoc_features::Feature;
+use xedoc_model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
+use xedoc_model_provider_info::OLLAMA_OSS_PROVIDER_ID;
 use xedoc_models_manager::ModelsManagerConfig;
 use xedoc_models_manager::bundled_models_response;
 use xedoc_models_manager::manager::RefreshStrategy;
@@ -41,6 +44,22 @@ use xedoc_protocol::protocol::UserMessageEvent;
 use xedoc_utils_path_uri::PathUri;
 
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+#[test]
+fn local_model_providers_are_always_available_to_the_picker() {
+    let configured_provider_ids = HashSet::new();
+
+    assert!(model_provider_is_always_enabled(
+        OLLAMA_OSS_PROVIDER_ID,
+        "openai",
+        &configured_provider_ids,
+    ));
+    assert!(model_provider_is_always_enabled(
+        LMSTUDIO_OSS_PROVIDER_ID,
+        "openai",
+        &configured_provider_ids,
+    ));
+}
 
 async fn test_config() -> crate::config::Config {
     let mut config = load_test_config().await;
