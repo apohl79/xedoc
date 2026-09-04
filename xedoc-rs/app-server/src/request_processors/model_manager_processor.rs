@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,8 +26,13 @@ use xedoc_login::ProviderCredentialStore;
 use xedoc_login::XedocAuth;
 use xedoc_model_provider_info::ANTHROPIC_PROVIDER_ID;
 use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
+use xedoc_models_manager::model_info::model_info_from_provider_catalog_slug;
+use xedoc_models_manager::registry::ManagedModel;
 use xedoc_models_manager::registry::ModelRegistry;
+use xedoc_models_manager::registry::ProviderModelConfig;
 use xedoc_models_manager::registry::SharedModelRegistry;
+use xedoc_protocol::openai_models::ReasoningEffort;
+use xedoc_protocol::openai_models::ReasoningEffortPreset;
 use xedoc_provider_anthropic::AnthropicOAuthBrowserLogin;
 use xedoc_provider_anthropic::AnthropicOAuthBrowserLoginCancellation;
 use xedoc_provider_anthropic::AnthropicOAuthCredential;
@@ -71,7 +77,26 @@ impl ModelManagerRequestProcessor {
     }
 
     pub(crate) fn read(&self) -> Result<ModelManagerReadResponse, JSONRPCErrorError> {
-        let registry = self.registry.snapshot();
+        let mut registry = self.registry.snapshot();
+        // Configured third-party providers may not have been persisted in the
+        // model registry yet. Seed a minimal editable entry so the model
+        // manager can expose the active model and accept subsequent edits.
+        let active_model = self.config.model.clone();
+        for (provider_id, provider_info) in &self.config.model_providers {
+            if registry.providers.contains_key(provider_id) {
+                continue;
+            }
+            let Some(model_id) = (provider_id == &self.config.model_provider_id)
+                .then(|| active_model.clone())
+                .flatten()
+            else {
+                continue;
+            };
+            registry.providers.insert(
+                provider_id.clone(),
+                provider_config_for_model(provider_info.name.clone(), model_id),
+            );
+        }
         let mut providers = Vec::with_capacity(registry.providers.len());
         for (provider_id, provider) in registry.providers {
             let api_key_configured = self.provider_has_api_key(&provider_id)?;
@@ -88,13 +113,16 @@ impl ModelManagerRequestProcessor {
                     let context_window = info.resolved_context_window().unwrap_or_default();
                     let auto_compact_token_limit =
                         info.auto_compact_token_limit().unwrap_or_default();
+                    let base_instructions =
+                        load_prompt_override(&self.config.xedoc_home, &provider_id, &model_id)
+                            .unwrap_or(info.base_instructions);
                     ManagedModelSettings {
                         id: model_id,
                         display_name: info.display_name,
                         context_window,
                         max_context_window: info.max_context_window.unwrap_or(context_window),
                         auto_compact_token_limit,
-                        base_instructions: info.base_instructions,
+                        base_instructions,
                         supported_reasoning_efforts: info
                             .supported_reasoning_levels
                             .into_iter()
@@ -130,6 +158,7 @@ impl ModelManagerRequestProcessor {
                     fast_model,
                     default_reasoning_effort,
                 } => {
+                    ensure_provider_config(registry, &self.config, &provider_id);
                     let provider = provider_mut(registry, &provider_id)?;
                     provider.default_model = default_model;
                     provider.fast_model = fast_model;
@@ -144,6 +173,7 @@ impl ModelManagerRequestProcessor {
                     auto_compact_token_limit,
                     base_instructions,
                 } => {
+                    ensure_provider_config(registry, &self.config, &provider_id);
                     let provider = provider_mut(registry, &provider_id)?;
                     let model = provider.models.get_mut(&model_id).ok_or_else(|| {
                         io::Error::new(
@@ -330,6 +360,69 @@ impl ModelManagerRequestProcessor {
         }
         Ok(())
     }
+}
+
+fn ensure_provider_config(registry: &mut ModelRegistry, config: &Config, provider_id: &str) {
+    if registry.providers.contains_key(provider_id) {
+        return;
+    }
+    let Some(provider_info) = config.model_providers.get(provider_id) else {
+        return;
+    };
+    let Some(model_id) = (provider_id == config.model_provider_id)
+        .then(|| config.model.clone())
+        .flatten()
+    else {
+        return;
+    };
+    registry.providers.insert(
+        provider_id.to_string(),
+        provider_config_for_model(provider_info.name.clone(), model_id),
+    );
+}
+
+fn provider_config_for_model(display_name: String, model_id: String) -> ProviderModelConfig {
+    let mut info = model_info_from_provider_catalog_slug(&model_id, &display_name);
+    info.supported_reasoning_levels = vec![ReasoningEffortPreset {
+        effort: ReasoningEffort::None,
+        description: "No reasoning budget".to_string(),
+    }];
+    info.default_reasoning_level = Some(ReasoningEffort::None);
+    let model = ManagedModel {
+        info: info.clone(),
+        prices: None,
+    };
+    ProviderModelConfig {
+        display_name,
+        default_model: model_id.clone(),
+        fast_model: model_id.clone(),
+        default_reasoning_effort: ReasoningEffort::None,
+        template: ManagedModel {
+            info: model_info_from_provider_catalog_slug("*", &info.display_name),
+            prices: None,
+        },
+        models: BTreeMap::from([(model_id, model)]),
+    }
+}
+
+fn load_prompt_override(
+    xedoc_home: &std::path::Path,
+    provider_id: &str,
+    model_id: &str,
+) -> Option<String> {
+    [
+        xedoc_home
+            .join("prompts")
+            .join(provider_id)
+            .join(format!("{model_id}.md")),
+        xedoc_home.join("prompts").join(format!("{model_id}.md")),
+    ]
+    .into_iter()
+    .find_map(|path| {
+        std::fs::read_to_string(path)
+            .ok()
+            .filter(|contents| !contents.trim().is_empty())
+    })
 }
 
 fn complete_anthropic_oauth_login(

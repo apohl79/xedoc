@@ -13,6 +13,7 @@ use crate::manager::ModelsManager;
 use crate::manager::ModelsManagerFuture;
 use crate::manager::RefreshStrategy;
 use crate::manager::SharedModelsManager;
+use crate::model_info::model_info_from_provider_catalog_slug;
 use crate::model_info::with_config_overrides;
 use crate::registry::ModelRegistry;
 use crate::registry::SharedModelRegistry;
@@ -38,7 +39,17 @@ impl RegistryModelsManager {
     }
 
     fn configured_models(&self, discovered: Vec<ModelInfo>) -> Vec<ModelInfo> {
-        configured_models(&self.registry.snapshot(), &self.provider_id, discovered)
+        let registry = self.registry.snapshot();
+        let mut models = configured_models(&registry, &self.provider_id, discovered);
+        for model in &mut models {
+            if let Some(prompt) =
+                load_prompt_override(self.registry.xedoc_home(), &self.provider_id, &model.slug)
+            {
+                model.base_instructions = prompt;
+                model.model_messages = None;
+            }
+        }
+        models
     }
 }
 
@@ -141,7 +152,15 @@ impl ModelsManager for RegistryModelsManager {
                 .snapshot()
                 .configured_model(&self.provider_id, &discovered)
                 .unwrap_or(discovered);
-            with_config_overrides(configured, config)
+            let mut configured = with_config_overrides(configured, config);
+            if config.base_instructions.is_none()
+                && let Some(prompt) =
+                    load_prompt_override(self.registry.xedoc_home(), &self.provider_id, model)
+            {
+                configured.base_instructions = prompt;
+                configured.model_messages = None;
+            }
+            configured
         })
     }
 
@@ -164,7 +183,13 @@ fn configured_models(
         .into_iter()
         .filter_map(|model| {
             seen.insert(model.slug.clone());
-            registry.configured_model(provider_id, &model)
+            Some(
+                registry
+                    .configured_model(provider_id, &model)
+                    .unwrap_or_else(|| {
+                        model_info_from_provider_catalog_slug(&model.slug, provider_id)
+                    }),
+            )
         })
         .collect::<Vec<_>>();
     configured.extend(
@@ -175,6 +200,26 @@ fn configured_models(
     );
     configured.sort_by_key(|model| model.priority);
     configured
+}
+
+fn load_prompt_override(
+    xedoc_home: &std::path::Path,
+    provider_id: &str,
+    model_id: &str,
+) -> Option<String> {
+    [
+        xedoc_home
+            .join("prompts")
+            .join(provider_id)
+            .join(format!("{model_id}.md")),
+        xedoc_home.join("prompts").join(format!("{model_id}.md")),
+    ]
+    .into_iter()
+    .find_map(|path| {
+        std::fs::read_to_string(path)
+            .ok()
+            .filter(|contents| !contents.trim().is_empty())
+    })
 }
 
 #[cfg(test)]
