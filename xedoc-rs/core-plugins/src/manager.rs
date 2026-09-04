@@ -3,6 +3,7 @@ use super::PluginLoadOutcome;
 use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;
 use crate::is_openai_curated_marketplace_name;
 use crate::loader::PluginHookLoadOutcome;
+#[cfg(test)]
 use crate::loader::configured_curated_plugin_ids_from_xedoc_home;
 use crate::loader::configured_plugins_from_layer_stack_with_legacy_store;
 use crate::loader::curated_plugin_cache_version;
@@ -13,6 +14,7 @@ use crate::loader::load_plugin_skills;
 use crate::loader::load_plugins_from_layer_stack_with_legacy_store;
 use crate::loader::log_plugin_load_errors;
 use crate::loader::materialize_marketplace_plugin_source;
+#[cfg(test)]
 use crate::loader::refresh_curated_plugin_cache;
 use crate::loader::refresh_non_curated_plugin_cache_detailed;
 use crate::loader::refresh_non_curated_plugin_cache_force_reinstall_detailed;
@@ -41,7 +43,6 @@ use crate::marketplace_upgrade::upgrade_configured_git_marketplaces;
 use crate::startup_sync::curated_plugins_api_marketplace_path;
 use crate::startup_sync::curated_plugins_repo_path;
 use crate::startup_sync::read_curated_plugins_sha;
-use crate::startup_sync::sync_openai_plugins_repo;
 use crate::store::PluginInstallResult as StorePluginInstallResult;
 use crate::store::PluginStore;
 use crate::store::PluginStoreError;
@@ -51,8 +52,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use tokio::sync::Semaphore;
 use tracing::instrument;
 use tracing::warn;
@@ -75,8 +74,6 @@ use xedoc_skills::SkillConfigRules;
 use xedoc_skills::SkillMetadata;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 use xedoc_utils_plugins::PluginSkillRoot;
-
-static CURATED_REPO_SYNC_STARTED: AtomicBool = AtomicBool::new(false);
 
 /// Returns the legacy plugin home when Xedoc uses its default home.
 pub fn legacy_plugin_home(xedoc_home: &Path) -> Option<PathBuf> {
@@ -1028,7 +1025,6 @@ impl PluginsManager {
         config: &PluginsConfigInput,
     ) {
         if config.plugins_enabled {
-            self.start_curated_repo_sync();
             let should_spawn_marketplace_auto_upgrade = {
                 let mut state = match self.configured_marketplace_upgrade_state.write() {
                     Ok(state) => state,
@@ -1258,47 +1254,6 @@ impl PluginsManager {
             state.in_flight = false;
             state.requested = None;
             warn!("failed to start non-curated plugin cache refresh task: {err}");
-        }
-    }
-
-    fn start_curated_repo_sync(self: &Arc<Self>) {
-        if CURATED_REPO_SYNC_STARTED.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        let manager = Arc::clone(self);
-        let xedoc_home = self.xedoc_home.clone();
-        if let Err(err) = std::thread::Builder::new()
-            .name("plugins-curated-repo-sync".to_string())
-            .spawn(
-                move || match sync_openai_plugins_repo(xedoc_home.as_path()) {
-                    Ok(curated_plugin_version) => {
-                        let configured_curated_plugin_ids =
-                            configured_curated_plugin_ids_from_xedoc_home(xedoc_home.as_path());
-                        match refresh_curated_plugin_cache(
-                            xedoc_home.as_path(),
-                            &curated_plugin_version,
-                            &configured_curated_plugin_ids,
-                        ) {
-                            Ok(cache_refreshed) => {
-                                manager
-                                    .clear_caches_after_marketplace_source_refresh(cache_refreshed);
-                            }
-                            Err(err) => {
-                                manager.clear_cache();
-                                CURATED_REPO_SYNC_STARTED.store(false, Ordering::SeqCst);
-                                warn!("failed to refresh curated plugin cache after sync: {err}");
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        CURATED_REPO_SYNC_STARTED.store(false, Ordering::SeqCst);
-                        warn!("failed to sync curated plugins repo: {err}");
-                    }
-                },
-            )
-        {
-            CURATED_REPO_SYNC_STARTED.store(false, Ordering::SeqCst);
-            warn!("failed to start curated plugins repo sync task: {err}");
         }
     }
 
