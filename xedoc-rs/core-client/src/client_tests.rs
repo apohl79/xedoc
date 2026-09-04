@@ -42,6 +42,7 @@ use xedoc_model_provider_info::WireApi;
 use xedoc_model_provider_info::create_oss_provider_with_base_url;
 use xedoc_otel::SessionTelemetry;
 use xedoc_protocol::ThreadId;
+use xedoc_protocol::models::AgentMessageInputContent;
 use xedoc_protocol::models::BaseInstructions;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::ResponseItem;
@@ -503,6 +504,34 @@ fn test_session_telemetry() -> SessionTelemetry {
         "test-terminal".to_string(),
         SessionSource::Cli,
     )
+}
+
+#[test]
+fn compatible_provider_input_normalizes_plaintext_agent_messages() {
+    let mut input = vec![ResponseItem::AgentMessage {
+        id: None,
+        author: "parent".to_string(),
+        recipient: "child".to_string(),
+        content: vec![AgentMessageInputContent::InputText {
+            text: "Check the weather.".to_string(),
+        }],
+        internal_chat_message_metadata_passthrough: None,
+    }];
+
+    super::normalize_agent_messages_for_compatible_provider(&mut input);
+
+    assert_eq!(
+        input,
+        vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "Check the weather.".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }]
+    );
 }
 
 #[tokio::test]
