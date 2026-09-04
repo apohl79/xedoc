@@ -344,6 +344,9 @@ pub enum AppEvent {
         result: Result<ModelManagerReadResponse, String>,
     },
 
+    /// Refresh the live model picker catalog after provider credentials change.
+    RefreshModelCatalog,
+
     /// Navigate within the model-manager popup.
     ModelManagerUi(ModelManagerUiAction),
 

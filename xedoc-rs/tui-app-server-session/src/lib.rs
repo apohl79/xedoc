@@ -403,6 +403,39 @@ impl AppServerSession {
         })
     }
 
+    pub async fn refresh_models(&mut self) -> Result<Vec<ModelPreset>> {
+        let request_id = self.next_request_id();
+        let response = self
+            .client
+            .request_typed::<ModelListResponse>(ClientRequest::ModelList {
+                request_id,
+                params: ModelListParams {
+                    cursor: None,
+                    limit: None,
+                    include_hidden: Some(true),
+                },
+            })
+            .await
+            .map_err(|err| {
+                bootstrap_request_error("model/list failed while refreshing models", err)
+            })?;
+        let models = response
+            .data
+            .into_iter()
+            .map(model_preset_from_api_model)
+            .collect::<Vec<_>>();
+        self.available_models = models.clone();
+        if let Some(default_model) = models
+            .iter()
+            .find(|model| model.is_default)
+            .map(|model| model.model.clone())
+            .or_else(|| models.first().map(|model| model.model.clone()))
+        {
+            self.default_model = Some(default_model);
+        }
+        Ok(models)
+    }
+
     pub fn managed_new_thread_defaults(&self) -> Option<&NewThreadModelDefaults> {
         self.managed_new_thread_defaults.as_ref()
     }

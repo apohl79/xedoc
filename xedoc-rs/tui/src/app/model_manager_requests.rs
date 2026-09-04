@@ -75,7 +75,11 @@ impl App {
             }
             .await
             .map_err(|error| error.to_string());
+            let should_refresh_models = result.is_ok();
             app_event_tx.send(AppEvent::ModelManagerLoaded { result });
+            if should_refresh_models {
+                app_event_tx.send(AppEvent::RefreshModelCatalog);
+            }
         });
     }
 
@@ -93,7 +97,11 @@ impl App {
             }
             .await
             .map_err(|error| error.to_string());
+            let should_refresh_models = result.is_ok();
             app_event_tx.send(AppEvent::ModelManagerLoaded { result });
+            if should_refresh_models {
+                app_event_tx.send(AppEvent::RefreshModelCatalog);
+            }
         });
     }
 
@@ -111,7 +119,11 @@ impl App {
             }
             .await
             .map_err(|error| error.to_string());
+            let should_refresh_models = result.is_ok();
             app_event_tx.send(AppEvent::ModelManagerLoaded { result });
+            if should_refresh_models {
+                app_event_tx.send(AppEvent::RefreshModelCatalog);
+            }
         });
     }
 
