@@ -83,19 +83,24 @@ impl ModelManagerRequestProcessor {
         // manager can expose the active model and accept subsequent edits.
         let active_model = self.config.model.clone();
         for (provider_id, provider_info) in &self.config.model_providers {
-            if registry.providers.contains_key(provider_id) {
-                continue;
-            }
             let Some(model_id) = (provider_id == &self.config.model_provider_id)
                 .then(|| active_model.clone())
                 .flatten()
             else {
                 continue;
             };
-            registry.providers.insert(
-                provider_id.clone(),
-                provider_config_for_model(provider_info.name.clone(), model_id),
-            );
+            let provider = registry
+                .providers
+                .entry(provider_id.clone())
+                .or_insert_with(|| {
+                    provider_config_for_model(provider_info.name.clone(), model_id.clone())
+                });
+            if !provider.models.contains_key(&model_id) {
+                let info = model_info_from_provider_catalog_slug(&model_id, &provider.display_name);
+                provider
+                    .models
+                    .insert(model_id, ManagedModel { info, prices: None });
+            }
         }
         let mut providers = Vec::with_capacity(registry.providers.len());
         for (provider_id, provider) in registry.providers {

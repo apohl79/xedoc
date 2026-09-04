@@ -794,16 +794,13 @@ Note that passing `fork_turns="none"` will not pass any surrounding context to t
 
 fn spawn_agent_models_description(
     models: &[ModelPreset],
-    active_model_provider_id: &str,
+    _active_model_provider_id: &str,
     multi_agent_version: MultiAgentVersion,
 ) -> String {
     let visible_models: Vec<&ModelPreset> = models
         .iter()
         .filter(|model| model.show_in_picker)
         .filter(|model| model_supports_multi_agent_backend(model, multi_agent_version))
-        .filter(|model| {
-            model.provider_id.is_empty() || model.provider_id == active_model_provider_id
-        })
         .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
         .collect();
     if visible_models.is_empty() {
