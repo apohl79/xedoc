@@ -471,13 +471,14 @@ impl Session {
         session_configuration: &SessionConfiguration,
         config: &Config,
     ) -> ModelClient {
-        ModelClient::new(
+        ModelClient::new_for_configured_provider(
             Some(auth_manager),
             if config.features.enabled(Feature::UseAgentIdentity) {
                 AgentIdentityAuthPolicy::ChatGptAuth
             } else {
                 AgentIdentityAuthPolicy::JwtOnly
             },
+            config.model_provider_id.clone(),
             session_configuration.provider.clone(),
             session_configuration.session_source.clone(),
             session_configuration.originator.clone(),

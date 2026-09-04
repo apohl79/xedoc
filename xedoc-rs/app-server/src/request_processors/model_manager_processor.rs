@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use tokio::sync::Mutex as AsyncMutex;
 use xedoc_api::RouteAwareAuthHttpTransport;
 use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ManagedModelSettings;
@@ -27,6 +28,7 @@ use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 use xedoc_models_manager::registry::ModelRegistry;
 use xedoc_models_manager::registry::SharedModelRegistry;
 use xedoc_provider_anthropic::AnthropicOAuthBrowserLogin;
+use xedoc_provider_anthropic::AnthropicOAuthBrowserLoginCancellation;
 use xedoc_provider_anthropic::AnthropicOAuthCredential;
 use xedoc_provider_anthropic::clear_anthropic_oauth_credentials;
 use xedoc_provider_anthropic::load_anthropic_oauth_credentials;
@@ -42,6 +44,8 @@ const ANTHROPIC_ACCOUNTS_PATH: [&str; 3] = ["providers", "anthropic", "accounts"
 #[derive(Default)]
 struct AnthropicOauthLoginState {
     generation: u64,
+    active_auth_url: Option<String>,
+    active_cancellation: Option<AnthropicOAuthBrowserLoginCancellation>,
 }
 
 #[derive(Clone)]
@@ -51,14 +55,16 @@ pub(crate) struct ModelManagerRequestProcessor {
     registry: SharedModelRegistry,
     credentials: ProviderCredentialStore,
     anthropic_oauth_login_state: Arc<Mutex<AnthropicOauthLoginState>>,
+    anthropic_oauth_operation_lock: Arc<AsyncMutex<()>>,
 }
 
 impl ModelManagerRequestProcessor {
     pub(crate) fn new(config: Arc<Config>, auth_manager: Arc<AuthManager>) -> Self {
         Self {
             registry: config.model_registry.clone(),
-            credentials: ProviderCredentialStore::new(config.xedoc_home.to_path_buf()),
+            credentials: auth_manager.provider_credentials(),
             anthropic_oauth_login_state: Arc::new(Mutex::new(AnthropicOauthLoginState::default())),
+            anthropic_oauth_operation_lock: Arc::new(AsyncMutex::new(())),
             config,
             auth_manager,
         }
@@ -156,12 +162,14 @@ impl ModelManagerRequestProcessor {
         Ok(ModelManagerUpdateResponse {})
     }
 
-    pub(crate) fn set_api_key(
+    pub(crate) async fn set_api_key(
         &self,
         params: ModelProviderApiKeySetParams,
     ) -> Result<ModelProviderApiKeySetResponse, JSONRPCErrorError> {
         self.require_external_provider(&params.provider_id)?;
         if params.provider_id == ANTHROPIC_PROVIDER_ID {
+            let _operation_guard = self.anthropic_oauth_operation_lock.lock().await;
+            cancel_active_anthropic_oauth_login(&self.anthropic_oauth_login_state).await;
             replace_anthropic_oauth_with_api_key(
                 &anthropic_accounts_directory(&self.config.xedoc_home),
                 &self.credentials,
@@ -189,7 +197,7 @@ impl ModelManagerRequestProcessor {
         Ok(ModelProviderApiKeyDeleteResponse { deleted })
     }
 
-    pub(crate) fn delete_oauth(
+    pub(crate) async fn delete_oauth(
         &self,
         params: ModelProviderOauthDeleteParams,
     ) -> Result<ModelProviderOauthDeleteResponse, JSONRPCErrorError> {
@@ -199,6 +207,8 @@ impl ModelManagerRequestProcessor {
                 "modelProvider/oauth/delete currently supports only Anthropic",
             ));
         }
+        let _operation_guard = self.anthropic_oauth_operation_lock.lock().await;
+        cancel_active_anthropic_oauth_login(&self.anthropic_oauth_login_state).await;
         let mut oauth_login_state = self
             .anthropic_oauth_login_state
             .lock()
@@ -212,7 +222,7 @@ impl ModelManagerRequestProcessor {
         Ok(ModelProviderOauthDeleteResponse { deleted })
     }
 
-    pub(crate) fn start_oauth(
+    pub(crate) async fn start_oauth(
         &self,
         params: ModelProviderOauthStartParams,
     ) -> Result<ModelProviderOauthStartResponse, JSONRPCErrorError> {
@@ -221,17 +231,27 @@ impl ModelManagerRequestProcessor {
                 "modelProvider/oauth/start currently supports only Anthropic",
             ));
         }
-        let oauth_login_generation = {
+        let _operation_guard = self.anthropic_oauth_operation_lock.lock().await;
+        let (login, oauth_login_generation, auth_url) = {
             let mut oauth_login_state = self
                 .anthropic_oauth_login_state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(auth_url) = &oauth_login_state.active_auth_url {
+                return Ok(ModelProviderOauthStartResponse {
+                    auth_url: auth_url.clone(),
+                });
+            }
+            let login = AnthropicOAuthBrowserLogin::start().map_err(|error| {
+                internal_error(format!("failed to start Anthropic OAuth: {error}"))
+            })?;
             oauth_login_state.generation += 1;
-            oauth_login_state.generation
+            let oauth_login_generation = oauth_login_state.generation;
+            let auth_url = login.auth_url().to_string();
+            oauth_login_state.active_auth_url = Some(auth_url.clone());
+            oauth_login_state.active_cancellation = Some(login.cancellation_handle());
+            (login, oauth_login_generation, auth_url)
         };
-        let login = AnthropicOAuthBrowserLogin::start()
-            .map_err(|error| internal_error(format!("failed to start Anthropic OAuth: {error}")))?;
-        let auth_url = login.auth_url().to_string();
         let transport = RouteAwareAuthHttpTransport::new(self.config.http_client_factory());
         let accounts_directory = anthropic_accounts_directory(&self.config.xedoc_home);
         let credentials = self.credentials.clone();
@@ -255,7 +275,10 @@ impl ModelManagerRequestProcessor {
                         }
                     }
                 }
-                Err(error) => tracing::warn!("Anthropic OAuth login failed: {error}"),
+                Err(error) => {
+                    clear_active_anthropic_oauth_login(&oauth_login_state, oauth_login_generation);
+                    tracing::warn!("Anthropic OAuth login failed: {error}");
+                }
             }
         });
         Ok(ModelProviderOauthStartResponse { auth_url })
@@ -316,12 +339,14 @@ fn complete_anthropic_oauth_login(
     oauth_login_generation: u64,
     credential: &AnthropicOAuthCredential,
 ) -> io::Result<bool> {
-    let oauth_login_state = oauth_login_state
+    let mut oauth_login_state = oauth_login_state
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if oauth_login_state.generation != oauth_login_generation {
         return Ok(false);
     }
+    oauth_login_state.active_auth_url = None;
+    oauth_login_state.active_cancellation = None;
 
     let previous_api_key = credentials.api_key(ANTHROPIC_PROVIDER_ID)?;
     if previous_api_key.is_some() {
@@ -354,6 +379,8 @@ fn replace_anthropic_oauth_with_api_key(
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     oauth_login_state.generation += 1;
+    oauth_login_state.active_auth_url = None;
+    oauth_login_state.active_cancellation = None;
     let previous_oauth_credentials = take_anthropic_oauth_credentials(accounts_directory)?;
     if let Err(api_key_error) = credentials.set_api_key(ANTHROPIC_PROVIDER_ID, api_key) {
         if let Err(delete_api_key_error) = credentials.delete_api_key(ANTHROPIC_PROVIDER_ID) {
@@ -372,6 +399,33 @@ fn replace_anthropic_oauth_with_api_key(
     }
     drop(oauth_login_state);
     Ok(())
+}
+
+fn clear_active_anthropic_oauth_login(
+    oauth_login_state: &Mutex<AnthropicOauthLoginState>,
+    oauth_login_generation: u64,
+) {
+    let mut oauth_login_state = oauth_login_state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if oauth_login_state.generation == oauth_login_generation {
+        oauth_login_state.active_auth_url = None;
+        oauth_login_state.active_cancellation = None;
+    }
+}
+
+async fn cancel_active_anthropic_oauth_login(oauth_login_state: &Mutex<AnthropicOauthLoginState>) {
+    let cancellation = {
+        let mut oauth_login_state = oauth_login_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        oauth_login_state.generation += 1;
+        oauth_login_state.active_auth_url = None;
+        oauth_login_state.active_cancellation.take()
+    };
+    if let Some(cancellation) = cancellation {
+        cancellation.cancel().await;
+    }
 }
 
 fn provider_mut<'a>(

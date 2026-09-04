@@ -2,6 +2,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use xedoc_api::Provider;
 use xedoc_api::SharedAuthProvider;
@@ -16,6 +17,7 @@ use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::openai_models::ModelsResponse;
 use xedoc_provider_anthropic::ANTHROPIC_OAUTH_TOKEN_ENDPOINT;
 use xedoc_provider_anthropic::AnthropicAccountPool;
+use xedoc_provider_anthropic::AnthropicCredentialLoad;
 use xedoc_provider_anthropic::AnthropicOAuthAuthProvider;
 use xedoc_provider_anthropic::load_anthropic_oauth_credentials;
 use xedoc_utils_home_dir::find_xedoc_home;
@@ -33,7 +35,7 @@ const ANTHROPIC_ACCOUNTS_PATH: [&str; 3] = ["providers", "anthropic", "accounts"
 
 pub(crate) struct AnthropicModelProvider {
     configured: ConfiguredModelProvider,
-    oauth_accounts: OAuthAccounts,
+    oauth_accounts: Mutex<CachedOAuthAccounts>,
     credential_directory: Option<PathBuf>,
 }
 
@@ -45,7 +47,14 @@ impl fmt::Debug for AnthropicModelProvider {
                 "api_key_configured",
                 &self.configured.provider_api_key().ok().flatten().is_some(),
             )
-            .field("oauth_accounts", &self.oauth_accounts)
+            .field(
+                "oauth_accounts",
+                &self
+                    .oauth_accounts
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .accounts,
+            )
             .field("credential_directory", &self.credential_directory)
             .finish()
     }
@@ -55,6 +64,12 @@ impl fmt::Debug for AnthropicModelProvider {
 enum OAuthAccounts {
     Ready(Arc<AnthropicAccountPool>),
     Unavailable(io::ErrorKind),
+}
+
+#[derive(Debug)]
+struct CachedOAuthAccounts {
+    loaded: Option<AnthropicCredentialLoad>,
+    accounts: OAuthAccounts,
 }
 
 impl AnthropicModelProvider {
@@ -97,16 +112,16 @@ impl AnthropicModelProvider {
         configured: ConfiguredModelProvider,
         credential_directory: io::Result<PathBuf>,
     ) -> Self {
-        let (oauth_accounts, credential_directory) = match credential_directory {
-            Ok(directory) => {
-                let accounts = load_accounts(&directory);
-                (accounts, Some(directory))
-            }
-            Err(error) => (OAuthAccounts::Unavailable(error.kind()), None),
+        let (credential_directory, unavailable_kind) = match credential_directory {
+            Ok(directory) => (Some(directory), io::ErrorKind::NotFound),
+            Err(error) => (None, error.kind()),
         };
         Self {
             configured,
-            oauth_accounts,
+            oauth_accounts: Mutex::new(CachedOAuthAccounts {
+                loaded: None,
+                accounts: OAuthAccounts::Unavailable(unavailable_kind),
+            }),
             credential_directory,
         }
     }
@@ -135,16 +150,27 @@ impl AnthropicModelProvider {
     }
 
     fn current_oauth_accounts(&self) -> OAuthAccounts {
-        if matches!(
-            &self.oauth_accounts,
-            OAuthAccounts::Ready(accounts) if accounts.account_count() > 0
-        ) {
-            return self.oauth_accounts.clone();
+        let Some(directory) = self.credential_directory.as_deref() else {
+            return self
+                .oauth_accounts
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .accounts
+                .clone();
+        };
+        let loaded = match load_anthropic_oauth_credentials(directory) {
+            Ok(loaded) => loaded,
+            Err(error) => return OAuthAccounts::Unavailable(error.kind()),
+        };
+        let mut cached = self
+            .oauth_accounts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if cached.loaded.as_ref() != Some(&loaded) {
+            cached.accounts = accounts_from_load(&loaded);
+            cached.loaded = Some(loaded);
         }
-        self.credential_directory
-            .as_deref()
-            .map(load_accounts)
-            .unwrap_or_else(|| self.oauth_accounts.clone())
+        cached.accounts.clone()
     }
 
     fn missing_credentials_error(&self, oauth_accounts: &OAuthAccounts) -> XedocErr {
@@ -254,11 +280,12 @@ fn credential_directory(auth_manager: Option<&Arc<AuthManager>>) -> io::Result<P
         .fold(home, |path, component| path.join(component)))
 }
 
-fn load_accounts(directory: &std::path::Path) -> OAuthAccounts {
-    let loaded = match load_anthropic_oauth_credentials(directory) {
-        Ok(loaded) => loaded,
-        Err(error) => return OAuthAccounts::Unavailable(error.kind()),
-    };
+pub(super) fn has_oauth_credentials(auth_manager: &Arc<AuthManager>) -> Result<bool> {
+    let loaded = load_anthropic_oauth_credentials(&credential_directory(Some(auth_manager))?)?;
+    Ok(!loaded.accounts.is_empty())
+}
+
+fn accounts_from_load(loaded: &AnthropicCredentialLoad) -> OAuthAccounts {
     if loaded.accounts.is_empty() && !loaded.failures.is_empty() {
         return OAuthAccounts::Unavailable(io::ErrorKind::InvalidData);
     }
@@ -268,7 +295,7 @@ fn load_accounts(directory: &std::path::Path) -> OAuthAccounts {
             "ignored invalid Anthropic OAuth credential files"
         );
     }
-    match AnthropicAccountPool::new(loaded.accounts) {
+    match AnthropicAccountPool::new(loaded.accounts.clone()) {
         Ok(accounts) => OAuthAccounts::Ready(Arc::new(accounts)),
         Err(_) => OAuthAccounts::Unavailable(io::ErrorKind::InvalidData),
     }

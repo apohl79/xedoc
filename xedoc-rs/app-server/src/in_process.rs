@@ -343,7 +343,25 @@ impl InProcessClientHandle {
 /// This function sends `initialize` followed by `initialized` before returning
 /// the handle, so callers receive a ready-to-use runtime. If initialize fails,
 /// the runtime is shut down and an `InvalidData` error is returned.
-pub async fn start(mut args: InProcessStartArgs) -> IoResult<InProcessClientHandle> {
+pub async fn start(args: InProcessStartArgs) -> IoResult<InProcessClientHandle> {
+    start_inner(args, /*auth_manager*/ None).await
+}
+
+/// Starts an in-process app-server runtime with an embedder-supplied authentication manager.
+///
+/// This preserves the same initialization and transport behavior as [`start`] while allowing an
+/// embedder to provide the credential backend shared by model-provider management and inference.
+pub async fn start_with_auth_manager(
+    args: InProcessStartArgs,
+    auth_manager: Arc<AuthManager>,
+) -> IoResult<InProcessClientHandle> {
+    start_inner(args, Some(auth_manager)).await
+}
+
+async fn start_inner(
+    mut args: InProcessStartArgs,
+    auth_manager: Option<Arc<AuthManager>>,
+) -> IoResult<InProcessClientHandle> {
     if let Ok(Some(err)) = check_execpolicy_for_warnings(&args.config.config_layer_stack).await {
         let (path, range) = crate::exec_policy_warning_location(&err);
         args.config_warnings.push(ConfigWarningNotification {
@@ -354,7 +372,7 @@ pub async fn start(mut args: InProcessStartArgs) -> IoResult<InProcessClientHand
         });
     }
     let initialize = args.initialize.clone();
-    let client = start_uninitialized(args).await?;
+    let client = start_uninitialized(args, auth_manager).await?;
 
     let initialize_response = client
         .request(ClientRequest::Initialize {
@@ -374,7 +392,10 @@ pub async fn start(mut args: InProcessStartArgs) -> IoResult<InProcessClientHand
     Ok(client)
 }
 
-async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClientHandle> {
+async fn start_uninitialized(
+    args: InProcessStartArgs,
+    auth_manager: Option<Arc<AuthManager>>,
+) -> IoResult<InProcessClientHandle> {
     let channel_capacity = args.channel_capacity.max(1);
     let installation_id = resolve_installation_id(&args.config.xedoc_home).await?;
     let (client_tx, mut client_rx) = mpsc::channel::<InProcessClientMessage>(channel_capacity);
@@ -382,9 +403,13 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
 
     let runtime_handle = tokio::spawn(async move {
         let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<OutgoingEnvelope>(channel_capacity);
-        let auth_manager =
-            AuthManager::shared_from_config(args.config.as_ref(), args.enable_xedoc_api_key_env)
-                .await;
+        let auth_manager = match auth_manager {
+            Some(auth_manager) => auth_manager,
+            None => {
+                AuthManager::shared_from_config(args.config.as_ref(), args.enable_xedoc_api_key_env)
+                    .await
+            }
+        };
         let outgoing_message_sender = Arc::new(OutgoingMessageSender::new(outgoing_tx));
 
         let (writer_tx, mut writer_rx) = mpsc::channel::<QueuedOutgoingMessage>(channel_capacity);

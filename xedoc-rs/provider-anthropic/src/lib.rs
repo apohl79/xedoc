@@ -31,6 +31,7 @@ pub use oauth_import::import_anthropic_oauth_credentials_with_rollback_status;
 pub use oauth_import::store_anthropic_oauth_credential;
 pub use oauth_import::store_anthropic_oauth_credential_with_status;
 pub use oauth_login::AnthropicOAuthBrowserLogin;
+pub use oauth_login::AnthropicOAuthBrowserLoginCancellation;
 pub use oauth_login::AnthropicOAuthLoginError;
 pub use oauth_login::AnthropicOAuthSession;
 pub use oauth_refresh::ANTHROPIC_OAUTH_TOKEN_ENDPOINT;

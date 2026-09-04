@@ -30,6 +30,7 @@ pub use provider::ProviderAccountResult;
 pub use provider::ProviderAccountState;
 pub use provider::ProviderCapabilities;
 pub use provider::SharedModelProvider;
+pub use provider::configured_provider_has_credentials;
 pub use provider::create_model_provider;
 pub use provider::create_model_provider_for_configured_id;
 pub use xedoc_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;

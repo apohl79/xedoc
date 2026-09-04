@@ -246,7 +246,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "app_test_support"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1846,7 +1846,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "core_test_support"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -5828,7 +5828,7 @@ dependencies = [
 
 [[package]]
 name = "mcp_test_support"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "core_test_support",
@@ -11900,7 +11900,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-agent-extension"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "core_test_support",
@@ -11912,7 +11912,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-agent-graph-store"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde",
@@ -11926,7 +11926,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-agent-identity"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -11945,7 +11945,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-ansi-escape"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "ansi-to-tui",
  "ratatui",
@@ -11954,7 +11954,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-api"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -11988,7 +11988,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -12074,7 +12074,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server-client"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "futures",
  "pretty_assertions",
@@ -12100,7 +12100,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server-daemon"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "futures",
@@ -12121,7 +12121,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server-jsonrpc"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "futures",
  "pretty_assertions",
@@ -12138,7 +12138,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server-protocol"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -12167,7 +12167,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server-test-client"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -12189,7 +12189,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server-transport"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "axum",
@@ -12218,7 +12218,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-apply-patch"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -12238,7 +12238,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-arg0"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -12257,7 +12257,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-async-utils"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tokio",
@@ -12266,7 +12266,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-aws-auth"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "aws-config",
  "aws-credential-types",
@@ -12281,7 +12281,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-bwrap"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "cc",
  "libc",
@@ -12290,7 +12290,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-cli"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -12317,7 +12317,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-cli-runtime"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -12375,7 +12375,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-client"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "eventsource-stream",
  "futures",
@@ -12387,11 +12387,11 @@ dependencies = [
 
 [[package]]
 name = "xedoc-collaboration-mode-templates"
-version = "1.5.8"
+version = "1.5.9"
 
 [[package]]
 name = "xedoc-config"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -12439,7 +12439,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-context-fragments"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "xedoc-protocol",
  "xedoc-utils-string",
@@ -12447,7 +12447,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -12597,7 +12597,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-agent-registry"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "rand 0.9.3",
@@ -12607,7 +12607,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-agent-role"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "pretty_assertions",
@@ -12625,7 +12625,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-api"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "xedoc-app-server-protocol",
  "xedoc-arg0",
@@ -12645,7 +12645,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-approval-policy"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "rmcp",
@@ -12668,7 +12668,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-auto-compact-window"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "uuid",
@@ -12677,7 +12677,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-client"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -12712,7 +12712,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-config"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -12760,7 +12760,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-config-runtime"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tempfile",
@@ -12777,7 +12777,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-context"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -12803,7 +12803,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-context-manager"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -12825,14 +12825,14 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-elicitation"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "xedoc-core-environment"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -12860,7 +12860,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-exec"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -12897,7 +12897,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-mcp-runtime"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -12920,7 +12920,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-mcp-skill-dependency"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "tracing",
  "xedoc-config",
@@ -12929,7 +12929,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-plugin-context"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "xedoc-core-config",
@@ -12944,7 +12944,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-plugin-marketplace"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -12982,7 +12982,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-plugins"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13024,7 +13024,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-project-docs"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "core_test_support",
  "futures",
@@ -13048,7 +13048,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-response-items"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tracing",
@@ -13061,7 +13061,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-rollout-reconstruction"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "serde_json",
  "tracing",
@@ -13074,7 +13074,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-rollout-truncation"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -13086,7 +13086,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-session-name"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "xedoc-model-provider-info",
@@ -13095,7 +13095,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-skills"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "dirs",
@@ -13128,7 +13128,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-subagent-activity"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "xedoc-protocol",
@@ -13136,7 +13136,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-time"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13148,7 +13148,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-tool-output"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "regex-lite",
@@ -13164,7 +13164,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-tool-runtime"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "bm25",
  "futures",
@@ -13184,7 +13184,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-tool-specs"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -13196,7 +13196,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-turn-context"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "serde_json",
  "tokio",
@@ -13222,7 +13222,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-turn-diff"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "sha1 0.10.6",
@@ -13237,7 +13237,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-turn-metadata"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "core_test_support",
  "pretty_assertions",
@@ -13253,7 +13253,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-turn-timing"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tokio",
@@ -13263,7 +13263,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-utils"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "rand 0.9.3",
  "tracing",
@@ -13271,7 +13271,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-exec"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -13315,7 +13315,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-exec-server"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -13367,7 +13367,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-exec-server-protocol"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "base64 0.22.1",
  "pretty_assertions",
@@ -13382,7 +13382,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-execpolicy"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -13400,7 +13400,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-experimental-api-macros"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -13409,7 +13409,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-extension-api"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -13424,7 +13424,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-extension-items"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "schemars 0.8.22",
@@ -13436,7 +13436,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-features"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "schemars 0.8.22",
@@ -13449,7 +13449,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-file-search"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -13465,7 +13465,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-file-system"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "bytes",
  "futures",
@@ -13477,7 +13477,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-file-watcher"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "notify",
  "pretty_assertions",
@@ -13488,7 +13488,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-git-utils"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13516,7 +13516,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-goal-extension"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13537,7 +13537,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-home"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tempfile",
@@ -13548,7 +13548,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-hooks"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13571,7 +13571,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-http-client"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "bytes",
  "futures",
@@ -13602,7 +13602,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-image-generation-extension"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "base64 0.22.1",
  "http 1.4.0",
@@ -13629,7 +13629,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-install-context"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tempfile",
@@ -13639,7 +13639,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-installation-id"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tempfile",
@@ -13650,7 +13650,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-keyring-store"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "keyring",
  "tracing",
@@ -13658,7 +13658,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-linux-sandbox"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "clap",
  "globset",
@@ -13683,7 +13683,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-lmstudio"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "reqwest 0.12.28",
  "serde_json",
@@ -13697,7 +13697,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-login"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -13740,7 +13740,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-mcp"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -13775,7 +13775,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-mcp-extension"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -13798,7 +13798,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-mcp-server"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "core_test_support",
@@ -13832,7 +13832,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-message-history"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "memchr",
  "pretty_assertions",
@@ -13846,7 +13846,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-model-provider"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "http 1.4.0",
  "pretty_assertions",
@@ -13872,7 +13872,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-model-provider-info"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "http 1.4.0",
  "maplit",
@@ -13888,7 +13888,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-models-manager"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "chrono",
  "pretty_assertions",
@@ -13909,7 +13909,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-network-proxy"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -13945,7 +13945,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-ollama"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "assert_matches",
  "async-stream",
@@ -13965,7 +13965,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-otel"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "chrono",
  "eventsource-stream",
@@ -13996,7 +13996,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-plugin"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "thiserror 2.0.18",
@@ -14009,7 +14009,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-process-hardening"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "libc",
  "pretty_assertions",
@@ -14017,7 +14017,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-prompts"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "pretty_assertions",
@@ -14031,7 +14031,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-protocol"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chardetng",
@@ -14073,7 +14073,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-provider-anthropic"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -14101,7 +14101,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-provider-e2e"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "pretty_assertions",
@@ -14123,7 +14123,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-provider-gemini"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "bytes",
  "eventsource-stream",
@@ -14141,7 +14141,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-response-debug-context"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "base64 0.22.1",
  "http 1.4.0",
@@ -14152,7 +14152,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-responses-api-proxy"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -14169,7 +14169,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-rmcp-client"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "axum",
@@ -14210,7 +14210,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-rollout"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -14235,7 +14235,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-sandboxing"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "dunce",
@@ -14257,7 +14257,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-secrets"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "age",
  "anyhow",
@@ -14278,7 +14278,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-shell-command"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -14299,7 +14299,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-shell-escalation"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -14319,7 +14319,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-skills"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "include_dir",
  "thiserror 2.0.18",
@@ -14330,7 +14330,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-skills-extension"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "schemars 0.8.22",
@@ -14354,7 +14354,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-state"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -14380,7 +14380,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-stdio-to-uds"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "pretty_assertions",
@@ -14392,7 +14392,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-terminal-detection"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tracing",
@@ -14400,7 +14400,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-test-binary-support"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "tempfile",
  "xedoc-arg0",
@@ -14408,7 +14408,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-thread-manager-sample"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -14419,7 +14419,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-thread-store"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "chrono",
  "futures",
@@ -14445,7 +14445,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tools"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "jsonptr",
  "pretty_assertions",
@@ -14468,7 +14468,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -14591,7 +14591,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-agents"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "crossterm",
  "insta",
@@ -14606,7 +14606,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-app-server-session"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "app_test_support",
  "base64 0.22.1",
@@ -14640,7 +14640,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-bottom-pane"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "crossterm",
  "insta",
@@ -14668,7 +14668,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-chatwidget"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -14750,7 +14750,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-completion"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "crossterm",
  "insta",
@@ -14771,7 +14771,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-composer"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "crossterm",
  "dirs",
@@ -14800,7 +14800,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-debug"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "insta",
  "pretty_assertions",
@@ -14819,7 +14819,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-events"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "chrono",
  "pretty_assertions",
@@ -14846,7 +14846,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-frame"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "tokio",
@@ -14855,7 +14855,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-hooks"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "color-eyre",
  "crossterm",
@@ -14881,7 +14881,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-input"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "arboard",
  "chrono",
@@ -14908,7 +14908,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-markdown"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "dirs",
  "insta",
@@ -14925,7 +14925,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-overlays"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "chrono",
  "crossterm",
@@ -14961,7 +14961,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-platform"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -14975,7 +14975,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-render"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "crossterm",
  "diffy",
@@ -15002,7 +15002,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-session-picker"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "chrono",
  "color-eyre",
@@ -15034,7 +15034,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-settings"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "crossterm",
  "dirs",
@@ -15059,7 +15059,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-status"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "chrono",
  "crossterm",
@@ -15094,7 +15094,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-test-support"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "crossterm",
  "ratatui",
@@ -15109,7 +15109,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-thread-state"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -15126,7 +15126,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-transcript"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -15182,7 +15182,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui-workspace"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "insta",
  "libc",
@@ -15203,7 +15203,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-uds"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "async-io",
  "pretty_assertions",
@@ -15215,7 +15215,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-absolute-path"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "dirs",
  "dunce",
@@ -15229,14 +15229,14 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-approval-presets"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "xedoc-protocol",
 ]
 
 [[package]]
 name = "xedoc-utils-cache"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "lru 0.16.3",
  "sha1 0.10.6",
@@ -15245,7 +15245,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-cargo-bin"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "assert_cmd",
  "runfiles",
@@ -15254,7 +15254,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-cli"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "clap",
  "pretty_assertions",
@@ -15266,15 +15266,15 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-elapsed"
-version = "1.5.8"
+version = "1.5.9"
 
 [[package]]
 name = "xedoc-utils-fuzzy-match"
-version = "1.5.8"
+version = "1.5.9"
 
 [[package]]
 name = "xedoc-utils-home-dir"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "dirs",
  "pretty_assertions",
@@ -15284,7 +15284,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-image"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "base64 0.22.1",
  "divan",
@@ -15297,7 +15297,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-json-to-toml"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -15306,7 +15306,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-oss"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "xedoc-core",
  "xedoc-lmstudio",
@@ -15316,7 +15316,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-output-truncation"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "xedoc-protocol",
@@ -15325,7 +15325,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-path"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "dunce",
  "pretty_assertions",
@@ -15335,7 +15335,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-path-uri"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "base64 0.22.1",
  "pretty_assertions",
@@ -15351,7 +15351,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-plugins"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "serde",
  "serde_json",
@@ -15365,7 +15365,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-pty"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "anyhow",
  "filedescriptor",
@@ -15381,7 +15381,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-readiness"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "assert_matches",
  "thiserror 2.0.18",
@@ -15391,14 +15391,14 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-rustls-provider"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "rustls",
 ]
 
 [[package]]
 name = "xedoc-utils-sandbox-summary"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "xedoc-protocol",
@@ -15407,7 +15407,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-sleep-inhibitor"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "core-foundation 0.9.4",
  "libc",
@@ -15417,14 +15417,14 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-stream-parser"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
 ]
 
 [[package]]
 name = "xedoc-utils-string"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
  "regex-lite",
@@ -15434,14 +15434,14 @@ dependencies = [
 
 [[package]]
 name = "xedoc-utils-template"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "pretty_assertions",
 ]
 
 [[package]]
 name = "xedoc-web-search-extension"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "http 1.4.0",
  "pretty_assertions",
@@ -15462,7 +15462,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-websocket-client"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "futures",
  "pretty_assertions",

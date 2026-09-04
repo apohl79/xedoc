@@ -245,6 +245,23 @@ pub fn create_model_provider_for_configured_id(
     }
 }
 
+/// Reports whether a configured provider currently has usable runtime credentials.
+pub fn configured_provider_has_credentials(
+    provider_id: &str,
+    provider_info: &ModelProviderInfo,
+    auth_manager: &Arc<AuthManager>,
+) -> xedoc_protocol::error::Result<bool> {
+    let api_key_source =
+        ProviderApiKeySource::new(Some(provider_id.to_string()), Some(auth_manager));
+    if api_key_source.resolve(provider_info)?.is_some() {
+        return Ok(true);
+    }
+    if provider_info.is_native_anthropic() {
+        return crate::anthropic::has_oauth_credentials(auth_manager);
+    }
+    Ok(false)
+}
+
 /// Runtime model provider backed by configured `ModelProviderInfo`.
 #[derive(Clone, Debug)]
 pub(crate) struct ConfiguredModelProvider {
