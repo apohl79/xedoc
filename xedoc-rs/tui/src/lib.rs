@@ -1582,12 +1582,21 @@ async fn run_ratatui_app(
     let hooks_request_handle = app_server.request_handle();
     let hooks_cwd = config.cwd.to_path_buf();
     let startup_prefetch_started_at = Instant::now();
+    tracing::info!(
+        session_selection = ?session_selection,
+        app_server_target = ?app_server_target,
+        "tui bootstrap prefetch started"
+    );
     let (startup_bootstrap, startup_hooks_entry) = tokio::join!(
         app_server.bootstrap(&config),
         load_startup_hooks_review_entry(hooks_request_handle, hooks_cwd),
     );
     let startup_bootstrap = Some(startup_bootstrap?);
     let startup_elapsed_before_app = startup_prefetch_started_at.elapsed();
+    tracing::info!(
+        duration_ms = %startup_elapsed_before_app.as_millis(),
+        "tui bootstrap prefetch completed"
+    );
     let startup_hooks_browser = match maybe_run_startup_hooks_review(
         &mut app_server,
         &mut tui,
