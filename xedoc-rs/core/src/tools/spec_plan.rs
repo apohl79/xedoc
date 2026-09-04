@@ -11,6 +11,7 @@ use crate::tools::handlers::ExecCommandHandlerOptions;
 use crate::tools::handlers::GetContextRemainingHandler;
 use crate::tools::handlers::ListMcpResourceTemplatesHandler;
 use crate::tools::handlers::ListMcpResourcesHandler;
+use crate::tools::handlers::ModelLookupHandler;
 use crate::tools::handlers::NewContextWindowHandler;
 use crate::tools::handlers::PlanHandler;
 use crate::tools::handlers::ReadMcpResourceHandler;
@@ -540,6 +541,7 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
 fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut PlannedTools) {
     let turn_context = context.step_context.turn.as_ref();
     if collab_tools_enabled(turn_context) {
+        planned_tools.add(ModelLookupHandler);
         if multi_agent_v2_enabled(turn_context) {
             let exposure = ToolExposure::Direct;
             let tool_namespace = namespace_tools_enabled(turn_context)
