@@ -495,6 +495,7 @@ impl App {
                 provider_id,
                 api_key,
             } => {
+                self.chat_widget.open_model_manager_api_key_setting();
                 self.set_provider_api_key(app_server, provider_id, api_key);
             }
             AppEvent::DeleteProviderApiKey { provider_id } => {
