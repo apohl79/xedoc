@@ -90,6 +90,7 @@ use xedoc_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use xedoc_protocol::config_types::Verbosity as VerbosityConfig;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::ResponseItem;
+use xedoc_protocol::models::plaintext_agent_message_content;
 use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use xedoc_protocol::protocol::InternalSessionSource;
@@ -709,6 +710,7 @@ impl ModelClient {
             input
                 .iter_mut()
                 .for_each(ResponseItem::clear_internal_chat_message_metadata_passthrough);
+            normalize_agent_messages_for_compatible_provider(&mut input);
         }
         if self.state.provider.info().wire_api == WireApi::Responses {
             input
@@ -950,6 +952,27 @@ impl ModelClient {
         }
         headers
     }
+}
+
+fn normalize_agent_messages_for_compatible_provider(input: &mut Vec<ResponseItem>) {
+    let mut normalized = Vec::with_capacity(input.len());
+    for item in input.drain(..) {
+        match item {
+            ResponseItem::AgentMessage { id, content, .. } => {
+                if let Some(text) = plaintext_agent_message_content(&content) {
+                    normalized.push(ResponseItem::Message {
+                        id,
+                        role: "user".to_string(),
+                        content: vec![ContentItem::InputText { text }],
+                        phase: None,
+                        internal_chat_message_metadata_passthrough: None,
+                    });
+                }
+            }
+            item => normalized.push(item),
+        }
+    }
+    *input = normalized;
 }
 
 impl Drop for ModelClientSession {
