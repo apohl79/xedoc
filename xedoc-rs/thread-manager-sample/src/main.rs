@@ -38,6 +38,7 @@ use xedoc_core_api::Permissions;
 use xedoc_core_api::ProjectConfig;
 use xedoc_core_api::SessionPickerViewMode;
 use xedoc_core_api::SessionSource;
+use xedoc_core_api::SharedModelRegistry;
 use xedoc_core_api::TerminalResizeReflowConfig;
 use xedoc_core_api::ThreadManager;
 use xedoc_core_api::ThreadStoreConfig;
@@ -226,6 +227,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         mcp_oauth_callback_port: None,
         mcp_oauth_callback_url: None,
         model_providers,
+        model_registry: SharedModelRegistry::load_or_create(xedoc_home.as_path())?,
         project_doc_max_bytes: 32 * 1024,
         project_doc_fallback_filenames: Vec::new(),
         tool_output_token_limit: None,

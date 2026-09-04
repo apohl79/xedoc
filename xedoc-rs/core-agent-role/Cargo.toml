@@ -26,3 +26,4 @@ xedoc-core-skills = { workspace = true }
 xedoc-utils-absolute-path = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
+xedoc-protocol = { workspace = true }

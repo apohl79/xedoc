@@ -78,6 +78,7 @@ pub use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 pub use xedoc_model_provider_info::built_in_model_providers;
 pub use xedoc_models_manager::manager::RefreshStrategy;
 pub use xedoc_models_manager::manager::SharedModelsManager;
+pub use xedoc_models_manager::registry::SharedModelRegistry;
 pub use xedoc_protocol::ThreadId;
 pub use xedoc_protocol::config_types::AltScreenMode;
 pub use xedoc_protocol::config_types::AutoCompactTokenLimitScope;

@@ -661,7 +661,7 @@ mod tests {
     use xedoc_utils_absolute_path::AbsolutePathBuf;
     use xedoc_utils_path_uri::PathUri;
 
-    use crate::ExecutorPluginProvider;
+    use xedoc_core_plugins::ExecutorPluginProvider;
 
     const ALTERNATE_PLUGIN_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
 
