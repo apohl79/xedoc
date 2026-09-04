@@ -39,6 +39,19 @@ fn model_preset(id: &str, show_in_picker: bool) -> ModelPreset {
 }
 
 #[test]
+fn spawn_agent_accepts_unversioned_models_for_v2() {
+    let mut model = model_preset("fallback", /*show_in_picker*/ true);
+    model.multi_agent_version = None;
+
+    assert!(
+        crate::multi_agents_common::model_supports_multi_agent_backend(
+            &model,
+            MultiAgentVersion::V2,
+        )
+    );
+}
+
+#[test]
 fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
     let mut incompatible = model_preset("incompatible", /*show_in_picker*/ true);
     incompatible.multi_agent_version = Some(MultiAgentVersion::V1);
