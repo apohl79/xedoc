@@ -306,11 +306,19 @@ impl AppServerSession {
         client.server_version()
     }
 
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn bootstrap(&mut self, config: &Config) -> Result<AppServerBootstrap> {
         let started_at = Instant::now();
+        let account_started_at = Instant::now();
         let account = self.read_account().await?;
+        tracing::info!(
+            duration_ms = %account_started_at.elapsed().as_millis(),
+            authenticated = account.account.is_some(),
+            "tui bootstrap account loaded"
+        );
         // `hooks/list` holds the global config queue during startup. Submit models and config
         // requirements together so an uncached model fetch can overlap both config requests.
+        let catalog_started_at = Instant::now();
         let model_request_id = self.next_request_id();
         let requirements_request_id = self.next_request_id();
         let (models, requirements) = tokio::try_join!(
@@ -346,6 +354,12 @@ impl AppServerSession {
                     })
             },
         )?;
+        tracing::info!(
+            duration_ms = %catalog_started_at.elapsed().as_millis(),
+            model_count = models.data.len(),
+            has_model_requirements = requirements.requirements.is_some(),
+            "tui bootstrap model catalog and requirements loaded"
+        );
         self.managed_new_thread_defaults = requirements
             .requirements
             .and_then(|requirements| requirements.models)
@@ -368,6 +382,12 @@ impl AppServerSession {
             .wrap_err("model/list returned no models for TUI bootstrap")?;
         self.default_model = Some(default_model.clone());
         self.available_models = available_models.clone();
+        tracing::info!(
+            duration_ms = %started_at.elapsed().as_millis(),
+            available_model_count = available_models.len(),
+            default_model = %default_model,
+            "tui bootstrap completed"
+        );
 
         let (account_email, auth_mode, status_account_display, plan_type, has_chatgpt_account) =
             match account.account {
