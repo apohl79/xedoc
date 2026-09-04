@@ -1078,6 +1078,21 @@ async fn refresh_available_models_keeps_empty_authoritative_catalog_empty() {
     assert_eq!(actual, (Vec::new(), 1));
 }
 
+#[tokio::test]
+async fn authoritative_manager_does_not_advertise_bundled_models_before_refresh() {
+    let xedoc_home = tempdir().expect("temp dir");
+    let endpoint = TestModelsEndpoint::authoritative(vec![Vec::new()]);
+    let manager = openai_manager_for_tests_with_auth(
+        xedoc_home.path().to_path_buf(),
+        endpoint.clone(),
+        /*auth_manager*/ None,
+    );
+
+    let actual = (manager.get_remote_models().await, endpoint.fetch_count());
+
+    assert_eq!(actual, (Vec::new(), 0));
+}
+
 #[derive(Debug)]
 struct TestAuthAwareModelsEndpoint {
     auth_manager: Option<Arc<AuthManager>>,
