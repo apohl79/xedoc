@@ -20,7 +20,7 @@ use xedoc_config::types::StatusLineCommand;
 use xedoc_shell_command::shell_detect::ShellType;
 use xedoc_shell_command::shell_detect::default_user_shell;
 
-const STATUS_LINE_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
+const STATUS_LINE_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 const STATUS_LINE_COMMAND_STDERR_LOG_CAP: usize = 1_024;
 const STATUS_LINE_COMMAND_ERROR_CAP: usize = 160;
 const STATUS_LINE_COMMAND_STDOUT_CAP: u64 = 64 * 1024;
