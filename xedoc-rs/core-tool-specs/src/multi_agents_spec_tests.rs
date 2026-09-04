@@ -319,20 +319,16 @@ fn spawn_agent_tool_hides_model_controls_without_override_exposure() {
 }
 
 #[test]
-fn spawn_agent_tool_only_lists_active_provider_models() {
+fn spawn_agent_tool_lists_compatible_models_across_providers() {
     let mut active = model_preset("active", /*show_in_picker*/ true);
     active.provider_id = "anthropic".to_string();
     let mut foreign = model_preset("foreign", /*show_in_picker*/ true);
     foreign.provider_id = "openai".to_string();
 
-    assert_eq!(
-        spawn_agent_models_description(&[active], "anthropic", MultiAgentVersion::V2),
-        spawn_agent_models_description(
-            &[model_preset("active", /*show_in_picker*/ true), foreign],
-            "anthropic",
-            MultiAgentVersion::V2,
-        )
-    );
+    let description =
+        spawn_agent_models_description(&[active, foreign], "anthropic", MultiAgentVersion::V2);
+    assert!(description.contains("active"));
+    assert!(description.contains("foreign"));
 }
 
 #[test]
