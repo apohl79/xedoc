@@ -4,6 +4,7 @@ use pretty_assertions::assert_eq;
 use xedoc_protocol::config_types::Personality;
 use xedoc_protocol::openai_models::ApprovalMessages;
 use xedoc_protocol::openai_models::AutoReviewMessages;
+use xedoc_protocol::openai_models::ModelPreset;
 use xedoc_protocol::openai_models::PermissionMessages;
 
 fn config_with_personality(personality: Option<Personality>) -> ModelsManagerConfig {
@@ -16,17 +17,18 @@ fn config_with_personality(personality: Option<Personality>) -> ModelsManagerCon
 
 #[test]
 fn provider_catalog_metadata_identifies_the_model_provider_and_reasoning_levels() {
-    let model = model_info_from_provider_catalog_slug("gemini-3.6-flash", "Gemini");
+    let model = model_info_from_provider_catalog_slug("gemma4:e2b", "ollama");
 
     assert_eq!(
         model.description,
-        Some("Gemini model gemini-3.6-flash".to_string())
+        Some("ollama model gemma4:e2b".to_string())
     );
     assert!(
         model
             .base_instructions
-            .contains("You are running as the gemini-3.6-flash model provided by Gemini.")
+            .contains("You are running as the gemma4:e2b model provided by ollama.")
     );
+    assert_eq!(model.visibility, ModelVisibility::List);
     assert_eq!(model.default_reasoning_level, Some(ReasoningEffort::Medium));
     assert_eq!(
         model
@@ -41,6 +43,7 @@ fn provider_catalog_metadata_identifies_the_model_provider_and_reasoning_levels(
             ReasoningEffort::XHigh,
         ]
     );
+    assert!(ModelPreset::from(model).show_in_picker);
 }
 
 #[test]

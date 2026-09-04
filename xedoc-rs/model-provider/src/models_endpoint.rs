@@ -150,7 +150,6 @@ impl OpenAiModelsEndpoint {
                             &self.provider_info.name,
                         );
                         model_info.priority = i32::try_from(priority).unwrap_or(i32::MAX);
-                        model_info.visibility = ModelVisibility::List;
                         model_info
                     })
                     .collect(),
@@ -165,6 +164,10 @@ impl OpenAiModelsEndpoint {
 impl ModelsEndpointClient for OpenAiModelsEndpoint {
     fn has_command_auth(&self) -> bool {
         self.provider_info.has_command_auth()
+    }
+
+    fn has_authoritative_remote_catalog(&self) -> bool {
+        !self.provider_info.requires_openai_auth
     }
 
     fn uses_xedoc_backend(&self) -> ModelsEndpointFuture<'_, bool> {
@@ -345,6 +348,7 @@ mod tests {
     use wiremock::matchers::query_param;
     use xedoc_http_client::OutboundProxyPolicy;
     use xedoc_login::default_client::build_reqwest_client;
+    use xedoc_model_provider_info::WireApi;
     use xedoc_protocol::config_types::ModelProviderAuthInfo;
     use xedoc_protocol::openai_models::ModelsResponse;
 
@@ -405,6 +409,19 @@ mod tests {
         );
 
         assert!(!endpoint.has_command_auth());
+    }
+
+    #[test]
+    fn non_openai_provider_uses_authoritative_remote_catalog() {
+        let endpoint = OpenAiModelsEndpoint::new(
+            xedoc_model_provider_info::create_oss_provider_with_base_url(
+                "https://ollama.example/v1",
+                WireApi::Responses,
+            ),
+            /*auth_manager*/ None,
+        );
+
+        assert!(endpoint.has_authoritative_remote_catalog());
     }
 
     #[tokio::test]
