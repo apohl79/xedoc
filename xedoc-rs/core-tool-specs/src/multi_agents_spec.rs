@@ -797,12 +797,31 @@ fn spawn_agent_models_description(
     _active_model_provider_id: &str,
     multi_agent_version: MultiAgentVersion,
 ) -> String {
-    let visible_models: Vec<&ModelPreset> = models
+    let compatible_models: Vec<&ModelPreset> = models
         .iter()
         .filter(|model| model.show_in_picker)
         .filter(|model| model_supports_multi_agent_backend(model, multi_agent_version))
-        .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
         .collect();
+    let mut providers = std::collections::HashSet::new();
+    let mut visible_models = compatible_models
+        .iter()
+        .copied()
+        .filter(|model| providers.insert(model.provider_id.clone()))
+        .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES)
+        .collect::<Vec<_>>();
+    if visible_models.len() < MAX_SPAWN_AGENT_MODEL_OVERRIDES {
+        let selected_models = visible_models
+            .iter()
+            .map(|model| model.model.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        visible_models.extend(
+            compatible_models
+                .iter()
+                .copied()
+                .filter(|model| !selected_models.contains(model.model.as_str()))
+                .take(MAX_SPAWN_AGENT_MODEL_OVERRIDES - visible_models.len()),
+        );
+    }
     if visible_models.is_empty() {
         return "No picker-visible model overrides are currently loaded.".to_string();
     }
