@@ -1066,11 +1066,13 @@ impl Session {
             }
 
             let services = SessionServices {
-                reduction_sink: config
-                    .features
-                    .enabled(Feature::TokenUsageOptimizer)
-                    .then(|| state_db_ctx.as_ref().map(|state_db| state_db.reduction_sink()))
-                    .flatten(),
+                // Keep the sink available for runtime feature toggles. The effective
+                // reducer configuration is still captured per tool call, so an
+                // initially disabled optimizer remains a no-op without dropping
+                // records after `/token-usage-optimizer on`.
+                reduction_sink: state_db_ctx
+                    .as_ref()
+                    .map(|state_db| state_db.reduction_sink()),
                 // Start with an empty connection set. The initialized set is
                 // published after SessionConfigured so MCP events follow it.
                 mcp_runtime,
