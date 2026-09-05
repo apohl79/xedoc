@@ -1,0 +1,5 @@
+---
+source: tui/src/status/tests.rs
+expression: "Token optimizer stats: 3 reductions, ~120 tokens saved (lifetime within retention)."
+---
+Token optimizer stats: 3 reductions, ~120 tokens saved (lifetime within retention).

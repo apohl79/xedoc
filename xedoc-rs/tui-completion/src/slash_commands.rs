@@ -132,7 +132,7 @@ pub fn find_slash_command(
         .then(|| {
             service_tier_commands
                 .iter()
-                .find(|command| command.name == name)
+                .find(|command| command.name.as_str() == name)
                 .cloned()
                 .map(SlashCommandItem::ServiceTier)
         })

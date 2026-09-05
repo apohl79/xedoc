@@ -22,6 +22,7 @@ chrono = { workspace = true, features = ["serde"] }
 xedoc-app-server-client = { workspace = true }
 xedoc-app-server-protocol = { workspace = true }
 xedoc-config = { workspace = true }
+xedoc-core-tool-output = { workspace = true }
 xedoc-core-plugins = { workspace = true }
 xedoc-features = { workspace = true }
 xedoc-file-search = { workspace = true }

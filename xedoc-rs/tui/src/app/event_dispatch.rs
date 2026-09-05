@@ -1114,6 +1114,61 @@ impl App {
             AppEvent::UpdateFeatureFlags { updates } => {
                 self.update_feature_flags(app_server, updates).await;
             }
+            AppEvent::UpdateTokenUsageOptimizerLevel { level } => {
+                self.update_token_usage_optimizer_level(app_server, level)
+                    .await;
+            }
+            AppEvent::TokenUsageOptimizerStatsRequested => {
+                self.fetch_token_usage_optimizer_stats(app_server);
+            }
+            AppEvent::TokenUsageOptimizerStatsResetRequested => {
+                self.reset_token_usage_optimizer_stats(app_server);
+            }
+            AppEvent::TokenUsageOptimizerStatsLoaded { result } => match result {
+                Ok(response) => {
+                    let retrieval = if response.insights.spilled == 0 {
+                        "retrieval rate n/a (no spilled output)".to_string()
+                    } else {
+                        let rate = (response.insights.retrievals as f64
+                            / response.insights.spilled as f64
+                            * 100.0)
+                            .min(100.0);
+                        format!("retrieval rate {rate:.1}%")
+                    };
+                    let kinds = response
+                        .insights
+                        .by_kind
+                        .iter()
+                        .take(3)
+                        .map(|item| format!("{}: {}", item.dimension, item.reductions))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let top = response
+                        .insights
+                        .top_reductions
+                        .iter()
+                        .take(3)
+                        .map(|item| {
+                            format!("{} ({}→{})", item.call_id, item.bytes_in, item.bytes_out)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.chat_widget.add_info_message(
+                        format!(
+                            "Token optimizer stats: {} reductions, ~{} tokens saved; {}; kinds [{}]; top [{}].",
+                            response.reduction_count,
+                            response.tokens_saved,
+                            retrieval,
+                            kinds,
+                            top
+                        ),
+                        None,
+                    );
+                }
+                Err(err) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to read token optimizer stats: {err}")),
+            },
             AppEvent::UpdateAutoSessionNameSetting { enabled } => {
                 self.update_auto_session_name_setting_with_app_server(app_server, enabled)
                     .await;

@@ -135,7 +135,7 @@ impl ChatWidget {
             let limit_id = snapshot
                 .limit_id
                 .clone()
-                .unwrap_or_else(|| "codex".to_string());
+                .unwrap_or_else(|| "xedoc".to_string());
             let limit_label = snapshot
                 .limit_name
                 .clone()
@@ -165,7 +165,8 @@ impl ChatWidget {
                 };
             self.plan_type = snapshot.plan_type.or(self.plan_type);
 
-            let is_xedoc_limit = limit_id.eq_ignore_ascii_case("codex");
+            let is_xedoc_limit =
+                limit_id.eq_ignore_ascii_case("xedoc") || limit_id.eq_ignore_ascii_case("codex");
             if is_xedoc_limit
                 && (matches!(source, RateLimitSnapshotSource::AccountUsage)
                     || snapshot.spend_control_reached.is_some())

@@ -33,6 +33,12 @@ pub struct PendingInputPreview {
 
 const PREVIEW_LINE_LIMIT: usize = 3;
 
+impl Default for PendingInputPreview {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PendingInputPreview {
     pub fn new() -> Self {
         Self {

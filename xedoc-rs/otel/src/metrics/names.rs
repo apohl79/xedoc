@@ -1,6 +1,11 @@
 pub const TOOL_CALL_COUNT_METRIC: &str = "xedoc.tool.call";
 pub const TOOL_CALL_DURATION_METRIC: &str = "xedoc.tool.call.duration_ms";
 pub const TOOL_CALL_UNIFIED_EXEC_METRIC: &str = "xedoc.tool.unified_exec";
+pub const TOOL_OUTPUT_REDUCTION_TOKENS_IN_METRIC: &str = "xedoc.tool_output.reduction.tokens_in";
+pub const TOOL_OUTPUT_REDUCTION_TOKENS_OUT_METRIC: &str = "xedoc.tool_output.reduction.tokens_out";
+pub const TOOL_OUTPUT_REDUCTION_DURATION_US_METRIC: &str =
+    "xedoc.tool_output.reduction.duration_us";
+pub const TOOL_OUTPUT_RETRIEVAL_METRIC: &str = "xedoc.tool_output.reduction.retrieval";
 pub const PROCESS_START_METRIC: &str = "xedoc.process.start";
 pub const API_CALL_COUNT_METRIC: &str = "xedoc.api_request";
 pub const API_CALL_DURATION_METRIC: &str = "xedoc.api_request.duration_ms";

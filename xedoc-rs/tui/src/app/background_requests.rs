@@ -20,6 +20,34 @@ use crate::hooks_rpc::write_hook_trusts;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 impl App {
+    pub(super) fn reset_token_usage_optimizer_stats(&mut self, app_server: &AppServerSession) {
+        let request_handle = app_server.request_handle();
+        let read_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result =
+                crate::config_update::reset_token_usage_optimizer_stats(request_handle).await;
+            let result = match result {
+                Ok(()) => crate::config_update::read_token_usage_optimizer(read_handle)
+                    .await
+                    .map_err(|err| err.to_string()),
+                Err(err) => Err(err.to_string()),
+            };
+            app_event_tx.send(AppEvent::TokenUsageOptimizerStatsLoaded { result });
+        });
+    }
+
+    pub(super) fn fetch_token_usage_optimizer_stats(&mut self, app_server: &AppServerSession) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::config_update::read_token_usage_optimizer(request_handle)
+                .await
+                .map_err(|err| err.to_string());
+            app_event_tx.send(AppEvent::TokenUsageOptimizerStatsLoaded { result });
+        });
+    }
+
     pub(super) fn fetch_mcp_inventory(
         &mut self,
         app_server: &AppServerSession,

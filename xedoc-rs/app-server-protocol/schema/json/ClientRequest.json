@@ -3950,6 +3950,44 @@
       ],
       "type": "object"
     },
+    "TokenUsageOptimizerLevel": {
+      "enum": [
+        "conservative",
+        "balanced",
+        "aggressive"
+      ],
+      "type": "string"
+    },
+    "TokenUsageOptimizerWriteParams": {
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "expectedVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TokenUsageOptimizerLevel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resetStats": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "TurnEnvironmentParams": {
       "properties": {
         "cwd": {
@@ -6088,6 +6126,53 @@
         "params"
       ],
       "title": "Config/batchWriteRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "tokenUsageOptimizer/read"
+          ],
+          "title": "TokenUsageOptimizer/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "id",
+        "method"
+      ],
+      "title": "TokenUsageOptimizer/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "tokenUsageOptimizer/write"
+          ],
+          "title": "TokenUsageOptimizer/writeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/TokenUsageOptimizerWriteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "TokenUsageOptimizer/writeRequest",
       "type": "object"
     },
     {

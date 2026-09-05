@@ -229,6 +229,10 @@ impl ChatWidget {
     }
 
     pub fn add_status_output(&mut self) {
+        if self.config.features.enabled(Feature::TokenUsageOptimizer) {
+            self.app_event_tx
+                .send(AppEvent::TokenUsageOptimizerStatsRequested);
+        }
         let token_info = self.token_info.as_ref();
         let total_usage = self.status_line_total_usage();
         let collaboration_mode = self.collaboration_mode_label();

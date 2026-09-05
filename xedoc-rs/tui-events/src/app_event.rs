@@ -709,6 +709,21 @@ pub enum AppEvent {
         updates: Vec<(Feature, bool)>,
     },
 
+    /// Persist a token usage optimizer reduction level.
+    UpdateTokenUsageOptimizerLevel {
+        level: String,
+    },
+
+    /// Fetch durable token-usage optimizer aggregates from the active app-server.
+    TokenUsageOptimizerStatsRequested,
+
+    /// Deliver token-usage optimizer aggregates to the chat widget.
+    TokenUsageOptimizerStatsLoaded {
+        result: Result<xedoc_app_server_protocol::TokenUsageOptimizerReadResponse, String>,
+    },
+    /// Reset durable token-usage optimizer aggregates.
+    TokenUsageOptimizerStatsResetRequested,
+
     /// Update generated session-name settings and persist them to config.toml.
     UpdateAutoSessionNameSetting {
         enabled: bool,

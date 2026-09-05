@@ -24,6 +24,9 @@ pub use model::LogQuery;
 pub use model::LogRow;
 /// Preferred entrypoint: owns configuration and metrics.
 pub use runtime::StateRuntime;
+pub use runtime::ToolOutputReductionBreakdown;
+pub use runtime::ToolOutputReductionInsights;
+pub use runtime::ToolOutputReductionTop;
 pub use sqlite::SqliteConfig;
 
 pub use audit::ThreadStateAuditRow;

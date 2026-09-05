@@ -72,6 +72,7 @@ use xedoc_features::FeaturesToml;
 use xedoc_features::MultiAgentV2ConfigToml;
 use xedoc_features::NetworkProxyConfigToml;
 use xedoc_features::TokenBudgetConfigToml;
+use xedoc_features::TokenUsageOptimizerConfigToml;
 use xedoc_git_utils::resolve_root_git_project_for_trust;
 use xedoc_http_client::HttpClientFactory;
 use xedoc_http_client::OutboundProxyPolicy;
@@ -988,6 +989,8 @@ pub struct Config {
 
     /// Context-window token budget configuration, when enabled.
     pub token_budget: Option<TokenBudgetConfig>,
+    /// Tool-output reduction settings.
+    pub token_usage_optimizer: TokenUsageOptimizerConfigToml,
     /// Shared token budget for the root thread and its sub-agents.
     pub rollout_budget: Option<RolloutBudgetConfig>,
     /// Current-time reminder and clock tool configuration, when enabled.
@@ -2641,6 +2644,30 @@ fn resolve_token_budget_config(
     }))
 }
 
+fn resolve_token_usage_optimizer_config(
+    config_toml: &ConfigToml,
+    features: &ManagedFeatures,
+) -> TokenUsageOptimizerConfigToml {
+    let mut config = config_toml
+        .token_usage_optimizer
+        .clone()
+        .or_else(|| {
+            config_toml
+                .features
+                .as_ref()
+                .and_then(|features| features.token_usage_optimizer.as_ref())
+                .and_then(|feature| match feature {
+                    xedoc_features::FeatureToml::Config(config) => Some(config.clone()),
+                    xedoc_features::FeatureToml::Enabled(_) => None,
+                })
+        })
+        .unwrap_or_default();
+    if config.enabled.is_none() {
+        config.enabled = Some(features.enabled(Feature::TokenUsageOptimizer));
+    }
+    config
+}
+
 fn resolve_rollout_budget_config(
     config_toml: &ConfigToml,
     features: &ManagedFeatures,
@@ -3081,7 +3108,7 @@ impl Config {
             web_search_request: override_tools_web_search_request,
         };
 
-        let configured_features = Features::from_sources(
+        let mut configured_features = Features::from_sources(
             FeatureConfigSource {
                 features: cfg.features.as_ref(),
                 experimental_use_unified_exec_tool: cfg.experimental_use_unified_exec_tool,
@@ -3091,6 +3118,16 @@ impl Config {
             },
             feature_overrides,
         );
+        // The dedicated table is the canonical user-facing control surface.
+        // Keep accepting the legacy feature-table forms, but let an explicit
+        // top-level value determine the effective enablement when both exist.
+        if let Some(enabled) = cfg
+            .token_usage_optimizer
+            .as_ref()
+            .and_then(|config| config.enabled)
+        {
+            configured_features.set_enabled(Feature::TokenUsageOptimizer, enabled);
+        }
         let features = ManagedFeatures::from_configured_with_warnings(
             configured_features,
             feature_requirements,
@@ -3387,6 +3424,7 @@ impl Config {
             resolve_experimental_request_user_input_enabled(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg);
         let token_budget = resolve_token_budget_config(&cfg, &features)?;
+        let token_usage_optimizer = resolve_token_usage_optimizer_config(&cfg, &features);
         let rollout_budget = resolve_rollout_budget_config(&cfg, &features)?;
         let current_time_reminder = resolve_current_time_reminder_config(&cfg, &features)?;
         let terminal_resize_reflow = resolve_terminal_resize_reflow_config(&cfg);
@@ -3893,6 +3931,7 @@ impl Config {
             ghost_snapshot,
             multi_agent_v2,
             token_budget,
+            token_usage_optimizer,
             rollout_budget,
             current_time_reminder,
             features,

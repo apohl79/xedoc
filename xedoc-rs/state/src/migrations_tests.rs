@@ -30,6 +30,23 @@ fn migrator_through(version: i64) -> Migrator {
     }
 }
 
+#[test]
+fn tool_output_reduction_migration_defines_retention_metrics_table() {
+    let migration = STATE_MIGRATOR
+        .migrations
+        .iter()
+        .find(|migration| migration.version == 44)
+        .expect("tool-output reduction migration should exist");
+    assert!(
+        migration
+            .sql
+            .as_str()
+            .contains("CREATE TABLE tool_output_reductions")
+    );
+    assert!(migration.sql.as_str().contains("est_tokens_in"));
+    assert!(migration.sql.as_str().contains("recorded_at"));
+}
+
 #[tokio::test]
 async fn agent_job_tables_are_preserved_when_upgrading() {
     let sqlite_home = crate::runtime::test_support::unique_temp_dir();

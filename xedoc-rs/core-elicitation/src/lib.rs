@@ -27,6 +27,12 @@ pub struct ElicitationRegistration {
     service: ElicitationService,
 }
 
+impl Default for ElicitationService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ElicitationService {
     pub fn new() -> Self {
         let (paused, _paused_rx) = watch::channel(false);

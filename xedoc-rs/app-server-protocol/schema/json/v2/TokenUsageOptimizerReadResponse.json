@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "TokenUsageOptimizerBreakdown": {
+      "properties": {
+        "bytesIn": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "bytesOut": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "dimension": {
+          "type": "string"
+        },
+        "reductions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "reruns": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "retrievals": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bytesIn",
+        "bytesOut",
+        "dimension",
+        "reductions",
+        "reruns",
+        "retrievals"
+      ],
+      "type": "object"
+    },
+    "TokenUsageOptimizerInsights": {
+      "properties": {
+        "byKind": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerBreakdown"
+          },
+          "type": "array"
+        },
+        "byReducer": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerBreakdown"
+          },
+          "type": "array"
+        },
+        "byTool": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerBreakdown"
+          },
+          "type": "array"
+        },
+        "retrievals": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "spilled": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "topReductions": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerTopReduction"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "byKind",
+        "byReducer",
+        "byTool",
+        "retrievals",
+        "spilled",
+        "topReductions"
+      ],
+      "type": "object"
+    },
+    "TokenUsageOptimizerLevel": {
+      "enum": [
+        "conservative",
+        "balanced",
+        "aggressive"
+      ],
+      "type": "string"
+    },
+    "TokenUsageOptimizerTopReduction": {
+      "properties": {
+        "bytesIn": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "bytesOut": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "callId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "tokensSaved": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "toolName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytesIn",
+        "bytesOut",
+        "callId",
+        "kind",
+        "tokensSaved",
+        "toolName"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "insights": {
+      "$ref": "#/definitions/TokenUsageOptimizerInsights"
+    },
+    "level": {
+      "$ref": "#/definitions/TokenUsageOptimizerLevel"
+    },
+    "reductionCount": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "tokensSaved": {
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "enabled",
+    "insights",
+    "level",
+    "reductionCount",
+    "tokensSaved"
+  ],
+  "title": "TokenUsageOptimizerReadResponse",
+  "type": "object"
+}

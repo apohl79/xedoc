@@ -59,6 +59,7 @@ xedoc-core-skills = { workspace = true }
 xedoc-core-tool-specs = { workspace = true }
 xedoc-core-tool-output = { workspace = true }
 xedoc-core-tool-runtime = { workspace = true }
+xedoc-tool-output-reduce = { workspace = true }
 xedoc-core-turn-metadata = { workspace = true }
 xedoc-core-turn-timing = { workspace = true }
 xedoc-core-turn-diff = { workspace = true }

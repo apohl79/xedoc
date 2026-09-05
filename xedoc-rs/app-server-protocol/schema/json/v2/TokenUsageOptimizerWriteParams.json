@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "TokenUsageOptimizerLevel": {
+      "enum": [
+        "conservative",
+        "balanced",
+        "aggressive"
+      ],
+      "type": "string"
+    }
+  },
+  "properties": {
+    "enabled": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "expectedVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "level": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TokenUsageOptimizerLevel"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "resetStats": {
+      "type": "boolean"
+    }
+  },
+  "title": "TokenUsageOptimizerWriteParams",
+  "type": "object"
+}

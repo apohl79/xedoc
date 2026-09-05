@@ -364,7 +364,11 @@ impl HistoryCell for SessionHeaderHistoryCell {
             .yolo_mode
             .then_some(UnicodeWidthStr::width("YOLO"))
             .unwrap_or_default();
-        let directory_gap_width = self.yolo_mode.then_some(1).unwrap_or_default();
+        let directory_gap_width = if self.yolo_mode {
+            1
+        } else {
+            Default::default()
+        };
         let directory_width = content_width
             .saturating_sub(1)
             .saturating_sub(directory_gap_width)

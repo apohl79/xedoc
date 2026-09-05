@@ -996,6 +996,16 @@ client_request_definitions! {
         manual_payload_conversion: manual,
         response: v2::ConfigWriteResponse,
     },
+    TokenUsageOptimizerRead => "tokenUsageOptimizer/read" {
+        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        serialization: global_shared_read("config"),
+        response: v2::TokenUsageOptimizerReadResponse,
+    },
+    TokenUsageOptimizerWrite => "tokenUsageOptimizer/write" {
+        params: v2::TokenUsageOptimizerWriteParams,
+        serialization: global("config"),
+        response: v2::TokenUsageOptimizerWriteResponse,
+    },
 
     ConfigRequirementsRead => "configRequirements/read" {
         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,

@@ -19,6 +19,8 @@ xedoc-core-turn-context = { workspace = true }
 bm25 = { workspace = true }
 xedoc-core-turn-diff = { workspace = true }
 xedoc-protocol = { workspace = true }
+xedoc-tool-output-reduce = { workspace = true }
+xedoc-otel = { workspace = true }
 xedoc-tools = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

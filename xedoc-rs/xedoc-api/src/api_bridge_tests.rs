@@ -253,7 +253,7 @@ fn map_api_error_does_not_fallback_limit_name_to_limit_id() {
 
 #[test]
 fn map_api_error_copies_rate_limit_reached_type_to_usage_limit_snapshot() {
-    for (active_limit, expected_limit_id) in [(None, "codex"), (Some("codex_other"), "codex_other")]
+    for (active_limit, expected_limit_id) in [(None, "xedoc"), (Some("codex_other"), "codex_other")]
     {
         let mut headers = HeaderMap::new();
         if let Some(active_limit) = active_limit {

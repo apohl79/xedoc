@@ -3185,7 +3185,7 @@ async fn token_count_includes_rate_limits_snapshot() {
                 "model_context_window": 258400
             },
             "rate_limits": {
-                "limit_id": "codex",
+                "limit_id": "xedoc",
                 "limit_name": null,
                 "primary": {
                     "used_percent": 12.5,
@@ -3269,7 +3269,7 @@ async fn usage_limit_error_emits_rate_limit_event() -> anyhow::Result<()> {
     let xedoc = xedoc_fixture.xedoc.clone();
 
     let expected_limits = json!({
-        "limit_id": "codex",
+        "limit_id": "xedoc",
         "limit_name": null,
         "primary": {
             "used_percent": 100.0,

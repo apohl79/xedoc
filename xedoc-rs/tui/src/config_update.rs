@@ -21,6 +21,7 @@ use xedoc_app_server_protocol::MergeStrategy;
 use xedoc_app_server_protocol::RequestId;
 use xedoc_app_server_protocol::SkillsConfigWriteParams;
 use xedoc_app_server_protocol::SkillsConfigWriteResponse;
+use xedoc_app_server_protocol::TokenUsageOptimizerReadResponse;
 use xedoc_config::loader::project_trust_key;
 use xedoc_features::FEATURES;
 use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
@@ -94,6 +95,9 @@ pub(crate) fn build_service_tier_selection_edits(service_tier: Option<&str>) -> 
 }
 
 pub(crate) fn build_feature_enabled_edit(feature_key: &str, enabled: bool) -> ConfigEdit {
+    if feature_key == "token_usage_optimizer" {
+        return replace_config_value("token_usage_optimizer.enabled", serde_json::json!(enabled));
+    }
     let key_path = format!("features.{feature_key}");
     let is_default_false_feature = FEATURES
         .iter()
@@ -158,6 +162,42 @@ pub(crate) async fn read_effective_config(
         })
         .await
         .wrap_err("config/read failed in TUI")
+}
+
+pub(crate) async fn read_token_usage_optimizer(
+    request_handle: AppServerRequestHandle,
+) -> Result<TokenUsageOptimizerReadResponse> {
+    let request_id =
+        RequestId::String(format!("tui-token-usage-optimizer-read-{}", Uuid::new_v4()));
+    request_handle
+        .request_typed(ClientRequest::TokenUsageOptimizerRead {
+            request_id,
+            params: None,
+        })
+        .await
+        .wrap_err("tokenUsageOptimizer/read failed in TUI")
+}
+
+pub(crate) async fn reset_token_usage_optimizer_stats(
+    request_handle: AppServerRequestHandle,
+) -> Result<()> {
+    let request_id = RequestId::String(format!(
+        "tui-token-usage-optimizer-reset-{}",
+        Uuid::new_v4()
+    ));
+    request_handle
+        .request_typed(ClientRequest::TokenUsageOptimizerWrite {
+            request_id,
+            params: xedoc_app_server_protocol::TokenUsageOptimizerWriteParams {
+                enabled: None,
+                level: None,
+                expected_version: None,
+                reset_stats: true,
+            },
+        })
+        .await
+        .map(|_: xedoc_app_server_protocol::TokenUsageOptimizerWriteResponse| ())
+        .wrap_err("tokenUsageOptimizer/write reset failed in TUI")
 }
 
 pub(crate) async fn write_skill_enabled(

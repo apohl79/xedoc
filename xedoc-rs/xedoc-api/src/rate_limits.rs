@@ -8,6 +8,9 @@ use xedoc_protocol::protocol::RateLimitReachedType;
 use xedoc_protocol::protocol::RateLimitSnapshot;
 use xedoc_protocol::protocol::RateLimitWindow;
 
+const DEFAULT_RATE_LIMIT_ID: &str = "xedoc";
+const DEFAULT_RATE_LIMIT_HEADER_ID: &str = "codex";
+
 #[derive(Debug)]
 pub struct RateLimitError {
     pub message: String,
@@ -61,7 +64,7 @@ pub fn parse_rate_limit_for_limit(
     let normalized_limit = limit_id
         .map(str::trim)
         .filter(|name| !name.is_empty())
-        .unwrap_or("codex")
+        .unwrap_or(DEFAULT_RATE_LIMIT_HEADER_ID)
         .to_ascii_lowercase()
         .replace('_', "-");
     let prefix = format!("x-{normalized_limit}");
@@ -79,7 +82,9 @@ pub fn parse_rate_limit_for_limit(
         &format!("{prefix}-secondary-reset-at"),
     );
 
-    let normalized_limit_id = normalize_limit_id(normalized_limit);
+    let normalized_limit_id = limit_id
+        .map(normalize_limit_id)
+        .unwrap_or_else(|| DEFAULT_RATE_LIMIT_ID.to_string());
     let credits = parse_credits_snapshot(headers);
     let limit_name_header = format!("{prefix}-limit-name");
     let parsed_limit_name = parse_header_str(headers, &limit_name_header)
@@ -154,7 +159,7 @@ pub fn parse_rate_limit_event(payload: &str) -> Option<RateLimitSnapshot> {
         .or(event.limit_name)
         .map(normalize_limit_id);
     Some(RateLimitSnapshot {
-        limit_id: Some(limit_id.unwrap_or_else(|| "codex".to_string())),
+        limit_id: Some(limit_id.unwrap_or_else(|| DEFAULT_RATE_LIMIT_ID.to_string())),
         limit_name: None,
         primary,
         secondary,
@@ -292,7 +297,7 @@ mod tests {
         );
 
         let snapshot = parse_rate_limit_for_limit(&headers, /*limit_id*/ None).expect("snapshot");
-        assert_eq!(snapshot.limit_id.as_deref(), Some("codex"));
+        assert_eq!(snapshot.limit_id.as_deref(), Some("xedoc"));
         assert_eq!(snapshot.limit_name, None);
         let primary = snapshot.primary.expect("primary");
         assert_eq!(primary.used_percent, 12.5);
@@ -359,7 +364,7 @@ mod tests {
 
         let updates = parse_all_rate_limits(&headers);
         assert_eq!(updates.len(), 2);
-        assert_eq!(updates[0].limit_id.as_deref(), Some("codex"));
+        assert_eq!(updates[0].limit_id.as_deref(), Some("xedoc"));
         assert_eq!(updates[1].limit_id.as_deref(), Some("codex_secondary"));
         assert_eq!(updates[0].limit_name, None);
         assert_eq!(updates[1].limit_name, None);
@@ -371,7 +376,7 @@ mod tests {
 
         let updates = parse_all_rate_limits(&headers);
         assert_eq!(updates.len(), 1);
-        assert_eq!(updates[0].limit_id.as_deref(), Some("codex"));
+        assert_eq!(updates[0].limit_id.as_deref(), Some("xedoc"));
         assert_eq!(updates[0].limit_name, None);
         assert_eq!(updates[0].primary, None);
         assert_eq!(updates[0].secondary, None);

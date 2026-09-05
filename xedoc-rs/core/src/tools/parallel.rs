@@ -242,6 +242,12 @@ impl ToolCallRuntime {
                 message: Self::abort_message(call, secs),
             }),
             post_tool_use_payload: None,
+            reduction_sink: None,
+            tool_name: call.tool_name.name.clone(),
+            thread_id: None,
+            turn_id: None,
+            reduction_config: None,
+            command_hash: None,
         }
     }
 

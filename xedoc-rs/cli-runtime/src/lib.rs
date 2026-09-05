@@ -209,6 +209,31 @@ enum DebugSubcommand {
 
     /// Render the model-visible prompt input list as JSON.
     PromptInput(DebugPromptInputCommand),
+
+    /// Inspect token optimizer data.
+    TokenOptimizer(DebugTokenOptimizerCommand),
+}
+
+#[derive(Debug, Parser)]
+struct DebugTokenOptimizerCommand {
+    #[command(subcommand)]
+    subcommand: DebugTokenOptimizerSubcommand,
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum DebugTokenOptimizerSubcommand {
+    /// Export aggregate token optimizer insights as bounded JSON.
+    Export(DebugTokenOptimizerExportCommand),
+}
+
+#[derive(Debug, Parser)]
+struct DebugTokenOptimizerExportCommand {
+    /// Restrict aggregates to one thread identifier.
+    #[arg(long)]
+    thread_id: Option<String>,
+    /// Emit JSON (the only supported export format).
+    #[arg(long, default_value_t = false)]
+    json: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -1375,6 +1400,18 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 )
                 .await?;
             }
+            DebugSubcommand::TokenOptimizer(DebugTokenOptimizerCommand { subcommand }) => {
+                reject_remote_mode_for_subcommand(
+                    root_remote.as_deref(),
+                    root_remote_auth_token_env.as_deref(),
+                    "debug token-optimizer export",
+                )?;
+                match subcommand {
+                    DebugTokenOptimizerSubcommand::Export(cmd) => {
+                        run_debug_token_optimizer_export(cmd).await?;
+                    }
+                }
+            }
         },
         Some(Subcommand::Execpolicy(ExecpolicyCommand { sub })) => match sub {
             ExecpolicySubcommand::Check(cmd) => {
@@ -1831,6 +1868,48 @@ async fn run_debug_models_command(
 
     serde_json::to_writer(std::io::stdout(), &catalog)?;
     println!();
+    Ok(())
+}
+
+async fn run_debug_token_optimizer_export(
+    cmd: DebugTokenOptimizerExportCommand,
+) -> anyhow::Result<()> {
+    if !cmd.json {
+        anyhow::bail!("`xedoc debug token-optimizer export` requires --json");
+    }
+    let xedoc_home = find_xedoc_home()?;
+    let runtime =
+        xedoc_state::StateRuntime::init(xedoc_home.into_path_buf(), "openai".to_owned()).await?;
+    let insights = runtime
+        .tool_output_reduction_insights(cmd.thread_id.as_deref())
+        .await?;
+    let value = serde_json::json!({
+        "byKind": insights.by_kind.iter().map(|item| serde_json::json!({
+            "dimension": item.dimension, "reductions": item.reductions,
+            "bytesIn": item.bytes_in, "bytesOut": item.bytes_out,
+            "retrievals": item.retrievals, "reruns": item.reruns,
+        })).collect::<Vec<_>>(),
+        "byReducer": insights.by_reducer.iter().map(|item| serde_json::json!({
+            "dimension": item.dimension, "reductions": item.reductions,
+            "bytesIn": item.bytes_in, "bytesOut": item.bytes_out,
+            "retrievals": item.retrievals, "reruns": item.reruns,
+        })).collect::<Vec<_>>(),
+        "byTool": insights.by_tool.iter().map(|item| serde_json::json!({
+            "dimension": item.dimension, "reductions": item.reductions,
+            "bytesIn": item.bytes_in, "bytesOut": item.bytes_out,
+            "retrievals": item.retrievals, "reruns": item.reruns,
+        })).collect::<Vec<_>>(),
+        "topReductions": insights.top_reductions.iter().map(|item| serde_json::json!({
+            "callId": item.call_id, "toolName": item.tool_name, "kind": item.kind,
+            "bytesIn": item.bytes_in, "bytesOut": item.bytes_out,
+            "tokensSaved": item.tokens_saved,
+        })).collect::<Vec<_>>(),
+        "retrievals": insights.retrievals,
+        "spilled": insights.spilled,
+    });
+    serde_json::to_writer_pretty(std::io::stdout(), &value)?;
+    println!();
+    runtime.close().await;
     Ok(())
 }
 

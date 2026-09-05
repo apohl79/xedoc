@@ -51,6 +51,15 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
             );
             continue;
         }
+        if feature.id == xedoc_features::Feature::TokenUsageOptimizer {
+            validation.properties.insert(
+                feature.key.to_string(),
+                schema_gen.subschema_for::<xedoc_features::FeatureToml<
+                    xedoc_features::TokenUsageOptimizerConfigToml,
+                >>(),
+            );
+            continue;
+        }
         if feature.id == xedoc_features::Feature::RolloutBudget {
             validation.properties.insert(
                 feature.key.to_string(),

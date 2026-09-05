@@ -87,6 +87,13 @@ fn stale_monthly_limit_marks_fresh_rolling_snapshot_stale() {
     ));
 }
 
+#[test]
+fn token_optimizer_stats_line_snapshot() {
+    assert_snapshot!(
+        "Token optimizer stats: 3 reductions, ~120 tokens saved (lifetime within retention)."
+    );
+}
+
 fn app_server_workspace_write_profile(network_enabled: bool) -> PermissionProfile {
     PermissionProfile::Managed {
         network: if network_enabled {

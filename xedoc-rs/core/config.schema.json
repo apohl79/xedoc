@@ -640,6 +640,9 @@
             "token_budget": {
               "$ref": "#/definitions/FeatureToml_for_TokenBudgetConfigToml"
             },
+            "token_usage_optimizer": {
+              "$ref": "#/definitions/FeatureToml_for_TokenUsageOptimizerConfigToml"
+            },
             "tool_call_mcp_elicitation": {
               "type": "boolean"
             },
@@ -958,6 +961,16 @@
         },
         {
           "$ref": "#/definitions/TokenBudgetConfigToml"
+        }
+      ]
+    },
+    "FeatureToml_for_TokenUsageOptimizerConfigToml": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/TokenUsageOptimizerConfigToml"
         }
       ]
     },
@@ -2860,6 +2873,45 @@
         }
       },
       "type": "object"
+    },
+    "TokenUsageOptimizerConfigToml": {
+      "additionalProperties": false,
+      "description": "Configuration for the token usage optimizer.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "level": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TokenUsageOptimizerLevel"
+            }
+          ],
+          "default": "conservative"
+        },
+        "spill_max_mib": {
+          "default": 256,
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "spill_retention_days": {
+          "default": 7,
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "TokenUsageOptimizerLevel": {
+      "description": "Reduction aggressiveness for the token usage optimizer.",
+      "enum": [
+        "conservative",
+        "balanced",
+        "aggressive"
+      ],
+      "type": "string"
     },
     "ToolsToml": {
       "additionalProperties": false,
@@ -4862,6 +4914,9 @@
         "token_budget": {
           "$ref": "#/definitions/FeatureToml_for_TokenBudgetConfigToml"
         },
+        "token_usage_optimizer": {
+          "$ref": "#/definitions/FeatureToml_for_TokenUsageOptimizerConfigToml"
+        },
         "tool_call_mcp_elicitation": {
           "type": "boolean"
         },
@@ -5284,6 +5339,15 @@
     "suppress_unstable_features_warning": {
       "description": "Suppress warnings about unstable (under development) features.",
       "type": "boolean"
+    },
+    "token_usage_optimizer": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/TokenUsageOptimizerConfigToml"
+        }
+      ],
+      "default": null,
+      "description": "Content-aware tool-output reduction settings."
     },
     "tool_output_token_limit": {
       "description": "Token budget applied when storing tool/function outputs in the context manager.",
