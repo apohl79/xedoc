@@ -28,9 +28,11 @@ pub mod multi_agents_common {
         model: &ModelPreset,
         multi_agent_version: MultiAgentVersion,
     ) -> bool {
-        multi_agent_version != MultiAgentVersion::V2
-            || model
+        match multi_agent_version {
+            MultiAgentVersion::V2 => model
                 .multi_agent_version
-                .is_none_or(|version| version == multi_agent_version)
+                .is_none_or(|version| version != MultiAgentVersion::Disabled),
+            MultiAgentVersion::V1 | MultiAgentVersion::Disabled => true,
+        }
     }
 }

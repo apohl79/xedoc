@@ -556,7 +556,7 @@ async fn multi_agent_v2_spawn_keeps_leaf_in_v2_and_disables_child_delegation() {
 }
 
 #[tokio::test]
-async fn multi_agent_v2_spawn_rejects_child_model_from_different_backend() {
+async fn multi_agent_v2_spawn_accepts_v1_tagged_child_model() {
     let (session, mut turn) = make_session_and_context().await;
     let mut config = (*turn.config).clone();
     config
@@ -565,6 +565,43 @@ async fn multi_agent_v2_spawn_rejects_child_model_from_different_backend() {
         .expect("test config should allow feature update");
     set_turn_config(&mut turn, config);
 
+    let mut child_config = (*turn.config).clone();
+    apply_requested_spawn_agent_model_overrides(
+        &session,
+        &turn,
+        &mut child_config,
+        Some("gpt-5.6-luna"),
+        None,
+    )
+    .await
+    .expect("v1-tagged model should be accepted under v2");
+    assert_eq!(child_config.model.as_deref(), Some("gpt-5.6-luna"));
+}
+
+#[tokio::test]
+async fn multi_agent_v2_spawn_rejects_disabled_child_model() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    set_turn_config(&mut turn, config);
+    let mut catalog = bundled_models_response().expect("bundled models should parse");
+    let mut disabled = catalog
+        .models
+        .iter()
+        .find(|model| model.slug == "gpt-5.6-luna")
+        .cloned()
+        .expect("bundled models should include gpt-5.6-luna");
+    disabled.slug = "disabled-model".to_string();
+    disabled.multi_agent_version = Some(MultiAgentVersion::Disabled);
+    catalog.models.push(disabled);
+    session.services.models_manager = Arc::new(StaticModelsManager::new(
+        Some(Arc::clone(&session.services.auth_manager)),
+        catalog,
+    ));
+
     let err = SpawnAgentHandlerV2::default()
         .handle(invocation(
             Arc::new(session),
@@ -572,22 +609,21 @@ async fn multi_agent_v2_spawn_rejects_child_model_from_different_backend() {
             "spawn_agent",
             function_payload(json!({
                 "message": "inspect this repo",
-                "task_name": "incompatible_model",
-                "model": "gpt-5.4",
+                "task_name": "disabled_model",
+                "model": "disabled-model",
                 "fork_turns": "none"
             })),
         ))
         .await
         .err()
-        .expect("model from a different multi-agent backend should be rejected");
+        .expect("disabled model should be rejected");
 
-    assert_eq!(
-        err,
-        FunctionCallError::RespondToModel(
-            "Unknown model `gpt-5.4` for spawn_agent. Available models: gpt-5.6-sol, gpt-5.6-terra"
-                .to_string()
-        )
-    );
+    let FunctionCallError::RespondToModel(message) = err else {
+        panic!("expected model-facing error");
+    };
+    assert!(message.contains(
+        "Model `disabled-model` is not compatible with the active multi-agent backend (v2)."
+    ));
 }
 
 #[tokio::test]
