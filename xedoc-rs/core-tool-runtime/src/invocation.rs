@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use xedoc_core_turn_context::TurnContext;
 use xedoc_core_turn_diff::TurnDiffTracker;
 use xedoc_protocol::models::FunctionCallOutputBody;
+use xedoc_protocol::models::FunctionCallOutputContentItem;
 use xedoc_protocol::models::ResponseInputItem;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_tool_output_reduce::ReductionConfig;
@@ -115,6 +116,35 @@ pub struct AnyToolResult<P> {
 }
 
 impl<P> AnyToolResult<P> {
+    fn reduce_text(
+        text: &mut String,
+        call_id: &str,
+        tool_name: &str,
+        command_hash: Option<&str>,
+        thread_id: Option<&String>,
+        turn_id: Option<&String>,
+        sink: &dyn ReductionSink,
+        config: &ReductionConfig,
+    ) {
+        let original = text.clone();
+        let reduced = reduce(
+            ReductionInput {
+                tool_name,
+                call_id,
+                text: &original,
+                command_hash,
+            },
+            config,
+        );
+        *text = reduced.text;
+        let mut record = reduced.record;
+        record.thread_id = thread_id.cloned();
+        record.turn_id = turn_id.cloned();
+        if record.bytes_in > 0 && !original.trim().is_empty() {
+            sink.try_record(record);
+        }
+    }
+
     /// Converts this result into a model input item.
     pub fn into_response(self) -> ResponseInputItem {
         let Self {
@@ -138,28 +168,32 @@ impl<P> AnyToolResult<P> {
             };
             match body {
                 FunctionCallOutputBody::Text(text) => {
-                    let original = text.clone();
-                    let reduced = reduce(
-                        ReductionInput {
-                            tool_name: &tool_name,
-                            call_id: &call_id,
-                            text: &original,
-                            command_hash: command_hash.as_deref(),
-                        },
+                    Self::reduce_text(
+                        text,
+                        &call_id,
+                        &tool_name,
+                        command_hash.as_deref(),
+                        thread_id.as_ref(),
+                        turn_id.as_ref(),
+                        sink.as_ref(),
                         config,
                     );
-                    *text = reduced.text;
-                    let mut record = reduced.record;
-                    record.thread_id = thread_id;
-                    record.turn_id = turn_id;
-                    if record.bytes_in > 0 && !original.trim().is_empty() {
-                        sink.try_record(record);
-                    }
                 }
                 FunctionCallOutputBody::ContentItems(items) => {
-                    // Content items are structured model output.  Leave them
-                    // byte-identical until a content-item-aware reducer exists.
-                    let _ = items;
+                    for item in items {
+                        if let FunctionCallOutputContentItem::InputText { text } = item {
+                            Self::reduce_text(
+                                text,
+                                &call_id,
+                                &tool_name,
+                                command_hash.as_deref(),
+                                thread_id.as_ref(),
+                                turn_id.as_ref(),
+                                sink.as_ref(),
+                                config,
+                            );
+                        }
+                    }
                 }
             }
         }
