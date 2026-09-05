@@ -728,12 +728,17 @@ fn append_extension_tool_executors(
     }
 
     let standalone_web_search_enabled = standalone_web_search_enabled(turn_context);
-    let web_search_mode_on = turn_context.config.web_search_mode.value() != WebSearchMode::Disabled;
+    let web_search_mode = turn_context.config.web_search_mode.value();
 
     for executor in executors.iter().cloned() {
         let tool_name = executor.tool_name();
         if tool_name == ToolName::namespaced("web", "run")
-            && (!standalone_web_search_enabled || !web_search_mode_on)
+            && (!standalone_web_search_enabled || web_search_mode == WebSearchMode::Disabled)
+        {
+            continue;
+        }
+        if matches!(tool_name.name.as_str(), "web_search" | "web_fetch")
+            && web_search_mode == WebSearchMode::Disabled
         {
             continue;
         }

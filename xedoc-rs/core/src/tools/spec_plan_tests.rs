@@ -298,6 +298,33 @@ impl ToolExecutor<ExtensionToolCall> for TestNamespaceExtensionTool {
     }
 }
 
+struct TestDirectWebExtensionTool {
+    tool_name: &'static str,
+}
+
+impl ToolExecutor<ExtensionToolCall> for TestDirectWebExtensionTool {
+    fn tool_name(&self) -> ToolName {
+        ToolName::plain(self.tool_name)
+    }
+
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::Function(ResponsesApiTool {
+            name: self.tool_name.to_string(),
+            description: "Test direct web tool.".to_string(),
+            strict: false,
+            defer_loading: None,
+            parameters: xedoc_tools::JsonSchema::default(),
+            output_schema: None,
+        })
+    }
+
+    fn handle(&self, _call: ExtensionToolCall) -> xedoc_tools::ToolExecutorFuture<'_> {
+        Box::pin(async {
+            Ok(Box::new(xedoc_tools::JsonToolOutput::new(json!({}))) as Box<dyn ToolOutput>)
+        })
+    }
+}
+
 struct DeferredExtensionTool;
 
 impl ToolExecutor<ExtensionToolCall> for DeferredExtensionTool {
@@ -1251,4 +1278,31 @@ async fn hosted_web_search_and_standalone_image_generation_follow_runtime_gates(
     })
     .await;
     unsupported_provider.assert_visible_lacks(&["web_search"]);
+}
+
+#[tokio::test]
+async fn direct_web_tools_are_hidden_only_when_web_search_is_disabled() {
+    let direct_web_tools = vec![Arc::new(TestDirectWebExtensionTool {
+        tool_name: "web_fetch",
+    }) as Arc<dyn ToolExecutor<ExtensionToolCall>>];
+
+    let disabled = probe_with(
+        |turn| set_web_search_mode(turn, WebSearchMode::Disabled),
+        ToolPlanInputs {
+            extension_tool_executors: direct_web_tools.clone(),
+            ..Default::default()
+        },
+    )
+    .await;
+    disabled.assert_visible_lacks(&["web_fetch"]);
+
+    let cached = probe_with(
+        |turn| set_web_search_mode(turn, WebSearchMode::Cached),
+        ToolPlanInputs {
+            extension_tool_executors: direct_web_tools,
+            ..Default::default()
+        },
+    )
+    .await;
+    cached.assert_visible_contains(&["web_fetch"]);
 }

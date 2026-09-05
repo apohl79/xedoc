@@ -1,3 +1,4 @@
+mod direct;
 mod extension;
 mod history;
 mod output;
