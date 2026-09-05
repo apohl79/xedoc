@@ -15,9 +15,17 @@ pub async fn supported_models(
     include_hidden: bool,
     http_client_factory: HttpClientFactory,
 ) -> Vec<Model> {
-    thread_manager
-        .list_models(RefreshStrategy::OnlineIfUncached, http_client_factory)
-        .await
+    let models_manager = thread_manager.get_models_manager();
+    let presets = match models_manager.try_list_models() {
+        Ok(presets) if !presets.is_empty() => presets,
+        _ => {
+            thread_manager
+                .list_models(RefreshStrategy::Offline, http_client_factory)
+                .await
+        }
+    };
+
+    presets
         .into_iter()
         .filter(|preset| include_hidden || preset.show_in_picker)
         .map(model_from_preset)
