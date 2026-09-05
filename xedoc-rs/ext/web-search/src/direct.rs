@@ -7,6 +7,7 @@ use std::net::IpAddr;
 use std::time::Duration;
 use url::Host;
 use url::Url;
+use xedoc_extension_api::ExtensionTurnItem;
 use xedoc_extension_api::FunctionCallError;
 use xedoc_extension_api::ResponsesApiTool;
 use xedoc_extension_api::ToolCall;
@@ -14,8 +15,15 @@ use xedoc_extension_api::ToolExecutor;
 use xedoc_extension_api::ToolName;
 use xedoc_extension_api::ToolOutput;
 use xedoc_extension_api::ToolSpec;
+use xedoc_extension_items::ExtensionItem;
+use xedoc_extension_items::web_search::WebSearchAction;
+use xedoc_extension_items::web_search::WebSearchItem;
 use xedoc_http_client::ClientRouteClass;
 use xedoc_http_client::HttpClientFactory;
+use xedoc_protocol::models::WebSearchAction as CoreWebSearchAction;
+use xedoc_protocol::protocol::EventMsg;
+use xedoc_protocol::protocol::WebSearchBeginEvent;
+use xedoc_protocol::protocol::WebSearchEndEvent;
 use xedoc_tools::JsonSchema;
 use xedoc_tools::ToolExposure;
 
@@ -74,13 +82,34 @@ impl ToolExecutor<ToolCall> for DirectWebFetchTool {
 
 pub(crate) struct DirectWebSearchTool {
     http_client_factory: HttpClientFactory,
+    #[cfg(test)]
+    search_url: Option<Url>,
 }
 
 impl DirectWebSearchTool {
     pub(crate) const fn new(http_client_factory: HttpClientFactory) -> Self {
         Self {
             http_client_factory,
+            #[cfg(test)]
+            search_url: None,
         }
+    }
+
+    #[cfg(test)]
+    fn with_search_url(http_client_factory: HttpClientFactory, search_url: Url) -> Self {
+        Self {
+            http_client_factory,
+            search_url: Some(search_url),
+        }
+    }
+
+    fn request_url(&self, query: &str) -> Result<Url, FunctionCallError> {
+        #[cfg(test)]
+        if let Some(url) = self.search_url.as_ref() {
+            return Ok(url.clone());
+        }
+
+        search_url(query)
     }
 }
 
@@ -105,11 +134,16 @@ impl ToolExecutor<ToolCall> for DirectWebSearchTool {
     fn handle(&self, call: ToolCall) -> xedoc_extension_api::ToolExecutorFuture<'_> {
         Box::pin(async move {
             let args: SearchArgs = parse_arguments(call.function_arguments()?)?;
-            let url = search_url(&args.query)?;
+            let url = self.request_url(&args.query)?;
+            call.turn_item_emitter
+                .emit_started(web_search_started_item(&call.call_id))
+                .await;
             let html = fetch_body(&self.http_client_factory, url).await?;
-            extract_search_results(&html)
-                .map(SearchOutput::new)
-                .map(|output| Box::new(output) as Box<dyn ToolOutput>)
+            let output = extract_search_results(&html)?;
+            call.turn_item_emitter
+                .emit_completed(web_search_completed_item(&call.call_id, &args.query))
+                .await;
+            Ok(Box::new(SearchOutput::new(output)) as Box<dyn ToolOutput>)
         })
     }
 }
@@ -145,6 +179,43 @@ fn function_spec(
         output_schema: None,
         defer_loading: None,
     })
+}
+
+fn web_search_started_item(call_id: &str) -> ExtensionTurnItem {
+    ExtensionTurnItem {
+        item: ExtensionItem::WebSearch(WebSearchItem {
+            id: call_id.to_string(),
+            query: String::new(),
+            action: None,
+            results: None,
+        }),
+        legacy_events: vec![EventMsg::WebSearchBegin(WebSearchBeginEvent {
+            call_id: call_id.to_string(),
+        })],
+    }
+}
+
+fn web_search_completed_item(call_id: &str, query: &str) -> ExtensionTurnItem {
+    ExtensionTurnItem {
+        item: ExtensionItem::WebSearch(WebSearchItem {
+            id: call_id.to_string(),
+            query: query.to_string(),
+            action: Some(WebSearchAction::Search {
+                query: Some(query.to_string()),
+                queries: None,
+            }),
+            results: None,
+        }),
+        legacy_events: vec![EventMsg::WebSearchEnd(WebSearchEndEvent {
+            call_id: call_id.to_string(),
+            query: query.to_string(),
+            action: CoreWebSearchAction::Search {
+                query: Some(query.to_string()),
+                queries: None,
+            },
+            results: None,
+        })],
+    }
 }
 
 async fn fetch_body(
