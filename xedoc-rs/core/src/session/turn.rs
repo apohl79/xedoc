@@ -940,12 +940,15 @@ async fn run_auto_compact(
     }
 
     if should_use_remote_compact_task(turn_context.provider.info()) {
-        let history_encryption = sess
+        let history_encryption = if sess
             .previous_turn_settings()
             .await
             .is_some_and(|previous| previous.model != turn_context.model_info.slug)
-            .then_some(RemoteCompactionHistoryEncryption::Strip)
-            .unwrap_or(RemoteCompactionHistoryEncryption::Preserve);
+        {
+            RemoteCompactionHistoryEncryption::Strip
+        } else {
+            RemoteCompactionHistoryEncryption::Preserve
+        };
         if turn_context
             .config
             .features

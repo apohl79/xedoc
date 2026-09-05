@@ -4,6 +4,60 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+/// Reduction aggressiveness for the token usage optimizer.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[derive(Default)]
+pub enum TokenUsageOptimizerLevel {
+    #[default]
+    Conservative,
+    Balanced,
+    Aggressive,
+}
+
+/// Configuration for the token usage optimizer.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TokenUsageOptimizerConfigToml {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub level: TokenUsageOptimizerLevel,
+    #[serde(default = "default_token_usage_optimizer_spill_retention_days")]
+    pub spill_retention_days: u32,
+    #[serde(default = "default_token_usage_optimizer_spill_max_mib")]
+    pub spill_max_mib: u32,
+}
+
+fn default_token_usage_optimizer_spill_retention_days() -> u32 {
+    7
+}
+
+fn default_token_usage_optimizer_spill_max_mib() -> u32 {
+    256
+}
+
+impl Default for TokenUsageOptimizerConfigToml {
+    fn default() -> Self {
+        Self {
+            enabled: None,
+            level: TokenUsageOptimizerLevel::default(),
+            spill_retention_days: default_token_usage_optimizer_spill_retention_days(),
+            spill_max_mib: default_token_usage_optimizer_spill_max_mib(),
+        }
+    }
+}
+
+impl FeatureConfig for TokenUsageOptimizerConfigToml {
+    fn enabled(&self) -> Option<bool> {
+        self.enabled
+    }
+
+    fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = Some(enabled);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MultiAgentV2ConfigToml {

@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 xedoc-core-context-manager = { workspace = true }
 xedoc-core-exec = { workspace = true }
+xedoc-otel = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-tools = { workspace = true }
 xedoc-utils-output-truncation = { workspace = true }

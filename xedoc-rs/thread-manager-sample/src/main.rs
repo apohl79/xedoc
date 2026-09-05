@@ -272,6 +272,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         ghost_snapshot: GhostSnapshotConfig::default(),
         multi_agent_v2: MultiAgentV2Config::default(),
         token_budget: None,
+        token_usage_optimizer: xedoc_features::TokenUsageOptimizerConfigToml::default(),
         rollout_budget: None,
         current_time_reminder: None,
         features: Default::default(),

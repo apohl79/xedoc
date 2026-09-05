@@ -421,7 +421,7 @@ fn merge_rate_limit_fields(
     mut snapshot: RateLimitSnapshot,
 ) -> RateLimitSnapshot {
     if snapshot.limit_id.is_none() {
-        snapshot.limit_id = Some("codex".to_string());
+        snapshot.limit_id = Some("xedoc".to_string());
     }
     if snapshot.credits.is_none() {
         snapshot.credits = previous.and_then(|prior| prior.credits.clone());

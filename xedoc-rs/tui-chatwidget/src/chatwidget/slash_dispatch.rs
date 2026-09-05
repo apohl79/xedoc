@@ -37,6 +37,7 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
 const RAW_USAGE: &str = "Usage: /raw [on|off]";
 const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
+const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|reset-stats|on|off|level <conservative|balanced|aggressive>]";
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -259,6 +260,24 @@ impl ChatWidget {
             SlashCommand::Personality => {
                 self.open_personality_popup();
                 self.defer_input_until_settings_applied();
+            }
+            SlashCommand::TokenUsageOptimizer => {
+                let enabled = self.config.features.enabled(Feature::TokenUsageOptimizer);
+                let level = match self.config.token_usage_optimizer.level {
+                    xedoc_features::TokenUsageOptimizerLevel::Conservative => "conservative",
+                    xedoc_features::TokenUsageOptimizerLevel::Balanced => "balanced",
+                    xedoc_features::TokenUsageOptimizerLevel::Aggressive => "aggressive",
+                };
+                self.add_info_message(
+                    format!(
+                        "Token usage optimizer: {}, level {level}.",
+                        if enabled { "on" } else { "off" },
+                    ),
+                    Some(
+                        "Use `level conservative|balanced|aggressive` to tune reductions."
+                            .to_string(),
+                    ),
+                );
             }
             SlashCommand::Plan => {
                 self.apply_plan_slash_command();
@@ -587,6 +606,43 @@ impl ChatWidget {
                 }
                 _ => self.add_error_message(RAW_USAGE.to_string()),
             },
+            SlashCommand::TokenUsageOptimizer => {
+                let mut parts = trimmed.split_whitespace();
+                let command = parts.next().map(str::to_ascii_lowercase);
+                match (command.as_deref(), parts.next()) {
+                    (None | Some("status" | "show"), None) => {
+                        self.dispatch_command(SlashCommand::TokenUsageOptimizer);
+                    }
+                    (Some("stats"), None) => {
+                        self.app_event_tx
+                            .send(AppEvent::TokenUsageOptimizerStatsRequested);
+                    }
+                    (Some("reset-stats"), None) => {
+                        self.app_event_tx
+                            .send(AppEvent::TokenUsageOptimizerStatsResetRequested);
+                    }
+                    (Some("on" | "off"), None) => {
+                        let enabled = command.as_deref() == Some("on");
+                        self.app_event_tx.send(AppEvent::UpdateFeatureFlags {
+                            updates: vec![(Feature::TokenUsageOptimizer, enabled)],
+                        });
+                    }
+                    (Some("level"), Some(level)) if parts.next().is_none() => {
+                        if matches!(
+                            level.to_ascii_lowercase().as_str(),
+                            "conservative" | "balanced" | "aggressive"
+                        ) {
+                            self.app_event_tx
+                                .send(AppEvent::UpdateTokenUsageOptimizerLevel {
+                                    level: level.to_string(),
+                                });
+                        } else {
+                            self.add_error_message(TOKEN_USAGE_OPTIMIZER_USAGE.to_string());
+                        }
+                    }
+                    _ => self.add_error_message(TOKEN_USAGE_OPTIMIZER_USAGE.to_string()),
+                }
+            }
             SlashCommand::Rename if !trimmed.is_empty() => {
                 let mut rename_args = trimmed.split_whitespace();
                 if matches!(rename_args.next(), Some("--auto")) {
@@ -922,6 +978,7 @@ impl ChatWidget {
             | SlashCommand::Vim
             | SlashCommand::Diff
             | SlashCommand::Rename
+            | SlashCommand::TokenUsageOptimizer
             | SlashCommand::TestApproval => QueueDrain::Continue,
             SlashCommand::New
             | SlashCommand::Archive

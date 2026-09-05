@@ -28,6 +28,8 @@ use feature_configs::RemovedAppsMcpPathOverrideConfigToml;
 use feature_configs::RemovedCodeModeConfigToml;
 pub use feature_configs::RolloutBudgetConfigToml;
 pub use feature_configs::TokenBudgetConfigToml;
+pub use feature_configs::TokenUsageOptimizerConfigToml;
+pub use feature_configs::TokenUsageOptimizerLevel;
 use legacy::LegacyFeatureToggles;
 pub use legacy::legacy_feature_keys;
 
@@ -228,6 +230,8 @@ pub enum Feature {
     Goals,
     /// Add current context-window metadata to model-visible context.
     TokenBudget,
+    /// Enable content-aware reduction of tool output before it enters history.
+    TokenUsageOptimizer,
     /// Track and report a shared token budget across a session's agent threads.
     RolloutBudget,
     /// Add current-time reminders to model-visible context.
@@ -645,6 +649,8 @@ pub struct FeaturesToml {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_budget: Option<FeatureToml<TokenBudgetConfigToml>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_usage_optimizer: Option<FeatureToml<TokenUsageOptimizerConfigToml>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rollout_budget: Option<FeatureToml<RolloutBudgetConfigToml>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_time_reminder: Option<FeatureToml<CurrentTimeReminderConfigToml>>,
@@ -682,6 +688,13 @@ impl FeaturesToml {
         if let Some(enabled) = self.token_budget.as_ref().and_then(FeatureToml::enabled) {
             entries.insert(Feature::TokenBudget.key().to_string(), enabled);
         }
+        if let Some(enabled) = self
+            .token_usage_optimizer
+            .as_ref()
+            .and_then(FeatureToml::enabled)
+        {
+            entries.insert(Feature::TokenUsageOptimizer.key().to_string(), enabled);
+        }
         if let Some(enabled) = self.rollout_budget.as_ref().and_then(FeatureToml::enabled) {
             entries.insert(Feature::RolloutBudget.key().to_string(), enabled);
         }
@@ -704,6 +717,7 @@ impl FeaturesToml {
             removed_code_mode: _,
             multi_agent_v2,
             token_budget,
+            token_usage_optimizer,
             rollout_budget,
             current_time_reminder,
             removed_apps_mcp_path_override: _,
@@ -719,6 +733,8 @@ impl FeaturesToml {
                 materialize_resolved_feature_enabled(multi_agent_v2, enabled);
             } else if spec.id == Feature::TokenBudget {
                 materialize_resolved_feature_enabled(token_budget, enabled);
+            } else if spec.id == Feature::TokenUsageOptimizer {
+                materialize_resolved_feature_enabled(token_usage_optimizer, enabled);
             } else if spec.id == Feature::RolloutBudget {
                 materialize_resolved_feature_enabled(rollout_budget, enabled);
             } else if spec.id == Feature::CurrentTimeReminder {
@@ -1263,6 +1279,12 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::TokenBudget,
         key: "token_budget",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::TokenUsageOptimizer,
+        key: "token_usage_optimizer",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },

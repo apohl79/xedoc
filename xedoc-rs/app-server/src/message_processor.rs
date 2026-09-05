@@ -273,6 +273,7 @@ impl MessageProcessor {
             outgoing.clone(),
             config_manager.clone(),
             thread_manager.clone(),
+            state_db.clone(),
         );
         let on_effective_plugins_changed =
             crate::effective_plugin_change::effective_plugins_changed_callback(
@@ -778,6 +779,16 @@ impl MessageProcessor {
             ClientRequest::ConfigBatchWrite { params, .. } => {
                 self.config_processor.batch_write(params).await.map(Some)
             }
+            ClientRequest::TokenUsageOptimizerRead { params: _, .. } => self
+                .config_processor
+                .token_usage_optimizer_read()
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::TokenUsageOptimizerWrite { params, .. } => self
+                .config_processor
+                .token_usage_optimizer_write(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ExperimentalFeatureEnablementSet { params, .. } => {
                 self.config_processor
                     .experimental_feature_enablement_set(request_id.clone(), params)

@@ -3,6 +3,8 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use xedoc_features::Feature;
 use xedoc_protocol::models::ShellCommandToolCallParams;
+use xedoc_tool_output_reduce::spill_call_id;
+use xedoc_tool_output_reduce::spill_path_in_command;
 
 use crate::exec::ExecParams;
 use crate::exec_policy::ExecApprovalRequest;
@@ -214,6 +216,21 @@ async fn run_exec_like(args: RunExecLikeArgs) -> Result<FunctionToolOutput, Func
         )
         .await
         .map(|result| result.output);
+    if out.is_ok()
+        && let Some(sink) = session.services.reduction_sink.as_ref()
+        && turn.config.features.enabled(Feature::TokenUsageOptimizer)
+        && let Some(path) = spill_path_in_command(
+            &exec_params.command.join(" "),
+            &turn.config.xedoc_home.as_path().join("tool_outputs"),
+        )
+    {
+        let source_call_id = spill_call_id(
+            &path,
+            &turn.config.xedoc_home.as_path().join("tool_outputs"),
+        )
+        .unwrap_or_else(|| call_id.clone());
+        sink.try_record_retrieval(&source_call_id, &path.to_string_lossy());
+    }
     let event_ctx = ToolEventCtx::new(
         session.as_ref(),
         turn.as_ref(),

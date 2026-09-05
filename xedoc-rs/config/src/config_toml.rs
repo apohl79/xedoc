@@ -28,6 +28,7 @@ use serde::Serialize;
 use serde::de::Error as SerdeError;
 use serde_json::Value as JsonValue;
 use xedoc_features::FeaturesToml;
+use xedoc_features::TokenUsageOptimizerConfigToml;
 use xedoc_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;
 use xedoc_model_provider_info::LEGACY_OLLAMA_CHAT_PROVIDER_ID;
 use xedoc_model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
@@ -403,6 +404,10 @@ pub struct ConfigToml {
     // Injects known feature keys into the schema and forbids unknown keys.
     #[schemars(schema_with = "crate::schema::features_schema")]
     pub features: Option<FeaturesToml>,
+
+    /// Content-aware tool-output reduction settings.
+    #[serde(default)]
+    pub token_usage_optimizer: Option<TokenUsageOptimizerConfigToml>,
 
     /// Suppress warnings about unstable (under development) features.
     pub suppress_unstable_features_warning: Option<bool>,
@@ -921,5 +926,23 @@ command = "   "
                 "model_providers.amazon-bedrock: provider auth.command must not be empty"
             )
         );
+    }
+
+    #[test]
+    fn token_usage_optimizer_config_round_trips() {
+        let config: ConfigToml = toml::from_str(
+            r#"
+[token_usage_optimizer]
+enabled = true
+level = "aggressive"
+spill_retention_days = 3
+spill_max_mib = 64
+"#,
+        )
+        .expect("optimizer config should deserialize");
+        let encoded = toml::to_string(&config).expect("optimizer config should serialize");
+        let decoded: ConfigToml =
+            toml::from_str(&encoded).expect("serialized optimizer config should deserialize");
+        assert_eq!(decoded.token_usage_optimizer, config.token_usage_optimizer);
     }
 }

@@ -567,6 +567,87 @@ pub struct ConfigBatchWriteParams {
     pub reload_user_config: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum TokenUsageOptimizerLevel {
+    Conservative,
+    Balanced,
+    Aggressive,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerBreakdown {
+    pub dimension: String,
+    pub reductions: i64,
+    pub bytes_in: i64,
+    pub bytes_out: i64,
+    pub retrievals: i64,
+    pub reruns: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerTopReduction {
+    pub call_id: String,
+    pub tool_name: String,
+    pub kind: String,
+    pub bytes_in: i64,
+    pub bytes_out: i64,
+    pub tokens_saved: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerInsights {
+    pub by_kind: Vec<TokenUsageOptimizerBreakdown>,
+    pub by_reducer: Vec<TokenUsageOptimizerBreakdown>,
+    pub by_tool: Vec<TokenUsageOptimizerBreakdown>,
+    pub top_reductions: Vec<TokenUsageOptimizerTopReduction>,
+    pub retrievals: i64,
+    pub spilled: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerReadResponse {
+    pub enabled: bool,
+    pub level: TokenUsageOptimizerLevel,
+    pub reduction_count: i64,
+    pub tokens_saved: i64,
+    pub insights: TokenUsageOptimizerInsights,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerWriteParams {
+    #[ts(optional = nullable)]
+    pub enabled: Option<bool>,
+    #[ts(optional = nullable)]
+    pub level: Option<TokenUsageOptimizerLevel>,
+    #[ts(optional = nullable)]
+    pub expected_version: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reset_stats: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerWriteResponse {
+    pub enabled: bool,
+    pub level: TokenUsageOptimizerLevel,
+    pub reduction_count: i64,
+    pub tokens_saved: i64,
+    pub insights: TokenUsageOptimizerInsights,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]

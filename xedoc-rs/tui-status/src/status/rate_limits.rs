@@ -229,7 +229,8 @@ pub fn compose_rate_limit_data_many(
             .unwrap_or(false);
 
         let limit_bucket_label = snapshot.limit_name.clone();
-        let show_limit_prefix = !limit_bucket_label.eq_ignore_ascii_case("codex");
+        let show_limit_prefix = !limit_bucket_label.eq_ignore_ascii_case("xedoc")
+            && !limit_bucket_label.eq_ignore_ascii_case("codex");
         let primary_label = snapshot
             .primary
             .as_ref()

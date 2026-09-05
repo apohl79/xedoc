@@ -39,7 +39,7 @@ impl Session {
             step_context
                 .loaded_agents_md
                 .as_deref()
-                .map(|loaded| loaded.contextual_user_fragment()),
+                .map(xedoc_core_project_docs::LoadedAgentsMd::contextual_user_fragment),
         ));
         if turn_context.config.include_permissions_instructions {
             let permission_profile = turn_context.permission_profile();
@@ -98,7 +98,7 @@ impl Session {
             let workspace_roots = step_context
                 .environments
                 .primary()
-                .map(|environment| environment.workspace_roots())
+                .map(xedoc_core_environment::TurnEnvironment::workspace_roots)
                 .unwrap_or_default();
             let requirements = turn_context.config.config_layer_stack.requirements();
             let network = requirements.network.as_ref().map(|network| {

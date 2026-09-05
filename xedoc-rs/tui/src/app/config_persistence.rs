@@ -43,6 +43,53 @@ pub(super) fn resume_model_settings_for_overrides(
 }
 
 impl App {
+    pub(super) async fn update_token_usage_optimizer_level(
+        &mut self,
+        app_server: &mut AppServerSession,
+        level: String,
+    ) {
+        let level_name = level.to_ascii_lowercase();
+        let level = match level_name.as_str() {
+            "conservative" => xedoc_features::TokenUsageOptimizerLevel::Conservative,
+            "balanced" => xedoc_features::TokenUsageOptimizerLevel::Balanced,
+            "aggressive" => xedoc_features::TokenUsageOptimizerLevel::Aggressive,
+            _ => {
+                self.chat_widget
+                    .add_error_message("Invalid token usage optimizer level".to_string());
+                return;
+            }
+        };
+        let write_response = match crate::config_update::write_config_batch(
+            app_server.request_handle(),
+            vec![crate::config_update::replace_config_value(
+                "token_usage_optimizer.level",
+                serde_json::json!(level),
+            )],
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                self.chat_widget.add_error_message(format!(
+                    "Failed to save token usage optimizer level: {err}"
+                ));
+                return;
+            }
+        };
+        if write_response.status == WriteStatus::OkOverridden {
+            self.chat_widget.add_error_message(
+                "Token usage optimizer level was saved but not applied by the active config."
+                    .to_string(),
+            );
+            return;
+        }
+        self.config.token_usage_optimizer.level = level;
+        self.chat_widget.add_info_message(
+            format!("Token usage optimizer level set to {level_name}"),
+            /*hint*/ None,
+        );
+    }
+
     pub(super) async fn rebuild_config_for_cwd(&self, cwd: PathBuf) -> Result<Config> {
         let mut overrides = self.harness_overrides.clone();
         overrides.cwd = Some(cwd.clone());
@@ -369,6 +416,9 @@ impl App {
             }
             let effective_enabled = feature_config.features.enabled(feature);
             next_config = feature_config;
+            if feature == Feature::TokenUsageOptimizer {
+                next_config.token_usage_optimizer.enabled = Some(effective_enabled);
+            }
             feature_updates_to_apply.push((feature, effective_enabled));
             config_edits.push(crate::config_update::build_feature_enabled_edit(
                 feature_key,

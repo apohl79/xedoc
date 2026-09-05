@@ -320,6 +320,12 @@ fn post_tool_use_feedback_output_uses_model_visible_response() {
             ),
         }),
         post_tool_use_payload: None,
+        reduction_sink: None,
+        tool_name: "test".to_string(),
+        thread_id: None,
+        turn_id: None,
+        reduction_config: None,
+        command_hash: None,
     };
 
     assert_eq!(

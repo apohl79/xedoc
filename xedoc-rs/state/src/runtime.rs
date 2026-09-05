@@ -33,15 +33,22 @@ use sqlx::Sqlite;
 use sqlx::SqliteConnection;
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::time::Instant;
+use tokio::sync::mpsc;
 use tracing::warn;
 use xedoc_protocol::ThreadId;
 use xedoc_protocol::protocol::RolloutItem;
+use xedoc_tool_output_reduce::PayloadKind;
+use xedoc_tool_output_reduce::ReducerId;
+use xedoc_tool_output_reduce::ReductionLevel;
+use xedoc_tool_output_reduce::ReductionRecord;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 mod backfill;
@@ -72,6 +79,53 @@ pub use threads::ThreadFilterOptions;
 // metadata, rather than the exact sum of all persisted SQLite column bytes.
 const LOG_PARTITION_SIZE_LIMIT_BYTES: i64 = 10 * 1024 * 1024;
 const LOG_PARTITION_ROW_LIMIT: i64 = 1_000;
+const TOOL_OUTPUT_REDUCTION_RETENTION_DAYS: i64 = 30;
+const TOOL_OUTPUT_REDUCTION_ROW_LIMIT: i64 = 10_000;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolOutputReductionBreakdown {
+    pub dimension: String,
+    pub reductions: i64,
+    pub bytes_in: i64,
+    pub bytes_out: i64,
+    pub retrievals: i64,
+    pub reruns: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolOutputReductionTop {
+    pub call_id: String,
+    pub tool_name: String,
+    pub kind: String,
+    pub bytes_in: i64,
+    pub bytes_out: i64,
+    pub tokens_saved: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolOutputReductionInsights {
+    pub by_kind: Vec<ToolOutputReductionBreakdown>,
+    pub by_reducer: Vec<ToolOutputReductionBreakdown>,
+    pub by_tool: Vec<ToolOutputReductionBreakdown>,
+    pub top_reductions: Vec<ToolOutputReductionTop>,
+    pub retrievals: i64,
+    pub spilled: i64,
+}
+
+#[derive(Clone, Copy)]
+enum ReductionBreakdownDimension {
+    Kind,
+    Tool,
+}
+
+impl ReductionBreakdownDimension {
+    fn expression(self) -> &'static str {
+        match self {
+            Self::Kind => "kind",
+            Self::Tool => "tool_name",
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 struct RuntimeDbSpec {
@@ -137,9 +191,382 @@ pub struct StateRuntime {
     thread_goals: GoalStore,
     thread_updated_at_millis: Arc<AtomicI64>,
     thread_recency_at_millis: Arc<AtomicI64>,
+    reduction_tx: mpsc::Sender<ReductionRecord>,
+    retrieval_tx: mpsc::Sender<(String, String)>,
+}
+
+const REDUCTION_QUEUE_CAPACITY: usize = 256;
+
+struct RuntimeReductionSink {
+    tx: mpsc::Sender<ReductionRecord>,
+    retrieval_tx: mpsc::Sender<(String, String)>,
+}
+
+impl xedoc_tool_output_reduce::ReductionSink for RuntimeReductionSink {
+    fn try_record(&self, record: ReductionRecord) {
+        let kind = payload_kind_name(record.kind);
+        let level = reduction_level_name(record.level);
+        let reducer = record.reducers_applied.first().map_or("none", reducer_name);
+        xedoc_otel::record_tool_output_reduction(
+            record.est_tokens_in,
+            record.est_tokens_out,
+            record.duration_us,
+            &record.tool_name,
+            kind,
+            level,
+            reducer,
+        );
+        let _ = self.tx.try_send(record);
+    }
+
+    fn try_record_retrieval(&self, call_id: &str, spill_path: &str) {
+        xedoc_otel::record_tool_output_retrieval("shell");
+        let _ = self
+            .retrieval_tx
+            .try_send((call_id.to_owned(), spill_path.to_owned()));
+    }
 }
 
 impl StateRuntime {
+    /// Return the bounded, non-blocking sink used by ingestion paths.
+    pub fn reduction_sink(&self) -> Arc<dyn xedoc_tool_output_reduce::ReductionSink> {
+        Arc::new(RuntimeReductionSink {
+            tx: self.reduction_tx.clone(),
+            retrieval_tx: self.retrieval_tx.clone(),
+        })
+    }
+
+    /// Return lifetime aggregate estimated token savings and reduction count.
+    ///
+    /// Rows are retained in a bounded rolling window; callers must label this
+    /// as lifetime-within-retention rather than as a per-session statistic.
+    pub async fn tool_output_reduction_stats(&self) -> anyhow::Result<(i64, i64)> {
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS count, COALESCE(SUM(est_tokens_in - est_tokens_out), 0) AS saved \
+             FROM tool_output_reductions",
+        )
+        .fetch_one(self.pool.as_ref())
+        .await?;
+        Ok((row.try_get("count")?, row.try_get("saved")?))
+    }
+
+    /// Return reduction count and estimated savings for one thread within retention.
+    pub async fn tool_output_reduction_stats_for_thread(
+        &self,
+        thread_id: &str,
+    ) -> anyhow::Result<(i64, i64)> {
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS count, COALESCE(SUM(est_tokens_in - est_tokens_out), 0) AS saved \
+             FROM tool_output_reductions WHERE thread_id = ?",
+        )
+        .bind(thread_id)
+        .fetch_one(self.pool.as_ref())
+        .await?;
+        Ok((row.try_get("count")?, row.try_get("saved")?))
+    }
+
+    /// Return bounded effectiveness breakdowns for the optimizer dashboard.
+    ///
+    /// Only aggregate metadata is returned; tool output bodies and spill paths are
+    /// intentionally excluded. Results are capped to keep API responses bounded.
+    pub async fn tool_output_reduction_insights(
+        &self,
+        thread_id: Option<&str>,
+    ) -> anyhow::Result<ToolOutputReductionInsights> {
+        let by_kind = self
+            .reduction_breakdown(ReductionBreakdownDimension::Kind, thread_id)
+            .await?;
+        let by_reducer = self.reduction_breakdown_by_reducer(thread_id).await?;
+        let by_tool = self
+            .reduction_breakdown(ReductionBreakdownDimension::Tool, thread_id)
+            .await?;
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT call_id, tool_name, kind, bytes_in, bytes_out, \
+             (est_tokens_in - est_tokens_out) AS tokens_saved \
+             FROM tool_output_reductions",
+        );
+        if let Some(thread_id) = thread_id {
+            query.push(" WHERE thread_id = ").push_bind(thread_id);
+        }
+        query.push(" ORDER BY (est_tokens_in - est_tokens_out) DESC LIMIT 10");
+        let rows = query.build().fetch_all(self.pool.as_ref()).await?;
+        let top_reductions = rows
+            .into_iter()
+            .map(|row| {
+                Ok(ToolOutputReductionTop {
+                    call_id: row.try_get("call_id")?,
+                    tool_name: row.try_get("tool_name")?,
+                    kind: row.try_get("kind")?,
+                    bytes_in: row.try_get("bytes_in")?,
+                    bytes_out: row.try_get("bytes_out")?,
+                    tokens_saved: row.try_get("tokens_saved")?,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let mut count_query = sqlx::query(
+            "SELECT COUNT(DISTINCT r.call_id) AS count FROM tool_output_retrievals r \
+                 JOIN tool_output_reductions d ON d.call_id = r.call_id AND d.spilled = 1",
+        );
+        if let Some(thread_id) = thread_id {
+            count_query = sqlx::query(
+                "SELECT COUNT(DISTINCT r.call_id) AS count FROM tool_output_retrievals r \
+                 JOIN tool_output_reductions d ON d.call_id = r.call_id AND d.spilled = 1 \
+                 WHERE d.thread_id = ?",
+            )
+            .bind(thread_id);
+        }
+        let retrievals = count_query
+            .fetch_one(self.pool.as_ref())
+            .await?
+            .try_get("count")?;
+        let mut spilled_query =
+            sqlx::query("SELECT COUNT(*) AS count FROM tool_output_reductions WHERE spilled = 1");
+        if let Some(thread_id) = thread_id {
+            spilled_query = sqlx::query(
+                "SELECT COUNT(*) AS count FROM tool_output_reductions \
+                 WHERE spilled = 1 AND thread_id = ?",
+            )
+            .bind(thread_id);
+        }
+        let spilled = spilled_query
+            .fetch_one(self.pool.as_ref())
+            .await?
+            .try_get("count")?;
+        Ok(ToolOutputReductionInsights {
+            by_kind,
+            by_reducer,
+            by_tool,
+            top_reductions,
+            retrievals,
+            spilled,
+        })
+    }
+
+    async fn reduction_breakdown(
+        &self,
+        dimension: ReductionBreakdownDimension,
+        thread_id: Option<&str>,
+    ) -> anyhow::Result<Vec<ToolOutputReductionBreakdown>> {
+        let expression = dimension.expression();
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "WITH turn_groups AS ( \
+                SELECT thread_id, turn_id, \
+                       ROW_NUMBER() OVER ( \
+                           PARTITION BY thread_id \
+                           ORDER BY first_recorded_at, first_rowid, turn_id \
+                       ) AS turn_ordinal \
+                FROM ( \
+                    SELECT thread_id, turn_id, MIN(recorded_at) AS first_recorded_at, \
+                           MIN(rowid) AS first_rowid \
+                    FROM tool_output_reductions \
+                    WHERE thread_id IS NOT NULL AND turn_id IS NOT NULL \
+                    GROUP BY thread_id, turn_id \
+                ) \
+            ), rerun_calls AS ( \
+                SELECT DISTINCT d.call_id \
+                FROM tool_output_reductions d \
+                JOIN turn_groups d_turn ON d_turn.thread_id = d.thread_id \
+                    AND d_turn.turn_id = d.turn_id \
+                JOIN tool_output_reductions r2 ON r2.thread_id = d.thread_id \
+                    AND r2.command_hash = d.command_hash \
+                JOIN turn_groups r2_turn ON r2_turn.thread_id = r2.thread_id \
+                    AND r2_turn.turn_id = r2.turn_id \
+                WHERE d.command_hash IS NOT NULL \
+                    AND d.thread_id IS NOT NULL AND d.turn_id IS NOT NULL \
+                    AND r2.turn_id IS NOT NULL \
+                    AND r2_turn.turn_ordinal > d_turn.turn_ordinal \
+                    AND r2_turn.turn_ordinal <= d_turn.turn_ordinal + 2 \
+            ) SELECT ",
+        );
+        query
+            .push(expression)
+            .push(
+                " AS dimension, COUNT(*) AS reductions, \
+                 SUM(bytes_in) AS bytes_in, SUM(bytes_out) AS bytes_out, \
+                 COUNT(DISTINCT CASE WHEN d.spilled = 1 AND EXISTS (SELECT 1 FROM tool_output_retrievals r \
+                  WHERE r.call_id = d.call_id) THEN d.call_id END) AS retrievals, \
+                 COUNT(DISTINCT CASE WHEN EXISTS ( \
+                  SELECT 1 FROM rerun_calls WHERE call_id = d.call_id \
+                 ) THEN d.call_id END) AS reruns \
+                 FROM tool_output_reductions d",
+            );
+        if let Some(thread_id) = thread_id {
+            query.push(" WHERE thread_id = ").push_bind(thread_id);
+        }
+        query
+            .push(" GROUP BY ")
+            .push(expression)
+            .push(" ORDER BY reductions DESC LIMIT 20");
+        let rows = query.build().fetch_all(self.pool.as_ref()).await?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(ToolOutputReductionBreakdown {
+                    dimension: row.try_get("dimension")?,
+                    reductions: row.try_get("reductions")?,
+                    bytes_in: row.try_get("bytes_in")?,
+                    bytes_out: row.try_get("bytes_out")?,
+                    retrievals: row.try_get("retrievals")?,
+                    reruns: row.try_get("reruns")?,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()
+    }
+
+    async fn reduction_breakdown_by_reducer(
+        &self,
+        thread_id: Option<&str>,
+    ) -> anyhow::Result<Vec<ToolOutputReductionBreakdown>> {
+        let rerun_calls = self.rerun_call_ids(thread_id).await?;
+        let query = sqlx::query(
+            "SELECT call_id, reducers_applied, bytes_in, bytes_out \
+             FROM tool_output_reductions \
+             WHERE (? IS NULL OR thread_id = ?) ORDER BY recorded_at DESC LIMIT 10000",
+        )
+        .bind(thread_id)
+        .bind(thread_id);
+        let rows = query.fetch_all(self.pool.as_ref()).await?;
+        let retrieval_rows = sqlx::query(
+            "SELECT DISTINCT r.call_id FROM tool_output_retrievals r \
+             JOIN tool_output_reductions d ON d.call_id = r.call_id \
+             WHERE (? IS NULL OR d.thread_id = ?)",
+        )
+        .bind(thread_id)
+        .bind(thread_id)
+        .fetch_all(self.pool.as_ref())
+        .await?;
+        let retrieved_calls = retrieval_rows
+            .into_iter()
+            .map(|row| row.try_get::<String, _>("call_id"))
+            .collect::<Result<HashSet<_>, _>>()?;
+        let mut totals: BTreeMap<String, (i64, i64, i64, i64, HashSet<String>)> = BTreeMap::new();
+        for row in rows {
+            let call_id: String = row.try_get("call_id")?;
+            let reducers: String = row.try_get("reducers_applied")?;
+            let bytes_in: i64 = row.try_get("bytes_in")?;
+            let bytes_out: i64 = row.try_get("bytes_out")?;
+            let names = if reducers.is_empty() {
+                vec!["none"]
+            } else {
+                reducers.split(',').collect()
+            };
+            let reducer_count = names.len() as i64;
+            let bytes_in_share = bytes_in / reducer_count;
+            let bytes_in_remainder = bytes_in % reducer_count;
+            let bytes_out_share = bytes_out / reducer_count;
+            let bytes_out_remainder = bytes_out % reducer_count;
+            for (index, name) in names.into_iter().enumerate() {
+                let entry = totals
+                    .entry(name.to_owned())
+                    .or_insert_with(|| (0, 0, 0, 0, HashSet::new()));
+                entry.0 += 1;
+                entry.1 += bytes_in_share
+                    + if (index as i64) < bytes_in_remainder {
+                        1
+                    } else {
+                        0
+                    };
+                entry.2 += bytes_out_share
+                    + if (index as i64) < bytes_out_remainder {
+                        1
+                    } else {
+                        0
+                    };
+                if rerun_calls.contains(&call_id) {
+                    entry.3 += 1;
+                }
+                entry.4.insert(call_id.clone());
+            }
+        }
+        totals
+            .into_iter()
+            .map(
+                |(dimension, (reductions, bytes_in, bytes_out, reruns, calls))| {
+                    Ok(ToolOutputReductionBreakdown {
+                        dimension,
+                        reductions,
+                        bytes_in,
+                        bytes_out,
+                        retrievals: calls.intersection(&retrieved_calls).count() as i64,
+                        reruns,
+                    })
+                },
+            )
+            .collect::<anyhow::Result<Vec<_>>>()
+    }
+
+    async fn rerun_call_ids(&self, thread_id: Option<&str>) -> anyhow::Result<HashSet<String>> {
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "WITH turn_groups AS ( \
+                SELECT thread_id, turn_id, \
+                       ROW_NUMBER() OVER ( \
+                           PARTITION BY thread_id \
+                           ORDER BY first_recorded_at, first_rowid, turn_id \
+                       ) AS turn_ordinal \
+                FROM ( \
+                    SELECT thread_id, turn_id, MIN(recorded_at) AS first_recorded_at, \
+                           MIN(rowid) AS first_rowid \
+                    FROM tool_output_reductions \
+                    WHERE thread_id IS NOT NULL AND turn_id IS NOT NULL \
+                    GROUP BY thread_id, turn_id \
+                ) \
+            ) SELECT DISTINCT d.call_id \
+              FROM tool_output_reductions d \
+              JOIN turn_groups d_turn ON d_turn.thread_id = d.thread_id \
+                  AND d_turn.turn_id = d.turn_id \
+              JOIN tool_output_reductions r2 ON r2.thread_id = d.thread_id \
+                  AND r2.command_hash = d.command_hash \
+              JOIN turn_groups r2_turn ON r2_turn.thread_id = r2.thread_id \
+                  AND r2_turn.turn_id = r2.turn_id \
+              WHERE d.command_hash IS NOT NULL \
+                  AND d.thread_id IS NOT NULL AND d.turn_id IS NOT NULL \
+                  AND r2.turn_id IS NOT NULL \
+                  AND r2_turn.turn_ordinal > d_turn.turn_ordinal \
+                  AND r2_turn.turn_ordinal <= d_turn.turn_ordinal + 2",
+        );
+        if let Some(thread_id) = thread_id {
+            query.push(" AND d.thread_id = ").push_bind(thread_id);
+        }
+        let rows = query.build().fetch_all(self.pool.as_ref()).await?;
+        rows.into_iter()
+            .map(|row| row.try_get::<String, _>("call_id"))
+            .collect::<Result<HashSet<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    /// Clear persisted tool-output reduction records without affecting other telemetry.
+    pub async fn reset_tool_output_reduction_stats(&self) -> anyhow::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM tool_output_retrievals")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM tool_output_reductions")
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Record that a spilled tool output was read back by a shell command.
+    pub async fn record_tool_output_retrieval(
+        &self,
+        call_id: &str,
+        spill_path: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "INSERT INTO tool_output_retrievals (call_id, spill_path, retrieved_at) VALUES (?, ?, ?)",
+        )
+        .bind(call_id)
+        .bind(spill_path)
+        .bind(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_secs() as i64),
+        )
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
     /// Initialize the state runtime using the provided Xedoc home and default provider.
     ///
     /// This opens (and migrates) the SQLite databases under `xedoc_home`.
@@ -253,6 +680,30 @@ impl StateRuntime {
             };
         let thread_updated_at_millis = thread_updated_at_millis.unwrap_or(0);
         let thread_recency_at_millis = thread_recency_at_millis.unwrap_or(0);
+        let (reduction_tx, mut reduction_rx) = mpsc::channel(REDUCTION_QUEUE_CAPACITY);
+        let (retrieval_tx, mut retrieval_rx) =
+            mpsc::channel::<(String, String)>(REDUCTION_QUEUE_CAPACITY);
+        let reduction_pool = Arc::clone(&pool);
+        let retrieval_pool = Arc::clone(&pool);
+        tokio::spawn(async move {
+            while let Some(record) = reduction_rx.recv().await {
+                if let Err(err) =
+                    persist_tool_output_reduction(reduction_pool.as_ref(), &record).await
+                {
+                    warn!("failed to persist tool-output reduction: {err}");
+                }
+            }
+        });
+        tokio::spawn(async move {
+            while let Some((call_id, spill_path)) = retrieval_rx.recv().await {
+                if let Err(err) =
+                    persist_tool_output_retrieval(retrieval_pool.as_ref(), &call_id, &spill_path)
+                        .await
+                {
+                    warn!("failed to persist tool-output retrieval: {err}");
+                }
+            }
+        });
         let runtime = Arc::new(Self {
             thread_goals: GoalStore::new(Arc::clone(&goals_pool)),
             pool,
@@ -261,6 +712,8 @@ impl StateRuntime {
             default_provider,
             thread_updated_at_millis: Arc::new(AtomicI64::new(thread_updated_at_millis)),
             thread_recency_at_millis: Arc::new(AtomicI64::new(thread_recency_at_millis)),
+            reduction_tx,
+            retrieval_tx,
         });
         if let Err(err) = runtime.run_logs_startup_maintenance().await {
             warn!(
@@ -285,6 +738,141 @@ impl StateRuntime {
         self.thread_goals.close().await;
         self.logs_pool.close().await;
         self.pool.close().await;
+    }
+}
+
+async fn persist_tool_output_reduction(
+    pool: &SqlitePool,
+    record: &ReductionRecord,
+) -> anyhow::Result<()> {
+    let kind = payload_kind_name(record.kind);
+    let level = reduction_level_name(record.level);
+    let reducers_applied = record
+        .reducers_applied
+        .iter()
+        .map(reducer_name)
+        .collect::<Vec<_>>()
+        .join(",");
+    sqlx::query(
+        "INSERT INTO tool_output_reductions \
+         (thread_id, turn_id, call_id, command_hash, tool_name, kind, level, reducers_applied, \
+          bytes_in, bytes_out, est_tokens_in, est_tokens_out, duration_us, spilled, spill_path, recorded_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(record.thread_id.as_deref())
+    .bind(record.turn_id.as_deref())
+    .bind(&record.call_id)
+    .bind(record.command_hash.as_deref())
+    .bind(&record.tool_name)
+    .bind(kind)
+    .bind(level)
+    .bind(reducers_applied)
+    .bind(record.bytes_in as i64)
+    .bind(record.bytes_out as i64)
+    .bind(record.est_tokens_in)
+    .bind(record.est_tokens_out)
+    .bind(record.duration_us as i64)
+    .bind(record.spilled)
+    .bind(record.spill_path.as_deref())
+    .bind(record.recorded_at)
+    .execute(pool)
+    .await?;
+    // Keep dashboard history bounded even when users never invoke reset-stats.
+    // The age cutoff handles dormant databases; the row cap handles high-volume
+    // sessions while retaining the newest records.
+    let cutoff = record
+        .recorded_at
+        .saturating_sub(TOOL_OUTPUT_REDUCTION_RETENTION_DAYS * 24 * 60 * 60);
+    sqlx::query(
+        "DELETE FROM tool_output_reductions
+         WHERE recorded_at < ?
+            OR id NOT IN (
+                SELECT id FROM tool_output_reductions
+                ORDER BY recorded_at DESC, id DESC
+                LIMIT ?
+            )",
+    )
+    .bind(cutoff)
+    .bind(TOOL_OUTPUT_REDUCTION_ROW_LIMIT)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "DELETE FROM tool_output_retrievals
+         WHERE NOT EXISTS (
+             SELECT 1 FROM tool_output_reductions d WHERE d.call_id = tool_output_retrievals.call_id
+         )",
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn persist_tool_output_retrieval(
+    pool: &SqlitePool,
+    call_id: &str,
+    spill_path: &str,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO tool_output_retrievals (call_id, spill_path, retrieved_at) VALUES (?, ?, ?)",
+    )
+    .bind(call_id)
+    .bind(spill_path)
+    .bind(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs() as i64),
+    )
+    .execute(pool)
+    .await?;
+    let cutoff = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs() as i64)
+        .saturating_sub(TOOL_OUTPUT_REDUCTION_RETENTION_DAYS * 24 * 60 * 60);
+    sqlx::query(
+        "DELETE FROM tool_output_retrievals
+         WHERE retrieved_at < ?
+            OR id NOT IN (
+                SELECT id FROM tool_output_retrievals
+                ORDER BY retrieved_at DESC, id DESC
+                LIMIT ?
+            )",
+    )
+    .bind(cutoff)
+    .bind(TOOL_OUTPUT_REDUCTION_ROW_LIMIT)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn payload_kind_name(kind: PayloadKind) -> &'static str {
+    match kind {
+        PayloadKind::Json => "json",
+        PayloadKind::Log => "log",
+        PayloadKind::Diff => "diff",
+        PayloadKind::Table => "table",
+        PayloadKind::Code => "code",
+        PayloadKind::Prose => "prose",
+        PayloadKind::Binaryish => "binaryish",
+    }
+}
+
+fn reduction_level_name(level: ReductionLevel) -> &'static str {
+    match level {
+        ReductionLevel::Off => "off",
+        ReductionLevel::Conservative => "conservative",
+        ReductionLevel::Balanced => "balanced",
+        ReductionLevel::Aggressive => "aggressive",
+    }
+}
+
+fn reducer_name(reducer: &ReducerId) -> &'static str {
+    match reducer {
+        ReducerId::Normalize => "normalize",
+        ReducerId::Dedup => "dedup",
+        ReducerId::Json => "json",
+        ReducerId::Log => "log",
+        ReducerId::Diff => "diff-display-only",
+        ReducerId::Budget => "budget",
     }
 }
 
@@ -655,3 +1243,7 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(xedoc_home).await;
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_reduction_tests.rs"]
+mod reduction_tests;

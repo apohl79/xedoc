@@ -3797,7 +3797,7 @@ async fn set_rate_limits_updates_plan_type_when_present() {
     assert_eq!(
         state.latest_rate_limits,
         Some(RateLimitSnapshot {
-            limit_id: Some("codex".to_string()),
+            limit_id: Some("xedoc".to_string()),
             limit_name: None,
             primary: update.primary,
             secondary: update.secondary,
@@ -5241,6 +5241,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         mcp_runtime_snapshot.manager_arc(),
     ));
     let services = SessionServices {
+        reduction_sink: None,
         mcp_runtime,
         mcp_runtime_snapshot: arc_swap::ArcSwapOption::from(Some(mcp_runtime_snapshot)),
         mcp_projection_lock: Mutex::new(()),
@@ -7083,6 +7084,7 @@ where
         mcp_runtime_snapshot.manager_arc(),
     ));
     let services = SessionServices {
+        reduction_sink: None,
         mcp_runtime,
         mcp_runtime_snapshot: arc_swap::ArcSwapOption::from(Some(mcp_runtime_snapshot)),
         mcp_projection_lock: Mutex::new(()),

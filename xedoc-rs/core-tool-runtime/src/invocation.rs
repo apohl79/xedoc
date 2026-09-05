@@ -7,8 +7,13 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use xedoc_core_turn_context::TurnContext;
 use xedoc_core_turn_diff::TurnDiffTracker;
+use xedoc_protocol::models::FunctionCallOutputBody;
 use xedoc_protocol::models::ResponseInputItem;
 use xedoc_protocol::protocol::EventMsg;
+use xedoc_tool_output_reduce::ReductionConfig;
+use xedoc_tool_output_reduce::ReductionInput;
+use xedoc_tool_output_reduce::ReductionSink;
+use xedoc_tool_output_reduce::reduce;
 use xedoc_tools::ToolExposure;
 use xedoc_tools::ToolName;
 
@@ -95,6 +100,18 @@ pub struct AnyToolResult<P> {
     pub result: Box<dyn ToolOutput>,
     /// Optional post-tool hook payload owned by the host runtime.
     pub post_tool_use_payload: Option<P>,
+    /// Runtime-owned sink for reduction records, when the host provides one.
+    pub reduction_sink: Option<Arc<dyn ReductionSink>>,
+    /// Tool name used to tag the reduction record.
+    pub tool_name: String,
+    /// Thread identifier associated with this tool call.
+    pub thread_id: Option<String>,
+    /// Turn identifier associated with this tool call.
+    pub turn_id: Option<String>,
+    /// Effective reducer configuration captured at tool-ingestion time.
+    pub reduction_config: Option<ReductionConfig>,
+    /// Stable hash of command arguments, never the raw command.
+    pub command_hash: Option<String>,
 }
 
 impl<P> AnyToolResult<P> {
@@ -104,9 +121,49 @@ impl<P> AnyToolResult<P> {
             call_id,
             payload,
             result,
+            reduction_sink,
+            tool_name,
+            thread_id,
+            turn_id,
+            reduction_config,
+            command_hash,
             ..
         } = self;
-        result.to_response_item(&call_id, &payload)
+        let mut response = result.to_response_item(&call_id, &payload);
+        if let (Some(sink), Some(config)) = (reduction_sink, reduction_config.as_ref()) {
+            let body = match &mut response {
+                ResponseInputItem::FunctionCallOutput { output, .. }
+                | ResponseInputItem::CustomToolCallOutput { output, .. } => &mut output.body,
+                _ => return response,
+            };
+            match body {
+                FunctionCallOutputBody::Text(text) => {
+                    let original = text.clone();
+                    let reduced = reduce(
+                        ReductionInput {
+                            tool_name: &tool_name,
+                            call_id: &call_id,
+                            text: &original,
+                            command_hash: command_hash.as_deref(),
+                        },
+                        config,
+                    );
+                    *text = reduced.text;
+                    let mut record = reduced.record;
+                    record.thread_id = thread_id;
+                    record.turn_id = turn_id;
+                    if record.bytes_in > 0 && !original.trim().is_empty() {
+                        sink.try_record(record);
+                    }
+                }
+                FunctionCallOutputBody::ContentItems(items) => {
+                    // Content items are structured model output.  Leave them
+                    // byte-identical until a content-item-aware reducer exists.
+                    let _ = items;
+                }
+            }
+        }
+        response
     }
 }
 

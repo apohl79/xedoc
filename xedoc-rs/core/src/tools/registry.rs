@@ -28,14 +28,19 @@ use serde_json::Value;
 use tracing::instrument;
 pub(crate) use xedoc_core_tool_runtime::ToolArgumentDiffConsumer;
 use xedoc_extension_api::ToolCallOutcome;
+use xedoc_features::Feature;
 use xedoc_protocol::models::FunctionCallOutputPayload;
 use xedoc_protocol::models::ResponseInputItem;
 use xedoc_protocol::models::ShellCommandToolCallParams;
 use xedoc_protocol::parse_command::ParsedCommand;
+use xedoc_protocol::protocol::TruncationPolicy;
 use xedoc_shell_command::parse_command::parse_shell_script;
+use xedoc_tool_output_reduce::ReductionConfig;
+use xedoc_tool_output_reduce::ReductionLevel;
 use xedoc_tools::ToolName;
 use xedoc_tools::ToolSearchInfo;
 use xedoc_tools::ToolSpec;
+use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 pub(crate) type ToolTelemetryTags = Vec<(&'static str, String)>;
 pub(crate) type AnyToolResult = xedoc_core_tool_runtime::AnyToolResult<PostToolUsePayload>;
@@ -673,14 +678,54 @@ async fn handle_any_tool(
 ) -> Result<AnyToolResult, FunctionCallError> {
     let call_id = invocation.call_id.clone();
     let payload = invocation.payload.clone();
+    let command_hash = Some(xedoc_tool_output_reduce::command_identity_hash(
+        payload.log_payload().as_ref(),
+    ));
     let output = tool.handle(invocation.clone()).await?;
     let post_tool_use_payload =
         CoreToolRuntime::post_tool_use_payload(tool, &invocation, output.as_ref());
+    let reduction_config = if invocation
+        .turn
+        .config
+        .features
+        .enabled(Feature::TokenUsageOptimizer)
+    {
+        let optimizer = &invocation.turn.config.token_usage_optimizer;
+        Some(ReductionConfig {
+            level: match optimizer.level {
+                xedoc_features::TokenUsageOptimizerLevel::Conservative => {
+                    ReductionLevel::Conservative
+                }
+                xedoc_features::TokenUsageOptimizerLevel::Balanced => ReductionLevel::Balanced,
+                xedoc_features::TokenUsageOptimizerLevel::Aggressive => ReductionLevel::Aggressive,
+            },
+            // Match the existing tool-output cap (policy × 1.2); the reducer
+            // must never introduce a tighter second truncation boundary.
+            budget: TruncationPolicy::from(invocation.turn.model_info.truncation_policy) * 1.2,
+            spill_dir: AbsolutePathBuf::try_from(
+                invocation
+                    .turn
+                    .config
+                    .xedoc_home
+                    .as_path()
+                    .join("tool_outputs"),
+            )
+            .ok(),
+        })
+    } else {
+        None
+    };
     Ok(AnyToolResult {
         call_id,
         payload,
         result: output,
         post_tool_use_payload,
+        reduction_sink: invocation.session.services.reduction_sink.clone(),
+        tool_name: flat_tool_name(&invocation.tool_name).into_owned(),
+        thread_id: Some(invocation.session.thread_id.to_string()),
+        turn_id: Some(invocation.turn.sub_id.clone()),
+        reduction_config,
+        command_hash,
     })
 }
 

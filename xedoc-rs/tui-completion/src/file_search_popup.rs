@@ -30,6 +30,12 @@ pub struct FileSearchPopup {
     state: ScrollState,
 }
 
+impl Default for FileSearchPopup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileSearchPopup {
     pub fn new() -> Self {
         Self {

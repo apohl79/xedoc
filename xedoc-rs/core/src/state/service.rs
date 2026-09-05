@@ -39,8 +39,15 @@ use xedoc_protocol::capabilities::SelectedCapabilityRoot;
 use xedoc_rollout::state_db::StateDbHandle;
 use xedoc_thread_store::LiveThread;
 use xedoc_thread_store::ThreadStore;
+use xedoc_tool_output_reduce::ReductionSink;
 
 pub(crate) struct SessionServices {
+    /// Optional runtime-owned sink for non-blocking tool-output reduction records.
+    ///
+    /// Hosts that own a `StateRuntime` install its bounded sink here; core keeps
+    /// the dependency trait-only so daemon and embedded sessions can opt in
+    /// without introducing process-global metrics state.
+    pub(crate) reduction_sink: Option<Arc<dyn ReductionSink>>,
     /// The single owner of live MCP connections for this thread.
     pub(crate) mcp_runtime: Arc<McpRuntime>,
     /// The latest atomically published MCP config and connection snapshot.

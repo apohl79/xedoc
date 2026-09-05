@@ -147,6 +147,7 @@ members = [
     "utils/approval-presets",
     "utils/oss",
     "utils/output-truncation",
+    "tool-output-reduce",
     "utils/path-utils",
     "utils/plugins",
     "utils/fuzzy-match",
@@ -167,7 +168,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.5.25"
+version = "1.6.0"
 # Track the edition for all workspace crates in one place. Individual
 # crates can still override this value, but keeping it here means new
 # crates created with `cargo new -w ...` automatically inherit the 2024
@@ -328,6 +329,7 @@ xedoc-utils-image = { path = "utils/image" }
 xedoc-utils-json-to-toml = { path = "utils/json-to-toml" }
 xedoc-utils-oss = { path = "utils/oss" }
 xedoc-utils-output-truncation = { path = "utils/output-truncation" }
+xedoc-tool-output-reduce = { path = "tool-output-reduce" }
 xedoc-utils-path = { path = "utils/path-utils" }
 xedoc-utils-path-uri = { path = "utils/path-uri" }
 xedoc-utils-plugins = { path = "utils/plugins" }

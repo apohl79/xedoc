@@ -31,6 +31,13 @@ use xedoc_app_server_protocol::NetworkRequirements;
 use xedoc_app_server_protocol::NetworkUnixSocketPermission;
 use xedoc_app_server_protocol::NewThreadModelDefaults;
 use xedoc_app_server_protocol::SandboxMode;
+use xedoc_app_server_protocol::TokenUsageOptimizerBreakdown;
+use xedoc_app_server_protocol::TokenUsageOptimizerInsights;
+use xedoc_app_server_protocol::TokenUsageOptimizerLevel;
+use xedoc_app_server_protocol::TokenUsageOptimizerReadResponse;
+use xedoc_app_server_protocol::TokenUsageOptimizerTopReduction;
+use xedoc_app_server_protocol::TokenUsageOptimizerWriteParams;
+use xedoc_app_server_protocol::TokenUsageOptimizerWriteResponse;
 use xedoc_config::ConfigRequirementsToml;
 use xedoc_config::HookEventsToml;
 use xedoc_config::HookHandlerConfig as CoreHookHandlerConfig;
@@ -39,10 +46,12 @@ use xedoc_config::MatcherGroup as CoreMatcherGroup;
 use xedoc_config::ResidencyRequirement as CoreResidencyRequirement;
 use xedoc_config::SandboxModeRequirement as CoreSandboxModeRequirement;
 use xedoc_core::ThreadManager;
+use xedoc_features::TokenUsageOptimizerLevel as CoreTokenUsageOptimizerLevel;
 use xedoc_features::canonical_feature_for_key;
 use xedoc_features::feature_for_key;
 use xedoc_model_provider::create_model_provider;
 use xedoc_protocol::config_types::WebSearchMode;
+use xedoc_rollout::state_db::StateDbHandle;
 
 const SUPPORTED_EXPERIMENTAL_FEATURE_ENABLEMENT: &[&str] = &["auth_elicitation", "mentions_v2"];
 
@@ -51,6 +60,7 @@ pub(crate) struct ConfigRequestProcessor {
     outgoing: Arc<OutgoingMessageSender>,
     config_manager: ConfigManager,
     thread_manager: Arc<ThreadManager>,
+    state_db: Option<StateDbHandle>,
 }
 
 impl ConfigRequestProcessor {
@@ -58,11 +68,13 @@ impl ConfigRequestProcessor {
         outgoing: Arc<OutgoingMessageSender>,
         config_manager: ConfigManager,
         thread_manager: Arc<ThreadManager>,
+        state_db: Option<StateDbHandle>,
     ) -> Self {
         Self {
             outgoing,
             config_manager,
             thread_manager,
+            state_db,
         }
     }
 
@@ -124,6 +136,85 @@ impl ConfigRequestProcessor {
         self.handle_config_mutation_result(self.batch_write_inner(params).await)
             .await
             .map(ClientResponsePayload::ConfigBatchWrite)
+    }
+
+    pub(crate) async fn token_usage_optimizer_read(
+        &self,
+    ) -> Result<TokenUsageOptimizerReadResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let (reduction_count, tokens_saved) = match &self.state_db {
+            Some(state_db) => state_db
+                .tool_output_reduction_stats()
+                .await
+                .map_err(|err| internal_error(format!("failed to read optimizer stats: {err}")))?,
+            None => (0, 0),
+        };
+        let insights = match &self.state_db {
+            Some(state_db) => state_db
+                .tool_output_reduction_insights(None)
+                .await
+                .map(map_optimizer_insights)
+                .map_err(|err| {
+                    internal_error(format!("failed to read optimizer insights: {err}"))
+                })?,
+            None => empty_optimizer_insights(),
+        };
+        Ok(TokenUsageOptimizerReadResponse {
+            enabled: config.token_usage_optimizer.enabled.unwrap_or(false),
+            level: match config.token_usage_optimizer.level {
+                CoreTokenUsageOptimizerLevel::Conservative => {
+                    TokenUsageOptimizerLevel::Conservative
+                }
+                CoreTokenUsageOptimizerLevel::Balanced => TokenUsageOptimizerLevel::Balanced,
+                CoreTokenUsageOptimizerLevel::Aggressive => TokenUsageOptimizerLevel::Aggressive,
+            },
+            reduction_count,
+            tokens_saved,
+            insights,
+        })
+    }
+
+    pub(crate) async fn token_usage_optimizer_write(
+        &self,
+        params: TokenUsageOptimizerWriteParams,
+    ) -> Result<TokenUsageOptimizerWriteResponse, JSONRPCErrorError> {
+        if params.reset_stats
+            && let Some(state_db) = &self.state_db
+        {
+            state_db
+                .reset_tool_output_reduction_stats()
+                .await
+                .map_err(|err| internal_error(format!("failed to reset optimizer stats: {err}")))?;
+        }
+        let mut value = serde_json::Map::new();
+        if let Some(enabled) = params.enabled {
+            value.insert("enabled".to_string(), json!(enabled));
+        }
+        if let Some(level) = params.level {
+            value.insert("level".to_string(), json!(level));
+        }
+        if !value.is_empty() {
+            self.config_manager
+                .write_value(ConfigValueWriteParams {
+                    key_path: "token_usage_optimizer".to_string(),
+                    value: serde_json::Value::Object(value),
+                    merge_strategy: xedoc_app_server_protocol::MergeStrategy::Upsert,
+                    file_path: None,
+                    expected_version: params.expected_version,
+                })
+                .await
+                .map_err(map_error)?;
+            self.handle_config_mutation().await;
+        }
+        self.token_usage_optimizer_read()
+            .await
+            .map(|response| TokenUsageOptimizerWriteResponse {
+                enabled: response.enabled,
+                level: response.level,
+                reduction_count: response.reduction_count,
+                tokens_saved: response.tokens_saved,
+                insights: response.insights,
+            })
     }
 
     pub(crate) async fn experimental_feature_enablement_set(
@@ -267,6 +358,54 @@ impl ConfigRequestProcessor {
             };
             thread.refresh_runtime_config(next_config.clone()).await;
         }
+    }
+}
+
+fn empty_optimizer_insights() -> TokenUsageOptimizerInsights {
+    TokenUsageOptimizerInsights {
+        by_kind: Vec::new(),
+        by_reducer: Vec::new(),
+        by_tool: Vec::new(),
+        top_reductions: Vec::new(),
+        retrievals: 0,
+        spilled: 0,
+    }
+}
+
+fn map_optimizer_insights(
+    insights: xedoc_state::ToolOutputReductionInsights,
+) -> TokenUsageOptimizerInsights {
+    let map_breakdown = |items: Vec<xedoc_state::ToolOutputReductionBreakdown>| {
+        items
+            .into_iter()
+            .map(|item| TokenUsageOptimizerBreakdown {
+                dimension: item.dimension,
+                reductions: item.reductions,
+                bytes_in: item.bytes_in,
+                bytes_out: item.bytes_out,
+                retrievals: item.retrievals,
+                reruns: item.reruns,
+            })
+            .collect()
+    };
+    TokenUsageOptimizerInsights {
+        by_kind: map_breakdown(insights.by_kind),
+        by_reducer: map_breakdown(insights.by_reducer),
+        by_tool: map_breakdown(insights.by_tool),
+        top_reductions: insights
+            .top_reductions
+            .into_iter()
+            .map(|item| TokenUsageOptimizerTopReduction {
+                call_id: item.call_id,
+                tool_name: item.tool_name,
+                kind: item.kind,
+                bytes_in: item.bytes_in,
+                bytes_out: item.bytes_out,
+                tokens_saved: item.tokens_saved,
+            })
+            .collect(),
+        retrievals: insights.retrievals,
+        spilled: insights.spilled,
     }
 }
 

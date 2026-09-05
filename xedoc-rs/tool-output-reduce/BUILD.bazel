@@ -1,0 +1,9 @@
+load("//:defs.bzl", "xedoc_rust_crate")
+
+xedoc_rust_crate(
+    name = "tool-output-reduce",
+    crate_name = "xedoc_tool_output_reduce",
+    deps_extra = [
+        "@crates//:sha2",
+    ],
+)

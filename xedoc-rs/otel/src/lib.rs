@@ -71,3 +71,39 @@ pub fn start_global_timer(name: &str, tags: &[(&str, &str)]) -> MetricsResult<Ti
     };
     metrics.start_timer(name, tags)
 }
+
+/// Emit baseline tool-output reduction measurements when metrics are enabled.
+pub fn record_tool_output_reduction(
+    tokens_in: i64,
+    tokens_out: i64,
+    duration_us: u64,
+    tool: &str,
+    kind: &str,
+    level: &str,
+    reducer: &str,
+) {
+    let Some(metrics) = crate::metrics::global() else {
+        return;
+    };
+    let tags = [
+        ("tool", tool),
+        ("kind", kind),
+        ("level", level),
+        ("reducer", reducer),
+    ];
+    let _ = metrics.counter(TOOL_OUTPUT_REDUCTION_TOKENS_IN_METRIC, tokens_in, &tags);
+    let _ = metrics.counter(TOOL_OUTPUT_REDUCTION_TOKENS_OUT_METRIC, tokens_out, &tags);
+    let _ = metrics.histogram(
+        TOOL_OUTPUT_REDUCTION_DURATION_US_METRIC,
+        duration_us.min(i64::MAX as u64) as i64,
+        &tags,
+    );
+}
+
+/// Emit a counter when a model reads a previously spilled output.
+pub fn record_tool_output_retrieval(tool: &str) {
+    let Some(metrics) = crate::metrics::global() else {
+        return;
+    };
+    let _ = metrics.counter(TOOL_OUTPUT_RETRIEVAL_METRIC, 1, &[("tool", tool)]);
+}

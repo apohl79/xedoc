@@ -55,6 +55,7 @@ pub enum SlashCommand {
     Stop,
     Clear,
     Personality,
+    TokenUsageOptimizer,
     TestApproval,
     #[strum(serialize = "subagents")]
     MultiAgents,
@@ -96,6 +97,7 @@ impl SlashCommand {
                 "include current selection, open files, and other context from your IDE"
             }
             SlashCommand::Personality => "choose a communication style for Xedoc",
+            SlashCommand::TokenUsageOptimizer => "toggle and configure token usage optimization",
             SlashCommand::Plan => "switch to Plan mode",
             SlashCommand::Goal => "set or view the goal for a long-running task",
             SlashCommand::Agent | SlashCommand::MultiAgents => "switch the active agent thread",
@@ -135,6 +137,7 @@ impl SlashCommand {
                 | SlashCommand::Side
                 | SlashCommand::Btw
                 | SlashCommand::Resume
+                | SlashCommand::TokenUsageOptimizer
         )
     }
 
@@ -172,6 +175,7 @@ impl SlashCommand {
             | SlashCommand::Resume
             | SlashCommand::Model
             | SlashCommand::Personality
+            | SlashCommand::TokenUsageOptimizer
             | SlashCommand::Permissions
             | SlashCommand::Copy
             | SlashCommand::Raw

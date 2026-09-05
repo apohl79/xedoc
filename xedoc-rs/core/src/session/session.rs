@@ -1066,6 +1066,11 @@ impl Session {
             }
 
             let services = SessionServices {
+                reduction_sink: config
+                    .features
+                    .enabled(Feature::TokenUsageOptimizer)
+                    .then(|| state_db_ctx.as_ref().map(|state_db| state_db.reduction_sink()))
+                    .flatten(),
                 // Start with an empty connection set. The initialized set is
                 // published after SessionConfigured so MCP events follow it.
                 mcp_runtime,
@@ -1116,6 +1121,18 @@ impl Session {
                 tool_search_handler_cache: Default::default(),
                 turn_environments: Arc::clone(&turn_environments),
             };
+            if config.features.enabled(Feature::TokenUsageOptimizer) {
+                let root = config
+                    .xedoc_home
+                    .as_path()
+                    .join("tool_outputs");
+                let optimizer = &config.token_usage_optimizer;
+                let _ = xedoc_tool_output_reduce::prune_spill_root(
+                    &root,
+                    optimizer.spill_retention_days,
+                    optimizer.spill_max_mib,
+                );
+            }
             let sess = Arc::new(Session {
                 thread_id,
                 installation_id,
