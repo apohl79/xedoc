@@ -261,14 +261,19 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
         let available_models = session
             .services
             .models_manager
-            .list_models(RefreshStrategy::Offline, config.http_client_factory())
+            .list_models(
+                RefreshStrategy::OnlineIfUncached,
+                config.http_client_factory(),
+            )
             .await;
         let selected_model =
             find_spawn_agent_model(&available_models, requested_model, turn.multi_agent_version)?;
         let selected_model_name = &selected_model.model;
-        let selected_provider_id = (!selected_model.provider_id.is_empty())
-            .then(|| selected_model.provider_id.clone())
-            .unwrap_or_else(|| config.model_provider_id.clone());
+        let selected_provider_id = if !selected_model.provider_id.is_empty() {
+            selected_model.provider_id.clone()
+        } else {
+            config.model_provider_id.clone()
+        };
         let selected_provider = config
             .model_providers
             .get(&selected_provider_id)
@@ -282,7 +287,7 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
             .services
             .models_manager
             .get_model_info_for_provider(
-                &selected_model_name,
+                selected_model_name,
                 &selected_provider_id,
                 &config.to_models_manager_config(),
             )
@@ -412,7 +417,7 @@ pub(crate) async fn apply_spawn_agent_role(
     )
 }
 
-fn find_spawn_agent_model<'a>(
+pub(crate) fn find_spawn_agent_model<'a>(
     available_models: &'a [ModelPreset],
     requested_model: &str,
     multi_agent_version: MultiAgentVersion,
@@ -432,9 +437,20 @@ fn find_spawn_agent_model<'a>(
                 .map(|model| model.model.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            FunctionCallError::RespondToModel(format!(
-                "Unknown model `{requested_model}` for spawn_agent. Available models: {available}"
-            ))
+            let known = available_models.iter().any(|model| model.model == requested_model);
+            let reason = if known {
+                let backend = match multi_agent_version {
+                    MultiAgentVersion::Disabled => "disabled",
+                    MultiAgentVersion::V1 => "v1",
+                    MultiAgentVersion::V2 => "v2",
+                };
+                format!(
+                    "Model `{requested_model}` is not compatible with the active multi-agent backend ({backend})."
+                )
+            } else {
+                format!("Unknown model `{requested_model}` for spawn_agent.")
+            };
+            FunctionCallError::RespondToModel(format!("{reason} Available models: {available}"))
         })
 }
 

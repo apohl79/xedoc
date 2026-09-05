@@ -9,6 +9,7 @@ use crate::tools::registry::ToolExecutor;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use xedoc_core_tool_specs::multi_agents_common::model_supports_multi_agent_backend;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_protocol::openai_models::ModelPreset;
 use xedoc_tools::JsonSchema;
@@ -51,7 +52,7 @@ fn create_model_lookup_tool() -> ToolSpec {
     ]);
     ToolSpec::Function(ResponsesApiTool {
         name: TOOL_NAME.to_string(),
-        description: "Look up the live picker-visible model catalog. Use this before choosing a model for spawn_agent when the desired provider or model is not listed in the spawn_agent guidance.".to_string(),
+        description: "Look up models that are valid spawn_agent overrides. Use this before choosing a model when the desired provider or model is not listed in the spawn_agent guidance.".to_string(),
         strict: false,
         defer_loading: None,
         parameters: JsonSchema::object(properties, /*required*/ None, Some(false.into())),
@@ -95,6 +96,7 @@ impl ToolExecutor<ToolInvocation> for ModelLookupHandler {
             let entries = models
                 .iter()
                 .filter(|model| model.show_in_picker)
+                .filter(|model| model_supports_multi_agent_backend(model, turn.multi_agent_version))
                 .filter(|model| {
                     provider_filter.as_deref().is_none_or(|provider| {
                         model.provider_id.to_ascii_lowercase().contains(provider)
@@ -133,3 +135,7 @@ fn model_lookup_entry(model: &ModelPreset) -> ModelLookupEntry<'_> {
 }
 
 impl CoreToolRuntime for ModelLookupHandler {}
+
+#[cfg(test)]
+#[path = "model_lookup_tests.rs"]
+mod tests;

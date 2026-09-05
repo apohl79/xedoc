@@ -52,6 +52,32 @@ fn spawn_agent_accepts_unversioned_models_for_v2() {
 }
 
 #[test]
+fn spawn_agent_accepts_v1_tagged_models_for_v2() {
+    let mut model = model_preset("v1", /*show_in_picker*/ true);
+    model.multi_agent_version = Some(MultiAgentVersion::V1);
+
+    assert!(
+        crate::multi_agents_common::model_supports_multi_agent_backend(
+            &model,
+            MultiAgentVersion::V2,
+        )
+    );
+}
+
+#[test]
+fn spawn_agent_rejects_disabled_tagged_models_for_v2() {
+    let mut model = model_preset("disabled", /*show_in_picker*/ true);
+    model.multi_agent_version = Some(MultiAgentVersion::Disabled);
+
+    assert!(
+        !crate::multi_agents_common::model_supports_multi_agent_backend(
+            &model,
+            MultiAgentVersion::V2,
+        )
+    );
+}
+
+#[test]
 fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
     let mut incompatible = model_preset("incompatible", /*show_in_picker*/ true);
     incompatible.multi_agent_version = Some(MultiAgentVersion::V1);
@@ -99,7 +125,7 @@ fn spawn_agent_tool_v2_requires_task_name_and_lists_visible_models() {
         "- `visible-model`: visible description Reasoning efforts: medium (default). Service tiers: priority."
     ));
     assert!(!description.contains("hidden-model"));
-    assert!(!description.contains("incompatible-model"));
+    assert!(description.contains("incompatible-model"));
     assert!(properties.contains_key("task_name"));
     assert!(properties.contains_key("message"));
     assert_eq!(
