@@ -17,12 +17,15 @@ use xedoc_extension_api::ThreadLifecycleContributor;
 use xedoc_extension_api::ThreadOriginator;
 use xedoc_extension_api::ThreadStartInput;
 use xedoc_extension_api::ToolContributor;
+use xedoc_http_client::HttpClientFactory;
 use xedoc_login::AuthManager;
 use xedoc_model_provider::create_model_provider;
 use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_protocol::config_types::WebSearchContextSize;
 use xedoc_protocol::config_types::WebSearchMode;
 
+use crate::direct::DirectWebFetchTool;
+use crate::direct::DirectWebSearchTool;
 use crate::tool::WebSearchTool;
 
 #[derive(Clone)]
@@ -35,18 +38,17 @@ struct WebSearchExtensionConfig {
     available: bool,
     provider: ModelProviderInfo,
     settings: SearchSettings,
+    http_client_factory: HttpClientFactory,
 }
 
 impl From<&Config> for WebSearchExtensionConfig {
     fn from(config: &Config) -> Self {
         let web_search_mode = config.web_search_mode.value();
         Self {
-            // Core selects this executor per turn using the feature flag or model metadata.
-            available: (config.model_provider.is_openai()
-                || config.model_provider.uses_openai_actor_authorization())
-                && web_search_mode != WebSearchMode::Disabled,
+            available: web_search_mode != WebSearchMode::Disabled,
             provider: config.model_provider.clone(),
             settings: search_settings(config, web_search_mode),
+            http_client_factory: config.http_client_factory(),
         }
     }
 }
@@ -128,17 +130,26 @@ impl ToolContributor for WebSearchExtension {
             return Vec::new();
         }
 
-        vec![Arc::new(WebSearchTool {
-            session_id: session_store.level_id().to_string(),
-            provider: create_model_provider(
-                config.provider.clone(),
-                Some(self.auth_manager.clone()),
-            ),
-            settings: config.settings.clone(),
-            originator: thread_store
-                .get::<ThreadOriginator>()
-                .map(|originator| originator.0.clone()),
-        })]
+        let hosted_web_search = config.provider.namespace_tools
+            && (config.provider.is_openai() || config.provider.uses_openai_actor_authorization());
+        if hosted_web_search {
+            return vec![Arc::new(WebSearchTool {
+                session_id: session_store.level_id().to_string(),
+                provider: create_model_provider(
+                    config.provider.clone(),
+                    Some(self.auth_manager.clone()),
+                ),
+                settings: config.settings.clone(),
+                originator: thread_store
+                    .get::<ThreadOriginator>()
+                    .map(|originator| originator.0.clone()),
+            })];
+        }
+
+        vec![
+            Arc::new(DirectWebSearchTool::new(config.http_client_factory.clone())),
+            Arc::new(DirectWebFetchTool::new(config.http_client_factory.clone())),
+        ]
     }
 }
 
@@ -155,8 +166,12 @@ mod tests {
     use xedoc_extension_api::ExtensionData;
     use xedoc_extension_api::ExtensionRegistryBuilder;
     use xedoc_extension_api::ToolName;
+    use xedoc_http_client::HttpClientFactory;
+    use xedoc_http_client::OutboundProxyPolicy;
     use xedoc_login::XedocAuth;
+    use xedoc_model_provider_info::ANTHROPIC_PROVIDER_ID;
     use xedoc_model_provider_info::ModelProviderInfo;
+    use xedoc_model_provider_info::built_in_model_providers;
 
     use super::AuthManager;
     use super::Config;
@@ -202,6 +217,7 @@ mod tests {
             available: true,
             provider: ModelProviderInfo::create_openai_provider(/*base_url*/ None),
             settings: Default::default(),
+            http_client_factory: HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
         });
 
         let tool_names = registry
@@ -214,6 +230,39 @@ mod tests {
         assert_eq!(
             tool_names,
             vec![(ToolName::namespaced(WEB_NAMESPACE, RUN_TOOL_NAME), true)]
+        );
+    }
+
+    #[test]
+    fn installed_extension_contributes_direct_web_tools_for_anthropic() {
+        let mut builder = ExtensionRegistryBuilder::<Config>::new();
+        install(
+            &mut builder,
+            AuthManager::from_auth_for_testing(XedocAuth::from_api_key("dummy")),
+        );
+        let registry = builder.build();
+        let session_store = ExtensionData::new("session");
+        let thread_store = ExtensionData::new("11111111-1111-4111-8111-111111111111");
+        let provider = built_in_model_providers(/*openai_base_url*/ None)
+            .remove(ANTHROPIC_PROVIDER_ID)
+            .expect("Anthropic provider should be registered");
+        thread_store.insert(WebSearchExtensionConfig {
+            available: true,
+            provider,
+            settings: Default::default(),
+            http_client_factory: HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+        });
+
+        let tool_names = registry
+            .tool_contributors()
+            .iter()
+            .flat_map(|contributor| contributor.tools(&session_store, &thread_store))
+            .map(|tool| tool.tool_name())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            tool_names,
+            vec![ToolName::plain("web_search"), ToolName::plain("web_fetch")]
         );
     }
 }

@@ -13,10 +13,12 @@ doctest = false
 workspace = true
 
 [dependencies]
+futures = { workspace = true }
 xedoc-api = { workspace = true }
 xedoc-core = { workspace = true }
 xedoc-extension-api = { workspace = true }
 xedoc-extension-items = { workspace = true }
+xedoc-http-client = { workspace = true }
 xedoc-login = { workspace = true }
 xedoc-model-provider = { workspace = true }
 xedoc-model-provider-info = { workspace = true }
@@ -24,9 +26,15 @@ xedoc-otel = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-tools = { workspace = true }
 http = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
 schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 url = { workspace = true }
+urlencoding = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+wiremock = { workspace = true }
