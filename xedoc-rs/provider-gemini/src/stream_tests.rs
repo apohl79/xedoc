@@ -208,6 +208,7 @@ fn translates_tool_only_chunk_and_preserves_thought_signatures() {
                 arguments: "{\"cmd\":\"ls\"}".to_string(),
                 call_id: shell_call_id.clone(),
                 provider_metadata: Some(ProviderItemMetadata::Gemini {
+                    provider_id: String::new(),
                     thought_signature: "sig_shell".to_string(),
                 }),
                 internal_chat_message_metadata_passthrough: None,
@@ -235,6 +236,7 @@ fn translates_tool_only_chunk_and_preserves_thought_signatures() {
                 namespace: None,
                 input: "*** Begin Patch".to_string(),
                 provider_metadata: Some(ProviderItemMetadata::Gemini {
+                    provider_id: String::new(),
                     thought_signature: "sig_patch".to_string(),
                 }),
                 internal_chat_message_metadata_passthrough: None,

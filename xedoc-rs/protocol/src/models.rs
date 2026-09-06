@@ -840,6 +840,9 @@ pub enum ResponseItem {
         encrypted_content: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
+        provider_metadata: Option<ProviderItemMetadata>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
     },
     LocalShellCall {
@@ -1011,6 +1014,9 @@ pub enum ResponseItem {
         encrypted_content: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
+        provider_metadata: Option<ProviderItemMetadata>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
     },
     // Compaction triggers are request controls, not durable response items.
@@ -1022,6 +1028,9 @@ pub enum ResponseItem {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         encrypted_content: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        provider_metadata: Option<ProviderItemMetadata>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
@@ -1131,6 +1140,15 @@ impl ResponseItem {
                 provider_metadata, ..
             }
             | Self::CustomToolCall {
+                provider_metadata, ..
+            }
+            | Self::Reasoning {
+                provider_metadata, ..
+            }
+            | Self::Compaction {
+                provider_metadata, ..
+            }
+            | Self::ContextCompaction {
                 provider_metadata, ..
             } => *provider_metadata = None,
             _ => {}
@@ -3271,6 +3289,7 @@ mod tests {
             ResponseItem::Compaction {
                 id: None,
                 encrypted_content: "abc".into(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }
         );
@@ -3288,6 +3307,7 @@ mod tests {
             ResponseItem::ContextCompaction {
                 id: None,
                 encrypted_content: Some("abc".into()),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }
         );

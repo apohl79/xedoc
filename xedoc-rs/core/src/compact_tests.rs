@@ -180,6 +180,7 @@ fn without_reasoning_items_drops_reasoning_and_keeps_order() {
         summary: Vec::new(),
         content: None,
         encrypted_content: Some("signed".to_string()),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     };
     let items = vec![
@@ -690,6 +691,7 @@ fn insert_initial_context_before_last_real_user_or_summary_keeps_compaction_last
     let compacted_history = vec![ResponseItem::Compaction {
         id: None,
         encrypted_content: "encrypted".to_string(),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }];
     let initial_context = vec![ResponseItem::Message {
@@ -717,6 +719,7 @@ fn insert_initial_context_before_last_real_user_or_summary_keeps_compaction_last
         ResponseItem::Compaction {
             id: None,
             encrypted_content: "encrypted".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
     ];

@@ -2965,6 +2965,7 @@ async fn azure_responses_request_includes_store_and_prefixed_item_ids() {
             text: "content".into(),
         }]),
         encrypted_content: None,
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     });
     prompt.input.push(ResponseItem::Message {

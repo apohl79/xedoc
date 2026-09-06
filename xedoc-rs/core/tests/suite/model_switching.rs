@@ -19,6 +19,7 @@ use wiremock::MockServer;
 use xedoc_config::types::Personality;
 use xedoc_features::Feature;
 use xedoc_login::XedocAuth;
+use xedoc_model_provider_info::built_in_model_providers;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_protocol::config_types::ReasoningSummary;
 use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
@@ -115,6 +116,79 @@ fn test_model_info(
         effective_context_window_percent: 95,
         experimental_supported_tools: Vec::new(),
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn configured_responses_provider_switch_drops_foreign_reasoning() -> Result<()> {
+    let server = MockServer::start().await;
+    let response_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                core_test_support::responses::ev_reasoning_item(
+                    "rs_source",
+                    &["source reasoning"],
+                    &["source opaque continuity"],
+                ),
+                ev_completed_with_tokens("resp-1", 10),
+            ]),
+            sse_completed("resp-2"),
+        ],
+    )
+    .await;
+    let mut source_provider = built_in_model_providers(/*openai_base_url*/ None)["openai"].clone();
+    source_provider.name = "Configured source".to_string();
+    source_provider.base_url = Some(format!("{}/v1", server.uri()));
+    source_provider.supports_websockets = false;
+    let mut target_provider = source_provider.clone();
+    target_provider.name = "Configured target".to_string();
+
+    let source_provider_id = "configured-source".to_string();
+    let target_provider_id = "configured-target".to_string();
+    let test = test_xedoc()
+        .with_config({
+            let source_provider_id = source_provider_id.clone();
+            let target_provider_id = target_provider_id.clone();
+            move |config| {
+                config.model_provider_id = source_provider_id.clone();
+                config.model_provider = source_provider.clone();
+                config
+                    .model_providers
+                    .insert(source_provider_id.clone(), source_provider.clone());
+                config
+                    .model_providers
+                    .insert(target_provider_id.clone(), target_provider.clone());
+            }
+        })
+        .build(&server)
+        .await?;
+
+    test.submit_turn("source turn").await?;
+    core_test_support::submit_thread_settings(
+        &test.xedoc,
+        xedoc_protocol::protocol::ThreadSettingsOverrides {
+            model_provider_id: Some(target_provider_id),
+            ..Default::default()
+        },
+    )
+    .await?;
+    test.submit_turn("target turn").await?;
+
+    let requests = response_mock.requests();
+    assert_eq!(requests.len(), 2, "expected one request per turn");
+    let second_request = requests[1].body_json();
+    let second_input = second_request["input"]
+        .as_array()
+        .expect("Responses input should be an array");
+    assert!(
+        second_input
+            .iter()
+            .all(|item| item["type"].as_str() != Some("reasoning")),
+        "a configured provider must not receive another provider's reasoning"
+    );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

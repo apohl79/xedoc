@@ -5,8 +5,28 @@
 /**
  * Provider data required to replay a response item.
  */
-export type ProviderItemMetadata = { "provider": "gemini",
+export type ProviderItemMetadata = { "provider": "anthropic",
+/**
+ * Configured provider identifier that issued the item.
+ */
+provider_id: string,
+/**
+ * Model that issued the thinking signature.
+ */
+model: string,
+/**
+ * Opaque signature returned with the thinking block.
+ */
+thinking_signature: string | null, } | { "provider": "gemini",
+/**
+ * Configured provider identifier that issued the item.
+ */
+provider_id?: string,
 /**
  * Opaque signature returned with the tool call.
  */
-thought_signature: string, };
+thought_signature: string, } | { "provider": "responses",
+/**
+ * Configured provider identifier that issued the item.
+ */
+provider_id: string, };

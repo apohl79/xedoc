@@ -4,6 +4,7 @@ pub mod client;
 pub mod client_common;
 pub mod responses_metadata;
 
+mod history_projection;
 mod util;
 
 pub use client::ModelClient;

@@ -578,12 +578,14 @@ mod tests {
             ResponseItem::Compaction {
                 id: None,
                 encrypted_content: "old".to_string(),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
         ];
         let output = ResponseItem::Compaction {
             id: None,
             encrypted_content: "new".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         };
 
@@ -613,6 +615,7 @@ mod tests {
         let output = ResponseItem::Compaction {
             id: None,
             encrypted_content: "new".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         };
 
@@ -645,6 +648,7 @@ mod tests {
         let output = ResponseItem::Compaction {
             id: None,
             encrypted_content: "new".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         };
 
@@ -773,6 +777,7 @@ mod tests {
         let compaction = ResponseItem::Compaction {
             id: None,
             encrypted_content: "encrypted".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         };
         let stream = response_stream(vec![
