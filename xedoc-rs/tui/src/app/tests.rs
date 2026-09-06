@@ -259,6 +259,24 @@ fn bypass_hook_trust_startup_warning_snapshot() {
 
     assert_app_snapshot!("bypass_hook_trust_startup_warning", rendered);
 }
+
+#[test]
+fn resumed_session_notice_snapshot() {
+    let session = ThreadSessionState {
+        thread_name: Some("Debug session history restore".to_string()),
+        ..test_thread_session(ThreadId::new(), test_path_buf("/tmp/session"))
+    };
+    let rendered = lines_to_single_string(
+        &history_cell::new_info_event(
+            format!("Resumed session: {}", resumed_session_label(&session)),
+            /*hint*/ None,
+        )
+        .display_lines(/*width*/ 80),
+    );
+
+    assert_app_snapshot!("resumed_session_notice", rendered);
+}
+
 #[tokio::test]
 async fn enqueue_primary_thread_session_replays_buffered_approval_after_attach() -> Result<()> {
     let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
