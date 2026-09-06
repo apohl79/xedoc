@@ -694,6 +694,15 @@ fn session_start_error(
     color_eyre::eyre::eyre!("Failed to {action} session from {target_label}: {err}")
 }
 
+fn resumed_session_label(session: &ThreadSessionState) -> String {
+    session
+        .thread_name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("thread {}", session.thread_id))
+}
+
 fn archived_session_guidance(err: &color_eyre::eyre::Report) -> Option<String> {
     let err = err.to_string();
     let message = &err[err.find("session ")?..];
@@ -886,6 +895,7 @@ impl App {
             &session_selection,
             SessionSelection::StartFresh | SessionSelection::Exit
         );
+        let is_startup_resume = matches!(&session_selection, SessionSelection::Resume(_));
         let (mut chat_widget, initial_started_thread) = match session_selection {
             SessionSelection::StartFresh | SessionSelection::Exit => {
                 spawn_startup_thread_start(&app_server, config.clone(), app_event_tx.clone());
@@ -1070,12 +1080,20 @@ See the Xedoc keymap documentation for supported actions and examples."
         }
         let initial_session_started_at = Instant::now();
         if let Some(started) = initial_started_thread {
+            let resumed_session =
+                is_startup_resume.then(|| resumed_session_label(&started.session));
             let thread_id = started.session.thread_id;
             if started.blocks_direct_input {
                 app.mark_primary_thread_parent_owned(thread_id);
             }
             app.enqueue_primary_thread_session(started.session, started.turns)
                 .await?;
+            if let Some(resumed_session) = resumed_session {
+                app.chat_widget.add_info_message(
+                    format!("Resumed session: {resumed_session}"),
+                    /*hint*/ None,
+                );
+            }
             if should_prompt_for_paused_goal_after_startup_resume {
                 app.maybe_prompt_resume_paused_goal_after_resume(&mut app_server, thread_id)
                     .await;

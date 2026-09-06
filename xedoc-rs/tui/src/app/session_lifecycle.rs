@@ -1046,6 +1046,7 @@ impl App {
             .await
         {
             Ok(resumed) => {
+                let resumed_session = super::resumed_session_label(&resumed.session);
                 let resumed_thread_id = resumed.session.thread_id;
                 self.shutdown_current_thread(app_server).await;
                 self.config = resume_config;
@@ -1065,6 +1066,10 @@ impl App {
                     .await
                 {
                     Ok(()) => {
+                        self.chat_widget.add_info_message(
+                            format!("Resumed session: {resumed_session}"),
+                            /*hint*/ None,
+                        );
                         self.backfill_loaded_subagent_threads(app_server).await;
                         if let Some(summary) = summary {
                             let mut lines: Vec<Line<'static>> = Vec::new();
