@@ -85,6 +85,7 @@ impl ModelClientSession {
             stream,
             request_session_telemetry,
             Arc::clone(&self.client.state.provider),
+            self.client.provider_provenance(model_info),
         );
         Ok(stream)
     }

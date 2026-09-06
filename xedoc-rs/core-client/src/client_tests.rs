@@ -549,6 +549,7 @@ async fn responses_wire_strips_native_provider_metadata() -> anyhow::Result<()> 
                 arguments: r#"{"city":"Berlin"}"#.to_string(),
                 call_id: "call-1".to_string(),
                 provider_metadata: Some(ProviderItemMetadata::Gemini {
+                    provider_id: String::new(),
                     thought_signature: "opaque-signature".to_string(),
                 }),
                 internal_chat_message_metadata_passthrough: None,
@@ -583,6 +584,103 @@ async fn responses_wire_strips_native_provider_metadata() -> anyhow::Result<()> 
             provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         }]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn responses_wire_strips_persisted_provenance_without_dropping_opaque_content()
+-> anyhow::Result<()> {
+    let client = ModelClient::new(
+        /*auth_manager*/ None,
+        AgentIdentityAuthPolicy::JwtOnly,
+        ModelProviderInfo::create_openai_provider(/*base_url*/ None),
+        SessionSource::Cli,
+        "test_originator".to_string(),
+        /*model_verbosity*/ None,
+        /*enable_request_compression*/ false,
+        /*include_timing_metrics*/ false,
+        /*beta_features_header*/ None,
+        /*item_ids_enabled*/ false,
+        /*concurrent_reasoning_summaries_enabled*/ false,
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+    );
+    let client_setup = client.current_client_setup().await?;
+    let thread_id = ThreadId::new();
+    let request = client.build_responses_request(
+        &client_setup.api_provider,
+        &Prompt {
+            input: vec![
+                ResponseItem::Reasoning {
+                    id: None,
+                    summary: Vec::new(),
+                    content: None,
+                    encrypted_content: Some("reasoning-continuity".to_string()),
+                    provider_metadata: Some(ProviderItemMetadata::Responses {
+                        provider_id: "OpenAI".to_string(),
+                    }),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                ResponseItem::Compaction {
+                    id: None,
+                    encrypted_content: "compaction-continuity".to_string(),
+                    provider_metadata: Some(ProviderItemMetadata::Responses {
+                        provider_id: "OpenAI".to_string(),
+                    }),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                ResponseItem::ContextCompaction {
+                    id: None,
+                    encrypted_content: Some("context-compaction-continuity".to_string()),
+                    provider_metadata: Some(ProviderItemMetadata::Responses {
+                        provider_id: "OpenAI".to_string(),
+                    }),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            ],
+            base_instructions: BaseInstructions {
+                text: "base instructions".to_string(),
+            },
+            ..Default::default()
+        },
+        &test_model_info(),
+        Some(ReasoningEffort::Medium),
+        xedoc_protocol::config_types::ReasoningSummary::None,
+        /*service_tier*/ None,
+        &test_responses_metadata_for_client(
+            &client,
+            thread_id,
+            Some("turn-1"),
+            format!("{thread_id}:0"),
+            /*parent_thread_id*/ None,
+            TestXedocResponsesRequestKind::Turn,
+        ),
+    )?;
+
+    assert_eq!(
+        request.input,
+        vec![
+            ResponseItem::Reasoning {
+                id: None,
+                summary: Vec::new(),
+                content: None,
+                encrypted_content: Some("reasoning-continuity".to_string()),
+                provider_metadata: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            ResponseItem::Compaction {
+                id: None,
+                encrypted_content: "compaction-continuity".to_string(),
+                provider_metadata: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            ResponseItem::ContextCompaction {
+                id: None,
+                encrypted_content: Some("context-compaction-continuity".to_string()),
+                provider_metadata: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ]
     );
     Ok(())
 }

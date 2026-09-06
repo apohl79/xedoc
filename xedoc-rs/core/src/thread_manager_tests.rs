@@ -226,6 +226,7 @@ fn truncates_before_requested_user_message() {
             }],
             content: None,
             encrypted_content: None,
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCall {

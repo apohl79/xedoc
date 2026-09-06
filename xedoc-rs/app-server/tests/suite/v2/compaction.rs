@@ -145,6 +145,7 @@ async fn auto_compaction_remote_emits_started_and_completed_items() -> Result<()
         ResponseItem::Compaction {
             id: None,
             encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
     ];

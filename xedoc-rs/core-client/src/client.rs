@@ -101,6 +101,7 @@ use xedoc_tools::create_tools_json_for_responses_api;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
+use crate::history_projection::ProviderProvenance;
 use crate::responses_metadata::XedocResponsesMetadata;
 use crate::util::now_unix_timestamp_ms;
 use xedoc_login::auth::AgentIdentityAuthPolicy;
@@ -179,6 +180,7 @@ fn session_telemetry_for_request(
 #[derive(Debug)]
 struct ModelClientState {
     provider: SharedModelProvider,
+    provider_id: String,
     session_source: SessionSource,
     originator: String,
     model_verbosity: Option<VerbosityConfig>,
@@ -377,9 +379,11 @@ impl ModelClient {
         concurrent_reasoning_summaries_enabled: bool,
         http_client_factory: HttpClientFactory,
     ) -> Self {
+        let provider_id = provider_info.name.clone();
         let model_provider = create_model_provider(provider_info, auth_manager);
         Self::from_model_provider(
             model_provider,
+            provider_id,
             agent_identity_policy,
             session_source,
             originator,
@@ -410,10 +414,14 @@ impl ModelClient {
         concurrent_reasoning_summaries_enabled: bool,
         http_client_factory: HttpClientFactory,
     ) -> Self {
-        let model_provider =
-            create_model_provider_for_configured_id(provider_id, provider_info, auth_manager);
+        let model_provider = create_model_provider_for_configured_id(
+            provider_id.clone(),
+            provider_info,
+            auth_manager,
+        );
         Self::from_model_provider(
             model_provider,
+            provider_id,
             agent_identity_policy,
             session_source,
             originator,
@@ -430,6 +438,7 @@ impl ModelClient {
     #[allow(clippy::too_many_arguments)]
     fn from_model_provider(
         model_provider: SharedModelProvider,
+        provider_id: String,
         agent_identity_policy: AgentIdentityAuthPolicy,
         session_source: SessionSource,
         originator: String,
@@ -444,6 +453,7 @@ impl ModelClient {
         Self {
             state: Arc::new(ModelClientState {
                 provider: model_provider,
+                provider_id,
                 session_source,
                 originator,
                 model_verbosity,
@@ -615,7 +625,7 @@ impl ModelClient {
         let client =
             ApiCompactClient::new(transport, client_setup.api_provider, client_setup.api_auth)
                 .with_telemetry(Some(request_telemetry));
-        client
+        let mut compacted_history = client
             .compact_input(
                 &payload,
                 extra_headers,
@@ -623,7 +633,12 @@ impl ModelClient {
                 turn_state.as_deref(),
             )
             .await
-            .map_err(|error| self.state.provider.map_api_error(error))
+            .map_err(|error| self.state.provider.map_api_error(error))?;
+        let provenance = self.provider_provenance(model_info);
+        for item in &mut compacted_history {
+            provenance.tag_output_item(item);
+        }
+        Ok(compacted_history)
     }
 
     fn build_responses_compatibility_headers(
@@ -705,6 +720,7 @@ impl ModelClient {
         responses_metadata: &XedocResponsesMetadata,
     ) -> Result<ResponsesApiRequest> {
         let mut input = prompt.get_formatted_input_for_request(model_info.use_responses_lite);
+        self.provider_provenance(model_info).project(&mut input);
         let is_openai = self.state.provider.info().is_openai();
         if !is_openai {
             input
@@ -784,6 +800,14 @@ impl ModelClient {
             client_metadata: Some(responses_metadata.client_metadata()),
         };
         Ok(request)
+    }
+
+    fn provider_provenance(&self, model_info: &ModelInfo) -> ProviderProvenance {
+        ProviderProvenance {
+            provider_id: self.state.provider_id.clone(),
+            model: model_info.slug.clone(),
+            wire_api: self.state.provider.info().wire_api,
+        }
     }
 
     fn prepare_response_items_for_request(&self, input: &mut [ResponseItem], store: bool) {
@@ -1311,6 +1335,7 @@ impl ModelClientSession {
                         stream,
                         request_session_telemetry,
                         Arc::clone(&self.client.state.provider),
+                        self.client.provider_provenance(model_info),
                     );
                     return Ok(stream);
                 }
@@ -1489,6 +1514,7 @@ impl ModelClientSession {
                 stream_result,
                 request_session_telemetry,
                 Arc::clone(&self.client.state.provider),
+                self.client.provider_provenance(model_info),
             );
             self.websocket_session.last_response_rx = Some(last_request_rx);
             return Ok(WebsocketStreamOutcome::Stream(stream));
@@ -1733,14 +1759,16 @@ fn map_response_stream(
     api_stream: xedoc_api::ResponseStream,
     session_telemetry: SessionTelemetry,
     provider: SharedModelProvider,
+    provenance: ProviderProvenance,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>) {
-    map_response_events(api_stream, session_telemetry, provider)
+    map_response_events(api_stream, session_telemetry, provider, provenance)
 }
 
 fn map_response_events<S>(
     api_stream: S,
     session_telemetry: SessionTelemetry,
     provider: SharedModelProvider,
+    provenance: ProviderProvenance,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>)
 where
     S: futures::Stream<Item = std::result::Result<ResponseEvent, ApiError>>
@@ -1769,7 +1797,8 @@ where
                 break;
             };
             match event {
-                Ok(ResponseEvent::OutputItemDone(item)) => {
+                Ok(ResponseEvent::OutputItemDone(mut item)) => {
+                    provenance.tag_output_item(&mut item);
                     items_added.push(item.clone());
                     if tx_event
                         .send(Ok(ResponseEvent::OutputItemDone(item)))

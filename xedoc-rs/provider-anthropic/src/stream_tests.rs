@@ -232,6 +232,7 @@ fn preserves_streamed_reasoning_signature() {
                 summary: Vec::new(),
                 content: None,
                 encrypted_content: None,
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
             ObservedEvent::ReasoningPartAdded { summary_index: 0 },
@@ -251,6 +252,7 @@ fn preserves_streamed_reasoning_signature() {
                 }],
                 content: None,
                 encrypted_content: Some("sig_stream".to_string()),
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
         ]

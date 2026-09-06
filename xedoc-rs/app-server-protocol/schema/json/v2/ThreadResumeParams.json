@@ -416,12 +416,48 @@
       "description": "Provider data required to replay a response item.",
       "oneOf": [
         {
+          "description": "Opaque continuity data issued by an Anthropic Messages API model.",
+          "properties": {
+            "model": {
+              "description": "Model that issued the thinking signature.",
+              "type": "string"
+            },
+            "provider": {
+              "enum": [
+                "anthropic"
+              ],
+              "type": "string"
+            },
+            "provider_id": {
+              "description": "Configured provider identifier that issued the item.",
+              "type": "string"
+            },
+            "thinking_signature": {
+              "description": "Opaque signature returned with the thinking block.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "model",
+            "provider",
+            "provider_id"
+          ],
+          "type": "object"
+        },
+        {
           "description": "Metadata required when replaying a Gemini tool call.",
           "properties": {
             "provider": {
               "enum": [
                 "gemini"
               ],
+              "type": "string"
+            },
+            "provider_id": {
+              "description": "Configured provider identifier that issued the item.",
               "type": "string"
             },
             "thought_signature": {
@@ -432,6 +468,26 @@
           "required": [
             "provider",
             "thought_signature"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Opaque continuity data issued by a Responses-compatible provider.",
+          "properties": {
+            "provider": {
+              "enum": [
+                "responses"
+              ],
+              "type": "string"
+            },
+            "provider_id": {
+              "description": "Configured provider identifier that issued the item.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "provider_id"
           ],
           "type": "object"
         }
@@ -635,6 +691,16 @@
               "anyOf": [
                 {
                   "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "provider_metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProviderItemMetadata"
                 },
                 {
                   "type": "null"
@@ -1138,6 +1204,16 @@
                 }
               ]
             },
+            "provider_metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProviderItemMetadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "enum": [
                 "compaction"
@@ -1187,6 +1263,16 @@
               "anyOf": [
                 {
                   "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "provider_metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProviderItemMetadata"
                 },
                 {
                   "type": "null"

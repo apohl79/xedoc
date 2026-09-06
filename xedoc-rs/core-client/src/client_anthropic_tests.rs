@@ -140,6 +140,7 @@ fn provider(server: &MockServer, accounts: Arc<AnthropicAccountPool>) -> SharedM
 fn client(provider: SharedModelProvider) -> ModelClient {
     ModelClient::from_model_provider(
         provider,
+        "anthropic".to_string(),
         AgentIdentityAuthPolicy::JwtOnly,
         SessionSource::Cli,
         "test_originator".to_string(),

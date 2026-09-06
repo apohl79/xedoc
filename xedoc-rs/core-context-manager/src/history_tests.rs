@@ -285,6 +285,7 @@ fn reasoning_msg(text: &str) -> ResponseItem {
             text: text.to_string(),
         }]),
         encrypted_content: None,
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }
 }
@@ -297,6 +298,7 @@ fn reasoning_with_encrypted_content(len: usize) -> ResponseItem {
         }],
         content: None,
         encrypted_content: Some("a".repeat(len)),
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }
 }
@@ -344,6 +346,7 @@ fn filters_non_api_messages() {
                     text: "thinking...".to_string(),
                 }]),
                 encrypted_content: None,
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::Message {
@@ -463,16 +466,19 @@ fn for_prompt_without_encrypted_content_preserves_plaintext_context() {
             }],
             content: None,
             encrypted_content: Some("OPAQUE_REASONING".to_string()),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::Compaction {
             id: None,
             encrypted_content: "OPAQUE_COMPACTION".to_string(),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::ContextCompaction {
             id: None,
             encrypted_content: Some("OPAQUE_CONTEXT_COMPACTION".to_string()),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::AgentMessage {
@@ -516,11 +522,13 @@ fn for_prompt_without_encrypted_content_preserves_plaintext_context() {
                 }],
                 content: None,
                 encrypted_content: None,
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::ContextCompaction {
                 id: None,
                 encrypted_content: None,
+                provider_metadata: None,
                 internal_chat_message_metadata_passthrough: None,
             },
             ResponseItem::AgentMessage {

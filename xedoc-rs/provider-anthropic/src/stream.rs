@@ -409,6 +409,7 @@ fn reasoning_item(id: ResponseItemId, text: String, signature: Option<String>) -
         summary,
         content: None,
         encrypted_content: signature,
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     }
 }

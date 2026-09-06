@@ -21,6 +21,7 @@ fn tracker_collects_message_reasoning_and_tool_activity() {
         }],
         content: None,
         encrypted_content: None,
+        provider_metadata: None,
         internal_chat_message_metadata_passthrough: None,
     });
     activity.record_response_item(&ResponseItem::FunctionCall {

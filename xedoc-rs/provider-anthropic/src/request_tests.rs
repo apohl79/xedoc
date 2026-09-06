@@ -209,6 +209,7 @@ fn replays_reasoning_tool_calls_and_parallel_results() {
             }],
             content: None,
             encrypted_content: Some("sig_1".to_string()),
+            provider_metadata: None,
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::FunctionCall {

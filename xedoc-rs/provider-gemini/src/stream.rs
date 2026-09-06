@@ -156,8 +156,11 @@ impl GeminiStreamTranslator {
         };
         self.thought_signatures
             .remember(&call_id, &thought_signature);
-        let provider_metadata = (!thought_signature.is_empty())
-            .then_some(ProviderItemMetadata::Gemini { thought_signature });
+        let provider_metadata =
+            (!thought_signature.is_empty()).then_some(ProviderItemMetadata::Gemini {
+                provider_id: String::new(),
+                thought_signature,
+            });
 
         if name == "apply_patch" {
             let input = args
