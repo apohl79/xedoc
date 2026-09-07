@@ -1,5 +1,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicI64;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use crate::SkillsService;
 use crate::agent::AgentControl;
@@ -39,7 +42,59 @@ use xedoc_protocol::capabilities::SelectedCapabilityRoot;
 use xedoc_rollout::state_db::StateDbHandle;
 use xedoc_thread_store::LiveThread;
 use xedoc_thread_store::ThreadStore;
+use xedoc_tool_output_reduce::ReductionRecord;
+use xedoc_tool_output_reduce::ReductionSessionStats;
 use xedoc_tool_output_reduce::ReductionSink;
+
+pub(crate) struct SessionReductionSink {
+    inner: Arc<dyn ReductionSink>,
+    reductions: AtomicI64,
+    tokens_saved: AtomicI64,
+    cost_saved_bits: AtomicU64,
+}
+
+impl SessionReductionSink {
+    pub(crate) fn new(inner: Arc<dyn ReductionSink>) -> Arc<Self> {
+        Arc::new(Self {
+            inner,
+            reductions: AtomicI64::new(0),
+            tokens_saved: AtomicI64::new(0),
+            cost_saved_bits: AtomicU64::new(0.0f64.to_bits()),
+        })
+    }
+}
+
+impl ReductionSink for SessionReductionSink {
+    fn try_record(&self, record: ReductionRecord) {
+        let tokens_saved = (record.est_tokens_in - record.est_tokens_out).max(0);
+        self.reductions.fetch_add(1, Ordering::Relaxed);
+        self.tokens_saved.fetch_add(tokens_saved, Ordering::Relaxed);
+        if let Some(price) = record.input_price_per_1m
+            && price.is_finite()
+            && price >= 0.0
+        {
+            let cost = tokens_saved as f64 * price / 1_000_000.0;
+            self.cost_saved_bits
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |bits| {
+                    Some((f64::from_bits(bits) + cost).to_bits())
+                })
+                .ok();
+        }
+        self.inner.try_record(record);
+    }
+
+    fn try_record_retrieval(&self, call_id: &str, spill_path: &str) {
+        self.inner.try_record_retrieval(call_id, spill_path);
+    }
+
+    fn session_stats(&self) -> ReductionSessionStats {
+        ReductionSessionStats {
+            reductions: self.reductions.load(Ordering::Relaxed),
+            tokens_saved: self.tokens_saved.load(Ordering::Relaxed),
+            cost_saved_usd: f64::from_bits(self.cost_saved_bits.load(Ordering::Relaxed)),
+        }
+    }
+}
 
 pub(crate) struct SessionServices {
     /// Optional runtime-owned sink for non-blocking tool-output reduction records.

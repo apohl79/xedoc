@@ -184,6 +184,31 @@ enum Subcommand {
 
     /// Inspect feature flags.
     Features(FeaturesCli),
+
+    /// Report durable token savings by day and model.
+    ReportTokenSavings(ReportTokenSavingsCommand),
+}
+
+#[derive(Debug, Args)]
+struct ReportTokenSavingsCommand {
+    /// Number of days ending today (default 90, maximum 366).
+    #[clap(long, conflicts_with_all = ["since", "until"])]
+    days: Option<u32>,
+    /// Start date (UTC), YYYY-MM-DD.
+    #[clap(long)]
+    since: Option<String>,
+    /// End date (UTC), YYYY-MM-DD.
+    #[clap(long)]
+    until: Option<String>,
+    /// Restrict output to one model slug.
+    #[clap(long)]
+    model: Option<String>,
+    /// Emit versioned JSON.
+    #[clap(long)]
+    json: bool,
+    /// Purge the durable report instead of printing it.
+    #[clap(long)]
+    purge: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -1508,6 +1533,14 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 disable_feature_in_config(&feature).await?;
             }
         },
+        Some(Subcommand::ReportTokenSavings(cmd)) => {
+            reject_remote_mode_for_subcommand(
+                root_remote.as_deref(),
+                root_remote_auth_token_env.as_deref(),
+                "report-token-savings",
+            )?;
+            run_report_token_savings(cmd).await?;
+        }
     }
 
     Ok(())
@@ -1913,6 +1946,92 @@ async fn run_debug_token_optimizer_export(
     Ok(())
 }
 
+async fn run_report_token_savings(cmd: ReportTokenSavingsCommand) -> anyhow::Result<()> {
+    let today = chrono::Utc::now().date_naive();
+    let until = cmd
+        .until
+        .as_deref()
+        .map(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d"))
+        .transpose()?
+        .unwrap_or(today);
+    let since = if let Some(value) = cmd.since.as_deref() {
+        chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")?
+    } else {
+        until - chrono::Duration::days(cmd.days.unwrap_or(90).min(366).saturating_sub(1) as i64)
+    };
+    if since > until {
+        anyhow::bail!("--since must not be after --until");
+    }
+    let xedoc_home = find_xedoc_home()?;
+    let runtime =
+        xedoc_state::StateRuntime::init(xedoc_home.into_path_buf(), "openai".to_owned()).await?;
+    if cmd.purge {
+        runtime.reset_tool_output_reduction_report().await?;
+        println!("Token optimizer report reset.");
+        return Ok(());
+    }
+    let report = runtime
+        .tool_output_reduction_report(
+            since.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp(),
+            until.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp(),
+            cmd.model.as_deref(),
+        )
+        .await?;
+    if cmd.json {
+        let value = serde_json::json!({
+            "version": 1,
+            "since": since.to_string(),
+            "until": until.to_string(),
+            "reductions": report.reductions,
+            "tokensSaved": report.tokens_saved,
+            "costSavedUsd": report.cost_saved_usd,
+            "days": report.days.iter().map(|day| serde_json::json!({
+                "day": chrono::DateTime::<chrono::Utc>::from_timestamp(day.day, 0).map(|d| d.date_naive().to_string()).unwrap_or_default(),
+                "partial": day.partial,
+                "reductions": day.reductions,
+                "tokensSaved": day.tokens_saved,
+                "costSavedUsd": day.cost_saved_usd,
+                "byModel": day.by_model.iter().map(|model| serde_json::json!({
+                    "model": model.model_slug,
+                    "reductions": model.reductions,
+                    "tokensSaved": model.tokens_saved,
+                    "costSavedUsd": model.cost_saved_usd,
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+        });
+        serde_json::to_writer_pretty(std::io::stdout(), &value)?;
+        println!();
+    } else {
+        println!("Token optimizer savings ({since} through {until})");
+        println!(
+            "  Reductions: {}  Tokens saved: {}  Cost saved: ${:.6}",
+            report.reductions, report.tokens_saved, report.cost_saved_usd
+        );
+        for day in report.days {
+            let date = chrono::DateTime::<chrono::Utc>::from_timestamp(day.day, 0)
+                .map(|d| d.date_naive().to_string())
+                .unwrap_or_default();
+            println!(
+                "  {date}{}: {} reductions, {} tokens, ${:.6}",
+                if day.partial { " (partial)" } else { "" },
+                day.reductions,
+                day.tokens_saved,
+                day.cost_saved_usd
+            );
+            for model in day.by_model {
+                println!(
+                    "    {}: {} reductions, {} tokens, ${:.6}",
+                    model.model_slug.as_deref().unwrap_or("unknown"),
+                    model.reductions,
+                    model.tokens_saved,
+                    model.cost_saved_usd
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Prepend root-level overrides so they have lower precedence than
 /// CLI-specific ones specified after the subcommand (if any).
 fn prepend_config_flags(
@@ -1981,7 +2100,8 @@ fn unsupported_subcommand_name_for_strict_config(
         | Some(Subcommand::Archive(_))
         | Some(Subcommand::Delete(_))
         | Some(Subcommand::Unarchive(_))
-        | Some(Subcommand::Fork(_)) => None,
+        | Some(Subcommand::Fork(_))
+        | Some(Subcommand::ReportTokenSavings(_)) => None,
         Some(Subcommand::AppServer(app_server)) if app_server.subcommand.is_none() => None,
         Some(Subcommand::AppServer(app_server)) => {
             Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
@@ -3843,6 +3963,26 @@ mod tests {
             err.to_string(),
             "Unknown feature flag: multi_agent_v2.subagent_usage_hint_text"
         );
+    }
+
+    #[test]
+    fn report_token_savings_parses_bounded_filters() {
+        let cli = MultitoolCli::try_parse_from([
+            "xedoc",
+            "report-token-savings",
+            "--days",
+            "30",
+            "--model",
+            "gpt-5.6-sol",
+            "--json",
+        ])
+        .expect("report command should parse");
+        let Some(Subcommand::ReportTokenSavings(command)) = cli.subcommand else {
+            panic!("expected report command");
+        };
+        assert_eq!(command.days, Some(30));
+        assert_eq!(command.model.as_deref(), Some("gpt-5.6-sol"));
+        assert!(command.json);
     }
 
     fn strict_config_feature_toggle_error(args: &[&str]) -> anyhow::Error {

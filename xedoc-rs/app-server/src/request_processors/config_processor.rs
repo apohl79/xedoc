@@ -35,6 +35,10 @@ use xedoc_app_server_protocol::TokenUsageOptimizerBreakdown;
 use xedoc_app_server_protocol::TokenUsageOptimizerInsights;
 use xedoc_app_server_protocol::TokenUsageOptimizerLevel;
 use xedoc_app_server_protocol::TokenUsageOptimizerReadResponse;
+use xedoc_app_server_protocol::TokenUsageOptimizerReportDay;
+use xedoc_app_server_protocol::TokenUsageOptimizerReportModel;
+use xedoc_app_server_protocol::TokenUsageOptimizerReportParams;
+use xedoc_app_server_protocol::TokenUsageOptimizerReportResponse;
 use xedoc_app_server_protocol::TokenUsageOptimizerTopReduction;
 use xedoc_app_server_protocol::TokenUsageOptimizerWriteParams;
 use xedoc_app_server_protocol::TokenUsageOptimizerWriteResponse;
@@ -149,15 +153,18 @@ impl ConfigRequestProcessor {
                 .map_err(|err| internal_error(format!("failed to read optimizer stats: {err}")))?,
             None => (0, 0),
         };
-        let insights = match &self.state_db {
-            Some(state_db) => state_db
-                .tool_output_reduction_insights(None)
-                .await
-                .map(map_optimizer_insights)
-                .map_err(|err| {
-                    internal_error(format!("failed to read optimizer insights: {err}"))
-                })?,
-            None => empty_optimizer_insights(),
+        let (insights, cost_saved_usd) = match &self.state_db {
+            Some(state_db) => {
+                let insights = state_db
+                    .tool_output_reduction_insights(None)
+                    .await
+                    .map_err(|err| {
+                        internal_error(format!("failed to read optimizer insights: {err}"))
+                    })?;
+                let cost_saved_usd = insights.cost_saved_usd;
+                (map_optimizer_insights(insights), cost_saved_usd)
+            }
+            None => (empty_optimizer_insights(), 0.0),
         };
         Ok(TokenUsageOptimizerReadResponse {
             enabled: config.token_usage_optimizer.enabled.unwrap_or(false),
@@ -170,7 +177,67 @@ impl ConfigRequestProcessor {
             },
             reduction_count,
             tokens_saved,
+            cost_saved_usd,
             insights,
+        })
+    }
+
+    pub(crate) async fn token_usage_optimizer_report(
+        &self,
+        params: TokenUsageOptimizerReportParams,
+    ) -> Result<TokenUsageOptimizerReportResponse, JSONRPCErrorError> {
+        let today = chrono::Utc::now().date_naive();
+        let since = params.since_day.unwrap_or_else(|| {
+            (today - chrono::Duration::days(89))
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp()
+        });
+        let until = params
+            .until_day
+            .unwrap_or_else(|| today.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp());
+        let report = match &self.state_db {
+            Some(state_db) => state_db
+                .tool_output_reduction_report(since, until, params.model.as_deref())
+                .await
+                .map_err(|err| internal_error(format!("failed to read optimizer report: {err}")))?,
+            None => xedoc_state::ToolOutputReductionReport {
+                since_day: since,
+                until_day: until,
+                days: Vec::new(),
+                reductions: 0,
+                tokens_saved: 0,
+                cost_saved_usd: 0.0,
+            },
+        };
+        Ok(TokenUsageOptimizerReportResponse {
+            since_day: report.since_day,
+            until_day: report.until_day,
+            days: report
+                .days
+                .into_iter()
+                .map(|day| TokenUsageOptimizerReportDay {
+                    day: day.day,
+                    partial: day.partial,
+                    by_model: day
+                        .by_model
+                        .into_iter()
+                        .map(|model| TokenUsageOptimizerReportModel {
+                            model: model.model_slug,
+                            reductions: model.reductions,
+                            tokens_saved: model.tokens_saved,
+                            cost_saved_usd: model.cost_saved_usd,
+                        })
+                        .collect(),
+                    reductions: day.reductions,
+                    tokens_saved: day.tokens_saved,
+                    cost_saved_usd: day.cost_saved_usd,
+                })
+                .collect(),
+            reductions: report.reductions,
+            tokens_saved: report.tokens_saved,
+            cost_saved_usd: report.cost_saved_usd,
         })
     }
 
@@ -213,6 +280,7 @@ impl ConfigRequestProcessor {
                 level: response.level,
                 reduction_count: response.reduction_count,
                 tokens_saved: response.tokens_saved,
+                cost_saved_usd: response.cost_saved_usd,
                 insights: response.insights,
             })
     }
@@ -366,6 +434,7 @@ fn empty_optimizer_insights() -> TokenUsageOptimizerInsights {
         by_kind: Vec::new(),
         by_reducer: Vec::new(),
         by_tool: Vec::new(),
+        by_model: Vec::new(),
         top_reductions: Vec::new(),
         retrievals: 0,
         spilled: 0,
@@ -385,6 +454,7 @@ fn map_optimizer_insights(
                 bytes_out: item.bytes_out,
                 retrievals: item.retrievals,
                 reruns: item.reruns,
+                cost_saved_usd: None,
             })
             .collect()
     };
@@ -392,6 +462,19 @@ fn map_optimizer_insights(
         by_kind: map_breakdown(insights.by_kind),
         by_reducer: map_breakdown(insights.by_reducer),
         by_tool: map_breakdown(insights.by_tool),
+        by_model: insights
+            .by_model
+            .into_iter()
+            .map(|item| TokenUsageOptimizerBreakdown {
+                dimension: item.dimension,
+                reductions: item.reductions,
+                bytes_in: 0,
+                bytes_out: 0,
+                retrievals: 0,
+                reruns: 0,
+                cost_saved_usd: item.cost_saved_usd,
+            })
+            .collect(),
         top_reductions: insights
             .top_reductions
             .into_iter()
@@ -402,6 +485,7 @@ fn map_optimizer_insights(
                 bytes_in: item.bytes_in,
                 bytes_out: item.bytes_out,
                 tokens_saved: item.tokens_saved,
+                cost_saved_usd: item.cost_saved_usd,
             })
             .collect(),
         retrievals: insights.retrievals,

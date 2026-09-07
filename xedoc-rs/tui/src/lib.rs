@@ -144,6 +144,7 @@ pub(crate) use xedoc_tui_render::terminal_hyperlinks;
 pub(crate) use xedoc_tui_render::terminal_palette;
 pub(crate) use xedoc_tui_render::terminal_probe;
 pub(crate) use xedoc_tui_transcript::text_formatting;
+mod token_optimizer_stats;
 mod token_usage;
 mod transcript_reflow;
 mod tui;

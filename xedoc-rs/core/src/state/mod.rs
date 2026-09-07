@@ -1,5 +1,6 @@
 mod additional_context;
 mod service;
+pub(crate) use service::SessionReductionSink;
 mod session;
 mod turn;
 

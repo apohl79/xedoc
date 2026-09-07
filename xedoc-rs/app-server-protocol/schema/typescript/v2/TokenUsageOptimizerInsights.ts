@@ -4,4 +4,4 @@
 import type { TokenUsageOptimizerBreakdown } from "./TokenUsageOptimizerBreakdown";
 import type { TokenUsageOptimizerTopReduction } from "./TokenUsageOptimizerTopReduction";
 
-export type TokenUsageOptimizerInsights = { byKind: Array<TokenUsageOptimizerBreakdown>, byReducer: Array<TokenUsageOptimizerBreakdown>, byTool: Array<TokenUsageOptimizerBreakdown>, topReductions: Array<TokenUsageOptimizerTopReduction>, retrievals: bigint, spilled: bigint, };
+export type TokenUsageOptimizerInsights = { byKind: Array<TokenUsageOptimizerBreakdown>, byReducer: Array<TokenUsageOptimizerBreakdown>, byTool: Array<TokenUsageOptimizerBreakdown>, byModel: Array<TokenUsageOptimizerBreakdown>, topReductions: Array<TokenUsageOptimizerTopReduction>, retrievals: bigint, spilled: bigint, };

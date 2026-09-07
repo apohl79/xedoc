@@ -135,6 +135,7 @@ pub fn create_fake_rollout_with_token_usage(
         }),
         rate_limits: None,
         session_cost_usd: None,
+        token_optimizer: None,
     }))?;
     let file_path = rollout_path(xedoc_home, filename_ts, &thread_id);
     let line = json!({

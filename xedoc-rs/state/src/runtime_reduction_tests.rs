@@ -41,6 +41,8 @@ async fn reduction_record_round_trips_through_persistence() {
         bytes_out: 6_789,
         est_tokens_in: 3_210,
         est_tokens_out: 1_234,
+        model_slug: Some("gpt-5.4".to_owned()),
+        input_price_per_1m: Some(2.5),
         duration_us: 987_654,
         spilled: true,
         spill_path: Some("/tmp/round-trip.txt".to_owned()),
@@ -53,7 +55,7 @@ async fn reduction_record_round_trips_through_persistence() {
             if let Some(row) = sqlx::query(
                 "SELECT thread_id, turn_id, call_id, command_hash, tool_name, kind, level, \
                  reducers_applied, bytes_in, bytes_out, est_tokens_in, est_tokens_out, duration_us, \
-                 spilled, spill_path, recorded_at FROM tool_output_reductions \
+                 spilled, spill_path, recorded_at, model_slug, input_price_per_1m FROM tool_output_reductions \
                  WHERE call_id = ?",
             )
             .bind(&expected.call_id)
@@ -109,6 +111,10 @@ async fn reduction_record_round_trips_through_persistence() {
         est_tokens_out: row
             .try_get("est_tokens_out")
             .expect("est_tokens_out column"),
+        model_slug: row.try_get("model_slug").expect("model_slug column"),
+        input_price_per_1m: row
+            .try_get("input_price_per_1m")
+            .expect("input_price_per_1m column"),
         duration_us: row
             .try_get::<i64, _>("duration_us")
             .expect("duration_us column") as u64,
@@ -154,6 +160,8 @@ async fn reduction_insights_aggregate_attribution_retrieval_and_thread_scope() {
         bytes_out,
         est_tokens_in,
         est_tokens_out,
+        model_slug: None,
+        input_price_per_1m: None,
         duration_us: 10,
         spilled,
         spill_path: spilled.then(|| format!("/tmp/{call_id}.txt")),
@@ -228,7 +236,11 @@ async fn reduction_insights_aggregate_attribution_retrieval_and_thread_scope() {
             .tool_output_reduction_insights(None)
             .await
             .expect("insights query should succeed");
-        if insights.top_reductions.len() == 4 {
+        if insights.top_reductions.len() == 4
+            && insights.by_kind.len() == 3
+            && insights.by_tool.len() == 3
+            && insights.by_reducer.len() == 5
+        {
             break insights;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -344,6 +356,7 @@ async fn reduction_insights_aggregate_attribution_retrieval_and_thread_scope() {
                     bytes_in: 1_000,
                     bytes_out: 400,
                     tokens_saved: 150,
+                    cost_saved_usd: None,
                 },
                 super::ToolOutputReductionTop {
                     call_id: "call-json-small".to_string(),
@@ -352,6 +365,7 @@ async fn reduction_insights_aggregate_attribution_retrieval_and_thread_scope() {
                     bytes_in: 800,
                     bytes_out: 600,
                     tokens_saved: 50,
+                    cost_saved_usd: None,
                 },
                 super::ToolOutputReductionTop {
                     call_id: "call-log".to_string(),
@@ -360,6 +374,7 @@ async fn reduction_insights_aggregate_attribution_retrieval_and_thread_scope() {
                     bytes_in: 600,
                     bytes_out: 300,
                     tokens_saved: 75,
+                    cost_saved_usd: None,
                 },
                 super::ToolOutputReductionTop {
                     call_id: "call-prose".to_string(),
@@ -368,10 +383,18 @@ async fn reduction_insights_aggregate_attribution_retrieval_and_thread_scope() {
                     bytes_in: 400,
                     bytes_out: 200,
                     tokens_saved: 50,
+                    cost_saved_usd: None,
                 },
             ],
             retrievals: 1,
             spilled: 2,
+            by_model: vec![super::ToolOutputReductionModelBreakdown {
+                dimension: "unknown".to_owned(),
+                reductions: 4,
+                tokens_saved: 325,
+                cost_saved_usd: None,
+            }],
+            cost_saved_usd: 0.0,
         }
     );
 
@@ -404,6 +427,8 @@ async fn reduction_insights_aggregate_attribution_retrieval_and_thread_scope() {
             top_reductions: Vec::new(),
             retrievals: 0,
             spilled: 0,
+            by_model: Vec::new(),
+            cost_saved_usd: 0.0,
         }
     );
     runtime.close().await;
@@ -430,6 +455,8 @@ async fn reruns_are_limited_to_two_turns_and_thread_scoped() {
         bytes_out: 50,
         est_tokens_in: 25,
         est_tokens_out: 12,
+        model_slug: None,
+        input_price_per_1m: None,
         duration_us: 1,
         spilled: false,
         spill_path: None,
@@ -461,4 +488,54 @@ async fn reruns_are_limited_to_two_turns_and_thread_scoped() {
         .find(|item| item.dimension == "log")
         .expect("log breakdown should exist");
     assert_eq!(log.reruns, 3);
+}
+
+#[tokio::test]
+async fn daily_rollup_folds_complete_days_idempotently_and_reset_preserves_it() {
+    let xedoc_home = super::test_support::unique_temp_dir();
+    let runtime = super::StateRuntime::init(xedoc_home.clone(), "test-provider".to_string())
+        .await
+        .expect("state runtime should initialize");
+    let pool = SqliteConfig::new_for_testing(xedoc_home.as_path().abs())
+        .open_read_write_pool(&state_db_path(&xedoc_home))
+        .await
+        .expect("state database should open");
+    let now = chrono::Utc::now().timestamp();
+    let today = now / 86400 * 86400;
+    for (offset, model) in [(2_i64, "gpt-5.6-sol"), (1, "claude-opus-4-8")] {
+        sqlx::query(
+            "INSERT INTO tool_output_reductions (call_id, tool_name, kind, level, reducers_applied, bytes_in, bytes_out, est_tokens_in, est_tokens_out, duration_us, spilled, recorded_at, model_slug, input_price_per_1m) VALUES (?, 'shell', 'prose', 'balanced', '', 100, 50, 100, 50, 1, 0, ?, ?, 1.0)",
+        )
+        .bind(format!("rollup-{offset}"))
+        .bind(today - offset * 86400 + 100)
+        .bind(model)
+        .execute(&pool)
+        .await
+        .expect("insert reduction");
+    }
+    runtime
+        .fold_tool_output_reductions_into_daily()
+        .await
+        .expect("fold");
+    runtime
+        .fold_tool_output_reductions_into_daily()
+        .await
+        .expect("idempotent fold");
+    let report = runtime
+        .tool_output_reduction_report(today - 3 * 86400, today, None)
+        .await
+        .expect("report");
+    assert_eq!(report.reductions, 2);
+    runtime
+        .reset_tool_output_reduction_stats()
+        .await
+        .expect("reset stats");
+    let report_after_reset = runtime
+        .tool_output_reduction_report(today - 3 * 86400, today - 86400, None)
+        .await
+        .expect("report after reset");
+    assert_eq!(report_after_reset.reductions, 2);
+    runtime.close().await;
+    pool.close().await;
+    let _ = tokio::fs::remove_dir_all(xedoc_home).await;
 }

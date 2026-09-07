@@ -3684,16 +3684,30 @@ impl Session {
     }
 
     pub(crate) async fn token_count_event(&self) -> EventMsg {
-        let (info, rate_limits, session_cost_usd) = {
+        let (info, rate_limits, session_cost_usd, token_optimizer) = {
             let state = self.state.lock().await;
             let (info, rate_limits) = state.token_info_and_rate_limits();
             let cost = state.cost_tracker.available_cost_usd();
-            (info, rate_limits, cost)
+            let token_optimizer = self
+                .services
+                .reduction_sink
+                .as_ref()
+                .map(|sink| sink.session_stats())
+                .map(
+                    |stats| xedoc_protocol::protocol::TokenOptimizerSessionStats {
+                        reductions: stats.reductions,
+                        tokens_saved: stats.tokens_saved,
+                        cost_saved_usd: stats.cost_saved_usd,
+                    },
+                )
+                .filter(|stats| stats.reductions > 0);
+            (info, rate_limits, cost, token_optimizer)
         };
         EventMsg::TokenCount(TokenCountEvent {
             info,
             rate_limits,
             session_cost_usd,
+            token_optimizer,
         })
     }
 

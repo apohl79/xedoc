@@ -5655,6 +5655,7 @@ fn token_usage_notification_with_cost(
         turn_id: turn_id.to_string(),
         token_usage: ThreadTokenUsage {
             session_cost_usd,
+            token_optimizer: None,
             total: TokenUsageBreakdown {
                 total_tokens: 10,
                 input_tokens: 4,

@@ -1411,6 +1411,9 @@ pub struct ThreadTokenUsage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub session_cost_usd: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub token_optimizer: Option<xedoc_protocol::protocol::TokenOptimizerSessionStats>,
     // TODO(aibrahim): make this not optional
     #[ts(type = "number | null")]
     pub model_context_window: Option<i64>,
@@ -1428,6 +1431,7 @@ impl ThreadTokenUsage {
             total: value.total_token_usage.into(),
             last: value.last_token_usage.into(),
             session_cost_usd,
+            token_optimizer: None,
             model_context_window: value.model_context_window,
         }
     }

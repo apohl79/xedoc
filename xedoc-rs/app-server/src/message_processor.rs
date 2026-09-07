@@ -784,6 +784,11 @@ impl MessageProcessor {
                 .token_usage_optimizer_read()
                 .await
                 .map(|response| Some(response.into())),
+            ClientRequest::TokenUsageOptimizerReport { params, .. } => self
+                .config_processor
+                .token_usage_optimizer_report(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::TokenUsageOptimizerWrite { params, .. } => self
                 .config_processor
                 .token_usage_optimizer_write(params)

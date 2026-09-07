@@ -688,6 +688,7 @@ mod tests {
                         info: None,
                         rate_limits: None,
                         session_cost_usd: None,
+                        token_optimizer: None,
                     },
                 )),
                 RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
@@ -775,6 +776,7 @@ mod tests {
                     info: None,
                     rate_limits: None,
                     session_cost_usd: None,
+                    token_optimizer: None,
                 },
             ))])
             .await

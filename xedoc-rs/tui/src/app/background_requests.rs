@@ -48,6 +48,22 @@ impl App {
         });
     }
 
+    pub(super) fn fetch_token_usage_optimizer_report(
+        &mut self,
+        app_server: &AppServerSession,
+        days: Option<u32>,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result =
+                crate::config_update::read_token_usage_optimizer_report(request_handle, days)
+                    .await
+                    .map_err(|err| err.to_string());
+            app_event_tx.send(AppEvent::TokenUsageOptimizerReportLoaded { result });
+        });
+    }
+
     pub(super) fn fetch_mcp_inventory(
         &mut self,
         app_server: &AppServerSession,

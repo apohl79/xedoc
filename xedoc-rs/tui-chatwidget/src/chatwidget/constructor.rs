@@ -119,6 +119,11 @@ impl ChatWidget {
             session_cost_usd: None,
             agent_token_usage: TokenUsage::default(),
             agent_session_cost_usd: None,
+            token_optimizer_stats: xedoc_protocol::protocol::TokenOptimizerSessionStats {
+                reductions: 0,
+                tokens_saved: 0,
+                cost_saved_usd: 0.0,
+            },
             rate_limit_snapshots_by_limit_id: BTreeMap::new(),
             plan_type: initial_plan_type,
             xedoc_rate_limit_reached_type: None,

@@ -580,6 +580,11 @@ impl ChatWidget {
                 "total_lines_added": null,
                 "total_lines_removed": null,
             },
+            "token_optimizer": {
+                "reductions": self.token_optimizer_stats.reductions.max(0),
+                "tokens_saved": self.token_optimizer_stats.tokens_saved.max(0),
+                "cost_saved_usd": self.token_optimizer_stats.cost_saved_usd.max(0.0),
+            },
             "context_window": {
                 "total_input_tokens": total_usage.input_tokens.max(0),
                 "total_output_tokens": total_usage.output_tokens.max(0),

@@ -66,7 +66,7 @@ pub enum ReducerId {
 }
 
 /// Measurements and metadata produced alongside a reduced output.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReductionRecord {
     pub thread_id: Option<String>,
     pub turn_id: Option<String>,
@@ -80,10 +80,22 @@ pub struct ReductionRecord {
     pub bytes_out: u64,
     pub est_tokens_in: i64,
     pub est_tokens_out: i64,
+    /// Model active when the reduction was recorded, when available.
+    pub model_slug: Option<String>,
+    /// Input price in USD per one million tokens captured at reduction time.
+    pub input_price_per_1m: Option<f64>,
     pub duration_us: u64,
     pub spilled: bool,
     pub spill_path: Option<String>,
     pub recorded_at: i64,
+}
+
+/// Cumulative reduction savings for the current session.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReductionSessionStats {
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
 }
 
 /// Non-blocking destination for baseline reduction records.
@@ -93,6 +105,15 @@ pub struct ReductionRecord {
 pub trait ReductionSink: Send + Sync {
     fn try_record(&self, record: ReductionRecord);
 
+    /// Returns additive savings accumulated by this sink for the active session.
+    fn session_stats(&self) -> ReductionSessionStats {
+        ReductionSessionStats {
+            reductions: 0,
+            tokens_saved: 0,
+            cost_saved_usd: 0.0,
+        }
+    }
+
     /// Record a model-initiated read of a spilled output.
     fn try_record_retrieval(&self, call_id: &str, spill_path: &str) {
         let _ = (call_id, spill_path);
@@ -100,7 +121,7 @@ pub trait ReductionSink: Send + Sync {
 }
 
 /// Reduced text and the measurements describing the reduction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReductionOutput {
     pub text: String,
     pub record: ReductionRecord,
@@ -298,6 +319,8 @@ pub fn reduce(input: ReductionInput<'_>, config: &ReductionConfig) -> ReductionO
             bytes_out,
             est_tokens_in: tokens,
             est_tokens_out,
+            model_slug: None,
+            input_price_per_1m: None,
             duration_us: started.elapsed().as_micros() as u64,
             spilled: spill_path.is_some(),
             spill_path,

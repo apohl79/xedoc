@@ -37,7 +37,7 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
 const RAW_USAGE: &str = "Usage: /raw [on|off]";
 const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
-const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|reset-stats|on|off|level <conservative|balanced|aggressive>]";
+const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|report [days]|reset-stats|reset-report|on|off|level <conservative|balanced|aggressive>]";
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -616,6 +616,24 @@ impl ChatWidget {
                     (Some("stats"), None) => {
                         self.app_event_tx
                             .send(AppEvent::TokenUsageOptimizerStatsRequested);
+                    }
+                    (Some("report"), Some(days)) if parts.next().is_none() => {
+                        match days.parse::<u32>() {
+                            Ok(days) if (1..=366).contains(&days) => self.app_event_tx.send(
+                                AppEvent::TokenUsageOptimizerReportRequested { days: Some(days) },
+                            ),
+                            _ => self.add_error_message(TOKEN_USAGE_OPTIMIZER_USAGE.to_string()),
+                        }
+                    }
+                    (Some("report"), None) => {
+                        self.app_event_tx
+                            .send(AppEvent::TokenUsageOptimizerReportRequested { days: None });
+                    }
+                    (Some("reset-report"), None) => {
+                        self.add_error_message(
+                            "Use `xedoc report-token-savings --purge` to reset the durable report."
+                                .to_string(),
+                        );
                     }
                     (Some("reset-stats"), None) => {
                         self.app_event_tx

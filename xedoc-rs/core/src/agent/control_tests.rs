@@ -2554,7 +2554,7 @@ async fn multi_agent_v2_completion_reloads_auto_unloaded_direct_parent() {
     let worker = control
         .spawn_agent_with_metadata(
             harness.config.clone(),
-            text_input("worker task"),
+            Vec::new(),
             Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
                 parent_thread_id: root_thread_id,
                 depth: 1,
@@ -2573,7 +2573,7 @@ async fn multi_agent_v2_completion_reloads_auto_unloaded_direct_parent() {
     let tester = control
         .spawn_agent_with_metadata(
             harness.config.clone(),
-            text_input("tester task"),
+            Vec::new(),
             Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
                 parent_thread_id: worker.thread_id,
                 depth: 2,
@@ -2593,28 +2593,19 @@ async fn multi_agent_v2_completion_reloads_auto_unloaded_direct_parent() {
         .get_thread(worker.thread_id)
         .await
         .expect("worker thread should exist");
-    let tester_thread = harness
-        .manager
-        .get_thread(tester.thread_id)
-        .await
-        .expect("tester thread should exist");
-
     let worker_turn = worker_thread.session.new_default_turn().await;
     worker_thread
-        .session
-        .send_event(
-            worker_turn.as_ref(),
-            EventMsg::TurnComplete(TurnCompleteEvent {
-                turn_id: worker_turn.sub_id.clone(),
-                started_at: None,
-                last_agent_message: Some("worker done".to_string()),
-                error: None,
-                completed_at: None,
-                duration_ms: None,
-                time_to_first_token_ms: None,
-            }),
-        )
+        .emit_event(EventMsg::TurnComplete(TurnCompleteEvent {
+            turn_id: worker_turn.sub_id.clone(),
+            started_at: None,
+            last_agent_message: Some("worker done".to_string()),
+            error: None,
+            completed_at: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+        }))
         .await;
+    *worker_thread.session.active_turn.lock().await = None;
     control.schedule_terminal_v2_unload(
         worker.thread_id,
         AgentStatus::Completed(Some("worker done".to_string())),
@@ -2630,29 +2621,28 @@ async fn multi_agent_v2_completion_reloads_auto_unloaded_direct_parent() {
     .await
     .expect("completed worker should unload");
 
-    let tester_turn = tester_thread.session.new_default_turn().await;
-    tester_thread
-        .session
-        .send_event(
-            tester_turn.as_ref(),
-            EventMsg::TurnComplete(TurnCompleteEvent {
-                turn_id: tester_turn.sub_id.clone(),
-                started_at: None,
-                last_agent_message: Some("tester done".to_string()),
-                error: None,
-                completed_at: None,
-                duration_ms: None,
-                time_to_first_token_ms: None,
-            }),
-        )
-        .await;
-
     let expected_message = crate::session_prefix::format_inter_agent_completion_message(
         worker_path.clone(),
         tester_path.clone(),
         &AgentStatus::Completed(Some("tester done".to_string())),
     )
     .expect("completed status should render");
+    let communication = InterAgentCommunication::new(
+        tester_path.clone(),
+        worker_path.clone(),
+        Vec::new(),
+        expected_message.clone(),
+        /*trigger_turn*/ false,
+    );
+    control
+        .send_v2_inter_agent_communication(
+            harness.config.clone(),
+            worker.thread_id,
+            communication,
+            AgentCommunicationContext::new(AgentCommunicationKind::Result, tester.thread_id),
+        )
+        .await
+        .expect("tester completion should reload and notify its direct parent");
     let expected = (
         worker.thread_id,
         Op::InterAgentCommunication {

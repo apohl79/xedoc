@@ -1790,6 +1790,17 @@ pub struct TokenCountEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub session_cost_usd: Option<f64>,
+    /// Session-scoped token savings from the in-process output reducer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub token_optimizer: Option<TokenOptimizerSessionStats>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, JsonSchema, TS)]
+pub struct TokenOptimizerSessionStats {
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, TS)]

@@ -158,6 +158,7 @@ use xedoc_protocol::items::AgentMessageItem;
 use xedoc_protocol::models::MessagePhase;
 use xedoc_protocol::plan_tool::PlanItemArg as UpdatePlanItemArg;
 use xedoc_protocol::plan_tool::StepStatus as UpdatePlanItemStatus;
+use xedoc_protocol::protocol::TokenOptimizerSessionStats;
 use xedoc_protocol::request_permissions::RequestPermissionsEvent;
 use xedoc_protocol::user_input::ByteRange;
 use xedoc_protocol::user_input::TextElement;
@@ -522,6 +523,7 @@ pub struct ChatWidget {
     agent_token_usage: TokenUsage,
     /// Live subagent cost not yet reflected in the parent session cost.
     agent_session_cost_usd: Option<f64>,
+    token_optimizer_stats: TokenOptimizerSessionStats,
     rate_limit_snapshots_by_limit_id: BTreeMap<String, RateLimitSnapshotDisplay>,
     plan_type: Option<PlanType>,
     xedoc_rate_limit_reached_type: Option<RateLimitReachedType>,
@@ -944,6 +946,15 @@ impl ChatWidget {
         self.refresh_status_surfaces();
     }
 
+    pub fn set_token_optimizer_stats(&mut self, stats: Option<TokenOptimizerSessionStats>) {
+        self.token_optimizer_stats = stats.unwrap_or(TokenOptimizerSessionStats {
+            reductions: 0,
+            tokens_saved: 0,
+            cost_saved_usd: 0.0,
+        });
+        self.refresh_status_surfaces();
+    }
+
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
         let percent = self.context_remaining_percent(&info);
         let used_tokens = self.context_used_tokens(&info, percent.is_some());
@@ -1336,6 +1347,33 @@ impl ChatWidget {
         if !active
             .as_any()
             .is::<history_cell::McpInventoryLoadingCell>()
+        {
+            return;
+        }
+        self.transcript.active_cell = None;
+        self.bump_active_cell_revision();
+        self.request_redraw();
+    }
+
+    /// Begin the asynchronous token-optimizer stats flow with a loading cell.
+    pub fn add_token_usage_optimizer_stats_loading(&mut self) {
+        self.flush_answer_stream_with_separator();
+        self.flush_active_cell();
+        self.transcript.active_cell = Some(Box::new(
+            history_cell::new_token_usage_optimizer_stats_loading(self.config.animations),
+        ));
+        self.bump_active_cell_revision();
+        self.request_redraw();
+    }
+
+    /// Remove the token-optimizer stats loading cell if it is still active.
+    pub fn clear_token_usage_optimizer_stats_loading(&mut self) {
+        let Some(active) = self.transcript.active_cell.as_ref() else {
+            return;
+        };
+        if !active
+            .as_any()
+            .is::<history_cell::TokenUsageOptimizerStatsLoadingCell>()
         {
             return;
         }

@@ -19,7 +19,7 @@ use xedoc_protocol::config_types::WebSearchToolConfig;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(tag = "type")]
 #[ts(export_to = "v2/")]
@@ -576,7 +576,7 @@ pub enum TokenUsageOptimizerLevel {
     Aggressive,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct TokenUsageOptimizerBreakdown {
@@ -586,9 +586,10 @@ pub struct TokenUsageOptimizerBreakdown {
     pub bytes_out: i64,
     pub retrievals: i64,
     pub reruns: i64,
+    pub cost_saved_usd: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct TokenUsageOptimizerTopReduction {
@@ -598,21 +599,23 @@ pub struct TokenUsageOptimizerTopReduction {
     pub bytes_in: i64,
     pub bytes_out: i64,
     pub tokens_saved: i64,
+    pub cost_saved_usd: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct TokenUsageOptimizerInsights {
     pub by_kind: Vec<TokenUsageOptimizerBreakdown>,
     pub by_reducer: Vec<TokenUsageOptimizerBreakdown>,
     pub by_tool: Vec<TokenUsageOptimizerBreakdown>,
+    pub by_model: Vec<TokenUsageOptimizerBreakdown>,
     pub top_reductions: Vec<TokenUsageOptimizerTopReduction>,
     pub retrievals: i64,
     pub spilled: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct TokenUsageOptimizerReadResponse {
@@ -620,10 +623,11 @@ pub struct TokenUsageOptimizerReadResponse {
     pub level: TokenUsageOptimizerLevel,
     pub reduction_count: i64,
     pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
     pub insights: TokenUsageOptimizerInsights,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct TokenUsageOptimizerWriteParams {
@@ -637,7 +641,7 @@ pub struct TokenUsageOptimizerWriteParams {
     pub reset_stats: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct TokenUsageOptimizerWriteResponse {
@@ -645,7 +649,54 @@ pub struct TokenUsageOptimizerWriteResponse {
     pub level: TokenUsageOptimizerLevel,
     pub reduction_count: i64,
     pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
     pub insights: TokenUsageOptimizerInsights,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerReportParams {
+    #[ts(optional = nullable)]
+    pub since_day: Option<i64>,
+    #[ts(optional = nullable)]
+    pub until_day: Option<i64>,
+    #[ts(optional = nullable)]
+    pub model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerReportModel {
+    pub model: Option<String>,
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerReportDay {
+    pub day: i64,
+    pub partial: bool,
+    pub by_model: Vec<TokenUsageOptimizerReportModel>,
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TokenUsageOptimizerReportResponse {
+    pub since_day: i64,
+    pub until_day: i64,
+    pub days: Vec<TokenUsageOptimizerReportDay>,
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
