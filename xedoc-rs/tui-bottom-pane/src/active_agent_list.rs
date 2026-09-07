@@ -22,7 +22,7 @@ use crate::tui::FrameRequester;
 
 const MAX_VISIBLE_AGENTS: usize = 7;
 const ELAPSED_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
-const DEFAULT_ACTIVITY: &str = "Working...";
+const DEFAULT_ACTIVITY: &str = "Working";
 
 #[derive(Clone, Debug)]
 pub struct ActiveAgentEntry {

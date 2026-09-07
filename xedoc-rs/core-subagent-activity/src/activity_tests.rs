@@ -82,3 +82,27 @@ fn tracker_retries_failed_summary_with_same_bounded_history() {
         )
     );
 }
+
+#[test]
+fn tracker_exposes_a_bounded_latest_display_hint() {
+    let mut activity = RecentSubAgentActivity::default();
+    activity.record_response_item(&ResponseItem::FunctionCall {
+        id: None,
+        name: "exec_command".to_string(),
+        namespace: Some("functions".to_string()),
+        arguments: format!(r#"{{"cmd":"{}"}}"#, "x".repeat(128)),
+        call_id: "call-1".to_string(),
+        provider_metadata: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+
+    let hint = activity
+        .latest_display_hint()
+        .expect("recorded activity should have a display hint");
+
+    assert_eq!(hint.chars().count(), 64);
+    assert_eq!(
+        hint,
+        "Tool functions/exec_command: {\"cmd\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    );
+}

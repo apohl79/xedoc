@@ -35,7 +35,7 @@ fn display_lines_renders_elapsed_agent() {
 
     assert_eq!(
         rendered,
-        vec!["• Agents", "  └ □ reviewer Working... (5m 26s)"]
+        vec!["• Agents", "  └ □ reviewer Working (5m 26s)"]
     );
 }
 
@@ -86,7 +86,7 @@ fn display_lines_renders_provider_model() {
         rendered,
         vec![
             "• Agents",
-            "  └ □ reviewer Working... (5m 26s, openai/gpt-5.5)"
+            "  └ □ reviewer Working (5m 26s, openai/gpt-5.5)"
         ]
     );
 }
@@ -147,7 +147,7 @@ fn display_lines_renders_provider_model_and_tokens() {
         rendered,
         vec![
             "• Agents",
-            "  └ □ reviewer Working... (32m 11s, openai/gpt-5.5, 42k)"
+            "  └ □ reviewer Working (32m 11s, openai/gpt-5.5, 42k)"
         ]
     );
 }
@@ -178,7 +178,7 @@ fn display_lines_renders_input_and_output_tokens() {
 
     assert_eq!(
         rendered,
-        vec!["• Agents", "  └ □ reviewer Working... (0s, ↓40k, ↑2k)"]
+        vec!["• Agents", "  └ □ reviewer Working (0s, ↓40k, ↑2k)"]
     );
 }
 
@@ -209,13 +209,13 @@ fn display_lines_caps_visible_agents() {
         rendered,
         vec![
             "• Agents",
-            "  └ □ agent-1 Working... (0s)",
-            "    □ agent-2 Working... (0s)",
-            "    □ agent-3 Working... (0s)",
-            "    □ agent-4 Working... (0s)",
-            "    □ agent-5 Working... (0s)",
-            "    □ agent-6 Working... (0s)",
-            "    □ agent-7 Working... (0s)",
+            "  └ □ agent-1 Working (0s)",
+            "    □ agent-2 Working (0s)",
+            "    □ agent-3 Working (0s)",
+            "    □ agent-4 Working (0s)",
+            "    □ agent-5 Working (0s)",
+            "    □ agent-6 Working (0s)",
+            "    □ agent-7 Working (0s)",
             "    ... 1 more",
         ]
     );

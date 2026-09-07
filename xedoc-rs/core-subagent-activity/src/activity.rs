@@ -9,6 +9,7 @@ use xedoc_protocol::models::WebSearchAction;
 
 const MAX_RECENT_ACTIVITY_ITEMS: usize = 8;
 const MAX_ACTIVITY_ITEM_CHARS: usize = 512;
+const MAX_DISPLAY_ACTIVITY_CHARS: usize = 64;
 
 /// Tracks a bounded history of recent sub-agent response activity.
 #[derive(Debug, Default)]
@@ -52,6 +53,13 @@ impl RecentSubAgentActivity {
     /// Makes the current activity history eligible for another summary attempt.
     pub fn retry(&mut self) {
         self.changed = !self.items.is_empty();
+    }
+
+    /// Returns the latest locally derived activity label for degraded summary rendering.
+    pub fn latest_display_hint(&self) -> Option<String> {
+        self.items
+            .back()
+            .map(|activity| activity.chars().take(MAX_DISPLAY_ACTIVITY_CHARS).collect())
     }
 }
 
