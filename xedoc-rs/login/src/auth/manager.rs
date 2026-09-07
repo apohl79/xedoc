@@ -1876,8 +1876,8 @@ impl AuthManager {
         .flatten();
         let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Self {
+            provider_credentials: Some(crate::ProviderCredentialStore::new(xedoc_home.clone())),
             xedoc_home,
-            provider_credentials: None,
             inner: RwLock::new(CachedAuth {
                 auth: managed_auth,
                 permanent_refresh_failure: None,

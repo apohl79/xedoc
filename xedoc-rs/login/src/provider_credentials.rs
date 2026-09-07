@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use serde::Deserialize;
@@ -19,6 +20,7 @@ static CREDENTIAL_WRITE_LOCK: Mutex<()> = Mutex::new(());
 pub struct ProviderCredentialStore {
     xedoc_home: PathBuf,
     secrets: SecretsManager,
+    cached_credentials: Arc<Mutex<Option<ProviderCredentials>>>,
 }
 
 impl fmt::Debug for ProviderCredentialStore {
@@ -30,7 +32,7 @@ impl fmt::Debug for ProviderCredentialStore {
     }
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 struct ProviderCredentials {
     schema_version: u32,
     api_keys: BTreeMap<String, String>,
@@ -41,6 +43,7 @@ impl ProviderCredentialStore {
         Self {
             secrets: SecretsManager::new(xedoc_home.clone(), SecretsBackendKind::Local),
             xedoc_home,
+            cached_credentials: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -56,6 +59,7 @@ impl ProviderCredentialStore {
                 keyring_store,
             ),
             xedoc_home,
+            cached_credentials: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -80,11 +84,13 @@ impl ProviderCredentialStore {
         let _guard = CREDENTIAL_WRITE_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut credentials = self.load()?;
+        let mut credentials = self.load_from_storage()?;
         credentials
             .api_keys
             .insert(provider_id.to_string(), api_key.to_string());
-        self.save(&credentials)
+        self.save(&credentials)?;
+        self.cache_credentials(credentials);
+        Ok(())
     }
 
     pub fn delete_api_key(&self, provider_id: &str) -> std::io::Result<bool> {
@@ -92,26 +98,42 @@ impl ProviderCredentialStore {
         let _guard = CREDENTIAL_WRITE_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut credentials = self.load()?;
+        let mut credentials = self.load_from_storage()?;
         let removed = credentials.api_keys.remove(provider_id).is_some();
         if !removed {
+            self.cache_credentials(credentials);
             return Ok(false);
         }
         self.save(&credentials)?;
+        self.cache_credentials(credentials);
         Ok(true)
     }
 
     fn load(&self) -> std::io::Result<ProviderCredentials> {
+        let mut cached_credentials = self
+            .cached_credentials
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(credentials) = cached_credentials.as_ref() {
+            return Ok(credentials.clone());
+        }
+        let credentials = self.load_from_storage()?;
+        *cached_credentials = Some(credentials.clone());
+        Ok(credentials)
+    }
+
+    fn load_from_storage(&self) -> std::io::Result<ProviderCredentials> {
         let secret_name = credential_secret_name()?;
         let Some(serialized) = self
             .secrets
             .get(&SecretScope::Global, &secret_name)
             .map_err(provider_credentials_error)?
         else {
-            return Ok(ProviderCredentials {
+            let credentials = ProviderCredentials {
                 schema_version: PROVIDER_CREDENTIALS_SCHEMA_VERSION,
                 api_keys: BTreeMap::new(),
-            });
+            };
+            return Ok(credentials);
         };
         let credentials: ProviderCredentials =
             serde_json::from_str(&serialized).map_err(provider_credentials_error)?;
@@ -125,6 +147,13 @@ impl ProviderCredentialStore {
             ));
         }
         Ok(credentials)
+    }
+
+    fn cache_credentials(&self, credentials: ProviderCredentials) {
+        *self
+            .cached_credentials
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(credentials);
     }
 
     fn save(&self, credentials: &ProviderCredentials) -> std::io::Result<()> {
