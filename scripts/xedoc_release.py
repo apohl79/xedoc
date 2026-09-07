@@ -19,7 +19,7 @@ from xedoc_package.targets import default_target
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
-DEFAULT_REF = "main-fork"
+DEFAULT_REF = "main"
 DEFAULT_GITHUB_REPO = "apohl79/codex"
 DEFAULT_GITHUB_ACCOUNT = "apohl79"
 DEFAULT_BUILD_SYSTEM = "bazel"

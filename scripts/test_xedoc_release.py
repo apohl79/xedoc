@@ -170,7 +170,7 @@ class XedocReleaseTest(unittest.TestCase):
                 gh="gh",
                 repo="apohl79/codex",
                 target="abc123",
-                ref="main-fork",
+                ref="main",
                 env=github_env,
             )
 
@@ -196,14 +196,14 @@ class XedocReleaseTest(unittest.TestCase):
             ),
             self.assertRaisesRegex(
                 RuntimeError,
-                "Release target commit abc123 for --ref main-fork is not available",
+                "Release target commit abc123 for --ref main is not available",
             ),
         ):
             xedoc_release.ensure_github_release_target_exists(
                 gh="gh",
                 repo="apohl79/codex",
                 target="abc123",
-                ref="main-fork",
+                ref="main",
             )
 
     def test_publish_github_release_creates_missing_release_and_uploads_archives(
@@ -419,7 +419,7 @@ class XedocReleaseTest(unittest.TestCase):
                 keep_worktree=False,
                 output_dir=Path("dist/xedoc"),
                 package_dir=None,
-                ref="main-fork",
+                ref="main",
                 skip_github_release=True,
                 target="aarch64-apple-darwin",
             )
@@ -600,7 +600,7 @@ class XedocReleaseTest(unittest.TestCase):
                 keep_worktree=False,
                 output_dir=Path("dist/xedoc"),
                 package_dir=None,
-                ref="main-fork",
+                ref="main",
                 skip_github_release=False,
                 target="aarch64-apple-darwin",
             )
@@ -692,7 +692,7 @@ class XedocReleaseTest(unittest.TestCase):
                 keep_worktree=False,
                 output_dir=Path("dist/xedoc"),
                 package_dir=None,
-                ref="main-fork",
+                ref="main",
                 skip_github_release=False,
                 target="aarch64-apple-darwin",
             )
@@ -722,7 +722,7 @@ class XedocReleaseTest(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(
                     RuntimeError,
-                    "Release target commit cccccccccccc for --ref main-fork",
+                    "Release target commit cccccccccccc for --ref main",
                 ):
                     xedoc_release.build_release(args)
 
@@ -826,7 +826,7 @@ class XedocReleaseTest(unittest.TestCase):
                 keep_worktree=False,
                 output_dir=Path("dist/xedoc"),
                 package_dir=None,
-                ref="main-fork",
+                ref="main",
                 skip_github_release=True,
                 target="aarch64-apple-darwin",
             )
@@ -1033,7 +1033,7 @@ class XedocReleaseTest(unittest.TestCase):
                 keep_worktree=False,
                 output_dir=Path("dist/xedoc"),
                 package_dir=None,
-                ref="main-fork",
+                ref="main",
                 skip_github_release=True,
                 target="aarch64-apple-darwin",
             )
@@ -1077,9 +1077,9 @@ class XedocReleaseTest(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 RuntimeError,
-                "Current checkout HEAD \\(aaaaaaaaaaaa\\) does not match --ref main-fork",
+                "Current checkout HEAD \\(aaaaaaaaaaaa\\) does not match --ref main",
             ):
-                xedoc_release.ensure_current_checkout_matches_ref("main-fork")
+                xedoc_release.ensure_current_checkout_matches_ref("main")
 
     def test_main_rejects_placeholder_codesign_identity_before_build(self) -> None:
         stderr = io.StringIO()

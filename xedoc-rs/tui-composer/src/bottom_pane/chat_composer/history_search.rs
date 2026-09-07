@@ -535,7 +535,7 @@ mod tests {
             /*disable_paste_burst*/ false,
         );
         composer.set_status_line_enabled(/*enabled*/ true);
-        composer.set_status_line(Some(Line::from("xedoc · main-fork")));
+        composer.set_status_line(Some(Line::from("xedoc · main")));
 
         let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
 

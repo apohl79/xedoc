@@ -5349,7 +5349,7 @@ mod tests {
             |composer| {
                 composer.set_status_line_enabled(/*enabled*/ true);
                 composer.set_status_line(Some(Line::from(
-                    "xedoc · main-fork · gpt-5.5 · 65% 172.1k/258.4k · Tasks 2/5",
+                    "xedoc · main · gpt-5.5 · 65% 172.1k/258.4k · Tasks 2/5",
                 )));
                 composer.set_task_running(/*running*/ true);
                 composer.set_text_content(
@@ -5794,7 +5794,7 @@ mod tests {
             /*disable_paste_burst*/ false,
         );
         composer.set_status_line_enabled(/*enabled*/ true);
-        composer.set_status_line(Some(Line::from("xedoc · main-fork · opus-4-8")));
+        composer.set_status_line(Some(Line::from("xedoc · main · opus-4-8")));
         composer.set_goal_status_indicator(Some(GoalStatusIndicator::Active {
             usage: Some("4K / 10K".to_string()),
         }));

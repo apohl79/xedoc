@@ -12,7 +12,7 @@
   (e.g. post-turn vs pre-commit) create noise without benefit.
 -->
 
-- [pre-commit] On `main-fork`, bump `[workspace.package].version` in `xedoc-rs/Cargo.toml` (and `xedoc-rs/Cargo.lock`) in every commit or merge that changes code shipped in the binary, following Conventional Commits (`feat` → minor, `fix`/`perf`/`refactor` → patch, `!`/`BREAKING CHANGE` → major). Do not bump it for documentation, installer, test-only, or instruction-only changes.
+- [pre-commit] On `main`, bump `[workspace.package].version` in `xedoc-rs/Cargo.toml` (and `xedoc-rs/Cargo.lock`) in every commit or merge that changes code shipped in the binary, following Conventional Commits (`feat` → minor, `fix`/`perf`/`refactor` → patch, `!`/`BREAKING CHANGE` → major). Do not bump it for documentation, installer, test-only, or instruction-only changes.
 - [pre-edit] Re-read the repository evidence gate in AGENTS.md before touching source files.
 
 # Rust/xedoc-rs
@@ -55,7 +55,7 @@ In the xedoc-rs folder where the rust code lives:
   repo root to refresh `MODULE.bazel.lock`, and include that lockfile update in the same change.
 - After dependency changes, run `just bazel-lock-check` from the repo root so lockfile drift is caught
   locally before CI.
-- Xedoc uses its own semantic version, independent of the upstream Codex version. Every `main-fork`
+- Xedoc uses its own semantic version, independent of the upstream Codex version. Every `main`
   commit or merge that changes code shipped in the binary must bump `[workspace.package].version` in
   `xedoc-rs/Cargo.toml` (and the matching `xedoc-rs/Cargo.lock` entries) per Conventional Commits:
   `feat` → minor, `fix`/`perf`/`refactor` → patch, `!`/`BREAKING CHANGE` → major. Release tags are

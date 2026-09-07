@@ -23,7 +23,7 @@ models and providers without giving up coordinated agent workflows.
 ## Install
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main/scripts/install/install.sh | sh
 ```
 
 ## Project resources
