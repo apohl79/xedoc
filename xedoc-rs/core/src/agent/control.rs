@@ -86,6 +86,7 @@ struct PendingSubAgentActivity {
     agent_thread_id: ThreadId,
     agent_path: AgentPath,
     recent_activity: String,
+    display_hint: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -382,6 +383,27 @@ impl AgentControl {
                             error = %err,
                             "Parent-owned sub-agent activity summary request failed"
                         );
+                        parent_session
+                            .send_event(
+                                turn_context.as_ref(),
+                                xedoc_protocol::protocol::SubAgentActivityEvent {
+                                    event_id: format!(
+                                        "parent-activity-fallback-{parent_thread_id}-{tick}-{}",
+                                        pending.agent_thread_id
+                                    ),
+                                    occurred_at_ms: crate::turn_timing::now_unix_timestamp_ms(),
+                                    agent_thread_id: pending.agent_thread_id,
+                                    agent_path: pending.agent_path,
+                                    model_provider: None,
+                                    model: None,
+                                    reasoning_effort: None,
+                                    kind:
+                                        xedoc_protocol::protocol::SubAgentActivityKind::Interacted,
+                                    current_activity: Some(pending.display_hint),
+                                }
+                                .into(),
+                            )
+                            .await;
                         self.retry_sub_agent_activity(parent_thread_id, pending.agent_thread_id);
                     }
                 }
@@ -415,10 +437,16 @@ impl AgentControl {
                 child
                     .recent_activity
                     .snapshot_if_changed()
-                    .map(|recent_activity| PendingSubAgentActivity {
-                        agent_thread_id: *agent_thread_id,
-                        agent_path: child.agent_path.clone(),
-                        recent_activity,
+                    .and_then(|recent_activity| {
+                        child
+                            .recent_activity
+                            .latest_display_hint()
+                            .map(|display_hint| PendingSubAgentActivity {
+                                agent_thread_id: *agent_thread_id,
+                                agent_path: child.agent_path.clone(),
+                                recent_activity,
+                                display_hint,
+                            })
                     })
             })
             .collect();

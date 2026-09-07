@@ -1923,6 +1923,127 @@ async fn multi_agent_v2_parent_activity_timer_summarizes_recent_tool_activity() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn multi_agent_v2_parent_activity_timer_falls_back_when_summary_times_out() -> Result<()> {
+    const FALLBACK_ACTIVITY: &str = "Tool clock/sleep: {\"duration_ms\":30000}";
+    const SLEEP_CALL_ID: &str = "sleep-call-fallback-1";
+
+    let server = start_mock_server().await;
+    let spawn_args = serde_json::to_string(&json!({
+        "message": CHILD_PROMPT,
+        "task_name": "worker",
+    }))?;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, TURN_1_PROMPT),
+        sse(vec![
+            ev_response_created("resp-parent-fallback-1"),
+            ev_function_call_with_namespace(
+                SPAWN_CALL_ID,
+                MULTI_AGENT_V2_NAMESPACE,
+                "spawn_agent",
+                &spawn_args,
+            ),
+            ev_completed("resp-parent-fallback-1"),
+        ]),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| {
+            body_contains(req, CHILD_PROMPT) && !body_contains(req, SPAWN_CALL_ID)
+        },
+        sse(vec![
+            ev_response_created("resp-child-fallback-1"),
+            ev_function_call_with_namespace(
+                SLEEP_CALL_ID,
+                "clock",
+                "sleep",
+                &json!({ "duration_ms": 30_000 }).to_string(),
+            ),
+            ev_completed("resp-child-fallback-1"),
+        ]),
+    )
+    .await;
+    mount_response_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, "Recent agent activity:"),
+        sse_response(sse(vec![ev_response_created(
+            "resp-activity-summary-fallback",
+        )]))
+        .set_delay(Duration::from_secs(30)),
+    )
+    .await;
+    mount_sse_once_match(
+        &server,
+        |req: &wiremock::Request| body_contains(req, SPAWN_CALL_ID),
+        sse(vec![
+            ev_response_created("resp-parent-fallback-2"),
+            ev_assistant_message("msg-parent-fallback-2", "parent done"),
+            ev_completed("resp-parent-fallback-2"),
+        ]),
+    )
+    .await;
+
+    let test = test_xedoc()
+        .with_model("koffing")
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::Collab)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::MultiAgentV2)
+                .expect("test config should allow feature update");
+            config
+                .features
+                .enable(Feature::CurrentTimeReminder)
+                .expect("test config should allow feature update");
+            config.current_time_reminder = Some(CurrentTimeReminderConfig {
+                sleep_tool: true,
+                ..CurrentTimeReminderConfig::default()
+            });
+            config.model_provider.request_max_retries = Some(0);
+            config.model_provider.stream_max_retries = Some(0);
+            config.model_provider.supports_websockets = false;
+        })
+        .build_with_auto_env(&server)
+        .await?;
+
+    test.submit_turn(TURN_1_PROMPT).await?;
+    let event = wait_for_event_with_timeout(
+        &test.xedoc,
+        |event| {
+            matches!(
+                event,
+                EventMsg::SubAgentActivity(activity)
+                    if activity.current_activity.as_deref() == Some(FALLBACK_ACTIVITY)
+            )
+        },
+        Duration::from_secs(25),
+    )
+    .await;
+    let EventMsg::SubAgentActivity(activity) = event else {
+        anyhow::bail!("event matcher must return a sub-agent activity event");
+    };
+
+    assert_eq!(
+        (
+            activity.kind,
+            activity.current_activity.as_deref(),
+            activity.agent_path.to_string(),
+        ),
+        (
+            SubAgentActivityKind::Interacted,
+            Some(FALLBACK_ACTIVITY),
+            "/root/worker".to_string(),
+        )
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn multi_agent_v2_followup_restarts_parent_activity_tracking() -> Result<()> {
     const FOLLOWUP_PROMPT: &str = "give the completed child another task";
     const FOLLOWUP_TASK: &str = "child: continue work";
