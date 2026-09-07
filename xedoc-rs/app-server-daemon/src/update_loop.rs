@@ -50,7 +50,7 @@ const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
 const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
 #[cfg(unix)]
 const INSTALLER_URL: &str =
-    "https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh";
+    "https://raw.githubusercontent.com/apohl79/codex/main/scripts/install/install.sh";
 
 #[cfg(unix)]
 pub(crate) async fn run() -> Result<()> {

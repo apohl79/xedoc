@@ -1,6 +1,6 @@
 # Xedoc Fork Notes
 
-`main-fork` is the canonical `apohl79/codex` branch. Xedoc is a fork of OpenAI
+`main` is the canonical `apohl79/codex` branch. Xedoc is a fork of OpenAI
 Codex that carries its own features, release tooling, and fixes.
 
 This file is the single source of truth for the fork feature/fix inventory.
@@ -413,14 +413,14 @@ Primary files:
 
 ### Xedoc Release Packaging
 
-The fork adds release helpers for building Xedoc packages from `main-fork`.
+The fork adds release helpers for building Xedoc packages from `main`.
 
 - `scripts/build_xedoc_release.py` and `scripts/build_xedoc_release.sh` provide
   release entry points.
 - `scripts/xedoc_release.py` contains the shared release implementation.
 - `scripts/install/install.sh` installs the Xedoc binary release for the
   current `v*` tag.
-- The default release ref is `main-fork`.
+- The default release ref is `main`.
 - The default output directory is `dist/xedoc`.
 - The release helper verifies that the current checkout matches the requested
   ref.
@@ -514,7 +514,7 @@ development and release hygiene.
   upstream changes require it.
 - Xedoc uses its own semantic version, starting at `1.0.0`, stored in
   `[workspace.package].version` in `xedoc-rs/Cargo.toml` (and mirrored in
-  `xedoc-rs/Cargo.lock`). Every `main-fork` commit that changes binary-shipped
+  `xedoc-rs/Cargo.lock`). Every `main` commit that changes binary-shipped
   code bumps it per Conventional Commits: `feat` → minor, `fix`/`perf`/
   `refactor` → patch, `!`/`BREAKING CHANGE` → major. Documentation,
   installer-only, test-only, and instruction-only commits do not bump it.
@@ -657,9 +657,9 @@ and `install.ps1` are replaced by the Xedoc installer at
 
 ## Notes For Maintainers
 
-- Refresh this file after rebasing `main-fork` onto a newer upstream baseline.
+- Refresh this file after rebasing `main` onto a newer upstream baseline.
 - Feature and fix branches are short-lived staging or review branches. Do not
-  maintain them as durable fork inventory once `main-fork` contains their
+  maintain them as durable fork inventory once `main` contains their
   commits.
 - Use behavior-level summaries rather than raw commit counts.
 - Keep the selected `@` picker row visually distinct. The fork's expected

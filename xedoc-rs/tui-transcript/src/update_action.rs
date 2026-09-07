@@ -13,7 +13,7 @@ impl UpdateAction {
                 "sh",
                 &[
                     "-c",
-                    "curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh | sh",
+                    "curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main/scripts/install/install.sh | sh",
                 ],
             ),
         }
@@ -46,7 +46,7 @@ mod tests {
                 "sh",
                 &[
                     "-c",
-                    "curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main-fork/scripts/install/install.sh | sh"
+                    "curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main/scripts/install/install.sh | sh"
                 ][..],
             )
         );
