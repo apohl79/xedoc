@@ -1001,6 +1001,11 @@ client_request_definitions! {
         serialization: global_shared_read("config"),
         response: v2::TokenUsageOptimizerReadResponse,
     },
+    TokenUsageOptimizerReport => "tokenUsageOptimizer/report" {
+        params: v2::TokenUsageOptimizerReportParams,
+        serialization: global_shared_read("config"),
+        response: v2::TokenUsageOptimizerReportResponse,
+    },
     TokenUsageOptimizerWrite => "tokenUsageOptimizer/write" {
         params: v2::TokenUsageOptimizerWriteParams,
         serialization: global("config"),

@@ -2104,6 +2104,7 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
             info: Some(info1),
             rate_limits: None,
             session_cost_usd: None,
+            token_optimizer: None,
         },
     )));
     rollout_items.push(RolloutItem::EventMsg(EventMsg::TokenCount(
@@ -2111,6 +2112,7 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
             info: None,
             rate_limits: None,
             session_cost_usd: None,
+            token_optimizer: None,
         },
     )));
     rollout_items.push(RolloutItem::EventMsg(EventMsg::TokenCount(
@@ -2118,6 +2120,7 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
             info: Some(info2.clone()),
             rate_limits: None,
             session_cost_usd: Some(1.25),
+            token_optimizer: None,
         },
     )));
     rollout_items.push(RolloutItem::EventMsg(EventMsg::TokenCount(
@@ -2125,6 +2128,7 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
             info: None,
             rate_limits: None,
             session_cost_usd: None,
+            token_optimizer: None,
         },
     )));
 
@@ -2150,6 +2154,7 @@ async fn record_initial_history_does_not_restore_parent_cost_for_fork() {
                 info: None,
                 rate_limits: None,
                 session_cost_usd: Some(1.25),
+                token_optimizer: None,
             }),
         )]))
         .await;

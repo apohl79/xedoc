@@ -1119,56 +1119,60 @@ impl App {
                     .await;
             }
             AppEvent::TokenUsageOptimizerStatsRequested => {
+                self.chat_widget.add_token_usage_optimizer_stats_loading();
                 self.fetch_token_usage_optimizer_stats(app_server);
             }
             AppEvent::TokenUsageOptimizerStatsResetRequested => {
                 self.reset_token_usage_optimizer_stats(app_server);
             }
-            AppEvent::TokenUsageOptimizerStatsLoaded { result } => match result {
-                Ok(response) => {
-                    let retrieval = if response.insights.spilled == 0 {
-                        "retrieval rate n/a (no spilled output)".to_string()
-                    } else {
-                        let rate = (response.insights.retrievals as f64
-                            / response.insights.spilled as f64
-                            * 100.0)
-                            .min(100.0);
-                        format!("retrieval rate {rate:.1}%")
-                    };
-                    let kinds = response
-                        .insights
-                        .by_kind
-                        .iter()
-                        .take(3)
-                        .map(|item| format!("{}: {}", item.dimension, item.reductions))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let top = response
-                        .insights
-                        .top_reductions
-                        .iter()
-                        .take(3)
-                        .map(|item| {
-                            format!("{} ({}→{})", item.call_id, item.bytes_in, item.bytes_out)
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    self.chat_widget.add_info_message(
-                        format!(
-                            "Token optimizer stats: {} reductions, ~{} tokens saved; {}; kinds [{}]; top [{}].",
-                            response.reduction_count,
-                            response.tokens_saved,
-                            retrieval,
-                            kinds,
-                            top
-                        ),
-                        None,
-                    );
+            AppEvent::TokenUsageOptimizerStatsLoaded { result } => {
+                self.chat_widget.clear_token_usage_optimizer_stats_loading();
+                match result {
+                    Ok(response) => self.chat_widget.add_plain_history_lines(
+                        crate::token_optimizer_stats::stats_lines(&response),
+                    ),
+                    Err(err) => self
+                        .chat_widget
+                        .add_error_message(format!("Failed to read token optimizer stats: {err}")),
                 }
-                Err(err) => self
-                    .chat_widget
-                    .add_error_message(format!("Failed to read token optimizer stats: {err}")),
-            },
+            }
+            AppEvent::TokenUsageOptimizerReportRequested { days } => {
+                self.chat_widget.add_token_usage_optimizer_stats_loading();
+                self.fetch_token_usage_optimizer_report(app_server, days);
+            }
+            AppEvent::TokenUsageOptimizerReportLoaded { result } => {
+                self.chat_widget.clear_token_usage_optimizer_stats_loading();
+                match result {
+                    Ok(report) => {
+                        let mut lines = vec![
+                            "Token optimizer savings report".to_string(),
+                            format!(
+                                "  Total: {} reductions, {} tokens saved, ~${:.6}",
+                                report.reductions, report.tokens_saved, report.cost_saved_usd
+                            ),
+                        ];
+                        for day in report.days {
+                            lines.push(format!(
+                                "  {}{}: {} reductions, {} tokens, ~${:.6}",
+                                chrono::DateTime::<chrono::Utc>::from_timestamp(day.day, 0)
+                                    .map_or_else(String::new, |value| value
+                                        .date_naive()
+                                        .to_string()),
+                                if day.partial { " (partial)" } else { "" },
+                                day.reductions,
+                                day.tokens_saved,
+                                day.cost_saved_usd
+                            ));
+                        }
+                        self.chat_widget.add_plain_history_lines(
+                            lines.into_iter().map(ratatui::text::Line::from).collect(),
+                        );
+                    }
+                    Err(err) => self
+                        .chat_widget
+                        .add_error_message(format!("Failed to read token optimizer report: {err}")),
+                }
+            }
             AppEvent::UpdateAutoSessionNameSetting { enabled } => {
                 self.update_auto_session_name_setting_with_app_server(app_server, enabled)
                     .await;

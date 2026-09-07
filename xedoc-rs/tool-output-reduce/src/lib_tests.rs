@@ -35,6 +35,8 @@ fn reduce_is_pass_through() {
                 bytes_out: 17,
                 est_tokens_in: 5,
                 est_tokens_out: 5,
+                model_slug: None,
+                input_price_per_1m: None,
                 duration_us: output.record.duration_us,
                 spilled: false,
                 spill_path: None,

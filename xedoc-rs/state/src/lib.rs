@@ -26,6 +26,9 @@ pub use model::LogRow;
 pub use runtime::StateRuntime;
 pub use runtime::ToolOutputReductionBreakdown;
 pub use runtime::ToolOutputReductionInsights;
+pub use runtime::ToolOutputReductionReport;
+pub use runtime::ToolOutputReductionReportDay;
+pub use runtime::ToolOutputReductionReportModel;
 pub use runtime::ToolOutputReductionTop;
 pub use sqlite::SqliteConfig;
 

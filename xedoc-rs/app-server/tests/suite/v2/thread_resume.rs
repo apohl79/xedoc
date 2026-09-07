@@ -2033,7 +2033,8 @@ async fn thread_resume_token_usage_replay_can_belong_to_interrupted_turn() -> Re
                     model_context_window: Some(200_000),
                 }),
                 rate_limits: None,
-        session_cost_usd: None,
+                session_cost_usd: None,
+                token_optimizer: None,
             }))?,
         })
         .to_string(),

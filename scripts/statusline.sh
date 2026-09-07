@@ -34,6 +34,8 @@ ENABLE_VIM_MODE=${ENABLE_VIM_MODE:-0}
 ENABLE_SESSION_NAME=${ENABLE_SESSION_NAME:-0}
 # Xedoc task progress indicator (orange)
 ENABLE_TASK_INDICATOR=${ENABLE_TASK_INDICATOR:-0}
+# Session token savings (green)
+ENABLE_TOKEN_SAVINGS=${ENABLE_TOKEN_SAVINGS:-0}
 
 input=$(</dev/stdin)
 
@@ -68,13 +70,15 @@ status_fields=$(printf '%s' "$input" | jq -r '
         (.cost.total_lines_added // 0),
         (.cost.total_lines_removed // 0),
         (.cost.total_duration_ms // ""),
-        (.version // "")
+        (.version // ""),
+        (.token_optimizer.tokens_saved // 0),
+        (.token_optimizer.cost_saved_usd // "")
     ]
     | map(if . == null then "" else tostring end | gsub("[\r\n\t\u001f]+"; " "))
     | join("\u001f")
 ')
 
-IFS=$'\037' read -r cwd harness session_id model reasoning_effort fast_mode ctx_pct ctx_used ctx_size session_name vim_mode task_text in_tok out_tok cost added removed dur_ms version <<< "$status_fields"
+IFS=$'\037' read -r cwd harness session_id model reasoning_effort fast_mode ctx_pct ctx_used ctx_size session_name vim_mode task_text in_tok out_tok cost added removed dur_ms version tokens_saved optimizer_cost <<< "$status_fields"
 
 # Helpers
 fmt_duration() {
@@ -274,6 +278,18 @@ if [ "$ENABLE_TOKENS" = "1" ]; then
         fmt_tokens_var out_tok_fmt "$out_tok"
         parts+=("\033[2m${in_tok_fmt}\xe2\x86\x93${out_tok_fmt}\xe2\x86\x91\033[0m")
     fi
+fi
+
+# --- Token optimizer savings (green) ---
+if [ "$ENABLE_TOKEN_SAVINGS" = "1" ] && is_nonzero_number "$tokens_saved"; then
+    tokens_saved_fmt=""
+    fmt_tokens_var tokens_saved_fmt "$tokens_saved"
+    savings_text="saved ${tokens_saved_fmt}"
+    if is_nonzero_number "$optimizer_cost"; then
+        printf -v optimizer_cost_text '~$%.2f' "$optimizer_cost"
+        savings_text+=" (${optimizer_cost_text})"
+    fi
+    parts+=("\033[32m${savings_text}\033[0m")
 fi
 
 # --- Cost (yellow) ---

@@ -113,6 +113,10 @@ pub struct AnyToolResult<P> {
     pub reduction_config: Option<ReductionConfig>,
     /// Stable hash of command arguments, never the raw command.
     pub command_hash: Option<String>,
+    /// Model active when this result was produced, when available.
+    pub model_slug: Option<String>,
+    /// Input price captured for the active model, in USD per one million tokens.
+    pub input_price_per_1m: Option<f64>,
 }
 
 impl<P> AnyToolResult<P> {
@@ -123,6 +127,8 @@ impl<P> AnyToolResult<P> {
         command_hash: Option<&str>,
         thread_id: Option<&String>,
         turn_id: Option<&String>,
+        model_slug: Option<&str>,
+        input_price_per_1m: Option<f64>,
         sink: &dyn ReductionSink,
         config: &ReductionConfig,
     ) {
@@ -140,6 +146,8 @@ impl<P> AnyToolResult<P> {
         let mut record = reduced.record;
         record.thread_id = thread_id.cloned();
         record.turn_id = turn_id.cloned();
+        record.model_slug = model_slug.map(str::to_owned);
+        record.input_price_per_1m = input_price_per_1m;
         if record.bytes_in > 0 && !original.trim().is_empty() {
             sink.try_record(record);
         }
@@ -157,6 +165,8 @@ impl<P> AnyToolResult<P> {
             turn_id,
             reduction_config,
             command_hash,
+            model_slug,
+            input_price_per_1m,
             ..
         } = self;
         let mut response = result.to_response_item(&call_id, &payload);
@@ -175,6 +185,8 @@ impl<P> AnyToolResult<P> {
                         command_hash.as_deref(),
                         thread_id.as_ref(),
                         turn_id.as_ref(),
+                        model_slug.as_deref(),
+                        input_price_per_1m,
                         sink.as_ref(),
                         config,
                     );
@@ -189,6 +201,8 @@ impl<P> AnyToolResult<P> {
                                 command_hash.as_deref(),
                                 thread_id.as_ref(),
                                 turn_id.as_ref(),
+                                model_slug.as_deref(),
+                                input_price_per_1m,
                                 sink.as_ref(),
                                 config,
                             );

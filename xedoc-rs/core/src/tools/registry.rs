@@ -715,6 +715,15 @@ async fn handle_any_tool(
     } else {
         None
     };
+    let model_slug = Some(invocation.turn.model_info.slug.clone());
+    let input_price_per_1m = invocation
+        .turn
+        .config
+        .model_providers
+        .get(&invocation.turn.config.model_provider_id)
+        .and_then(|provider| provider.model_prices.as_ref())
+        .and_then(|prices| prices.get(&invocation.turn.model_info.slug))
+        .map(|prices| prices.input_price_per_1m_tokens);
     Ok(AnyToolResult {
         call_id,
         payload,
@@ -726,6 +735,8 @@ async fn handle_any_tool(
         turn_id: Some(invocation.turn.sub_id.clone()),
         reduction_config,
         command_hash,
+        model_slug,
+        input_price_per_1m,
     })
 }
 

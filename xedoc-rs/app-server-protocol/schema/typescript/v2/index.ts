@@ -388,6 +388,10 @@ export type { TokenUsageOptimizerBreakdown } from "./TokenUsageOptimizerBreakdow
 export type { TokenUsageOptimizerInsights } from "./TokenUsageOptimizerInsights";
 export type { TokenUsageOptimizerLevel } from "./TokenUsageOptimizerLevel";
 export type { TokenUsageOptimizerReadResponse } from "./TokenUsageOptimizerReadResponse";
+export type { TokenUsageOptimizerReportDay } from "./TokenUsageOptimizerReportDay";
+export type { TokenUsageOptimizerReportModel } from "./TokenUsageOptimizerReportModel";
+export type { TokenUsageOptimizerReportParams } from "./TokenUsageOptimizerReportParams";
+export type { TokenUsageOptimizerReportResponse } from "./TokenUsageOptimizerReportResponse";
 export type { TokenUsageOptimizerTopReduction } from "./TokenUsageOptimizerTopReduction";
 export type { TokenUsageOptimizerWriteParams } from "./TokenUsageOptimizerWriteParams";
 export type { TokenUsageOptimizerWriteResponse } from "./TokenUsageOptimizerWriteResponse";

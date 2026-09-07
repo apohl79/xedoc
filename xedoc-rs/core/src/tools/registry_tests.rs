@@ -326,6 +326,8 @@ fn post_tool_use_feedback_output_uses_model_visible_response() {
         turn_id: None,
         reduction_config: None,
         command_hash: None,
+        model_slug: None,
+        input_price_per_1m: None,
     };
 
     assert_eq!(

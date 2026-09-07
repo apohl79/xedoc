@@ -170,6 +170,7 @@ mod tests {
                 info: None,
                 rate_limits: None,
                 session_cost_usd: None,
+                token_optimizer: None,
             })),
             RolloutItem::EventMsg(EventMsg::UserMessage(UserMessageEvent {
                 client_id: None,

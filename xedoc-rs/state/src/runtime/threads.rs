@@ -2678,6 +2678,7 @@ mod tests {
                 }),
                 rate_limits: None,
                 session_cost_usd: None,
+                token_optimizer: None,
             },
         ))];
         let override_updated_at =

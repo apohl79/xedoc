@@ -721,6 +721,12 @@ pub enum AppEvent {
     TokenUsageOptimizerStatsLoaded {
         result: Result<xedoc_app_server_protocol::TokenUsageOptimizerReadResponse, String>,
     },
+    TokenUsageOptimizerReportRequested {
+        days: Option<u32>,
+    },
+    TokenUsageOptimizerReportLoaded {
+        result: Result<xedoc_app_server_protocol::TokenUsageOptimizerReportResponse, String>,
+    },
     /// Reset durable token-usage optimizer aggregates.
     TokenUsageOptimizerStatsResetRequested,
 

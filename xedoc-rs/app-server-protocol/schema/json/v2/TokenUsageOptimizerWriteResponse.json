@@ -11,6 +11,13 @@
           "format": "int64",
           "type": "integer"
         },
+        "costSavedUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "dimension": {
           "type": "string"
         },
@@ -45,6 +52,12 @@
           },
           "type": "array"
         },
+        "byModel": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerBreakdown"
+          },
+          "type": "array"
+        },
         "byReducer": {
           "items": {
             "$ref": "#/definitions/TokenUsageOptimizerBreakdown"
@@ -74,6 +87,7 @@
       },
       "required": [
         "byKind",
+        "byModel",
         "byReducer",
         "byTool",
         "retrievals",
@@ -103,6 +117,13 @@
         "callId": {
           "type": "string"
         },
+        "costSavedUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "kind": {
           "type": "string"
         },
@@ -126,6 +147,10 @@
     }
   },
   "properties": {
+    "costSavedUsd": {
+      "format": "double",
+      "type": "number"
+    },
     "enabled": {
       "type": "boolean"
     },
@@ -145,6 +170,7 @@
     }
   },
   "required": [
+    "costSavedUsd",
     "enabled",
     "insights",
     "level",

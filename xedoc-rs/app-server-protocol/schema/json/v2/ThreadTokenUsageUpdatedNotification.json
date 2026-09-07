@@ -21,6 +21,16 @@
             "null"
           ]
         },
+        "tokenOptimizer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TokenOptimizerSessionStats"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "total": {
           "$ref": "#/definitions/TokenUsageBreakdown"
         }
@@ -28,6 +38,28 @@
       "required": [
         "last",
         "total"
+      ],
+      "type": "object"
+    },
+    "TokenOptimizerSessionStats": {
+      "properties": {
+        "cost_saved_usd": {
+          "format": "double",
+          "type": "number"
+        },
+        "reductions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "tokens_saved": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cost_saved_usd",
+        "reductions",
+        "tokens_saved"
       ],
       "type": "object"
     },

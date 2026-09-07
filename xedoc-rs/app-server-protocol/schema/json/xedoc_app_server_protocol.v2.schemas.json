@@ -2367,6 +2367,30 @@
             },
             "method": {
               "enum": [
+                "tokenUsageOptimizer/report"
+              ],
+              "title": "TokenUsageOptimizer/reportRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/TokenUsageOptimizerReportParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "TokenUsageOptimizer/reportRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "tokenUsageOptimizer/write"
               ],
               "title": "TokenUsageOptimizer/writeRequestMethod",
@@ -14655,6 +14679,16 @@
             "null"
           ]
         },
+        "tokenOptimizer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TokenOptimizerSessionStats"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "total": {
           "$ref": "#/definitions/TokenUsageBreakdown"
         }
@@ -14759,6 +14793,28 @@
       ],
       "type": "string"
     },
+    "TokenOptimizerSessionStats": {
+      "properties": {
+        "cost_saved_usd": {
+          "format": "double",
+          "type": "number"
+        },
+        "reductions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "tokens_saved": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cost_saved_usd",
+        "reductions",
+        "tokens_saved"
+      ],
+      "type": "object"
+    },
     "TokenUsageBreakdown": {
       "properties": {
         "cacheWriteInputTokens": {
@@ -14806,6 +14862,13 @@
           "format": "int64",
           "type": "integer"
         },
+        "costSavedUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "dimension": {
           "type": "string"
         },
@@ -14840,6 +14903,12 @@
           },
           "type": "array"
         },
+        "byModel": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerBreakdown"
+          },
+          "type": "array"
+        },
         "byReducer": {
           "items": {
             "$ref": "#/definitions/TokenUsageOptimizerBreakdown"
@@ -14869,6 +14938,7 @@
       },
       "required": [
         "byKind",
+        "byModel",
         "byReducer",
         "byTool",
         "retrievals",
@@ -14888,6 +14958,10 @@
     "TokenUsageOptimizerReadResponse": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "costSavedUsd": {
+          "format": "double",
+          "type": "number"
+        },
         "enabled": {
           "type": "boolean"
         },
@@ -14907,6 +14981,7 @@
         }
       },
       "required": [
+        "costSavedUsd",
         "enabled",
         "insights",
         "level",
@@ -14914,6 +14989,140 @@
         "tokensSaved"
       ],
       "title": "TokenUsageOptimizerReadResponse",
+      "type": "object"
+    },
+    "TokenUsageOptimizerReportDay": {
+      "properties": {
+        "byModel": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerReportModel"
+          },
+          "type": "array"
+        },
+        "costSavedUsd": {
+          "format": "double",
+          "type": "number"
+        },
+        "day": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "reductions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "tokensSaved": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "byModel",
+        "costSavedUsd",
+        "day",
+        "partial",
+        "reductions",
+        "tokensSaved"
+      ],
+      "type": "object"
+    },
+    "TokenUsageOptimizerReportModel": {
+      "properties": {
+        "costSavedUsd": {
+          "format": "double",
+          "type": "number"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reductions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "tokensSaved": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "costSavedUsd",
+        "reductions",
+        "tokensSaved"
+      ],
+      "type": "object"
+    },
+    "TokenUsageOptimizerReportParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sinceDay": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "untilDay": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "TokenUsageOptimizerReportParams",
+      "type": "object"
+    },
+    "TokenUsageOptimizerReportResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "costSavedUsd": {
+          "format": "double",
+          "type": "number"
+        },
+        "days": {
+          "items": {
+            "$ref": "#/definitions/TokenUsageOptimizerReportDay"
+          },
+          "type": "array"
+        },
+        "reductions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "sinceDay": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "tokensSaved": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "untilDay": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "costSavedUsd",
+        "days",
+        "reductions",
+        "sinceDay",
+        "tokensSaved",
+        "untilDay"
+      ],
+      "title": "TokenUsageOptimizerReportResponse",
       "type": "object"
     },
     "TokenUsageOptimizerTopReduction": {
@@ -14928,6 +15137,13 @@
         },
         "callId": {
           "type": "string"
+        },
+        "costSavedUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "kind": {
           "type": "string"
@@ -14985,6 +15201,10 @@
     "TokenUsageOptimizerWriteResponse": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "costSavedUsd": {
+          "format": "double",
+          "type": "number"
+        },
         "enabled": {
           "type": "boolean"
         },
@@ -15004,6 +15224,7 @@
         }
       },
       "required": [
+        "costSavedUsd",
         "enabled",
         "insights",
         "level",

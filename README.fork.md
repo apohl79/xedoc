@@ -67,6 +67,8 @@ external command mode.
   separator.
 - The installed script renders a non-default reasoning effort beside the model.
   Set `ENABLE_REASONING=0` to hide that segment.
+- The installed script can render live token-optimizer savings (`saved 18.7k
+  (~$0.12)`) when `ENABLE_TOKEN_SAVINGS=1`; it is disabled by default.
 
 Primary files:
 

@@ -229,9 +229,60 @@ Example with notification opt-out:
 - `config/read` — fetch the effective config on disk after resolving config layering, including opaque `desktop` values stored in `config.toml`.
 - `config/value/write` — write a single config key/value to the user's config.toml on disk; dotted paths such as `desktop.someKey` use the same generic write surface.
 - `config/batchWrite` — apply multiple config edits atomically to the user's config.toml on disk, with optional `reloadUserConfig: true` to hot-reload loaded threads, including multiple `desktop.*` edits.
-- `tokenUsageOptimizer/read` — read the effective token usage optimizer state (`enabled`, `level`) and bounded aggregate reduction insights.
-- `tokenUsageOptimizer/write` — update the persisted token usage optimizer state; omitted fields remain unchanged. Set `resetStats: true` to atomically clear reduction and retrieval metrics. The optional `expectedVersion` applies the same optimistic-concurrency check as `config/value/write`.
+- `tokenUsageOptimizer/read` — read the effective token usage optimizer state (`enabled`, `level`) and bounded aggregate reduction insights. Insights include reductions, estimated tokens saved, per-kind/tool/reducer/model breakdowns, retrieval counts, and estimated USD cost; rows without model pricing report `costSavedUsd: null` at breakdown level.
+- `tokenUsageOptimizer/write` — update the persisted token usage optimizer state; omitted fields remain unchanged. Set `resetStats: true` to atomically clear reduction and retrieval metrics (the durable daily report is preserved). The optional `expectedVersion` applies the same optimistic-concurrency check as `config/value/write`.
+- `tokenUsageOptimizer/report` — fold complete UTC days into the durable rollup and return a bounded day-by-day savings report. `sinceDay`, `untilDay`, and `model` are optional filters; today's values are marked `partial` because they are read from raw rows. Cost values are estimated USD and are zero in aggregate when source pricing is unavailable.
 - `configRequirements/read` — fetch loaded requirements constraints from `requirements.toml` and/or MDM (or `null` if none are configured), including allow-lists (`allowedApprovalPolicies`, `allowedSandboxModes`, `allowedWebSearchModes`), the layered permission-profile allow map (`allowedPermissionProfiles`), the managed permission-profile default (`defaultPermissions`), lifecycle hook lockdown (`allowManagedHooksOnly`), computer use policy (`computerUse`), pinned feature values (`featureRequirements`), managed lifecycle hooks (`hooks`, including each command handler's optional `additionalContextLimit`), `enforceResidency`, managed new-thread defaults (`models.newThread.model`, `models.newThread.modelReasoningEffort`, and `models.newThread.serviceTier`), and `network` constraints such as canonical domain/socket permissions plus `managedAllowedDomainsOnly` and `dangerFullAccessDenylistOnly`.
+
+### Example: Read durable token-savings report
+
+`tokenUsageOptimizer/report` uses UTC day boundaries and returns stable day-ascending
+and model-ascending data. The default range is the last 90 days; callers can provide
+Unix-second day boundaries and an optional model slug. Complete days are persisted in
+the daily rollup, while the current day has `partial: true` and is computed from raw
+rows. The rollup is not cleared by `tokenUsageOptimizer/write` with `resetStats: true`.
+
+```json
+{
+  "method": "tokenUsageOptimizer/report",
+  "id": 41,
+  "params": {
+    "sinceDay": 1775606400,
+    "untilDay": 1776038400,
+    "model": "gpt-5.6-sol"
+  }
+}
+```
+
+```json
+{
+  "id": 41,
+  "result": {
+    "sinceDay": 1775606400,
+    "untilDay": 1776038400,
+    "days": [
+      {
+        "day": 1775865600,
+        "partial": false,
+        "byModel": [
+          {
+            "model": "gpt-5.6-sol",
+            "reductions": 512,
+            "tokensSaved": 14320,
+            "costSavedUsd": 0.091
+          }
+        ],
+        "reductions": 512,
+        "tokensSaved": 14320,
+        "costSavedUsd": 0.091
+      }
+    ],
+    "reductions": 512,
+    "tokensSaved": 14320,
+    "costSavedUsd": 0.091
+  }
+}
+```
 
 ### Example: Start or resume a thread
 

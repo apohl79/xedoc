@@ -8,6 +8,7 @@ use crate::plugin_context::PluginContextCache;
 use crate::shell_snapshot::ShellSnapshot;
 use crate::skills::SkillError;
 use crate::state::ActiveTurn;
+use crate::state::SessionReductionSink;
 use std::sync::OnceLock;
 use tokio::sync::Semaphore;
 use xedoc_extension_api::ExtensionDataInit;
@@ -23,6 +24,7 @@ use xedoc_protocol::protocol::MultiAgentVersion;
 use xedoc_protocol::protocol::ThreadHistoryMode;
 use xedoc_protocol::protocol::ThreadSource;
 use xedoc_protocol::protocol::TurnEnvironmentSelections;
+use xedoc_tool_output_reduce::ReductionSink;
 
 /// Context for an initialized model agent
 ///
@@ -1072,7 +1074,8 @@ impl Session {
                 // records after `/token-usage-optimizer on`.
                 reduction_sink: state_db_ctx
                     .as_ref()
-                    .map(|state_db| state_db.reduction_sink()),
+                    .map(|state_db| state_db.reduction_sink())
+                    .map(|sink| SessionReductionSink::new(sink) as Arc<dyn ReductionSink>),
                 // Start with an empty connection set. The initialized set is
                 // published after SessionConfigured so MCP events follow it.
                 mcp_runtime,

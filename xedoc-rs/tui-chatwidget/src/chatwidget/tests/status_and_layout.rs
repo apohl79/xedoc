@@ -2267,6 +2267,11 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
             model_context_window: Some(1_000_000),
         }),
     );
+    chat.set_token_optimizer_stats(Some(xedoc_protocol::protocol::TokenOptimizerSessionStats {
+        reductions: 3,
+        tokens_saved: 18_711,
+        cost_saved_usd: 0.12,
+    }));
 
     let payload: Value =
         serde_json::from_str(&chat.status_line_command_payload()).expect("valid json payload");
@@ -2275,6 +2280,9 @@ async fn status_line_command_payload_uses_claude_compatible_shape() {
     assert_eq!(payload["session_id"], thread_id.to_string());
     assert_eq!(payload["session_name"], "Check statusline");
     assert_eq!(payload["model"]["id"], "gpt-test");
+    assert_eq!(payload["token_optimizer"]["reductions"], 3);
+    assert_eq!(payload["token_optimizer"]["tokens_saved"], 18_711);
+    assert_eq!(payload["token_optimizer"]["cost_saved_usd"], 0.12);
     assert_eq!(
         payload["workspace"]["current_dir"],
         chat.config.cwd.display().to_string()

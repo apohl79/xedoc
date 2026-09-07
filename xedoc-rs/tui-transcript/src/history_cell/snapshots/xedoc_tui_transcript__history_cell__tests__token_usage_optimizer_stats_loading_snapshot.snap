@@ -1,0 +1,6 @@
+---
+source: tui-transcript/src/history_cell.rs
+assertion_line: 1260
+expression: rendered
+---
+• Reading token optimizer stats…

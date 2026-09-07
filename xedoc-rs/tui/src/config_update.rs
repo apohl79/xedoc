@@ -178,6 +178,34 @@ pub(crate) async fn read_token_usage_optimizer(
         .wrap_err("tokenUsageOptimizer/read failed in TUI")
 }
 
+pub(crate) async fn read_token_usage_optimizer_report(
+    request_handle: AppServerRequestHandle,
+    days: Option<u32>,
+) -> Result<xedoc_app_server_protocol::TokenUsageOptimizerReportResponse> {
+    let request_id = RequestId::String(format!(
+        "tui-token-usage-optimizer-report-{}",
+        Uuid::new_v4()
+    ));
+    let until_day = chrono::Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
+    let since_day = until_day - i64::from(days.unwrap_or(90).clamp(1, 366) - 1) * 86400;
+    request_handle
+        .request_typed(ClientRequest::TokenUsageOptimizerReport {
+            request_id,
+            params: xedoc_app_server_protocol::TokenUsageOptimizerReportParams {
+                since_day: Some(since_day),
+                until_day: Some(until_day),
+                model: None,
+            },
+        })
+        .await
+        .wrap_err("tokenUsageOptimizer/report failed in TUI")
+}
+
 pub(crate) async fn reset_token_usage_optimizer_stats(
     request_handle: AppServerRequestHandle,
 ) -> Result<()> {

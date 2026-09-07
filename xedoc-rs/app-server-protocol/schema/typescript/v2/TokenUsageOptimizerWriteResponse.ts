@@ -4,4 +4,4 @@
 import type { TokenUsageOptimizerInsights } from "./TokenUsageOptimizerInsights";
 import type { TokenUsageOptimizerLevel } from "./TokenUsageOptimizerLevel";
 
-export type TokenUsageOptimizerWriteResponse = { enabled: boolean, level: TokenUsageOptimizerLevel, reductionCount: bigint, tokensSaved: bigint, insights: TokenUsageOptimizerInsights, };
+export type TokenUsageOptimizerWriteResponse = { enabled: boolean, level: TokenUsageOptimizerLevel, reductionCount: bigint, tokensSaved: bigint, costSavedUsd: number, insights: TokenUsageOptimizerInsights, };

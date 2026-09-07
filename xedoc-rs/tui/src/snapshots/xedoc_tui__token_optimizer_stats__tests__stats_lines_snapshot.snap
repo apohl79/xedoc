@@ -1,0 +1,16 @@
+---
+source: tui/src/token_optimizer_stats_tests.rs
+expression: rendered
+---
+Token optimizer stats
+  Reductions   667        Tokens saved  ~18,711
+  Cost saved   ~$0.12
+  Retrieval    0.0% (0 / 0)
+
+By kind        prose 616 · diff 32 · json 19
+By model       gpt-5.6-sol 512 (~$0.09)
+
+Top reductions
+  shell   prose call_vaP…9ni9  34,536 → 10,897  (~5,900 tok, cost n/a)
+  shell   diff  call_fLq3c3a  12,226 → 6,333  (~2,100 tok, cost n/a)
+  apply   json  call_skGdD9wW  8,223 → 3,405  (~1,900 tok, cost n/a)

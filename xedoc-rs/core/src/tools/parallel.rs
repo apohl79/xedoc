@@ -248,6 +248,8 @@ impl ToolCallRuntime {
             turn_id: None,
             reduction_config: None,
             command_hash: None,
+            model_slug: None,
+            input_price_per_1m: None,
         }
     }
 

@@ -4044,6 +4044,31 @@
       ],
       "type": "string"
     },
+    "TokenUsageOptimizerReportParams": {
+      "properties": {
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sinceDay": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "untilDay": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "TokenUsageOptimizerWriteParams": {
       "properties": {
         "enabled": {
@@ -6235,6 +6260,30 @@
         "method"
       ],
       "title": "TokenUsageOptimizer/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "tokenUsageOptimizer/report"
+          ],
+          "title": "TokenUsageOptimizer/reportRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/TokenUsageOptimizerReportParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "TokenUsageOptimizer/reportRequest",
       "type": "object"
     },
     {

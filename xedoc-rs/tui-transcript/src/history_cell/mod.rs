@@ -120,6 +120,7 @@ mod request_user_input;
 mod search;
 mod separators;
 mod session;
+mod token_optimizer;
 
 pub use approvals::*;
 pub use base::*;
@@ -136,6 +137,7 @@ pub use request_user_input::*;
 pub use search::*;
 pub use separators::*;
 pub use session::*;
+pub use token_optimizer::*;
 
 #[cfg(test)]
 mod tests;

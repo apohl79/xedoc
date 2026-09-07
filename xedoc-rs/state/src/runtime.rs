@@ -92,7 +92,15 @@ pub struct ToolOutputReductionBreakdown {
     pub reruns: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolOutputReductionModelBreakdown {
+    pub dimension: String,
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ToolOutputReductionTop {
     pub call_id: String,
     pub tool_name: String,
@@ -100,9 +108,10 @@ pub struct ToolOutputReductionTop {
     pub bytes_in: i64,
     pub bytes_out: i64,
     pub tokens_saved: i64,
+    pub cost_saved_usd: Option<f64>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ToolOutputReductionInsights {
     pub by_kind: Vec<ToolOutputReductionBreakdown>,
     pub by_reducer: Vec<ToolOutputReductionBreakdown>,
@@ -110,6 +119,36 @@ pub struct ToolOutputReductionInsights {
     pub top_reductions: Vec<ToolOutputReductionTop>,
     pub retrievals: i64,
     pub spilled: i64,
+    pub by_model: Vec<ToolOutputReductionModelBreakdown>,
+    pub cost_saved_usd: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolOutputReductionReportModel {
+    pub model_slug: Option<String>,
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolOutputReductionReportDay {
+    pub day: i64,
+    pub partial: bool,
+    pub by_model: Vec<ToolOutputReductionReportModel>,
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ToolOutputReductionReport {
+    pub since_day: i64,
+    pub until_day: i64,
+    pub days: Vec<ToolOutputReductionReportDay>,
+    pub reductions: i64,
+    pub tokens_saved: i64,
+    pub cost_saved_usd: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -280,9 +319,50 @@ impl StateRuntime {
         let by_tool = self
             .reduction_breakdown(ReductionBreakdownDimension::Tool, thread_id)
             .await?;
+        let mut model_query = QueryBuilder::<Sqlite>::new(
+            "SELECT COALESCE(model_slug, 'unknown') AS dimension, COUNT(*) AS reductions, \
+             COALESCE(SUM(est_tokens_in - est_tokens_out), 0) AS tokens_saved, \
+             SUM(CASE WHEN input_price_per_1m IS NULL THEN NULL \
+                 ELSE (est_tokens_in - est_tokens_out) * input_price_per_1m / 1000000.0 END) \
+                 AS cost_saved_usd FROM tool_output_reductions",
+        );
+        if let Some(thread_id) = thread_id {
+            model_query.push(" WHERE thread_id = ").push_bind(thread_id);
+        }
+        model_query.push(" GROUP BY model_slug ORDER BY reductions DESC LIMIT 20");
+        let by_model = model_query
+            .build()
+            .fetch_all(self.pool.as_ref())
+            .await?
+            .into_iter()
+            .map(|row| {
+                Ok(ToolOutputReductionModelBreakdown {
+                    dimension: row.try_get("dimension")?,
+                    reductions: row.try_get("reductions")?,
+                    tokens_saved: row.try_get("tokens_saved")?,
+                    cost_saved_usd: row.try_get("cost_saved_usd")?,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let mut cost_query = QueryBuilder::<Sqlite>::new(
+            "SELECT COALESCE(SUM(CASE WHEN input_price_per_1m IS NULL THEN 0.0 \
+             ELSE (est_tokens_in - est_tokens_out) * input_price_per_1m / 1000000.0 END), 0.0) \
+             AS cost_saved_usd FROM tool_output_reductions",
+        );
+        if let Some(thread_id) = thread_id {
+            cost_query.push(" WHERE thread_id = ").push_bind(thread_id);
+        }
+        let cost_saved_usd = cost_query
+            .build()
+            .fetch_one(self.pool.as_ref())
+            .await?
+            .try_get("cost_saved_usd")?;
         let mut query = QueryBuilder::<Sqlite>::new(
             "SELECT call_id, tool_name, kind, bytes_in, bytes_out, \
-             (est_tokens_in - est_tokens_out) AS tokens_saved \
+             (est_tokens_in - est_tokens_out) AS tokens_saved, \
+             CASE WHEN input_price_per_1m IS NULL THEN NULL \
+                  ELSE (est_tokens_in - est_tokens_out) * input_price_per_1m / 1000000.0 END \
+                  AS cost_saved_usd \
              FROM tool_output_reductions",
         );
         if let Some(thread_id) = thread_id {
@@ -300,6 +380,7 @@ impl StateRuntime {
                     bytes_in: row.try_get("bytes_in")?,
                     bytes_out: row.try_get("bytes_out")?,
                     tokens_saved: row.try_get("tokens_saved")?,
+                    cost_saved_usd: row.try_get("cost_saved_usd")?,
                 })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -339,6 +420,8 @@ impl StateRuntime {
             top_reductions,
             retrievals,
             spilled,
+            by_model,
+            cost_saved_usd,
         })
     }
 
@@ -531,6 +614,164 @@ impl StateRuntime {
             .map(|row| row.try_get::<String, _>("call_id"))
             .collect::<Result<HashSet<_>, _>>()
             .map_err(Into::into)
+    }
+
+    /// Fold complete UTC days into the durable daily rollup.
+    pub async fn fold_tool_output_reductions_into_daily(&self) -> anyhow::Result<()> {
+        let today = Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+        let mut tx = self.pool.begin().await?;
+        let last: i64 = sqlx::query_scalar(
+            "SELECT last_folded_day FROM tool_output_reduction_rollup_state WHERE id = 0",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let first: Option<i64> = sqlx::query_scalar(
+            "SELECT MIN((recorded_at / 86400) * 86400) FROM tool_output_reductions",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let mut day = if last == 0 {
+            first.unwrap_or(today)
+        } else {
+            last + 86400
+        };
+        while day < today {
+            let rows = sqlx::query(
+                "SELECT model_slug, COUNT(*) AS reductions, \
+                 COALESCE(SUM(est_tokens_in - est_tokens_out), 0) AS tokens_saved, \
+                 COALESCE(SUM(CASE WHEN input_price_per_1m IS NULL THEN 0.0 \
+                    ELSE (est_tokens_in - est_tokens_out) * input_price_per_1m / 1000000.0 END), 0.0) AS cost_saved_usd \
+                 FROM tool_output_reductions WHERE recorded_at >= ? AND recorded_at < ? GROUP BY model_slug",
+            )
+            .bind(day)
+            .bind(day + 86400)
+            .fetch_all(&mut *tx)
+            .await?;
+            for row in rows {
+                sqlx::query(
+                    "INSERT INTO tool_output_reduction_daily \
+                     (day, model_slug, reductions, tokens_saved, cost_saved_usd) VALUES (?, ?, ?, ?, ?) \
+                     ON CONFLICT(day, model_slug) DO UPDATE SET reductions = excluded.reductions, \
+                     tokens_saved = excluded.tokens_saved, cost_saved_usd = excluded.cost_saved_usd",
+                )
+                .bind(day)
+                .bind(row.try_get::<Option<String>, _>("model_slug")?)
+                .bind(row.try_get::<i64, _>("reductions")?)
+                .bind(row.try_get::<i64, _>("tokens_saved")?)
+                .bind(row.try_get::<f64, _>("cost_saved_usd")?)
+                .execute(&mut *tx)
+                .await?;
+            }
+            sqlx::query(
+                "UPDATE tool_output_reduction_rollup_state SET last_folded_day = ? WHERE id = 0",
+            )
+            .bind(day)
+            .execute(&mut *tx)
+            .await?;
+            day += 86400;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Return a bounded daily report, including today's raw partial day.
+    pub async fn tool_output_reduction_report(
+        &self,
+        since_day: i64,
+        until_day: i64,
+        model_filter: Option<&str>,
+    ) -> anyhow::Result<ToolOutputReductionReport> {
+        let since_day = since_day.max(0);
+        let until_day = until_day.max(since_day).min(since_day + 366 * 86400);
+        self.fold_tool_output_reductions_into_daily().await?;
+        let today = Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+        let mut days = Vec::new();
+        let mut day = since_day;
+        while day <= until_day {
+            let partial = day >= today;
+            let rows = if partial {
+                (if let Some(model) = model_filter {
+                    sqlx::query(
+                        "SELECT model_slug, COUNT(*) AS reductions, COALESCE(SUM(est_tokens_in - est_tokens_out), 0) AS tokens_saved, \
+                         COALESCE(SUM(CASE WHEN input_price_per_1m IS NULL THEN 0.0 ELSE (est_tokens_in - est_tokens_out) * input_price_per_1m / 1000000.0 END), 0.0) AS cost_saved_usd \
+                         FROM tool_output_reductions WHERE recorded_at >= ? AND recorded_at < ? AND model_slug = ? GROUP BY model_slug",
+                    ).bind(day).bind(day + 86400).bind(model)
+                } else {
+                    sqlx::query(
+                        "SELECT model_slug, COUNT(*) AS reductions, COALESCE(SUM(est_tokens_in - est_tokens_out), 0) AS tokens_saved, \
+                         COALESCE(SUM(CASE WHEN input_price_per_1m IS NULL THEN 0.0 ELSE (est_tokens_in - est_tokens_out) * input_price_per_1m / 1000000.0 END), 0.0) AS cost_saved_usd \
+                         FROM tool_output_reductions WHERE recorded_at >= ? AND recorded_at < ? GROUP BY model_slug",
+                    ).bind(day).bind(day + 86400)
+                })
+                .fetch_all(self.pool.as_ref())
+                .await?
+            } else {
+                let mut query = sqlx::query(
+                    "SELECT model_slug, reductions, tokens_saved, cost_saved_usd FROM tool_output_reduction_daily WHERE day = ?",
+                ).bind(day);
+                if let Some(model) = model_filter {
+                    query = sqlx::query(
+                        "SELECT model_slug, reductions, tokens_saved, cost_saved_usd FROM tool_output_reduction_daily WHERE day = ? AND model_slug = ?",
+                    ).bind(day).bind(model);
+                }
+                query.fetch_all(self.pool.as_ref()).await?
+            };
+            let mut by_model = Vec::new();
+            for row in rows {
+                by_model.push(ToolOutputReductionReportModel {
+                    model_slug: row.try_get("model_slug")?,
+                    reductions: row.try_get("reductions")?,
+                    tokens_saved: row.try_get("tokens_saved")?,
+                    cost_saved_usd: row.try_get("cost_saved_usd")?,
+                });
+            }
+            by_model.sort_by_key(|item| item.model_slug.clone());
+            let reductions = by_model.iter().map(|item| item.reductions).sum();
+            let tokens_saved = by_model.iter().map(|item| item.tokens_saved).sum();
+            let cost_saved_usd = by_model.iter().map(|item| item.cost_saved_usd).sum();
+            days.push(ToolOutputReductionReportDay {
+                day,
+                partial,
+                by_model,
+                reductions,
+                tokens_saved,
+                cost_saved_usd,
+            });
+            day += 86400;
+        }
+        Ok(ToolOutputReductionReport {
+            since_day,
+            until_day,
+            reductions: days.iter().map(|d| d.reductions).sum(),
+            tokens_saved: days.iter().map(|d| d.tokens_saved).sum(),
+            cost_saved_usd: days.iter().map(|d| d.cost_saved_usd).sum(),
+            days,
+        })
+    }
+
+    /// Remove durable report data explicitly; reset-stats intentionally leaves it intact.
+    pub async fn reset_tool_output_reduction_report(&self) -> anyhow::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM tool_output_reduction_daily")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "UPDATE tool_output_reduction_rollup_state SET last_folded_day = 0 WHERE id = 0",
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Clear persisted tool-output reduction records without affecting other telemetry.
@@ -756,8 +997,9 @@ async fn persist_tool_output_reduction(
     sqlx::query(
         "INSERT INTO tool_output_reductions \
          (thread_id, turn_id, call_id, command_hash, tool_name, kind, level, reducers_applied, \
-          bytes_in, bytes_out, est_tokens_in, est_tokens_out, duration_us, spilled, spill_path, recorded_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         bytes_in, bytes_out, est_tokens_in, est_tokens_out, duration_us, spilled, spill_path, recorded_at, \
+         model_slug, input_price_per_1m) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(record.thread_id.as_deref())
     .bind(record.turn_id.as_deref())
@@ -775,6 +1017,8 @@ async fn persist_tool_output_reduction(
     .bind(record.spilled)
     .bind(record.spill_path.as_deref())
     .bind(record.recorded_at)
+    .bind(record.model_slug.as_deref())
+    .bind(record.input_price_per_1m)
     .execute(pool)
     .await?;
     // Keep dashboard history bounded even when users never invoke reset-stats.

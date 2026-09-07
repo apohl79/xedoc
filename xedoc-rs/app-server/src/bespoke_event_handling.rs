@@ -1428,9 +1428,11 @@ async fn handle_token_count_event(
         info,
         rate_limits,
         session_cost_usd,
+        token_optimizer,
     } = token_count_event;
     if let Some(mut token_usage) = info.map(ThreadTokenUsage::from) {
         token_usage.session_cost_usd = session_cost_usd;
+        token_usage.token_optimizer = token_optimizer;
         let notification = ThreadTokenUsageUpdatedNotification {
             thread_id: conversation_id.to_string(),
             turn_id,
@@ -3161,6 +3163,7 @@ mod tests {
                 info: Some(info),
                 rate_limits: Some(rate_limits),
                 session_cost_usd: None,
+                token_optimizer: None,
             },
             &outgoing,
         )
@@ -3212,6 +3215,7 @@ mod tests {
                 info: None,
                 rate_limits: None,
                 session_cost_usd: None,
+                token_optimizer: None,
             },
             &outgoing,
         )

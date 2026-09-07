@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 use std::time::Instant;
 
 use crate::SkillInjections;
@@ -2278,6 +2279,7 @@ pub(crate) fn get_last_assistant_message_from_turn(responses: &[ResponseItem]) -
 
 /// Maximum length of a sub-agent activity summary.
 const MAX_ACTIVITY_SUMMARY_CHARS: usize = 64;
+const ACTIVITY_SUMMARY_TIMEOUT: Duration = Duration::from_secs(8);
 /// Keywords used to find a fast model on OpenAI providers.
 const FAST_MODEL_KEYWORD: &str = "mini";
 
@@ -2286,6 +2288,32 @@ const FAST_MODEL_KEYWORD: &str = "mini";
 /// Uses the configured `model_fast` when available; falls back to the default model.
 /// The result is clamped to `MAX_ACTIVITY_SUMMARY_CHARS` characters.
 pub(crate) async fn generate_sub_agent_activity_summary(
+    sess: &Session,
+    turn_context: &TurnContext,
+    last_agent_message: Option<&str>,
+) -> XedocResult<Option<String>> {
+    let summary_started_at = Instant::now();
+    let result = tokio::time::timeout(
+        ACTIVITY_SUMMARY_TIMEOUT,
+        generate_sub_agent_activity_summary_inner(sess, turn_context, last_agent_message),
+    )
+    .await;
+    match result {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!(
+                provider_id = %turn_context.config.model_provider_id,
+                model = %turn_context.model_info.slug,
+                elapsed_ms = summary_started_at.elapsed().as_millis(),
+                request_kind = "subagent_activity_summary",
+                "Sub-agent activity summary request timed out"
+            );
+            Err(XedocErr::RequestTimeout)
+        }
+    }
+}
+
+async fn generate_sub_agent_activity_summary_inner(
     sess: &Session,
     turn_context: &TurnContext,
     last_agent_message: Option<&str>,
