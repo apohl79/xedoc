@@ -51,6 +51,10 @@ impl ToolCallSummaryState {
     pub(super) fn mark_in_progress_failed(&mut self) {
         self.cell.mark_in_progress_failed();
     }
+
+    pub(super) fn append_command_output(&mut self, call_id: &str, delta: &str) -> bool {
+        self.cell.append_command_output(call_id, delta)
+    }
 }
 
 impl ChatWidget {
@@ -135,6 +139,15 @@ impl ChatWidget {
         outcome: history_cell::ToolCallSummaryOutcome,
     ) {
         self.record_tool_call_completion_with_preview(id, label, outcome, None);
+    }
+
+    pub(super) fn append_tool_call_command_output(&mut self, call_id: &str, delta: &str) {
+        if let Some(summary) = self.tool_call_summary.as_mut()
+            && summary.append_command_output(call_id, delta)
+        {
+            self.bump_active_cell_revision();
+            self.request_redraw();
+        }
     }
 
     fn record_tool_call_completion_with_preview(
@@ -307,7 +320,7 @@ impl ChatWidget {
                 command: xedoc_tui_transcript::exec_command::strip_bash_lc_and_escape(
                     &split_command_string(command),
                 ),
-                output: aggregated_output.clone(),
+                output: Some(aggregated_output.clone().unwrap_or_default()),
             }),
             ThreadItem::FileChange { changes, .. } => {
                 let change = changes.first()?;
