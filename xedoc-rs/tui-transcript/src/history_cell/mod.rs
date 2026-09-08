@@ -193,6 +193,10 @@ pub trait HistoryCell: std::fmt::Debug + Send + Sync + Any {
     /// Returns the logical lines for the main chat viewport.
     fn display_lines(&self, width: u16) -> Vec<Line<'static>>;
 
+    fn display_background_style(&self) -> Option<Style> {
+        None
+    }
+
     /// Returns copy-friendly plain logical lines for raw scrollback mode.
     fn raw_lines(&self) -> Vec<Line<'static>>;
 

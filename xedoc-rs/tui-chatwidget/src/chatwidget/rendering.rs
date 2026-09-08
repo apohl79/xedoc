@@ -61,7 +61,14 @@ impl Renderable for TranscriptAreaRenderable<'_> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
         let area = self.child_area(area);
         let lines = self.child.display_lines(area.width);
-        let paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
+        let background_style = self.child.display_background_style();
+        if let Some(style) = background_style {
+            buf.set_style(area, style);
+        }
+        let mut paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
+        if let Some(style) = background_style {
+            paragraph = paragraph.style(style);
+        }
         let y = if area.height == 0 {
             0
         } else {

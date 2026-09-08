@@ -78,9 +78,9 @@ impl fmt::Display for SessionPickerViewMode {
 #[serde(rename_all = "kebab-case")]
 pub enum ToolCallRenderingMode {
     /// Render tool calls using the standard detailed presentation.
-    #[default]
     Normal,
     /// Render tool calls using the compact optimized presentation.
+    #[default]
     Optimized,
 }
 
@@ -507,7 +507,7 @@ pub struct Tui {
     pub raw_output_mode: bool,
 
     /// Controls how tool calls are rendered in the TUI transcript.
-    /// Defaults to `normal`.
+    /// Defaults to `optimized`.
     #[serde(default)]
     pub tool_call_rendering: ToolCallRenderingMode,
 

@@ -28,10 +28,13 @@ fn cap_ignores_late_completion_without_double_counting_or_ghost_progress() {
     );
 
     let expected = vec![
-        "• Tool: anchor".to_string(),
+        String::new(),
+        "• Ran anchor".to_string(),
+        String::new(),
         format!(
             "  Calls: {MAX_TRACKED_CALLS} · {MAX_TRACKED_CALLS} succeeded · 0 failed · 0 in progress · truncated"
         ),
+        String::new(),
     ];
     assert_eq!(rendered_lines(&cell), expected);
 
@@ -88,8 +91,11 @@ fn labels_with_control_whitespace_stay_on_two_logical_rows() {
     assert_eq!(
         rendered_lines(&cell),
         vec![
-            "• Tool: alpha beta gamma".to_string(),
+            String::new(),
+            "• Ran alpha beta gamma".to_string(),
+            String::new(),
             "  Calls: 1 · 0 succeeded · 0 failed · 1 in progress".to_string(),
+            String::new(),
         ]
     );
 }

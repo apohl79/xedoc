@@ -1,6 +1,10 @@
 //! Compact per-turn tool-call summary history cell.
 
 use super::*;
+use crate::city_lights::CL_SESSION_TITLE_BG;
+use crate::city_lights::CityLightsStylize;
+use crate::render::highlight::highlight_bash_to_lines;
+use crate::terminal_palette::rgb_color;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
@@ -11,6 +15,20 @@ const MAX_LABEL_CHARS: usize = 80;
 pub enum ToolCallSummaryOutcome {
     Succeeded,
     Failed,
+}
+
+#[derive(Clone, Debug)]
+pub enum ToolCallSummaryPreview {
+    Command {
+        command: String,
+        output: Option<String>,
+    },
+    FileChange {
+        path: String,
+        added: usize,
+        removed: usize,
+        diff_lines: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -25,10 +43,12 @@ enum ToolCallStatus {
 pub struct ToolCallSummaryCell {
     calls: HashMap<String, ToolCallStatus>,
     labels: HashMap<String, String>,
+    previews: HashMap<String, ToolCallSummaryPreview>,
     in_progress_order: VecDeque<String>,
     capped: bool,
     current_label: Option<String>,
     last_label: Option<String>,
+    last_preview: Option<ToolCallSummaryPreview>,
     total: usize,
     succeeded: usize,
     failed: usize,
@@ -40,10 +60,12 @@ impl ToolCallSummaryCell {
         Self {
             calls: HashMap::new(),
             labels: HashMap::new(),
+            previews: HashMap::new(),
             in_progress_order: VecDeque::new(),
             capped: false,
             current_label: None,
             last_label: None,
+            last_preview: None,
             total: 0,
             succeeded: 0,
             failed: 0,
@@ -56,6 +78,15 @@ impl ToolCallSummaryCell {
     }
 
     pub fn start_call(&mut self, call_id: String, label: String) {
+        self.start_call_with_preview(call_id, label, None);
+    }
+
+    pub fn start_call_with_preview(
+        &mut self,
+        call_id: String,
+        label: String,
+        preview: Option<ToolCallSummaryPreview>,
+    ) {
         if self.calls.contains_key(&call_id) {
             return;
         }
@@ -65,12 +96,23 @@ impl ToolCallSummaryCell {
         }
         self.labels
             .insert(call_id.clone(), bound_label(label.clone()));
+        if let Some(preview) = preview {
+            self.previews.insert(call_id.clone(), preview);
+        }
         self.calls
             .insert(call_id.clone(), ToolCallStatus::InProgress);
         self.in_progress_order.push_back(call_id);
         self.total = self.total.saturating_add(1);
         self.in_progress = self.in_progress.saturating_add(1);
         self.current_label = Some(bound_label(label));
+        self.last_preview = self
+            .previews
+            .get(
+                self.in_progress_order
+                    .back()
+                    .expect("newly started tool call must be tracked"),
+            )
+            .cloned();
     }
 
     pub fn complete_call(
@@ -79,11 +121,21 @@ impl ToolCallSummaryCell {
         label: String,
         outcome: ToolCallSummaryOutcome,
     ) {
+        self.complete_call_with_preview(call_id, label, outcome, None);
+    }
+
+    pub fn complete_call_with_preview(
+        &mut self,
+        call_id: String,
+        label: String,
+        outcome: ToolCallSummaryOutcome,
+        preview: Option<ToolCallSummaryPreview>,
+    ) {
         if !self.calls.contains_key(&call_id) {
             if self.capped {
                 return;
             }
-            self.start_call(call_id.clone(), label.clone());
+            self.start_call_with_preview(call_id.clone(), label.clone(), preview.clone());
         }
         let Some(status) = self.calls.get_mut(&call_id) else {
             return;
@@ -95,6 +147,9 @@ impl ToolCallSummaryCell {
             ToolCallSummaryOutcome::Succeeded => ToolCallStatus::Succeeded,
             ToolCallSummaryOutcome::Failed => ToolCallStatus::Failed,
         };
+        if let Some(preview) = preview {
+            self.previews.insert(call_id.clone(), preview);
+        }
         self.in_progress_order.retain(|id| id != &call_id);
         self.in_progress = self.in_progress.saturating_sub(1);
         match outcome {
@@ -106,6 +161,7 @@ impl ToolCallSummaryCell {
             .back()
             .and_then(|id| self.labels.get(id).cloned());
         self.last_label = Some(bound_label(label));
+        self.last_preview = self.previews.get(&call_id).cloned();
     }
 
     pub fn display_label(&self) -> &str {
@@ -145,24 +201,91 @@ impl Default for ToolCallSummaryCell {
 }
 
 impl HistoryCell for ToolCallSummaryCell {
-    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let label = self.display_label();
-        let label_width = usize::from(width).saturating_sub("• Tool: ".len()).max(1);
-        let (label, _, _) = take_prefix_by_width(label, label_width);
-        vec![
-            Line::from(format!("• Tool: {label}")),
-            Line::from(vec![
-                format!(
-                    "  Calls: {} · {} succeeded · {} failed · {} in progress{}",
-                    self.total,
-                    self.succeeded,
-                    self.failed,
-                    self.in_progress,
-                    if self.capped { " · truncated" } else { "" }
-                )
-                .dim(),
-            ]),
-        ]
+    fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
+        let mut lines = match &self.last_preview {
+            Some(ToolCallSummaryPreview::Command { command, output }) => {
+                let mut highlighted = highlight_bash_to_lines(command);
+                let first = highlighted
+                    .drain(..1)
+                    .next()
+                    .unwrap_or_else(|| Line::from(self.display_label().to_string()));
+                let mut header = Line::from(vec!["• ".dim(), "Ran ".bold()]);
+                header.extend(first);
+                let mut lines = vec![header];
+                for line in highlighted {
+                    let mut continuation = Line::from("  ".dim());
+                    continuation.extend(line);
+                    lines.push(continuation);
+                }
+                if let Some(output) = output {
+                    let output_lines = output.lines().collect::<Vec<_>>();
+                    for output_line in output_lines.iter().take(3) {
+                        lines.push(vec!["  ".dim(), (*output_line).to_string().dim()].into());
+                    }
+                    let omitted = output_lines.len().saturating_sub(3);
+                    if omitted > 0 {
+                        lines.push(format!("  ... {omitted} more lines").dim().into());
+                    }
+                }
+                lines
+            }
+            Some(ToolCallSummaryPreview::FileChange {
+                path,
+                added,
+                removed,
+                diff_lines,
+            }) => {
+                let mut lines = vec![Line::from(vec![
+                    "• ".dim(),
+                    "Edited ".bold(),
+                    path.clone().cl_cyan(),
+                    " ".into(),
+                    format!("+{added}").cl_green(),
+                    " ".into(),
+                    format!("-{removed}").cl_red(),
+                ])];
+                for diff_line in diff_lines.iter().take(3) {
+                    let styled = if diff_line.starts_with('+') {
+                        diff_line.clone().green()
+                    } else if diff_line.starts_with('-') {
+                        diff_line.clone().red()
+                    } else {
+                        diff_line.clone().dim()
+                    };
+                    lines.push(vec!["  ".dim(), styled].into());
+                }
+                let omitted = diff_lines.len().saturating_sub(3);
+                if omitted > 0 {
+                    lines.push(format!("  ... {omitted} more lines").dim().into());
+                }
+                lines
+            }
+            None => vec![Line::from(vec![
+                "• ".dim(),
+                "Ran ".bold(),
+                self.display_label().to_string().into(),
+            ])],
+        };
+        lines.insert(0, Line::default());
+        lines.push("".into());
+        lines.push(
+            format!(
+                "  Calls: {} · {} succeeded · {} failed · {} in progress{}",
+                self.total,
+                self.succeeded,
+                self.failed,
+                self.in_progress,
+                if self.capped { " · truncated" } else { "" }
+            )
+            .dim()
+            .into(),
+        );
+        lines.push(Line::default());
+        lines
+    }
+
+    fn display_background_style(&self) -> Option<Style> {
+        Some(Style::default().bg(rgb_color(CL_SESSION_TITLE_BG)))
     }
 
     fn raw_lines(&self) -> Vec<Line<'static>> {
