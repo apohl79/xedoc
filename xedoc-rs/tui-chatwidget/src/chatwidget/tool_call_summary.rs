@@ -349,20 +349,28 @@ impl ChatWidget {
             }),
             ThreadItem::FileChange { changes, .. } => {
                 let change = changes.first()?;
-                let diff_lines = change.diff.lines().map(str::to_string).collect::<Vec<_>>();
-                let added = diff_lines
-                    .iter()
+                let added = change
+                    .diff
+                    .lines()
                     .filter(|line| line.starts_with('+') && !line.starts_with("+++"))
                     .count();
-                let removed = diff_lines
-                    .iter()
+                let removed = change
+                    .diff
+                    .lines()
                     .filter(|line| line.starts_with('-') && !line.starts_with("---"))
                     .count();
+                let (unified_diff, omitted_diff_lines) =
+                    xedoc_tui_transcript::diff_render::truncate_unified_diff_preview(
+                        &change.diff,
+                        /*max_lines*/ 3,
+                    )
+                    .unwrap_or_default();
                 Some(history_cell::ToolCallSummaryPreview::FileChange {
                     path: change.path.clone(),
                     added,
                     removed,
-                    diff_lines,
+                    unified_diff,
+                    omitted_diff_lines,
                 })
             }
             _ => None,

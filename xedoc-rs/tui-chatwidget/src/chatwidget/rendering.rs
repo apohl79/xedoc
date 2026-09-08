@@ -65,13 +65,11 @@ impl Renderable for TranscriptAreaRenderable<'_> {
         let area = self.child_area(area);
         let lines = self.child.display_lines(area.width);
         let background_style = self.child.display_background_style();
+        Clear.render(area, buf);
         if let Some(style) = background_style {
             buf.set_style(area, style);
         }
-        let mut paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
-        if let Some(style) = background_style {
-            paragraph = paragraph.style(style);
-        }
+        let paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
         let y = if area.height == 0 {
             0
         } else {
@@ -80,7 +78,6 @@ impl Renderable for TranscriptAreaRenderable<'_> {
                 .saturating_sub(usize::from(area.height));
             u16::try_from(overflow).unwrap_or(u16::MAX)
         };
-        Clear.render(area, buf);
         paragraph.scroll((y, 0)).render(area, buf);
     }
 

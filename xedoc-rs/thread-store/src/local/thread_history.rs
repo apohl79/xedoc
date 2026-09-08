@@ -68,7 +68,7 @@ WHERE thread_id = ?
     .fetch_optional(&mut *transaction)
     .await
     .map_err(thread_history_error)?;
-    let (expected_offset, mut next_ordinal) = projection_state.unwrap_or((0, 0));
+    let (expected_offset, mut next_projection_ordinal) = projection_state.unwrap_or((0, 0));
     let start_offset = sqlite_integer(start_offset, "rollout byte offset")?;
     if expected_offset != start_offset {
         return Err(ThreadStoreError::Internal {
@@ -76,32 +76,28 @@ WHERE thread_id = ?
         });
     }
 
-    for (ordinal, created_at_ms, changes) in projections {
-        let ordinal = ordinal
-            .ok_or_else(|| ThreadStoreError::Internal {
-                message: format!("paginated rollout line for {thread_id} is missing an ordinal"),
-            })
-            .and_then(|ordinal| sqlite_integer(ordinal, "rollout ordinal"))?;
-        if ordinal != next_ordinal {
-            return Err(ThreadStoreError::Internal {
-                message: format!(
-                    "thread history projection for {thread_id} expected ordinal {next_ordinal}, got {ordinal}"
-                ),
-            });
-        }
+    for (source_ordinal, created_at_ms, changes) in projections {
+        source_ordinal.ok_or_else(|| ThreadStoreError::Internal {
+            message: format!("paginated rollout line for {thread_id} is missing an ordinal"),
+        })?;
+        // JSONL physical order is canonical. Writer handoff can leave duplicate or non-monotonic
+        // source ordinals, so use the projection's contiguous sequence for SQLite cursors rather
+        // than dropping the entire durable suffix.
         apply_change_set(
             &mut transaction,
             thread_id.as_str(),
-            ordinal,
+            next_projection_ordinal,
             created_at_ms,
             changes,
         )
         .await?;
-        next_ordinal = next_ordinal
-            .checked_add(1)
-            .ok_or_else(|| ThreadStoreError::Internal {
-                message: "rollout ordinal exceeds SQLite integer range".to_string(),
-            })?;
+        next_projection_ordinal =
+            next_projection_ordinal
+                .checked_add(1)
+                .ok_or_else(|| ThreadStoreError::Internal {
+                    message: "thread history projection ordinal exceeds SQLite integer range"
+                        .to_string(),
+                })?;
     }
 
     sqlx::query(
@@ -118,7 +114,7 @@ ON CONFLICT(thread_id) DO UPDATE SET
     )
     .bind(thread_id.as_str())
     .bind(sqlite_integer(next_offset, "rollout byte offset")?)
-    .bind(next_ordinal)
+    .bind(next_projection_ordinal)
     .execute(&mut *transaction)
     .await
     .map_err(thread_history_error)?;

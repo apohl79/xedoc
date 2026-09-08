@@ -613,71 +613,119 @@ SELECT
 }
 
 #[tokio::test]
-async fn catch_up_rejects_invalid_complete_suffixes_without_advancing_state() {
-    let cases = [
-        (
-            "missing ordinal",
-            format!(
-                "{}\n",
-                rollout_line(/*ordinal*/ None, turn_started("turn-1"))
-            ),
-        ),
-        (
-            "duplicate ordinal",
-            format!(
-                "{}\n{}\n",
-                rollout_line(Some(1), turn_started("turn-1")),
-                rollout_line(Some(1), turn_started("turn-2")),
-            ),
-        ),
-        (
-            "out of order ordinal",
-            format!("{}\n", rollout_line(Some(2), turn_started("turn-1"))),
-        ),
-    ];
-    for (name, suffix) in cases {
-        let home = TempDir::new().expect("temp dir");
-        let store = LocalThreadStore::new(test_config(home.path()), /*state_db*/ None);
-        let thread_id = ThreadId::default();
-        create_paginated_thread(&store, thread_id).await;
-        store
-            .persist_thread(thread_id)
-            .await
-            .expect("persist session metadata");
-
-        let pool = xedoc_state::open_thread_history_db(home.path())
-            .await
-            .expect("open thread history db");
-        let before = projection_state(&pool, thread_id).await;
-        let rollout_path = store
-            .live_rollout_path(thread_id)
-            .await
-            .expect("rollout path");
-        append_suffix(rollout_path.as_path(), suffix.as_str());
-
-        super::materialize_to_sqlite(&store, thread_id, rollout_path.as_path())
-            .await
-            .expect_err(name);
-
-        assert_eq!(
-            projection_state(&pool, thread_id).await,
-            before,
-            "{name} should not advance projection state"
-        );
-        let counts = sqlx::query_as::<_, (i64, i64)>(
-            r#"
-SELECT
-    (SELECT COUNT(*) FROM thread_turns WHERE thread_id = ?),
-    (SELECT COUNT(*) FROM thread_items WHERE thread_id = ?)
-            "#,
-        )
-        .bind(thread_id.to_string())
-        .bind(thread_id.to_string())
-        .fetch_one(&pool)
+async fn catch_up_uses_physical_order_when_source_ordinals_are_not_monotonic() {
+    let home = TempDir::new().expect("temp dir");
+    let store = LocalThreadStore::new(test_config(home.path()), /*state_db*/ None);
+    let thread_id = ThreadId::default();
+    create_paginated_thread(&store, thread_id).await;
+    store
+        .persist_thread(thread_id)
         .await
-        .expect("read projected row counts");
-        assert_eq!(counts, (0, 0), "{name} should not project rows");
-    }
+        .expect("persist session metadata");
+
+    let pool = xedoc_state::open_thread_history_db(home.path())
+        .await
+        .expect("open thread history db");
+    let before = projection_state(&pool, thread_id).await;
+    let suffix = format!(
+        "{}\n{}\n{}\n{}\n",
+        rollout_line(Some(1), turn_started("turn-1")),
+        rollout_line(
+            Some(1),
+            completed_item(
+                thread_id,
+                "turn-1",
+                TurnItem::UserMessage(UserMessageItem {
+                    id: "user-1".to_string(),
+                    client_id: None,
+                    content: Vec::new(),
+                }),
+            ),
+        ),
+        rollout_line(
+            Some(5),
+            completed_item(
+                thread_id,
+                "turn-1",
+                agent_message("final-agent-message", MessagePhase::FinalAnswer),
+            ),
+        ),
+        rollout_line(Some(3), turn_completed("turn-1")),
+    );
+    let rollout_path = store
+        .live_rollout_path(thread_id)
+        .await
+        .expect("rollout path");
+    append_suffix(rollout_path.as_path(), suffix.as_str());
+
+    super::materialize_to_sqlite(&store, thread_id, rollout_path.as_path())
+        .await
+        .expect("project non-monotonic source ordinals");
+
+    let turns = sqlx::query_as::<_, (String, String)>(
+        "SELECT turn_id, status FROM thread_turns WHERE thread_id = ?",
+    )
+    .bind(thread_id.to_string())
+    .fetch_all(&pool)
+    .await
+    .expect("read projected turns");
+    assert_eq!(turns, vec![("turn-1".to_string(), "completed".to_string())]);
+    let items = sqlx::query_as::<_, (String, i64)>(
+        "SELECT item_id, rollout_ordinal FROM thread_items WHERE thread_id = ? ORDER BY rollout_ordinal",
+    )
+    .bind(thread_id.to_string())
+    .fetch_all(&pool)
+    .await
+    .expect("read projected items");
+    assert_eq!(
+        items,
+        vec![
+            ("user-1".to_string(), before.1 + 1),
+            ("final-agent-message".to_string(), before.1 + 2),
+        ]
+    );
+    assert_eq!(
+        projection_state(&pool, thread_id).await,
+        (
+            before.0 + i64::try_from(suffix.len()).expect("suffix byte count"),
+            before.1 + 4,
+        )
+    );
+}
+
+#[tokio::test]
+async fn catch_up_rejects_missing_source_ordinal_without_advancing_state() {
+    let home = TempDir::new().expect("temp dir");
+    let store = LocalThreadStore::new(test_config(home.path()), /*state_db*/ None);
+    let thread_id = ThreadId::default();
+    create_paginated_thread(&store, thread_id).await;
+    store
+        .persist_thread(thread_id)
+        .await
+        .expect("persist session metadata");
+
+    let pool = xedoc_state::open_thread_history_db(home.path())
+        .await
+        .expect("open thread history db");
+    let before = projection_state(&pool, thread_id).await;
+    let rollout_path = store
+        .live_rollout_path(thread_id)
+        .await
+        .expect("rollout path");
+    append_suffix(
+        rollout_path.as_path(),
+        format!(
+            "{}\n",
+            rollout_line(/*ordinal*/ None, turn_started("turn-1"))
+        )
+        .as_str(),
+    );
+
+    super::materialize_to_sqlite(&store, thread_id, rollout_path.as_path())
+        .await
+        .expect_err("missing ordinal should fail projection");
+
+    assert_eq!(projection_state(&pool, thread_id).await, before);
 }
 
 #[tokio::test]

@@ -75,13 +75,19 @@ use xedoc_protocol::config_types::CollaborationMode;
 use xedoc_protocol::config_types::ModeKind;
 use xedoc_protocol::config_types::Personality;
 use xedoc_protocol::config_types::Settings;
+use xedoc_protocol::items::AgentMessageContent;
+use xedoc_protocol::items::AgentMessageItem;
+use xedoc_protocol::items::TurnItem;
+use xedoc_protocol::items::UserMessageItem;
 use xedoc_protocol::mcp::CallToolResult;
 use xedoc_protocol::models::ContentItem;
+use xedoc_protocol::models::MessagePhase;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::protocol::AgentMessageEvent;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::ImageGenerationEndEvent;
+use xedoc_protocol::protocol::ItemCompletedEvent;
 use xedoc_protocol::protocol::McpInvocation;
 use xedoc_protocol::protocol::McpToolCallEndEvent;
 use xedoc_protocol::protocol::MultiAgentVersion;
@@ -94,6 +100,7 @@ use xedoc_protocol::protocol::TokenUsage;
 use xedoc_protocol::protocol::TokenUsageInfo;
 use xedoc_protocol::protocol::TurnAbortReason;
 use xedoc_protocol::protocol::TurnAbortedEvent;
+use xedoc_protocol::protocol::TurnCompleteEvent;
 use xedoc_protocol::protocol::TurnStartedEvent;
 use xedoc_protocol::user_input::ByteRange;
 use xedoc_protocol::user_input::TextElement;
@@ -148,6 +155,136 @@ async fn thread_resume_paginated_metadata_only_uses_model_context() -> Result<()
     assert_eq!(resumed.id, conversation_id);
     assert_eq!(resumed.history_mode, ThreadHistoryMode::Paginated);
     assert!(resumed.turns.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_resume_projects_non_monotonic_paginated_rollout_suffix() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let xedoc_home = TempDir::new()?;
+    create_config_toml(xedoc_home.path(), &server.uri())?;
+    let filename_ts = "2025-01-05T12-00-00";
+    let meta_rfc3339 = "2025-01-05T12:00:00Z";
+    let conversation_id = create_fake_paginated_rollout(
+        xedoc_home.path(),
+        filename_ts,
+        meta_rfc3339,
+        "Saved user message",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+    let thread_id = ThreadId::from_string(&conversation_id)?;
+    let turn_id = "recovered-final-turn";
+    let recovered_tail = [
+        json!({
+            "timestamp": meta_rfc3339,
+            "ordinal": 3,
+            "type": "event_msg",
+            "payload": serde_json::to_value(EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.to_string(),
+                trace_id: None,
+                started_at: Some(10),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }))?,
+        })
+        .to_string(),
+        json!({
+            "timestamp": meta_rfc3339,
+            "ordinal": 3,
+            "type": "event_msg",
+            "payload": serde_json::to_value(EventMsg::ItemCompleted(ItemCompletedEvent {
+                thread_id,
+                turn_id: turn_id.to_string(),
+                item: TurnItem::UserMessage(UserMessageItem {
+                    id: "recovered-user-message".to_string(),
+                    client_id: None,
+                    content: Vec::new(),
+                }),
+                completed_at_ms: 1,
+            }))?,
+        })
+        .to_string(),
+        json!({
+            "timestamp": meta_rfc3339,
+            "ordinal": 5,
+            "type": "event_msg",
+            "payload": serde_json::to_value(EventMsg::ItemCompleted(ItemCompletedEvent {
+                thread_id,
+                turn_id: turn_id.to_string(),
+                item: TurnItem::AgentMessage(AgentMessageItem {
+                    id: "recovered-final-answer".to_string(),
+                    content: vec![AgentMessageContent::Text {
+                        text: "The final answer survives resume.".to_string(),
+                    }],
+                    phase: Some(MessagePhase::FinalAnswer),
+                }),
+                completed_at_ms: 2,
+            }))?,
+        })
+        .to_string(),
+        json!({
+            "timestamp": meta_rfc3339,
+            "ordinal": 4,
+            "type": "event_msg",
+            "payload": serde_json::to_value(EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: turn_id.to_string(),
+                last_agent_message: None,
+                error: None,
+                started_at: Some(10),
+                completed_at: Some(20),
+                duration_ms: Some(10_000),
+                time_to_first_token_ms: None,
+            }))?,
+        })
+        .to_string(),
+    ]
+    .join("\n");
+    let rollout_file_path = rollout_path(xedoc_home.path(), filename_ts, &conversation_id);
+    let persisted_rollout = std::fs::read_to_string(&rollout_file_path)?;
+    std::fs::write(
+        &rollout_file_path,
+        format!("{persisted_rollout}{recovered_tail}\n"),
+    )?;
+
+    let mut primary = TestAppServer::builder()
+        .with_xedoc_home(xedoc_home.path())
+        .without_auto_env()
+        .build()
+        .await?;
+    timeout(DEFAULT_READ_TIMEOUT, primary.initialize()).await??;
+
+    let resume_id = primary
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: conversation_id,
+            ..Default::default()
+        })
+        .await?;
+    let resume_resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        primary.read_stream_until_response_message(RequestId::Integer(resume_id)),
+    )
+    .await??;
+    let ThreadResumeResponse { thread, .. } = to_response::<ThreadResumeResponse>(resume_resp)?;
+
+    assert_eq!(thread.turns.len(), 1);
+    assert_eq!(thread.turns[0].id, turn_id);
+    assert_eq!(thread.turns[0].status, TurnStatus::Completed);
+    assert_eq!(
+        thread.turns[0].items,
+        vec![
+            ThreadItem::UserMessage {
+                id: "recovered-user-message".to_string(),
+                client_id: None,
+                content: Vec::new(),
+            },
+            ThreadItem::AgentMessage {
+                id: "recovered-final-answer".to_string(),
+                text: "The final answer survives resume.".to_string(),
+                phase: Some(MessagePhase::FinalAnswer),
+            },
+        ]
+    );
     Ok(())
 }
 

@@ -2,16 +2,14 @@
 
 use super::*;
 use crate::city_lights::CityLightsStylize;
-use crate::diff_render::DiffLineType;
-use crate::diff_render::current_diff_render_style_context;
-use crate::diff_render::push_wrapped_diff_line_with_style_context;
-use crate::diff_render::push_wrapped_diff_line_with_syntax_and_style_context;
+use crate::diff_model::FileChange;
+use crate::diff_render::create_diff_summary;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::render::highlight::highlight_bash_to_lines;
-use crate::render::highlight::highlight_code_to_styled_spans;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::Path;
+use std::path::PathBuf;
 
 const MAX_TRACKED_CALLS: usize = 512;
 const MAX_LABEL_CHARS: usize = 80;
@@ -33,7 +31,8 @@ pub enum ToolCallSummaryPreview {
         path: String,
         added: usize,
         removed: usize,
-        diff_lines: Vec<String>,
+        unified_diff: String,
+        omitted_diff_lines: usize,
     },
 }
 
@@ -352,7 +351,8 @@ impl HistoryCell for ToolCallSummaryCell {
                 path,
                 added,
                 removed,
-                diff_lines,
+                unified_diff,
+                omitted_diff_lines,
             }) => {
                 let mut lines = vec![Line::from(vec![
                     "• ".dim(),
@@ -363,50 +363,21 @@ impl HistoryCell for ToolCallSummaryCell {
                     " ".into(),
                     format!("-{removed}").cl_red(),
                 ])];
-                let style_context = current_diff_render_style_context();
-                for (index, diff_line) in diff_lines.iter().take(3).enumerate() {
-                    let (kind, content) = if let Some(content) = diff_line.strip_prefix('+') {
-                        (DiffLineType::Insert, content)
-                    } else if let Some(content) = diff_line.strip_prefix('-') {
-                        (DiffLineType::Delete, content)
-                    } else {
-                        (DiffLineType::Context, diff_line.as_str())
-                    };
-                    let syntax_spans = Path::new(path)
-                        .extension()
-                        .and_then(|extension| extension.to_str())
-                        .and_then(|language| highlight_code_to_styled_spans(content, language))
-                        .and_then(|lines| lines.into_iter().next());
-                    let rendered = syntax_spans.map_or_else(
-                        || {
-                            push_wrapped_diff_line_with_style_context(
-                                index + 1,
-                                kind,
-                                content,
-                                usize::from(width).saturating_sub(2),
-                                /*line_number_width*/ 1,
-                                style_context,
-                            )
-                        },
-                        |spans| {
-                            push_wrapped_diff_line_with_syntax_and_style_context(
-                                index + 1,
-                                kind,
-                                content,
-                                usize::from(width).saturating_sub(2),
-                                /*line_number_width*/ 1,
-                                &spans,
-                                style_context,
-                            )
-                        },
-                    );
-                    if let Some(rendered) = rendered.into_iter().next() {
-                        let mut line = Line::from("  ".dim());
-                        line.extend(rendered);
-                        lines.push(line);
-                    }
-                }
-                let omitted = diff_lines.len().saturating_sub(3);
+                let changes = HashMap::from([(
+                    PathBuf::from(path),
+                    FileChange::Update {
+                        unified_diff: unified_diff.clone(),
+                        move_path: None,
+                    },
+                )]);
+                let mut rendered = create_diff_summary(
+                    &changes,
+                    Path::new(""),
+                    usize::from(width).saturating_sub(2),
+                );
+                rendered.remove(0);
+                let omitted = omitted_diff_lines.saturating_add(rendered.len().saturating_sub(3));
+                lines.extend(rendered.into_iter().take(3));
                 if omitted > 0 {
                     lines.push(format!("  ... {omitted} more lines").dim().into());
                 }
