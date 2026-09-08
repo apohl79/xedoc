@@ -121,6 +121,7 @@ mod search;
 mod separators;
 mod session;
 mod token_optimizer;
+mod tool_summary;
 
 pub use approvals::*;
 pub use base::*;
@@ -138,6 +139,7 @@ pub use search::*;
 pub use separators::*;
 pub use session::*;
 pub use token_optimizer::*;
+pub use tool_summary::*;
 
 #[cfg(test)]
 mod tests;

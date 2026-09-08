@@ -144,8 +144,12 @@ impl ChatWidget {
                         .unwrap_or(xedoc_app_server_protocol::WebSearchAction::Other),
                 );
             }
-            ThreadItem::ImageView { id: _, path } => {
-                self.on_view_image_tool_call(path);
+            item @ ThreadItem::ImageView { .. } => {
+                if self.optimized_tool_call_rendering() {
+                    self.handle_tool_summary_completed_now(item);
+                } else if let ThreadItem::ImageView { path, .. } = item {
+                    self.on_view_image_tool_call(path);
+                }
             }
             ThreadItem::ImageGeneration(item) => {
                 self.on_image_generation_end(
@@ -189,7 +193,11 @@ impl ChatWidget {
                 agents_states,
             }),
             item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),
-            ThreadItem::DynamicToolCall { .. } => {}
+            item @ ThreadItem::DynamicToolCall { .. } => {
+                if self.optimized_tool_call_rendering() {
+                    self.handle_tool_summary_completed_now(item);
+                }
+            }
             ThreadItem::Sleep(_) => {}
         }
 

@@ -28,6 +28,16 @@ async fn token_count_none_resets_context_indicator() {
 }
 
 #[tokio::test]
+async fn token_optimizer_stats_loading_cell_is_not_committed_to_history() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.add_token_usage_optimizer_stats_loading();
+    chat.flush_active_cell();
+
+    assert!(rx.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn app_server_cyber_policy_error_renders_dedicated_notice() {
     let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 

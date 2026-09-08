@@ -994,6 +994,7 @@ async fn persist_tool_output_reduction(
         .map(reducer_name)
         .collect::<Vec<_>>()
         .join(",");
+    let mut tx = pool.begin().await?;
     sqlx::query(
         "INSERT INTO tool_output_reductions \
          (thread_id, turn_id, call_id, command_hash, tool_name, kind, level, reducers_applied, \
@@ -1019,8 +1020,38 @@ async fn persist_tool_output_reduction(
     .bind(record.recorded_at)
     .bind(record.model_slug.as_deref())
     .bind(record.input_price_per_1m)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+
+    let recorded_day = record.recorded_at.div_euclid(86400) * 86400;
+    let last_folded_day: i64 = sqlx::query_scalar(
+        "SELECT last_folded_day FROM tool_output_reduction_rollup_state WHERE id = 0",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if recorded_day <= last_folded_day {
+        sqlx::query("DELETE FROM tool_output_reduction_daily WHERE day = ?")
+            .bind(recorded_day)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT INTO tool_output_reduction_daily \
+             (day, model_slug, reductions, tokens_saved, cost_saved_usd) \
+             SELECT ?, model_slug, COUNT(*), \
+                    COALESCE(SUM(est_tokens_in - est_tokens_out), 0), \
+                    COALESCE(SUM(CASE WHEN input_price_per_1m IS NULL THEN 0.0 \
+                        ELSE (est_tokens_in - est_tokens_out) * input_price_per_1m / 1000000.0 END), 0.0) \
+             FROM tool_output_reductions \
+             WHERE recorded_at >= ? AND recorded_at < ? \
+             GROUP BY model_slug",
+        )
+        .bind(recorded_day)
+        .bind(recorded_day)
+        .bind(recorded_day + 86400)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     // Keep dashboard history bounded even when users never invoke reset-stats.
     // The age cutoff handles dormant databases; the row cap handles high-volume
     // sessions while retaining the newest records.
@@ -1038,7 +1069,7 @@ async fn persist_tool_output_reduction(
     )
     .bind(cutoff)
     .bind(TOOL_OUTPUT_REDUCTION_ROW_LIMIT)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
     sqlx::query(
         "DELETE FROM tool_output_retrievals
@@ -1046,8 +1077,9 @@ async fn persist_tool_output_reduction(
              SELECT 1 FROM tool_output_reductions d WHERE d.call_id = tool_output_retrievals.call_id
          )",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 

@@ -152,6 +152,7 @@ use xedoc_config::CloudConfigBundleLoader;
 use xedoc_config::ConfigLayerStackOrdering;
 use xedoc_config::LoaderOverrides;
 use xedoc_config::types::ModelAvailabilityNuxConfig;
+use xedoc_config::types::ToolCallRenderingMode;
 use xedoc_exec_server::EnvironmentManager;
 use xedoc_features::Feature;
 use xedoc_features::FeaturesToml;

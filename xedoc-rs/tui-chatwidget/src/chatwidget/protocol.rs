@@ -260,15 +260,33 @@ impl ChatWidget {
     ) {
         match notification.item {
             item @ ThreadItem::CommandExecution { .. } => self.on_command_execution_started(item),
-            ThreadItem::FileChange { id: _, changes, .. } => {
-                self.on_patch_apply_begin(file_update_changes_to_display(changes));
+            ThreadItem::FileChange { id, changes, .. } => {
+                if self.optimized_tool_call_rendering() {
+                    self.record_tool_call_start(id, "apply patch".to_string());
+                } else {
+                    self.on_patch_apply_begin(id, file_update_changes_to_display(changes));
+                }
             }
             item @ ThreadItem::McpToolCall { .. } => self.on_mcp_tool_call_started(item),
             ThreadItem::WebSearch(item) => {
-                self.on_web_search_begin(item.id);
+                if self.optimized_tool_call_rendering() {
+                    self.record_tool_call_start(item.id, "web search".to_string());
+                } else {
+                    self.on_web_search_begin(item.id);
+                }
             }
-            ThreadItem::ImageGeneration(_) => {
-                self.on_image_generation_begin();
+            ThreadItem::ImageGeneration(item) => {
+                if self.optimized_tool_call_rendering() {
+                    self.record_tool_call_start(item.id, "generate image".to_string());
+                } else {
+                    self.on_image_generation_begin();
+                }
+            }
+            ThreadItem::ImageView { id, .. } if self.optimized_tool_call_rendering() => {
+                self.record_tool_call_start(id, "view image".to_string());
+            }
+            item @ ThreadItem::DynamicToolCall { .. } if self.optimized_tool_call_rendering() => {
+                self.handle_tool_summary_started_now(item);
             }
             ThreadItem::CollabAgentToolCall {
                 id,

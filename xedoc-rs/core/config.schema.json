@@ -2913,6 +2913,25 @@
       ],
       "type": "string"
     },
+    "ToolCallRenderingMode": {
+      "description": "Controls how tool calls are rendered in the TUI transcript.",
+      "oneOf": [
+        {
+          "description": "Render tool calls using the standard detailed presentation.",
+          "enum": [
+            "normal"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render tool calls using the compact optimized presentation.",
+          "enum": [
+            "optimized"
+          ],
+          "type": "string"
+        }
+      ]
+    },
     "ToolsToml": {
       "additionalProperties": false,
       "properties": {
@@ -3203,6 +3222,15 @@
           "default": null,
           "description": "Syntax highlighting theme name (kebab-case).\n\nWhen set, overrides automatic light/dark theme detection. Use `/theme` in the TUI or see `$XEDOC_HOME/themes` for custom themes.",
           "type": "string"
+        },
+        "tool_call_rendering": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ToolCallRenderingMode"
+            }
+          ],
+          "default": "normal",
+          "description": "Controls how tool calls are rendered in the TUI transcript. Defaults to `normal`."
         },
         "vim_mode_default": {
           "default": false,

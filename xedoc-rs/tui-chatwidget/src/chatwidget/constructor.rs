@@ -99,6 +99,8 @@ impl ChatWidget {
                 skills: None,
             }),
             transcript: TranscriptState::new(active_cell),
+            tool_call_summary: None,
+            tool_call_rendering_mode_for_turn: None,
             raw_output_mode: config.tui_raw_output_mode,
             config,
             effective_service_tier,

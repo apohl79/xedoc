@@ -382,9 +382,11 @@ mod status_controls;
 mod status_surfaces;
 mod streaming;
 use self::status_surfaces::CachedProjectRootName;
+mod tool_call_summary;
 mod tool_lifecycle;
 mod tool_requests;
 mod transcript;
+use self::tool_call_summary::ToolCallSummaryState;
 use self::transcript::TranscriptState;
 mod turn_lifecycle;
 mod turn_runtime;
@@ -497,6 +499,10 @@ pub struct ChatWidget {
     xedoc_op_target: XedocOpTarget,
     bottom_pane: BottomPane,
     transcript: TranscriptState,
+    /// Live aggregate tool summary used only by optimized tool-call rendering.
+    tool_call_summary: Option<ToolCallSummaryState>,
+    /// Tool rendering preference captured when the active agent turn started.
+    tool_call_rendering_mode_for_turn: Option<xedoc_config::types::ToolCallRenderingMode>,
     config: Config,
     raw_output_mode: bool,
     /// Runtime value resolved by core. `config.service_tier` remains the explicit user choice.
@@ -1012,6 +1018,14 @@ impl ChatWidget {
 
     fn flush_active_cell(&mut self) {
         if let Some(active) = self.transcript.active_cell.take() {
+            if active
+                .as_any()
+                .is::<history_cell::TokenUsageOptimizerStatsLoadingCell>()
+            {
+                self.bump_active_cell_revision();
+                self.request_redraw();
+                return;
+            }
             self.transcript.needs_final_message_separator = true;
             self.app_event_tx.send(AppEvent::InsertHistoryCell(active));
         }
@@ -1681,8 +1695,12 @@ impl ChatWidget {
     /// the main viewport updates.
     pub fn active_cell_transcript_key(&self) -> Option<ActiveCellTranscriptKey> {
         let cell = self.transcript.active_cell.as_ref();
+        let tool_summary = self
+            .optimized_tool_call_rendering()
+            .then_some(self.tool_call_summary.as_ref())
+            .flatten();
         let hook_cell = self.active_hook_cell.as_ref();
-        if cell.is_none() && hook_cell.is_none() {
+        if cell.is_none() && tool_summary.is_none() && hook_cell.is_none() {
             return None;
         }
         Some(ActiveCellTranscriptKey {
@@ -1708,6 +1726,15 @@ impl ChatWidget {
         let mut lines = Vec::new();
         if let Some(cell) = self.transcript.active_cell.as_ref() {
             lines.extend(cell.transcript_hyperlink_lines(width));
+        }
+        if self.optimized_tool_call_rendering()
+            && let Some(summary) = self.tool_call_summary.as_ref()
+        {
+            let summary_lines = summary.cell().transcript_hyperlink_lines(width);
+            if !summary_lines.is_empty() && !lines.is_empty() {
+                lines.push(HyperlinkLine::from(""));
+            }
+            lines.extend(summary_lines);
         }
         if let Some(hook_cell) = self.active_hook_cell.as_ref() {
             // Compute hook lines first so hidden hooks do not add a separator.

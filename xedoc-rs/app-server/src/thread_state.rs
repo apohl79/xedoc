@@ -103,6 +103,7 @@ pub(crate) struct ThreadState {
     pub(crate) pending_rollbacks: Option<ConnectionRequestId>,
     pub(crate) turn_summary: TurnSummary,
     pub(crate) last_terminal_turn_id: Option<String>,
+    latest_terminal_turn: Option<Turn>,
     pub(crate) cancel_tx: Option<oneshot::Sender<()>>,
     pub(crate) experimental_raw_events: bool,
     pub(crate) listener_generation: u64,
@@ -148,6 +149,7 @@ impl ThreadState {
         }
         self.listener_command_tx = None;
         self.current_turn_history.reset();
+        self.latest_terminal_turn = None;
         self.listener_thread = None;
         self.watch_registration = WatchRegistration::default();
     }
@@ -164,6 +166,11 @@ impl ThreadState {
 
     pub(crate) fn active_turn_snapshot(&self) -> Option<Turn> {
         self.current_turn_history.active_turn_snapshot()
+    }
+
+    pub(crate) fn latest_turn_snapshot(&self) -> Option<Turn> {
+        self.active_turn_snapshot()
+            .or_else(|| self.latest_terminal_turn.clone())
     }
 
     pub(crate) fn active_turn_id_if_explicit(&self) -> Option<String> {
@@ -189,6 +196,7 @@ impl ThreadState {
             && !self.current_turn_history.has_active_turn()
         {
             self.last_terminal_turn_id = Some(event_turn_id.to_string());
+            self.latest_terminal_turn = self.current_turn_history.active_turn_snapshot();
             self.current_turn_history.reset();
         }
     }

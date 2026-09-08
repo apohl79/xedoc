@@ -16,6 +16,8 @@ pub(super) struct SafetyBufferedRetry {
     pub(super) prompt: UserMessage,
 }
 
+const SAFETY_RETRY_TURN_WINDOW: u32 = 2;
+
 impl App {
     pub(super) async fn retry_safety_buffered_turn(
         &mut self,
@@ -44,7 +46,9 @@ impl App {
             return;
         }
 
-        let retry_config = self.chat_widget.config_ref().clone();
+        let mut retry_config = self.chat_widget.config_ref().clone();
+        retry_config.model = Some(model.clone());
+        retry_config.model_reasoning_effort = Some(ReasoningEffortConfig::Low);
         let input_state = self.chat_widget.capture_thread_input_state();
         let mut retry_input_state = input_state
             .clone()
@@ -58,6 +62,7 @@ impl App {
 
         let AppCommand::UserTurn {
             items,
+            pending_steer_id,
             model: turn_model,
             effort,
             collaboration_mode,
@@ -69,6 +74,7 @@ impl App {
             );
             return;
         };
+        *pending_steer_id = None;
         *turn_model = model.clone();
         *effort = Some(ReasoningEffortConfig::Low);
         *collaboration_mode = collaboration_mode.as_ref().map(|mode| {
@@ -86,7 +92,7 @@ impl App {
         }
 
         let thread = match app_server
-            .thread_read(thread_id, /*include_turns*/ true)
+            .thread_read_latest_turns(thread_id, SAFETY_RETRY_TURN_WINDOW)
             .await
         {
             Ok(thread) => thread,
@@ -161,6 +167,9 @@ impl App {
                 preserve_in_flight_turn: false,
             },
         );
+        if let Some(channel) = self.thread_event_channels.get(&retry_thread_id) {
+            channel.store.lock().await.clear_active_turn_id();
+        }
         self.chat_widget
             .prepare_safety_buffered_retry_submission(prompt.clone());
         if let Err(err) = self

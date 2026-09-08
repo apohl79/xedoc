@@ -7,7 +7,15 @@ use super::*;
 use xedoc_utils_path_uri::LegacyAppPathString;
 
 impl ChatWidget {
-    pub(super) fn on_patch_apply_begin(&mut self, changes: HashMap<PathBuf, FileChange>) {
+    pub(super) fn on_patch_apply_begin(
+        &mut self,
+        id: String,
+        changes: HashMap<PathBuf, FileChange>,
+    ) {
+        if self.optimized_tool_call_rendering() {
+            self.record_tool_call_start(id, "apply patch".to_string());
+            return;
+        }
         self.add_to_history(history_cell::new_patch_event(changes, &self.config.cwd));
     }
 
@@ -21,6 +29,9 @@ impl ChatWidget {
     }
 
     pub(super) fn on_image_generation_begin(&mut self) {
+        if self.optimized_tool_call_rendering() {
+            return;
+        }
         self.flush_answer_stream_with_separator();
         if self.bottom_pane.is_task_running() {
             self.bottom_pane.ensure_status_indicator();
@@ -34,6 +45,18 @@ impl ChatWidget {
         revised_prompt: Option<String>,
         saved_path: Option<AbsolutePathBuf>,
     ) {
+        if self.optimized_tool_call_rendering() {
+            self.record_tool_call_completion(
+                call_id,
+                "generate image".to_string(),
+                if status.eq_ignore_ascii_case("completed") {
+                    history_cell::ToolCallSummaryOutcome::Succeeded
+                } else {
+                    history_cell::ToolCallSummaryOutcome::Failed
+                },
+            );
+            return;
+        }
         self.flush_answer_stream_with_separator();
         self.add_to_history(history_cell::new_image_generation_call(
             call_id,
@@ -45,6 +68,10 @@ impl ChatWidget {
     }
 
     pub(super) fn on_file_change_completed(&mut self, item: ThreadItem) {
+        if self.optimized_tool_call_rendering() {
+            self.handle_tool_summary_completed_now(item);
+            return;
+        }
         self.defer_or_handle(
             item,
             InterruptManager::push_item_completed,
@@ -53,6 +80,10 @@ impl ChatWidget {
     }
 
     pub(super) fn on_mcp_tool_call_started(&mut self, item: ThreadItem) {
+        if self.optimized_tool_call_rendering() {
+            self.handle_tool_summary_started_now(item);
+            return;
+        }
         self.defer_or_handle(
             item,
             InterruptManager::push_item_started,
@@ -61,6 +92,10 @@ impl ChatWidget {
     }
 
     pub(super) fn on_mcp_tool_call_completed(&mut self, item: ThreadItem) {
+        if self.optimized_tool_call_rendering() {
+            self.handle_tool_summary_completed_now(item);
+            return;
+        }
         self.defer_or_handle(
             item,
             InterruptManager::push_item_completed,
@@ -69,6 +104,10 @@ impl ChatWidget {
     }
 
     pub(super) fn on_web_search_begin(&mut self, call_id: String) {
+        if self.optimized_tool_call_rendering() {
+            self.record_tool_call_start(call_id, "web search".to_string());
+            return;
+        }
         self.flush_answer_stream_with_separator();
         self.flush_active_cell();
         self.transcript.active_cell = Some(Box::new(history_cell::new_active_web_search_call(
@@ -86,6 +125,14 @@ impl ChatWidget {
         query: String,
         action: xedoc_app_server_protocol::WebSearchAction,
     ) {
+        if self.optimized_tool_call_rendering() {
+            self.record_tool_call_completion(
+                call_id,
+                "web search".to_string(),
+                history_cell::ToolCallSummaryOutcome::Succeeded,
+            );
+            return;
+        }
         self.flush_answer_stream_with_separator();
         let mut handled = false;
         if let Some(cell) = self
@@ -115,6 +162,18 @@ impl ChatWidget {
     }
 
     pub(super) fn on_collab_agent_tool_call(&mut self, item: ThreadItem) {
+        if self.optimized_tool_call_rendering() {
+            if let ThreadItem::CollabAgentToolCall {
+                status: xedoc_app_server_protocol::CollabAgentToolCallStatus::InProgress,
+                ..
+            } = &item
+            {
+                self.handle_tool_summary_started_now(item);
+            } else {
+                self.handle_tool_summary_completed_now(item);
+            }
+            return;
+        }
         let ThreadItem::CollabAgentToolCall {
             id, tool, status, ..
         } = &item
@@ -152,6 +211,10 @@ impl ChatWidget {
     }
 
     pub fn handle_file_change_completed_now(&mut self, item: ThreadItem) {
+        if self.optimized_tool_call_rendering() {
+            self.handle_tool_summary_completed_now(item);
+            return;
+        }
         let ThreadItem::FileChange { status, .. } = item else {
             return;
         };
@@ -165,6 +228,10 @@ impl ChatWidget {
     }
 
     pub fn handle_mcp_tool_call_started_now(&mut self, item: ThreadItem) {
+        if self.optimized_tool_call_rendering() {
+            self.handle_tool_summary_started_now(item);
+            return;
+        }
         let ThreadItem::McpToolCall {
             id,
             server,
@@ -191,6 +258,10 @@ impl ChatWidget {
     }
 
     pub fn handle_mcp_tool_call_completed_now(&mut self, item: ThreadItem) {
+        if self.optimized_tool_call_rendering() {
+            self.handle_tool_summary_completed_now(item);
+            return;
+        }
         self.flush_answer_stream_with_separator();
 
         let ThreadItem::McpToolCall {

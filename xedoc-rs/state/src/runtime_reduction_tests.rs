@@ -1,4 +1,5 @@
 use super::payload_kind_name;
+use super::persist_tool_output_reduction;
 use super::reducer_name;
 use super::reduction_level_name;
 use crate::SqliteConfig;
@@ -537,5 +538,56 @@ async fn daily_rollup_folds_complete_days_idempotently_and_reset_preserves_it() 
     assert_eq!(report_after_reset.reductions, 2);
     runtime.close().await;
     pool.close().await;
+    let _ = tokio::fs::remove_dir_all(xedoc_home).await;
+}
+
+#[tokio::test]
+async fn late_reduction_refreshes_an_already_folded_daily_rollup() {
+    let xedoc_home = super::test_support::unique_temp_dir();
+    let runtime = super::StateRuntime::init(xedoc_home.clone(), "test-provider".to_string())
+        .await
+        .expect("state runtime should initialize");
+    let yesterday = chrono::Utc::now().timestamp().div_euclid(86400) * 86400 - 86400;
+    let record = |call_id: &str, model_slug: Option<&str>, tokens_saved: i64| ReductionRecord {
+        thread_id: Some("thread-late-rollup".to_string()),
+        turn_id: Some(format!("turn-{call_id}")),
+        call_id: call_id.to_string(),
+        command_hash: None,
+        tool_name: "shell".to_string(),
+        kind: PayloadKind::Prose,
+        level: ReductionLevel::Balanced,
+        reducers_applied: vec![ReducerId::Normalize],
+        bytes_in: (tokens_saved * 4) as u64,
+        bytes_out: 0,
+        est_tokens_in: tokens_saved,
+        est_tokens_out: 0,
+        model_slug: model_slug.map(str::to_string),
+        input_price_per_1m: Some(1.0),
+        duration_us: 1,
+        spilled: false,
+        spill_path: None,
+        recorded_at: yesterday + 1,
+    };
+
+    persist_tool_output_reduction(runtime.pool.as_ref(), &record("first", Some("model-a"), 10))
+        .await
+        .expect("first reduction should persist");
+    runtime
+        .fold_tool_output_reductions_into_daily()
+        .await
+        .expect("first report fold should succeed");
+    persist_tool_output_reduction(runtime.pool.as_ref(), &record("late", None, 20))
+        .await
+        .expect("late reduction should refresh the daily rollup");
+
+    let report = runtime
+        .tool_output_reduction_report(yesterday, yesterday, /*model_filter*/ None)
+        .await
+        .expect("report should succeed");
+    assert_eq!(report.reductions, 2);
+    assert_eq!(report.tokens_saved, 30);
+    assert_eq!(report.days[0].by_model.len(), 2);
+
+    runtime.close().await;
     let _ = tokio::fs::remove_dir_all(xedoc_home).await;
 }

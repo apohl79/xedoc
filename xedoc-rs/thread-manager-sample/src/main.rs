@@ -42,6 +42,7 @@ use xedoc_core_api::SharedModelRegistry;
 use xedoc_core_api::TerminalResizeReflowConfig;
 use xedoc_core_api::ThreadManager;
 use xedoc_core_api::ThreadStoreConfig;
+use xedoc_core_api::ToolCallRenderingMode;
 use xedoc_core_api::TuiKeymap;
 use xedoc_core_api::TuiNotificationSettings;
 use xedoc_core_api::UriBasedFileOpener;
@@ -213,6 +214,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         tui_terminal_title: None,
         tui_theme: None,
         tui_raw_output_mode: false,
+        tui_tool_call_rendering: ToolCallRenderingMode::Normal,
         terminal_resize_reflow: TerminalResizeReflowConfig::default(),
         tui_keymap: TuiKeymap::default(),
         tui_session_picker_view: SessionPickerViewMode::Dense,

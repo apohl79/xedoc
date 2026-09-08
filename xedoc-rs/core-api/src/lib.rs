@@ -16,6 +16,7 @@ pub use xedoc_config::types::Notice;
 pub use xedoc_config::types::OAuthCredentialsStoreMode;
 pub use xedoc_config::types::OtelConfig;
 pub use xedoc_config::types::SessionPickerViewMode;
+pub use xedoc_config::types::ToolCallRenderingMode;
 pub use xedoc_config::types::TuiKeymap;
 pub use xedoc_config::types::TuiNotificationSettings;
 pub use xedoc_config::types::UriBasedFileOpener;
