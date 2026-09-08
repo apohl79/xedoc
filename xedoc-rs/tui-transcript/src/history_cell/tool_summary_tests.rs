@@ -121,8 +121,7 @@ fn persistent_summary_counts_file_and_web_activity() {
         rendered,
         vec![
             "────────────────────".to_string(),
-            "• Made 3 tool calls. 1 file edited. 1 web search performed. 1 web page fetched."
-                .to_string(),
+            "• 1 file edited. 1 web search performed. 1 web page fetched.".to_string(),
             "────────────────────".to_string(),
         ]
     );
@@ -187,4 +186,42 @@ fn completed_command_preview_says_ran_when_another_call_is_in_progress() {
     );
 
     assert_eq!(rendered_lines(&cell)[1], "• Ran first command");
+}
+
+#[test]
+fn file_change_preview_uses_apply_patch_and_syntax_styles() {
+    let preview = |path: &str| ToolCallSummaryPreview::FileChange {
+        path: path.to_string(),
+        added: 1,
+        removed: 0,
+        diff_lines: vec!["+let answer = 42;".to_string()],
+    };
+    let mut rust = ToolCallSummaryCell::new();
+    rust.start_call_with_preview(
+        "rust".to_string(),
+        "apply patch".to_string(),
+        Some(preview("src/main.rs")),
+    );
+    let rust_lines = rust.display_lines(/*width*/ 120);
+
+    let mut plain = ToolCallSummaryCell::new();
+    plain.start_call_with_preview(
+        "plain".to_string(),
+        "apply patch".to_string(),
+        Some(preview("src/main.txt")),
+    );
+    let plain_lines = plain.display_lines(/*width*/ 120);
+
+    assert_eq!(rust_lines[1].to_string(), "• Edited src/main.rs +1 -0");
+    let rust_styles = rust_lines[2]
+        .spans
+        .iter()
+        .map(|span| span.style)
+        .collect::<Vec<_>>();
+    let plain_styles = plain_lines[2]
+        .spans
+        .iter()
+        .map(|span| span.style)
+        .collect::<Vec<_>>();
+    assert_ne!(rust_styles, plain_styles);
 }

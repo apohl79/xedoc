@@ -137,9 +137,29 @@ async fn optimized_mode_inserts_a_persistent_summary_before_following_output() {
         .iter()
         .map(|lines| lines_to_single_string(lines))
         .collect::<String>();
-    assert!(rendered.contains("Made 2 tool calls. 1 web search performed."));
+    assert!(rendered.contains("1 web search performed."));
     assert!(!rendered.contains("Calls:"));
     assert!(!rendered.contains("summary"));
+    assert!(chat.tool_call_summary.is_some());
+
+    chat.stream_controller = None;
+    chat.on_web_search_begin("second-search".to_string());
+    chat.on_web_search_end(
+        "second-search".to_string(),
+        "ratatui themes".to_string(),
+        xedoc_app_server_protocol::WebSearchAction::Search {
+            query: Some("ratatui themes".to_string()),
+            queries: None,
+        },
+    );
+    chat.handle_streaming_delta("A second output block.".to_string());
+
+    let second_rendered = drain_insert_history(&mut rx)
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<String>();
+    assert!(second_rendered.contains("1 web search performed."));
+    assert!(!second_rendered.contains("2 web searches performed."));
 }
 
 #[tokio::test]
@@ -403,7 +423,7 @@ async fn optimized_mode_keeps_user_shell_detailed() {
 }
 
 #[tokio::test]
-async fn optimized_replay_does_not_persist_tool_blocks() {
+async fn optimized_replay_omits_command_only_tool_summary() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     optimized_chat(&mut chat);
 
