@@ -93,6 +93,8 @@ use xedoc_app_server_protocol::ThreadSource;
 use xedoc_app_server_protocol::ThreadStartParams;
 use xedoc_app_server_protocol::ThreadStartResponse;
 use xedoc_app_server_protocol::ThreadStartSource;
+use xedoc_app_server_protocol::ThreadTurnsListParams;
+use xedoc_app_server_protocol::ThreadTurnsListResponse;
 use xedoc_app_server_protocol::ThreadUnarchiveParams;
 use xedoc_app_server_protocol::ThreadUnarchiveResponse;
 use xedoc_app_server_protocol::ThreadUnsubscribeParams;
@@ -738,6 +740,37 @@ impl AppServerSession {
             .await
             .wrap_err("thread/read failed during TUI session lookup")?;
         Ok(response.thread)
+    }
+
+    /// Reads thread metadata and a bounded, chronological suffix of full turns.
+    pub async fn thread_read_latest_turns(
+        &mut self,
+        thread_id: ThreadId,
+        turn_limit: u32,
+    ) -> Result<Thread> {
+        let mut thread = self.thread_read(thread_id, /*include_turns*/ false).await?;
+        if !matches!(thread.history_mode, ThreadHistoryMode::Paginated) {
+            return self.thread_read(thread_id, /*include_turns*/ true).await;
+        }
+
+        let request_id = self.next_request_id();
+        let response: ThreadTurnsListResponse = self
+            .client
+            .request_typed(ClientRequest::ThreadTurnsList {
+                request_id,
+                params: ThreadTurnsListParams {
+                    thread_id: thread_id.to_string(),
+                    cursor: None,
+                    limit: Some(turn_limit),
+                    sort_direction: Some(SortDirection::Desc),
+                    items_view: Some(TurnItemsView::Full),
+                },
+            })
+            .await
+            .wrap_err("thread/turns/list failed during TUI session lookup")?;
+        thread.turns = response.data;
+        thread.turns.reverse();
+        Ok(thread)
     }
 
     pub async fn thread_archive(&mut self, thread_id: ThreadId) -> Result<()> {

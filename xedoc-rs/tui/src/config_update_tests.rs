@@ -2,6 +2,7 @@ use super::*;
 use color_eyre::eyre::WrapErr;
 use pretty_assertions::assert_eq;
 use std::path::Path;
+use xedoc_config::types::ToolCallRenderingMode;
 
 #[test]
 fn trusted_project_edit_targets_project_trust_level() {
@@ -88,5 +89,17 @@ fn build_model_selection_edits_persists_provider_when_clearing_reasoning_effort(
                 merge_strategy: MergeStrategy::Replace,
             },
         ]
+    );
+}
+
+#[test]
+fn build_tool_call_rendering_edit_targets_tui_setting() {
+    assert_eq!(
+        build_tool_call_rendering_edit(ToolCallRenderingMode::Optimized),
+        ConfigEdit {
+            key_path: "tui.tool_call_rendering".to_string(),
+            value: serde_json::json!("optimized"),
+            merge_strategy: MergeStrategy::Replace,
+        }
     );
 }

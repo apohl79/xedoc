@@ -2280,6 +2280,74 @@ async fn raw_slash_command_reports_usage_for_invalid_arg() {
 }
 
 #[tokio::test]
+async fn tool_rendering_slash_command_toggles_and_accepts_explicit_modes() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    assert_eq!(
+        chat.tool_call_rendering_mode(),
+        xedoc_config::types::ToolCallRenderingMode::Normal
+    );
+
+    chat.dispatch_command(SlashCommand::ToolRendering);
+    assert_eq!(
+        chat.tool_call_rendering_mode(),
+        xedoc_config::types::ToolCallRenderingMode::Optimized
+    );
+    chat.dispatch_command_with_args(
+        SlashCommand::ToolRendering,
+        "normal".to_string(),
+        Vec::new(),
+    );
+    assert_eq!(
+        chat.tool_call_rendering_mode(),
+        xedoc_config::types::ToolCallRenderingMode::Normal
+    );
+    chat.dispatch_command_with_args(
+        SlashCommand::ToolRendering,
+        "optimized".to_string(),
+        Vec::new(),
+    );
+    assert_eq!(
+        chat.tool_call_rendering_mode(),
+        xedoc_config::types::ToolCallRenderingMode::Optimized
+    );
+
+    let events = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AppEvent::ToolCallRenderingModeChanged {
+            mode: xedoc_config::types::ToolCallRenderingMode::Normal
+        }
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AppEvent::ToolCallRenderingModeChanged {
+            mode: xedoc_config::types::ToolCallRenderingMode::Optimized
+        }
+    )));
+}
+
+#[tokio::test]
+async fn tool_rendering_slash_command_reports_usage_for_invalid_arg() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    chat.dispatch_command_with_args(
+        SlashCommand::ToolRendering,
+        "compact".to_string(),
+        Vec::new(),
+    );
+
+    assert_eq!(
+        chat.tool_call_rendering_mode(),
+        xedoc_config::types::ToolCallRenderingMode::Normal
+    );
+    let rendered = drain_insert_history(&mut rx)
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<String>();
+    assert!(rendered.contains("Usage: /tool-rendering [normal|optimized]"));
+}
+
+#[tokio::test]
 async fn compact_queues_user_messages_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());

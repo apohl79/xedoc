@@ -525,6 +525,69 @@ impl App {
         self.chat_widget.set_auto_session_name(enabled);
     }
 
+    pub(super) async fn update_tool_call_rendering_setting_with_app_server(
+        &mut self,
+        app_server: &mut AppServerSession,
+        mode: ToolCallRenderingMode,
+    ) {
+        let previous_mode = self.config.tui_tool_call_rendering;
+        let write_response = match crate::config_update::write_config_batch(
+            app_server.request_handle(),
+            vec![crate::config_update::build_tool_call_rendering_edit(mode)],
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                tracing::error!(error = %err, "failed to persist tool call rendering mode");
+                if self.chat_widget.tool_call_rendering_mode() != previous_mode {
+                    self.chat_widget
+                        .set_tool_call_rendering_mode_and_notify(previous_mode);
+                }
+                self.chat_widget
+                    .add_error_message(format!("Failed to save tool call rendering mode: {err}"));
+                return;
+            }
+        };
+        if write_response.status == WriteStatus::OkOverridden {
+            let message = overridden_write_message(&write_response);
+            tracing::warn!(
+                message,
+                "tool call rendering mode config write was overridden by effective config"
+            );
+            self.chat_widget.add_error_message(format!(
+                "Tool call rendering mode was saved but not applied: {message}"
+            ));
+            let Some(effective_config) = self
+                .read_effective_config_after_overridden_write(
+                    app_server,
+                    "Tool call rendering mode",
+                )
+                .await
+            else {
+                if self.chat_widget.tool_call_rendering_mode() != previous_mode {
+                    self.chat_widget
+                        .set_tool_call_rendering_mode_and_notify(previous_mode);
+                }
+                return;
+            };
+            let effective_mode =
+                tool_call_rendering_from_effective_config(&effective_config).unwrap_or_default();
+            self.config.tui_tool_call_rendering = effective_mode;
+            if self.chat_widget.tool_call_rendering_mode() != effective_mode {
+                self.chat_widget
+                    .set_tool_call_rendering_mode_and_notify(effective_mode);
+            }
+            return;
+        }
+
+        self.config.tui_tool_call_rendering = mode;
+        if self.chat_widget.tool_call_rendering_mode() != mode {
+            self.chat_widget
+                .set_tool_call_rendering_mode_and_notify(mode);
+        }
+    }
+
     pub(super) fn reasoning_label(reasoning_effort: Option<&ReasoningEffortConfig>) -> String {
         match reasoning_effort {
             None | Some(ReasoningEffortConfig::None) => "default".to_string(),
@@ -714,6 +777,22 @@ fn auto_session_name_from_effective_config(effective_config: &ConfigReadResponse
         .additional
         .get("auto_session_name")
         .and_then(serde_json::Value::as_bool)
+}
+
+fn tool_call_rendering_from_effective_config(
+    effective_config: &ConfigReadResponse,
+) -> Option<ToolCallRenderingMode> {
+    effective_config
+        .config
+        .additional
+        .get("tui")
+        .and_then(|tui| tui.get("tool_call_rendering"))
+        .and_then(serde_json::Value::as_str)
+        .and_then(|mode| match mode {
+            "normal" => Some(ToolCallRenderingMode::Normal),
+            "optimized" => Some(ToolCallRenderingMode::Optimized),
+            _ => None,
+        })
 }
 
 fn features_toml_from_json(value: &serde_json::Value) -> Option<FeaturesToml> {

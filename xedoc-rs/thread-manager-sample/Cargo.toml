@@ -16,8 +16,8 @@ workspace = true
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-# Keep this sample limited to a single Xedoc workspace dependency.
-# Add new Xedoc surface area to `xedoc-core-api` instead of depending on
-# additional `xedoc-*` crates here.
+# Keep runtime API use routed through `xedoc-core-api`; `xedoc-features` is
+# needed only to construct feature-specific `Config` values.
 xedoc-core-api = { workspace = true }
+xedoc-features = { workspace = true }
 tracing = { workspace = true }

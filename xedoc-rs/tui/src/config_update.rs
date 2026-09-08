@@ -23,6 +23,7 @@ use xedoc_app_server_protocol::SkillsConfigWriteParams;
 use xedoc_app_server_protocol::SkillsConfigWriteResponse;
 use xedoc_app_server_protocol::TokenUsageOptimizerReadResponse;
 use xedoc_config::loader::project_trust_key;
+use xedoc_config::types::ToolCallRenderingMode;
 use xedoc_features::FEATURES;
 use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use xedoc_protocol::config_types::TrustLevel;
@@ -115,6 +116,10 @@ pub(crate) fn build_auto_session_name_edits(enabled: bool) -> Vec<ConfigEdit> {
         "auto_session_name",
         serde_json::json!(enabled),
     )]
+}
+
+pub(crate) fn build_tool_call_rendering_edit(mode: ToolCallRenderingMode) -> ConfigEdit {
+    replace_config_value("tui.tool_call_rendering", serde_json::json!(mode.as_str()))
 }
 
 pub(crate) fn build_oss_provider_edit(provider: &str) -> ConfigEdit {

@@ -73,6 +73,32 @@ impl fmt::Display for SessionPickerViewMode {
     }
 }
 
+/// Controls how tool calls are rendered in the TUI transcript.
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToolCallRenderingMode {
+    /// Render tool calls using the standard detailed presentation.
+    #[default]
+    Normal,
+    /// Render tool calls using the compact optimized presentation.
+    Optimized,
+}
+
+impl ToolCallRenderingMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Optimized => "optimized",
+        }
+    }
+}
+
+impl fmt::Display for ToolCallRenderingMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Working directory to use when resuming or forking a session.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -479,6 +505,11 @@ pub struct Tui {
     /// Defaults to `false`.
     #[serde(default)]
     pub raw_output_mode: bool,
+
+    /// Controls how tool calls are rendered in the TUI transcript.
+    /// Defaults to `normal`.
+    #[serde(default)]
+    pub tool_call_rendering: ToolCallRenderingMode,
 
     /// Controls whether the TUI uses the terminal's alternate screen buffer.
     ///

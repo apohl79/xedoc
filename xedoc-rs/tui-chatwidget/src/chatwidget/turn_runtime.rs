@@ -92,7 +92,9 @@ impl ChatWidget {
         self.input_queue.user_turn_pending_start = false;
         self.reset_safety_buffering_for_turn_start();
         self.turn_lifecycle.start(Instant::now());
+        self.tool_call_rendering_mode_for_turn = Some(self.config.tui_tool_call_rendering);
         self.transcript.reset_turn_flags();
+        self.reset_tool_call_summary();
         self.adaptive_chunking.reset();
         self.plan_stream_controller.take();
         self.turn_runtime_metrics = RuntimeMetricsSummary::default();
@@ -167,7 +169,10 @@ impl ChatWidget {
                     .send(AppEvent::ConsolidateProposedPlan(source));
             }
         }
-        self.flush_unified_exec_wait_streak();
+        if !self.optimized_tool_call_rendering() {
+            self.flush_unified_exec_wait_streak();
+        }
+        self.flush_tool_call_summary();
         if !from_replay {
             self.collect_runtime_metrics_delta();
             let runtime_metrics =
@@ -199,6 +204,7 @@ impl ChatWidget {
             self.request_status_line_git_summary_refresh();
             self.request_status_line_command_refresh_after_turn();
         }
+        self.tool_call_rendering_mode_for_turn = None;
         // Mark task stopped and request redraw now that all content is in history.
         self.status_state.pending_status_indicator_restore = false;
         self.status_state.end_compaction_status();
@@ -340,6 +346,8 @@ impl ChatWidget {
         self.clear_active_stream_tail();
         // Ensure any spinner is replaced by a red ✗ and flushed into history.
         self.finalize_active_cell_as_failed();
+        self.fail_tool_call_summary();
+        self.tool_call_rendering_mode_for_turn = None;
         // Turn-scoped hook rows are transient live state; once the turn is over,
         // do not leave an orphaned running row behind if no matching completion
         // event arrived before cancellation.

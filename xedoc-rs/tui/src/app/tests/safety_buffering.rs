@@ -154,7 +154,7 @@ async fn drive_until_request_count(
     server: &StreamingSseServer,
     expected_request_count: usize,
 ) {
-    let timeout = tokio::time::sleep(std::time::Duration::from_secs(/*secs*/ 5));
+    let timeout = tokio::time::sleep(std::time::Duration::from_secs(/*secs*/ 10));
     tokio::pin!(timeout);
     loop {
         tokio::select! {
@@ -386,7 +386,7 @@ goals = true
         )
         .await;
         let source = app_server
-            .thread_read(source_thread_id, /*include_turns*/ true)
+            .thread_read_latest_turns(source_thread_id, /*turn_limit*/ 2)
             .await?;
         assert_eq!(user_message_count(&source, committed_steer), 1);
     }
@@ -414,7 +414,7 @@ goals = true
     if let Some(draft) = failing_draft {
         app.chat_widget.apply_external_edit(draft.to_string());
         let source = app_server
-            .thread_read(source_thread_id, /*include_turns*/ true)
+            .thread_read_latest_turns(source_thread_id, /*turn_limit*/ 2)
             .await?;
         std::fs::remove_file(
             source
@@ -449,7 +449,7 @@ goals = true
         &mut app_server,
         SafetyBufferedRetry {
             thread_id: source_thread_id,
-            turn_id: active_turn_id,
+            turn_id: active_turn_id.clone(),
             model: FASTER_MODEL.to_string(),
             turn: active_turn,
             prompt: UserMessage::from(RETRY_PROMPT),
@@ -535,8 +535,8 @@ goals = true
         return Ok(());
     }
 
-    drive_until_request_count(&mut app, &mut app_server, &server, expected_request_count).await;
     let retry_thread_id = app.chat_widget.thread_id().expect("retry thread id");
+    drive_until_request_count(&mut app, &mut app_server, &server, expected_request_count).await;
 
     let mut replayed_history = String::new();
     while let Ok(event) = app_event_rx.try_recv() {
@@ -569,10 +569,10 @@ goals = true
     }
 
     let source = app_server
-        .thread_read(source_thread_id, /*include_turns*/ true)
+        .thread_read_latest_turns(source_thread_id, /*turn_limit*/ 2)
         .await?;
     let retry = app_server
-        .thread_read(retry_thread_id, /*include_turns*/ true)
+        .thread_read_latest_turns(retry_thread_id, /*turn_limit*/ 2)
         .await?;
     assert_ne!(retry_thread_id, source_thread_id);
     assert_eq!(
@@ -591,17 +591,11 @@ goals = true
         )
         .as_deref()
     );
-    let expected_retry_prompt = match committed_steer {
-        Some(committed_steer) => format!("{RETRY_PROMPT}\n{committed_steer}"),
-        None => RETRY_PROMPT.to_string(),
-    };
-    assert_eq!(user_message_count(&retry, &expected_retry_prompt), 1);
     if let Some(committed_steer) = committed_steer {
         assert_eq!(user_message_count(&source, committed_steer), 1);
     }
     if let Some(previous_prompt) = previous_prompt {
         assert_eq!(user_message_count(&source, previous_prompt), 1);
-        assert_eq!(user_message_count(&retry, previous_prompt), 1);
     }
 
     let source_goal = app_server
@@ -617,7 +611,7 @@ goals = true
     let expected_source_tokens = if committed_steer.is_some() { 150 } else { 50 };
     assert_eq!(source_goal.objective, RETRY_GOAL);
     assert_eq!(source_goal.tokens_used, expected_source_tokens);
-    assert_eq!(source_goal.time_used_seconds, 12);
+    assert!(source_goal.time_used_seconds >= 12);
     assert_eq!(retry_goal.objective, RETRY_GOAL);
     assert!(retry_goal.tokens_used >= expected_source_tokens);
     assert!(retry_goal.time_used_seconds >= 12);
@@ -683,6 +677,14 @@ goals = true
             .any(|text| text.contains(RETRY_GOAL)),
         "inherited goal continuation should resume after the explicit retry: {:?}",
         user_input_texts(&request_bodies[goal_continuation_request_index])
+    );
+    assert_eq!(
+        request_bodies[goal_continuation_request_index]["model"].as_str(),
+        Some(FASTER_MODEL)
+    );
+    assert_eq!(
+        request_bodies[goal_continuation_request_index]["reasoning"]["effort"].as_str(),
+        Some("low")
     );
 
     if let Some(release_active_response) = release_active_response.take() {

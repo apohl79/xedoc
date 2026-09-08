@@ -27,6 +27,7 @@ use xedoc_app_server_protocol::PluginReadResponse;
 use xedoc_app_server_protocol::PluginUninstallResponse;
 use xedoc_app_server_protocol::SkillsListResponse;
 use xedoc_app_server_protocol::ThreadGoalStatus;
+use xedoc_config::types::ToolCallRenderingMode;
 use xedoc_file_search::FileMatch;
 use xedoc_message_history::HistoryBatchCursor;
 use xedoc_protocol::ThreadId;
@@ -230,6 +231,11 @@ pub enum AppEvent {
     /// Re-render the transcript using the selected scrollback rendering mode.
     RawOutputModeChanged {
         enabled: bool,
+    },
+
+    /// Persist and apply the selected tool-call rendering mode.
+    ToolCallRenderingModeChanged {
+        mode: ToolCallRenderingMode,
     },
 
     /// Clear the current context, start a fresh session, and submit an initial user message.

@@ -51,6 +51,7 @@ use xedoc_config::types::ResumeCwdMode;
 use xedoc_config::types::SandboxWorkspaceWrite;
 use xedoc_config::types::SessionPickerViewMode;
 use xedoc_config::types::SkillsConfig;
+use xedoc_config::types::ToolCallRenderingMode;
 use xedoc_config::types::Tui;
 use xedoc_config::types::TuiKeymap;
 use xedoc_config::types::TuiNotificationSettings;
@@ -915,6 +916,7 @@ fn config_toml_deserializes_model_availability_nux() {
             show_tooltips: false,
             vim_mode_default: false,
             raw_output_mode: false,
+            tool_call_rendering: ToolCallRenderingMode::Normal,
             alternate_screen: AltScreenMode::default(),
             status_line: None,
             status_line_use_colors: true,
@@ -3717,6 +3719,39 @@ fn tui_session_picker_view_defaults_to_none() {
 }
 
 #[test]
+fn tui_tool_call_rendering_defaults_to_normal() {
+    let cfg = toml::from_str::<ConfigToml>("[tui]\n").expect("TUI config should deserialize");
+    assert_eq!(
+        cfg.tui
+            .expect("config should include tui section")
+            .tool_call_rendering,
+        ToolCallRenderingMode::Normal
+    );
+}
+
+#[tokio::test]
+async fn runtime_config_resolves_tool_call_rendering_override() {
+    let cfg = Config::load_from_base_config_with_overrides(
+        ConfigToml {
+            tui: Some(Tui {
+                tool_call_rendering: ToolCallRenderingMode::Optimized,
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config with tool call rendering override");
+
+    assert_eq!(
+        cfg.tui_tool_call_rendering,
+        ToolCallRenderingMode::Optimized
+    );
+}
+
+#[test]
 fn tui_config_missing_notifications_field_defaults_to_enabled() {
     let cfg = r#"
 [tui]
@@ -3734,6 +3769,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             show_tooltips: false,
             vim_mode_default: false,
             raw_output_mode: false,
+            tool_call_rendering: ToolCallRenderingMode::Normal,
             alternate_screen: AltScreenMode::Auto,
             status_line: None,
             status_line_use_colors: true,

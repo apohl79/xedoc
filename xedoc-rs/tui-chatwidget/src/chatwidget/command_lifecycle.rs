@@ -29,6 +29,13 @@ impl ChatWidget {
         else {
             return;
         };
+        if self.optimized_tool_call_rendering() && *source != ExecCommandSource::UserShell {
+            if *source == ExecCommandSource::UnifiedExecStartup {
+                self.track_unified_exec_process_begin(id, process_id.as_deref(), command);
+            }
+            self.handle_tool_summary_started_now(item);
+            return;
+        }
         let (_command, parsed_cmd) = command_execution_command_and_parsed(command, command_actions);
         self.flush_answer_stream_with_separator();
         if is_unified_exec_source(*source) {
@@ -74,6 +81,14 @@ impl ChatWidget {
 
     pub(super) fn on_terminal_interaction(&mut self, process_id: String, stdin: String) {
         if !self.bottom_pane.is_task_running() {
+            return;
+        }
+        if self.optimized_tool_call_rendering()
+            && self
+                .unified_exec_processes
+                .iter()
+                .any(|process| process.key == process_id)
+        {
             return;
         }
         let command_display = self
@@ -141,6 +156,11 @@ impl ChatWidget {
         else {
             return;
         };
+        if self.optimized_tool_call_rendering() && *source != ExecCommandSource::UserShell {
+            self.track_unified_exec_process_end(id, process_id.as_deref());
+            self.handle_tool_summary_completed_now(item);
+            return;
+        }
         if is_unified_exec_source(*source) {
             if let Some(process_id) = process_id.as_deref()
                 && self

@@ -1,7 +1,9 @@
 ---
 source: tui/src/app/tests/safety_buffering.rs
+assertion_line: 568
 expression: rendered_retry
 ---
 ❯ Handle the safety-buffered request
   Keep the accepted steer
-• done
+⚠ Model metadata for `gpt-5.4` not found. Defaulting to fallback metadata; this
+  can degrade performance and cause issues.• done

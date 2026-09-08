@@ -273,6 +273,7 @@ mod tests {
                 SlashCommand::Ide,
                 SlashCommand::Copy,
                 SlashCommand::Raw,
+                SlashCommand::ToolRendering,
                 SlashCommand::Diff,
                 SlashCommand::Mention,
                 SlashCommand::Status,

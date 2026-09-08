@@ -37,6 +37,7 @@ pub enum SlashCommand {
     Btw,
     Copy,
     Raw,
+    ToolRendering,
     Diff,
     Mention,
     Status,
@@ -78,6 +79,7 @@ impl SlashCommand {
             SlashCommand::Quit | SlashCommand::Exit => "exit Xedoc",
             SlashCommand::Copy => "copy last response as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
+            SlashCommand::ToolRendering => "toggle compact tool rendering",
             SlashCommand::Diff => "show git diff (including untracked files)",
             SlashCommand::Mention => "mention a file",
             SlashCommand::Skills => "use skills to improve how Xedoc performs specific tasks",
@@ -134,6 +136,7 @@ impl SlashCommand {
                 | SlashCommand::Keymap
                 | SlashCommand::Mcp
                 | SlashCommand::Raw
+                | SlashCommand::ToolRendering
                 | SlashCommand::Side
                 | SlashCommand::Btw
                 | SlashCommand::Resume
@@ -147,6 +150,7 @@ impl SlashCommand {
             self,
             SlashCommand::Copy
                 | SlashCommand::Raw
+                | SlashCommand::ToolRendering
                 | SlashCommand::Diff
                 | SlashCommand::Mention
                 | SlashCommand::Status
@@ -179,6 +183,7 @@ impl SlashCommand {
             | SlashCommand::Permissions
             | SlashCommand::Copy
             | SlashCommand::Raw
+            | SlashCommand::ToolRendering
             | SlashCommand::Rename
             | SlashCommand::Mention
             | SlashCommand::Skills
@@ -247,5 +252,16 @@ mod tests {
         assert!(SlashCommand::Raw.available_during_task());
         assert!(SlashCommand::Raw.available_in_side_conversation());
         assert!(SlashCommand::Raw.supports_inline_args());
+    }
+
+    #[test]
+    fn tool_rendering_command_metadata_is_explicit() {
+        assert_eq!(SlashCommand::ToolRendering.command(), "tool-rendering");
+        assert_eq!(
+            SlashCommand::ToolRendering.description(),
+            "toggle compact tool rendering"
+        );
+        assert!(SlashCommand::ToolRendering.supports_inline_args());
+        assert!(SlashCommand::ToolRendering.available_during_task());
     }
 }

@@ -14,6 +14,7 @@ use crate::bottom_pane::slash_commands::ServiceTierCommand;
 use crate::bottom_pane::slash_commands::SlashCommandItem;
 use crate::bottom_pane::slash_commands::find_slash_command;
 use crate::goal_display::GOAL_USAGE;
+use xedoc_config::types::ToolCallRenderingMode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SlashCommandDispatchSource {
@@ -36,6 +37,7 @@ const SIDE_SLASH_COMMAND_UNAVAILABLE_HINT: &str =
     "Press Ctrl+C to return to the main thread first.";
 const GOAL_USAGE_HINT: &str = "Example: /goal improve benchmark coverage";
 const RAW_USAGE: &str = "Usage: /raw [on|off]";
+const TOOL_RENDERING_USAGE: &str = "Usage: /tool-rendering [normal|optimized]";
 const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
 const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|report [days]|reset-stats|reset-report|on|off|level <conservative|balanced|aggressive>]";
 
@@ -130,6 +132,11 @@ impl ChatWidget {
     fn emit_raw_output_mode_changed(&self, enabled: bool) {
         self.app_event_tx
             .send(AppEvent::RawOutputModeChanged { enabled });
+    }
+
+    fn emit_tool_call_rendering_mode_changed(&self, mode: ToolCallRenderingMode) {
+        self.app_event_tx
+            .send(AppEvent::ToolCallRenderingModeChanged { mode });
     }
 
     fn slash_command_blocked_by_active_task(&self, cmd: SlashCommand) -> bool {
@@ -328,6 +335,14 @@ impl ChatWidget {
             SlashCommand::Raw => {
                 let enabled = self.toggle_raw_output_mode_and_notify();
                 self.emit_raw_output_mode_changed(enabled);
+            }
+            SlashCommand::ToolRendering => {
+                let mode = match self.tool_call_rendering_mode() {
+                    ToolCallRenderingMode::Normal => ToolCallRenderingMode::Optimized,
+                    ToolCallRenderingMode::Optimized => ToolCallRenderingMode::Normal,
+                };
+                self.set_tool_call_rendering_mode_and_notify(mode);
+                self.emit_tool_call_rendering_mode_changed(mode);
             }
             SlashCommand::Diff => {
                 self.add_diff_in_progress();
@@ -605,6 +620,17 @@ impl ChatWidget {
                     self.emit_raw_output_mode_changed(/*enabled*/ false);
                 }
                 _ => self.add_error_message(RAW_USAGE.to_string()),
+            },
+            SlashCommand::ToolRendering => match trimmed.to_ascii_lowercase().as_str() {
+                "normal" => {
+                    self.set_tool_call_rendering_mode_and_notify(ToolCallRenderingMode::Normal);
+                    self.emit_tool_call_rendering_mode_changed(ToolCallRenderingMode::Normal);
+                }
+                "optimized" => {
+                    self.set_tool_call_rendering_mode_and_notify(ToolCallRenderingMode::Optimized);
+                    self.emit_tool_call_rendering_mode_changed(ToolCallRenderingMode::Optimized);
+                }
+                _ => self.add_error_message(TOOL_RENDERING_USAGE.to_string()),
             },
             SlashCommand::TokenUsageOptimizer => {
                 let mut parts = trimmed.split_whitespace();
@@ -993,6 +1019,7 @@ impl ChatWidget {
             | SlashCommand::Rollout
             | SlashCommand::Copy
             | SlashCommand::Raw
+            | SlashCommand::ToolRendering
             | SlashCommand::Vim
             | SlashCommand::Diff
             | SlashCommand::Rename

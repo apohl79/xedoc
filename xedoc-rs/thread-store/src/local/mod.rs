@@ -222,6 +222,47 @@ impl LocalThreadStore {
         &self,
         params: LoadThreadHistoryParams,
     ) -> ThreadStoreResult<StoredThreadHistory> {
+        let stored_thread = read_thread::read_thread(
+            self,
+            ReadThreadParams {
+                thread_id: params.thread_id,
+                include_archived: params.include_archived,
+                include_history: false,
+            },
+        )
+        .await?;
+        if matches!(stored_thread.history_mode, ThreadHistoryMode::Paginated) {
+            let lineage = self.resolve_rollout_lineage(params.thread_id).await?;
+            let mut items = Vec::new();
+            for segment in lineage.segments {
+                let (mut segment_items, _, _) =
+                    RolloutRecorder::load_rollout_items(segment.rollout_path.as_path())
+                        .await
+                        .map_err(|err| ThreadStoreError::Internal {
+                            message: format!(
+                                "failed to load paginated history {}: {err}",
+                                segment.rollout_path.display()
+                            ),
+                        })?;
+                if let Some(end) = segment.end {
+                    let item_count =
+                        usize::try_from(end.end_ordinal_exclusive - 1).map_err(|_| {
+                            ThreadStoreError::Internal {
+                                message: format!(
+                                    "paginated history cutoff is too large for thread {}",
+                                    params.thread_id
+                                ),
+                            }
+                        })?;
+                    segment_items.truncate(item_count);
+                }
+                items.extend(segment_items);
+            }
+            return Ok(StoredThreadHistory {
+                thread_id: params.thread_id,
+                items,
+            });
+        }
         if let Ok(rollout_path) = live_writer::rollout_path(self, params.thread_id).await {
             if !params.include_archived
                 && helpers::rollout_path_is_archived(
