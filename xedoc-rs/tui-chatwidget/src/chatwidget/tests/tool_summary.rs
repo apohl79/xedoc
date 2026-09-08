@@ -280,6 +280,42 @@ async fn optimized_mode_aggregates_web_search_without_query_cell() {
 }
 
 #[tokio::test]
+async fn optimized_tool_summary_is_hidden_when_the_turn_is_not_running() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.show_welcome_banner = false;
+    optimized_chat(&mut chat);
+    chat.on_task_started();
+    chat.on_web_search_begin("search-call".to_string());
+    chat.on_web_search_end(
+        "search-call".to_string(),
+        "private query".to_string(),
+        xedoc_app_server_protocol::WebSearchAction::Search {
+            query: Some("private query".to_string()),
+            queries: None,
+        },
+    );
+    assert!(chat.tool_call_summary.is_some());
+
+    chat.turn_lifecycle.finish();
+    chat.update_task_running_state();
+    assert!(!chat.bottom_pane.is_task_running());
+
+    let width = 80;
+    let height = chat.desired_height(width);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))
+        .expect("create terminal");
+    terminal
+        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+        .expect("render inactive tool summary");
+    let rendered = normalized_backend_snapshot(terminal.backend());
+    assert!(!rendered.contains("Searched the web"));
+    assert_chatwidget_snapshot!(
+        "optimized_tool_summary_hidden_without_active_turn",
+        rendered
+    );
+}
+
+#[tokio::test]
 async fn normal_to_optimized_mode_switch_applies_on_next_turn() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.config.tui_tool_call_rendering = ToolCallRenderingMode::Normal;

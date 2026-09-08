@@ -324,9 +324,9 @@ impl HistoryCell for ToolCallSummaryCell {
                     .and_then(|call_id| self.calls.get(call_id))
                     .is_some_and(|status| *status == ToolCallStatus::InProgress)
                 {
-                    "Running ".bold()
+                    action_verb("Running ")
                 } else {
-                    "Ran ".bold()
+                    action_verb("Ran ")
                 };
                 let mut header = Line::from(vec!["• ".dim(), verb]);
                 header.extend(first);
@@ -356,7 +356,7 @@ impl HistoryCell for ToolCallSummaryCell {
             }) => {
                 let mut lines = vec![Line::from(vec![
                     "• ".dim(),
-                    "Edited ".bold(),
+                    action_verb("Edited "),
                     path.clone().cl_cyan(),
                     " ".into(),
                     format!("+{added}").cl_green(),
@@ -412,11 +412,7 @@ impl HistoryCell for ToolCallSummaryCell {
                 }
                 lines
             }
-            None => vec![Line::from(vec![
-                "• ".dim(),
-                "Ran ".bold(),
-                self.display_label().to_string().into(),
-            ])],
+            None => vec![action_label_line(self.display_label())],
         };
         lines.insert(0, Line::default());
         lines.push("".into());
@@ -447,6 +443,24 @@ impl HistoryCell for ToolCallSummaryCell {
     fn transcript_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
         self.display_hyperlink_lines(width)
     }
+}
+
+fn action_label_line(label: &str) -> Line<'static> {
+    let mut line = Line::from("• ".dim());
+    if let Some((action, detail)) = label.split_once(' ')
+        && action.chars().next().is_some_and(char::is_uppercase)
+    {
+        line.push_span(action_verb(action));
+        line.push_span(format!(" {detail}"));
+    } else {
+        line.push_span(action_verb("Ran "));
+        line.push_span(label.to_string());
+    }
+    line
+}
+
+fn action_verb(action: impl Into<String>) -> Span<'static> {
+    action.into().white().bold()
 }
 
 fn bound_label(label: String) -> String {

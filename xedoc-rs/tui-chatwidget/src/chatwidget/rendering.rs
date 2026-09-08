@@ -21,8 +21,11 @@ impl ChatWidget {
             _ => RenderableItem::Owned(Box::new(())),
         };
         let tool_summary_renderable = match &self.tool_call_summary {
-            _ if !self.optimized_tool_call_rendering() => RenderableItem::Owned(Box::new(())),
-            Some(summary) if summary.has_calls() => {
+            Some(summary)
+                if self.turn_lifecycle.agent_turn_running
+                    && self.optimized_tool_call_rendering()
+                    && summary.has_calls() =>
+            {
                 RenderableItem::Owned(Box::new(TranscriptAreaRenderable {
                     child: summary.cell(),
                     top: 1,
