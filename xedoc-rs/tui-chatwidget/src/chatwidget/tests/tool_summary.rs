@@ -316,6 +316,45 @@ async fn optimized_tool_summary_is_hidden_when_the_turn_is_not_running() {
 }
 
 #[tokio::test]
+async fn optimized_tool_summary_renders_a_bold_white_action_verb() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.show_welcome_banner = false;
+    optimized_chat(&mut chat);
+    chat.on_task_started();
+    let _command = begin_exec(&mut chat, "command", "printf action");
+
+    let width = 80;
+    let height = chat.desired_height(width);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))
+        .expect("create terminal");
+    terminal
+        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+        .expect("render active tool summary");
+
+    let buffer = terminal.backend().buffer();
+    let action_cell = (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .find_map(|(x, y)| {
+            (x.saturating_add(2) < width
+                && buffer[(x, y)].symbol() == "R"
+                && buffer[(x.saturating_add(1), y)].symbol() == "u"
+                && buffer[(x.saturating_add(2), y)].symbol() == "n")
+                .then(|| &buffer[(x, y)])
+        })
+        .expect("find Ran action verb");
+    assert_eq!(action_cell.fg, ratatui::style::Color::White);
+    assert!(
+        action_cell
+            .modifier
+            .contains(ratatui::style::Modifier::BOLD)
+    );
+    assert_chatwidget_snapshot!(
+        "optimized_tool_summary_action_verb",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
+#[tokio::test]
 async fn normal_to_optimized_mode_switch_applies_on_next_turn() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.config.tui_tool_call_rendering = ToolCallRenderingMode::Normal;

@@ -787,6 +787,71 @@ pub fn calculate_add_remove_from_diff(diff: &str) -> (usize, usize) {
     }
 }
 
+/// Retain the first `max_lines` actual hunk lines in a valid unified diff.
+///
+/// The compact tool summary passes the returned diff through the regular
+/// `apply_patch` renderer. Keeping the source diff bounded avoids rendering a
+/// large patch in full on every active-turn redraw.
+pub fn truncate_unified_diff_preview(
+    unified_diff: &str,
+    max_lines: usize,
+) -> Option<(String, usize)> {
+    let patch = diffy::Patch::from_str(unified_diff).ok()?;
+    let total_lines = patch
+        .hunks()
+        .iter()
+        .map(|hunk| hunk.lines().len())
+        .sum::<usize>();
+    let mut preview = String::new();
+    let mut included_lines = 0;
+
+    for hunk in patch.hunks() {
+        let remaining = max_lines.saturating_sub(included_lines);
+        if remaining == 0 {
+            break;
+        }
+        let lines = hunk.lines().iter().take(remaining).collect::<Vec<_>>();
+        if lines.is_empty() {
+            continue;
+        }
+        let (old_count, new_count) =
+            lines
+                .iter()
+                .fold((0, 0), |(old_count, new_count), line| match line {
+                    diffy::Line::Insert(_) => (old_count, new_count + 1),
+                    diffy::Line::Delete(_) => (old_count + 1, new_count),
+                    diffy::Line::Context(_) => (old_count + 1, new_count + 1),
+                });
+        let format_range = |start: usize, count: usize| {
+            if count == 1 {
+                start.to_string()
+            } else {
+                format!("{start},{count}")
+            }
+        };
+        preview.push_str(&format!(
+            "@@ -{} +{} @@\n",
+            format_range(hunk.old_range().start(), old_count),
+            format_range(hunk.new_range().start(), new_count),
+        ));
+        for line in lines {
+            let (prefix, text) = match line {
+                diffy::Line::Insert(text) => ('+', *text),
+                diffy::Line::Delete(text) => ('-', *text),
+                diffy::Line::Context(text) => (' ', *text),
+            };
+            preview.push(prefix);
+            preview.push_str(text);
+            if !text.ends_with('\n') {
+                preview.push('\n');
+            }
+            included_lines += 1;
+        }
+    }
+
+    Some((preview, total_lines.saturating_sub(included_lines)))
+}
+
 /// Render a single plain-text (non-syntax-highlighted) diff line, wrapped to
 /// `width` columns, using a pre-computed [`DiffRenderStyleContext`].
 ///
@@ -1327,6 +1392,18 @@ mod tests {
     use ratatui::widgets::Paragraph;
     use ratatui::widgets::WidgetRef;
     use ratatui::widgets::Wrap;
+
+    #[test]
+    fn truncate_unified_diff_preview_keeps_only_actual_hunk_lines() {
+        let (preview, omitted) = truncate_unified_diff_preview(
+            "@@ -0,0 +1,4 @@\n+one\n+two\n+three\n+four\n",
+            /*max_lines*/ 3,
+        )
+        .expect("parse unified diff");
+
+        assert_eq!(preview, "@@ -0,0 +1,3 @@\n+one\n+two\n+three\n".to_string());
+        assert_eq!(omitted, 1);
+    }
 
     #[test]
     fn ansi16_add_style_uses_foreground_only() {

@@ -80,7 +80,6 @@ use xedoc_app_server_protocol::ThreadMetadataUpdateParams;
 use xedoc_app_server_protocol::ThreadMetadataUpdateResponse;
 use xedoc_app_server_protocol::ThreadReadParams;
 use xedoc_app_server_protocol::ThreadReadResponse;
-use xedoc_app_server_protocol::ThreadResumeInitialTurnsPageParams;
 use xedoc_app_server_protocol::ThreadResumeParams;
 use xedoc_app_server_protocol::ThreadResumeResponse;
 use xedoc_app_server_protocol::ThreadSetNameParams;
@@ -137,8 +136,6 @@ use xedoc_utils_path_uri::PathUri;
 const JSONRPC_INVALID_REQUEST: i64 = -32600;
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
 const THREAD_SETTINGS_UPDATE_METHOD: &str = "thread/settings/update";
-const INITIAL_TURNS_PAGE_LIMIT: u32 = 25;
-
 pub async fn connect_remote_app_server(
     endpoint: RemoteAppServerEndpoint,
 ) -> color_eyre::Result<AppServerClient> {
@@ -1537,12 +1534,10 @@ fn thread_resume_params_from_config(
         developer_instructions: with_terminal_visualization_instructions(
             &config, /*control_instructions*/ None,
         ),
-        exclude_turns: true,
-        initial_turns_page: Some(ThreadResumeInitialTurnsPageParams {
-            limit: Some(INITIAL_TURNS_PAGE_LIMIT),
-            sort_direction: Some(SortDirection::Desc),
-            items_view: Some(TurnItemsView::Full),
-        }),
+        // Rebuild the terminal scrollback from the complete ordered transcript. A bounded newest
+        // page drops the end of older sessions when it replaces the pre-exit TUI view.
+        exclude_turns: false,
+        initial_turns_page: None,
         ..ThreadResumeParams::default()
     }
 }
@@ -1926,7 +1921,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn thread_lifecycle_params_use_paginated_bounded_history() {
+    async fn thread_lifecycle_params_request_complete_paginated_history() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let config = build_config(&temp_dir).await;
         let start = thread_start_params_from_config(
@@ -1949,15 +1944,7 @@ mod tests {
                 resume.exclude_turns,
                 resume.initial_turns_page,
             ),
-            (
-                Some(ThreadHistoryMode::Paginated),
-                true,
-                Some(ThreadResumeInitialTurnsPageParams {
-                    limit: Some(INITIAL_TURNS_PAGE_LIMIT),
-                    sort_direction: Some(SortDirection::Desc),
-                    items_view: Some(TurnItemsView::Full),
-                }),
-            )
+            (Some(ThreadHistoryMode::Paginated), false, None)
         );
     }
 

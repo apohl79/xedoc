@@ -3,7 +3,11 @@ use pretty_assertions::assert_eq;
 use ratatui::style::Color;
 
 fn rendered_lines(cell: &ToolCallSummaryCell) -> Vec<String> {
-    cell.display_lines(/*width*/ 120)
+    rendered_lines_at_width(cell, /*width*/ 120)
+}
+
+fn rendered_lines_at_width(cell: &ToolCallSummaryCell, width: u16) -> Vec<String> {
+    cell.display_lines(width)
         .iter()
         .map(ToString::to_string)
         .collect()
@@ -193,9 +197,17 @@ fn completed_command_preview_says_ran_when_another_call_is_in_progress() {
 fn file_change_preview_uses_apply_patch_and_syntax_styles() {
     let preview = |path: &str| ToolCallSummaryPreview::FileChange {
         path: path.to_string(),
-        added: 1,
+        added: 4,
         removed: 0,
-        diff_lines: vec!["+let answer = 42;".to_string()],
+        unified_diff: concat!(
+            "@@ -0,0 +1,4 @@\n",
+            "+let answer = 42;\n",
+            "+let next = answer;\n",
+            "+println!(\"{next}\");\n",
+            "+// omitted\n",
+        )
+        .to_string(),
+        omitted_diff_lines: 1,
     };
     let mut rust = ToolCallSummaryCell::new();
     rust.start_call_with_preview(
@@ -213,7 +225,25 @@ fn file_change_preview_uses_apply_patch_and_syntax_styles() {
     );
     let plain_lines = plain.display_lines(/*width*/ 120);
 
-    assert_eq!(rust_lines[1].to_string(), "• Edited src/main.rs +1 -0");
+    assert_eq!(rust_lines[1].to_string(), "• Edited src/main.rs +4 -0");
+    assert_eq!(
+        rendered_lines(&rust)[2..6],
+        [
+            "    1 +let answer = 42;",
+            "    2 +let next = answer;",
+            "    3 +println!(\"{next}\");",
+            "  ... 1 more lines",
+        ]
+    );
+    assert!(
+        rendered_lines(&rust)
+            .iter()
+            .all(|line| !line.contains("@@ -0,0 +1,4 @@"))
+    );
+    insta::assert_snapshot!(
+        "file_change_preview_classic_apply_patch",
+        rendered_lines(&rust).join("\n")
+    );
     let rust_styles = rust_lines[2]
         .spans
         .iter()
@@ -225,6 +255,35 @@ fn file_change_preview_uses_apply_patch_and_syntax_styles() {
         .map(|span| span.style)
         .collect::<Vec<_>>();
     assert_ne!(rust_styles, plain_styles);
+}
+
+#[test]
+fn file_change_preview_limits_wrapped_diff_to_three_rows() {
+    let long_line = "a".repeat(80);
+    let mut cell = ToolCallSummaryCell::new();
+    cell.start_call_with_preview(
+        "file".to_string(),
+        "apply patch".to_string(),
+        Some(ToolCallSummaryPreview::FileChange {
+            path: "src/main.rs".to_string(),
+            added: 4,
+            removed: 0,
+            unified_diff: format!("@@ -0,0 +1,3 @@\n+{long_line}\n+two\n+three\n"),
+            omitted_diff_lines: 1,
+        }),
+    );
+
+    let lines = rendered_lines_at_width(&cell, /*width*/ 20);
+    let omitted_index = lines
+        .iter()
+        .position(|line| line.starts_with("  ... "))
+        .expect("rendered omitted marker");
+    assert_eq!(omitted_index, 5);
+    assert!(
+        lines[2..omitted_index]
+            .iter()
+            .all(|line| !line.contains("+two") && !line.contains("+three"))
+    );
 }
 
 #[test]
