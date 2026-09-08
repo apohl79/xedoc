@@ -1,5 +1,6 @@
 use super::*;
 use pretty_assertions::assert_eq;
+use ratatui::style::Color;
 
 fn rendered_lines(cell: &ToolCallSummaryCell) -> Vec<String> {
     cell.display_lines(/*width*/ 120)
@@ -245,12 +246,27 @@ fn command_header_is_limited_to_one_terminal_row() {
 }
 
 #[test]
-fn fallback_action_verb_uses_the_shared_accent_style() {
+fn action_label_uses_a_bold_verb_without_a_ran_prefix() {
     let mut cell = ToolCallSummaryCell::new();
-    cell.start_call("web".to_string(), "Searched the web".to_string());
+    cell.complete_call(
+        "web".to_string(),
+        "Searched the web".to_string(),
+        ToolCallSummaryOutcome::Succeeded,
+    );
 
     let line = cell.display_lines(/*width*/ 80).remove(1);
-    assert_eq!(line.spans[1].content, "Ran ");
-    assert_eq!(line.spans[1].style.fg, None);
+    assert_eq!(line.spans[1].content, "Searched");
+    assert_eq!(line.spans[2].content, " the web");
+    assert_eq!(line.spans[1].style.fg, Some(Color::White));
     assert!(line.spans[1].style.add_modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn tool_action_verbs_are_bold_white() {
+    for action in ["Ran ", "Running ", "Edited ", "Searched ", "Read "] {
+        let span = action_verb(action);
+
+        assert_eq!(span.style.fg, Some(Color::White));
+        assert!(span.style.add_modifier.contains(Modifier::BOLD));
+    }
 }

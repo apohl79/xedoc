@@ -270,7 +270,8 @@ impl ChatWidget {
             item @ ThreadItem::McpToolCall { .. } => self.on_mcp_tool_call_started(item),
             ThreadItem::WebSearch(item) => {
                 if self.optimized_tool_call_rendering() {
-                    self.record_tool_call_start(item.id, "web search".to_string());
+                    let label = format!("Searched the web for \"{}\"", item.query);
+                    self.record_tool_call_start(item.id, label);
                 } else {
                     self.on_web_search_begin(item.id);
                 }
