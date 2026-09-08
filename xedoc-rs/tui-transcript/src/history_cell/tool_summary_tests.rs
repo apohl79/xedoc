@@ -127,3 +127,64 @@ fn persistent_summary_counts_file_and_web_activity() {
         ]
     );
 }
+
+#[test]
+fn running_command_shows_the_live_output_tail() {
+    let mut cell = ToolCallSummaryCell::new();
+    cell.start_call_with_preview(
+        "command".to_string(),
+        "command".to_string(),
+        Some(ToolCallSummaryPreview::Command {
+            command: "cargo test".to_string(),
+            output: Some(String::new()),
+        }),
+    );
+    cell.append_command_output("command", "first\nsecond\nthird\nfourth\n");
+
+    assert_eq!(
+        rendered_lines(&cell),
+        vec![
+            String::new(),
+            "• Running cargo test".to_string(),
+            "  ... 1 more lines".to_string(),
+            "  second".to_string(),
+            "  third".to_string(),
+            "  fourth".to_string(),
+            String::new(),
+            "  Calls: 1 · 0 succeeded · 0 failed · 1 in progress".to_string(),
+            String::new(),
+        ]
+    );
+}
+
+#[test]
+fn completed_command_preview_says_ran_when_another_call_is_in_progress() {
+    let mut cell = ToolCallSummaryCell::new();
+    cell.start_call_with_preview(
+        "first".to_string(),
+        "first".to_string(),
+        Some(ToolCallSummaryPreview::Command {
+            command: "first command".to_string(),
+            output: Some(String::new()),
+        }),
+    );
+    cell.start_call_with_preview(
+        "second".to_string(),
+        "second".to_string(),
+        Some(ToolCallSummaryPreview::Command {
+            command: "second command".to_string(),
+            output: Some(String::new()),
+        }),
+    );
+    cell.complete_call_with_preview(
+        "first".to_string(),
+        "first command".to_string(),
+        ToolCallSummaryOutcome::Succeeded,
+        Some(ToolCallSummaryPreview::Command {
+            command: "first command".to_string(),
+            output: Some("complete".to_string()),
+        }),
+    );
+
+    assert_eq!(rendered_lines(&cell)[1], "• Ran first command");
+}

@@ -2,6 +2,6 @@
 source: tui-chatwidget/src/chatwidget/tests/tool_summary.rs
 expression: summary
 ---
-• Ran printf hidden
+• Running printf hidden
 
   Calls: 1 · 0 succeeded · 0 failed · 1 in progress

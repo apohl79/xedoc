@@ -10,6 +10,7 @@ use std::collections::VecDeque;
 
 const MAX_TRACKED_CALLS: usize = 512;
 const MAX_LABEL_CHARS: usize = 80;
+const MAX_COMMAND_OUTPUT_CHARS: usize = 16 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ToolCallSummaryOutcome {
@@ -49,6 +50,7 @@ pub struct ToolCallSummaryCell {
     current_label: Option<String>,
     last_label: Option<String>,
     last_preview: Option<ToolCallSummaryPreview>,
+    last_preview_call_id: Option<String>,
     total: usize,
     succeeded: usize,
     failed: usize,
@@ -137,6 +139,7 @@ impl ToolCallSummaryCell {
             current_label: None,
             last_label: None,
             last_preview: None,
+            last_preview_call_id: None,
             total: 0,
             succeeded: 0,
             failed: 0,
@@ -202,6 +205,7 @@ impl ToolCallSummaryCell {
                     .expect("newly started tool call must be tracked"),
             )
             .cloned();
+        self.last_preview_call_id = self.in_progress_order.back().cloned();
     }
 
     pub fn complete_call(
@@ -211,6 +215,21 @@ impl ToolCallSummaryCell {
         outcome: ToolCallSummaryOutcome,
     ) {
         self.complete_call_with_preview(call_id, label, outcome, None);
+    }
+
+    pub fn append_command_output(&mut self, call_id: &str, delta: &str) -> bool {
+        let Some(ToolCallSummaryPreview::Command {
+            output: Some(output),
+            ..
+        }) = self.previews.get_mut(call_id)
+        else {
+            return false;
+        };
+        output.push_str(delta);
+        trim_to_tail(output, MAX_COMMAND_OUTPUT_CHARS);
+        self.last_preview = self.previews.get(call_id).cloned();
+        self.last_preview_call_id = Some(call_id.to_string());
+        true
     }
 
     pub fn complete_call_with_preview(
@@ -251,6 +270,7 @@ impl ToolCallSummaryCell {
             .and_then(|id| self.labels.get(id).cloned());
         self.last_label = Some(bound_label(label));
         self.last_preview = self.previews.get(&call_id).cloned();
+        self.last_preview_call_id = Some(call_id);
     }
 
     pub fn display_label(&self) -> &str {
@@ -298,7 +318,17 @@ impl HistoryCell for ToolCallSummaryCell {
                     .drain(..1)
                     .next()
                     .unwrap_or_else(|| Line::from(self.display_label().to_string()));
-                let mut header = Line::from(vec!["• ".dim(), "Ran ".bold()]);
+                let verb = if self
+                    .last_preview_call_id
+                    .as_ref()
+                    .and_then(|call_id| self.calls.get(call_id))
+                    .is_some_and(|status| *status == ToolCallStatus::InProgress)
+                {
+                    "Running "
+                } else {
+                    "Ran "
+                };
+                let mut header = Line::from(vec!["• ".dim(), verb.bold()]);
                 header.extend(first);
                 let mut lines = vec![header];
                 for line in highlighted {
@@ -308,12 +338,12 @@ impl HistoryCell for ToolCallSummaryCell {
                 }
                 if let Some(output) = output {
                     let output_lines = output.lines().collect::<Vec<_>>();
-                    for output_line in output_lines.iter().take(3) {
-                        lines.push(vec!["  ".dim(), (*output_line).to_string().dim()].into());
-                    }
                     let omitted = output_lines.len().saturating_sub(3);
                     if omitted > 0 {
                         lines.push(format!("  ... {omitted} more lines").dim().into());
+                    }
+                    for output_line in output_lines.iter().skip(omitted) {
+                        lines.push(vec!["  ".dim(), (*output_line).to_string().dim()].into());
                     }
                 }
                 lines
@@ -402,6 +432,16 @@ fn bound_label(label: String) -> String {
         "unnamed".to_string()
     } else {
         label
+    }
+}
+
+fn trim_to_tail(text: &mut String, max_chars: usize) {
+    let char_count = text.chars().count();
+    if char_count > max_chars {
+        *text = text
+            .chars()
+            .skip(char_count.saturating_sub(max_chars))
+            .collect();
     }
 }
 
