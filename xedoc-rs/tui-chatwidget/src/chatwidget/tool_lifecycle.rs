@@ -48,7 +48,10 @@ impl ChatWidget {
         if self.optimized_tool_call_rendering() {
             self.record_tool_call_completion(
                 call_id,
-                "generate image".to_string(),
+                saved_path.as_ref().map_or_else(
+                    || "Generated image".to_string(),
+                    |path| format!("Generated image {}", path.display()),
+                ),
                 if status.eq_ignore_ascii_case("completed") {
                     history_cell::ToolCallSummaryOutcome::Succeeded
                 } else {
@@ -128,7 +131,7 @@ impl ChatWidget {
         if self.optimized_tool_call_rendering() {
             self.record_tool_call_completion(
                 call_id,
-                "web search".to_string(),
+                format!("Searched the web for \"{query}\""),
                 history_cell::ToolCallSummaryOutcome::Succeeded,
             );
             return;

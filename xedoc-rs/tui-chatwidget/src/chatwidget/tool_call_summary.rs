@@ -20,8 +20,13 @@ impl ToolCallSummaryState {
         self.cell.has_calls()
     }
 
-    pub(super) fn start(&mut self, id: String, label: String) {
-        self.cell.start_call(id, label);
+    pub(super) fn start(
+        &mut self,
+        id: String,
+        label: String,
+        preview: Option<history_cell::ToolCallSummaryPreview>,
+    ) {
+        self.cell.start_call_with_preview(id, label, preview);
     }
 
     pub(super) fn complete(
@@ -29,16 +34,14 @@ impl ToolCallSummaryState {
         id: String,
         label: String,
         outcome: history_cell::ToolCallSummaryOutcome,
+        preview: Option<history_cell::ToolCallSummaryPreview>,
     ) {
-        self.cell.complete_call(id, label, outcome);
+        self.cell
+            .complete_call_with_preview(id, label, outcome, preview);
     }
 
     pub(super) fn cell(&self) -> &history_cell::ToolCallSummaryCell {
         &self.cell
-    }
-
-    pub(super) fn into_cell(self) -> history_cell::ToolCallSummaryCell {
-        self.cell
     }
 
     pub(super) fn mark_in_progress_failed(&mut self) {
@@ -75,7 +78,7 @@ impl ChatWidget {
             return;
         }
         if let Some((id, label)) = Self::tool_call_item_label(&item) {
-            self.record_tool_call_start(id, label);
+            self.record_tool_call_start_with_preview(id, label, Self::tool_call_preview(&item));
         }
     }
 
@@ -84,7 +87,12 @@ impl ChatWidget {
             return;
         }
         if let Some((id, label, outcome)) = Self::tool_call_item_outcome(&item) {
-            self.record_tool_call_completion(id, label, outcome);
+            self.record_tool_call_completion_with_preview(
+                id,
+                label,
+                outcome,
+                Self::tool_call_preview(&item),
+            );
         }
     }
 
@@ -100,9 +108,18 @@ impl ChatWidget {
     }
 
     pub(super) fn record_tool_call_start(&mut self, id: String, label: String) {
+        self.record_tool_call_start_with_preview(id, label, None);
+    }
+
+    fn record_tool_call_start_with_preview(
+        &mut self,
+        id: String,
+        label: String,
+        preview: Option<history_cell::ToolCallSummaryPreview>,
+    ) {
         self.tool_call_summary
             .get_or_insert_with(ToolCallSummaryState::new)
-            .start(id, label);
+            .start(id, label, preview);
         self.bump_active_cell_revision();
         self.request_redraw();
     }
@@ -113,20 +130,25 @@ impl ChatWidget {
         label: String,
         outcome: history_cell::ToolCallSummaryOutcome,
     ) {
+        self.record_tool_call_completion_with_preview(id, label, outcome, None);
+    }
+
+    fn record_tool_call_completion_with_preview(
+        &mut self,
+        id: String,
+        label: String,
+        outcome: history_cell::ToolCallSummaryOutcome,
+        preview: Option<history_cell::ToolCallSummaryPreview>,
+    ) {
         self.tool_call_summary
             .get_or_insert_with(ToolCallSummaryState::new)
-            .complete(id, label, outcome);
+            .complete(id, label, outcome, preview);
         self.bump_active_cell_revision();
         self.request_redraw();
     }
 
     pub(super) fn flush_tool_call_summary(&mut self) {
-        let Some(summary) = self.tool_call_summary.take() else {
-            return;
-        };
-        if summary.has_calls() {
-            self.add_boxed_history(Box::new(summary.into_cell()));
-        }
+        self.tool_call_summary = None;
     }
 
     pub(super) fn fail_tool_call_summary(&mut self) {
@@ -147,7 +169,10 @@ impl ChatWidget {
             ThreadItem::McpToolCall {
                 id, server, tool, ..
             } => (id.clone(), format!("{server}/{tool}")),
-            ThreadItem::WebSearch(item) => (item.id.clone(), "web search".to_string()),
+            ThreadItem::WebSearch(item) => (
+                item.id.clone(),
+                format!("Searched the web for \"{}\"", item.query),
+            ),
             ThreadItem::FileChange { id, .. } => (id.clone(), "apply patch".to_string()),
             ThreadItem::ImageView { id, .. } => (id.clone(), "view image".to_string()),
             ThreadItem::ImageGeneration(item) => (item.id.clone(), "generate image".to_string()),
@@ -156,13 +181,22 @@ impl ChatWidget {
                 id,
                 namespace,
                 tool,
+                arguments,
                 ..
-            } => (
-                id.clone(),
-                namespace
-                    .as_deref()
-                    .map_or_else(|| tool.clone(), |namespace| format!("{namespace}/{tool}")),
-            ),
+            } => {
+                let label = if tool == "web_fetch" {
+                    arguments
+                        .get("url")
+                        .and_then(serde_json::Value::as_str)
+                        .map_or_else(|| "Read webpage".to_string(), |url| format!("Read {url}"))
+                } else {
+                    namespace.as_deref().map_or_else(
+                        || format!("Called {tool}"),
+                        |namespace| format!("Called {namespace}/{tool}"),
+                    )
+                };
+                (id.clone(), label)
+            }
             _ => return None,
         };
         Some((id, bound_label(label)))
@@ -243,6 +277,40 @@ impl ChatWidget {
             _ => return None,
         };
         Some((id, label, outcome))
+    }
+
+    fn tool_call_preview(item: &ThreadItem) -> Option<history_cell::ToolCallSummaryPreview> {
+        match item {
+            ThreadItem::CommandExecution {
+                command,
+                aggregated_output,
+                ..
+            } => Some(history_cell::ToolCallSummaryPreview::Command {
+                command: xedoc_tui_transcript::exec_command::strip_bash_lc_and_escape(
+                    &split_command_string(command),
+                ),
+                output: aggregated_output.clone(),
+            }),
+            ThreadItem::FileChange { changes, .. } => {
+                let change = changes.first()?;
+                let diff_lines = change.diff.lines().map(str::to_string).collect::<Vec<_>>();
+                let added = diff_lines
+                    .iter()
+                    .filter(|line| line.starts_with('+') && !line.starts_with("+++"))
+                    .count();
+                let removed = diff_lines
+                    .iter()
+                    .filter(|line| line.starts_with('-') && !line.starts_with("---"))
+                    .count();
+                Some(history_cell::ToolCallSummaryPreview::FileChange {
+                    path: change.path.clone(),
+                    added,
+                    removed,
+                    diff_lines,
+                })
+            }
+            _ => None,
+        }
     }
 }
 

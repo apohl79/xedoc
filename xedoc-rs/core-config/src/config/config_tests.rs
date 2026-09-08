@@ -3719,13 +3719,13 @@ fn tui_session_picker_view_defaults_to_none() {
 }
 
 #[test]
-fn tui_tool_call_rendering_defaults_to_normal() {
+fn tui_tool_call_rendering_defaults_to_optimized() {
     let cfg = toml::from_str::<ConfigToml>("[tui]\n").expect("TUI config should deserialize");
     assert_eq!(
         cfg.tui
             .expect("config should include tui section")
             .tool_call_rendering,
-        ToolCallRenderingMode::Normal
+        ToolCallRenderingMode::Optimized
     );
 }
 
@@ -3769,7 +3769,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             show_tooltips: false,
             vim_mode_default: false,
             raw_output_mode: false,
-            tool_call_rendering: ToolCallRenderingMode::Normal,
+            tool_call_rendering: ToolCallRenderingMode::Optimized,
             alternate_screen: AltScreenMode::Auto,
             status_line: None,
             status_line_use_colors: true,
