@@ -20,6 +20,10 @@ impl ToolCallSummaryState {
         self.cell.has_calls()
     }
 
+    pub(super) fn stats(&self) -> history_cell::ToolCallSummaryStats {
+        self.cell.stats()
+    }
+
     pub(super) fn start(
         &mut self,
         id: String,
@@ -149,6 +153,20 @@ impl ChatWidget {
 
     pub(super) fn flush_tool_call_summary(&mut self) {
         self.tool_call_summary = None;
+    }
+
+    pub(super) fn flush_tool_call_summary_into_history(&mut self) -> bool {
+        let Some(summary) = self.tool_call_summary.take() else {
+            return false;
+        };
+        if summary.has_calls() {
+            self.add_boxed_history(Box::new(history_cell::ToolCallCountSummaryCell::new(
+                summary.stats(),
+            )));
+            true
+        } else {
+            false
+        }
     }
 
     pub(super) fn fail_tool_call_summary(&mut self) {

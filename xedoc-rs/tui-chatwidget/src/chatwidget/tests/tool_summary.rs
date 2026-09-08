@@ -87,7 +87,7 @@ async fn optimized_mode_keeps_assistant_tail_and_shows_two_row_summary() {
 }
 
 #[tokio::test]
-async fn optimized_mode_commits_one_summary_for_mixed_results_without_output() {
+async fn optimized_mode_does_not_persist_a_summary_without_following_output() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     optimized_chat(&mut chat);
     chat.on_task_started();
@@ -110,12 +110,36 @@ async fn optimized_mode_commits_one_summary_for_mixed_results_without_output() {
     );
     handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
 
-    let cells = drain_insert_history(&mut rx);
-    assert_eq!(cells.len(), 1, "one optimized summary should be committed");
-    let rendered = lines_to_single_string(&cells[0]);
-    assert!(!rendered.contains("success output"));
-    assert!(!rendered.contains("failure output"));
-    assert_chatwidget_snapshot!("tool_summary_optimized_mixed_results", rendered);
+    assert!(drain_insert_history(&mut rx).is_empty());
+}
+
+#[tokio::test]
+async fn optimized_mode_inserts_a_persistent_summary_before_following_output() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    optimized_chat(&mut chat);
+    chat.on_task_started();
+
+    let command = begin_exec(&mut chat, "command", "printf summary");
+    end_exec(&mut chat, command, "", "", /*exit_code*/ 0);
+    chat.on_web_search_begin("search".to_string());
+    chat.on_web_search_end(
+        "search".to_string(),
+        "ratatui".to_string(),
+        xedoc_app_server_protocol::WebSearchAction::Search {
+            query: Some("ratatui".to_string()),
+            queries: None,
+        },
+    );
+
+    chat.handle_streaming_delta("The work is complete.".to_string());
+
+    let rendered = drain_insert_history(&mut rx)
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<String>();
+    assert!(rendered.contains("Made 2 tool calls. 1 web search performed."));
+    assert!(!rendered.contains("Calls:"));
+    assert!(!rendered.contains("summary"));
 }
 
 #[tokio::test]
@@ -142,7 +166,13 @@ async fn optimized_mode_resets_summary_between_turns() {
     let first = begin_exec(&mut chat, "first-turn-call", "printf first");
     end_exec(&mut chat, first, "", "", /*exit_code*/ 0);
     handle_turn_completed(&mut chat, "turn-1", /*duration_ms*/ None);
-    assert_eq!(drain_insert_history(&mut rx).len(), 1);
+    let interrupted = drain_insert_history(&mut rx);
+    assert!(
+        interrupted
+            .iter()
+            .flat_map(|lines| lines.iter())
+            .all(|line| !line.to_string().contains("Calls:"))
+    );
 
     chat.on_task_started();
     let second = begin_exec(&mut chat, "second-turn-call", "printf-second");
@@ -156,11 +186,13 @@ async fn optimized_mode_resets_summary_between_turns() {
     );
     end_exec(&mut chat, second, "", "", /*exit_code*/ 0);
     handle_turn_completed(&mut chat, "turn-2", /*duration_ms*/ None);
-    let cells = drain_insert_history(&mut rx);
-    assert_eq!(cells.len(), 1);
-    let second_summary = lines_to_single_string(&cells[0]);
-    assert!(second_summary.contains("second"));
-    assert!(!second_summary.contains("first"));
+    let failed = drain_insert_history(&mut rx);
+    assert!(
+        failed
+            .iter()
+            .flat_map(|lines| lines.iter())
+            .all(|line| !line.to_string().contains("Calls:"))
+    );
 }
 
 #[tokio::test]
@@ -218,11 +250,13 @@ async fn optimized_mode_aggregates_web_search_without_query_cell() {
     );
     handle_turn_completed(&mut chat, "turn-search", /*duration_ms*/ None);
 
-    let cells = drain_insert_history(&mut rx);
-    assert_eq!(cells.len(), 1);
-    let rendered = lines_to_single_string(&cells[0]);
-    assert!(rendered.contains("web search"));
-    assert!(!rendered.contains("private query"));
+    let failed = drain_insert_history(&mut rx);
+    assert!(
+        failed
+            .iter()
+            .flat_map(|lines| lines.iter())
+            .all(|line| !line.to_string().contains("Calls:"))
+    );
 }
 
 #[tokio::test]
@@ -266,11 +300,7 @@ async fn normal_to_optimized_mode_switch_applies_on_next_turn() {
         /*exit_code*/ 0,
     );
     handle_turn_completed(&mut chat, "turn-optimized", /*duration_ms*/ None);
-    let summary = drain_insert_history(&mut rx);
-    assert_eq!(summary.len(), 1);
-    let rendered = lines_to_single_string(&summary[0]);
-    assert!(rendered.contains("Calls:"));
-    assert!(!rendered.contains("optimized output"));
+    assert!(drain_insert_history(&mut rx).is_empty());
 }
 
 #[tokio::test]
@@ -296,11 +326,7 @@ async fn optimized_to_normal_mode_switch_preserves_active_turn_summary() {
         /*exit_code*/ 0,
     );
     handle_turn_completed(&mut chat, "turn-optimized", /*duration_ms*/ None);
-    let summary = drain_insert_history(&mut rx);
-    assert_eq!(summary.len(), 1);
-    let rendered = lines_to_single_string(&summary[0]);
-    assert!(rendered.contains("Calls:"));
-    assert!(!rendered.contains("optimized output"));
+    assert!(drain_insert_history(&mut rx).is_empty());
 
     chat.on_task_started();
     let second = begin_exec(&mut chat, "normal-call", "printf normal");
@@ -328,31 +354,23 @@ async fn optimized_mode_marks_in_progress_calls_failed_on_interrupt_and_failure(
     let _ = begin_exec(&mut chat, "interrupted-call", "sleep 1");
     handle_turn_interrupted(&mut chat, "turn-interrupted");
 
-    let first = drain_insert_history(&mut rx);
-    let first_count = first
-        .iter()
-        .flat_map(|lines| lines.iter())
-        .map(ToString::to_string)
-        .find(|line| line.starts_with("  Calls:"))
-        .expect("interrupted count row");
-    assert_eq!(
-        first_count,
-        "  Calls: 1 · 0 succeeded · 1 failed · 0 in progress"
+    let interrupted = drain_insert_history(&mut rx);
+    assert!(
+        interrupted
+            .iter()
+            .flat_map(|lines| lines.iter())
+            .all(|line| !line.to_string().contains("Calls:"))
     );
 
     chat.on_task_started();
     let _ = begin_exec(&mut chat, "failed-call", "sleep 1");
     handle_error(&mut chat, "turn failed", None);
-    let second = drain_insert_history(&mut rx);
-    let second_count = second
-        .iter()
-        .flat_map(|lines| lines.iter())
-        .map(ToString::to_string)
-        .find(|line| line.starts_with("  Calls:"))
-        .expect("failed count row");
-    assert_eq!(
-        second_count,
-        "  Calls: 1 · 0 succeeded · 1 failed · 0 in progress"
+    let failed = drain_insert_history(&mut rx);
+    assert!(
+        failed
+            .iter()
+            .flat_map(|lines| lines.iter())
+            .all(|line| !line.to_string().contains("Calls:"))
     );
 }
 
@@ -385,7 +403,7 @@ async fn optimized_mode_keeps_user_shell_detailed() {
 }
 
 #[tokio::test]
-async fn optimized_replay_commits_at_most_one_summary_per_turn() {
+async fn optimized_replay_does_not_persist_tool_blocks() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     optimized_chat(&mut chat);
 
@@ -423,13 +441,5 @@ async fn optimized_replay_commits_at_most_one_summary_per_turn() {
 
     chat.replay_thread_turns(vec![turn], ReplayKind::ThreadSnapshot);
 
-    let cells = drain_insert_history(&mut rx);
-    assert_eq!(cells.len(), 1);
-    assert_eq!(
-        lines_to_single_string(&cells[0])
-            .lines()
-            .filter(|line| line.contains("Tool"))
-            .count(),
-        1
-    );
+    assert!(drain_insert_history(&mut rx).is_empty());
 }

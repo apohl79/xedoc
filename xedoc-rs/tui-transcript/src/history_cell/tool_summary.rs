@@ -55,6 +55,77 @@ pub struct ToolCallSummaryCell {
     in_progress: usize,
 }
 
+/// A persistent, compact marker separating model-output blocks around tool use.
+#[derive(Debug)]
+pub struct ToolCallCountSummaryCell {
+    stats: ToolCallSummaryStats,
+}
+
+impl ToolCallCountSummaryCell {
+    pub fn new(stats: ToolCallSummaryStats) -> Self {
+        Self { stats }
+    }
+}
+
+impl HistoryCell for ToolCallCountSummaryCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let separator = "─".repeat(width as usize).dim();
+        let calls = if self.stats.total == 1 {
+            "call"
+        } else {
+            "calls"
+        };
+        let mut summary = format!("Made {} tool {calls}.", self.stats.total);
+        if self.stats.files_edited > 0 {
+            let files = if self.stats.files_edited == 1 {
+                "file"
+            } else {
+                "files"
+            };
+            summary.push_str(&format!(" {} {files} edited.", self.stats.files_edited));
+        }
+        if self.stats.web_searches > 0 {
+            let searches = if self.stats.web_searches == 1 {
+                "search"
+            } else {
+                "searches"
+            };
+            summary.push_str(&format!(
+                " {} web {searches} performed.",
+                self.stats.web_searches
+            ));
+        }
+        if self.stats.web_pages_fetched > 0 {
+            let pages = if self.stats.web_pages_fetched == 1 {
+                "page"
+            } else {
+                "pages"
+            };
+            summary.push_str(&format!(
+                " {} web {pages} fetched.",
+                self.stats.web_pages_fetched
+            ));
+        }
+        vec![
+            separator.clone().into(),
+            vec!["• ".dim(), summary.dim()].into(),
+            separator.into(),
+        ]
+    }
+
+    fn raw_lines(&self) -> Vec<Line<'static>> {
+        self.display_lines(/*width*/ u16::MAX)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ToolCallSummaryStats {
+    pub total: usize,
+    pub files_edited: usize,
+    pub web_searches: usize,
+    pub web_pages_fetched: usize,
+}
+
 impl ToolCallSummaryCell {
     pub fn new() -> Self {
         Self {
@@ -75,6 +146,24 @@ impl ToolCallSummaryCell {
 
     pub fn has_calls(&self) -> bool {
         self.total > 0
+    }
+
+    pub fn stats(&self) -> ToolCallSummaryStats {
+        let labels = self.labels.values();
+        ToolCallSummaryStats {
+            total: self.total,
+            files_edited: labels
+                .clone()
+                .filter(|label| *label == "apply patch")
+                .count(),
+            web_searches: labels
+                .clone()
+                .filter(|label| {
+                    *label == "web search" || label.starts_with("Searched the web for ")
+                })
+                .count(),
+            web_pages_fetched: labels.filter(|label| label.starts_with("Read ")).count(),
+        }
     }
 
     pub fn start_call(&mut self, call_id: String, label: String) {

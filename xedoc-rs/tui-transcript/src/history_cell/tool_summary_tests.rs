@@ -99,3 +99,31 @@ fn labels_with_control_whitespace_stay_on_two_logical_rows() {
         ]
     );
 }
+
+#[test]
+fn persistent_summary_counts_file_and_web_activity() {
+    let mut cell = ToolCallSummaryCell::new();
+    cell.start_call("file".to_string(), "apply patch".to_string());
+    cell.start_call(
+        "search".to_string(),
+        "Searched the web for \"ratatui\"".to_string(),
+    );
+    cell.start_call("fetch".to_string(), "Read https://ratatui.rs".to_string());
+
+    let summary = ToolCallCountSummaryCell::new(cell.stats());
+    let rendered = summary
+        .display_lines(/*width*/ 20)
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        rendered,
+        vec![
+            "────────────────────".to_string(),
+            "• Made 3 tool calls. 1 file edited. 1 web search performed. 1 web page fetched."
+                .to_string(),
+            "────────────────────".to_string(),
+        ]
+    );
+}
