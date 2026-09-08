@@ -1,0 +1,7 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/tool_summary.rs
+assertion_line: 19
+expression: "format!(\"{}\\n{}\", ChatWidget::web_search_label(\"\"),\nChatWidget::web_search_label(\"ratatui\"))"
+---
+Searched the web
+Searched the web for "ratatui"

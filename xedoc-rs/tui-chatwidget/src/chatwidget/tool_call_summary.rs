@@ -221,10 +221,7 @@ impl ChatWidget {
             ThreadItem::McpToolCall {
                 id, server, tool, ..
             } => (id.clone(), format!("{server}/{tool}")),
-            ThreadItem::WebSearch(item) => (
-                item.id.clone(),
-                format!("Searched the web for \"{}\"", item.query),
-            ),
+            ThreadItem::WebSearch(item) => (item.id.clone(), Self::web_search_label(&item.query)),
             ThreadItem::FileChange { id, .. } => (id.clone(), "apply patch".to_string()),
             ThreadItem::ImageView { id, .. } => (id.clone(), "view image".to_string()),
             ThreadItem::ImageGeneration(item) => (item.id.clone(), "generate image".to_string()),
@@ -256,6 +253,26 @@ impl ChatWidget {
             _ => return None,
         };
         Some((id, bound_label(label)))
+    }
+
+    pub(super) fn web_search_label(query: &str) -> String {
+        const PREFIX: &str = "Searched the web for \"";
+
+        let query = query.trim();
+        if query.is_empty() {
+            return "Searched the web".to_string();
+        }
+
+        let max_query_chars = MAX_LABEL_CHARS.saturating_sub(PREFIX.chars().count() + 1);
+        if query.chars().count() <= max_query_chars {
+            return format!("{PREFIX}{query}\"");
+        }
+
+        let truncated = query
+            .chars()
+            .take(max_query_chars.saturating_sub(1))
+            .collect::<String>();
+        format!("{PREFIX}{truncated}…\"")
     }
 
     pub(super) fn tool_call_item_outcome(
