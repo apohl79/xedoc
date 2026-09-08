@@ -1,0 +1,10 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/status_and_layout.rs
+assertion_line: 2994
+expression: normalized_backend_snapshot(terminal.backend())
+---
+"                                                                                "
+"╭───────────────────────────────────────────────────────────── Roadmap cleanup ╮"
+"│❯ Ask Xedoc to do anything                                                    │"
+"╰──────────────────────────────────────────────────────────────── gpt-5.2│high ╯"
+"  gpt-5.2 high · Roadmap cleanup                                                "

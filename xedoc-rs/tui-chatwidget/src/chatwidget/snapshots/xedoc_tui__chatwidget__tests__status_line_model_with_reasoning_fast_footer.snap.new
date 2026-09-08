@@ -1,0 +1,10 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/status_and_layout.rs
+assertion_line: 3106
+expression: normalized_backend_snapshot(terminal.backend())
+---
+"                                                                                "
+"╭──────────────────────────────────────────────────────────────────────────────╮"
+"│❯ Ask Xedoc to do anything                                                    │"
+"╰──────────────────────────────────────────────────────── gpt-5.4│xhigh ─ fast ╯"
+"  gpt-5.4 xhigh fast · Context 0% used · /tmp/project                           "
