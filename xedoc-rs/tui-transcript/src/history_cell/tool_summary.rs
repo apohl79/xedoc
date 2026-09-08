@@ -6,6 +6,7 @@ use crate::diff_render::DiffLineType;
 use crate::diff_render::current_diff_render_style_context;
 use crate::diff_render::push_wrapped_diff_line_with_style_context;
 use crate::diff_render::push_wrapped_diff_line_with_syntax_and_style_context;
+use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::render::highlight::highlight_bash_to_lines;
 use crate::render::highlight::highlight_code_to_styled_spans;
 use std::collections::HashMap;
@@ -323,18 +324,16 @@ impl HistoryCell for ToolCallSummaryCell {
                     .and_then(|call_id| self.calls.get(call_id))
                     .is_some_and(|status| *status == ToolCallStatus::InProgress)
                 {
-                    "Running ".cl_cyan().bold()
+                    "Running ".bold()
                 } else {
                     "Ran ".bold()
                 };
                 let mut header = Line::from(vec!["• ".dim(), verb]);
                 header.extend(first);
-                let mut lines = vec![header];
-                for line in highlighted {
-                    let mut continuation = Line::from("  ".dim());
-                    continuation.extend(line);
-                    lines.push(continuation);
-                }
+                let mut lines = vec![truncate_line_with_ellipsis_if_overflow(
+                    header,
+                    usize::from(width),
+                )];
                 if let Some(output) = output {
                     let output_lines = output.split_terminator('\n').collect::<Vec<_>>();
                     let omitted = output_lines.len().saturating_sub(3);
