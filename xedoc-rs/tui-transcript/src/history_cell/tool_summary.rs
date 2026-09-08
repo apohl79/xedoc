@@ -1,12 +1,16 @@
 //! Compact per-turn tool-call summary history cell.
 
 use super::*;
-use crate::city_lights::CL_SESSION_TITLE_BG;
 use crate::city_lights::CityLightsStylize;
+use crate::diff_render::DiffLineType;
+use crate::diff_render::current_diff_render_style_context;
+use crate::diff_render::push_wrapped_diff_line_with_style_context;
+use crate::diff_render::push_wrapped_diff_line_with_syntax_and_style_context;
 use crate::render::highlight::highlight_bash_to_lines;
-use crate::terminal_palette::rgb_color;
+use crate::render::highlight::highlight_code_to_styled_spans;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::path::Path;
 
 const MAX_TRACKED_CALLS: usize = 512;
 const MAX_LABEL_CHARS: usize = 80;
@@ -72,19 +76,14 @@ impl ToolCallCountSummaryCell {
 impl HistoryCell for ToolCallCountSummaryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let separator = "─".repeat(width as usize).dim();
-        let calls = if self.stats.total == 1 {
-            "call"
-        } else {
-            "calls"
-        };
-        let mut summary = format!("Made {} tool {calls}.", self.stats.total);
+        let mut summary = String::new();
         if self.stats.files_edited > 0 {
             let files = if self.stats.files_edited == 1 {
                 "file"
             } else {
                 "files"
             };
-            summary.push_str(&format!(" {} {files} edited.", self.stats.files_edited));
+            summary.push_str(&format!("{} {files} edited.", self.stats.files_edited));
         }
         if self.stats.web_searches > 0 {
             let searches = if self.stats.web_searches == 1 {
@@ -310,7 +309,7 @@ impl Default for ToolCallSummaryCell {
 }
 
 impl HistoryCell for ToolCallSummaryCell {
-    fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines = match &self.last_preview {
             Some(ToolCallSummaryPreview::Command { command, output }) => {
                 let mut highlighted = highlight_bash_to_lines(command);
@@ -324,11 +323,11 @@ impl HistoryCell for ToolCallSummaryCell {
                     .and_then(|call_id| self.calls.get(call_id))
                     .is_some_and(|status| *status == ToolCallStatus::InProgress)
                 {
-                    "Running "
+                    "Running ".cl_cyan().bold()
                 } else {
-                    "Ran "
+                    "Ran ".bold()
                 };
-                let mut header = Line::from(vec!["• ".dim(), verb.bold()]);
+                let mut header = Line::from(vec!["• ".dim(), verb]);
                 header.extend(first);
                 let mut lines = vec![header];
                 for line in highlighted {
@@ -337,13 +336,15 @@ impl HistoryCell for ToolCallSummaryCell {
                     lines.push(continuation);
                 }
                 if let Some(output) = output {
-                    let output_lines = output.lines().collect::<Vec<_>>();
+                    let output_lines = output.split_terminator('\n').collect::<Vec<_>>();
                     let omitted = output_lines.len().saturating_sub(3);
                     if omitted > 0 {
                         lines.push(format!("  ... {omitted} more lines").dim().into());
                     }
                     for output_line in output_lines.iter().skip(omitted) {
-                        lines.push(vec!["  ".dim(), (*output_line).to_string().dim()].into());
+                        let (visible, _, _) =
+                            take_prefix_by_width(output_line, usize::from(width).saturating_sub(2));
+                        lines.push(vec!["  ".dim(), visible.dim()].into());
                     }
                 }
                 lines
@@ -363,15 +364,48 @@ impl HistoryCell for ToolCallSummaryCell {
                     " ".into(),
                     format!("-{removed}").cl_red(),
                 ])];
-                for diff_line in diff_lines.iter().take(3) {
-                    let styled = if diff_line.starts_with('+') {
-                        diff_line.clone().green()
-                    } else if diff_line.starts_with('-') {
-                        diff_line.clone().red()
+                let style_context = current_diff_render_style_context();
+                for (index, diff_line) in diff_lines.iter().take(3).enumerate() {
+                    let (kind, content) = if let Some(content) = diff_line.strip_prefix('+') {
+                        (DiffLineType::Insert, content)
+                    } else if let Some(content) = diff_line.strip_prefix('-') {
+                        (DiffLineType::Delete, content)
                     } else {
-                        diff_line.clone().dim()
+                        (DiffLineType::Context, diff_line.as_str())
                     };
-                    lines.push(vec!["  ".dim(), styled].into());
+                    let syntax_spans = Path::new(path)
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        .and_then(|language| highlight_code_to_styled_spans(content, language))
+                        .and_then(|lines| lines.into_iter().next());
+                    let rendered = syntax_spans.map_or_else(
+                        || {
+                            push_wrapped_diff_line_with_style_context(
+                                index + 1,
+                                kind,
+                                content,
+                                usize::from(width).saturating_sub(2),
+                                /*line_number_width*/ 1,
+                                style_context,
+                            )
+                        },
+                        |spans| {
+                            push_wrapped_diff_line_with_syntax_and_style_context(
+                                index + 1,
+                                kind,
+                                content,
+                                usize::from(width).saturating_sub(2),
+                                /*line_number_width*/ 1,
+                                &spans,
+                                style_context,
+                            )
+                        },
+                    );
+                    if let Some(rendered) = rendered.into_iter().next() {
+                        let mut line = Line::from("  ".dim());
+                        line.extend(rendered);
+                        lines.push(line);
+                    }
                 }
                 let omitted = diff_lines.len().saturating_sub(3);
                 if omitted > 0 {
@@ -404,7 +438,7 @@ impl HistoryCell for ToolCallSummaryCell {
     }
 
     fn display_background_style(&self) -> Option<Style> {
-        Some(Style::default().bg(rgb_color(CL_SESSION_TITLE_BG)))
+        Some(user_message_style())
     }
 
     fn raw_lines(&self) -> Vec<Line<'static>> {

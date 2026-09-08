@@ -9,6 +9,7 @@ const MAX_LABEL_CHARS: usize = 80;
 #[derive(Debug, Default)]
 pub(super) struct ToolCallSummaryState {
     cell: history_cell::ToolCallSummaryCell,
+    persisted_stats: history_cell::ToolCallSummaryStats,
 }
 
 impl ToolCallSummaryState {
@@ -18,10 +19,6 @@ impl ToolCallSummaryState {
 
     pub(super) fn has_calls(&self) -> bool {
         self.cell.has_calls()
-    }
-
-    pub(super) fn stats(&self) -> history_cell::ToolCallSummaryStats {
-        self.cell.stats()
     }
 
     pub(super) fn start(
@@ -54,6 +51,26 @@ impl ToolCallSummaryState {
 
     pub(super) fn append_command_output(&mut self, call_id: &str, delta: &str) -> bool {
         self.cell.append_command_output(call_id, delta)
+    }
+
+    pub(super) fn mark_history_summary_emitted(&mut self) {
+        self.persisted_stats = self.cell.stats();
+    }
+
+    pub(super) fn unpersisted_stats(&self) -> history_cell::ToolCallSummaryStats {
+        let stats = self.cell.stats();
+        history_cell::ToolCallSummaryStats {
+            total: stats.total.saturating_sub(self.persisted_stats.total),
+            files_edited: stats
+                .files_edited
+                .saturating_sub(self.persisted_stats.files_edited),
+            web_searches: stats
+                .web_searches
+                .saturating_sub(self.persisted_stats.web_searches),
+            web_pages_fetched: stats
+                .web_pages_fetched
+                .saturating_sub(self.persisted_stats.web_pages_fetched),
+        }
     }
 }
 
@@ -169,17 +186,21 @@ impl ChatWidget {
     }
 
     pub(super) fn flush_tool_call_summary_into_history(&mut self) -> bool {
-        let Some(summary) = self.tool_call_summary.take() else {
+        let stats = self
+            .tool_call_summary
+            .as_ref()
+            .and_then(|summary| summary.has_calls().then(|| summary.unpersisted_stats()));
+        let Some(stats) = stats else {
             return false;
         };
-        if summary.has_calls() {
-            self.add_boxed_history(Box::new(history_cell::ToolCallCountSummaryCell::new(
-                summary.stats(),
-            )));
-            true
-        } else {
-            false
+        if stats.files_edited == 0 && stats.web_searches == 0 && stats.web_pages_fetched == 0 {
+            return false;
         }
+        self.add_boxed_history(Box::new(history_cell::ToolCallCountSummaryCell::new(stats)));
+        if let Some(summary) = self.tool_call_summary.as_mut() {
+            summary.mark_history_summary_emitted();
+        }
+        true
     }
 
     pub(super) fn fail_tool_call_summary(&mut self) {
@@ -207,6 +228,10 @@ impl ChatWidget {
             ThreadItem::FileChange { id, .. } => (id.clone(), "apply patch".to_string()),
             ThreadItem::ImageView { id, .. } => (id.clone(), "view image".to_string()),
             ThreadItem::ImageGeneration(item) => (item.id.clone(), "generate image".to_string()),
+            ThreadItem::CollabAgentToolCall {
+                tool: xedoc_app_server_protocol::CollabAgentTool::Wait,
+                ..
+            } => return None,
             ThreadItem::CollabAgentToolCall { id, tool, .. } => (id.clone(), format!("{tool:?}")),
             ThreadItem::DynamicToolCall {
                 id,

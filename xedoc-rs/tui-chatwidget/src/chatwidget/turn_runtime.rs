@@ -172,7 +172,11 @@ impl ChatWidget {
         if !self.optimized_tool_call_rendering() {
             self.flush_unified_exec_wait_streak();
         }
-        self.flush_tool_call_summary();
+        if from_replay && self.optimized_tool_call_rendering() {
+            self.flush_tool_call_summary_into_history();
+        } else {
+            self.flush_tool_call_summary();
+        }
         if !from_replay {
             self.collect_runtime_metrics_delta();
             let runtime_metrics =
