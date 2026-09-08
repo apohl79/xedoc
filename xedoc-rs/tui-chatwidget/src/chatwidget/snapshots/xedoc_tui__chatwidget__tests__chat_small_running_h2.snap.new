@@ -1,0 +1,7 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/status_and_layout.rs
+assertion_line: 1931
+expression: normalized_backend_snapshot(terminal.backend())
+---
+"                                        "
+"╭──────────────────── gpt-5.6-sol ─ 0s ╮"

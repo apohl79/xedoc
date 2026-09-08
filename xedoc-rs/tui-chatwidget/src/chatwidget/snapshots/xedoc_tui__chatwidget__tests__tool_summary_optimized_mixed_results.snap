@@ -1,0 +1,6 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/tool_summary.rs
+expression: rendered
+---
+• Tool: bash -lc 'printf failure'
+  Calls: 2 · 1 succeeded · 1 failed · 0 in progress

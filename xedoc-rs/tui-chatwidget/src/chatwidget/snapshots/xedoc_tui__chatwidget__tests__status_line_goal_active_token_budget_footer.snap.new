@@ -1,0 +1,10 @@
+---
+source: tui-chatwidget/src/chatwidget/tests/status_and_layout.rs
+assertion_line: 3177
+expression: normalized_backend_snapshot(terminal.backend())
+---
+"                                                                                "
+"╭──────────────────────────────────────────────────────────────────────────────╮"
+"│❯ Ask Xedoc to do anything                                                    │"
+"╰───────────────────────────────────────────────────────────────────── gpt-5.4 ╯"
+"  gpt-5.4                                            Pursuing goal (40K / 50K)  "
