@@ -1,0 +1,6 @@
+---
+source: tui-transcript/src/history_cell/tool_summary_tests.rs
+assertion_line: 212
+expression: output.to_string()
+---
+  black background

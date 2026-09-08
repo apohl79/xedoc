@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
+use xedoc_ansi_escape::ansi_escape_line;
 
 const MAX_TRACKED_CALLS: usize = 512;
 const MAX_LABEL_CHARS: usize = 80;
@@ -340,8 +341,11 @@ impl HistoryCell for ToolCallSummaryCell {
                         lines.push(format!("  ... {omitted} more lines").dim().into());
                     }
                     for output_line in output_lines.iter().skip(omitted) {
-                        let (visible, _, _) =
-                            take_prefix_by_width(output_line, usize::from(width).saturating_sub(2));
+                        let output_line = ansi_escape_line(output_line).to_string();
+                        let (visible, _, _) = take_prefix_by_width(
+                            &output_line,
+                            usize::from(width).saturating_sub(2),
+                        );
                         lines.push(vec!["  ".dim(), visible.dim()].into());
                     }
                 }

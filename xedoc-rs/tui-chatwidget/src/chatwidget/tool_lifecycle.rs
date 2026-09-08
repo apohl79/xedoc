@@ -131,7 +131,7 @@ impl ChatWidget {
         if self.optimized_tool_call_rendering() {
             self.record_tool_call_completion(
                 call_id,
-                format!("Searched the web for \"{query}\""),
+                Self::web_search_label(&query),
                 history_cell::ToolCallSummaryOutcome::Succeeded,
             );
             return;

@@ -5,6 +5,27 @@ fn optimized_chat(chat: &mut ChatWidget) {
     chat.config.tui_tool_call_rendering = ToolCallRenderingMode::Optimized;
 }
 
+#[test]
+fn web_search_label_omits_empty_queries_and_closes_truncated_quotes() {
+    assert_eq!(ChatWidget::web_search_label(" \t\n "), "Searched the web");
+    assert_eq!(
+        ChatWidget::web_search_label("ratatui"),
+        "Searched the web for \"ratatui\""
+    );
+
+    let truncated = ChatWidget::web_search_label(&"x".repeat(256));
+    assert!(truncated.ends_with("…\""));
+    assert!(truncated.chars().count() <= 80);
+    insta::assert_snapshot!(
+        "web_search_label_empty_and_regular",
+        format!(
+            "{}\n{}",
+            ChatWidget::web_search_label(""),
+            ChatWidget::web_search_label("ratatui")
+        )
+    );
+}
+
 fn assert_mode_change_notice(
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
     expected: ToolCallRenderingMode,
@@ -262,11 +283,20 @@ async fn optimized_mode_aggregates_web_search_without_query_cell() {
     chat.on_web_search_begin("search-call".to_string());
     chat.on_web_search_end(
         "search-call".to_string(),
-        "private query".to_string(),
+        String::new(),
         xedoc_app_server_protocol::WebSearchAction::Search {
-            query: Some("private query".to_string()),
+            query: Some(String::new()),
             queries: None,
         },
+    );
+    assert_eq!(
+        chat.tool_call_summary
+            .as_ref()
+            .expect("optimized tool summary")
+            .cell()
+            .display_label()
+            .to_string(),
+        "Searched the web"
     );
     handle_turn_completed(&mut chat, "turn-search", /*duration_ms*/ None);
 
@@ -277,6 +307,38 @@ async fn optimized_mode_aggregates_web_search_without_query_cell() {
             .flat_map(|lines| lines.iter())
             .all(|line| !line.to_string().contains("Calls:"))
     );
+}
+
+#[tokio::test]
+async fn optimized_web_search_item_start_keeps_truncated_quote() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    optimized_chat(&mut chat);
+    chat.on_task_started();
+
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: AppServerThreadItem::WebSearch(xedoc_app_server_protocol::WebSearchItem {
+                id: "search-call".to_string(),
+                query: "x".repeat(256),
+                action: None,
+                results: None,
+            }),
+        }),
+        /*replay_kind*/ None,
+    );
+
+    let label = chat
+        .tool_call_summary
+        .as_ref()
+        .expect("optimized tool summary")
+        .cell()
+        .display_label()
+        .to_string();
+    assert!(label.ends_with("…\""));
+    assert!(label.chars().count() <= 80);
 }
 
 #[tokio::test]

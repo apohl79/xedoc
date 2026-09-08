@@ -194,6 +194,28 @@ fn completed_command_preview_says_ran_when_another_call_is_in_progress() {
 }
 
 #[test]
+fn command_preview_neutralizes_ansi_backgrounds() {
+    let mut cell = ToolCallSummaryCell::new();
+    cell.start_call_with_preview(
+        "command".to_string(),
+        "command".to_string(),
+        Some(ToolCallSummaryPreview::Command {
+            command: "printf preview".to_string(),
+            output: Some("\x1b[40mblack background\x1b[0m\n".to_string()),
+        }),
+    );
+
+    let output = cell.display_lines(/*width*/ 80).remove(2);
+    assert_eq!(output.to_string(), "  black background");
+    assert!(!output.to_string().contains('\x1b'));
+    assert!(output.spans.iter().all(|span| span.style.bg.is_none()));
+    insta::assert_snapshot!(
+        "command_preview_neutralizes_ansi_backgrounds",
+        output.to_string()
+    );
+}
+
+#[test]
 fn file_change_preview_uses_apply_patch_and_syntax_styles() {
     let preview = |path: &str| ToolCallSummaryPreview::FileChange {
         path: path.to_string(),
