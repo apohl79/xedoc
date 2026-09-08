@@ -225,3 +225,32 @@ fn file_change_preview_uses_apply_patch_and_syntax_styles() {
         .collect::<Vec<_>>();
     assert_ne!(rust_styles, plain_styles);
 }
+
+#[test]
+fn command_header_is_limited_to_one_terminal_row() {
+    let mut cell = ToolCallSummaryCell::new();
+    cell.start_call_with_preview(
+        "command".to_string(),
+        "command".to_string(),
+        Some(ToolCallSummaryPreview::Command {
+            command: "cargo test --package xedoc-tui-transcript --test very-long-test-name"
+                .to_string(),
+            output: Some(String::new()),
+        }),
+    );
+
+    let rendered = cell.display_lines(/*width*/ 30);
+    assert!(rendered[1].to_string().ends_with('…'));
+    assert!(rendered[1].width() <= 30);
+}
+
+#[test]
+fn fallback_action_verb_uses_the_shared_accent_style() {
+    let mut cell = ToolCallSummaryCell::new();
+    cell.start_call("web".to_string(), "Searched the web".to_string());
+
+    let line = cell.display_lines(/*width*/ 80).remove(1);
+    assert_eq!(line.spans[1].content, "Ran ");
+    assert_eq!(line.spans[1].style.fg, None);
+    assert!(line.spans[1].style.add_modifier.contains(Modifier::BOLD));
+}
