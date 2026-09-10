@@ -47,6 +47,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use unicode_width::UnicodeWidthChar;
+use unicode_width::UnicodeWidthStr;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 /// Replacement for a tab character in rendered diff content.
@@ -983,7 +984,7 @@ fn push_wrapped_diff_line_inner_with_theme_and_color_level(
                 row_spans.push(RtSpan::styled(cont_gutter, gutter_style));
             }
             row_spans.extend(chunk);
-            lines.push(RtLine::from(row_spans).style(line_bg));
+            lines.push(full_width_diff_line(row_spans, width, line_bg));
         }
         return lines;
     }
@@ -1005,10 +1006,25 @@ fn push_wrapped_diff_line_inner_with_theme_and_color_level(
             row_spans.push(RtSpan::styled(cont_gutter, gutter_style));
         }
         row_spans.extend(chunk);
-        lines.push(RtLine::from(row_spans).style(line_bg));
+        lines.push(full_width_diff_line(row_spans, width, line_bg));
     }
 
     lines
+}
+
+fn full_width_diff_line(
+    mut spans: Vec<RtSpan<'static>>,
+    width: usize,
+    line_bg: Style,
+) -> RtLine<'static> {
+    let content_width = spans
+        .iter()
+        .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+        .sum::<usize>();
+    if line_bg.bg.is_some() && content_width < width {
+        spans.push(RtSpan::styled(" ".repeat(width - content_width), line_bg));
+    }
+    RtLine::from(spans).style(line_bg)
 }
 
 /// Split styled spans into chunks that fit within `max_cols` display columns.
