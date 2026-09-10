@@ -4840,7 +4840,6 @@ impl ChatComposer {
         let mut runtime_context_spans = Vec::new();
         let field_style = city_lights::composer_session_title_style();
         if let Some((model, effort, fast)) = runtime_context {
-            let context_style = city_lights::composer_runtime_context_style();
             runtime_context_spans.push(Span::styled(" ", field_style));
             runtime_context_spans.push(Span::styled(
                 model,
@@ -4848,7 +4847,10 @@ impl ChatComposer {
             ));
             if let Some(effort) = effort {
                 runtime_context_spans.push(Span::styled("│", runtime_context_separator_style()));
-                runtime_context_spans.push(Span::styled(effort, context_style));
+                runtime_context_spans.push(Span::styled(
+                    effort,
+                    city_lights::composer_runtime_context_style(effort),
+                ));
             }
             runtime_context_spans.push(Span::styled(" ", field_style));
             if fast {
@@ -5684,7 +5686,7 @@ mod tests {
         let timer_row = area.height - 2;
         let timer_background = city_lights::composer_session_title_style().bg;
         let model_name_foreground = city_lights::composer_model_name_style().fg;
-        let effort_foreground = city_lights::composer_runtime_context_style().fg;
+        let effort_foreground = city_lights::composer_runtime_context_style("medium").fg;
         let pipe_foreground = runtime_context_separator_style().fg;
         let mut text = String::new();
         let mut model_name_color_cells = String::new();
