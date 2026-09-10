@@ -222,6 +222,17 @@ impl LocalThreadStore {
         &self,
         params: LoadThreadHistoryParams,
     ) -> ThreadStoreResult<StoredThreadHistory> {
+        if let Ok(rollout_path) = live_writer::rollout_path(self, params.thread_id).await
+            && !params.include_archived
+            && helpers::rollout_path_is_archived(
+                self.config.xedoc_home.as_path(),
+                rollout_path.as_path(),
+            )
+        {
+            return Err(ThreadStoreError::InvalidRequest {
+                message: format!("thread {} is archived", params.thread_id),
+            });
+        }
         let stored_thread = read_thread::read_thread(
             self,
             ReadThreadParams {
@@ -264,16 +275,6 @@ impl LocalThreadStore {
             });
         }
         if let Ok(rollout_path) = live_writer::rollout_path(self, params.thread_id).await {
-            if !params.include_archived
-                && helpers::rollout_path_is_archived(
-                    self.config.xedoc_home.as_path(),
-                    rollout_path.as_path(),
-                )
-            {
-                return Err(ThreadStoreError::InvalidRequest {
-                    message: format!("thread {} is archived", params.thread_id),
-                });
-            }
             return read_thread::read_thread_by_rollout_path(
                 self,
                 rollout_path,
@@ -1338,7 +1339,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn paginated_threads_allow_metadata_reads_and_resume_but_reject_legacy_history_paths() {
+    async fn paginated_threads_allow_metadata_reads_resume_and_history_loads() {
         let home = TempDir::new().expect("temp dir");
         let store = LocalThreadStore::new(test_config(home.path()), /*state_db*/ None);
         let uuid = uuid::Uuid::from_u128(408);
@@ -1393,15 +1394,14 @@ mod tests {
                 .await
                 .expect_err("full history path read should fail"),
         );
-        assert_paginated_threads_unsupported(
-            store
-                .load_history(LoadThreadHistoryParams {
-                    thread_id,
-                    include_archived: false,
-                })
-                .await
-                .expect_err("history load should fail"),
-        );
+        let history = store
+            .load_history(LoadThreadHistoryParams {
+                thread_id,
+                include_archived: false,
+            })
+            .await
+            .expect("paginated history load should succeed");
+        assert!(!history.items.is_empty());
         store
             .resume_thread(ResumeThreadParams {
                 thread_id,

@@ -869,7 +869,7 @@ mod tests {
         .unwrap();
         let req = Request::builder()
             .method(Method::POST)
-            .uri("/repos/openai/codex/issues?state=open")
+            .uri("/repos/openai/xedoc/issues?state=open")
             .header("x-github-api-version", "2022-11-28-preview")
             .body(Body::empty())
             .unwrap();
