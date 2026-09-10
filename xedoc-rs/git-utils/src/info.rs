@@ -915,16 +915,16 @@ mod tests {
     fn canonicalize_git_remote_url_normalizes_github_variants() {
         for remote in [
             "git@github.com:OpenAI/Xedoc.git",
-            "ssh://git@github.com/openai/codex.git",
+            "ssh://git@github.com/openai/xedoc.git",
             "ssh://git@github.com:22/OpenAI/Xedoc.git",
-            "https://github.com/openai/codex.git",
-            "https://github.com:443/openai/codex.git",
-            "https://token@github.com/openai/codex/",
+            "https://github.com/openai/Xedoc.git",
+            "https://github.com:443/openai/Xedoc.git",
+            "https://token@github.com/openai/Xedoc/",
             "github.com/OpenAI/Xedoc.git",
         ] {
             assert_eq!(
                 canonicalize_git_remote_url(remote),
-                Some("github.com/openai/codex".to_string())
+                Some("github.com/openai/xedoc".to_string())
             );
         }
     }

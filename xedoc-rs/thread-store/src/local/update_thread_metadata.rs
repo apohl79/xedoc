@@ -295,8 +295,10 @@ async fn apply_metadata_update(
             }
             if let Some(name) = patch.name.as_ref() {
                 metadata.name = name.clone();
-                metadata.title = name.clone().unwrap_or_default();
-                metadata.title_source = patch.title_source.unwrap_or(ThreadTitleSource::Manual);
+                if metadata.history_mode != ThreadHistoryMode::Paginated {
+                    metadata.title = name.clone().unwrap_or_default();
+                    metadata.title_source = patch.title_source.unwrap_or(ThreadTitleSource::Manual);
+                }
             }
             if let Some(title) = patch.title {
                 metadata.title = title;
