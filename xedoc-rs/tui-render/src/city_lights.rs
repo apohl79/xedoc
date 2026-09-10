@@ -155,9 +155,19 @@ pub fn composer_model_name_style() -> Style {
 }
 
 /// Style for the composer reasoning-effort context.
-pub fn composer_runtime_context_style() -> Style {
+pub fn composer_runtime_context_style(effort: &str) -> Style {
+    let foreground = match effort {
+        "low" => rgb(CL_GREEN),
+        "medium" => rgb(crate::color::blend(CL_GREEN, CL_RED, 0.75)),
+        "high" => rgb(crate::color::blend(CL_GREEN, CL_RED, 0.5)),
+        "xhigh" => rgb(crate::color::blend(CL_GREEN, CL_RED, 0.25)),
+        "max" => rgb(CL_RED),
+        "ultra" | "ultrahigh" => rgb(CL_PURPLE),
+        _ => Color::Reset,
+    };
+
     Style::default()
-        .fg(Color::Reset)
+        .fg(foreground)
         .bg(rgb(CL_SESSION_TITLE_BG))
         .dim()
 }

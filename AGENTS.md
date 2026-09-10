@@ -83,6 +83,7 @@ In the xedoc-rs folder where the rust code lives:
   - Avoid adding new standalone methods to `xedoc-rs/tui/src/chatwidget.rs` unless the change is
     trivial; prefer new modules/files and keep `chatwidget.rs` focused on orchestration.
 - When running Rust commands (e.g. `just fix` or `bazel test`) be patient with the command and never try to kill them using the PID. Rust lock can make the execution slow, this is expected.
+- Use scoped Bazel targets for Rust build, check, test, and lint validation instead of `cargo check`, `cargo build`, or `cargo test`. This reuses remote execution and cache for faster release builds while avoiding local `xedoc-rs/target` artifacts.
 
 Run `just fmt` (in the `xedoc-rs` directory) automatically after you have finished making code changes anywhere in this repository; do not ask for approval to run it.
 
