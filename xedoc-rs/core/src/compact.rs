@@ -51,6 +51,38 @@ pub use xedoc_prompts::SUMMARIZATION_PROMPT;
 pub use xedoc_prompts::SUMMARY_PREFIX;
 const COMPACT_USER_MESSAGE_MAX_TOKENS: usize = 20_000;
 
+pub(crate) fn ensure_fixed_instructions_fit(
+    turn_context: &TurnContext,
+    base_instructions: &xedoc_protocol::models::BaseInstructions,
+) -> XedocResult<()> {
+    let Some(context_window) = turn_context.model_context_window() else {
+        return Ok(());
+    };
+    let base_instruction_tokens =
+        i64::try_from(approx_token_count(&base_instructions.text)).unwrap_or(i64::MAX);
+    let developer_instruction_tokens = turn_context
+        .developer_instructions
+        .as_deref()
+        .map(approx_token_count)
+        .and_then(|tokens| i64::try_from(tokens).ok())
+        .unwrap_or(0);
+    let fixed_instruction_tokens =
+        base_instruction_tokens.saturating_add(developer_instruction_tokens);
+    if fixed_instruction_tokens >= context_window {
+        error!(
+            base_instruction_tokens,
+            developer_instruction_tokens,
+            fixed_instruction_tokens,
+            context_window,
+            "combined fixed base and developer instructions leave no usable model context; refusing compaction"
+        );
+        return Err(XedocErr::Fatal(format!(
+            "Combined fixed base and developer instructions leave no usable model context ({fixed_instruction_tokens} tokens >= {context_window} token window); shorten them or start a new thread."
+        )));
+    }
+    Ok(())
+}
+
 /// Controls whether compaction replacement history must include initial context.
 ///
 /// Pre-turn/manual compaction variants use `DoNotInject`: they replace history with a summary and
@@ -222,6 +254,12 @@ async fn run_compact_task_inner_impl(
     );
 
     let base_instructions = sess.get_base_instructions().await;
+    if let Err(error) = ensure_fixed_instructions_fit(turn_context.as_ref(), &base_instructions) {
+        send_progress(&sess, &turn_context, CompactionStage::Failed).await;
+        let event = EventMsg::Error(error.to_error_event(/*message_prefix*/ None));
+        sess.send_event(&turn_context, event).await;
+        return Err(error);
+    }
     let normalized_history = history
         .clone()
         .for_prompt(&turn_context.model_info.input_modalities);
