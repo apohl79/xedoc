@@ -80,6 +80,7 @@ use xedoc_app_server_protocol::ThreadMetadataUpdateParams;
 use xedoc_app_server_protocol::ThreadMetadataUpdateResponse;
 use xedoc_app_server_protocol::ThreadReadParams;
 use xedoc_app_server_protocol::ThreadReadResponse;
+use xedoc_app_server_protocol::ThreadResumeInitialTurnsPageParams;
 use xedoc_app_server_protocol::ThreadResumeParams;
 use xedoc_app_server_protocol::ThreadResumeResponse;
 use xedoc_app_server_protocol::ThreadSetNameParams;
@@ -136,6 +137,7 @@ use xedoc_utils_path_uri::PathUri;
 const JSONRPC_INVALID_REQUEST: i64 = -32600;
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
 const THREAD_SETTINGS_UPDATE_METHOD: &str = "thread/settings/update";
+const REMOTE_INITIAL_TURNS_PAGE_LIMIT: u32 = 25;
 pub async fn connect_remote_app_server(
     endpoint: RemoteAppServerEndpoint,
 ) -> color_eyre::Result<AppServerClient> {
@@ -519,18 +521,24 @@ impl AppServerSession {
     ) -> Result<AppServerStartedThread> {
         let request_id = self.next_request_id();
         let session_config = self.session_config_with_effective_service_tier(&config);
+        let mut params = thread_resume_params_from_config(
+            session_config,
+            thread_id,
+            self.thread_params_mode(),
+            self.remote_cwd_override.as_deref(),
+            model_settings,
+        );
+        if matches!(&self.client, AppServerClient::Remote(_)) {
+            params.exclude_turns = true;
+            params.initial_turns_page = Some(ThreadResumeInitialTurnsPageParams {
+                limit: Some(REMOTE_INITIAL_TURNS_PAGE_LIMIT),
+                sort_direction: Some(SortDirection::Desc),
+                items_view: Some(TurnItemsView::Full),
+            });
+        }
         let response: ThreadResumeResponse = self
             .client
-            .request_typed(ClientRequest::ThreadResume {
-                request_id,
-                params: thread_resume_params_from_config(
-                    session_config,
-                    thread_id,
-                    self.thread_params_mode(),
-                    self.remote_cwd_override.as_deref(),
-                    model_settings,
-                ),
-            })
+            .request_typed(ClientRequest::ThreadResume { request_id, params })
             .await
             .map_err(|err| {
                 bootstrap_request_error("thread/resume failed during TUI bootstrap", err)
@@ -1534,8 +1542,8 @@ fn thread_resume_params_from_config(
         developer_instructions: with_terminal_visualization_instructions(
             &config, /*control_instructions*/ None,
         ),
-        // Rebuild the terminal scrollback from the complete ordered transcript. A bounded newest
-        // page drops the end of older sessions when it replaces the pre-exit TUI view.
+        // Rebuild the terminal scrollback from the complete ordered transcript. Remote transports
+        // replace this with a bounded page before sending the request.
         exclude_turns: false,
         initial_turns_page: None,
         ..ThreadResumeParams::default()
