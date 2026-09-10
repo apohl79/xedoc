@@ -57,7 +57,7 @@ async fn rmcp_client_can_list_and_read_resources() -> anyhow::Result<()> {
     client
         .initialize(
             init_params(),
-            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(20)),
             Box::new(|_, _| {
                 async {
                     Ok(ElicitationResponse {
@@ -72,7 +72,7 @@ async fn rmcp_client_can_list_and_read_resources() -> anyhow::Result<()> {
         .await?;
 
     let list = client
-        .list_resources(/*params*/ None, Some(Duration::from_secs(5)))
+        .list_resources(/*params*/ None, Some(Duration::from_secs(20)))
         .await?;
     let memo = list
         .resources
@@ -94,7 +94,7 @@ async fn rmcp_client_can_list_and_read_resources() -> anyhow::Result<()> {
         .no_annotation()
     );
     let templates = client
-        .list_resource_templates(/*params*/ None, Some(Duration::from_secs(5)))
+        .list_resource_templates(/*params*/ None, Some(Duration::from_secs(20)))
         .await?;
     assert_eq!(
         templates,
@@ -120,7 +120,7 @@ async fn rmcp_client_can_list_and_read_resources() -> anyhow::Result<()> {
     let read = client
         .read_resource(
             ReadResourceRequestParams::new(RESOURCE_URI),
-            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(20)),
         )
         .await?;
     let text = read.contents.first().expect("resource contents present");

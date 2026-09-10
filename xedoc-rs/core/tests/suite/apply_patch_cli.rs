@@ -83,7 +83,7 @@ async fn submit_without_wait(harness: &TestXedocHarness, prompt: &str) -> Result
         harness,
         prompt,
         SandboxPolicy::DangerFullAccess,
-        /*permission_profile*/ None,
+        Some(PermissionProfile::Disabled),
     )
     .await
 }
@@ -206,7 +206,7 @@ pub async fn mount_apply_patch(
             call_id,
             patch,
             assistant_msg,
-            ev_apply_patch_custom_tool_call,
+            ev_apply_patch_shell_command_call_via_heredoc,
         ),
     )
     .await;
@@ -1162,7 +1162,7 @@ async fn apply_patch_custom_tool_streaming_emits_updated_changes() -> Result<()>
     skip_if_no_network!(Ok(()));
 
     let harness = apply_patch_harness_with(|builder| {
-        builder.with_config(|config| {
+        builder.with_model("gpt-5.4").with_config(|config| {
             config
                 .features
                 .enable(Feature::ApplyPatchStreamingEvents)
@@ -1757,12 +1757,12 @@ async fn apply_patch_aggregates_diff_across_multiple_tool_calls() -> Result<()> 
 
     let s1 = sse(vec![
         ev_response_created("resp-1"),
-        ev_apply_patch_custom_tool_call(call1, patch1),
+        ev_apply_patch_shell_command_call_via_heredoc(call1, patch1),
         ev_completed("resp-1"),
     ]);
     let s2 = sse(vec![
         ev_response_created("resp-2"),
-        ev_apply_patch_custom_tool_call(call2, patch2),
+        ev_apply_patch_shell_command_call_via_heredoc(call2, patch2),
         ev_completed("resp-2"),
     ]);
     let s3 = sse(vec![
@@ -1809,12 +1809,12 @@ async fn apply_patch_aggregates_diff_preserves_success_after_failure() -> Result
     let responses = vec![
         sse(vec![
             ev_response_created("resp-1"),
-            ev_apply_patch_custom_tool_call(call_success, patch_success),
+            ev_apply_patch_shell_command_call_via_heredoc(call_success, patch_success),
             ev_completed("resp-1"),
         ]),
         sse(vec![
             ev_response_created("resp-2"),
-            ev_apply_patch_custom_tool_call(call_failure, patch_failure),
+            ev_apply_patch_shell_command_call_via_heredoc(call_failure, patch_failure),
             ev_completed("resp-2"),
         ]),
         sse(vec![
@@ -1851,7 +1851,7 @@ async fn apply_patch_aggregates_diff_preserves_success_after_failure() -> Result
         "diff should include contents from successful patch: {diff}"
     );
 
-    let failure_out = harness.custom_tool_call_output(call_failure).await;
+    let failure_out = harness.apply_patch_output(call_failure).await;
     assert!(
         failure_out.contains("apply_patch verification failed"),
         "expected verification failure output: {failure_out}"
@@ -1893,12 +1893,12 @@ async fn apply_patch_clears_aggregated_diff_after_inexact_delta() -> Result<()> 
     let responses = vec![
         sse(vec![
             ev_response_created("resp-1"),
-            ev_apply_patch_custom_tool_call(call_success, patch_success),
+            ev_apply_patch_shell_command_call_via_heredoc(call_success, patch_success),
             ev_completed("resp-1"),
         ]),
         sse(vec![
             ev_response_created("resp-2"),
-            ev_apply_patch_custom_tool_call(call_inexact, patch_inexact),
+            ev_apply_patch_shell_command_call_via_heredoc(call_inexact, patch_inexact),
             ev_completed("resp-2"),
         ]),
         sse(vec![

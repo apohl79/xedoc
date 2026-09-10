@@ -1,5 +1,5 @@
 ---
-source: tui/src/chatwidget/tests/review_mode.rs
+source: tui-chatwidget/src/chatwidget/tests/review_mode.rs
 expression: normalize_snapshot_paths(term.backend().vt100().screen().contents())
 ---
 
@@ -18,5 +18,5 @@ expression: normalize_snapshot_paths(term.backend().vt100().screen().contents())
   ↳ Steer submitted while /review was running.
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │❯ Ask Xedoc to do anything                                                    │
-╰────────────────────────────────────────────────────────────────gpt-5.6-sol─0s╯
+╰──────────────────────────────────────────────────────────── gpt-5.6-sol ─ 0s ╯
   gpt-5.6-sol default · /tmp/project

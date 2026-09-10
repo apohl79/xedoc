@@ -98,7 +98,7 @@ fn display_lines_with_reasoning_effort_snapshot() {
     list.set_agents(vec![ActiveAgentEntry {
         name: "review_stack3_61_70".to_string(),
         started_at: now - Duration::from_secs(9),
-        provider_model: Some("openai/gpt-5.6-terra/medium".to_string()),
+        provider_model: Some("openai/gpt-5.4/medium".to_string()),
         total_tokens: None,
         token_usage: Some(TokenUsage {
             input_tokens: 175_000,

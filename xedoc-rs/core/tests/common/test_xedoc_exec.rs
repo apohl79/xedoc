@@ -24,7 +24,9 @@ impl TestXedocExecBuilder {
         let mut cmd = self.cmd();
         let base = format!("{}/v1", server.uri());
         cmd.arg("-c")
-            .arg(format!("openai_base_url={}", toml_string_literal(&base)));
+            .arg(format!("openai_base_url={}", toml_string_literal(&base)))
+            .arg("-c")
+            .arg("model_providers.openai.supports_websockets=false");
         cmd
     }
 

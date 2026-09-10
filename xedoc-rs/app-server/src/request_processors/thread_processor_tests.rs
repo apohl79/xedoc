@@ -1056,7 +1056,7 @@ mod thread_processor_behavior_tests {
                     permission_profile: None,
                     network: None,
                     file_system_sandbox_policy: None,
-                    model: "gpt-5.6-sol".to_string(),
+                    model: "gpt-5.4".to_string(),
                     comp_hash: None,
                     personality: None,
                     collaboration_mode: None,
@@ -1077,7 +1077,7 @@ mod thread_processor_behavior_tests {
             &mut typesafe_overrides,
         );
 
-        assert_eq!(typesafe_overrides.model, Some("gpt-5.6-sol".to_string()));
+        assert_eq!(typesafe_overrides.model, Some("gpt-5.4".to_string()));
         assert_eq!(
             typesafe_overrides.model_provider,
             Some("openai".to_string())

@@ -1,0 +1,21 @@
+mod additional_context;
+mod audio_truncation;
+mod catalog_permission_messages;
+#[path = "client.rs"]
+mod client;
+mod client_websockets;
+mod external_auth;
+mod model_switching;
+mod model_visible_layout;
+mod models_cache_ttl;
+mod models_etag_responses;
+mod permissions_messages;
+mod personality;
+mod plugins;
+mod prompt_cache_key;
+mod prompt_caching;
+mod responses_api_proxy_headers;
+mod responses_lite;
+mod token_budget;
+mod view_image;
+mod web_search;

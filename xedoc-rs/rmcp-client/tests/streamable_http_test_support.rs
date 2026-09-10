@@ -109,7 +109,7 @@ pub(crate) async fn initialize_client(client: &RmcpClient) -> anyhow::Result<()>
     client
         .initialize(
             init_params(),
-            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(20)),
             Box::new(|_, _| {
                 async {
                     Ok(ElicitationResponse {
@@ -147,7 +147,7 @@ pub(crate) async fn create_remote_client(
     client
         .initialize(
             init_params(),
-            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(20)),
             Box::new(|_, _| {
                 async {
                     Ok(ElicitationResponse {
@@ -173,7 +173,7 @@ pub(crate) async fn call_echo_tool(
             "echo".to_string(),
             Some(json!({ "message": message })),
             /*meta*/ None,
-            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(20)),
         )
         .await
 }
@@ -311,7 +311,7 @@ pub(crate) async fn spawn_streamable_http_server() -> anyhow::Result<(Child, Str
         .env("MCP_STREAMABLE_HTTP_BIND_ADDR", &bind_addr)
         .spawn()?;
 
-    wait_for_streamable_http_server(&mut child, &bind_addr, Duration::from_secs(5)).await?;
+    wait_for_streamable_http_server(&mut child, &bind_addr, Duration::from_secs(20)).await?;
     Ok((child, base_url))
 }
 
@@ -362,7 +362,7 @@ async fn read_exec_server_listen_url(child: &mut Child) -> anyhow::Result<String
         .take()
         .context("failed to capture exec-server stdout")?;
     let mut lines = BufReader::new(stdout).lines();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(20);
 
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());

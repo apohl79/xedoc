@@ -736,7 +736,7 @@ fn merge_openai_model_prices() {
     let mut configured = HashMap::new();
     let mut prices = HashMap::new();
     prices.insert(
-        "gpt-5.6-luna".to_string(),
+        "gpt-5.4".to_string(),
         ModelTokenPrices {
             input_price_per_1m_tokens: 1.25,
             cached_input_price_per_1m_tokens: None,
@@ -765,14 +765,14 @@ fn merge_openai_model_prices() {
         .expect("model_prices should be set");
     assert_eq!(
         merged_prices
-            .get("gpt-5.6-luna")
+            .get("gpt-5.4")
             .unwrap()
             .input_price_per_1m_tokens,
         1.25
     );
     assert_eq!(
         merged_prices
-            .get("gpt-5.6-luna")
+            .get("gpt-5.4")
             .unwrap()
             .output_price_per_1m_tokens,
         10.0

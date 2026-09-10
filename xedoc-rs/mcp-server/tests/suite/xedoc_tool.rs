@@ -412,7 +412,11 @@ async fn xedoc_tool_passes_base_instructions() -> anyhow::Result<()> {
     );
 
     let requests = server.received_requests().await.unwrap();
-    let request = requests[0].body_json::<serde_json::Value>()?;
+    let responses_request = requests
+        .iter()
+        .find(|req| req.method == wiremock::http::Method::POST && req.url.path() == "/v1/responses")
+        .expect("mock server should have received a POST /v1/responses request");
+    let request = responses_request.body_json::<serde_json::Value>()?;
     let instructions = request["instructions"]
         .as_str()
         .expect("responses request should include instructions");

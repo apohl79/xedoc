@@ -67,9 +67,9 @@ const INHERITED_MODEL: &str = "gpt-5.2";
 const INHERITED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::XHigh;
 const REQUESTED_MODEL: &str = "gpt-5.4";
 const REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
-const V2_DEFAULT_MODEL: &str = "gpt-5.6-terra";
+const V2_DEFAULT_MODEL: &str = "gpt-5.4";
 const V2_DEFAULT_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
-const V2_REQUESTED_MODEL: &str = "gpt-5.6-sol";
+const V2_REQUESTED_MODEL: &str = "gpt-5.4-mini";
 const V2_REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
 const ROLE_MODEL: &str = "gpt-5.4";
 const ROLE_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::High;
@@ -2466,7 +2466,7 @@ async fn spawn_agent_rejects_reasoning_effort_unsupported_by_role_model() -> Res
                     nickname_candidates: None,
                 },
             );
-            config.agent_default_subagent_model = Some("gpt-5.6-sol".to_string());
+            config.agent_default_subagent_model = Some("gpt-5.4".to_string());
             config.agent_default_subagent_reasoning_effort = Some(ReasoningEffort::Ultra);
         })
         .build_with_auto_env(&server)

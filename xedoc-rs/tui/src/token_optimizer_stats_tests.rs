@@ -21,7 +21,7 @@ fn stats_lines_snapshot() {
             ],
             by_reducer: Vec::new(),
             by_tool: Vec::new(),
-            by_model: vec![breakdown_with_cost("gpt-5.6-sol", 512, 0.09)],
+            by_model: vec![breakdown_with_cost("test-model", 512, 0.09)],
             top_reductions: vec![
                 top(
                     "shell",

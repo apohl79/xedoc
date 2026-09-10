@@ -1097,6 +1097,7 @@ async fn replayed_reasoning_item_shows_raw_reasoning_when_enabled() {
 #[tokio::test]
 async fn replayed_in_progress_mcp_tool_call_stays_active() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     let _ = drain_insert_history(&mut rx);
 
     chat.replay_thread_item(
@@ -1126,6 +1127,7 @@ async fn replayed_in_progress_mcp_tool_call_stays_active() {
 #[tokio::test]
 async fn deferred_mcp_lifecycle_events_keep_fifo_after_stream_finishes() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     let cwd = chat.config.cwd.to_path_buf();
     chat.stream_controller = Some(crate::streaming::controller::StreamController::new(
         /*width*/ Some(80),

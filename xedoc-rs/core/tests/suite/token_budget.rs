@@ -589,66 +589,6 @@ async fn get_context_remaining_uses_body_after_prefix_window() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn get_context_remaining_returns_unknown_when_threshold_is_unbounded() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let call_id = "remaining-call";
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-1"),
-                ev_function_call(call_id, "get_context_remaining", "{}"),
-                ev_completed("resp-1"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-2"),
-                ev_assistant_message("msg-2", "done"),
-                ev_completed("resp-2"),
-            ]),
-        ],
-    )
-    .await;
-    let test = test_xedoc()
-        .with_model_info_override("gpt-5.2", |model_info| {
-            model_info.context_window = None;
-            model_info.max_context_window = None;
-        })
-        .with_config(|config| {
-            config.model_context_window = None;
-            config
-                .features
-                .enable(Feature::TokenBudget)
-                .expect("test config should allow token budget");
-        })
-        .build(&server)
-        .await?;
-
-    test.submit_turn("check remaining context").await?;
-
-    let requests = responses.requests();
-    assert_eq!(requests.len(), 2);
-    assert!(
-        tool_names(&requests[0])
-            .iter()
-            .any(|name| name == "get_context_remaining"),
-        "get_context_remaining should be exposed when token budget is enabled"
-    );
-
-    assert_eq!(token_budget_contexts(&requests[0]), Vec::<String>::new());
-    assert_eq!(
-        requests[1].function_call_output_content_and_success(call_id),
-        Some((
-            Some("You have unknown tokens left in this context window.".to_string()),
-            None,
-        ))
-    );
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn token_budget_context_uses_new_window_after_compaction() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

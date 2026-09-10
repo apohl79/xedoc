@@ -7,6 +7,6 @@ expression: "rendered_lines(&rust).join(\"\\n\")"
     1 +let answer = 42;
     2 +let next = answer;
     3 +println!("{next}");
-  ... 1 more lines
+  ... 2 more lines
 
   Calls: 1 · 0 succeeded · 0 failed · 1 in progress

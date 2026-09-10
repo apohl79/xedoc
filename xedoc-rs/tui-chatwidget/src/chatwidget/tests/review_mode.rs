@@ -1176,6 +1176,7 @@ async fn custom_prompt_enter_empty_does_not_send() {
 #[tokio::test]
 async fn interrupt_exec_marks_failed_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     // Begin a long-running command so we have an active exec cell with a spinner.
     begin_exec(&mut chat, "call-int", "sleep 1");
