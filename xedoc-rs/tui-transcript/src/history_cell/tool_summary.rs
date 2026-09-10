@@ -335,17 +335,27 @@ impl HistoryCell for ToolCallSummaryCell {
                     usize::from(width),
                 )];
                 if let Some(output) = output {
-                    let output_lines = output.split_terminator('\n').collect::<Vec<_>>();
+                    let output_lines = output
+                        .split_terminator('\n')
+                        .map(|output_line| {
+                            let output_line = output_line
+                                .trim_end_matches('\r')
+                                .rsplit('\r')
+                                .next()
+                                .unwrap_or_default();
+                            ansi_escape_line(output_line)
+                                .to_string()
+                                .trim_end()
+                                .to_string()
+                        })
+                        .collect::<Vec<_>>();
                     let omitted = output_lines.len().saturating_sub(3);
                     if omitted > 0 {
                         lines.push(format!("  ... {omitted} more lines").dim().into());
                     }
                     for output_line in output_lines.iter().skip(omitted) {
-                        let output_line = ansi_escape_line(output_line).to_string();
-                        let (visible, _, _) = take_prefix_by_width(
-                            &output_line,
-                            usize::from(width).saturating_sub(2),
-                        );
+                        let (visible, _, _) =
+                            take_prefix_by_width(output_line, usize::from(width).saturating_sub(2));
                         lines.push(vec!["  ".dim(), visible.dim()].into());
                     }
                 }
