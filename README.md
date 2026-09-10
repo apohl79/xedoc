@@ -29,6 +29,5 @@ curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main/scripts/install/
 ## Project resources
 
 - [Feature inventory](README.fork.md)
-- [Installing and building](docs/install.md)
 - [Contributing](docs/contributing.md)
 - [License](LICENSE)
