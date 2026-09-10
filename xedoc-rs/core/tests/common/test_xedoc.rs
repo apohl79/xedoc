@@ -725,9 +725,10 @@ impl TestXedocBuilder {
         } else {
             load_default_config_for_test(home).await
         };
-        // Keep generic tests stable when the bundled catalog default changes. Tests that need a
+        // Keep generic tests on a stable bundled model. Tests that need a
         // specific model can still override this with a config mutator.
-        config.model = Some("gpt-5.6".to_string());
+        config.model = Some("gpt-5.4".to_string());
+        config.model_catalog = None;
         config.cwd = cwd_override;
         config.model_provider = model_provider;
         config.model_providers.insert(
@@ -768,31 +769,21 @@ fn ensure_test_model_catalog(config: &mut Config) -> Result<()> {
         return Ok(());
     }
 
-    let (source_slug, test_slug) = match config.model.as_deref() {
-        // The bundled catalog advertises versioned gpt-5.6 models, but generic
-        // core fixtures intentionally use the unversioned alias.
-        Some("gpt-5.6") => ("gpt-5.5", "gpt-5.6"),
-        Some(TEST_MODEL_WITH_EXPERIMENTAL_TOOLS) => ("gpt-5.2", TEST_MODEL_WITH_EXPERIMENTAL_TOOLS),
-        _ => return Ok(()),
+    let Some(TEST_MODEL_WITH_EXPERIMENTAL_TOOLS) = config.model.as_deref() else {
+        return Ok(());
     };
 
     let bundled_models = bundled_models_response().expect("bundled models.json should parse");
     let mut models = bundled_models.models;
     let mut model = models
         .iter()
-        .find(|candidate| candidate.slug == source_slug)
+        .find(|candidate| candidate.slug == "gpt-5.2")
         .cloned()
-        .unwrap_or_else(|| panic!("missing bundled model {source_slug}"));
-    model.slug = test_slug.to_string();
-    model.display_name = test_slug.to_string();
-    if test_slug == TEST_MODEL_WITH_EXPERIMENTAL_TOOLS {
-        model.experimental_supported_tools = vec!["test_sync_tool".to_string()];
-    }
-    if test_slug == "gpt-5.6" {
-        models.push(model);
-    } else {
-        models = vec![model];
-    }
+        .expect("missing bundled model gpt-5.2");
+    model.slug = TEST_MODEL_WITH_EXPERIMENTAL_TOOLS.to_string();
+    model.display_name = TEST_MODEL_WITH_EXPERIMENTAL_TOOLS.to_string();
+    model.experimental_supported_tools = vec!["test_sync_tool".to_string()];
+    models = vec![model];
     config.model_catalog = Some(ModelsResponse { models });
     Ok(())
 }
@@ -1175,7 +1166,16 @@ impl TestXedocHarness {
     }
 
     pub async fn apply_patch_output(&self, call_id: &str) -> String {
-        self.custom_tool_call_output(call_id).await
+        let bodies = self.request_bodies().await;
+        if has_custom_tool_call_output(&bodies, call_id) {
+            return custom_tool_call_output_text(&bodies, call_id);
+        }
+
+        function_call_output(&bodies, call_id)
+            .get("output")
+            .and_then(Value::as_str)
+            .expect("apply patch function call output string")
+            .to_string()
     }
 }
 
@@ -1190,6 +1190,17 @@ fn custom_tool_call_output<'a>(bodies: &'a [Value], call_id: &str) -> &'a Value 
                 && item.get("call_id").and_then(Value::as_str) == Some(call_id)
         })
         .expect(&missing_output)
+}
+
+fn has_custom_tool_call_output(bodies: &[Value], call_id: &str) -> bool {
+    bodies
+        .iter()
+        .filter_map(|body| body.get("input").and_then(Value::as_array))
+        .flatten()
+        .any(|item| {
+            item.get("type").and_then(Value::as_str) == Some("custom_tool_call_output")
+                && item.get("call_id").and_then(Value::as_str) == Some(call_id)
+        })
 }
 
 fn custom_tool_call_output_text(bodies: &[Value], call_id: &str) -> String {

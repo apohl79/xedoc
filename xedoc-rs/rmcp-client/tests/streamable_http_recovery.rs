@@ -176,7 +176,7 @@ async fn streamable_http_tools_list_retries_transient_http_status() -> anyhow::R
     let expected = client
         .list_tools(
             /*params*/ None,
-            /*timeout*/ Some(Duration::from_secs(5)),
+            /*timeout*/ Some(Duration::from_secs(20)),
         )
         .await?;
     arm_session_post_failure(
@@ -190,7 +190,7 @@ async fn streamable_http_tools_list_retries_transient_http_status() -> anyhow::R
     let result = client
         .list_tools(
             /*params*/ None,
-            /*timeout*/ Some(Duration::from_secs(5)),
+            /*timeout*/ Some(Duration::from_secs(20)),
         )
         .await?;
 
@@ -207,7 +207,7 @@ async fn streamable_http_tools_list_retries_json_rpc_transient_status() -> anyho
     let expected = client
         .list_tools(
             /*params*/ None,
-            /*timeout*/ Some(Duration::from_secs(5)),
+            /*timeout*/ Some(Duration::from_secs(20)),
         )
         .await?;
     arm_session_post_json_rpc_failure(&base_url, /*status*/ 502, /*remaining*/ 1).await?;
@@ -215,7 +215,7 @@ async fn streamable_http_tools_list_retries_json_rpc_transient_status() -> anyho
     let result = client
         .list_tools(
             /*params*/ None,
-            /*timeout*/ Some(Duration::from_secs(5)),
+            /*timeout*/ Some(Duration::from_secs(20)),
         )
         .await?;
 

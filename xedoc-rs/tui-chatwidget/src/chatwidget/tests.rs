@@ -140,7 +140,6 @@ pub(super) use xedoc_protocol::models::PermissionProfile;
 pub(super) use xedoc_protocol::openai_models::ModelPreset;
 pub(super) use xedoc_protocol::openai_models::ReasoningEffortPreset;
 pub(super) use xedoc_protocol::openai_models::default_input_modalities;
-pub(super) use xedoc_protocol::parse_command::ParsedCommand;
 pub(super) use xedoc_protocol::plan_tool::PlanItemArg;
 pub(super) use xedoc_protocol::plan_tool::StepStatus;
 pub(super) use xedoc_protocol::plan_tool::UpdatePlanArgs;
@@ -155,7 +154,7 @@ pub(super) use xedoc_utils_path_uri::LegacyAppPathString;
 
 pub(super) fn chatwidget_snapshot_dir() -> PathBuf {
     let snapshot_file = xedoc_utils_cargo_bin::find_resource!(
-        "src/chatwidget/snapshots/xedoc_tui__chatwidget__tests__chatwidget_tall.snap"
+        "src/chatwidget/snapshots/xedoc_tui__chatwidget__tests__mcp_startup_header_booting.snap"
     )
     .expect("snapshot file");
     snapshot_file

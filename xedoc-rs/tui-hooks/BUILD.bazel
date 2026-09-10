@@ -3,4 +3,8 @@ load("//:defs.bzl", "xedoc_rust_crate")
 xedoc_rust_crate(
     name = "tui-hooks",
     crate_name = "xedoc_tui_hooks",
+    test_data_extra = glob([
+        "src/**/*.rs",
+        "src/**/snapshots/**",
+    ]),
 )

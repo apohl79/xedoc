@@ -252,6 +252,7 @@ async fn preamble_keeps_working_status_snapshot() {
 #[tokio::test]
 async fn unified_exec_begin_restores_status_indicator_after_preamble() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     chat.on_task_started();
     assert_eq!(chat.bottom_pane.status_indicator_visible(), true);
@@ -269,6 +270,7 @@ async fn unified_exec_begin_restores_status_indicator_after_preamble() {
 #[tokio::test]
 async fn unified_exec_begin_restores_working_status_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     chat.on_task_started();
     chat.on_agent_message_delta("Preamble line\n".to_string());
@@ -294,6 +296,7 @@ async fn unified_exec_begin_restores_working_status_snapshot() {
 #[tokio::test]
 async fn exec_history_cell_shows_working_then_completed() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     // Begin command
     let begin = begin_exec(&mut chat, "call-1", "echo done");
@@ -324,6 +327,7 @@ async fn exec_history_cell_shows_working_then_completed() {
 #[tokio::test]
 async fn exec_history_cell_shows_working_then_failed() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     // Begin command
     let begin = begin_exec(&mut chat, "call-2", "false");
@@ -348,6 +352,7 @@ async fn exec_history_cell_shows_working_then_failed() {
 #[tokio::test]
 async fn exec_end_without_begin_uses_event_command() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     let command = vec![
         "bash".to_string(),
         "-lc".to_string(),
@@ -390,6 +395,7 @@ async fn exec_end_without_begin_uses_event_command() {
 #[tokio::test]
 async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
 
     begin_exec(&mut chat, "call-exploring", "cat /dev/null");
@@ -433,6 +439,7 @@ async fn exec_end_without_begin_does_not_flush_unrelated_running_exploring_cell(
 #[tokio::test]
 async fn exec_end_without_begin_flushes_completed_unrelated_exploring_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
 
     let begin_ls = begin_exec(&mut chat, "call-ls", "ls -la");
@@ -472,6 +479,7 @@ async fn exec_end_without_begin_flushes_completed_unrelated_exploring_cell() {
 #[tokio::test]
 async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     let begin_ls = begin_exec(&mut chat, "call-ls", "ls -la");
     let begin_cat = begin_exec(&mut chat, "call-cat", "cat foo.txt");
@@ -504,6 +512,7 @@ async fn overlapping_exploring_exec_end_is_not_misclassified_as_orphan() {
 #[tokio::test]
 async fn exec_history_shows_unified_exec_startup_commands() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
 
     let begin = begin_exec_with_source(
@@ -537,6 +546,7 @@ async fn exec_history_shows_unified_exec_startup_commands() {
 #[tokio::test]
 async fn exec_history_shows_unified_exec_tool_calls() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
 
     let begin = begin_exec_with_source(
@@ -554,6 +564,7 @@ async fn exec_history_shows_unified_exec_tool_calls() {
 #[tokio::test]
 async fn unified_exec_unknown_end_with_active_exploring_cell_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
 
     begin_exec(&mut chat, "call-exploring", "cat /dev/null");
@@ -625,6 +636,7 @@ async fn unified_exec_interaction_after_task_complete_is_suppressed() {
 #[tokio::test]
 async fn unified_exec_wait_after_final_agent_message_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     handle_turn_started(&mut chat, "turn-1");
 
     begin_unified_exec_startup(&mut chat, "call-wait", "proc-1", "cargo test -p xedoc-core");
@@ -644,6 +656,7 @@ async fn unified_exec_wait_after_final_agent_message_snapshot() {
 #[tokio::test]
 async fn unified_exec_wait_before_streamed_agent_message_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     handle_turn_started(&mut chat, "turn-1");
 
     begin_unified_exec_startup(
@@ -668,6 +681,7 @@ async fn unified_exec_wait_before_streamed_agent_message_snapshot() {
 #[tokio::test]
 async fn final_worked_for_uses_cumulative_turn_duration_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     handle_turn_started(&mut chat, "turn-1");
 
     let exec = begin_exec_with_source(
@@ -701,6 +715,7 @@ async fn final_worked_for_uses_cumulative_turn_duration_snapshot() {
 #[tokio::test]
 async fn unified_exec_wait_status_header_updates_on_late_command_display() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
     chat.unified_exec_processes.push(UnifiedExecProcessSummary {
         key: "proc-1".to_string(),
@@ -743,6 +758,7 @@ async fn unified_exec_empty_poll_for_finished_process_does_not_show_waiting_stat
 #[tokio::test]
 async fn unified_exec_waiting_multiple_empty_snapshots() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
     begin_unified_exec_startup(&mut chat, "call-wait-1", "proc-1", "just fix");
 
@@ -772,6 +788,7 @@ async fn unified_exec_waiting_multiple_empty_snapshots() {
 #[tokio::test]
 async fn unified_exec_wait_status_renders_command_in_single_details_row_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
     begin_unified_exec_startup(
         &mut chat,
@@ -792,6 +809,7 @@ async fn unified_exec_wait_status_renders_command_in_single_details_row_snapshot
 #[tokio::test]
 async fn unified_exec_empty_then_non_empty_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
     begin_unified_exec_startup(&mut chat, "call-wait-2", "proc-2", "just fix");
 
@@ -809,6 +827,7 @@ async fn unified_exec_empty_then_non_empty_snapshot() {
 #[tokio::test]
 async fn unified_exec_non_empty_then_empty_snapshots() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
     begin_unified_exec_startup(&mut chat, "call-wait-3", "proc-3", "just fix");
 
@@ -852,6 +871,7 @@ async fn unified_exec_non_empty_then_empty_snapshots() {
 #[tokio::test]
 async fn view_image_tool_call_adds_history_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     let image_path = chat.config.cwd.join("example.png");
 
     handle_view_image_tool_call(&mut chat, "call-image", image_path);
@@ -865,6 +885,7 @@ async fn view_image_tool_call_adds_history_cell() {
 #[tokio::test]
 async fn view_image_tool_call_preserves_foreign_path() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     let image_path: LegacyAppPathString =
         serde_json::from_value(json!(r"C:\workspace\assets\example.png"))
             .expect("valid legacy app path string");
@@ -904,6 +925,7 @@ async fn image_generation_begin_restores_working_status_after_single_line_preamb
 #[tokio::test]
 async fn image_generation_call_adds_history_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     handle_image_generation_end(
         &mut chat,
@@ -941,6 +963,7 @@ async fn image_generation_call_adds_history_cell() {
 #[tokio::test]
 async fn exec_history_extends_previous_when_consecutive() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     // 1) Start "ls -la" (List)
     let begin_ls = begin_exec(&mut chat, "call-ls", "ls -la");
@@ -1404,6 +1427,7 @@ async fn turn_complete_keeps_unified_exec_processes() {
 #[tokio::test]
 async fn apply_patch_events_emit_history_cells() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     // 1) Approval request -> proposed patch summary cell
     let mut changes = HashMap::new();
@@ -1468,6 +1492,7 @@ async fn apply_patch_events_emit_history_cells() {
 #[tokio::test]
 async fn apply_patch_manual_approval_adjusts_header() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     let mut proposed_changes = HashMap::new();
     proposed_changes.insert(
@@ -1510,6 +1535,7 @@ async fn apply_patch_manual_approval_adjusts_header() {
 #[tokio::test]
 async fn apply_patch_manual_flow_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     let mut proposed_changes = HashMap::new();
     proposed_changes.insert(

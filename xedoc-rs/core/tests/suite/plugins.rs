@@ -115,8 +115,17 @@ fn assert_plugin_provenance(tool: &serde_json::Value) {
 }
 
 fn searched_plugin_mcp_tool(request: &ResponsesRequest) -> Option<serde_json::Value> {
-    let mcp_output = request.tool_search_output(PLUGIN_MCP_SEARCH_CALL_ID);
-    namespace_child_tool(&mcp_output, SAMPLE_PLUGIN_MCP_NAMESPACE, "echo").cloned()
+    request
+        .input()
+        .into_iter()
+        .find(|item| {
+            item.get("type").and_then(serde_json::Value::as_str) == Some("tool_search_output")
+                && item.get("call_id").and_then(serde_json::Value::as_str)
+                    == Some(PLUGIN_MCP_SEARCH_CALL_ID)
+        })
+        .and_then(|output| {
+            namespace_child_tool(&output, SAMPLE_PLUGIN_MCP_NAMESPACE, "echo").cloned()
+        })
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -175,8 +184,10 @@ async fn explicit_plugin_mentions_expose_plugin_mcp_tools() -> Result<()> {
             .any(|text| text.contains("MCP servers from this plugin")),
         "expected visible plugin MCP guidance: {developer_messages:?}"
     );
-    let echo_tool =
-        searched_plugin_mcp_tool(&requests[1]).expect("plugin MCP tool should be searchable");
+    let echo_tool = requests
+        .iter()
+        .find_map(searched_plugin_mcp_tool)
+        .expect("plugin MCP tool should be searchable");
     assert_plugin_provenance(&echo_tool);
 
     Ok(())

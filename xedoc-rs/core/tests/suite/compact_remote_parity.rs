@@ -523,7 +523,7 @@ async fn build_harness_inner(
         .expect("fixed cwd should be absolute");
         config.developer_instructions = Some("PARITY_DEVELOPER_INSTRUCTIONS".to_string());
         if settings.service_tier_fast {
-            config.model = Some("gpt-5.6-luna".to_string());
+            config.model = Some("gpt-5.4".to_string());
             config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
         }
         config.model_auto_compact_token_limit = auto_compact_limit;

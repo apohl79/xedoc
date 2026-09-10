@@ -144,6 +144,11 @@ bazel-lock-check:
 bazel-test:
     bazel test --test_tag_filters=-argument-comment-lint //... --keep_going
 
+# Run one exact core integration test without Bazel's retry loop.
+[no-cd]
+core-test target filter:
+    bazel test --config=buildbuddy-openai-rbe --flaky_test_attempts=1 --cache_test_results=no --test_sharding_strategy=disabled --test_output=errors "{{ target }}" --test_arg="{{ filter }}" --test_arg=--exact
+
 [no-cd]
 [unix]
 bazel-clippy:

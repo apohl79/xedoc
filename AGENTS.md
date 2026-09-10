@@ -84,12 +84,14 @@ In the xedoc-rs folder where the rust code lives:
     trivial; prefer new modules/files and keep `chatwidget.rs` focused on orchestration.
 - When running Rust commands (e.g. `just fix` or `bazel test`) be patient with the command and never try to kill them using the PID. Rust lock can make the execution slow, this is expected.
 
-Run `just fmt` (in the `xedoc-rs` directory) automatically after you have finished making code changes anywhere in this repository; do not ask for approval to run it. Additionally, run the tests:
+Run `just fmt` (in the `xedoc-rs` directory) automatically after you have finished making code changes anywhere in this repository; do not ask for approval to run it.
 
-1. Do not run Cargo-backed `just test` for routine validation. Use Bazel tests so configured remote execution can build and link Rust test artifacts remotely.
-2. Run Bazel tests for the specific project that changed. For example, if changes were made in `xedoc-rs/tui`, run `bazel test //xedoc-rs/tui/...` from the repository root.
-3. Once those pass, if any changes were made in common, core, or protocol, run the complete Bazel test suite with `just bazel-test`. Project-specific or individual Bazel tests can be run without asking the user, but do ask the user before running the complete test suite.
-4. Run `just test` only when the user explicitly requests a Cargo/Bazel parity check. Scope parity checks to the affected package when possible, and avoid `--all-features` unless full feature coverage is specifically required because it expands the build matrix and `target/` disk usage.
+### Experimental-harness test policy
+
+Xedoc is a personal experimental harness where iteration speed takes priority. Do not add, run,
+repair, or maintain unit tests unless the user explicitly requests a future testing investment.
+Existing unit-test failures are not blockers. Do not run broad Bazel or Cargo test suites by
+default; use only the narrow behavioral validation that the user specifically asks for.
 
 Before finalizing a large change to `xedoc-rs`, run `just fix -p <project>` (in `xedoc-rs` directory) to fix any linter issues in the code. Prefer scoping with `-p` to avoid slow workspace‑wide Clippy builds; only run `just fix` without `-p` if you changed shared crates. Do not re-run tests after running `fix` or `fmt`.
 
@@ -135,14 +137,9 @@ Search for breaking changes in external integration surfaces:
 
 ### Test authoring guidance
 
-For agent changes prefer integration tests over unit tests. Integration tests are under `core/suite` and use `test_xedoc` to set up a test instance of xedoc.
-
-Features that change the agent logic MUST add an integration test:
-
-- Provide a list of major logic changes and user-facing behaviors that need to be tested.
-
-If unit tests are needed, put them in a dedicated test file (\*\_tests.rs).
-Avoid test-only functions in the main implementation.
+If the user explicitly requests tests in the future, prefer small behavioral or integration tests
+over unit tests. Integration tests are under `core/suite` and use `test_xedoc` to set up a test
+instance of xedoc. Avoid test-only functions in the main implementation.
 
 Check whether there are existing helpers to make tests more streamlined and readable.
 
@@ -205,12 +202,8 @@ See `xedoc-rs/tui/styles.md`.
 
 This repo uses snapshot tests (via `insta`), especially in `xedoc-rs/tui`, to validate rendered output.
 
-**Requirement:** any change that affects user-visible UI (including adding new UI) must include
-corresponding `insta` snapshot coverage (add a new snapshot test if one doesn't exist yet, or
-update the existing snapshot). Review and accept snapshot updates as part of the PR so UI impact
-is easy to review and future diffs stay visual.
-
-When UI or text output changes intentionally, update the snapshots as follows:
+Only when the user explicitly requests snapshot testing for a UI or text-output change, update the
+snapshots as follows:
 
 - Run tests to generate any updated snapshots:
   - `bazel test --strategy=TestRunner=local --cache_test_results=no //xedoc-rs/tui:tui-unit-tests`

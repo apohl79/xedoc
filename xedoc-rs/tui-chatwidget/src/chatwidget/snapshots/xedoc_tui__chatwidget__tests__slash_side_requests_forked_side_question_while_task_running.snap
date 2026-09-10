@@ -1,5 +1,5 @@
 ---
-source: tui/src/chatwidget/tests/side.rs
+source: tui-chatwidget/src/chatwidget/tests/side.rs
 expression: normalized_backend_snapshot(terminal.backend())
 ---
 "                                                                                "
@@ -7,5 +7,5 @@ expression: normalized_backend_snapshot(terminal.backend())
 "                                                                                "
 "╭──────────────────────────────────────────────────────────────────────────────╮"
 "│❯ Ask Xedoc to do anything                                                    │"
-"╰────────────────────────────────────────────────────────────────gpt-5.6-sol─0s╯"
+"╰──────────────────────────────────────────────────────────── gpt-5.6-sol ─ 0s ╯"
 "  gpt-5.6-sol default                                         Side starting...  "

@@ -94,15 +94,15 @@ async fn spawn_agent_model_override_switches_to_selected_provider() {
     let inherited_model = catalog
         .models
         .iter()
-        .find(|model| model.slug == "gpt-5.6-sol")
+        .find(|model| model.slug == "gpt-5.4")
         .cloned()
-        .expect("bundled models should include gpt-5.6-sol");
+        .expect("bundled models should include gpt-5.4");
     let selected_model = catalog
         .models
         .iter()
-        .find(|model| model.slug == "gpt-5.6-terra")
+        .find(|model| model.slug == "gpt-5.4-mini")
         .cloned()
-        .expect("bundled models should include gpt-5.6-terra");
+        .expect("bundled models should include gpt-5.4-mini");
     let openai_provider = built_in_model_providers(/*openai_base_url*/ None)["openai"].clone();
     let mut inherited_provider = openai_provider.clone();
     inherited_provider.name = "Anthropic".to_string();
@@ -142,7 +142,7 @@ async fn spawn_agent_model_override_switches_to_selected_provider() {
         &session,
         &turn,
         &mut config,
-        Some("gpt-5.6-terra"),
+        Some("gpt-5.4-mini"),
         None,
     )
     .await
@@ -155,7 +155,7 @@ async fn spawn_agent_model_override_switches_to_selected_provider() {
             config.model_provider
         ),
         (
-            Some("gpt-5.6-terra".to_string()),
+            Some("gpt-5.4-mini".to_string()),
             "openai".to_string(),
             openai_provider,
         )
@@ -570,12 +570,12 @@ async fn multi_agent_v2_spawn_accepts_v1_tagged_child_model() {
         &session,
         &turn,
         &mut child_config,
-        Some("gpt-5.6-luna"),
+        Some("gpt-5.4"),
         None,
     )
     .await
     .expect("v1-tagged model should be accepted under v2");
-    assert_eq!(child_config.model.as_deref(), Some("gpt-5.6-luna"));
+    assert_eq!(child_config.model.as_deref(), Some("gpt-5.4"));
 }
 
 #[tokio::test]
@@ -591,9 +591,9 @@ async fn multi_agent_v2_spawn_rejects_disabled_child_model() {
     let mut disabled = catalog
         .models
         .iter()
-        .find(|model| model.slug == "gpt-5.6-luna")
+        .find(|model| model.slug == "gpt-5.4")
         .cloned()
-        .expect("bundled models should include gpt-5.6-luna");
+        .expect("bundled models should include gpt-5.4");
     disabled.slug = "disabled-model".to_string();
     disabled.multi_agent_version = Some(MultiAgentVersion::Disabled);
     catalog.models.push(disabled);

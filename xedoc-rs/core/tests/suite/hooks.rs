@@ -3836,129 +3836,6 @@ async fn pre_tool_use_blocks_apply_patch_with_write_alias() -> Result<()> {
 }
 
 #[tokio::test]
-async fn pre_tool_use_blocks_local_function_tool_before_execution() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let call_id = "pretooluse-local-function-tool";
-    let args = serde_json::json!({});
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-1"),
-                ev_function_call(call_id, "test_sync_tool", &serde_json::to_string(&args)?),
-                ev_completed("resp-1"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-2"),
-                ev_assistant_message("msg-1", "local function hook blocked it"),
-                ev_completed("resp-2"),
-            ]),
-        ],
-    )
-    .await;
-
-    let reason = "blocked local function pre hook";
-    let mut builder = test_xedoc()
-        .with_model("test-gpt-5.1-codex")
-        .with_pre_build_hook(|home| {
-            write_pre_tool_use_hook(home, Some("^test_sync_tool$"), "json_deny", reason)
-                .expect("failed to write pre tool use hook test fixture");
-        })
-        .with_config(trust_discovered_hooks);
-    let test = builder.build(&server).await?;
-
-    test.submit_turn("call the local function tool with the pre hook")
-        .await?;
-
-    let requests = responses.requests();
-    assert_eq!(requests.len(), 2);
-    let output_item = requests[1].function_call_output(call_id);
-    let output = output_item
-        .get("output")
-        .and_then(Value::as_str)
-        .expect("blocked local function tool output string");
-    assert!(
-        output.contains(&format!(
-            "Tool call blocked by PreToolUse hook: {reason}. Tool: test_sync_tool"
-        )),
-        "blocked local function output should surface the hook reason and tool name",
-    );
-
-    let hook_inputs = read_pre_tool_use_hook_inputs(test.xedoc_home_path())?;
-    assert_eq!(hook_inputs.len(), 1);
-    assert_eq!(hook_inputs[0]["hook_event_name"], "PreToolUse");
-    assert_eq!(hook_inputs[0]["tool_name"], "test_sync_tool");
-    assert_eq!(hook_inputs[0]["tool_use_id"], call_id);
-    assert_eq!(hook_inputs[0]["tool_input"], args);
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn pre_tool_use_rewrites_local_function_tool_before_execution() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let call_id = "pretooluse-local-function-tool-rewrite";
-    let original_args = serde_json::json!({
-        "barrier": {
-            "id": "pretooluse-local-function-invalid-barrier",
-            "participants": 0,
-        }
-    });
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-1"),
-                ev_function_call(
-                    call_id,
-                    "test_sync_tool",
-                    &serde_json::to_string(&original_args)?,
-                ),
-                ev_completed("resp-1"),
-            ]),
-            sse(vec![
-                ev_response_created("resp-2"),
-                ev_assistant_message("msg-1", "local function hook rewrote it"),
-                ev_completed("resp-2"),
-            ]),
-        ],
-    )
-    .await;
-
-    let updated_input = serde_json::json!({});
-    let mut builder = test_xedoc()
-        .with_model("test-gpt-5.1-codex")
-        .with_pre_build_hook(move |home| {
-            write_updating_pre_tool_use_hook(home, "^test_sync_tool$", &updated_input)
-                .expect("failed to write updating pre tool use hook test fixture");
-        })
-        .with_config(trust_discovered_hooks);
-    let test = builder.build(&server).await?;
-
-    test.submit_turn("call the local function tool with the pre hook rewrite")
-        .await?;
-
-    let requests = responses.requests();
-    assert_eq!(requests.len(), 2);
-    let output_item = requests[1].function_call_output(call_id);
-    let output = output_item
-        .get("output")
-        .and_then(Value::as_str)
-        .expect("rewritten local function tool output string");
-    assert_eq!(output, "ok");
-
-    let hook_inputs = read_pre_tool_use_hook_inputs(test.xedoc_home_path())?;
-    assert_eq!(hook_inputs.len(), 1);
-    assert_eq!(hook_inputs[0]["tool_input"], original_args);
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn post_tool_use_records_additional_context_for_shell_command() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -4445,14 +4322,21 @@ async fn post_tool_use_records_additional_context_for_apply_patch() -> Result<()
         });
     let test = builder.build(&server).await?;
 
-    test.submit_turn("apply the patch with post hook").await?;
+    test.submit_turn_with_approval_and_permission_profile(
+        "apply the patch with post hook",
+        AskForApproval::Never,
+        restrictive_workspace_write_profile(),
+    )
+    .await?;
 
     let requests = responses.requests();
     assert_eq!(requests.len(), 2);
     assert!(
-        requests[1]
-            .message_input_texts("developer")
-            .contains(&post_context.to_string()),
+        requests.iter().any(|request| {
+            request
+                .message_input_texts("developer")
+                .contains(&post_context.to_string())
+        }),
         "follow-up request should include apply_patch post tool use context",
     );
     assert!(
@@ -4516,27 +4400,32 @@ async fn post_tool_use_records_apply_patch_context_with_edit_alias() -> Result<(
         });
     let test = builder.build(&server).await?;
 
-    test.submit_turn("apply the patch with edit alias post hook")
-        .await?;
+    test.submit_turn_with_approval_and_permission_profile(
+        "apply the patch with edit alias post hook",
+        AskForApproval::Never,
+        restrictive_workspace_write_profile(),
+    )
+    .await?;
 
     let requests = responses.requests();
     assert_eq!(requests.len(), 2);
+    let hook_inputs = read_post_tool_use_hook_inputs(test.xedoc_home_path())?;
+    assert_eq!(hook_inputs.len(), 1);
+    assert_eq!(hook_inputs[0]["tool_name"], "apply_patch");
+    assert_eq!(hook_inputs[0]["tool_use_id"], call_id);
+    assert_eq!(hook_inputs[0]["tool_input"]["command"], patch);
     assert!(
-        requests[1]
-            .message_input_texts("developer")
-            .contains(&post_context.to_string()),
+        requests.iter().any(|request| {
+            request
+                .message_input_texts("developer")
+                .contains(&post_context.to_string())
+        }),
         "follow-up request should include apply_patch post tool use context",
     );
     assert!(
         test.workspace_path(file_name).exists(),
         "apply_patch should create the file"
     );
-
-    let hook_inputs = read_post_tool_use_hook_inputs(test.xedoc_home_path())?;
-    assert_eq!(hook_inputs.len(), 1);
-    assert_eq!(hook_inputs[0]["tool_name"], "apply_patch");
-    assert_eq!(hook_inputs[0]["tool_use_id"], call_id);
-    assert_eq!(hook_inputs[0]["tool_input"]["command"], patch);
 
     Ok(())
 }

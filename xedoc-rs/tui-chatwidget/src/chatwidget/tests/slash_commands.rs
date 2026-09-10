@@ -2282,6 +2282,7 @@ async fn raw_slash_command_reports_usage_for_invalid_arg() {
 #[tokio::test]
 async fn tool_rendering_slash_command_toggles_and_accepts_explicit_modes() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     assert_eq!(
         chat.tool_call_rendering_mode(),
         xedoc_config::types::ToolCallRenderingMode::Normal
@@ -2329,6 +2330,7 @@ async fn tool_rendering_slash_command_toggles_and_accepts_explicit_modes() {
 #[tokio::test]
 async fn tool_rendering_slash_command_reports_usage_for_invalid_arg() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     chat.dispatch_command_with_args(
         SlashCommand::ToolRendering,

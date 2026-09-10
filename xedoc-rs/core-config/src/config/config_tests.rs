@@ -916,7 +916,7 @@ fn config_toml_deserializes_model_availability_nux() {
             show_tooltips: false,
             vim_mode_default: false,
             raw_output_mode: false,
-            tool_call_rendering: ToolCallRenderingMode::Normal,
+            tool_call_rendering: ToolCallRenderingMode::Optimized,
             alternate_screen: AltScreenMode::default(),
             status_line: None,
             status_line_use_colors: true,
@@ -8071,7 +8071,7 @@ async fn load_config_resolves_agent_controls() -> std::io::Result<()> {
         agents: Some(AgentsToml {
             enabled: Some(false),
             max_depth: Some(2),
-            default_subagent_model: Some("gpt-5.6-terra".to_string()),
+            default_subagent_model: Some("gpt-5.4".to_string()),
             default_subagent_reasoning_effort: Some(ReasoningEffort::High),
             interrupt_message: Some(false),
             ..Default::default()
@@ -8097,7 +8097,7 @@ async fn load_config_resolves_agent_controls() -> std::io::Result<()> {
         (
             false,
             2,
-            Some("gpt-5.6-terra"),
+            Some("gpt-5.4"),
             Some(ReasoningEffort::High),
             false,
         )

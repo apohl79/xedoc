@@ -44,7 +44,6 @@ xedoc_rust_crate(
         "//:AGENTS.md",
     ],
     test_shard_counts = {
-        "core-all-test": 16,
         "core-unit-tests": 8,
     },
     test_tags = ["no-sandbox"],

@@ -503,7 +503,7 @@ async fn daily_rollup_folds_complete_days_idempotently_and_reset_preserves_it() 
         .expect("state database should open");
     let now = chrono::Utc::now().timestamp();
     let today = now / 86400 * 86400;
-    for (offset, model) in [(2_i64, "gpt-5.6-sol"), (1, "claude-opus-4-8")] {
+    for (offset, model) in [(2_i64, "first-test-model"), (1, "second-test-model")] {
         sqlx::query(
             "INSERT INTO tool_output_reductions (call_id, tool_name, kind, level, reducers_applied, bytes_in, bytes_out, est_tokens_in, est_tokens_out, duration_us, spilled, recorded_at, model_slug, input_price_per_1m) VALUES (?, 'shell', 'prose', 'balanced', '', 100, 50, 100, 50, 1, 0, ?, ?, 1.0)",
         )

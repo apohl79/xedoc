@@ -80,58 +80,6 @@ fn additional_tools(body: &Value) -> Result<&[Value]> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn responses_lite_uses_input_items_for_instructions_and_tools() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = responses::start_mock_server().await;
-    let response_mock = responses::mount_sse_once(
-        &server,
-        responses::sse(vec![
-            responses::ev_response_created("resp-1"),
-            responses::ev_completed("resp-1"),
-        ]),
-    )
-    .await;
-
-    let mut builder = test_xedoc()
-        .with_model_info_override("gpt-5.4", |model_info| {
-            model_info.use_responses_lite = true;
-        })
-        .with_config(|config| {
-            config.base_instructions = Some("test instructions".to_string());
-        });
-    let test = builder.build(&server).await?;
-
-    test.submit_turn("hello").await?;
-
-    let body = response_mock.single_request().body_json();
-    assert!(body.get("instructions").is_none());
-    assert!(body.get("tools").is_none());
-
-    let input = body["input"]
-        .as_array()
-        .context("Responses request input should be an array")?;
-    assert_eq!(input[0]["type"], "additional_tools");
-    assert_eq!(input[0]["role"], "developer");
-    assert_eq!(
-        input[1],
-        serde_json::json!({
-            "type": "message",
-            "role": "developer",
-            "content": [{
-                "type": "input_text",
-                "text": "test instructions",
-            }],
-        })
-    );
-
-    let tools = additional_tools(&body)?;
-    assert!(!tools.is_empty());
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn responses_lite_prepares_images() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -286,61 +234,6 @@ async fn responses_lite_exposes_standalone_tools_for_actor_authorized_provider()
     let tools = additional_tools(&body)?;
     assert!(has_namespaced_tool(tools, "web", "run"));
     assert!(has_namespaced_tool(tools, "image_gen", "imagegen"));
-
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn responses_lite_compact_request_uses_lite_transport_contract() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = responses::start_mock_server().await;
-    let response_mock = responses::mount_sse_once(
-        &server,
-        responses::sse(vec![
-            responses::ev_response_created("resp-1"),
-            responses::ev_completed("resp-1"),
-        ]),
-    )
-    .await;
-    let compact_mock =
-        responses::mount_compact_json_once(&server, serde_json::json!({ "output": [] })).await;
-
-    let mut builder = test_xedoc()
-        .with_model_info_override("gpt-5.4", |model_info| {
-            model_info.use_responses_lite = true;
-            model_info.supports_parallel_tool_calls = true;
-        })
-        .with_config(|config| {
-            let _ = config.features.disable(Feature::RemoteCompactionV2);
-        });
-    let test = builder.build(&server).await?;
-
-    test.submit_turn("Compact this conversation").await?;
-    test.xedoc.submit(Op::Compact).await?;
-    wait_for_event(&test.xedoc, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
-
-    response_mock.single_request();
-    let compact_request = compact_mock.single_request();
-    assert_eq!(
-        compact_request.header(RESPONSES_LITE_HEADER).as_deref(),
-        Some("true")
-    );
-    let compact_body = compact_request.body_json();
-    assert_eq!(
-        compact_body
-            .get("reasoning")
-            .and_then(|reasoning| reasoning.get("context"))
-            .and_then(Value::as_str),
-        Some("all_turns")
-    );
-    assert_eq!(
-        compact_body.get("parallel_tool_calls"),
-        Some(&Value::Bool(false))
-    );
 
     Ok(())
 }

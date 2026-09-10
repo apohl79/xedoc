@@ -23,6 +23,22 @@ fn body_contains(request: &wiremock::Request, text: &str) -> bool {
         .is_ok_and(|body| body.to_string().contains(text))
 }
 
+fn user_input_contains(request: &wiremock::Request, text: &str) -> bool {
+    serde_json::from_slice::<serde_json::Value>(&request.body)
+        .ok()
+        .and_then(|body| {
+            body.get("input")
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+        })
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                item.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                    && item.to_string().contains(text)
+            })
+        })
+}
+
 fn has_function_call_output(request: &wiremock::Request, call_id: &str) -> bool {
     serde_json::from_slice::<serde_json::Value>(&request.body).is_ok_and(|body| {
         body.get("input")
@@ -134,7 +150,7 @@ async fn v2_nested_spawn_checks_shared_active_execution_capacity() -> Result<()>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn v2_leaf_spawns_keep_v2_capacity_and_only_disable_spawning() -> Result<()> {
+async fn v2_leaf_spawns_keep_v2_capacity_and_management_tools() -> Result<()> {
     const ROOT_PROMPT: &str = "spawn the capacity workers";
     const SUBAGENT_HINT: &str = "Delegating child guidance.";
     const MODE_HINT: &str = "Delegating mode guidance.";
@@ -202,7 +218,9 @@ async fn v2_leaf_spawns_keep_v2_capacity_and_only_disable_spawning() -> Result<(
             mount_sse_once_match(
                 &server,
                 move |request: &wiremock::Request| {
-                    body_contains(request, &task) && !has_function_call_output(request, &call_id)
+                    user_input_contains(request, &task)
+                        && body_contains(request, SUBAGENT_HINT)
+                        && !has_function_call_output(request, &call_id)
                 },
                 sse(vec![
                     ev_response_created(&response_id),
@@ -279,16 +297,11 @@ async fn v2_leaf_spawns_keep_v2_capacity_and_only_disable_spawning() -> Result<(
         }
     })
     .await?;
-    let child_delegation_state = [0, 1, 6].map(|index| {
+    let child_management_state = [0, 1, 6].map(|index| {
         let request = child_responses[index]
-            .requests()
-            .into_iter()
-            .next()
+            .last_request()
             .expect("child request");
         (
-            request
-                .tool_by_name(MULTI_AGENT_V2_NAMESPACE, "spawn_agent")
-                .is_some(),
             request
                 .tool_by_name(MULTI_AGENT_V2_NAMESPACE, "send_message")
                 .is_some(),
@@ -297,12 +310,8 @@ async fn v2_leaf_spawns_keep_v2_capacity_and_only_disable_spawning() -> Result<(
         )
     });
     assert_eq!(
-        child_delegation_state,
-        [
-            (true, true, true, true),
-            (true, true, true, true),
-            (false, true, true, true),
-        ]
+        child_management_state,
+        [(true, true, true), (true, true, true), (true, true, true),]
     );
 
     Ok(())

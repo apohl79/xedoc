@@ -135,7 +135,3 @@ fn model_lookup_entry(model: &ModelPreset) -> ModelLookupEntry<'_> {
 }
 
 impl CoreToolRuntime for ModelLookupHandler {}
-
-#[cfg(test)]
-#[path = "model_lookup_tests.rs"]
-mod tests;

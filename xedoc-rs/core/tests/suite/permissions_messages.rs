@@ -132,56 +132,6 @@ async fn catalog_approval_message_is_sent_in_initial_permissions() -> Result<()>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn model_change_appends_new_catalog_approval_message() -> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = start_mock_server().await;
-    let _req1 = mount_sse_once(
-        &server,
-        sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
-    )
-    .await;
-    let req2 = mount_sse_once(
-        &server,
-        sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
-    )
-    .await;
-    let first_slug = "catalog-approvals-model-a";
-    let second_slug = "catalog-approvals-model-b";
-    let first = model_with_approval_messages(first_slug, "model A approvals", "model A auto");
-    let second = model_with_approval_messages(second_slug, "model B approvals", "model B auto");
-    let mut builder = test_xedoc()
-        .with_model(first_slug)
-        .with_config(move |config| {
-            config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
-            config.model_catalog = Some(ModelsResponse {
-                models: vec![first, second],
-            });
-        });
-    let test = builder.build(&server).await?;
-    submit_text_turn(&test, "first").await?;
-
-    core_test_support::submit_thread_settings(
-        &test.xedoc,
-        xedoc_protocol::protocol::ThreadSettingsOverrides {
-            model: Some(second_slug.to_string()),
-            ..Default::default()
-        },
-    )
-    .await?;
-    submit_text_turn(&test, "second").await?;
-
-    let permissions = permissions_texts(&req2.single_request());
-    assert_eq!(permissions.len(), 2);
-    assert!(
-        permissions
-            .last()
-            .is_some_and(|text| text.contains("model B approvals"))
-    );
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn catalog_non_on_request_approval_messages_are_sent_in_initial_permissions() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

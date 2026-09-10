@@ -552,7 +552,7 @@ async fn assert_remote_manual_compact_request_parity(
     let mut builder = test_xedoc().with_auth(auth);
     if let Some(service_tier) = configured_service_tier {
         builder = builder.with_config(move |config| {
-            config.model = Some("gpt-5.6-luna".to_string());
+            config.model = Some("gpt-5.4".to_string());
             config.service_tier = Some(service_tier.request_value().to_string());
         });
     }

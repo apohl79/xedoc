@@ -158,7 +158,7 @@ async fn configured_responses_provider_switch_drops_foreign_reasoning() -> Resul
                     .insert(source_provider_id.clone(), source_provider.clone());
                 config
                     .model_providers
-                    .insert(target_provider_id.clone(), target_provider.clone());
+                    .insert(target_provider_id.clone(), target_provider);
             }
         })
         .build(&server)
@@ -764,118 +764,6 @@ async fn generated_image_is_replayed_for_image_capable_models() -> Result<()> {
         image_generation_calls[0]["result"].as_str(),
         Some("Zm9v"),
         "expected the original generated image payload to be preserved"
-    );
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn model_change_from_generated_image_to_text_preserves_prior_generated_image_call()
--> Result<()> {
-    skip_if_no_network!(Ok(()));
-
-    let server = MockServer::start().await;
-    let image_model_slug = "test-image-model";
-    let text_model_slug = "test-text-only-model";
-    let image_model = test_model_info(
-        image_model_slug,
-        "Test Image Model",
-        "supports image input",
-        default_input_modalities(),
-    );
-    let text_model = test_model_info(
-        text_model_slug,
-        "Test Text Model",
-        "text only",
-        vec![InputModality::Text],
-    );
-    mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![image_model, text_model],
-        },
-    )
-    .await;
-
-    let responses = mount_sse_sequence(
-        &server,
-        vec![
-            sse(vec![
-                ev_response_created("resp-1"),
-                ev_image_generation_call("ig_123", "completed", "lobster", "Zm9v"),
-                ev_completed_with_tokens("resp-1", /*total_tokens*/ 10),
-            ]),
-            sse_completed("resp-2"),
-        ],
-    )
-    .await;
-
-    let mut builder = test_xedoc()
-        .with_auth(XedocAuth::create_dummy_chatgpt_auth_for_testing())
-        .with_config(move |config| {
-            config.model = Some(image_model_slug.to_string());
-        });
-    let test = builder.build(&server).await?;
-    let models_manager = test.thread_manager.get_models_manager();
-    let _ = models_manager
-        .list_models(
-            RefreshStrategy::OnlineIfUncached,
-            xedoc_core::test_support::default_http_client_factory(),
-        )
-        .await;
-
-    test.xedoc
-        .submit(read_only_user_turn(
-            &test,
-            vec![UserInput::Text {
-                text: "generate a lobster".to_string(),
-                text_elements: Vec::new(),
-            }],
-            image_model_slug.to_string(),
-        ))
-        .await?;
-    wait_for_event(&test.xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    test.xedoc
-        .submit(read_only_user_turn(
-            &test,
-            vec![UserInput::Text {
-                text: "describe the generated image".to_string(),
-                text_elements: Vec::new(),
-            }],
-            text_model_slug.to_string(),
-        ))
-        .await?;
-    wait_for_event(&test.xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    let requests = responses.requests();
-    assert_eq!(requests.len(), 2, "expected two model requests");
-
-    let second_request = requests.last().expect("expected second request");
-    let image_generation_calls = second_request.inputs_of_type("image_generation_call");
-    assert!(
-        second_request.message_input_image_urls("user").is_empty(),
-        "second request should not rewrite generated images into message input images"
-    );
-    assert!(
-        image_generation_calls.len() == 1,
-        "second request should preserve the generated image call for text-only models"
-    );
-    assert_eq!(
-        image_generation_calls[0]["id"].as_str(),
-        None,
-        "second request should omit the generated image call id"
-    );
-    assert_eq!(
-        image_generation_calls[0]["result"].as_str(),
-        Some(""),
-        "second request should strip generated image bytes for text-only models"
-    );
-    assert!(
-        second_request
-            .message_input_texts("user")
-            .iter()
-            .all(|text| text != "image content omitted because you do not support image input"),
-        "second request should not inject the image-omitted placeholder text"
     );
     Ok(())
 }

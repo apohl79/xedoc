@@ -1,0 +1,13 @@
+mod compact;
+mod compact_remote;
+mod compact_remote_parity;
+mod compact_resume_fork;
+mod current_time_reminder;
+mod items;
+mod pending_input;
+mod prompt_debug_tests;
+mod request_compression;
+mod truncation;
+mod turn_state;
+mod window_headers;
+mod workspace_roots;

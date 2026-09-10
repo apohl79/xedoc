@@ -34,8 +34,8 @@ if [[ "${RUNNER_OS:-}" != "Windows" ]]; then
 elif [[ $windows_cross_compile -eq 1 ]]; then
   # `bazel query` is intentionally pre-analysis and does not remove targets
   # made incompatible by `target_compatible_with`. Sharded integration tests
-  # add native-only manual helpers such as `core-all-test-bin`, plus separate
-  # `core-all-test-windows-cross-bin` helpers for the Windows cross leg. Keep
+  # add native-only manual helpers such as `core-agent-test-bin`, plus separate
+  # Windows-cross helpers. Keep
   # the Windows helpers and unit-test helpers, but do not pass the native-only
   # sharded integration helpers as explicit clippy targets.
   manual_rust_test_targets="$(printf '%s\n' "${manual_rust_test_targets}" | grep -v -- '-test-bin$' || true)"

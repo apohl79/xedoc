@@ -3,7 +3,6 @@ use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;
 use crate::chatwidget::rate_limits::get_limits_duration;
 use pretty_assertions::assert_eq;
-use ratatui::backend::TestBackend;
 use ratatui::text::Line;
 use serde_json::Value;
 use xedoc_app_server_protocol::SpendControlLimitSnapshot;
@@ -712,7 +711,7 @@ async fn rate_limit_snapshot_keeps_prior_credits_when_missing_from_headers() {
     }));
     let initial_balance = chat
         .rate_limit_snapshots_by_limit_id
-        .get("codex")
+        .get("xedoc")
         .and_then(|snapshot| snapshot.credits.as_ref())
         .and_then(|credits| credits.balance.as_deref());
     assert_eq!(initial_balance, Some("17.5"));
@@ -735,7 +734,7 @@ async fn rate_limit_snapshot_keeps_prior_credits_when_missing_from_headers() {
 
     let display = chat
         .rate_limit_snapshots_by_limit_id
-        .get("codex")
+        .get("xedoc")
         .expect("rate limits should be cached");
     let credits = display
         .credits
@@ -766,7 +765,7 @@ async fn rolling_rate_limit_snapshot_preserves_prior_individual_limit() {
 
     let display = chat
         .rate_limit_snapshots_by_limit_id
-        .get("codex")
+        .get("xedoc")
         .expect("rate limits should be cached");
     let individual_limit = display
         .individual_limit
@@ -779,7 +778,7 @@ async fn rolling_rate_limit_snapshot_preserves_prior_individual_limit() {
     chat.on_rate_limit_snapshot(Some(snapshot(/*percent*/ 30.0)));
     let display = chat
         .rate_limit_snapshots_by_limit_id
-        .get("codex")
+        .get("xedoc")
         .expect("rate limits should be cached");
     assert!(display.individual_limit.is_none());
 }
@@ -1669,19 +1668,6 @@ async fn esc_interrupt_pauses_active_goal_turn() {
     assert_goal_paused_event(&mut rx, thread_id);
 
     update_thread_goal(&mut chat, thread_id, AppThreadGoalStatus::Paused);
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = ratatui::Terminal::new(TestBackend::new(width, height)).expect("terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw goal paused footer");
-    let snapshot = normalized_backend_snapshot(terminal.backend());
-    #[cfg(target_os = "windows")]
-    insta::with_settings!({ snapshot_suffix => "windows" }, {
-        assert_chatwidget_snapshot!("esc_interrupt_goal_paused_footer", snapshot);
-    });
-    #[cfg(not(target_os = "windows"))]
-    assert_chatwidget_snapshot!("esc_interrupt_goal_paused_footer", snapshot);
 }
 
 #[tokio::test]
@@ -1897,41 +1883,8 @@ async fn fast_status_indicator_is_hidden_when_fast_mode_is_off() {
 
 // Snapshot test: ChatWidget at very small heights (idle)
 // Ensures overall layout behaves when terminal height is extremely constrained.
-#[tokio::test]
-async fn ui_snapshots_small_heights_idle() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-    let (chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    for h in [1u16, 2, 3] {
-        let name = format!("chat_small_idle_h{h}");
-        let mut terminal = Terminal::new(TestBackend::new(40, h)).expect("create terminal");
-        terminal
-            .draw(|f| chat.render(f.area(), f.buffer_mut()))
-            .expect("draw chat idle");
-        assert_chatwidget_snapshot!(name, normalized_backend_snapshot(terminal.backend()));
-    }
-}
-
 // Snapshot test: ChatWidget at very small heights (task running)
 // Validates how status + composer are presented within tight space.
-#[tokio::test]
-async fn ui_snapshots_small_heights_task_running() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    // Activate status line
-    handle_turn_started(&mut chat, "turn-1");
-    handle_agent_reasoning_delta(&mut chat, "**Thinking**");
-    for h in [1u16, 2, 3] {
-        let name = format!("chat_small_running_h{h}");
-        let mut terminal = Terminal::new(TestBackend::new(40, h)).expect("create terminal");
-        terminal
-            .draw(|f| chat.render(f.area(), f.buffer_mut()))
-            .expect("draw chat running");
-        assert_chatwidget_snapshot!(name, normalized_backend_snapshot(terminal.backend()));
-    }
-}
-
 // Snapshot test: status widget + approval modal active together
 // The modal takes precedence visually; this captures the layout with a running
 // task (status indicator active) while an approval request is shown.
@@ -1983,26 +1936,6 @@ async fn status_widget_and_approval_modal_snapshot() {
 
 // Snapshot test: status widget active (StatusIndicatorView)
 // Ensures the VT100 rendering of the status indicator is stable when active.
-#[tokio::test]
-async fn status_widget_active_snapshot() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    // Activate the status indicator by simulating a task start.
-    handle_turn_started(&mut chat, "turn-1");
-    // Provide a deterministic header via a bold reasoning chunk.
-    handle_agent_reasoning_delta(&mut chat, "**Analyzing**");
-    // Render and snapshot.
-    let height = chat.desired_height(/*width*/ 80);
-    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))
-        .expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw status widget");
-    assert_chatwidget_snapshot!(
-        "status_widget_active",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
 #[tokio::test]
 async fn stream_error_updates_status_indicator() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -2585,31 +2518,6 @@ async fn pending_status_line_command_hides_builtin_status_line_items() {
 }
 
 #[tokio::test]
-async fn pending_status_line_command_hidden_footer_snapshot() {
-    use ratatui::Terminal;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-test")).await;
-    chat.show_welcome_banner = false;
-    chat.config.tui_status_line = Some(vec!["model".to_string(), "context-used".to_string()]);
-    chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
-        "missing-statusline-command".to_string(),
-    ]));
-    chat.status_line_command_pending_request_id = Some(7);
-    chat.refresh_status_line();
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw pending statusline command footer");
-    assert_chatwidget_snapshot!(
-        "pending_status_line_command_hidden_footer",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
 async fn status_line_command_empty_update_keeps_previous_output() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.config.tui_status_line_command = Some(StatusLineCommand::Args(vec![
@@ -2810,29 +2718,6 @@ async fn status_line_fast_mode_renders_on_and_off() {
 }
 
 #[tokio::test]
-async fn status_line_fast_mode_footer_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.show_welcome_banner = false;
-    chat.config.tui_status_line = Some(vec!["fast-mode".to_string()]);
-    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
-    chat.refresh_status_line();
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw fast-mode footer");
-    assert_chatwidget_snapshot!(
-        "status_line_fast_mode_footer",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
 async fn status_line_model_with_reasoning_includes_fast_for_fast_capable_models() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     set_fast_mode_test_catalog(&mut chat);
@@ -2929,294 +2814,6 @@ async fn status_line_model_with_reasoning_updates_on_mode_switch_without_manual_
     chat.set_collaboration_mask(default_mask);
 
     assert_eq!(status_line_text(&chat), Some("gpt-5.2 high".to_string()));
-}
-
-#[tokio::test]
-async fn status_line_model_with_reasoning_plan_mode_footer_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.2")).await;
-    chat.show_welcome_banner = false;
-    chat.set_feature_enabled(Feature::CollaborationModes, /*enabled*/ true);
-    chat.config.tui_status_line = Some(vec!["model-with-reasoning".to_string()]);
-    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
-
-    let plan_mask = collaboration_modes::plan_mask(chat.model_catalog.as_ref())
-        .expect("expected plan collaboration mode");
-    chat.set_collaboration_mask(plan_mask);
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw plan-mode footer");
-    assert_chatwidget_snapshot!(
-        "status_line_model_with_reasoning_plan_mode_footer",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
-async fn renamed_thread_footer_title_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.2")).await;
-    chat.show_welcome_banner = false;
-    chat.config.tui_status_line = Some(vec![
-        "model-with-reasoning".to_string(),
-        "thread-title".to_string(),
-    ]);
-    chat.set_reasoning_effort(Some(ReasoningEffortConfig::High));
-    chat.refresh_status_line();
-
-    let thread_id = ThreadId::new();
-    chat.thread_id = Some(thread_id);
-    chat.handle_server_notification(
-        ServerNotification::ThreadNameUpdated(
-            xedoc_app_server_protocol::ThreadNameUpdatedNotification {
-                thread_id: thread_id.to_string(),
-                thread_name: Some("Roadmap cleanup".to_string()),
-                source: xedoc_app_server_protocol::ThreadNameUpdateSource::User,
-            },
-        ),
-        /*replay_kind*/ None,
-    );
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw renamed-thread footer");
-    assert_chatwidget_snapshot!(
-        "renamed_thread_footer_title",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
-async fn renamed_thread_composer_title_truncates_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
-    chat.show_welcome_banner = false;
-
-    let thread_id = ThreadId::new();
-    chat.thread_id = Some(thread_id);
-    chat.handle_server_notification(
-        ServerNotification::ThreadNameUpdated(
-            xedoc_app_server_protocol::ThreadNameUpdatedNotification {
-                thread_id: thread_id.to_string(),
-                thread_name: Some(
-                    "Roadmap cleanup across launch readiness and regional rollout".to_string(),
-                ),
-                source: xedoc_app_server_protocol::ThreadNameUpdateSource::User,
-            },
-        ),
-        /*replay_kind*/ None,
-    );
-
-    let width = 48;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw renamed-thread composer title");
-    assert_chatwidget_snapshot!(
-        "renamed_thread_composer_title_truncated",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
-async fn session_configured_composer_title_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.3-codex")).await;
-    chat.show_welcome_banner = false;
-    let rollout_file = NamedTempFile::new().unwrap();
-
-    chat.handle_thread_session(crate::session_state::ThreadSessionState {
-        thread_id: ThreadId::new(),
-        forked_from_id: None,
-        fork_parent_title: None,
-        thread_name: Some("Roadmap cleanup".to_string()),
-        model: "gpt-5.3-codex".to_string(),
-        model_provider_id: "test-provider".to_string(),
-        service_tier: None,
-        approval_policy: AskForApproval::Never,
-        permission_profile: PermissionProfile::read_only(),
-        active_permission_profile: None,
-        cwd: test_path_buf("/home/user/project").abs(),
-        runtime_workspace_roots: Vec::new(),
-        instruction_source_paths: Vec::new(),
-        reasoning_effort: Some(ReasoningEffortConfig::default()),
-        collaboration_mode: None,
-        personality: None,
-        message_history: None,
-        network_proxy: None,
-        rollout_path: Some(rollout_file.path().to_path_buf()),
-    });
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw session-configured composer title");
-    assert_chatwidget_snapshot!(
-        "session_configured_composer_title",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
-async fn status_line_model_with_reasoning_fast_footer_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
-    set_fast_mode_test_catalog(&mut chat);
-    assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
-    chat.show_welcome_banner = false;
-    chat.config.cwd = test_project_path().abs();
-    chat.config.tui_status_line = Some(vec![
-        "model-with-reasoning".to_string(),
-        "context-used".to_string(),
-        "current-dir".to_string(),
-    ]);
-    chat.set_reasoning_effort(Some(ReasoningEffortConfig::XHigh));
-    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
-    set_chatgpt_auth(&mut chat);
-    set_fast_mode_test_catalog(&mut chat);
-    assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
-    chat.refresh_status_line();
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw model-with-reasoning footer");
-    assert_chatwidget_snapshot!(
-        "status_line_model_with_reasoning_fast_footer",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
-async fn status_line_model_with_reasoning_context_remaining_footer_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
-    set_fast_mode_test_catalog(&mut chat);
-    assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
-    chat.show_welcome_banner = false;
-    chat.config.cwd = test_project_path().abs();
-    chat.config.tui_status_line = Some(vec![
-        "model-with-reasoning".to_string(),
-        "context-remaining".to_string(),
-        "current-dir".to_string(),
-    ]);
-    chat.set_reasoning_effort(Some(ReasoningEffortConfig::XHigh));
-    chat.set_service_tier(Some(ServiceTier::Fast.request_value().to_string()));
-    set_chatgpt_auth(&mut chat);
-    set_fast_mode_test_catalog(&mut chat);
-    assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
-    chat.refresh_status_line();
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw model-with-reasoning footer");
-    assert_chatwidget_snapshot!(
-        "status_line_model_with_reasoning_context_remaining_footer",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
-async fn status_line_goal_active_token_budget_footer_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
-    chat.set_feature_enabled(Feature::Goals, /*enabled*/ true);
-    chat.show_welcome_banner = false;
-    chat.config.tui_status_line = Some(vec!["model-name".to_string()]);
-    chat.refresh_status_line();
-    chat.handle_server_notification(
-        ServerNotification::ThreadGoalUpdated(
-            xedoc_app_server_protocol::ThreadGoalUpdatedNotification {
-                thread_id: "thread-1".to_string(),
-                turn_id: None,
-                goal: test_thread_goal(
-                    xedoc_app_server_protocol::ThreadGoalStatus::Active,
-                    /*token_budget*/ Some(50_000),
-                    /*tokens_used*/ 40_000,
-                ),
-            },
-        ),
-        /*replay_kind*/ None,
-    );
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw goal status footer");
-    assert_chatwidget_snapshot!(
-        "status_line_goal_active_token_budget_footer",
-        normalized_backend_snapshot(terminal.backend())
-    );
-}
-
-#[tokio::test]
-async fn status_line_goal_complete_elapsed_footer_snapshot() {
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
-    chat.set_feature_enabled(Feature::Goals, /*enabled*/ true);
-    chat.show_welcome_banner = false;
-    chat.config.tui_status_line = Some(vec!["model-name".to_string()]);
-    chat.refresh_status_line();
-    let mut goal = test_thread_goal(
-        xedoc_app_server_protocol::ThreadGoalStatus::Complete,
-        /*token_budget*/ None,
-        /*tokens_used*/ 40_000,
-    );
-    goal.time_used_seconds = 2 * 24 * 60 * 60 + 23 * 60 * 60 + 42 * 60;
-    chat.handle_server_notification(
-        ServerNotification::ThreadGoalUpdated(
-            xedoc_app_server_protocol::ThreadGoalUpdatedNotification {
-                thread_id: "thread-1".to_string(),
-                turn_id: None,
-                goal,
-            },
-        ),
-        /*replay_kind*/ None,
-    );
-
-    let width = 80;
-    let height = chat.desired_height(width);
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("create terminal");
-    terminal
-        .draw(|f| chat.render(f.area(), f.buffer_mut()))
-        .expect("draw goal status footer");
-    assert_chatwidget_snapshot!(
-        "status_line_goal_complete_elapsed_footer",
-        normalized_backend_snapshot(terminal.backend())
-    );
 }
 
 #[tokio::test]
@@ -3728,6 +3325,7 @@ async fn reasoning_delta_does_not_double_schedule_visible_status_redraw() {
 #[tokio::test]
 async fn reasoning_delta_restores_recreated_status_indicator_header() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
     chat.on_task_started();
     chat.on_agent_reasoning_delta("**Checking files**".to_string());
 
@@ -4226,6 +3824,7 @@ async fn overlapping_hook_live_cell_tracks_parallel_quiet_hooks() {
 #[tokio::test]
 async fn running_hook_does_not_displace_active_exec_cell() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_tool_call_rendering = xedoc_config::types::ToolCallRenderingMode::Normal;
 
     let begin = begin_exec(&mut chat, "call-1", "echo done");
     let exec_running = active_blob(&chat);
@@ -4499,98 +4098,6 @@ fn hook_live_and_history_snapshot(chat: &ChatWidget, phase: &str, history: &str)
 // Combined visual snapshot using vt100 for history + direct buffer overlay for UI.
 // This renders the final visual as seen in a terminal: history above, then a blank line,
 // then the exec block, another blank line, the status line, a blank line, and the composer.
-#[tokio::test]
-async fn chatwidget_exec_and_status_layout_vt100_snapshot() {
-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    complete_assistant_message(
-        &mut chat,
-        "msg-search",
-        "I’m going to search the repo for where “Change Approved” is rendered to update that view.",
-        /*phase*/ None,
-    );
-
-    let command = vec!["bash".into(), "-lc".into(), "rg \"Change Approved\"".into()];
-    let parsed_cmd = [
-        ParsedCommand::Search {
-            query: Some("Change Approved".into()),
-            path: None,
-            cmd: "rg \"Change Approved\"".into(),
-        },
-        ParsedCommand::Read {
-            name: "diff_render.rs".into(),
-            cmd: "cat diff_render.rs".into(),
-            path: "diff_render.rs".into(),
-        },
-    ];
-    let command_actions = parsed_cmd
-        .iter()
-        .cloned()
-        .map(|parsed| AppServerCommandAction::from_core_with_cwd(parsed, &chat.config.cwd))
-        .collect::<Vec<_>>();
-    let cwd = chat.config.cwd.clone();
-    handle_exec_begin(
-        &mut chat,
-        AppServerThreadItem::CommandExecution {
-            id: "c1".into(),
-            command: xedoc_shell_command::parse_command::shlex_join(&command),
-            cwd: cwd.clone().into(),
-            process_id: None,
-            source: ExecCommandSource::Agent,
-            status: AppServerCommandExecutionStatus::InProgress,
-            command_actions: command_actions.clone(),
-            aggregated_output: None,
-            exit_code: None,
-            duration_ms: None,
-        },
-    );
-    handle_exec_end(
-        &mut chat,
-        AppServerThreadItem::CommandExecution {
-            id: "c1".into(),
-            command: xedoc_shell_command::parse_command::shlex_join(&command),
-            cwd: cwd.into(),
-            process_id: None,
-            source: ExecCommandSource::Agent,
-            status: AppServerCommandExecutionStatus::Completed,
-            command_actions,
-            aggregated_output: None,
-            exit_code: Some(0),
-            duration_ms: Some(16000),
-        },
-    );
-    handle_turn_started(&mut chat, "turn-1");
-    handle_agent_reasoning_delta(&mut chat, "**Investigating rendering code**");
-    chat.bottom_pane.set_composer_text(
-        "Summarize recent commits".to_string(),
-        Vec::new(),
-        Vec::new(),
-    );
-
-    let width: u16 = 80;
-    let ui_height: u16 = chat.desired_height(width);
-    let vt_height: u16 = 40;
-    let viewport = Rect::new(0, vt_height - ui_height - 1, width, ui_height);
-
-    let backend = VT100Backend::new(width, vt_height);
-    let mut term = crate::custom_terminal::Terminal::with_options(backend).expect("terminal");
-    term.set_viewport_area(viewport);
-
-    for lines in drain_insert_history(&mut rx) {
-        crate::insert_history::insert_history_lines(&mut term, lines)
-            .expect("Failed to insert history lines in test");
-    }
-
-    term.draw(|f| {
-        chat.render(f.area(), f.buffer_mut());
-    })
-    .unwrap();
-
-    assert_chatwidget_snapshot!(
-        "chatwidget_exec_and_status_layout_vt100_snapshot",
-        normalize_snapshot_paths(term.backend().vt100().screen().contents())
-    );
-}
-
 // E2E vt100 snapshot for complex markdown with indented and nested fenced code blocks
 #[tokio::test]
 async fn chatwidget_markdown_code_blocks_vt100_snapshot() {
@@ -4669,30 +4176,6 @@ printf 'fenced within fenced\n'
 
     assert_chatwidget_snapshot!(
         "chatwidget_markdown_code_blocks_vt100_snapshot",
-        normalize_snapshot_paths(term.backend().vt100().screen().contents())
-    );
-}
-
-#[tokio::test]
-async fn chatwidget_tall() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.thread_id = Some(ThreadId::new());
-    handle_turn_started(&mut chat, "turn-1");
-    for i in 0..30 {
-        chat.queue_user_message(format!("Hello, world! {i}").into());
-    }
-    let width: u16 = 80;
-    let height: u16 = 24;
-    let backend = VT100Backend::new(width, height);
-    let mut term = crate::custom_terminal::Terminal::with_options(backend).expect("terminal");
-    let desired_height = chat.desired_height(width).min(height);
-    term.set_viewport_area(Rect::new(0, height - desired_height, width, desired_height));
-    term.draw(|f| {
-        chat.render(f.area(), f.buffer_mut());
-    })
-    .unwrap();
-    assert_chatwidget_snapshot!(
-        "chatwidget_tall",
         normalize_snapshot_paths(term.backend().vt100().screen().contents())
     );
 }

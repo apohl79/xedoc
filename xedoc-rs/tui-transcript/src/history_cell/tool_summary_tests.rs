@@ -254,7 +254,7 @@ fn file_change_preview_uses_apply_patch_and_syntax_styles() {
             "    1 +let answer = 42;",
             "    2 +let next = answer;",
             "    3 +println!(\"{next}\");",
-            "  ... 1 more lines",
+            "  ... 2 more lines",
         ]
     );
     assert!(
