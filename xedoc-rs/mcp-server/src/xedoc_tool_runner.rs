@@ -24,6 +24,8 @@ use xedoc_protocol::protocol::ApplyPatchApprovalRequestEvent;
 use xedoc_protocol::protocol::Event;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::ExecApprovalRequestEvent;
+use xedoc_protocol::protocol::ModelRouterApprovalAction;
+use xedoc_protocol::protocol::ModelRouterApprovalResponse;
 use xedoc_protocol::protocol::Op;
 use xedoc_protocol::protocol::Submission;
 use xedoc_protocol::protocol::TurnCompleteEvent;
@@ -248,6 +250,25 @@ async fn run_xedoc_tool_session_inner(
                             thread_id,
                         )
                         .await;
+                        continue;
+                    }
+                    EventMsg::ModelRouterApprovalRequest(request) => {
+                        if let Err(error) = thread
+                            .submit(Op::ModelRouterApprovalResponse {
+                                approval_id: request.approval_id,
+                                response: ModelRouterApprovalResponse {
+                                    action: ModelRouterApprovalAction::Reject,
+                                    classification: None,
+                                    route: None,
+                                },
+                            })
+                            .await
+                        {
+                            tracing::warn!(
+                                %error,
+                                "failed to reject model-router approval for non-interactive MCP client"
+                            );
+                        }
                         continue;
                     }
                     EventMsg::PlanDelta(_) => {
