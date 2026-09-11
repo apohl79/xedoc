@@ -117,6 +117,58 @@ async fn handle_spawn_agent(
         } else {
             None
         };
+    if turn.config.model_router.approval
+        && let Some(decision) = router_decision.as_mut()
+        && decision.disposition == xedoc_model_router::RouteDisposition::Applied
+        && decision.effective_route != decision.original_route
+    {
+        let approval = crate::model_router::approval_event(
+            decision,
+            session.thread_id.to_string(),
+            turn.sub_id.clone(),
+            xedoc_protocol::protocol::ModelRouterScope::Subagent,
+        );
+        let response = session
+            .request_model_router_approval(turn.as_ref(), approval)
+            .await;
+        if response.action == xedoc_protocol::protocol::ModelRouterApprovalAction::Override
+            && let Some(label) = response.classification.as_deref()
+        {
+            let feedback_path = session.model_router_feedback_path().await;
+            if let Err(error) = xedoc_model_router::append_classifier_feedback(
+                &feedback_path,
+                &decision.prompt.sha256,
+                now_unix_timestamp_ms() / 1_000,
+                label,
+                &message,
+            ) {
+                tracing::warn!(%error, "failed to persist model-router classifier feedback");
+            } else if let Err(error) =
+                crate::model_router::ModelRouterService::recalibrate_from_feedback(
+                    turn.config.as_ref(),
+                    &feedback_path,
+                )
+            {
+                tracing::warn!(%error, "failed to recalibrate model-router classifier");
+            }
+        }
+        match response.action {
+            xedoc_protocol::protocol::ModelRouterApprovalAction::Approve => {}
+            xedoc_protocol::protocol::ModelRouterApprovalAction::Reject => {
+                crate::model_router::fallback_to_original_route(decision);
+            }
+            xedoc_protocol::protocol::ModelRouterApprovalAction::Override => {
+                if let Some(route) = response
+                    .route
+                    .as_ref()
+                    .and_then(crate::model_router::route_from_approval)
+                {
+                    decision.effective_route = Some(route);
+                    decision.disposition = xedoc_model_router::RouteDisposition::Applied;
+                }
+            }
+        }
+    }
     if let Some(decision) = router_decision.as_mut()
         && decision.disposition == xedoc_model_router::RouteDisposition::Applied
     {

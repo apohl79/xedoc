@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ModelRouterApprovalAction": {
+      "description": "The action a user takes on a model-router proposal.",
+      "enum": [
+        "approve",
+        "reject",
+        "override"
+      ],
+      "type": "string"
+    },
+    "ModelRouterRoute": {
+      "description": "A selectable model route proposed by the model router.",
+      "properties": {
+        "modelSlug": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "reasoningEffort": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "modelSlug",
+        "providerId",
+        "reasoningEffort"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "The response to a model-router approval request.",
+  "properties": {
+    "action": {
+      "$ref": "#/definitions/ModelRouterApprovalAction"
+    },
+    "classification": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "route": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ModelRouterRoute"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "title": "ModelRouterApprovalResponse",
+  "type": "object"
+}

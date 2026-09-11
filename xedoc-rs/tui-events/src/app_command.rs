@@ -6,6 +6,7 @@ use xedoc_app_server_protocol::AskForApproval;
 use xedoc_app_server_protocol::CommandExecutionApprovalDecision;
 use xedoc_app_server_protocol::FileChangeApprovalDecision;
 use xedoc_app_server_protocol::McpServerElicitationAction;
+use xedoc_app_server_protocol::ModelRouterApprovalResponse;
 use xedoc_app_server_protocol::RequestId as AppServerRequestId;
 use xedoc_app_server_protocol::ReviewTarget;
 use xedoc_app_server_protocol::ToolRequestUserInputResponse;
@@ -74,6 +75,10 @@ pub enum AppCommand {
     UserInputAnswer {
         id: String,
         response: ToolRequestUserInputResponse,
+    },
+    ModelRouterApproval {
+        id: String,
+        response: ModelRouterApprovalResponse,
     },
     RequestPermissionsResponse {
         id: String,
@@ -165,6 +170,7 @@ impl AppCommand {
             | Self::PatchApproval { .. }
             | Self::ResolveElicitation { .. }
             | Self::UserInputAnswer { .. }
+            | Self::ModelRouterApproval { .. }
             | Self::RequestPermissionsResponse { .. }
             | Self::ReloadUserConfig
             | Self::ListSkills { .. }
@@ -236,6 +242,10 @@ impl AppCommand {
 
     pub fn user_input_answer(id: String, response: ToolRequestUserInputResponse) -> Self {
         Self::UserInputAnswer { id, response }
+    }
+
+    pub fn model_router_approval(id: String, response: ModelRouterApprovalResponse) -> Self {
+        Self::ModelRouterApproval { id, response }
     }
 
     pub fn request_permissions_response(id: String, response: RequestPermissionsResponse) -> Self {

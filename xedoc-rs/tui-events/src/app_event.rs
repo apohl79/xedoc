@@ -725,6 +725,11 @@ pub enum AppEvent {
         mode: String,
     },
 
+    /// Persist whether active model-router decisions require user approval.
+    UpdateModelRouterApproval {
+        approval: bool,
+    },
+
     /// Open the bounded model-router browser report.
     ModelRouterReportOpenRequested,
 

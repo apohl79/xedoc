@@ -1184,6 +1184,15 @@ impl Session {
         state.session_configuration.xedoc_home().clone()
     }
 
+    pub(crate) async fn model_router_feedback_path(&self) -> AbsolutePathBuf {
+        self.state
+            .lock()
+            .await
+            .session_configuration
+            .xedoc_home()
+            .join("model-router-feedback.jsonl")
+    }
+
     pub(crate) fn subscribe_elicitation_pause_state(&self) -> watch::Receiver<bool> {
         self.services.elicitations.subscribe()
     }
@@ -2259,6 +2268,38 @@ impl Session {
         let turn_context = self.turn_context_for_sub_id(sub_id).await;
         self.inject_no_new_turn(vec![message], turn_context.as_deref())
             .await;
+    }
+
+    /// Emit a model-router approval request and await the user's choice.
+    ///
+    /// Model-router approvals are independent from tool approvals: they gate
+    /// applying a proposed model route, without changing whether the router
+    /// made a decision.
+    pub(crate) async fn request_model_router_approval(
+        &self,
+        turn_context: &TurnContext,
+        approval: xedoc_protocol::protocol::ModelRouterApprovalRequestEvent,
+    ) -> xedoc_protocol::protocol::ModelRouterApprovalResponse {
+        let approval_id = approval.approval_id.clone();
+        let (sender, receiver) = oneshot::channel();
+        if self
+            .pending_model_router_tool_approvals
+            .lock()
+            .await
+            .insert(approval_id.clone(), sender)
+            .is_some()
+        {
+            warn!("overwriting pending model-router approval: {approval_id}");
+        }
+        self.send_event(turn_context, EventMsg::ModelRouterApprovalRequest(approval))
+            .await;
+        receiver
+            .await
+            .unwrap_or(xedoc_protocol::protocol::ModelRouterApprovalResponse {
+                action: xedoc_protocol::protocol::ModelRouterApprovalAction::Reject,
+                classification: None,
+                route: None,
+            })
     }
 
     /// Emit an exec approval request event and await the user's decision.

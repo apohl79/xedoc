@@ -1085,6 +1085,13 @@
             "null"
           ]
         },
+        "canAcceptDirectInput": {
+          "description": "Whether the app server accepts direct turn input for this loaded thread. `None` means the capability is unavailable, such as for an unloaded stored thread.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "cliVersion": {
           "description": "Version of the CLI that created the thread.",
           "type": "string"
@@ -1106,6 +1113,17 @@
           "description": "Whether the thread is ephemeral and should not be materialized on disk.",
           "type": "boolean"
         },
+        "extra": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadExtra"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional implementation-specific thread data."
+        },
         "forkedFromId": {
           "description": "Source thread id when this thread was created by forking another thread.",
           "type": [
@@ -1123,6 +1141,15 @@
             }
           ],
           "description": "Optional Git metadata captured when the thread was created."
+        },
+        "historyMode": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ThreadHistoryMode"
+            }
+          ],
+          "default": "legacy",
+          "description": "Persisted thread history contract selected when this thread was created."
         },
         "id": {
           "description": "Identifier for this thread. Xedoc-generated thread IDs are UUIDv7.",
@@ -2583,11 +2610,35 @@
     }
   },
   "properties": {
+    "activePermissionProfile": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ActivePermissionProfile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Named or implicit built-in profile that produced the active permissions, when known."
+    },
     "approvalPolicy": {
       "$ref": "#/definitions/AskForApproval"
     },
     "cwd": {
       "$ref": "#/definitions/AbsolutePathBuf"
+    },
+    "initialTurnsPage": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TurnsPage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "`thread/turns/list` page returned when requested by `initialTurnsPage`."
     },
     "instructionSources": {
       "default": [],
@@ -2597,11 +2648,28 @@
       },
       "type": "array"
     },
+    "itemsBackwardsCursor": {
+      "default": null,
+      "description": "Opaque head cursor for hydrating paginated items backwards.\n\nPass this as `cursor` to `thread/items/list` with `sortDirection: \"desc\"`. The first page includes the cursor's head item.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "model": {
       "type": "string"
     },
     "modelProvider": {
       "type": "string"
+    },
+    "multiAgentMode": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/MultiAgentMode"
+        }
+      ],
+      "default": "explicitRequestOnly",
+      "description": "@deprecated Always `explicitRequestOnly`. Use `reasoningEffort` for Ultra behavior."
     },
     "reasoningEffort": {
       "anyOf": [
@@ -2612,6 +2680,14 @@
           "type": "null"
         }
       ]
+    },
+    "runtimeWorkspaceRoots": {
+      "default": [],
+      "description": "Thread-scoped runtime workspace roots used to materialize `:workspace_roots`.",
+      "items": {
+        "$ref": "#/definitions/AbsolutePathBuf"
+      },
+      "type": "array"
     },
     "sandbox": {
       "allOf": [
@@ -2629,6 +2705,14 @@
     },
     "thread": {
       "$ref": "#/definitions/Thread"
+    },
+    "turnsBackwardsCursor": {
+      "default": null,
+      "description": "Opaque head cursor for hydrating paginated turns backwards.\n\nPass this as `cursor` to `thread/turns/list` with `sortDirection: \"desc\"`. The first page includes the cursor's head turn.",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [

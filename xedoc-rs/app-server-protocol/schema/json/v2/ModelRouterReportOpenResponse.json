@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "A short-lived local URL for the model-router browser report.",
+  "properties": {
+    "url": {
+      "description": "Loopback URL whose fragment contains the read-only capability.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "title": "ModelRouterReportOpenResponse",
+  "type": "object"
+}

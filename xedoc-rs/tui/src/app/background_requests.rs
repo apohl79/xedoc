@@ -78,6 +78,26 @@ impl App {
         });
     }
 
+    pub(super) fn update_model_router_approval(
+        &mut self,
+        app_server: &AppServerSession,
+        approval: bool,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            if let Err(error) =
+                crate::config_update::write_model_router_approval(request_handle, approval).await
+            {
+                app_event_tx.send(AppEvent::ModelRouterReportOpenLoaded {
+                    result: Err(format!(
+                        "Failed to update model-router approval setting: {error}"
+                    )),
+                });
+            }
+        });
+    }
+
     pub(super) fn open_model_router_report(&mut self, app_server: &AppServerSession) {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();

@@ -1367,6 +1367,12 @@ server_request_definitions! {
         response: v2::McpServerElicitationRequestResponse,
     },
 
+    /// Request approval for a model-router classification and route.
+    ModelRouterRequestApproval => "item/modelRouter/requestApproval" {
+        params: v2::ModelRouterApprovalParams,
+        response: v2::ModelRouterApprovalResponse,
+    },
+
     /// Request approval for additional permissions from the user.
     PermissionsRequestApproval => "item/permissions/requestApproval" {
         params: v2::PermissionsRequestApprovalParams,

@@ -257,6 +257,85 @@ pub(super) async fn user_input_or_turn_inner(
             )
             .await
             {
+                let approval_response = sess
+                    .model_router_approval_responses
+                    .lock()
+                    .await
+                    .remove(&sub_id);
+                if let Some(response) = approval_response.as_ref() {
+                    if response.action
+                        == xedoc_protocol::protocol::ModelRouterApprovalAction::Override
+                        && let Some(label) = response.classification.as_deref()
+                    {
+                        let feedback_path = sess.model_router_feedback_path().await;
+                        let prompt = crate::agent::control::render_input_preview(&items);
+                        if let Err(error) = xedoc_model_router::append_classifier_feedback(
+                            &feedback_path,
+                            &decision.prompt.sha256,
+                            crate::turn_timing::now_unix_timestamp_ms() / 1_000,
+                            label,
+                            &prompt,
+                        ) {
+                            tracing::warn!(%error, "failed to persist model-router classifier feedback");
+                        } else if let Err(error) =
+                            crate::model_router::ModelRouterService::recalibrate_from_feedback(
+                                current_context.config.as_ref(),
+                                &feedback_path,
+                            )
+                        {
+                            tracing::warn!(%error, "failed to recalibrate model-router classifier");
+                        }
+                    }
+                    match response.action {
+                        xedoc_protocol::protocol::ModelRouterApprovalAction::Approve => {}
+                        xedoc_protocol::protocol::ModelRouterApprovalAction::Reject => {
+                            crate::model_router::fallback_to_original_route(&mut decision);
+                        }
+                        xedoc_protocol::protocol::ModelRouterApprovalAction::Override => {
+                            if let Some(route) = response
+                                .route
+                                .as_ref()
+                                .and_then(crate::model_router::route_from_approval)
+                            {
+                                decision.effective_route = Some(route);
+                                decision.disposition =
+                                    xedoc_model_router::RouteDisposition::Applied;
+                            }
+                        }
+                    }
+                }
+                if current_context.config.model_router.approval
+                    && approval_response.is_none()
+                    && decision.disposition == xedoc_model_router::RouteDisposition::Applied
+                    && decision.effective_route != decision.original_route
+                {
+                    let approval = crate::model_router::approval_event(
+                        &decision,
+                        sess.thread_id.to_string(),
+                        current_context.sub_id.clone(),
+                        xedoc_protocol::protocol::ModelRouterScope::Root,
+                    );
+                    sess.pending_model_router_approvals.lock().await.insert(
+                        approval.approval_id.clone(),
+                        crate::session::session::PendingModelRouterApproval {
+                            sub_id: sub_id.clone(),
+                            op: Op::UserInput {
+                                items,
+                                final_output_json_schema,
+                                responsesapi_client_metadata,
+                                additional_context,
+                                thread_settings: ThreadSettingsOverrides::default(),
+                            },
+                            client_user_message_id,
+                        },
+                    );
+                    sess.send_event(
+                        current_context.as_ref(),
+                        EventMsg::ModelRouterApprovalRequest(approval),
+                    )
+                    .await;
+                    return;
+                }
                 if decision.disposition == xedoc_model_router::RouteDisposition::Applied
                     && decision.effective_route != decision.original_route
                 {
@@ -514,6 +593,40 @@ pub async fn request_user_input_response(
     response: RequestUserInputResponse,
 ) {
     sess.notify_user_input_response(&id, response).await;
+}
+
+pub async fn model_router_approval_response(
+    sess: &Arc<Session>,
+    approval_id: String,
+    response: xedoc_protocol::protocol::ModelRouterApprovalResponse,
+) {
+    if let Some(sender) = sess
+        .pending_model_router_tool_approvals
+        .lock()
+        .await
+        .remove(&approval_id)
+    {
+        let _ = sender.send(response);
+        return;
+    }
+    let pending = sess
+        .pending_model_router_approvals
+        .lock()
+        .await
+        .remove(&approval_id);
+    if let Some(pending) = pending {
+        sess.model_router_approval_responses
+            .lock()
+            .await
+            .insert(pending.sub_id.clone(), response);
+        user_input_or_turn(
+            sess,
+            pending.sub_id,
+            pending.op,
+            pending.client_user_message_id,
+        )
+        .await;
+    }
 }
 
 pub async fn request_permissions_response(
@@ -808,6 +921,13 @@ pub(super) async fn submission_loop(
                 }
                 Op::UserInputAnswer { id, response } => {
                     request_user_input_response(&sess, id, response).await;
+                    false
+                }
+                Op::ModelRouterApprovalResponse {
+                    approval_id,
+                    response,
+                } => {
+                    model_router_approval_response(&sess, approval_id, response).await;
                     false
                 }
                 Op::RequestPermissionsResponse { id, response } => {

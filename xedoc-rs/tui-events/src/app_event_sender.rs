@@ -10,6 +10,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use xedoc_app_server_protocol::CommandExecutionApprovalDecision;
 use xedoc_app_server_protocol::FileChangeApprovalDecision;
 use xedoc_app_server_protocol::McpServerElicitationAction;
+use xedoc_app_server_protocol::ModelRouterApprovalResponse;
 use xedoc_app_server_protocol::RequestId as AppServerRequestId;
 use xedoc_app_server_protocol::ReviewTarget;
 use xedoc_app_server_protocol::ToolRequestUserInputResponse;
@@ -69,6 +70,18 @@ impl AppEventSender {
         self.send(AppEvent::XedocOp(AppCommand::user_input_answer(
             id, response,
         )));
+    }
+
+    pub fn model_router_approval(
+        &self,
+        thread_id: ThreadId,
+        id: String,
+        response: ModelRouterApprovalResponse,
+    ) {
+        self.send(AppEvent::SubmitThreadOp {
+            thread_id,
+            op: AppCommand::model_router_approval(id, response),
+        });
     }
 
     pub fn exec_approval(
