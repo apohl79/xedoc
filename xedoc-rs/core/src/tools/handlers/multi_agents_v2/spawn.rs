@@ -339,7 +339,7 @@ async fn try_spawn_ab_pair(
     {
         return Ok(None);
     }
-    let active_pair = session.take_model_router_ab_pair_for_spawn().await;
+    let active_pair = session.model_router_ab_pair_for_spawn().await;
     let Some(active_pair) = active_pair else {
         return Ok(None);
     };
@@ -565,6 +565,45 @@ async fn try_spawn_ab_pair(
             .await;
         return Err(collab_spawn_error(error));
     }
+    if !session
+        .commit_model_router_ab_pair_for_spawn(&active_pair.pair_id)
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        return Err(FunctionCallError::RespondToModel(
+            "model-router A/B experiment is no longer available".to_string(),
+        ));
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .start_deferred_agent_pair(routed_spawn.thread_id, baseline_spawn.thread_id)
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        session
+            .restore_model_router_ab_pair_after_failed_spawn(&active_pair.pair_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
     if let Some(router_event) = router_event {
         let router_decision = xedoc_state::ModelRouterDecisionRecord::from(&router_event);
         if let Some(state_db) = session.state_db()
@@ -590,24 +629,6 @@ async fn try_spawn_ab_pair(
                 xedoc_protocol::protocol::EventMsg::ModelRouterDecision(router_event),
             )
             .await;
-    }
-    if let Err(error) = session
-        .services
-        .agent_control
-        .start_deferred_agent_pair(routed_spawn.thread_id, baseline_spawn.thread_id)
-        .await
-    {
-        let _ = session
-            .services
-            .agent_control
-            .shutdown_live_agent(routed_spawn.thread_id)
-            .await;
-        let _ = session
-            .services
-            .agent_control
-            .shutdown_live_agent(baseline_spawn.thread_id)
-            .await;
-        return Err(collab_spawn_error(error));
     }
     Ok(Some(SpawnAgentResult::AbPair {
         pair_id: active_pair.pair_id,
