@@ -1,8 +1,11 @@
 //! Local, append-only classifier feedback and incremental recalibration.
 
 use std::collections::BTreeMap;
-use std::fs;
+use std::collections::VecDeque;
+use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 
@@ -170,8 +173,8 @@ struct StoredFeedbackRecord {
 }
 
 fn read_feedback(path: &Path) -> Result<Vec<StoredFeedbackRecord>, FeedbackCalibrationError> {
-    let contents = match fs::read_to_string(path) {
-        Ok(contents) => contents,
+    let file = match File::open(path) {
+        Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(source) => {
             return Err(FeedbackCalibrationError::Read {
@@ -180,21 +183,28 @@ fn read_feedback(path: &Path) -> Result<Vec<StoredFeedbackRecord>, FeedbackCalib
             });
         }
     };
-    contents
-        .lines()
-        .take(MAX_FEEDBACK_RECORDS)
-        .map(|line| {
-            let record: StoredFeedbackRecord =
-                serde_json::from_str(line).map_err(FeedbackCalibrationError::Deserialize)?;
-            (record.source_id.len() <= 128
-                && record.recorded_at_unix_seconds > 0
-                && !record.label.is_empty()
-                && !record.prompt.is_empty()
-                && record.prompt.len() <= MAX_PROMPT_BYTES)
-                .then_some(record)
-                .ok_or(FeedbackCalibrationError::InvalidRecord)
-        })
-        .collect()
+    let mut records = VecDeque::with_capacity(MAX_FEEDBACK_RECORDS);
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|source| FeedbackCalibrationError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let record: StoredFeedbackRecord =
+            serde_json::from_str(&line).map_err(FeedbackCalibrationError::Deserialize)?;
+        if record.source_id.len() > 128
+            || record.recorded_at_unix_seconds <= 0
+            || record.label.is_empty()
+            || record.prompt.is_empty()
+            || record.prompt.len() > MAX_PROMPT_BYTES
+        {
+            return Err(FeedbackCalibrationError::InvalidRecord);
+        }
+        if records.len() == MAX_FEEDBACK_RECORDS {
+            records.pop_front();
+        }
+        records.push_back(record);
+    }
+    Ok(records.into())
 }
 
 /// Errors raised while applying explicit local classifier corrections.
