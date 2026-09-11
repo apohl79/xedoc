@@ -931,6 +931,17 @@ pub(super) async fn submission_loop(
                     model_router_approval_response(&sess, approval_id, response).await;
                     false
                 }
+                Op::ModelRouterAbControl { action } => {
+                    match action {
+                        xedoc_protocol::protocol::ModelRouterAbControlAction::ArmNext => {
+                            sess.arm_model_router_ab_next().await;
+                        }
+                        xedoc_protocol::protocol::ModelRouterAbControlAction::Disable => {
+                            sess.disable_model_router_ab().await;
+                        }
+                    }
+                    false
+                }
                 Op::RequestPermissionsResponse { id, response } => {
                     request_permissions_response(&sess, id, response).await;
                     false

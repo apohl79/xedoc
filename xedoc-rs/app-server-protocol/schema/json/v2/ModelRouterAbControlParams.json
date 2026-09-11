@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ModelRouterAbControlAction": {
+      "description": "A direct user control for the next root-turn A/B experiment.",
+      "enum": [
+        "armNext",
+        "disable"
+      ],
+      "type": "string"
+    }
+  },
+  "description": "Request a root-thread model-router A/B control action.",
+  "properties": {
+    "action": {
+      "$ref": "#/definitions/ModelRouterAbControlAction"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "threadId"
+  ],
+  "title": "ModelRouterAbControlParams",
+  "type": "object"
+}

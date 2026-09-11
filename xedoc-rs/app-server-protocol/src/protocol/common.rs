@@ -805,6 +805,12 @@ client_request_definitions! {
         serialization: global("model-manager"),
         response: v2::ModelManagerUpdateResponse,
     },
+    #[experimental("modelRouter/abControl")]
+    ModelRouterAbControl => "modelRouter/abControl" {
+        params: v2::ModelRouterAbControlParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ModelRouterAbControlResponse,
+    },
     #[experimental("modelRouterReport/read")]
     ModelRouterReportRead => "modelRouterReport/read" {
         params: v2::ModelRouterReportReadParams,

@@ -358,6 +358,12 @@ pub enum Op {
         response: ModelRouterApprovalResponse,
     },
 
+    /// Control the next root-turn model-router A/B experiment.
+    ModelRouterAbControl {
+        /// Requested A/B control action.
+        action: ModelRouterAbControlAction,
+    },
+
     /// Resolve a request_permissions tool call.
     RequestPermissionsResponse {
         /// Call id for the in-flight request.
@@ -602,6 +608,7 @@ impl Op {
             Self::ResolveElicitation { .. } => "resolve_elicitation",
             Self::UserInputAnswer { .. } => "user_input_answer",
             Self::ModelRouterApprovalResponse { .. } => "model_router_approval_response",
+            Self::ModelRouterAbControl { .. } => "model_router_ab_control",
             Self::RequestPermissionsResponse { .. } => "request_permissions_response",
             Self::DynamicToolResponse { .. } => "dynamic_tool_response",
             Self::RefreshMcpServers { .. } => "refresh_mcp_servers",
@@ -613,6 +620,15 @@ impl Op {
             Self::RunUserShellCommand { .. } => "run_user_shell_command",
         }
     }
+}
+
+/// Root-thread A/B experiment controls exposed to interactive clients.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelRouterAbControlAction {
+    /// Arm the next eligible root turn to spawn a bounded A/B pair.
+    ArmNext,
+    /// Disable any armed A/B experiment.
+    Disable,
 }
 
 /// Determines the conditions under which the user is consulted to approve

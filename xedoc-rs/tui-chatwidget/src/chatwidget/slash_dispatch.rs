@@ -40,7 +40,7 @@ const RAW_USAGE: &str = "Usage: /raw [on|off]";
 const TOOL_RENDERING_USAGE: &str = "Usage: /tool-rendering [normal|optimized]";
 const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
 const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|report [days]|reset-stats|reset-report|on|off|level <conservative|balanced|aggressive>]";
-const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <on|off>]|mode <off|shadow-subagents|shadow-full|subagents|full>|report]";
+const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <on|off>]|mode <off|shadow-subagents|shadow-full|subagents|full>|ab <next|off>|report]";
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -743,6 +743,20 @@ impl ChatWidget {
                     (Some("report"), None, None) => {
                         self.app_event_tx
                             .send(AppEvent::ModelRouterReportOpenRequested);
+                    }
+                    (Some("ab"), Some("next"), None) => {
+                        self.app_event_tx
+                            .send(AppEvent::ModelRouterAbControlRequested {
+                                action:
+                                    xedoc_app_server_protocol::ModelRouterAbControlAction::ArmNext,
+                            });
+                    }
+                    (Some("ab"), Some("off"), None) => {
+                        self.app_event_tx
+                            .send(AppEvent::ModelRouterAbControlRequested {
+                                action:
+                                    xedoc_app_server_protocol::ModelRouterAbControlAction::Disable,
+                            });
                     }
                     _ => self.add_error_message(MODEL_ROUTER_USAGE.to_string()),
                 }

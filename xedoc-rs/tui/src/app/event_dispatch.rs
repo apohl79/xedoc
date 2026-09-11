@@ -1140,6 +1140,24 @@ impl App {
                     .chat_widget
                     .add_error_message(format!("Failed to open model-router report: {error}")),
             },
+            AppEvent::ModelRouterAbControlRequested { action } => {
+                let Some(thread_id) = self.active_thread_id.or(self.chat_widget.thread_id()) else {
+                    self.chat_widget.add_error_message(
+                        "No active thread available for model-router A/B.".to_string(),
+                    );
+                    return Ok(AppRunControl::Continue);
+                };
+                self.control_model_router_ab(app_server, thread_id, action);
+            }
+            AppEvent::ModelRouterAbControlLoaded { result } => match result {
+                Ok(()) => self.chat_widget.add_info_message(
+                    "Model-router A/B setting updated.".to_string(),
+                    /*hint*/ None,
+                ),
+                Err(error) => self.chat_widget.add_error_message(format!(
+                    "Failed to update model-router A/B setting: {error}"
+                )),
+            },
             AppEvent::TokenUsageOptimizerStatsRequested => {
                 self.chat_widget.add_token_usage_optimizer_stats_loading();
                 self.fetch_token_usage_optimizer_stats(app_server);

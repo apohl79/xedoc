@@ -1825,6 +1825,30 @@
       ],
       "type": "object"
     },
+    "ModelRouterAbControlAction": {
+      "description": "A direct user control for the next root-turn A/B experiment.",
+      "enum": [
+        "armNext",
+        "disable"
+      ],
+      "type": "string"
+    },
+    "ModelRouterAbControlParams": {
+      "description": "Request a root-thread model-router A/B control action.",
+      "properties": {
+        "action": {
+          "$ref": "#/definitions/ModelRouterAbControlAction"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "ModelRouterReportOpenParams": {
       "description": "Starts a local browser report for model-router activity.",
       "type": "object"
@@ -6914,6 +6938,30 @@
         "params"
       ],
       "title": "ModelManager/updateRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelRouter/abControl"
+          ],
+          "title": "ModelRouter/abControlRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterAbControlParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelRouter/abControlRequest",
       "type": "object"
     },
     {

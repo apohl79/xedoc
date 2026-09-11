@@ -237,6 +237,9 @@ export type { ModelProviderOauthStartParams } from "./ModelProviderOauthStartPar
 export type { ModelProviderOauthStartResponse } from "./ModelProviderOauthStartResponse";
 export type { ModelRerouteReason } from "./ModelRerouteReason";
 export type { ModelReroutedNotification } from "./ModelReroutedNotification";
+export type { ModelRouterAbControlAction } from "./ModelRouterAbControlAction";
+export type { ModelRouterAbControlParams } from "./ModelRouterAbControlParams";
+export type { ModelRouterAbControlResponse } from "./ModelRouterAbControlResponse";
 export type { ModelRouterApprovalAction } from "./ModelRouterApprovalAction";
 export type { ModelRouterApprovalParams } from "./ModelRouterApprovalParams";
 export type { ModelRouterApprovalResponse } from "./ModelRouterApprovalResponse";
