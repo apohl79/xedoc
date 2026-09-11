@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Starts a local browser report for model-router activity.",
+  "title": "ModelRouterReportOpenParams",
+  "type": "object"
+}

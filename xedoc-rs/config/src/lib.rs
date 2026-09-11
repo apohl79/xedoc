@@ -140,6 +140,7 @@ pub use model_router::ModelRouterPolicyStatus;
 pub use model_router::ModelRouterPolicyStore;
 pub use model_router::ModelRouterRoute;
 pub use model_router::load_model_router_policy;
+pub use model_router::write_model_router_policy;
 pub use overrides::build_cli_overrides_layer;
 pub use plugin_edit::PluginConfigEdit;
 pub use plugin_edit::apply_user_plugin_config_edits;

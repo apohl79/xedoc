@@ -1648,6 +1648,11 @@
       "additionalProperties": false,
       "description": "Stable controls in `[model_router]`.",
       "properties": {
+        "approval": {
+          "default": false,
+          "description": "Ask before applying an eligible route in an active router mode.",
+          "type": "boolean"
+        },
         "baseline": {
           "$ref": "#/definitions/ModelRouterRoute"
         },
@@ -5266,6 +5271,7 @@
         }
       ],
       "default": {
+        "approval": false,
         "baseline": null,
         "fallback": null,
         "max_prompt_bytes": 16384,

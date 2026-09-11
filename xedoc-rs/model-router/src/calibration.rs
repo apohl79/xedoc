@@ -30,7 +30,7 @@ use crate::schema::Record;
 use crate::schema::Split;
 use crate::schema::StructuralMetadata;
 
-const MAX_RECORDS: usize = 100;
+const MAX_RECORDS: usize = 2_000;
 const MAX_SOURCE_ID_BYTES: usize = 128;
 const MAX_PROMPT_BYTES: usize = 16_384;
 const MAX_LINES: u16 = 8_192;
@@ -232,23 +232,41 @@ fn freeze_corpus(
 
 fn assign_split(records: &mut [Record], manifest: &Manifest) {
     records.sort_by(|left, right| {
-        left.recorded_at_unix_seconds
-            .cmp(&right.recorded_at_unix_seconds)
+        left.expected_class
+            .cmp(&right.expected_class)
+            .then_with(|| {
+                left.recorded_at_unix_seconds
+                    .cmp(&right.recorded_at_unix_seconds)
+            })
             .then_with(|| {
                 seeded_key(&left.source_id, manifest.random_seed)
                     .cmp(&seeded_key(&right.source_id, manifest.random_seed))
             })
     });
-    let heldout = ((records.len() as f64 * manifest.heldout_fraction).ceil() as usize)
-        .clamp(1, records.len().saturating_sub(1));
-    let split_at = records.len() - heldout;
-    records.iter_mut().enumerate().for_each(|(index, record)| {
-        record.split = if index < split_at {
-            Split::Train
-        } else {
-            Split::Heldout
-        };
-    });
+    let mut start = 0;
+    while start < records.len() {
+        let end = records[start..]
+            .iter()
+            .position(|record| record.expected_class != records[start].expected_class)
+            .map_or(records.len(), |offset| start + offset);
+        let class_record_count = end - start;
+        let heldout = (class_record_count > 1).then(|| {
+            ((class_record_count as f64 * manifest.heldout_fraction).ceil() as usize)
+                .clamp(1, class_record_count - 1)
+        });
+        let split_at = end - heldout.unwrap_or(0);
+        records[start..end]
+            .iter_mut()
+            .enumerate()
+            .for_each(|(index, record)| {
+                record.split = if start + index < split_at {
+                    Split::Train
+                } else {
+                    Split::Heldout
+                };
+            });
+        start = end;
+    }
 }
 
 fn train_heads<'a>(records: &[Record], manifest: &'a Manifest) -> BTreeMap<&'a str, Vec<f32>> {

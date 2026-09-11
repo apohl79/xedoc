@@ -198,6 +198,21 @@ pub(crate) async fn write_model_router_mode(
     .map(|_| ())
 }
 
+pub(crate) async fn write_model_router_approval(
+    request_handle: AppServerRequestHandle,
+    approval: bool,
+) -> Result<()> {
+    write_config_batch(
+        request_handle,
+        vec![replace_config_value(
+            "model_router.approval",
+            serde_json::json!(approval),
+        )],
+    )
+    .await
+    .map(|_| ())
+}
+
 pub(crate) async fn open_model_router_report(
     request_handle: AppServerRequestHandle,
 ) -> Result<xedoc_app_server_protocol::ModelRouterReportOpenResponse> {

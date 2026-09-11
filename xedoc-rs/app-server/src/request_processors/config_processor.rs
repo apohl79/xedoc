@@ -349,7 +349,7 @@ impl ConfigRequestProcessor {
         params: ConfigValueWriteParams,
     ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
         let refresh_model_router =
-            writes_model_router_mode(&params.key_path, &params.value, &params.merge_strategy);
+            writes_model_router_config(&params.key_path, &params.value, &params.merge_strategy);
         let response = self
             .config_manager
             .write_value(params)
@@ -367,7 +367,7 @@ impl ConfigRequestProcessor {
     ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
         let reload_user_config = params.reload_user_config
             || params.edits.iter().any(|edit| {
-                writes_model_router_mode(&edit.key_path, &edit.value, &edit.merge_strategy)
+                writes_model_router_config(&edit.key_path, &edit.value, &edit.merge_strategy)
             });
         let response = self
             .config_manager
@@ -438,12 +438,12 @@ impl ConfigRequestProcessor {
     }
 }
 
-fn writes_model_router_mode(
+fn writes_model_router_config(
     key_path: &str,
     value: &serde_json::Value,
     merge_strategy: &MergeStrategy,
 ) -> bool {
-    if key_path == "model_router.mode" {
+    if matches!(key_path, "model_router.mode" | "model_router.approval") {
         return true;
     }
     if key_path != "model_router" {
@@ -453,7 +453,7 @@ fn writes_model_router_mode(
         || matches!(merge_strategy, MergeStrategy::Replace)
         || value
             .as_object()
-            .is_some_and(|table| table.contains_key("mode"))
+            .is_some_and(|table| table.contains_key("mode") || table.contains_key("approval"))
 }
 
 fn empty_optimizer_insights() -> TokenUsageOptimizerInsights {

@@ -2,13 +2,13 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use xedoc_config::ModelRouterClass;
 use xedoc_config::ModelRouterMode;
 use xedoc_config::ModelRouterPolicy;
-use xedoc_config::ModelRouterPolicyRevisionStore;
 use xedoc_config::ModelRouterPolicyStore;
 use xedoc_core_config::config::Config;
 use xedoc_install_context::InstallContext;
@@ -42,7 +42,6 @@ const ROUTER_WORKER_CAPACITY: usize = 8;
 
 pub(crate) struct ModelRouterService {
     policy_store: ModelRouterPolicyStore,
-    policy_revisions: ModelRouterPolicyRevisionStore,
     artifact_path: Option<PathBuf>,
     runtime: OnceLock<Result<RouterRuntime, String>>,
 }
@@ -53,8 +52,7 @@ impl ModelRouterService {
             .model_router
             .resolved_policy_path(config.xedoc_home.as_path());
         Self {
-            policy_store: ModelRouterPolicyStore::new(policy_path.clone()),
-            policy_revisions: ModelRouterPolicyRevisionStore::new(policy_path),
+            policy_store: ModelRouterPolicyStore::new(policy_path),
             artifact_path: bundled_artifact_path(),
             runtime: OnceLock::new(),
         }
@@ -102,12 +100,7 @@ impl ModelRouterService {
         };
         Some(xedoc_model_router::finalize_decision(
             decision,
-            mode_with_calibration_gate(
-                mode,
-                RouteScope::Subagent,
-                policy.as_ref(),
-                &service.policy_revisions,
-            ),
+            mode,
             explicit_override,
         ))
     }
@@ -146,14 +139,38 @@ impl ModelRouterService {
         };
         Some(xedoc_model_router::finalize_decision(
             decision,
-            mode_with_calibration_gate(
-                mode,
-                RouteScope::Root,
-                policy.as_ref(),
-                &service.policy_revisions,
-            ),
+            mode,
             explicit_override,
         ))
+    }
+
+    /// Incorporate explicit user classifier corrections into the active policy.
+    ///
+    /// The policy store reload keeps subsequent decisions in this process on
+    /// the newly calibrated class heads.
+    pub(crate) fn recalibrate_from_feedback(
+        config: &Config,
+        feedback_path: &Path,
+    ) -> Result<xedoc_model_router::FeedbackCalibrationReport, String> {
+        let service = Self::global(config);
+        let artifact_path = service
+            .artifact_path
+            .as_deref()
+            .ok_or_else(|| "bundled model-router artifact is unavailable".to_string())?;
+        let policy_path = config
+            .model_router
+            .resolved_policy_path(config.xedoc_home.as_path());
+        let report = xedoc_model_router::recalibrate_classifier_from_feedback(
+            &policy_path,
+            feedback_path,
+            artifact_path,
+        )
+        .map_err(|error| error.to_string())?;
+        service
+            .policy_store
+            .reload_if_changed()
+            .map_err(|error| error.to_string())?;
+        Ok(report)
     }
 
     fn runtime(&self) -> Result<&RouterRuntime, ()> {
@@ -176,21 +193,6 @@ impl ModelRouterService {
             })
             .as_ref()
             .map_err(|_| ())
-    }
-}
-
-fn mode_with_calibration_gate(
-    mode: RouterMode,
-    scope: RouteScope,
-    policy: &ModelRouterPolicy,
-    revisions: &ModelRouterPolicyRevisionStore,
-) -> RouterMode {
-    if !mode.applies(scope) || revisions.active_revision_is_calibrated(&policy.policy_revision) {
-        return mode;
-    }
-    match scope {
-        RouteScope::Root => RouterMode::ShadowFull,
-        RouteScope::Subagent => RouterMode::ShadowSubagents,
     }
 }
 
@@ -474,6 +476,54 @@ pub(crate) fn decision_event(
         prompt_truncated: decision.prompt.truncated,
         created_at,
     }
+}
+
+pub(crate) fn approval_event(
+    decision: &RouteDecision,
+    thread_id: String,
+    turn_id: String,
+    scope: ModelRouterScope,
+) -> xedoc_protocol::protocol::ModelRouterApprovalRequestEvent {
+    xedoc_protocol::protocol::ModelRouterApprovalRequestEvent {
+        approval_id: uuid::Uuid::now_v7().to_string(),
+        thread_id,
+        turn_id,
+        scope,
+        predicted_classification: decision.class_id.clone().unwrap_or_default(),
+        proposed_provider_id: decision.proposed_route.provider_id.clone(),
+        proposed_model_slug: decision.proposed_route.model_slug.clone(),
+        proposed_reasoning_effort: effort_label(decision.proposed_route.reasoning_effort)
+            .to_string(),
+        current_route: decision.original_route.as_ref().map_or(
+            ModelRouterEffectiveRoute::Unavailable,
+            |route| ModelRouterEffectiveRoute::Available {
+                provider_id: route.provider_id.clone(),
+                model_slug: route.model_slug.clone(),
+                reasoning_effort: effort_label(route.reasoning_effort).to_string(),
+            },
+        ),
+        score: decision.score,
+        margin: decision.margin,
+        classifier_revision: decision.policy_revision.clone(),
+        policy_revision: decision.policy_revision.clone(),
+        prompt_sha256: decision.prompt.sha256.clone(),
+    }
+}
+
+pub(crate) fn route_from_approval(
+    route: &xedoc_protocol::protocol::ModelRouterApprovalRoute,
+) -> Option<ModelRoute> {
+    Some(ModelRoute {
+        provider_id: route.provider_id.clone(),
+        model_slug: route.model_slug.clone(),
+        reasoning_effort: match route.reasoning_effort.as_str() {
+            "low" => RouterReasoningEffort::Low,
+            "medium" => RouterReasoningEffort::Medium,
+            "high" => RouterReasoningEffort::High,
+            "xhigh" => RouterReasoningEffort::ExtraHigh,
+            _ => return None,
+        },
+    })
 }
 
 const fn effort_label(effort: RouterReasoningEffort) -> &'static str {

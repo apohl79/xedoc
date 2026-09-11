@@ -48,7 +48,11 @@ use xedoc_app_server_protocol::McpServerElicitationRequestResponse;
 use xedoc_app_server_protocol::McpServerStartupState;
 use xedoc_app_server_protocol::McpServerStatusUpdatedNotification;
 use xedoc_app_server_protocol::ModelReroutedNotification;
+use xedoc_app_server_protocol::ModelRouterApprovalAction;
+use xedoc_app_server_protocol::ModelRouterApprovalParams;
+use xedoc_app_server_protocol::ModelRouterApprovalResponse;
 use xedoc_app_server_protocol::ModelRouterDecisionNotification;
+use xedoc_app_server_protocol::ModelRouterRoute;
 use xedoc_app_server_protocol::ModelSafetyBufferingUpdatedNotification;
 use xedoc_app_server_protocol::ModelVerificationNotification;
 use xedoc_app_server_protocol::NetworkApprovalContext as V2NetworkApprovalContext;
@@ -97,6 +101,9 @@ use xedoc_protocol::protocol::COMPACTION_PROGRESS_PREFIX;
 use xedoc_protocol::protocol::Event;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::ExecApprovalRequestEvent;
+use xedoc_protocol::protocol::ModelRouterApprovalAction as CoreModelRouterApprovalAction;
+use xedoc_protocol::protocol::ModelRouterApprovalResponse as CoreModelRouterApprovalResponse;
+use xedoc_protocol::protocol::ModelRouterApprovalRoute as CoreModelRouterApprovalRoute;
 use xedoc_protocol::protocol::Op;
 use xedoc_protocol::protocol::ReviewDecision;
 use xedoc_protocol::protocol::SubAgentActivityKind;
@@ -316,6 +323,40 @@ pub(crate) async fn apply_bespoke_event_handling(
             outgoing
                 .send_server_notification(ServerNotification::ModelRouterDecision(notification))
                 .await;
+        }
+        EventMsg::ModelRouterApprovalRequest(event) => {
+            let approval_id = event.approval_id.clone();
+            let params = ModelRouterApprovalParams {
+                approval_id: approval_id.clone(),
+                thread_id: event.thread_id,
+                turn_id: event.turn_id,
+                scope: event.scope.into(),
+                predicted_classification: event.predicted_classification,
+                proposed_route: ModelRouterRoute {
+                    provider_id: event.proposed_provider_id,
+                    model_slug: event.proposed_model_slug,
+                    reasoning_effort: event.proposed_reasoning_effort,
+                },
+                current_route: event.current_route.into(),
+                score: event.score.into(),
+                margin: event.margin.into(),
+                classifier_revision: event.classifier_revision,
+                policy_revision: event.policy_revision,
+                prompt_sha256: event.prompt_sha256,
+            };
+            let (pending_request_id, receiver) = outgoing
+                .send_request(ServerRequestPayload::ModelRouterRequestApproval(params))
+                .await;
+            tokio::spawn(async move {
+                on_model_router_approval_response(
+                    approval_id,
+                    pending_request_id,
+                    receiver,
+                    conversation,
+                    thread_state,
+                )
+                .await;
+            });
         }
         EventMsg::ModelVerification(event) => {
             let notification = ModelVerificationNotification {
@@ -1581,6 +1622,63 @@ async fn on_request_user_input_response(
         .await
     {
         error!("failed to submit UserInputAnswer: {err}");
+    }
+}
+
+async fn on_model_router_approval_response(
+    approval_id: String,
+    pending_request_id: RequestId,
+    receiver: oneshot::Receiver<ClientRequestResult>,
+    conversation: Arc<XedocThread>,
+    thread_state: Arc<Mutex<ThreadState>>,
+) {
+    let response = receiver.await;
+    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    let response = match response {
+        Ok(Ok(value)) => serde_json::from_value::<ModelRouterApprovalResponse>(value)
+            .unwrap_or_else(|err| {
+                error!("failed to deserialize ModelRouterApprovalResponse: {err}");
+                reject_model_router_approval()
+            }),
+        Ok(Err(err)) if is_turn_transition_server_request_error(&err) => return,
+        Ok(Err(err)) => {
+            error!("model-router approval request failed with client error: {err:?}");
+            reject_model_router_approval()
+        }
+        Err(err) => {
+            error!("model-router approval request failed: {err:?}");
+            reject_model_router_approval()
+        }
+    };
+    let response = CoreModelRouterApprovalResponse {
+        action: match response.action {
+            ModelRouterApprovalAction::Approve => CoreModelRouterApprovalAction::Approve,
+            ModelRouterApprovalAction::Reject => CoreModelRouterApprovalAction::Reject,
+            ModelRouterApprovalAction::Override => CoreModelRouterApprovalAction::Override,
+        },
+        classification: response.classification,
+        route: response.route.map(|route| CoreModelRouterApprovalRoute {
+            provider_id: route.provider_id,
+            model_slug: route.model_slug,
+            reasoning_effort: route.reasoning_effort,
+        }),
+    };
+    if let Err(err) = conversation
+        .submit(Op::ModelRouterApprovalResponse {
+            approval_id,
+            response,
+        })
+        .await
+    {
+        error!("failed to submit ModelRouterApprovalResponse: {err}");
+    }
+}
+
+fn reject_model_router_approval() -> ModelRouterApprovalResponse {
+    ModelRouterApprovalResponse {
+        action: ModelRouterApprovalAction::Reject,
+        classification: None,
+        route: None,
     }
 }
 

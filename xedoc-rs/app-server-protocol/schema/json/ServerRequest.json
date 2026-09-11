@@ -341,10 +341,31 @@
     },
     "CommandExecutionRequestApprovalParams": {
       "properties": {
+        "additionalPermissions": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AdditionalPermissionProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional additional permissions requested for this command."
+        },
         "approvalId": {
           "description": "Unique identifier for this specific approval callback.\n\nFor regular shell/unified_exec approvals, this is null.\n\nFor zsh-exec-bridge subcommand approvals, multiple callbacks can belong to one parent `itemId`, so `approvalId` is a distinct opaque callback id (a UUID) used to disambiguate routing.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "availableDecisions": {
+          "description": "Ordered list of decisions the client may present for this prompt.",
+          "items": {
+            "$ref": "#/definitions/CommandExecutionApprovalDecision"
+          },
+          "type": [
+            "array",
             "null"
           ]
         },
@@ -442,6 +463,17 @@
         "startedAtMs",
         "threadId",
         "turnId"
+      ],
+      "type": "object"
+    },
+    "CurrentTimeReadParams": {
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
       ],
       "type": "object"
     },
@@ -1465,6 +1497,139 @@
       ],
       "type": "object"
     },
+    "ModelRouterApprovalParams": {
+      "description": "A dedicated, structured request to approve a proposed model route.",
+      "properties": {
+        "approvalId": {
+          "type": "string"
+        },
+        "classifierRevision": {
+          "type": "string"
+        },
+        "currentRoute": {
+          "$ref": "#/definitions/ModelRouterEffectiveRoute"
+        },
+        "margin": {
+          "format": "double",
+          "type": "number"
+        },
+        "policyRevision": {
+          "type": "string"
+        },
+        "predictedClassification": {
+          "type": "string"
+        },
+        "promptSha256": {
+          "type": "string"
+        },
+        "proposedRoute": {
+          "$ref": "#/definitions/ModelRouterRoute"
+        },
+        "scope": {
+          "$ref": "#/definitions/ModelRouterScope"
+        },
+        "score": {
+          "format": "double",
+          "type": "number"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approvalId",
+        "classifierRevision",
+        "currentRoute",
+        "margin",
+        "policyRevision",
+        "predictedClassification",
+        "promptSha256",
+        "proposedRoute",
+        "scope",
+        "score",
+        "threadId",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "ModelRouterEffectiveRoute": {
+      "oneOf": [
+        {
+          "properties": {
+            "modelSlug": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "available"
+              ],
+              "title": "AvailableModelRouterEffectiveRouteType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "modelSlug",
+            "providerId",
+            "reasoningEffort",
+            "type"
+          ],
+          "title": "AvailableModelRouterEffectiveRoute",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "unavailable"
+              ],
+              "title": "UnavailableModelRouterEffectiveRouteType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "UnavailableModelRouterEffectiveRoute",
+          "type": "object"
+        }
+      ]
+    },
+    "ModelRouterRoute": {
+      "description": "A selectable model route proposed by the model router.",
+      "properties": {
+        "modelSlug": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "reasoningEffort": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "modelSlug",
+        "providerId",
+        "reasoningEffort"
+      ],
+      "type": "object"
+    },
+    "ModelRouterScope": {
+      "enum": [
+        "root",
+        "subagent"
+      ],
+      "type": "string"
+    },
     "NetworkApprovalContext": {
       "properties": {
         "host": {
@@ -1901,6 +2066,31 @@
       "type": "object"
     },
     {
+      "description": "Request approval for a model-router classification and route.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "item/modelRouter/requestApproval"
+          ],
+          "title": "Item/modelRouter/requestApprovalRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterApprovalParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Item/modelRouter/requestApprovalRequest",
+      "type": "object"
+    },
+    {
       "description": "Request approval for additional permissions from the user.",
       "properties": {
         "id": {
@@ -1972,6 +2162,31 @@
         "params"
       ],
       "title": "Account/chatgptAuthTokens/refreshRequest",
+      "type": "object"
+    },
+    {
+      "description": "Read the current time from an external clock owned by the client.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "currentTime/read"
+          ],
+          "title": "CurrentTime/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/CurrentTimeReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "CurrentTime/readRequest",
       "type": "object"
     },
     {

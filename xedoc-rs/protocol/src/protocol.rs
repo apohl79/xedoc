@@ -350,6 +350,14 @@ pub enum Op {
         response: RequestUserInputResponse,
     },
 
+    /// Resolve a pending model-router approval request.
+    ModelRouterApprovalResponse {
+        /// Identifier emitted with the pending approval request.
+        approval_id: String,
+        /// User-selected routing outcome.
+        response: ModelRouterApprovalResponse,
+    },
+
     /// Resolve a request_permissions tool call.
     RequestPermissionsResponse {
         /// Call id for the in-flight request.
@@ -593,6 +601,7 @@ impl Op {
             Self::PatchApproval { .. } => "patch_approval",
             Self::ResolveElicitation { .. } => "resolve_elicitation",
             Self::UserInputAnswer { .. } => "user_input_answer",
+            Self::ModelRouterApprovalResponse { .. } => "model_router_approval_response",
             Self::RequestPermissionsResponse { .. } => "request_permissions_response",
             Self::DynamicToolResponse { .. } => "dynamic_tool_response",
             Self::RefreshMcpServers { .. } => "refresh_mcp_servers",
@@ -1011,6 +1020,9 @@ pub enum EventMsg {
 
     /// Model-router decision for a newly accepted root or subagent task.
     ModelRouterDecision(ModelRouterDecisionEvent),
+
+    /// User approval required before applying an active model-router decision.
+    ModelRouterApprovalRequest(ModelRouterApprovalRequestEvent),
 
     /// Backend recommends additional account verification for this turn.
     ModelVerification(ModelVerificationEvent),
@@ -1635,6 +1647,51 @@ pub struct ModelRouterDecisionEvent {
     pub prompt_truncated: bool,
     /// Unix timestamp in whole seconds when this immutable decision was made.
     pub created_at: i64,
+}
+
+/// Bounded routing metadata presented before an active route is applied.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
+pub struct ModelRouterApprovalRequestEvent {
+    pub approval_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub scope: ModelRouterScope,
+    pub predicted_classification: String,
+    pub proposed_provider_id: String,
+    pub proposed_model_slug: String,
+    pub proposed_reasoning_effort: String,
+    pub current_route: ModelRouterEffectiveRoute,
+    pub score: f32,
+    pub margin: f32,
+    pub classifier_revision: String,
+    pub policy_revision: String,
+    pub prompt_sha256: String,
+}
+
+/// User-selected route feedback for a pending model-router decision.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ModelRouterApprovalResponse {
+    pub action: ModelRouterApprovalAction,
+    pub classification: Option<String>,
+    pub route: Option<ModelRouterApprovalRoute>,
+}
+
+/// Disposition selected by the user for a pending routing decision.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum ModelRouterApprovalAction {
+    Approve,
+    Reject,
+    Override,
+}
+
+/// A route supplied while overriding a model-router decision.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ModelRouterApprovalRoute {
+    pub provider_id: String,
+    pub model_slug: String,
+    pub reasoning_effort: String,
 }
 
 /// The route that was actually available to execute after routing validation.

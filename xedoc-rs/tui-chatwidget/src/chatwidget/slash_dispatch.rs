@@ -40,8 +40,7 @@ const RAW_USAGE: &str = "Usage: /raw [on|off]";
 const TOOL_RENDERING_USAGE: &str = "Usage: /tool-rendering [normal|optimized]";
 const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
 const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|report [days]|reset-stats|reset-report|on|off|level <conservative|balanced|aggressive>]";
-const MODEL_ROUTER_USAGE: &str =
-    "Usage: /model-router [status|mode <off|shadow-subagents|shadow-full|subagents|full>|report]";
+const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <on|off>]|mode <off|shadow-subagents|shadow-full|subagents|full>|report]";
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -272,8 +271,18 @@ impl ChatWidget {
             }
             SlashCommand::ModelRouter => {
                 self.add_info_message(
-                    format!("Model router mode: {:?}.", self.config.model_router.mode),
-                    Some("Use `mode <mode>` or `report`.".to_string()),
+                    format!(
+                        "Model router mode: {:?}; approval: {}.",
+                        self.config.model_router.mode,
+                        if self.config.model_router.approval {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    ),
+                    Some(
+                        "Use `settings approval <on|off>`, `mode <mode>`, or `report`.".to_string(),
+                    ),
                 );
             }
             SlashCommand::TokenUsageOptimizer => {
@@ -700,6 +709,26 @@ impl ChatWidget {
                 match (parts.next(), parts.next(), parts.next()) {
                     (None | Some("status"), None, None) => {
                         self.dispatch_command(SlashCommand::ModelRouter);
+                    }
+                    (Some("settings"), None, None) => {
+                        self.add_info_message(
+                            format!(
+                                "Model router settings: approval {}.",
+                                if self.config.model_router.approval {
+                                    "on"
+                                } else {
+                                    "off"
+                                }
+                            ),
+                            /*hint*/ None,
+                        );
+                    }
+                    (Some("settings"), Some("approval"), Some(value))
+                        if matches!(value, "on" | "off") =>
+                    {
+                        self.app_event_tx.send(AppEvent::UpdateModelRouterApproval {
+                            approval: value == "on",
+                        });
                     }
                     (Some("mode"), Some(mode), None)
                         if matches!(

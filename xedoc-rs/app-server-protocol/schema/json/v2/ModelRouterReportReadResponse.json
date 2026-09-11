@@ -1,0 +1,272 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ModelRouterReportDay": {
+      "description": "One persisted UTC-day aggregate for the local model router.",
+      "properties": {
+        "abExperimentOverheadUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "attributedInvocations": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "averageMargin": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "averageScore": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cachedInputTokens": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "classifiedDecisions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "day": {
+          "description": "UTC midnight as whole Unix seconds.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "decisions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "estimatedSavingsUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "fallbackDecisions": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "inputTokens": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "invocations": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "missingUsageInvocations": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "modelSlug": {
+          "type": "string"
+        },
+        "normalizedBaselineUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "outputTokens": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "reasoningEffort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "type": "string"
+        },
+        "totalCostUsd": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unattributedInvocations": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "unknownPriceInvocations": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attributedInvocations",
+        "classifiedDecisions",
+        "day",
+        "decisions",
+        "fallbackDecisions",
+        "invocations",
+        "missingUsageInvocations",
+        "modelSlug",
+        "providerId",
+        "scope",
+        "unattributedInvocations",
+        "unknownPriceInvocations"
+      ],
+      "type": "object"
+    },
+    "ModelRouterReportDecision": {
+      "description": "Metadata-only view of one recent local model-router decision.",
+      "properties": {
+        "classId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "description": "Creation time as whole Unix seconds.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "decisionId": {
+          "type": "string"
+        },
+        "disposition": {
+          "type": "string"
+        },
+        "effectiveModelSlug": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effectiveProviderId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effectiveReasoningEffort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fallback": {
+          "type": "boolean"
+        },
+        "margin": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "policyRevision": {
+          "type": "string"
+        },
+        "proposedModelSlug": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "proposedProviderId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "proposedReasoningEffort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "score": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "createdAt",
+        "decisionId",
+        "disposition",
+        "fallback",
+        "policyRevision",
+        "reason",
+        "scope"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Bounded report assembled from local model-router state.",
+  "properties": {
+    "days": {
+      "items": {
+        "$ref": "#/definitions/ModelRouterReportDay"
+      },
+      "type": "array"
+    },
+    "daysTruncated": {
+      "description": "Whether aggregate rows exceeded the report's fixed response limit.",
+      "type": "boolean"
+    },
+    "fromDay": {
+      "description": "Inclusive UTC-day start used for `days`.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "recentDecisions": {
+      "items": {
+        "$ref": "#/definitions/ModelRouterReportDecision"
+      },
+      "type": "array"
+    },
+    "throughDay": {
+      "description": "Inclusive UTC-day end used for `days`.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "days",
+    "daysTruncated",
+    "fromDay",
+    "recentDecisions",
+    "throughDay"
+  ],
+  "title": "ModelRouterReportReadResponse",
+  "type": "object"
+}

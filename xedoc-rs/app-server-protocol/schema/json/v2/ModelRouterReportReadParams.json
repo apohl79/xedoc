@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Bounded input for reading the local model-router report.",
+  "properties": {
+    "fromDay": {
+      "description": "Inclusive UTC-day start, as whole Unix seconds.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "recentLimit": {
+      "description": "Maximum recent decisions to return, capped by the server.",
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "throughDay": {
+      "description": "Inclusive UTC-day end, as whole Unix seconds.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "title": "ModelRouterReportReadParams",
+  "type": "object"
+}

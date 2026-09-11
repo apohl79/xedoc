@@ -22,6 +22,7 @@ use xedoc_protocol::config_types::ServiceTier;
 use xedoc_protocol::permissions::FileSystemPath;
 use xedoc_protocol::permissions::FileSystemSpecialPath;
 use xedoc_protocol::protocol::MultiAgentVersion;
+use xedoc_protocol::protocol::Op;
 use xedoc_protocol::protocol::ThreadHistoryMode;
 use xedoc_protocol::protocol::ThreadSource;
 use xedoc_protocol::protocol::TurnEnvironmentSelections;
@@ -48,8 +49,23 @@ pub(crate) struct Session {
     pub(crate) input_queue: InputQueue,
     pub(crate) model_router_ab: Mutex<crate::session::ab_pairs::AbPairRuntime>,
     pub(crate) model_router_decision_ids: Mutex<HashMap<String, String>>,
+    pub(crate) pending_model_router_approvals: Mutex<HashMap<String, PendingModelRouterApproval>>,
+    pub(crate) pending_model_router_tool_approvals: Mutex<
+        HashMap<
+            String,
+            tokio::sync::oneshot::Sender<xedoc_protocol::protocol::ModelRouterApprovalResponse>,
+        >,
+    >,
+    pub(crate) model_router_approval_responses:
+        Mutex<HashMap<String, xedoc_protocol::protocol::ModelRouterApprovalResponse>>,
     pub(crate) services: SessionServices,
     pub(super) next_internal_sub_id: AtomicU64,
+}
+
+pub(crate) struct PendingModelRouterApproval {
+    pub(crate) sub_id: String,
+    pub(crate) op: Op,
+    pub(crate) client_user_message_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -1165,6 +1181,9 @@ impl Session {
                 input_queue: InputQueue::new(),
                 model_router_ab: Mutex::new(crate::session::ab_pairs::AbPairRuntime::default()),
                 model_router_decision_ids: Mutex::new(HashMap::new()),
+                pending_model_router_approvals: Mutex::new(HashMap::new()),
+                pending_model_router_tool_approvals: Mutex::new(HashMap::new()),
+                model_router_approval_responses: Mutex::new(HashMap::new()),
                 services,
                 next_internal_sub_id: AtomicU64::new(0),
             });

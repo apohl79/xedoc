@@ -68,6 +68,57 @@ pub enum ModelRouterEffectiveRoute {
     Unavailable,
 }
 
+/// A selectable model route proposed by the model router.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterRoute {
+    pub provider_id: String,
+    pub model_slug: String,
+    pub reasoning_effort: String,
+}
+
+/// The action a user takes on a model-router proposal.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ModelRouterApprovalAction {
+    Approve,
+    Reject,
+    Override,
+}
+
+/// A dedicated, structured request to approve a proposed model route.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterApprovalParams {
+    pub approval_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub scope: ModelRouterScope,
+    pub predicted_classification: String,
+    pub proposed_route: ModelRouterRoute,
+    pub current_route: ModelRouterEffectiveRoute,
+    #[ts(type = "number")]
+    pub score: f64,
+    #[ts(type = "number")]
+    pub margin: f64,
+    pub classifier_revision: String,
+    pub policy_revision: String,
+    pub prompt_sha256: String,
+}
+
+/// The response to a model-router approval request.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterApprovalResponse {
+    pub action: ModelRouterApprovalAction,
+    pub classification: Option<String>,
+    pub route: Option<ModelRouterRoute>,
+}
+
 impl From<CoreModelRouterEffectiveRoute> for ModelRouterEffectiveRoute {
     fn from(value: CoreModelRouterEffectiveRoute) -> Self {
         match value {

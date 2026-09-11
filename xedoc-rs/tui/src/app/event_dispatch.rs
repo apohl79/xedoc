@@ -1125,6 +1125,9 @@ impl App {
             AppEvent::UpdateModelRouterMode { mode } => {
                 self.update_model_router_mode(app_server, mode);
             }
+            AppEvent::UpdateModelRouterApproval { approval } => {
+                self.update_model_router_approval(app_server, approval);
+            }
             AppEvent::ModelRouterReportOpenRequested => {
                 self.open_model_router_report(app_server);
             }

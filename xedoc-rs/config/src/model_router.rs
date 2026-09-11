@@ -45,6 +45,9 @@ pub struct ModelRouterRoute {
 pub struct ModelRouterConfigToml {
     #[serde(default)]
     pub mode: ModelRouterMode,
+    /// Ask before applying an eligible route in an active router mode.
+    #[serde(default)]
+    pub approval: bool,
     pub baseline: Option<ModelRouterRoute>,
     pub fallback: Option<String>,
     pub policy_path: Option<AbsolutePathBuf>,
@@ -57,6 +60,7 @@ impl Default for ModelRouterConfigToml {
     fn default() -> Self {
         Self {
             mode: ModelRouterMode::Off,
+            approval: false,
             baseline: None,
             fallback: None,
             policy_path: None,
@@ -195,6 +199,20 @@ pub fn load_model_router_policy(path: &Path) -> Result<ModelRouterPolicy, ModelR
     let policy = parse_model_router_policy(path, &contents)?;
     validate_policy(&policy)?;
     Ok(policy)
+}
+
+/// Validate and atomically replace a user-managed model-router policy.
+///
+/// Callers are responsible for preserving any review or provenance records
+/// required by their workflow before making the policy active.
+pub fn write_model_router_policy(
+    path: &Path,
+    policy: &ModelRouterPolicy,
+) -> Result<(), ModelRouterPolicyError> {
+    validate_policy(policy)?;
+    let contents = toml::to_string_pretty(policy)
+        .map_err(|source| ModelRouterPolicyError::SerializeReview { source })?;
+    write_policy_bytes(path, &contents)
 }
 
 fn parse_model_router_policy(

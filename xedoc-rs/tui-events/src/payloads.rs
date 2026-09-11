@@ -50,6 +50,9 @@ pub enum ResolvedAppServerRequest {
     UserInput {
         call_id: String,
     },
+    ModelRouterApproval {
+        id: String,
+    },
     McpElicitation {
         server_name: String,
         request_id: RequestId,

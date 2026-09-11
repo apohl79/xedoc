@@ -5365,6 +5365,9 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         input_queue: super::input_queue::InputQueue::new(),
         model_router_ab: Mutex::new(super::ab_pairs::AbPairRuntime::default()),
         model_router_decision_ids: Mutex::new(HashMap::new()),
+        pending_model_router_approvals: Mutex::new(HashMap::new()),
+        pending_model_router_tool_approvals: Mutex::new(HashMap::new()),
+        model_router_approval_responses: Mutex::new(HashMap::new()),
         services,
         next_internal_sub_id: AtomicU64::new(0),
     };
@@ -7210,6 +7213,9 @@ where
         input_queue: super::input_queue::InputQueue::new(),
         model_router_ab: Mutex::new(super::ab_pairs::AbPairRuntime::default()),
         model_router_decision_ids: Mutex::new(HashMap::new()),
+        pending_model_router_approvals: Mutex::new(HashMap::new()),
+        pending_model_router_tool_approvals: Mutex::new(HashMap::new()),
+        model_router_approval_responses: Mutex::new(HashMap::new()),
         services,
         next_internal_sub_id: AtomicU64::new(0),
     });

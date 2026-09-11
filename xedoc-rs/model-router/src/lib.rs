@@ -3,6 +3,7 @@
 mod artifact;
 mod calibration;
 mod error;
+mod feedback;
 mod mode;
 mod routing;
 mod schema;
@@ -14,6 +15,10 @@ pub use artifact::ArtifactDescriptor;
 pub use artifact::ArtifactError;
 pub use artifact::LocalArtifact;
 pub use error::CalibrationError;
+pub use feedback::FeedbackCalibrationError;
+pub use feedback::FeedbackCalibrationReport;
+pub use feedback::append_classifier_feedback;
+pub use feedback::recalibrate_classifier_from_feedback;
 pub use mode::RouterMode;
 pub use routing::ClassRoute;
 pub use routing::DecisionReason;
