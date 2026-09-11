@@ -124,6 +124,35 @@ async fn load_agent_model_context(
 }
 
 impl AgentControl {
+    pub(crate) async fn reserve_ab_pair_capacity(
+        &self,
+        config: &Config,
+        session_source: &SessionSource,
+    ) -> XedocResult<AbPairCapacityReservation> {
+        self.ensure_execution_capacity(MultiAgentVersion::V2, session_source)?;
+        let state = self.upgrade()?;
+        let first_residency = self
+            .reserve_v2_residency_slot(&state, config, /*protected_thread_id*/ None)
+            .await?;
+        let second_residency = self
+            .reserve_v2_residency_slot(&state, config, /*protected_thread_id*/ None)
+            .await?;
+        let first_spawn = self.state.reserve_spawn_slot(/*max_threads*/ None)?;
+        let second_spawn = self.state.reserve_spawn_slot(/*max_threads*/ None)?;
+        Ok(AbPairCapacityReservation {
+            first: SpawnAgentOptions {
+                pre_reserved_spawn_slot: Some(first_spawn),
+                pre_reserved_v2_residency_slot: Some(first_residency),
+                ..Default::default()
+            },
+            second: SpawnAgentOptions {
+                pre_reserved_spawn_slot: Some(second_spawn),
+                pre_reserved_v2_residency_slot: Some(second_residency),
+                ..Default::default()
+            },
+        })
+    }
+
     /// Restore persisted V2 agent identities without reopening their runtimes.
     pub(crate) async fn restore_v2_agent_metadata(
         &self,
@@ -208,6 +237,7 @@ impl AgentControl {
             SpawnInitialInput::UserInput(initial_input),
             session_source,
             SpawnAgentOptions::default(),
+            /*defer_initial_input*/ false,
         ))
         .await?;
         Ok(spawned_agent.thread_id)
@@ -226,6 +256,7 @@ impl AgentControl {
             SpawnInitialInput::UserInput(initial_input),
             session_source,
             options,
+            /*defer_initial_input*/ false,
         ))
         .await
     }
@@ -243,8 +274,88 @@ impl AgentControl {
             SpawnInitialInput::InterAgentCommunication(communication, context),
             session_source,
             options,
+            /*defer_initial_input*/ false,
         ))
         .await
+    }
+
+    pub(crate) async fn spawn_agent_with_deferred_communication(
+        &self,
+        config: Config,
+        session_source: Option<SessionSource>,
+        options: SpawnAgentOptions,
+    ) -> XedocResult<LiveAgent> {
+        Box::pin(self.spawn_agent_internal(
+            config,
+            SpawnInitialInput::UserInput(Vec::new()),
+            session_source,
+            options,
+            /*defer_initial_input*/ true,
+        ))
+        .await
+    }
+
+    pub(crate) async fn stage_deferred_agent_communication(
+        &self,
+        agent_id: ThreadId,
+        communication: InterAgentCommunication,
+        context: AgentCommunicationContext,
+        barrier_id: String,
+    ) -> XedocResult<String> {
+        let state = self.upgrade()?;
+        self.submit_staged_inter_agent_communication(
+            agent_id,
+            &state,
+            communication,
+            context,
+            barrier_id,
+        )
+        .await
+    }
+
+    pub(crate) async fn release_deferred_agent_communication(
+        &self,
+        agent_id: ThreadId,
+        barrier_id: String,
+    ) -> XedocResult<String> {
+        let state = self.upgrade()?;
+        self.handle_thread_request_result(
+            agent_id,
+            &state,
+            state
+                .send_op(agent_id, Op::ReleaseInterAgentCommunication { barrier_id })
+                .await,
+        )
+        .await
+    }
+
+    pub(crate) async fn commit_deferred_agent_pair(
+        &self,
+        first_agent_id: ThreadId,
+        second_agent_id: ThreadId,
+    ) -> XedocResult<()> {
+        self.ensure_execution_capacity_for_turn_start(first_agent_id, true)
+            .await?;
+        self.ensure_execution_capacity_for_turn_start(second_agent_id, true)
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn start_deferred_agent_pair(
+        &self,
+        first_agent_id: ThreadId,
+        second_agent_id: ThreadId,
+    ) -> XedocResult<()> {
+        let state = self.upgrade()?;
+        let (first, second) = tokio::try_join!(
+            state.get_thread(first_agent_id),
+            state.get_thread(second_agent_id),
+        )?;
+        tokio::join!(
+            first.session.maybe_start_turn_for_pending_work(),
+            second.session.maybe_start_turn_for_pending_work(),
+        );
+        Ok(())
     }
 
     #[expect(
@@ -395,7 +506,8 @@ impl AgentControl {
         config: Config,
         initial_input: SpawnInitialInput,
         session_source: Option<SessionSource>,
-        options: SpawnAgentOptions,
+        mut options: SpawnAgentOptions,
+        defer_initial_input: bool,
     ) -> XedocResult<LiveAgent> {
         let state = self.upgrade()?;
         let multi_agent_version = state
@@ -415,7 +527,9 @@ impl AgentControl {
             && session_source
                 .as_ref()
                 .is_some_and(is_v2_resident_session_source);
-        let residency_slot = if spawn_uses_v2_residency {
+        let residency_slot = if let Some(reserved) = options.pre_reserved_v2_residency_slot.take() {
+            Some(reserved)
+        } else if spawn_uses_v2_residency {
             Some(
                 self.reserve_v2_residency_slot(&state, &config, /*protected_thread_id*/ None)
                     .await?,
@@ -428,7 +542,10 @@ impl AgentControl {
         } else {
             agent_max_threads
         };
-        let mut reservation = self.state.reserve_spawn_slot(reservation_max_threads)?;
+        let mut reservation = match options.pre_reserved_spawn_slot.take() {
+            Some(reservation) => reservation,
+            None => self.state.reserve_spawn_slot(reservation_max_threads)?,
+        };
         let inheritance = SpawnAgentThreadInheritance {
             environments: self
                 .inherited_environments_for_source(&state, session_source.as_ref())
@@ -535,19 +652,21 @@ impl AgentControl {
         )
         .await;
 
-        match initial_input {
-            SpawnInitialInput::UserInput(input) => {
-                self.send_input_after_capacity_check(new_thread.thread_id, &state, input)
+        if !defer_initial_input {
+            match initial_input {
+                SpawnInitialInput::UserInput(input) => {
+                    self.send_input_after_capacity_check(new_thread.thread_id, &state, input)
+                        .await?;
+                }
+                SpawnInitialInput::InterAgentCommunication(communication, context) => {
+                    self.send_inter_agent_communication_after_capacity_check(
+                        new_thread.thread_id,
+                        &state,
+                        communication,
+                        context,
+                    )
                     .await?;
-            }
-            SpawnInitialInput::InterAgentCommunication(communication, context) => {
-                self.send_inter_agent_communication_after_capacity_check(
-                    new_thread.thread_id,
-                    &state,
-                    communication,
-                    context,
-                )
-                .await?;
+                }
             }
         }
         if multi_agent_version != MultiAgentVersion::V2 {

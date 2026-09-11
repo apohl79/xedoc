@@ -1,5 +1,6 @@
 """Canonical Xedoc package directory layout."""
 
+import hashlib
 import json
 import shutil
 import stat
@@ -13,6 +14,13 @@ LAYOUT_VERSION = 1
 SESSION_CONTROL_LAYOUT_VERSION = 2
 SESSION_CONTROL_SOURCE = Path(__file__).resolve().parents[1] / "xedoc-session"
 SESSION_CONTROL_NAME = "xedoc-session"
+MODEL_ROUTER_ARTIFACT_SOURCE = (
+    Path(__file__).resolve().parents[2]
+    / "xedoc-rs"
+    / "model-router"
+    / "assets"
+    / "arctic-embed-xs"
+)
 
 
 def prepare_package_dir(package_dir: Path, *, force: bool) -> None:
@@ -70,6 +78,26 @@ def build_package_dir(
 
     if inputs.bwrap_bin is not None:
         copy_executable(inputs.bwrap_bin, resources_dir / "bwrap", is_windows=False)
+    if not MODEL_ROUTER_ARTIFACT_SOURCE.is_dir():
+        raise RuntimeError(
+            f"Missing packaged model-router artifact: {MODEL_ROUTER_ARTIFACT_SOURCE}"
+        )
+    shutil.copytree(
+        MODEL_ROUTER_ARTIFACT_SOURCE,
+        resources_dir / "model-router" / "arctic-embed-xs",
+    )
+    artifact_dir = resources_dir / "model-router" / "arctic-embed-xs"
+    if inputs.model_router_runtime is not None:
+        shutil.copytree(
+            inputs.model_router_runtime,
+            artifact_dir / "runtime" / spec.target,
+        )
+        validate_model_router_runtime(artifact_dir / "runtime" / spec.target)
+    else:
+        raise RuntimeError(
+            f"Missing packaged model-router runtime for target {spec.target}"
+        )
+    validate_model_router_artifact(artifact_dir)
 
     metadata = {
         "layoutVersion": (
@@ -82,6 +110,7 @@ def build_package_dir(
         "variant": variant.name,
         "entrypoint": f"bin/{entrypoint_name}",
         "resourcesDir": "xedoc-resources",
+        "modelRouterArtifactDir": "xedoc-resources/model-router/arctic-embed-xs",
         "pathDir": "xedoc-path",
     }
     write_json(package_dir / "xedoc-package.json", metadata)
@@ -121,6 +150,7 @@ def validate_package_dir(
         "variant": variant.name,
         "entrypoint": f"bin/{variant.entrypoint_name(spec)}",
         "resourcesDir": "xedoc-resources",
+        "modelRouterArtifactDir": "xedoc-resources/model-router/arctic-embed-xs",
         "pathDir": "xedoc-path",
     }
     for key, expected in expected_metadata.items():
@@ -129,6 +159,12 @@ def validate_package_dir(
             raise RuntimeError(
                 f"Invalid package metadata field {key!r}: expected {expected!r}, got {actual!r}"
             )
+    artifact_dir = package_dir / metadata["modelRouterArtifactDir"]
+    artifact_manifest = artifact_dir / "manifest.json"
+    if not artifact_manifest.is_file():
+        raise RuntimeError("Missing packaged model-router artifact manifest")
+    validate_model_router_artifact(artifact_manifest.parent)
+    validate_model_router_runtime(artifact_dir / "runtime" / spec.target)
 
     required_files = [
         Path("bin") / variant.entrypoint_name(spec),
@@ -157,6 +193,64 @@ def validate_package_dir(
             path = package_dir / relative_file
             if not is_executable(path):
                 raise RuntimeError(f"Package file is not executable: {relative_file}")
+
+
+def validate_model_router_artifact(artifact_dir: Path) -> None:
+    checksum_manifest = artifact_dir / "bundle.sha256"
+    if not checksum_manifest.is_file():
+        raise RuntimeError("Missing packaged model-router artifact checksum manifest")
+    for line in checksum_manifest.read_text(encoding="utf-8").splitlines():
+        digest, separator, relative_path = line.partition("  ")
+        path = artifact_dir / relative_path
+        try:
+            resolved_path = path.resolve(strict=True)
+        except OSError:
+            resolved_path = None
+        if (
+            not separator
+            or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+            or resolved_path is None
+            or artifact_dir.resolve() not in resolved_path.parents
+            or not resolved_path.is_file()
+        ):
+            raise RuntimeError(
+                "Invalid packaged model-router artifact checksum manifest"
+            )
+        with open(resolved_path, "rb") as artifact_file:
+            actual = hashlib.file_digest(artifact_file, "sha256").hexdigest()
+        if actual != digest:
+            raise RuntimeError(
+                f"Invalid packaged model-router artifact checksum: {relative_path}"
+            )
+
+
+def validate_model_router_runtime(runtime_dir: Path) -> None:
+    manifest_path = runtime_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise RuntimeError("Missing packaged model-router runtime manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    relative_path = manifest.get("file")
+    expected = manifest.get("sha256")
+    if not isinstance(relative_path, str) or not isinstance(expected, str):
+        raise RuntimeError("Invalid packaged model-router runtime manifest")
+    path = runtime_dir / relative_path
+    try:
+        resolved_path = path.resolve(strict=True)
+    except OSError:
+        resolved_path = None
+    if (
+        len(expected) != 64
+        or any(char not in "0123456789abcdef" for char in expected)
+        or resolved_path is None
+        or runtime_dir.resolve() not in resolved_path.parents
+        or not resolved_path.is_file()
+    ):
+        raise RuntimeError("Invalid packaged model-router runtime manifest")
+    with open(resolved_path, "rb") as runtime_file:
+        actual = hashlib.file_digest(runtime_file, "sha256").hexdigest()
+    if actual != expected:
+        raise RuntimeError("Invalid packaged model-router runtime checksum")
 
 
 def copy_executable(src: Path, dest: Path, *, is_windows: bool) -> None:

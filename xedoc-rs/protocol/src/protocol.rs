@@ -298,6 +298,18 @@ pub enum Op {
         communication: InterAgentCommunication,
     },
 
+    /// Stage an inter-agent communication without allowing it to start a turn.
+    ///
+    /// A paired sender releases it only after every participant has acknowledged
+    /// staging, preventing one branch from starting on a partial delivery.
+    StageInterAgentCommunication {
+        communication: InterAgentCommunication,
+        barrier_id: String,
+    },
+
+    /// Release a previously staged inter-agent communication.
+    ReleaseInterAgentCommunication { barrier_id: String },
+
     /// Approve a command execution
     ExecApproval {
         /// The id of the submission we are approving
@@ -575,6 +587,8 @@ impl Op {
             Self::UserInput { .. } => "user_input",
             Self::ThreadSettings { .. } => "thread_settings",
             Self::InterAgentCommunication { .. } => "inter_agent_communication",
+            Self::StageInterAgentCommunication { .. } => "stage_inter_agent_communication",
+            Self::ReleaseInterAgentCommunication { .. } => "release_inter_agent_communication",
             Self::ExecApproval { .. } => "exec_approval",
             Self::PatchApproval { .. } => "patch_approval",
             Self::ResolveElicitation { .. } => "resolve_elicitation",
@@ -994,6 +1008,9 @@ pub enum EventMsg {
 
     /// Model routing changed from the requested model to a different model.
     ModelReroute(ModelRerouteEvent),
+
+    /// Model-router decision for a newly accepted root or subagent task.
+    ModelRouterDecision(ModelRouterDecisionEvent),
 
     /// Backend recommends additional account verification for this turn.
     ModelVerification(ModelVerificationEvent),
@@ -1597,6 +1614,75 @@ pub struct ModelRerouteEvent {
     pub from_model: String,
     pub to_model: String,
     pub reason: ModelRerouteReason,
+}
+
+/// Bounded, transcript-visible model-router decision metadata.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ModelRouterDecisionEvent {
+    pub decision_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub scope: ModelRouterScope,
+    pub disposition: ModelRouterDisposition,
+    pub reason: ModelRouterDecisionReason,
+    pub policy_revision: String,
+    pub proposed_provider_id: String,
+    pub proposed_model_slug: String,
+    pub proposed_reasoning_effort: String,
+    pub effective_route: ModelRouterEffectiveRoute,
+    pub prompt_sha256: String,
+    pub prompt_original_bytes: u64,
+    pub prompt_truncated: bool,
+    /// Unix timestamp in whole seconds when this immutable decision was made.
+    pub created_at: i64,
+}
+
+/// The route that was actually available to execute after routing validation.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[ts(tag = "type", rename_all = "snake_case")]
+pub enum ModelRouterEffectiveRoute {
+    Available {
+        provider_id: String,
+        model_slug: String,
+        reasoning_effort: String,
+    },
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum ModelRouterScope {
+    Root,
+    Subagent,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum ModelRouterDisposition {
+    Applied,
+    Shadow,
+    Fallback,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum ModelRouterDecisionReason {
+    Classified,
+    LowConfidence,
+    NoClass,
+    EmbeddingFailed,
+    RouteUnavailable,
+    ExplicitOverride,
+}
+
+impl From<ModelRouterDecisionEvent> for EventMsg {
+    fn from(event: ModelRouterDecisionEvent) -> Self {
+        Self::ModelRouterDecision(event)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]

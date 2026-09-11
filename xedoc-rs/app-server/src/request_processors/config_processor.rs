@@ -24,6 +24,7 @@ use xedoc_app_server_protocol::ExperimentalFeatureEnablementSetParams;
 use xedoc_app_server_protocol::ExperimentalFeatureEnablementSetResponse;
 use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ManagedHooksRequirements;
+use xedoc_app_server_protocol::MergeStrategy;
 use xedoc_app_server_protocol::ModelProviderCapabilitiesReadResponse;
 use xedoc_app_server_protocol::ModelsRequirements;
 use xedoc_app_server_protocol::NetworkDomainPermission;
@@ -347,11 +348,16 @@ impl ConfigRequestProcessor {
         &self,
         params: ConfigValueWriteParams,
     ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
+        let refresh_model_router =
+            writes_model_router_mode(&params.key_path, &params.value, &params.merge_strategy);
         let response = self
             .config_manager
             .write_value(params)
             .await
             .map_err(map_error)?;
+        if refresh_model_router {
+            self.reload_user_config().await;
+        }
         Ok(response)
     }
 
@@ -359,7 +365,10 @@ impl ConfigRequestProcessor {
         &self,
         params: ConfigBatchWriteParams,
     ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
-        let reload_user_config = params.reload_user_config;
+        let reload_user_config = params.reload_user_config
+            || params.edits.iter().any(|edit| {
+                writes_model_router_mode(&edit.key_path, &edit.value, &edit.merge_strategy)
+            });
         let response = self
             .config_manager
             .batch_write(params)
@@ -427,6 +436,24 @@ impl ConfigRequestProcessor {
             thread.refresh_runtime_config(next_config.clone()).await;
         }
     }
+}
+
+fn writes_model_router_mode(
+    key_path: &str,
+    value: &serde_json::Value,
+    merge_strategy: &MergeStrategy,
+) -> bool {
+    if key_path == "model_router.mode" {
+        return true;
+    }
+    if key_path != "model_router" {
+        return false;
+    }
+    value.is_null()
+        || matches!(merge_strategy, MergeStrategy::Replace)
+        || value
+            .as_object()
+            .is_some_and(|table| table.contains_key("mode"))
 }
 
 fn empty_optimizer_insights() -> TokenUsageOptimizerInsights {

@@ -1,0 +1,7 @@
+{
+  "revision": "main",
+  "sha256": "cf2698d30ff05da02c70a088313bad56e5c2f401d734cb24a8390d446111936c",
+  "bundle_sha256": "ba6a6957bb65fe8c6eced8a847d9c165930694eeb6052799682f3f55f4e931f8",
+  "dimensions": 384,
+  "file": "onnx/model.onnx"
+}

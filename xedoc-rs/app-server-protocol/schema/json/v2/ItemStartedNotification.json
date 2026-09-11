@@ -404,6 +404,80 @@
         }
       ]
     },
+    "ModelRouterDecisionReason": {
+      "enum": [
+        "classified",
+        "lowConfidence",
+        "noClass",
+        "embeddingFailed",
+        "routeUnavailable",
+        "explicitOverride"
+      ],
+      "type": "string"
+    },
+    "ModelRouterDisposition": {
+      "enum": [
+        "applied",
+        "shadow",
+        "fallback"
+      ],
+      "type": "string"
+    },
+    "ModelRouterEffectiveRoute": {
+      "oneOf": [
+        {
+          "properties": {
+            "modelSlug": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "available"
+              ],
+              "title": "AvailableModelRouterEffectiveRouteType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "modelSlug",
+            "providerId",
+            "reasoningEffort",
+            "type"
+          ],
+          "title": "AvailableModelRouterEffectiveRoute",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "unavailable"
+              ],
+              "title": "UnavailableModelRouterEffectiveRouteType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "UnavailableModelRouterEffectiveRoute",
+          "type": "object"
+        }
+      ]
+    },
+    "ModelRouterScope": {
+      "enum": [
+        "root",
+        "subagent"
+      ],
+      "type": "string"
+    },
     "PatchApplyStatus": {
       "enum": [
         "inProgress",
@@ -1273,6 +1347,55 @@
             "type"
           ],
           "title": "ContextCompactionThreadItem",
+          "type": "object"
+        },
+        {
+          "description": "Immutable metadata-only model-router decision associated with this turn.",
+          "properties": {
+            "disposition": {
+              "$ref": "#/definitions/ModelRouterDisposition"
+            },
+            "effectiveRoute": {
+              "$ref": "#/definitions/ModelRouterEffectiveRoute"
+            },
+            "id": {
+              "type": "string"
+            },
+            "proposedModelSlug": {
+              "type": "string"
+            },
+            "proposedProviderId": {
+              "type": "string"
+            },
+            "proposedReasoningEffort": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/ModelRouterDecisionReason"
+            },
+            "scope": {
+              "$ref": "#/definitions/ModelRouterScope"
+            },
+            "type": {
+              "enum": [
+                "modelRouterDecision"
+              ],
+              "title": "ModelRouterDecisionThreadItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "disposition",
+            "effectiveRoute",
+            "id",
+            "proposedModelSlug",
+            "proposedProviderId",
+            "proposedReasoningEffort",
+            "reason",
+            "scope",
+            "type"
+          ],
+          "title": "ModelRouterDecisionThreadItem",
           "type": "object"
         }
       ]

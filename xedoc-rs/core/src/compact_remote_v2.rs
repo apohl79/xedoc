@@ -227,12 +227,20 @@ async fn run_remote_compact_task_inner_impl(
     let RemoteCompactV2Attempt {
         prompt_input,
         compaction_output,
+        response_id,
         token_usage,
         owned_client_session: _owned_client_session,
     } = attempt;
-    if let Some(token_usage) = token_usage {
+    if let Some(token_usage) = token_usage.as_ref() {
         sess.record_rollout_budget_usage(&token_usage)?;
     }
+    sess.record_auxiliary_token_usage(
+        compaction_turn_context.as_ref(),
+        Some(response_id.as_str()),
+        token_usage.as_ref(),
+        "remote_compaction_v2",
+    )
+    .await;
     let (compacted_history, _retained_images) =
         build_v2_compacted_history(&prompt_input, compaction_output);
     let (new_window_number, new_window_ids) = sess.advance_auto_compact_window().await;

@@ -1122,6 +1122,21 @@ impl App {
                 self.update_token_usage_optimizer_level(app_server, level)
                     .await;
             }
+            AppEvent::UpdateModelRouterMode { mode } => {
+                self.update_model_router_mode(app_server, mode);
+            }
+            AppEvent::ModelRouterReportOpenRequested => {
+                self.open_model_router_report(app_server);
+            }
+            AppEvent::ModelRouterReportOpenLoaded { result } => match result {
+                Ok(response) => {
+                    self.app_event_tx
+                        .send(AppEvent::OpenUrlInBrowser { url: response.url });
+                }
+                Err(error) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to open model-router report: {error}")),
+            },
             AppEvent::TokenUsageOptimizerStatsRequested => {
                 self.chat_widget.add_token_usage_optimizer_stats_loading();
                 self.fetch_token_usage_optimizer_stats(app_server);

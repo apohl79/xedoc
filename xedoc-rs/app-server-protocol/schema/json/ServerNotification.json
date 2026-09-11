@@ -1569,6 +1569,152 @@
       ],
       "type": "object"
     },
+    "ModelRouterDecisionNotification": {
+      "description": "Experimental metadata-only record of one local model-router decision.\n\nThis notification never contains prompt or output text.",
+      "properties": {
+        "createdAt": {
+          "description": "Unix timestamp in whole seconds when this immutable decision was made.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "decisionId": {
+          "type": "string"
+        },
+        "disposition": {
+          "$ref": "#/definitions/ModelRouterDisposition"
+        },
+        "effectiveRoute": {
+          "$ref": "#/definitions/ModelRouterEffectiveRoute"
+        },
+        "policyRevision": {
+          "type": "string"
+        },
+        "promptOriginalBytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "promptSha256": {
+          "type": "string"
+        },
+        "promptTruncated": {
+          "type": "boolean"
+        },
+        "proposedModelSlug": {
+          "type": "string"
+        },
+        "proposedProviderId": {
+          "type": "string"
+        },
+        "proposedReasoningEffort": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/definitions/ModelRouterDecisionReason"
+        },
+        "scope": {
+          "$ref": "#/definitions/ModelRouterScope"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "createdAt",
+        "decisionId",
+        "disposition",
+        "effectiveRoute",
+        "policyRevision",
+        "promptOriginalBytes",
+        "promptSha256",
+        "promptTruncated",
+        "proposedModelSlug",
+        "proposedProviderId",
+        "proposedReasoningEffort",
+        "reason",
+        "scope",
+        "threadId",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "ModelRouterDecisionReason": {
+      "enum": [
+        "classified",
+        "lowConfidence",
+        "noClass",
+        "embeddingFailed",
+        "routeUnavailable",
+        "explicitOverride"
+      ],
+      "type": "string"
+    },
+    "ModelRouterDisposition": {
+      "enum": [
+        "applied",
+        "shadow",
+        "fallback"
+      ],
+      "type": "string"
+    },
+    "ModelRouterEffectiveRoute": {
+      "oneOf": [
+        {
+          "properties": {
+            "modelSlug": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "available"
+              ],
+              "title": "AvailableModelRouterEffectiveRouteType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "modelSlug",
+            "providerId",
+            "reasoningEffort",
+            "type"
+          ],
+          "title": "AvailableModelRouterEffectiveRoute",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "unavailable"
+              ],
+              "title": "UnavailableModelRouterEffectiveRouteType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "UnavailableModelRouterEffectiveRoute",
+          "type": "object"
+        }
+      ]
+    },
+    "ModelRouterScope": {
+      "enum": [
+        "root",
+        "subagent"
+      ],
+      "type": "string"
+    },
     "ModelSafetyBufferingUpdatedNotification": {
       "properties": {
         "fasterModel": {
@@ -3568,6 +3714,55 @@
           ],
           "title": "ContextCompactionThreadItem",
           "type": "object"
+        },
+        {
+          "description": "Immutable metadata-only model-router decision associated with this turn.",
+          "properties": {
+            "disposition": {
+              "$ref": "#/definitions/ModelRouterDisposition"
+            },
+            "effectiveRoute": {
+              "$ref": "#/definitions/ModelRouterEffectiveRoute"
+            },
+            "id": {
+              "type": "string"
+            },
+            "proposedModelSlug": {
+              "type": "string"
+            },
+            "proposedProviderId": {
+              "type": "string"
+            },
+            "proposedReasoningEffort": {
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/definitions/ModelRouterDecisionReason"
+            },
+            "scope": {
+              "$ref": "#/definitions/ModelRouterScope"
+            },
+            "type": {
+              "enum": [
+                "modelRouterDecision"
+              ],
+              "title": "ModelRouterDecisionThreadItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "disposition",
+            "effectiveRoute",
+            "id",
+            "proposedModelSlug",
+            "proposedProviderId",
+            "proposedReasoningEffort",
+            "reason",
+            "scope",
+            "type"
+          ],
+          "title": "ModelRouterDecisionThreadItem",
+          "type": "object"
         }
       ]
     },
@@ -5366,6 +5561,26 @@
         "params"
       ],
       "title": "Model/reroutedNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "modelRouter/decision"
+          ],
+          "title": "ModelRouter/decisionNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterDecisionNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "ModelRouter/decisionNotification",
       "type": "object"
     },
     {

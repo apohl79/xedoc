@@ -97,6 +97,7 @@ pub(crate) async fn summarize_history(
     let mut map_results = stream::iter(map_chunks.into_iter().enumerate().map(|(index, chunk)| {
         summarize_chunk(
             model_client.clone(),
+            sess.clone(),
             turn_context.clone(),
             chunk.items,
             compaction_prompt.clone(),
@@ -156,6 +157,7 @@ pub(crate) async fn summarize_history(
             |(index, chunk)| {
                 summarize_chunk(
                     model_client.clone(),
+                    sess.clone(),
                     turn_context.clone(),
                     chunk.items,
                     compaction_prompt.clone(),
@@ -202,6 +204,7 @@ fn compaction_item_budget(
 
 async fn summarize_chunk(
     model_client: ModelClient,
+    sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
     mut items: Vec<ResponseItem>,
     compaction_prompt: ResponseItem,
@@ -231,7 +234,18 @@ async fn summarize_chunk(
     while let Some(event) = stream.next().await {
         match event? {
             ResponseEvent::OutputItemDone(item) => output_items.push(item),
-            ResponseEvent::Completed { .. } => {
+            ResponseEvent::Completed {
+                response_id,
+                token_usage,
+                ..
+            } => {
+                sess.record_auxiliary_token_usage(
+                    turn_context.as_ref(),
+                    Some(response_id.as_str()),
+                    token_usage.as_ref(),
+                    "hierarchical_compaction",
+                )
+                .await;
                 return get_last_assistant_message_from_turn(&output_items).ok_or_else(|| {
                     XedocErr::Stream("compaction produced no assistant summary".to_string(), None)
                 });

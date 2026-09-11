@@ -1,6 +1,7 @@
 use crate::state::ActiveTurn;
 use crate::state::MailboxDeliveryPhase;
 use crate::state::TurnState;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -35,6 +36,7 @@ pub(crate) struct TurnInputQueue {
 pub(crate) struct InputQueue {
     activity_tx: watch::Sender<InputQueueActivity>,
     mailbox_pending_mails: Mutex<VecDeque<InterAgentCommunication>>,
+    staged_mailbox_communications: Mutex<HashMap<String, InterAgentCommunication>>,
 }
 
 impl InputQueue {
@@ -43,6 +45,7 @@ impl InputQueue {
         Self {
             activity_tx,
             mailbox_pending_mails: Mutex::new(VecDeque::new()),
+            staged_mailbox_communications: Mutex::new(HashMap::new()),
         }
     }
 
@@ -78,6 +81,27 @@ impl InputQueue {
             .await
             .push_back(communication);
         self.activity_tx.send_replace(InputQueueActivity::Mailbox);
+    }
+
+    pub(crate) async fn stage_mailbox_communication(
+        &self,
+        barrier_id: String,
+        communication: InterAgentCommunication,
+    ) {
+        self.staged_mailbox_communications
+            .lock()
+            .await
+            .insert(barrier_id, communication);
+    }
+
+    pub(crate) async fn release_staged_mailbox_communication(
+        &self,
+        barrier_id: &str,
+    ) -> Option<InterAgentCommunication> {
+        self.staged_mailbox_communications
+            .lock()
+            .await
+            .remove(barrier_id)
     }
 
     pub(crate) async fn has_pending_mailbox_items(&self) -> bool {

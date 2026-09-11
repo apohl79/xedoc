@@ -9,6 +9,8 @@ use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v2;
 use crate::tools::handlers::multi_agents_v2::message_tool::message_content;
 use xedoc_protocol::AgentPath;
+use xedoc_protocol::models::PermissionProfile;
+use xedoc_protocol::protocol::SandboxPolicy;
 use xedoc_tools::ToolSpec;
 
 #[derive(Default)]
@@ -55,7 +57,7 @@ async fn handle_spawn_agent(
         .map(str::trim)
         .filter(|role| !role.is_empty());
 
-    let message = message_content(args.message)?;
+    let message = message_content(args.message.clone())?;
     let session_source = turn.session_source.clone();
     let child_depth = next_thread_spawn_depth(&session_source);
     let max_depth = turn.config.agent_max_depth;
@@ -93,6 +95,63 @@ async fn handle_spawn_agent(
     .await?;
     apply_spawn_agent_delegation_override(&mut config, args.allow_delegation);
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
+    let orchestrator_config = config.clone();
+    let mut router_decision =
+        if let Some(current_route) = crate::model_router::current_route(&config) {
+            crate::model_router::ModelRouterService::decide_subagent(
+                turn.config.as_ref(),
+                &session.services.models_manager,
+                &message,
+                current_route,
+                args.model.is_some()
+                    || args.reasoning_effort.is_some()
+                    || args.service_tier.is_some()
+                    || role_name.is_some()
+                    || turn.config.agent_default_subagent_model.is_some()
+                    || turn
+                        .config
+                        .agent_default_subagent_reasoning_effort
+                        .is_some(),
+            )
+            .await
+        } else {
+            None
+        };
+    if let Some(decision) = router_decision.as_mut()
+        && decision.disposition == xedoc_model_router::RouteDisposition::Applied
+    {
+        let applied = match decision.effective_route.as_ref() {
+            Some(route) => {
+                crate::model_router::apply_route_to_config(
+                    &mut config,
+                    &session.services.models_manager,
+                    route,
+                )
+                .await
+            }
+            None => false,
+        };
+        if !applied {
+            crate::model_router::fallback_to_original_route(decision);
+        }
+    }
+
+    if let Some(result) = try_spawn_ab_pair(
+        &session,
+        turn.as_ref(),
+        &call_id,
+        &args,
+        &fork_mode,
+        role_name,
+        &message,
+        &config,
+        &orchestrator_config,
+        router_decision.as_ref(),
+    )
+    .await?
+    {
+        return Ok(result);
+    }
 
     let spawn_source = thread_spawn_source(
         session.thread_id,
@@ -131,12 +190,29 @@ async fn handle_spawn_agent(
                     fork_mode,
                     parent_thread_id: Some(session.thread_id),
                     environments: Some(turn.environments.to_selections()),
+                    ..Default::default()
                 },
             ),
     )
     .await
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
+    if let Some(router_decision) = router_decision {
+        session
+            .send_event(
+                &turn,
+                xedoc_protocol::protocol::EventMsg::ModelRouterDecision(
+                    crate::model_router::decision_event(
+                        router_decision,
+                        session.thread_id.to_string(),
+                        turn.sub_id.clone(),
+                        xedoc_protocol::protocol::ModelRouterScope::Subagent,
+                        now_unix_timestamp_ms() / 1_000,
+                    ),
+                ),
+            )
+            .await;
+    }
     let agent_snapshot = session
         .services
         .agent_control
@@ -186,6 +262,312 @@ async fn handle_spawn_agent(
             nickname,
         })
     }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the pair path deliberately shares the complete validated spawn context"
+)]
+async fn try_spawn_ab_pair(
+    session: &std::sync::Arc<crate::session::session::Session>,
+    turn: &crate::session::turn_context::TurnContext,
+    call_id: &str,
+    args: &SpawnAgentArgs,
+    fork_mode: &Option<SpawnAgentForkMode>,
+    role_name: Option<&str>,
+    message: &str,
+    routed_config: &crate::config::Config,
+    orchestrator_config: &crate::config::Config,
+    router_decision: Option<&xedoc_model_router::RouteDecision>,
+) -> Result<Option<SpawnAgentResult>, FunctionCallError> {
+    if turn.session_source.is_non_root_agent()
+        || is_operations_or_deployment_task(message)
+        || !matches!(router_decision, Some(decision) if decision.disposition == xedoc_model_router::RouteDisposition::Applied)
+    {
+        return Ok(None);
+    }
+    let active_pair = session.take_model_router_ab_pair_for_spawn().await;
+    let Some(active_pair) = active_pair else {
+        return Ok(None);
+    };
+    let mut routed_config = routed_config.clone();
+    let mut baseline_config = orchestrator_config.clone();
+    if !crate::model_router::apply_route_to_config(
+        &mut baseline_config,
+        &session.services.models_manager,
+        &active_pair.orchestrator_route,
+    )
+    .await
+    {
+        return Ok(None);
+    }
+    if !matches!(turn.sandbox_policy(), SandboxPolicy::ReadOnly { .. }) {
+        return Ok(None);
+    }
+    for config in [&mut routed_config, &mut baseline_config] {
+        config
+            .permissions
+            .set_permission_profile(PermissionProfile::read_only())
+            .map_err(|error| {
+                FunctionCallError::RespondToModel(format!(
+                    "failed to enforce read-only A/B child permissions: {error}"
+                ))
+            })?;
+        apply_spawn_agent_delegation_override(config, Some(false));
+    }
+
+    let routed_task_name = format!("{}__ab_a", args.task_name);
+    let orchestrator_task_name = format!("{}__ab_b", args.task_name);
+    let child_depth = next_thread_spawn_depth(&turn.session_source);
+    let routed_source = thread_spawn_source(
+        session.thread_id,
+        &turn.session_source,
+        child_depth,
+        role_name,
+        Some(routed_task_name.clone()),
+    )?;
+    let baseline_source = thread_spawn_source(
+        session.thread_id,
+        &turn.session_source,
+        child_depth,
+        role_name,
+        Some(orchestrator_task_name.clone()),
+    )?;
+    let author = turn
+        .session_source
+        .get_agent_path()
+        .unwrap_or_else(AgentPath::root);
+    // The distinct child paths are transport-only. Both branches receive this
+    // exact same model-visible envelope so the classifier cannot infer branch
+    // identity from the task name.
+    let pair_recipient =
+        AgentPath::try_from("/root/ab_pair").expect("the canonical A/B task path is valid");
+    let pair_communication = communication_from_tool_message(
+        author,
+        pair_recipient,
+        message.to_string(),
+        ToolMessageKind::NewTask,
+    );
+    let reservations = session
+        .services
+        .agent_control
+        .reserve_ab_pair_capacity(&routed_config, &turn.session_source)
+        .await
+        .map_err(collab_spawn_error)?;
+    let (mut routed_options, mut baseline_options) = reservations.into_options();
+    for options in [&mut routed_options, &mut baseline_options] {
+        options.fork_parent_spawn_call_id = fork_mode.as_ref().map(|_| call_id.to_string());
+        options.fork_mode = fork_mode.clone();
+        options.parent_thread_id = Some(session.thread_id);
+        options.environments = Some(turn.environments.to_selections());
+    }
+    let router_event = router_decision.map(|decision| {
+        crate::model_router::decision_event(
+            decision.clone(),
+            session.thread_id.to_string(),
+            turn.sub_id.clone(),
+            xedoc_protocol::protocol::ModelRouterScope::Subagent,
+            now_unix_timestamp_ms() / 1_000,
+        )
+    });
+    let router_decision_id = router_event.as_ref().map(|event| event.decision_id.clone());
+    let routed_context =
+        AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id)
+            .with_ab_pair(
+                active_pair.pair_id.clone(),
+                crate::agent_communication::AbPairBranch::Routed,
+                router_decision_id.clone(),
+            );
+    let baseline_context =
+        AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id)
+            .with_ab_pair(
+                active_pair.pair_id.clone(),
+                crate::agent_communication::AbPairBranch::Orchestrator,
+                router_decision_id,
+            );
+    let routed_spawn = session
+        .services
+        .agent_control
+        .spawn_agent_with_deferred_communication(routed_config, Some(routed_source), routed_options)
+        .await
+        .map_err(collab_spawn_error)?;
+    let baseline_spawn = match session
+        .services
+        .agent_control
+        .spawn_agent_with_deferred_communication(
+            baseline_config,
+            Some(baseline_source),
+            baseline_options,
+        )
+        .await
+    {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            let _ = session
+                .services
+                .agent_control
+                .shutdown_live_agent(routed_spawn.thread_id)
+                .await;
+            return Err(collab_spawn_error(error));
+        }
+    };
+    let barrier_id = active_pair.pair_id.clone();
+    if let Err(error) = session
+        .services
+        .agent_control
+        .stage_deferred_agent_communication(
+            routed_spawn.thread_id,
+            pair_communication.clone(),
+            routed_context,
+            barrier_id.clone(),
+        )
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .stage_deferred_agent_communication(
+            baseline_spawn.thread_id,
+            pair_communication,
+            baseline_context,
+            barrier_id.clone(),
+        )
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .release_deferred_agent_communication(routed_spawn.thread_id, barrier_id.clone())
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .release_deferred_agent_communication(baseline_spawn.thread_id, barrier_id)
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .commit_deferred_agent_pair(routed_spawn.thread_id, baseline_spawn.thread_id)
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
+    if let Some(router_event) = router_event {
+        let router_decision = xedoc_state::ModelRouterDecisionRecord::from(&router_event);
+        if let Some(state_db) = session.state_db()
+            && let Err(error) = state_db
+                .insert_model_router_decision(&router_decision)
+                .await
+        {
+            tracing::warn!(%error, "failed to persist model-router A/B decision");
+        }
+        session
+            .set_model_router_ab_decision_id(&active_pair.pair_id, router_event.decision_id.clone())
+            .await;
+        session
+            .start_model_router_ab_outcome(
+                &active_pair.pair_id,
+                &turn.sub_id,
+                Some(router_event.decision_id.clone()),
+            )
+            .await;
+        session
+            .send_event(
+                turn,
+                xedoc_protocol::protocol::EventMsg::ModelRouterDecision(router_event),
+            )
+            .await;
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .start_deferred_agent_pair(routed_spawn.thread_id, baseline_spawn.thread_id)
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
+    Ok(Some(SpawnAgentResult::AbPair {
+        pair_id: active_pair.pair_id,
+        routed_task_name,
+        orchestrator_task_name,
+    }))
+}
+
+fn is_operations_or_deployment_task(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    ["deploy", "deployment", "production operation", "runbook"]
+        .into_iter()
+        .any(|term| message.contains(term))
 }
 
 impl CoreToolRuntime for Handler {
@@ -254,6 +636,11 @@ pub(crate) enum SpawnAgentResult {
     },
     HiddenMetadata {
         task_name: String,
+    },
+    AbPair {
+        pair_id: String,
+        routed_task_name: String,
+        orchestrator_task_name: String,
     },
 }
 

@@ -2,6 +2,7 @@ use super::*;
 use crate::SortDirection;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
+use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::SessionSource;
 
 impl StateRuntime {
@@ -938,7 +939,13 @@ ON CONFLICT(id) DO UPDATE SET
         if let Some(updated_at) = updated_at {
             metadata.updated_at = updated_at;
         }
-        self.upsert_thread(&metadata).await
+        self.upsert_thread(&metadata).await?;
+        for item in items {
+            if let RolloutItem::EventMsg(EventMsg::ModelRouterDecision(event)) = item {
+                self.insert_model_router_decision(&event.into()).await?;
+            }
+        }
+        Ok(())
     }
 
     /// Mark a thread as archived using the underlying database.

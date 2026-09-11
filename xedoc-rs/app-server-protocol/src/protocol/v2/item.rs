@@ -343,6 +343,19 @@ pub enum ThreadItem {
     ContextCompaction {
         id: String,
     },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    /// Immutable metadata-only model-router decision associated with this turn.
+    ModelRouterDecision {
+        id: String,
+        scope: crate::protocol::v2::ModelRouterScope,
+        disposition: crate::protocol::v2::ModelRouterDisposition,
+        reason: crate::protocol::v2::ModelRouterDecisionReason,
+        proposed_provider_id: String,
+        proposed_model_slug: String,
+        proposed_reasoning_effort: String,
+        effective_route: crate::protocol::v2::ModelRouterEffectiveRoute,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -381,7 +394,8 @@ impl ThreadItem {
             | ThreadItem::ImageView { id, .. }
             | ThreadItem::EnteredReviewMode { id, .. }
             | ThreadItem::ExitedReviewMode { id, .. }
-            | ThreadItem::ContextCompaction { id, .. } => id,
+            | ThreadItem::ContextCompaction { id, .. }
+            | ThreadItem::ModelRouterDecision { id, .. } => id,
             ThreadItem::WebSearch(item) => &item.id,
             ThreadItem::Sleep(item) => &item.id,
             ThreadItem::ImageGeneration(item) => &item.id,

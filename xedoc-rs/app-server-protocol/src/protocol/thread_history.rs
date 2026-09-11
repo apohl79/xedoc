@@ -374,6 +374,7 @@ impl ThreadHistoryBuilder {
             EventMsg::ExitedReviewMode(payload) => self.handle_exited_review_mode(payload),
             EventMsg::ItemStarted(payload) => self.handle_item_started(payload),
             EventMsg::ItemCompleted(payload) => self.handle_item_completed(payload),
+            EventMsg::ModelRouterDecision(payload) => self.handle_model_router_decision(payload),
             EventMsg::HookStarted(_) | EventMsg::HookCompleted(_) => {}
             EventMsg::Error(payload) => self.handle_error(payload),
             EventMsg::TokenCount(_) => {}
@@ -1167,6 +1168,25 @@ impl ThreadHistoryBuilder {
         if let Some(changed_turn) = changed_turn {
             self.record_changed_turn(changed_turn);
         }
+    }
+
+    fn handle_model_router_decision(
+        &mut self,
+        payload: &xedoc_protocol::protocol::ModelRouterDecisionEvent,
+    ) {
+        self.upsert_item_in_turn_id(
+            &payload.turn_id,
+            ThreadItem::ModelRouterDecision {
+                id: payload.decision_id.clone(),
+                scope: payload.scope.into(),
+                disposition: payload.disposition.into(),
+                reason: payload.reason.into(),
+                proposed_provider_id: payload.proposed_provider_id.clone(),
+                proposed_model_slug: payload.proposed_model_slug.clone(),
+                proposed_reasoning_effort: payload.proposed_reasoning_effort.clone(),
+                effective_route: payload.effective_route.clone().into(),
+            },
+        );
     }
 
     fn handle_turn_aborted(&mut self, payload: &TurnAbortedEvent) {

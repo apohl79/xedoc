@@ -25,6 +25,8 @@ use xedoc_config::ConfigRequirementsToml;
 use xedoc_config::ConstrainedWithSource;
 use xedoc_config::FeatureRequirementsToml;
 use xedoc_config::McpServerRequirement;
+use xedoc_config::ModelRouterConfigToml;
+use xedoc_config::ModelRouterMode;
 use xedoc_config::PluginRequirementsToml;
 use xedoc_config::ProfileV2Name;
 use xedoc_config::ResidencyRequirement;
@@ -609,6 +611,9 @@ pub struct Config {
 
     /// Optional override of model selection.
     pub model: Option<String>,
+
+    /// Effective model-router controls.
+    pub model_router: ModelRouterConfigToml,
 
     /// Optional fast model used for side-band tasks on custom providers.
     pub model_fast: Option<String>,
@@ -3801,6 +3806,14 @@ impl Config {
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
             model,
+            model_router: if features.enabled(Feature::ModelRouter) {
+                cfg.model_router.clone()
+            } else {
+                ModelRouterConfigToml {
+                    mode: ModelRouterMode::Off,
+                    ..cfg.model_router.clone()
+                }
+            },
             model_fast,
             service_tier,
             review_model,

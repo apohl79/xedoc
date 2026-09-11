@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scheduling Orchestration"
+  short_description: "Schedule bounded dependent work safely"
+  default_prompt: "Use $scheduling-orchestration to plan and schedule bounded work for this task."

@@ -22,6 +22,10 @@ mod telemetry;
 pub use model::LogEntry;
 pub use model::LogQuery;
 pub use model::LogRow;
+pub use model::ModelRouterAbOutcomeRecord;
+pub use model::ModelRouterDailyRecord;
+pub use model::ModelRouterDecisionRecord;
+pub use model::ModelRouterInvocationRecord;
 /// Preferred entrypoint: owns configuration and metrics.
 pub use runtime::StateRuntime;
 pub use runtime::ToolOutputReductionBreakdown;

@@ -125,9 +125,18 @@ impl Session {
                 Ok(ResponseEvent::OutputTextDelta(delta)) => {
                     generated.push_str(&delta);
                 }
-                Ok(ResponseEvent::Completed { token_usage, .. }) => {
-                    self.record_auxiliary_token_usage(&turn_context, token_usage.as_ref())
-                        .await;
+                Ok(ResponseEvent::Completed {
+                    response_id,
+                    token_usage,
+                    ..
+                }) => {
+                    self.record_auxiliary_token_usage(
+                        &turn_context,
+                        Some(response_id.as_str()),
+                        token_usage.as_ref(),
+                        "session_name",
+                    )
+                    .await;
                     let normalized = normalize_generated_session_name(&generated);
                     debug!(
                         provider = %provider_name,

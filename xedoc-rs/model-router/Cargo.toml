@@ -1,0 +1,29 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "xedoc-model-router"
+version.workspace = true
+
+[[bin]]
+name = "xedoc-model-router"
+path = "src/main.rs"
+test = false
+
+[lib]
+doctest = false
+name = "xedoc_model_router"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+fastembed = { workspace = true }
+ort = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+xedoc-config = { workspace = true }
+xedoc-utils-path = { workspace = true }

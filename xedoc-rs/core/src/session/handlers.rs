@@ -191,18 +191,28 @@ pub(super) async fn user_input_or_turn_inner(
     else {
         unreachable!();
     };
+    let explicit_route_override = thread_settings.model.is_some()
+        || thread_settings.effort.is_some()
+        || thread_settings.service_tier.is_some()
+        || thread_settings.collaboration_mode.is_some()
+        || thread_settings.model_provider_id.is_some();
     let emit_thread_settings_applied = thread_settings != ThreadSettingsOverrides::default();
-    let mut updates = if emit_thread_settings_applied {
+    let updates = if emit_thread_settings_applied {
         thread_settings_update(sess, thread_settings).await
     } else {
         SessionSettingsUpdate::default()
     };
-    updates.final_output_json_schema = Some(final_output_json_schema);
-
-    let Ok(current_context) = sess.new_turn_with_sub_id(sub_id.clone(), updates).await else {
-        // new_turn_with_sub_id already emits the error event.
+    if let Err(err) = sess.update_settings(updates).await {
+        sess.send_event_raw(Event {
+            id: sub_id,
+            msg: EventMsg::Error(ErrorEvent {
+                message: format!("invalid thread settings override: {err}"),
+                xedoc_error_info: Some(XedocErrorInfo::BadRequest),
+            }),
+        })
+        .await;
         return;
-    };
+    }
     if emit_thread_settings_applied {
         sess.send_event_raw_without_materializing_rollout(Event {
             id: sub_id.clone(),
@@ -210,8 +220,6 @@ pub(super) async fn user_input_or_turn_inner(
         })
         .await;
     }
-    sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
-        .await;
     match sess
         .steer_input(
             items.clone(),
@@ -223,9 +231,76 @@ pub(super) async fn user_input_or_turn_inner(
         .await
     {
         Ok(_) => {
-            current_context.session_telemetry.user_prompt(&items);
+            sess.services.session_telemetry.user_prompt(&items);
         }
         Err(SteerInputError::NoActiveTurn(items)) => {
+            let mut current_context = sess
+                .new_turn_from_current_settings_with_sub_id(
+                    sub_id.clone(),
+                    final_output_json_schema.clone(),
+                )
+                .await;
+            if !current_context.session_source.is_non_root_agent()
+                && let Some(orchestrator_route) =
+                    crate::model_router::current_route(current_context.config.as_ref())
+            {
+                sess.begin_model_router_ab_root_turn(orchestrator_route)
+                    .await;
+            }
+            sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
+                .await;
+            if let Some(mut decision) = super::root_shadow_routing::decide_for_accepted_input(
+                sess,
+                current_context.as_ref(),
+                &items,
+                explicit_route_override,
+            )
+            .await
+            {
+                if decision.disposition == xedoc_model_router::RouteDisposition::Applied
+                    && decision.effective_route != decision.original_route
+                {
+                    let routed_context = match decision.effective_route.as_ref() {
+                        Some(route) => {
+                            sess.new_routed_turn_from_current_settings_with_sub_id(
+                                sub_id.clone(),
+                                final_output_json_schema,
+                                route,
+                            )
+                            .await
+                        }
+                        None => None,
+                    };
+                    if let Some(routed_context) = routed_context {
+                        if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
+                            startup_prewarm.abort().await;
+                        }
+                        sess.force_full_context_replay().await;
+                        current_context = routed_context;
+                        sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
+                            .await;
+                    } else {
+                        crate::model_router::fallback_to_original_route(&mut decision);
+                    }
+                }
+                let router_event = crate::model_router::decision_event(
+                    decision,
+                    sess.thread_id.to_string(),
+                    current_context.sub_id.clone(),
+                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                    crate::turn_timing::now_unix_timestamp_ms() / 1_000,
+                );
+                sess.remember_model_router_decision(
+                    &current_context.sub_id,
+                    router_event.decision_id.clone(),
+                )
+                .await;
+                sess.send_event(
+                    current_context.as_ref(),
+                    EventMsg::ModelRouterDecision(router_event),
+                )
+                .await;
+            }
             if let Some(responsesapi_client_metadata) = responsesapi_client_metadata {
                 current_context
                     .turn_metadata_state
@@ -282,6 +357,35 @@ pub async fn inter_agent_communication(
         sess.maybe_start_turn_for_pending_work_with_sub_id(sub_id)
             .await;
     }
+}
+
+pub async fn stage_inter_agent_communication(
+    sess: &Arc<Session>,
+    communication: InterAgentCommunication,
+    barrier_id: String,
+) {
+    sess.input_queue
+        .stage_mailbox_communication(barrier_id, communication)
+        .await;
+}
+
+pub async fn release_inter_agent_communication(
+    sess: &Arc<Session>,
+    sub_id: String,
+    barrier_id: String,
+) {
+    let Some(mut communication) = sess
+        .input_queue
+        .release_staged_mailbox_communication(&barrier_id)
+        .await
+    else {
+        return;
+    };
+    communication.trigger_turn = true;
+    sess.input_queue
+        .enqueue_mailbox_communication(communication)
+        .await;
+    crate::agent_communication::emit_agent_communication_receive(&sub_id);
 }
 
 pub async fn run_user_shell_command(sess: &Arc<Session>, sub_id: String, command: String) {
@@ -677,6 +781,17 @@ pub(super) async fn submission_loop(
                 }
                 Op::InterAgentCommunication { communication } => {
                     inter_agent_communication(&sess, sub.id.clone(), communication).await;
+                    false
+                }
+                Op::StageInterAgentCommunication {
+                    communication,
+                    barrier_id,
+                } => {
+                    stage_inter_agent_communication(&sess, communication, barrier_id).await;
+                    false
+                }
+                Op::ReleaseInterAgentCommunication { barrier_id } => {
+                    release_inter_agent_communication(&sess, sub.id.clone(), barrier_id).await;
                     false
                 }
                 Op::ExecApproval {

@@ -10,6 +10,7 @@ use crate::skills::SkillError;
 use crate::state::ActiveTurn;
 use crate::state::SessionReductionSink;
 use std::sync::OnceLock;
+use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
 use xedoc_extension_api::ExtensionDataInit;
 use xedoc_extension_api::ExtensionRegistryBuilder;
@@ -45,6 +46,8 @@ pub(crate) struct Session {
     pub(super) pending_mcp_server_refresh_config: Mutex<Option<McpServerRefreshConfig>>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
     pub(crate) input_queue: InputQueue,
+    pub(crate) model_router_ab: Mutex<crate::session::ab_pairs::AbPairRuntime>,
+    pub(crate) model_router_decision_ids: Mutex<HashMap<String, String>>,
     pub(crate) services: SessionServices,
     pub(super) next_internal_sub_id: AtomicU64,
 }
@@ -499,6 +502,16 @@ impl Session {
                 .features
                 .enabled(Feature::ConcurrentReasoningSummaries),
             config.http_client_factory(),
+        )
+    }
+
+    pub(crate) async fn model_client_for_turn(&self, turn_context: &TurnContext) -> ModelClient {
+        let mut session_configuration = self.default_turn_configuration().await;
+        session_configuration.provider = turn_context.provider.info().clone();
+        Self::model_client(
+            Arc::clone(&self.services.auth_manager),
+            &session_configuration,
+            turn_context.config.as_ref(),
         )
     }
 
@@ -1150,6 +1163,8 @@ impl Session {
                 pending_mcp_server_refresh_config: Mutex::new(None),
                 active_turn: Mutex::new(None),
                 input_queue: InputQueue::new(),
+                model_router_ab: Mutex::new(crate::session::ab_pairs::AbPairRuntime::default()),
+                model_router_decision_ids: Mutex::new(HashMap::new()),
                 services,
                 next_internal_sub_id: AtomicU64::new(0),
             });

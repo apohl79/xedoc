@@ -137,8 +137,18 @@ pub(crate) async fn run_turn(
     prewarmed_client_session: Option<ModelClientSession>,
     cancellation_token: CancellationToken,
 ) -> XedocResult<Option<String>> {
-    let mut client_session =
-        prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.load().new_session());
+    let mut client_session = match prewarmed_client_session {
+        Some(client_session) => client_session,
+        None if sess.get_config().await.model_provider_id
+            == turn_context.config.model_provider_id =>
+        {
+            sess.services.model_client.load().new_session()
+        }
+        None => sess
+            .model_client_for_turn(turn_context.as_ref())
+            .await
+            .new_session(),
+    };
     if let Err(err) = run_pre_sampling_compact(&sess, &turn_context, &mut client_session).await {
         if matches!(err, XedocErr::TurnAborted) {
             return Err(err);
@@ -2052,13 +2062,17 @@ async fn try_run_sampling_request(
                 sess.send_event(
                     &turn_context,
                     EventMsg::RawResponseCompleted(RawResponseCompletedEvent {
-                        response_id,
+                        response_id: response_id.clone(),
                         token_usage: token_usage.clone(),
                     }),
                 )
                 .await;
                 let budget_result = sess
-                    .record_token_usage_info(&turn_context, token_usage.as_ref())
+                    .record_token_usage_info_with_response_id(
+                        &turn_context,
+                        Some(response_id.as_str()),
+                        token_usage.as_ref(),
+                    )
                     .await;
                 should_emit_token_count = true;
                 should_emit_turn_diff = true;
@@ -2427,9 +2441,18 @@ async fn generate_sub_agent_activity_summary_inner(
                     break;
                 }
             }
-            Ok(ResponseEvent::Completed { token_usage, .. }) => {
-                sess.record_auxiliary_token_usage(&turn_context, token_usage.as_ref())
-                    .await;
+            Ok(ResponseEvent::Completed {
+                response_id,
+                token_usage,
+                ..
+            }) => {
+                sess.record_auxiliary_token_usage(
+                    &turn_context,
+                    Some(response_id.as_str()),
+                    token_usage.as_ref(),
+                    "subagent_activity_summary",
+                )
+                .await;
                 let summary = normalize_activity_summary(&generated);
                 tracing::info!(
                     elapsed_ms = request_started_at.elapsed().as_millis(),

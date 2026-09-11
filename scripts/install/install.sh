@@ -370,7 +370,10 @@ validate_tag() {
 
 validate_target() {
   case "$1" in
-    aarch64-apple-darwin | x86_64-apple-darwin | aarch64-unknown-linux-musl | x86_64-unknown-linux-musl)
+    aarch64-apple-darwin | aarch64-unknown-linux-gnu | x86_64-unknown-linux-gnu)
+      ;;
+    x86_64-apple-darwin | aarch64-unknown-linux-musl | x86_64-unknown-linux-musl)
+      die "Unsupported target $1: the model router has no compatible pinned ONNX Runtime."
       ;;
     *)
       die "Unsupported target: $1"
@@ -466,12 +469,14 @@ detect_target() {
     fi
   fi
 
-  if [ "$os" = "darwin" ]; then
+  if [ "$os" = "darwin" ] && [ "$arch" = "x86_64" ]; then
+    die "Intel macOS packages are unsupported because the model router has no compatible pinned ONNX Runtime."
+  elif [ "$os" = "darwin" ]; then
     printf '%s-apple-darwin\n' "$arch"
   elif [ "$arch" = "aarch64" ]; then
-    printf 'aarch64-unknown-linux-musl\n'
+    printf 'aarch64-unknown-linux-gnu\n'
   else
-    printf 'x86_64-unknown-linux-musl\n'
+    printf 'x86_64-unknown-linux-gnu\n'
   fi
 }
 

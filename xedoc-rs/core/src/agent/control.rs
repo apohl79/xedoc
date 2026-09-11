@@ -1,9 +1,11 @@
 use crate::agent::AgentStatus;
 use crate::agent::registry::AgentMetadata;
 use crate::agent::registry::AgentRegistry;
+use crate::agent::registry::SpawnReservation;
 use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::resolve_role_config;
 use crate::agent::status::is_final;
+use crate::agent_communication::AbPairTransportMetadata;
 use crate::agent_communication::AgentCommunicationContext;
 use crate::agent_communication::AgentCommunicationKind;
 use crate::config::Config;
@@ -95,12 +97,37 @@ pub(crate) enum SpawnAgentForkMode {
     LastNTurns(usize),
 }
 
-#[derive(Clone, Debug, Default)]
 pub(crate) struct SpawnAgentOptions {
     pub(crate) fork_parent_spawn_call_id: Option<String>,
     pub(crate) fork_mode: Option<SpawnAgentForkMode>,
     pub(crate) parent_thread_id: Option<ThreadId>,
     pub(crate) environments: Option<Vec<TurnEnvironmentSelection>>,
+    pub(crate) pre_reserved_spawn_slot: Option<SpawnReservation>,
+    pub(crate) pre_reserved_v2_residency_slot: Option<residency::V2ResidencySlot>,
+}
+
+impl Default for SpawnAgentOptions {
+    fn default() -> Self {
+        Self {
+            fork_parent_spawn_call_id: None,
+            fork_mode: None,
+            parent_thread_id: None,
+            environments: None,
+            pre_reserved_spawn_slot: None,
+            pre_reserved_v2_residency_slot: None,
+        }
+    }
+}
+
+pub(crate) struct AbPairCapacityReservation {
+    first: SpawnAgentOptions,
+    second: SpawnAgentOptions,
+}
+
+impl AbPairCapacityReservation {
+    pub(crate) fn into_options(self) -> (SpawnAgentOptions, SpawnAgentOptions) {
+        (self.first, self.second)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -141,6 +168,7 @@ pub(crate) struct AgentControl {
     sub_agent_activity: Arc<Mutex<SubAgentActivityRegistry>>,
     v2_agent_io_locks: Arc<Mutex<HashMap<ThreadId, Arc<tokio::sync::Mutex<()>>>>>,
     v2_agent_io_generations: Arc<Mutex<HashMap<ThreadId, u64>>>,
+    ab_pair_transport: Arc<Mutex<HashMap<ThreadId, AbPairTransportMetadata>>>,
 }
 
 impl AgentControl {
@@ -629,6 +657,12 @@ impl AgentControl {
             );
         }
         if result.is_ok() {
+            if let Some(metadata) = context.ab_pair() {
+                self.ab_pair_transport
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(agent_id, metadata.clone());
+            }
             match last_task_message {
                 Some(last_task_message) => self
                     .state
@@ -637,6 +671,58 @@ impl AgentControl {
             }
         }
         result
+    }
+
+    async fn submit_staged_inter_agent_communication(
+        &self,
+        agent_id: ThreadId,
+        state: &Arc<ThreadManagerState>,
+        communication: InterAgentCommunication,
+        context: AgentCommunicationContext,
+        barrier_id: String,
+    ) -> XedocResult<String> {
+        let last_task_message = last_task_message_from_communication(&communication);
+        let result = self
+            .handle_thread_request_result(
+                agent_id,
+                state,
+                state
+                    .send_op(
+                        agent_id,
+                        Op::StageInterAgentCommunication {
+                            communication,
+                            barrier_id,
+                        },
+                    )
+                    .await,
+            )
+            .await;
+        if result.is_ok() {
+            if let Some(metadata) = context.ab_pair() {
+                self.ab_pair_transport
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(agent_id, metadata.clone());
+            }
+            match last_task_message {
+                Some(last_task_message) => self
+                    .state
+                    .update_last_task_message(agent_id, last_task_message),
+                None => self.state.clear_last_task_message(agent_id),
+            }
+        }
+        result
+    }
+
+    pub(crate) fn ab_pair_transport_for_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Option<AbPairTransportMetadata> {
+        self.ab_pair_transport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&thread_id)
+            .cloned()
     }
 
     /// Interrupt the current task for an existing agent thread.

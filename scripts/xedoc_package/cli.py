@@ -9,6 +9,7 @@ from .cargo import build_source_binaries
 from .layout import build_package_dir
 from .layout import prepare_package_dir
 from .layout import validate_package_dir
+from .model_router_runtime import install_runtime
 from .ripgrep import resolve_rg_bin
 from .targets import PACKAGE_VARIANTS
 from .targets import TARGET_SPECS
@@ -137,31 +138,35 @@ def main() -> int:
         ),
     )
     version = args.version or read_workspace_version()
-    inputs = PackageInputs(
-        entrypoint_bin=source_outputs.entrypoint_bin,
-        rg_bin=resolve_rg_bin(spec, args.rg_bin),
-        bwrap_bin=source_outputs.bwrap_bin,
-    )
-    prepare_package_dir(package_dir, force=args.force)
-    build_package_dir(
-        package_dir,
-        version,
-        variant,
-        spec,
-        inputs,
-        include_session_control=args.include_session_control,
-    )
-    validate_package_dir(
-        package_dir,
-        variant,
-        spec,
-        include_session_control=args.include_session_control,
-    )
+    with tempfile.TemporaryDirectory(
+        prefix="xedoc-model-router-runtime-"
+    ) as runtime_root:
+        inputs = PackageInputs(
+            entrypoint_bin=source_outputs.entrypoint_bin,
+            rg_bin=resolve_rg_bin(spec, args.rg_bin),
+            bwrap_bin=source_outputs.bwrap_bin,
+            model_router_runtime=install_runtime(spec, Path(runtime_root)),
+        )
+        prepare_package_dir(package_dir, force=args.force)
+        build_package_dir(
+            package_dir,
+            version,
+            variant,
+            spec,
+            inputs,
+            include_session_control=args.include_session_control,
+        )
+        validate_package_dir(
+            package_dir,
+            variant,
+            spec,
+            include_session_control=args.include_session_control,
+        )
 
-    for archive_output in args.archive_output:
-        archive_path = archive_output.resolve()
-        write_archive(package_dir, archive_path, force=args.force)
-        print(f"Built Xedoc package archive at {archive_path}")
+        for archive_output in args.archive_output:
+            archive_path = archive_output.resolve()
+            write_archive(package_dir, archive_path, force=args.force)
+            print(f"Built Xedoc package archive at {archive_path}")
 
     print(f"Built Xedoc package directory at {package_dir}")
     return 0

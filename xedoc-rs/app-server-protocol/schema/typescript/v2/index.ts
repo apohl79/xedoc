@@ -223,6 +223,13 @@ export type { ModelProviderOauthStartParams } from "./ModelProviderOauthStartPar
 export type { ModelProviderOauthStartResponse } from "./ModelProviderOauthStartResponse";
 export type { ModelRerouteReason } from "./ModelRerouteReason";
 export type { ModelReroutedNotification } from "./ModelReroutedNotification";
+export type { ModelRouterDecisionNotification } from "./ModelRouterDecisionNotification";
+export type { ModelRouterDecisionReason } from "./ModelRouterDecisionReason";
+export type { ModelRouterDisposition } from "./ModelRouterDisposition";
+export type { ModelRouterEffectiveRoute } from "./ModelRouterEffectiveRoute";
+export type { ModelRouterReportDay } from "./ModelRouterReportDay";
+export type { ModelRouterReportDecision } from "./ModelRouterReportDecision";
+export type { ModelRouterScope } from "./ModelRouterScope";
 export type { ModelSafetyBufferingUpdatedNotification } from "./ModelSafetyBufferingUpdatedNotification";
 export type { ModelServiceTier } from "./ModelServiceTier";
 export type { ModelUpgradeInfo } from "./ModelUpgradeInfo";

@@ -23,6 +23,7 @@ use xedoc_protocol::protocol::TokenUsage;
 pub(super) struct RemoteCompactV2Attempt {
     pub(super) prompt_input: Vec<ResponseItem>,
     pub(super) compaction_output: ResponseItem,
+    pub(super) response_id: String,
     pub(super) token_usage: Option<TokenUsage>,
     /// Keeps a session created for standalone compaction alive through lifecycle completion.
     pub(super) owned_client_session: Option<ModelClientSession>,
@@ -105,7 +106,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
     sess.send_event(
         turn_context,
         EventMsg::RawResponseCompleted(RawResponseCompletedEvent {
-            response_id,
+            response_id: response_id.clone(),
             token_usage: token_usage.clone(),
         }),
     )
@@ -115,6 +116,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
     Ok(RemoteCompactV2Attempt {
         prompt_input,
         compaction_output,
+        response_id,
         token_usage,
         owned_client_session,
     })

@@ -1,6 +1,7 @@
 mod backfill_state;
 mod graph;
 mod log;
+mod model_router;
 mod thread_goal;
 mod thread_metadata;
 
@@ -10,6 +11,10 @@ pub use graph::DirectionalThreadSpawnEdgeStatus;
 pub use log::LogEntry;
 pub use log::LogQuery;
 pub use log::LogRow;
+pub use model_router::ModelRouterAbOutcomeRecord;
+pub use model_router::ModelRouterDailyRecord;
+pub use model_router::ModelRouterDecisionRecord;
+pub use model_router::ModelRouterInvocationRecord;
 pub use thread_goal::ThreadGoal;
 pub use thread_goal::ThreadGoalStatus;
 pub use thread_metadata::Anchor;

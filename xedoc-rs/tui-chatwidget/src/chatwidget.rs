@@ -347,6 +347,7 @@ use self::plan_implementation::PLAN_IMPLEMENTATION_TITLE;
 mod model_manager;
 mod model_manager_prompts;
 mod model_popups;
+mod model_router;
 mod notifications;
 use self::notifications::Notification;
 mod permission_popups;

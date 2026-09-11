@@ -256,6 +256,8 @@ pub enum Feature {
     UseAgentIdentity,
     /// Enable workspace dependency support.
     WorkspaceDependencies,
+    /// Enable experimental model-router configuration and policy activation.
+    ModelRouter,
 
     // Removed
     /// Removed compatibility flag retained as a no-op so old configs can
@@ -1413,6 +1415,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         key: "workspace_dependencies",
         stage: Stage::Stable,
         default_enabled: true,
+    },
+    FeatureSpec {
+        id: Feature::ModelRouter,
+        key: "model_router",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
     },
 ];
 

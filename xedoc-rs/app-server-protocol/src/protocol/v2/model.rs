@@ -9,6 +9,10 @@ use xedoc_protocol::openai_models::ModelAvailabilityNux as CoreModelAvailability
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::openai_models::default_input_modalities;
 use xedoc_protocol::protocol::ModelRerouteReason as CoreModelRerouteReason;
+use xedoc_protocol::protocol::ModelRouterDecisionReason as CoreModelRouterDecisionReason;
+use xedoc_protocol::protocol::ModelRouterDisposition as CoreModelRouterDisposition;
+use xedoc_protocol::protocol::ModelRouterEffectiveRoute as CoreModelRouterEffectiveRoute;
+use xedoc_protocol::protocol::ModelRouterScope as CoreModelRouterScope;
 use xedoc_protocol::protocol::ModelVerification as CoreModelVerification;
 
 v2_enum_from_core!(
@@ -22,6 +26,64 @@ v2_enum_from_core!(
         TrustedAccessForCyber
     }
 );
+
+v2_enum_from_core!(
+    pub enum ModelRouterScope from CoreModelRouterScope {
+        Root,
+        Subagent
+    }
+);
+
+v2_enum_from_core!(
+    pub enum ModelRouterDisposition from CoreModelRouterDisposition {
+        Applied,
+        Shadow,
+        Fallback
+    }
+);
+
+v2_enum_from_core!(
+    pub enum ModelRouterDecisionReason from CoreModelRouterDecisionReason {
+        Classified,
+        LowConfidence,
+        NoClass,
+        EmbeddingFailed,
+        RouteUnavailable,
+        ExplicitOverride
+    }
+);
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(tag = "type", rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ModelRouterEffectiveRoute {
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Available {
+        provider_id: String,
+        model_slug: String,
+        reasoning_effort: String,
+    },
+    Unavailable,
+}
+
+impl From<CoreModelRouterEffectiveRoute> for ModelRouterEffectiveRoute {
+    fn from(value: CoreModelRouterEffectiveRoute) -> Self {
+        match value {
+            CoreModelRouterEffectiveRoute::Available {
+                provider_id,
+                model_slug,
+                reasoning_effort,
+            } => Self::Available {
+                provider_id,
+                model_slug,
+                reasoning_effort,
+            },
+            CoreModelRouterEffectiveRoute::Unavailable => Self::Unavailable,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
@@ -276,6 +338,148 @@ pub struct ModelReroutedNotification {
     pub from_model: String,
     pub to_model: String,
     pub reason: ModelRerouteReason,
+}
+
+/// Experimental metadata-only record of one local model-router decision.
+///
+/// This notification never contains prompt or output text.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterDecisionNotification {
+    pub decision_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub scope: ModelRouterScope,
+    pub disposition: ModelRouterDisposition,
+    pub reason: ModelRouterDecisionReason,
+    pub policy_revision: String,
+    pub proposed_provider_id: String,
+    pub proposed_model_slug: String,
+    pub proposed_reasoning_effort: String,
+    pub effective_route: ModelRouterEffectiveRoute,
+    pub prompt_sha256: String,
+    #[ts(type = "number")]
+    pub prompt_original_bytes: u64,
+    pub prompt_truncated: bool,
+    /// Unix timestamp in whole seconds when this immutable decision was made.
+    #[ts(type = "number")]
+    pub created_at: i64,
+}
+
+/// Bounded input for reading the local model-router report.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterReportReadParams {
+    /// Inclusive UTC-day start, as whole Unix seconds.
+    #[ts(optional = nullable, type = "number")]
+    pub from_day: Option<i64>,
+    /// Inclusive UTC-day end, as whole Unix seconds.
+    #[ts(optional = nullable, type = "number")]
+    pub through_day: Option<i64>,
+    /// Maximum recent decisions to return, capped by the server.
+    #[ts(optional = nullable)]
+    pub recent_limit: Option<u32>,
+}
+
+/// One persisted UTC-day aggregate for the local model router.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterReportDay {
+    /// UTC midnight as whole Unix seconds.
+    #[ts(type = "number")]
+    pub day: i64,
+    pub provider_id: String,
+    pub model_slug: String,
+    pub scope: String,
+    pub reasoning_effort: Option<String>,
+    #[ts(type = "number")]
+    pub decisions: i64,
+    #[ts(type = "number")]
+    pub invocations: i64,
+    #[ts(type = "number | null")]
+    pub input_tokens: Option<i64>,
+    #[ts(type = "number | null")]
+    pub cached_input_tokens: Option<i64>,
+    #[ts(type = "number | null")]
+    pub output_tokens: Option<i64>,
+    pub total_cost_usd: Option<f64>,
+    pub normalized_baseline_usd: Option<f64>,
+    pub estimated_savings_usd: Option<f64>,
+    pub ab_experiment_overhead_usd: Option<f64>,
+    #[ts(type = "number")]
+    pub attributed_invocations: i64,
+    #[ts(type = "number")]
+    pub unattributed_invocations: i64,
+    #[ts(type = "number")]
+    pub missing_usage_invocations: i64,
+    #[ts(type = "number")]
+    pub unknown_price_invocations: i64,
+    #[ts(type = "number")]
+    pub classified_decisions: i64,
+    #[ts(type = "number")]
+    pub fallback_decisions: i64,
+    pub average_score: Option<f64>,
+    pub average_margin: Option<f64>,
+}
+
+/// Metadata-only view of one recent local model-router decision.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterReportDecision {
+    pub decision_id: String,
+    pub scope: String,
+    pub class_id: Option<String>,
+    pub score: Option<f64>,
+    pub margin: Option<f64>,
+    pub disposition: String,
+    pub reason: String,
+    pub fallback: bool,
+    pub policy_revision: String,
+    pub proposed_provider_id: Option<String>,
+    pub proposed_model_slug: Option<String>,
+    pub proposed_reasoning_effort: Option<String>,
+    pub effective_provider_id: Option<String>,
+    pub effective_model_slug: Option<String>,
+    pub effective_reasoning_effort: Option<String>,
+    /// Creation time as whole Unix seconds.
+    #[ts(type = "number")]
+    pub created_at: i64,
+}
+
+/// Bounded report assembled from local model-router state.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterReportReadResponse {
+    /// Inclusive UTC-day start used for `days`.
+    #[ts(type = "number")]
+    pub from_day: i64,
+    /// Inclusive UTC-day end used for `days`.
+    #[ts(type = "number")]
+    pub through_day: i64,
+    pub days: Vec<ModelRouterReportDay>,
+    /// Whether aggregate rows exceeded the report's fixed response limit.
+    pub days_truncated: bool,
+    pub recent_decisions: Vec<ModelRouterReportDecision>,
+}
+
+/// Starts a local browser report for model-router activity.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterReportOpenParams {}
+
+/// A short-lived local URL for the model-router browser report.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterReportOpenResponse {
+    /// Loopback URL whose fragment contains the read-only capability.
+    pub url: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]

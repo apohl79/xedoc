@@ -40,6 +40,7 @@ class PackageInputs:
     entrypoint_bin: Path
     rg_bin: Path
     bwrap_bin: Path | None
+    model_router_runtime: Path | None = None
 
 
 PACKAGE_VARIANTS: dict[str, PackageVariant] = {
@@ -62,29 +63,11 @@ TARGET_SPECS: dict[str, TargetSpec] = {
         is_linux=True,
         dotslash_platform="linux-x86_64",
     ),
-    "x86_64-unknown-linux-musl": TargetSpec(
-        target="x86_64-unknown-linux-musl",
-        is_windows=False,
-        is_linux=True,
-        dotslash_platform="linux-x86_64",
-    ),
     "aarch64-unknown-linux-gnu": TargetSpec(
         target="aarch64-unknown-linux-gnu",
         is_windows=False,
         is_linux=True,
         dotslash_platform="linux-aarch64",
-    ),
-    "aarch64-unknown-linux-musl": TargetSpec(
-        target="aarch64-unknown-linux-musl",
-        is_windows=False,
-        is_linux=True,
-        dotslash_platform="linux-aarch64",
-    ),
-    "x86_64-apple-darwin": TargetSpec(
-        target="x86_64-apple-darwin",
-        is_windows=False,
-        is_linux=False,
-        dotslash_platform="macos-x86_64",
     ),
     "aarch64-apple-darwin": TargetSpec(
         target="aarch64-apple-darwin",
@@ -108,9 +91,8 @@ TARGET_SPECS: dict[str, TargetSpec] = {
 
 HOST_RELEASE_TARGETS: dict[tuple[str, str], str] = {
     ("darwin", "aarch64"): "aarch64-apple-darwin",
-    ("darwin", "x86_64"): "x86_64-apple-darwin",
-    ("linux", "aarch64"): "aarch64-unknown-linux-musl",
-    ("linux", "x86_64"): "x86_64-unknown-linux-musl",
+    ("linux", "aarch64"): "aarch64-unknown-linux-gnu",
+    ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
     ("windows", "aarch64"): "aarch64-pc-windows-msvc",
     ("windows", "x86_64"): "x86_64-pc-windows-msvc",
 }
@@ -122,6 +104,12 @@ def default_target() -> str:
     target = HOST_RELEASE_TARGETS.get((system, machine))
     if target is None:
         supported = ", ".join(sorted(TARGET_SPECS))
+        if (system, machine) == ("darwin", "x86_64"):
+            raise RuntimeError(
+                "Intel macOS packages are unsupported because the model router "
+                "has no compatible pinned ONNX Runtime. "
+                f"Supported targets: {supported}"
+            )
         raise RuntimeError(
             f"Unsupported host platform {platform.system()}/{platform.machine()}. "
             f"Pass --target explicitly. Supported targets: {supported}"

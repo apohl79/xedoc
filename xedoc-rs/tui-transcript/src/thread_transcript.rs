@@ -236,6 +236,18 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
         ThreadItem::ContextCompaction { .. } => {
             vec!["context compacted".dim().into()]
         }
+        ThreadItem::ModelRouterDecision {
+            scope,
+            disposition,
+            reason,
+            effective_route,
+            ..
+        } => crate::history_cell::model_router_decision_lines(
+            scope.clone(),
+            disposition.clone(),
+            reason.clone(),
+            effective_route.clone(),
+        ),
         ThreadItem::UserMessage { .. }
         | ThreadItem::AgentMessage { .. }
         | ThreadItem::Plan { .. }
