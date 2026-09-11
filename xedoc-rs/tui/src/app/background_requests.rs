@@ -109,6 +109,23 @@ impl App {
         });
     }
 
+    pub(super) fn control_model_router_ab(
+        &mut self,
+        app_server: &AppServerSession,
+        thread_id: ThreadId,
+        action: xedoc_app_server_protocol::ModelRouterAbControlAction,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result =
+                crate::config_update::control_model_router_ab(request_handle, thread_id, action)
+                    .await
+                    .map_err(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelRouterAbControlLoaded { result });
+        });
+    }
+
     pub(super) fn fetch_mcp_inventory(
         &mut self,
         app_server: &AppServerSession,

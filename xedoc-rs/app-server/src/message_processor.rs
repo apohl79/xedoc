@@ -884,6 +884,11 @@ impl MessageProcessor {
                 .model_manager_processor
                 .update(params)
                 .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterAbControl { params, .. } => self
+                .thread_processor
+                .model_router_ab_control(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ModelRouterReportRead { params, .. } => self
                 .model_router_report_processor
                 .read(params)

@@ -440,6 +440,32 @@ enum RunningThreadResumeResult {
 }
 
 impl ThreadRequestProcessor {
+    pub(crate) async fn model_router_ab_control(
+        &self,
+        params: xedoc_app_server_protocol::ModelRouterAbControlParams,
+    ) -> Result<xedoc_app_server_protocol::ModelRouterAbControlResponse, JSONRPCErrorError> {
+        let thread_id = ThreadId::from_string(&params.thread_id)
+            .map_err(|error| invalid_request(format!("invalid thread id: {error}")))?;
+        let thread = self
+            .thread_manager
+            .get_thread(thread_id)
+            .await
+            .map_err(|error| invalid_request(format!("failed to load thread: {error}")))?;
+        let action = match params.action {
+            xedoc_app_server_protocol::ModelRouterAbControlAction::ArmNext => {
+                xedoc_protocol::protocol::ModelRouterAbControlAction::ArmNext
+            }
+            xedoc_app_server_protocol::ModelRouterAbControlAction::Disable => {
+                xedoc_protocol::protocol::ModelRouterAbControlAction::Disable
+            }
+        };
+        thread
+            .submit(xedoc_protocol::protocol::Op::ModelRouterAbControl { action })
+            .await
+            .map_err(|error| invalid_request(format!("failed to control A/B session: {error}")))?;
+        Ok(xedoc_app_server_protocol::ModelRouterAbControlResponse {})
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         auth_manager: Arc<AuthManager>,

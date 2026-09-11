@@ -18,6 +18,9 @@ pub fn server_request_thread_id(request: &ServerRequest) -> Option<ThreadId> {
         ServerRequest::McpServerElicitationRequest { params, .. } => {
             ThreadId::from_string(&params.thread_id).ok()
         }
+        ServerRequest::ModelRouterRequestApproval { params, .. } => {
+            ThreadId::from_string(&params.thread_id).ok()
+        }
         ServerRequest::PermissionsRequestApproval { params, .. } => {
             ThreadId::from_string(&params.thread_id).ok()
         }

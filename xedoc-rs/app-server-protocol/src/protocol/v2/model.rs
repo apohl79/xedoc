@@ -78,6 +78,29 @@ pub struct ModelRouterRoute {
     pub reasoning_effort: String,
 }
 
+/// A direct user control for the next root-turn A/B experiment.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ModelRouterAbControlAction {
+    ArmNext,
+    Disable,
+}
+
+/// Request a root-thread model-router A/B control action.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterAbControlParams {
+    pub thread_id: String,
+    pub action: ModelRouterAbControlAction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterAbControlResponse {}
+
 /// The action a user takes on a model-router proposal.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]

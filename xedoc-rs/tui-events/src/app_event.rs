@@ -20,6 +20,7 @@ use xedoc_app_server_protocol::McpServerStatus;
 use xedoc_app_server_protocol::McpServerStatusDetail;
 use xedoc_app_server_protocol::ModelManagerReadResponse;
 use xedoc_app_server_protocol::ModelManagerUpdateParams;
+use xedoc_app_server_protocol::ModelRouterAbControlAction;
 use xedoc_app_server_protocol::PluginInstallResponse;
 use xedoc_app_server_protocol::PluginListResponse;
 use xedoc_app_server_protocol::PluginReadParams;
@@ -732,6 +733,12 @@ pub enum AppEvent {
 
     /// Open the bounded model-router browser report.
     ModelRouterReportOpenRequested,
+    ModelRouterAbControlRequested {
+        action: ModelRouterAbControlAction,
+    },
+    ModelRouterAbControlLoaded {
+        result: Result<(), String>,
+    },
 
     /// Deliver the model-router browser report capability URL.
     ModelRouterReportOpenLoaded {

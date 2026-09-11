@@ -25,6 +25,7 @@ use xedoc_app_server_protocol::TokenUsageOptimizerReadResponse;
 use xedoc_config::loader::project_trust_key;
 use xedoc_config::types::ToolCallRenderingMode;
 use xedoc_features::FEATURES;
+use xedoc_protocol::ThreadId;
 use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use xedoc_protocol::config_types::TrustLevel;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
@@ -224,6 +225,24 @@ pub(crate) async fn open_model_router_report(
         })
         .await
         .wrap_err("modelRouterReport/open failed in TUI")
+}
+
+pub(crate) async fn control_model_router_ab(
+    request_handle: AppServerRequestHandle,
+    thread_id: ThreadId,
+    action: xedoc_app_server_protocol::ModelRouterAbControlAction,
+) -> Result<()> {
+    let request_id = RequestId::String(format!("tui-model-router-ab-{}", Uuid::new_v4()));
+    request_handle
+        .request_typed(ClientRequest::ModelRouterAbControl {
+            request_id,
+            params: xedoc_app_server_protocol::ModelRouterAbControlParams {
+                thread_id: thread_id.to_string(),
+                action,
+            },
+        })
+        .await
+        .wrap_err("modelRouter/abControl failed in TUI")
 }
 
 pub(crate) async fn read_token_usage_optimizer_report(

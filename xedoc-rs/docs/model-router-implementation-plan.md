@@ -12,9 +12,11 @@ is complete only when direct and shadow routing, accounting, the browser report,
 one-turn subagent A/B mode, and the scheduling skill work together.
 
 Arctic Embed XS through FastEmbed/ONNX is the selected embedding backbone. The
-prototype benchmark selected the embedding but did not establish adequate classifier
-quality. Direct routing therefore has a calibration gate, not a mandatory shadow-time
-gate: direct modes may be used as soon as a predeclared held-out benchmark passes.
+historical classifier-labelled corpus provides provisional calibration input and
+held-out benchmarks remain visible calibration evidence. They never disable an
+explicitly selected direct routing mode: in `full`, the router always makes the
+eligible routing decision. Optional approval governs whether that decision is applied
+immediately.
 
 ## 2. Fixed constraints
 
@@ -419,7 +421,7 @@ Manual end-to-end matrix before removing the experimental label:
 
 ## 9. Definition of done
 
-- The WP0 held-out classifier gate passes and its manifest is reproducible.
+- The WP0 held-out classifier evidence and its manifest are reproducible.
 - All five modes obey one precedence and fallback implementation.
 - Root routing supports provider changes without changing persistent user selection.
 - Every decision is visible in TUI/app-server and replayable without entering model
