@@ -540,10 +540,21 @@ impl Session {
         }
     }
 
-    pub(crate) async fn take_model_router_ab_pair_for_spawn(
+    pub(crate) async fn model_router_ab_pair_for_spawn(
         &self,
     ) -> Option<crate::session::ab_pairs::ActiveAbPair> {
-        self.model_router_ab.lock().await.take_for_spawn()
+        self.model_router_ab.lock().await.candidate_for_spawn()
+    }
+
+    pub(crate) async fn commit_model_router_ab_pair_for_spawn(&self, pair_id: &str) -> bool {
+        self.model_router_ab.lock().await.commit_for_spawn(pair_id)
+    }
+
+    pub(crate) async fn restore_model_router_ab_pair_after_failed_spawn(&self, pair_id: &str) {
+        self.model_router_ab
+            .lock()
+            .await
+            .restore_after_failed_spawn(pair_id);
     }
 
     pub(crate) async fn remember_model_router_decision(&self, turn_id: &str, decision_id: String) {

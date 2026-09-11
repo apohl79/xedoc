@@ -59,16 +59,35 @@ impl AbPairRuntime {
             routed_decision_id: None,
             spawned: false,
         });
-        self.armed_for_next_root_turn = false;
     }
 
-    pub(crate) fn take_for_spawn(&mut self) -> Option<ActiveAbPair> {
-        let active = self.active.as_mut()?;
-        if active.spawned {
-            return None;
+    pub(crate) fn candidate_for_spawn(&self) -> Option<ActiveAbPair> {
+        self.active
+            .as_ref()
+            .filter(|active| !active.spawned)
+            .cloned()
+    }
+
+    pub(crate) fn commit_for_spawn(&mut self, pair_id: &str) -> bool {
+        let Some(active) = self.active.as_mut() else {
+            return false;
+        };
+        if active.pair_id != pair_id || active.spawned {
+            return false;
         }
         active.spawned = true;
-        Some(active.clone())
+        self.armed_for_next_root_turn = false;
+        true
+    }
+
+    pub(crate) fn restore_after_failed_spawn(&mut self, pair_id: &str) {
+        if let Some(active) = self.active.as_mut()
+            && active.pair_id == pair_id
+            && active.spawned
+        {
+            active.spawned = false;
+            self.armed_for_next_root_turn = true;
+        }
     }
 
     pub(crate) fn set_router_decision_id(&mut self, pair_id: &str, router_decision_id: String) {
