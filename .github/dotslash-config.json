@@ -6,16 +6,12 @@
           "regex": "^xedoc-package-aarch64-apple-darwin\\.tar\\.zst$",
           "path": "bin/xedoc"
         },
-        "macos-x86_64": {
-          "regex": "^xedoc-package-x86_64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/xedoc"
-        },
         "linux-x86_64": {
-          "regex": "^xedoc-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
+          "regex": "^xedoc-package-x86_64-unknown-linux-gnu\\.tar\\.zst$",
           "path": "bin/xedoc"
         },
         "linux-aarch64": {
-          "regex": "^xedoc-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
+          "regex": "^xedoc-package-aarch64-unknown-linux-gnu\\.tar\\.zst$",
           "path": "bin/xedoc"
         },
         "windows-x86_64": {
@@ -34,16 +30,12 @@
           "regex": "^xedoc-app-server-package-aarch64-apple-darwin\\.tar\\.zst$",
           "path": "bin/xedoc-app-server"
         },
-        "macos-x86_64": {
-          "regex": "^xedoc-app-server-package-x86_64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/xedoc-app-server"
-        },
         "linux-x86_64": {
-          "regex": "^xedoc-app-server-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
+          "regex": "^xedoc-app-server-package-x86_64-unknown-linux-gnu\\.tar\\.zst$",
           "path": "bin/xedoc-app-server"
         },
         "linux-aarch64": {
-          "regex": "^xedoc-app-server-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
+          "regex": "^xedoc-app-server-package-aarch64-unknown-linux-gnu\\.tar\\.zst$",
           "path": "bin/xedoc-app-server"
         },
         "windows-x86_64": {

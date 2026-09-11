@@ -170,6 +170,18 @@ impl ChatWidget {
             ThreadItem::ContextCompaction { .. } => {
                 self.add_info_message("Context compacted".to_string(), /*hint*/ None);
             }
+            ThreadItem::ModelRouterDecision {
+                scope,
+                disposition,
+                reason,
+                effective_route,
+                ..
+            } => self.add_to_history(history_cell::new_model_router_decision_item(
+                scope,
+                disposition,
+                reason,
+                effective_route,
+            )),
             ThreadItem::HookPrompt { .. } => {}
             ThreadItem::CollabAgentToolCall {
                 id,

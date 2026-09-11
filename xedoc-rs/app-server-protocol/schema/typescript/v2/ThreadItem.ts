@@ -22,6 +22,10 @@ import type { McpToolCallAppContext } from "./McpToolCallAppContext";
 import type { McpToolCallError } from "./McpToolCallError";
 import type { McpToolCallResult } from "./McpToolCallResult";
 import type { McpToolCallStatus } from "./McpToolCallStatus";
+import type { ModelRouterDecisionReason } from "./ModelRouterDecisionReason";
+import type { ModelRouterDisposition } from "./ModelRouterDisposition";
+import type { ModelRouterEffectiveRoute } from "./ModelRouterEffectiveRoute";
+import type { ModelRouterScope } from "./ModelRouterScope";
 import type { PatchApplyStatus } from "./PatchApplyStatus";
 import type { SubAgentActivityKind } from "./SubAgentActivityKind";
 import type { UserInput } from "./UserInput";
@@ -105,4 +109,4 @@ reasoningEffort: ReasoningEffort | null,
 /**
  * Last known status of the target agents, when available.
  */
-agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, modelProvider: string | null, model: string | null, reasoningEffort: ReasoningEffort | null, currentActivity: string | null, } | { "type": "webSearch" } & WebSearchItem | { "type": "imageView", id: string, path: LegacyAppPathString, } | { "type": "sleep" } & SleepItem | { "type": "imageGeneration" } & ImageGenerationItem | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, };
+agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, modelProvider: string | null, model: string | null, reasoningEffort: ReasoningEffort | null, currentActivity: string | null, } | { "type": "webSearch" } & WebSearchItem | { "type": "imageView", id: string, path: LegacyAppPathString, } | { "type": "sleep" } & SleepItem | { "type": "imageGeneration" } & ImageGenerationItem | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, } | { "type": "modelRouterDecision", id: string, scope: ModelRouterScope, disposition: ModelRouterDisposition, reason: ModelRouterDecisionReason, proposedProviderId: string, proposedModelSlug: string, proposedReasoningEffort: string, effectiveRoute: ModelRouterEffectiveRoute, };

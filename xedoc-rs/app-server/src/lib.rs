@@ -93,6 +93,7 @@ mod image_url;
 pub mod in_process;
 mod mcp_refresh;
 mod message_processor;
+mod model_router_report_server;
 mod models;
 mod models_refresh_worker;
 mod plugin_watcher;

@@ -5363,6 +5363,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         pending_mcp_server_refresh_config: Mutex::new(None),
         active_turn: Mutex::new(None),
         input_queue: super::input_queue::InputQueue::new(),
+        model_router_ab: Mutex::new(super::ab_pairs::AbPairRuntime::default()),
+        model_router_decision_ids: Mutex::new(HashMap::new()),
         services,
         next_internal_sub_id: AtomicU64::new(0),
     };
@@ -7206,6 +7208,8 @@ where
         pending_mcp_server_refresh_config: Mutex::new(None),
         active_turn: Mutex::new(None),
         input_queue: super::input_queue::InputQueue::new(),
+        model_router_ab: Mutex::new(super::ab_pairs::AbPairRuntime::default()),
+        model_router_decision_ids: Mutex::new(HashMap::new()),
         services,
         next_internal_sub_id: AtomicU64::new(0),
     });

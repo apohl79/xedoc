@@ -185,6 +185,7 @@ use xedoc_protocol::error::XedocErr;
 #[cfg(test)]
 use xedoc_protocol::exec_output::StreamOutput;
 
+pub(crate) mod ab_pairs;
 mod config_lock;
 pub(crate) mod context_window;
 mod handlers;
@@ -192,10 +193,12 @@ mod inject;
 mod input_queue;
 mod mcp;
 mod mcp_runtime;
+mod model_router_usage;
 pub(crate) mod multi_agents;
 mod review;
 mod rollout_budget;
 mod rollout_reconstruction;
+mod root_shadow_routing;
 #[allow(clippy::module_inception)]
 pub(crate) mod session;
 mod session_name;
@@ -443,6 +446,121 @@ const CYBER_VERIFY_URL: &str = "https://chatgpt.com/cyber";
 const CYBER_SAFETY_URL: &str = "https://developers.openai.com/codex/concepts/cyber-safety";
 
 impl Session {
+    pub(crate) async fn arm_model_router_ab_next(&self) {
+        self.model_router_ab.lock().await.arm_next();
+    }
+
+    pub(crate) async fn disable_model_router_ab(&self) {
+        self.model_router_ab.lock().await.disable();
+    }
+
+    pub(crate) async fn begin_model_router_ab_root_turn(
+        &self,
+        orchestrator_route: xedoc_model_router::ModelRoute,
+    ) {
+        self.model_router_ab
+            .lock()
+            .await
+            .begin_root_turn(orchestrator_route);
+    }
+
+    pub(crate) async fn record_model_router_ab_preference(
+        &self,
+        pair_id: &str,
+        preference: crate::session::ab_pairs::AbPairPreference,
+    ) -> bool {
+        let record = {
+            let mut ab = self.model_router_ab.lock().await;
+            let Some(active) = ab.active.as_mut() else {
+                return false;
+            };
+            if active.pair_id != pair_id || active.preference.is_some() {
+                return false;
+            }
+            active.preference = Some(preference);
+            xedoc_state::ModelRouterAbOutcomeRecord {
+                pair_id: active.pair_id.clone(),
+                thread_id: self.thread_id.to_string(),
+                turn_id: active.turn_id.clone().unwrap_or_default(),
+                routed_decision_id: active.routed_decision_id.clone(),
+                orchestrator_decision_id: None,
+                outcome: preference.as_str().to_string(),
+                created_at: crate::turn_timing::now_unix_timestamp_ms() / 1_000,
+            }
+        };
+        if let Some(state_db) = self.state_db()
+            && let Err(error) = state_db.upsert_model_router_ab_outcome(&record).await
+        {
+            tracing::warn!(%error, pair_id, "failed to persist model-router A/B outcome");
+        }
+        true
+    }
+
+    pub(crate) async fn set_model_router_ab_decision_id(
+        &self,
+        pair_id: &str,
+        router_decision_id: String,
+    ) {
+        self.model_router_ab
+            .lock()
+            .await
+            .set_router_decision_id(pair_id, router_decision_id);
+    }
+
+    pub(crate) async fn start_model_router_ab_outcome(
+        &self,
+        pair_id: &str,
+        turn_id: &str,
+        routed_decision_id: Option<String>,
+    ) {
+        let record = {
+            let mut ab = self.model_router_ab.lock().await;
+            let Some(active) = ab.active.as_mut() else {
+                return;
+            };
+            if active.pair_id != pair_id {
+                return;
+            }
+            active.turn_id = Some(turn_id.to_string());
+            active.routed_decision_id = routed_decision_id.clone();
+            xedoc_state::ModelRouterAbOutcomeRecord {
+                pair_id: active.pair_id.clone(),
+                thread_id: self.thread_id.to_string(),
+                turn_id: turn_id.to_string(),
+                routed_decision_id,
+                orchestrator_decision_id: None,
+                outcome: "pending".to_string(),
+                created_at: crate::turn_timing::now_unix_timestamp_ms() / 1_000,
+            }
+        };
+        if let Some(state_db) = self.state_db()
+            && let Err(error) = state_db.upsert_model_router_ab_outcome(&record).await
+        {
+            tracing::warn!(%error, pair_id, "failed to start model-router A/B outcome");
+        }
+    }
+
+    pub(crate) async fn take_model_router_ab_pair_for_spawn(
+        &self,
+    ) -> Option<crate::session::ab_pairs::ActiveAbPair> {
+        self.model_router_ab.lock().await.take_for_spawn()
+    }
+
+    pub(crate) async fn remember_model_router_decision(&self, turn_id: &str, decision_id: String) {
+        self.model_router_decision_ids
+            .lock()
+            .await
+            .insert(turn_id.to_string(), decision_id);
+    }
+
+    pub(crate) async fn model_router_decision_id(&self, turn_id: &str) -> Option<String> {
+        self.model_router_decision_ids
+            .lock()
+            .await
+            .get(turn_id)
+            .cloned()
+    }
+
     /// Spawn and initialize a new session.
     pub(crate) async fn spawn(args: SessionSpawnArgs) -> XedocResult<(Arc<Self>, SessionIo)> {
         let parent_trace = match args.parent_trace {
@@ -3427,6 +3545,16 @@ impl Session {
         state.reference_context_item()
     }
 
+    /// Clears the incremental context baseline before a per-turn route switch.
+    ///
+    /// A provider, model, or effort selected only for one routed turn must
+    /// receive a complete local replay instead of a diff against a baseline
+    /// owned by the persistent orchestrator route.
+    pub(crate) async fn force_full_context_replay(&self) {
+        let mut state = self.state.lock().await;
+        state.set_reference_context_item(None);
+    }
+
     /// Persist the latest turn context snapshot for the first real user turn and for
     /// steady-state turns that emit model-visible context updates.
     ///
@@ -3527,21 +3655,10 @@ impl Session {
         world_state
     }
 
-    pub(crate) async fn update_token_usage_info(
+    pub(crate) async fn record_token_usage_info_with_response_id(
         &self,
         turn_context: &TurnContext,
-        token_usage: Option<&TokenUsage>,
-    ) -> XedocResult<()> {
-        let result = self
-            .record_token_usage_info(turn_context, token_usage)
-            .await;
-        self.send_token_count_event(turn_context).await;
-        result
-    }
-
-    pub(crate) async fn record_token_usage_info(
-        &self,
-        turn_context: &TurnContext,
+        response_id: Option<&str>,
         token_usage: Option<&TokenUsage>,
     ) -> XedocResult<()> {
         if let Some(token_usage) = token_usage {
@@ -3581,27 +3698,38 @@ impl Session {
             }
             budget_result?;
         }
+        self.record_model_router_invocation(turn_context, response_id, token_usage, "regular")
+            .await;
         Ok(())
     }
 
     pub(crate) async fn record_auxiliary_token_usage(
         &self,
         turn_context: &TurnContext,
+        response_id: Option<&str>,
         token_usage: Option<&TokenUsage>,
+        invocation_kind: &str,
     ) {
-        let Some(token_usage) = token_usage else {
-            return;
-        };
-        let mut state = self.state.lock().await;
-        let model_prices = turn_context
-            .config
-            .model_providers
-            .get(&turn_context.config.model_provider_id)
-            .and_then(|provider| provider.model_prices.as_ref());
-        state
-            .cost_tracker
-            .record_usage(&turn_context.model_info.slug, token_usage, model_prices);
-        drop(state);
+        if let Some(token_usage) = token_usage {
+            let mut state = self.state.lock().await;
+            let model_prices = turn_context
+                .config
+                .model_providers
+                .get(&turn_context.config.model_provider_id)
+                .and_then(|provider| provider.model_prices.as_ref());
+            state.cost_tracker.record_usage(
+                &turn_context.model_info.slug,
+                token_usage,
+                model_prices,
+            );
+        }
+        self.record_model_router_invocation(
+            turn_context,
+            response_id,
+            token_usage,
+            invocation_kind,
+        )
+        .await;
         self.send_token_count_event(turn_context).await;
     }
 

@@ -48,6 +48,7 @@ use xedoc_app_server_protocol::McpServerElicitationRequestResponse;
 use xedoc_app_server_protocol::McpServerStartupState;
 use xedoc_app_server_protocol::McpServerStatusUpdatedNotification;
 use xedoc_app_server_protocol::ModelReroutedNotification;
+use xedoc_app_server_protocol::ModelRouterDecisionNotification;
 use xedoc_app_server_protocol::ModelSafetyBufferingUpdatedNotification;
 use xedoc_app_server_protocol::ModelVerificationNotification;
 use xedoc_app_server_protocol::NetworkApprovalContext as V2NetworkApprovalContext;
@@ -292,6 +293,28 @@ pub(crate) async fn apply_bespoke_event_handling(
             };
             outgoing
                 .send_server_notification(ServerNotification::ModelRerouted(notification))
+                .await;
+        }
+        EventMsg::ModelRouterDecision(event) => {
+            let notification = ModelRouterDecisionNotification {
+                decision_id: event.decision_id,
+                thread_id: event.thread_id,
+                turn_id: event.turn_id,
+                scope: event.scope.into(),
+                disposition: event.disposition.into(),
+                reason: event.reason.into(),
+                policy_revision: event.policy_revision,
+                proposed_provider_id: event.proposed_provider_id,
+                proposed_model_slug: event.proposed_model_slug,
+                proposed_reasoning_effort: event.proposed_reasoning_effort,
+                effective_route: event.effective_route.into(),
+                prompt_sha256: event.prompt_sha256,
+                prompt_original_bytes: event.prompt_original_bytes,
+                prompt_truncated: event.prompt_truncated,
+                created_at: event.created_at,
+            };
+            outgoing
+                .send_server_notification(ServerNotification::ModelRouterDecision(notification))
                 .await;
         }
         EventMsg::ModelVerification(event) => {

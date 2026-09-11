@@ -72,6 +72,7 @@ xedoc-file-system = { workspace = true }
 xedoc-login = { workspace = true }
 xedoc-mcp = { workspace = true }
 xedoc-model-provider-info = { workspace = true }
+xedoc-model-router = { workspace = true }
 xedoc-models-manager = { workspace = true }
 xedoc-shell-command = { workspace = true }
 xedoc-execpolicy = { workspace = true }

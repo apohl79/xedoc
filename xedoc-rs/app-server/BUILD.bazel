@@ -2,6 +2,9 @@ load("//:defs.bzl", "xedoc_rust_crate")
 
 xedoc_rust_crate(
     name = "app-server",
+    compile_data = glob([
+        "src/model_router_report_assets/**",
+    ]),
     crate_name = "xedoc_app_server",
     extra_binaries = [
         "//xedoc-rs/bwrap:bwrap",

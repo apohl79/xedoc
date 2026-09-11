@@ -805,6 +805,18 @@ client_request_definitions! {
         serialization: global("model-manager"),
         response: v2::ModelManagerUpdateResponse,
     },
+    #[experimental("modelRouterReport/read")]
+    ModelRouterReportRead => "modelRouterReport/read" {
+        params: v2::ModelRouterReportReadParams,
+        serialization: global_shared_read("model-router-report"),
+        response: v2::ModelRouterReportReadResponse,
+    },
+    #[experimental("modelRouterReport/open")]
+    ModelRouterReportOpen => "modelRouterReport/open" {
+        params: v2::ModelRouterReportOpenParams,
+        serialization: global("model-router-report"),
+        response: v2::ModelRouterReportOpenResponse,
+    },
     ModelProviderApiKeySet => "modelProvider/apiKey/set" {
         params: v2::ModelProviderApiKeySetParams,
         serialization: global("model-manager"),
@@ -1537,6 +1549,8 @@ server_notification_definitions! {
     /// Deprecated: Use `ContextCompaction` item type instead.
     ContextCompacted => "thread/compacted" (v2::ContextCompactedNotification),
     ModelRerouted => "model/rerouted" (v2::ModelReroutedNotification),
+    #[experimental("modelRouter/decision")]
+    ModelRouterDecision => "modelRouter/decision" (v2::ModelRouterDecisionNotification),
     ModelVerification => "model/verification" (v2::ModelVerificationNotification),
     #[experimental("turn/moderationMetadata")]
     TurnModerationMetadata => "turn/moderationMetadata" (v2::TurnModerationMetadataNotification),

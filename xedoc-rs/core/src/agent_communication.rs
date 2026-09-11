@@ -11,6 +11,19 @@ pub(crate) enum AgentCommunicationKind {
     Result,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AbPairBranch {
+    Routed,
+    Orchestrator,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AbPairTransportMetadata {
+    pub(crate) pair_id: String,
+    pub(crate) branch: AbPairBranch,
+    pub(crate) router_decision_id: Option<String>,
+}
+
 impl AgentCommunicationKind {
     fn as_str(self) -> &'static str {
         match self {
@@ -26,6 +39,7 @@ impl AgentCommunicationKind {
 pub(crate) struct AgentCommunicationContext {
     kind: AgentCommunicationKind,
     sender_thread_id: ThreadId,
+    ab_pair: Option<AbPairTransportMetadata>,
 }
 
 impl AgentCommunicationContext {
@@ -33,7 +47,26 @@ impl AgentCommunicationContext {
         Self {
             kind,
             sender_thread_id,
+            ab_pair: None,
         }
+    }
+
+    pub(crate) fn with_ab_pair(
+        mut self,
+        pair_id: String,
+        branch: AbPairBranch,
+        router_decision_id: Option<String>,
+    ) -> Self {
+        self.ab_pair = Some(AbPairTransportMetadata {
+            pair_id,
+            branch,
+            router_decision_id,
+        });
+        self
+    }
+
+    pub(crate) fn ab_pair(&self) -> Option<&AbPairTransportMetadata> {
+        self.ab_pair.as_ref()
     }
 }
 

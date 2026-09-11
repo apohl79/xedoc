@@ -357,7 +357,8 @@ WHERE thread_id = ? AND turn_id = ?
             | ThreadItem::ImageGeneration(_)
             | ThreadItem::EnteredReviewMode { .. }
             | ThreadItem::ExitedReviewMode { .. }
-            | ThreadItem::ContextCompaction { .. } => {}
+            | ThreadItem::ContextCompaction { .. }
+            | ThreadItem::ModelRouterDecision { .. } => {}
         }
     }
     Ok(())

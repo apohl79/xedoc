@@ -720,6 +720,19 @@ pub enum AppEvent {
         level: String,
     },
 
+    /// Persist a model-router mode through the app server.
+    UpdateModelRouterMode {
+        mode: String,
+    },
+
+    /// Open the bounded model-router browser report.
+    ModelRouterReportOpenRequested,
+
+    /// Deliver the model-router browser report capability URL.
+    ModelRouterReportOpenLoaded {
+        result: Result<xedoc_app_server_protocol::ModelRouterReportOpenResponse, String>,
+    },
+
     /// Fetch durable token-usage optimizer aggregates from the active app-server.
     TokenUsageOptimizerStatsRequested,
 

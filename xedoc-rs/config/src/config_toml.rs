@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::HooksToml;
+use crate::model_router::ModelRouterConfigToml;
 use crate::permissions_toml::PermissionsToml;
 use crate::profile_toml::ConfigProfile;
 use crate::types::AppsConfigToml;
@@ -146,6 +147,10 @@ pub struct OrchestratorFeatureToml {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ConfigToml {
+    /// Experimental model-router controls and policy location.
+    #[serde(default)]
+    pub model_router: ModelRouterConfigToml,
+
     /// Optional override of model selection.
     pub model: Option<String>,
     /// Optional fast model used for side-band tasks on custom providers.

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Model router report</title>
+  <link rel="stylesheet" href="/report.css">
+</head>
+<body>
+  <main>
+    <h1>Model router report</h1>
+    <p id="status">Loading report…</p>
+    <section id="summary" class="summary" aria-label="Accounting summary"></section>
+    <p id="coverage" class="note"></p>
+    <p id="truncated" class="note" hidden></p>
+    <h2>Daily activity</h2>
+    <table>
+      <thead><tr><th>Day</th><th>Route</th><th>Scope</th><th>Tokens</th><th>Actual</th><th>Baseline</th><th>Savings</th><th>A/B overhead</th></tr></thead>
+      <tbody id="days"></tbody>
+    </table>
+    <h2>Recent decisions</h2>
+    <table>
+      <thead><tr><th>When</th><th>Scope</th><th>Route</th><th>Class / confidence</th><th>Fallback</th><th>Reason</th></tr></thead>
+      <tbody id="decisions"></tbody>
+    </table>
+  </main>
+  <script src="/report.js"></script>
+</body>
+</html>

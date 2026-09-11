@@ -28,6 +28,7 @@ use crate::request_processors::InitializeRequestProcessor;
 use crate::request_processors::MarketplaceRequestProcessor;
 use crate::request_processors::McpRequestProcessor;
 use crate::request_processors::ModelManagerRequestProcessor;
+use crate::request_processors::ModelRouterReportRequestProcessor;
 use crate::request_processors::PluginRequestProcessor;
 use crate::request_processors::ProcessExecRequestProcessor;
 use crate::request_processors::SearchRequestProcessor;
@@ -71,6 +72,7 @@ use xedoc_protocol::protocol::W3cTraceContext;
 use xedoc_rollout::StateDbHandle;
 use xedoc_state::log_db::LogDbLayer;
 
+use crate::model_router_report_server::ModelRouterReportServer;
 use crate::models_refresh_worker::ModelsRefreshWorker;
 
 const CONNECTION_RPC_DRAIN_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
@@ -103,6 +105,8 @@ pub(crate) struct MessageProcessor {
     marketplace_processor: MarketplaceRequestProcessor,
     mcp_processor: McpRequestProcessor,
     model_manager_processor: ModelManagerRequestProcessor,
+    model_router_report_processor: ModelRouterReportRequestProcessor,
+    model_router_report_server: ModelRouterReportServer,
     plugin_processor: PluginRequestProcessor,
     search_processor: SearchRequestProcessor,
     thread_goal_processor: ThreadGoalRequestProcessor,
@@ -330,6 +334,12 @@ impl MessageProcessor {
         );
         let model_manager_processor =
             ModelManagerRequestProcessor::new(Arc::clone(&config), auth_manager.clone());
+        let model_router_report_processor =
+            ModelRouterReportRequestProcessor::new(state_db.clone());
+        let model_router_report_server = ModelRouterReportServer::new(
+            model_router_report_processor.clone(),
+            config.model_router.report_url.clone(),
+        );
         let plugin_processor = PluginRequestProcessor::new(
             auth_manager.clone(),
             Arc::clone(&thread_manager),
@@ -406,6 +416,8 @@ impl MessageProcessor {
             marketplace_processor,
             mcp_processor,
             model_manager_processor,
+            model_router_report_processor,
+            model_router_report_server,
             plugin_processor,
             search_processor,
             thread_goal_processor,
@@ -420,6 +432,7 @@ impl MessageProcessor {
         self.models_refresh_worker.shutdown();
         self.plugin_watcher.shutdown();
         self.skills_watcher.shutdown();
+        self.model_router_report_server.shutdown();
     }
 
     pub(crate) async fn process_request(
@@ -870,6 +883,16 @@ impl MessageProcessor {
             ClientRequest::ModelManagerUpdate { params, .. } => self
                 .model_manager_processor
                 .update(params)
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterReportRead { params, .. } => self
+                .model_router_report_processor
+                .read(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterReportOpen { params: _, .. } => self
+                .model_router_report_server
+                .open()
+                .await
                 .map(|response| Some(response.into())),
             ClientRequest::ModelProviderApiKeySet { params, .. } => self
                 .model_manager_processor

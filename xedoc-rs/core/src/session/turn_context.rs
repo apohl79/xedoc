@@ -188,6 +188,10 @@ impl Session {
         }
     }
 
+    #[expect(
+        dead_code,
+        reason = "test-only turn construction exercises settings validation"
+    )]
     pub(crate) async fn new_turn_with_sub_id(
         &self,
         sub_id: String,
@@ -427,6 +431,57 @@ impl Session {
         .await
     }
 
+    pub(crate) async fn new_turn_from_current_settings_with_sub_id(
+        &self,
+        sub_id: String,
+        final_output_json_schema: Option<serde_json::Value>,
+    ) -> Arc<TurnContext> {
+        let session_configuration = self.default_turn_configuration().await;
+        self.new_turn_from_configuration(
+            sub_id,
+            session_configuration,
+            Some(final_output_json_schema),
+        )
+        .await
+    }
+
+    /// Builds one routed turn from an ephemeral session-configuration snapshot.
+    ///
+    /// Automatic routing must not update the persistent orchestrator selection.
+    /// Returning `None` leaves the caller free to run its already-built
+    /// fallback turn when route validation fails.
+    pub(crate) async fn new_routed_turn_from_current_settings_with_sub_id(
+        &self,
+        sub_id: String,
+        final_output_json_schema: Option<serde_json::Value>,
+        route: &xedoc_model_router::ModelRoute,
+    ) -> Option<Arc<TurnContext>> {
+        let mut session_configuration = self.default_turn_configuration().await;
+        let service_tier = session_configuration.service_tier.clone();
+        let config = Arc::make_mut(&mut session_configuration.original_config_do_not_use);
+        config.service_tier = service_tier;
+        if !crate::model_router::apply_route_to_config(config, &self.services.models_manager, route)
+            .await
+        {
+            return None;
+        }
+        session_configuration.provider = config.model_provider.clone();
+        session_configuration.collaboration_mode =
+            session_configuration.collaboration_mode.with_updates(
+                Some(route.model_slug.clone()),
+                Some(config.model_reasoning_effort.clone()),
+                /*developer_instructions*/ None,
+            );
+        Some(
+            self.new_turn_from_configuration(
+                sub_id,
+                session_configuration,
+                Some(final_output_json_schema),
+            )
+            .await,
+        )
+    }
+
     pub(crate) async fn new_startup_prewarm_turn_with_sub_id(
         &self,
         sub_id: String,
@@ -436,7 +491,7 @@ impl Session {
             .await
     }
 
-    async fn default_turn_configuration(&self) -> SessionConfiguration {
+    pub(super) async fn default_turn_configuration(&self) -> SessionConfiguration {
         let state = self.state.lock().await;
         state.session_configuration.clone()
     }

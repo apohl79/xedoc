@@ -669,13 +669,18 @@ async fn drain_to_completed(
                 sess.send_event(
                     turn_context,
                     EventMsg::RawResponseCompleted(RawResponseCompletedEvent {
-                        response_id,
+                        response_id: response_id.clone(),
                         token_usage: token_usage.clone(),
                     }),
                 )
                 .await;
-                sess.update_token_usage_info(turn_context, token_usage.as_ref())
-                    .await?;
+                sess.record_token_usage_info_with_response_id(
+                    turn_context,
+                    Some(response_id.as_str()),
+                    token_usage.as_ref(),
+                )
+                .await?;
+                sess.send_token_count_event(turn_context).await;
                 return Ok(());
             }
             Ok(_) => continue,

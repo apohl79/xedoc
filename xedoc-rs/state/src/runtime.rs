@@ -54,6 +54,7 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 mod backfill;
 mod goals;
 mod logs;
+mod model_router;
 mod recovery;
 #[cfg(test)]
 pub(crate) mod test_support;

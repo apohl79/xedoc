@@ -520,6 +520,9 @@
             "mentions_v2": {
               "type": "boolean"
             },
+            "model_router": {
+              "type": "boolean"
+            },
             "multi_agent": {
               "type": "boolean"
             },
@@ -1639,6 +1642,75 @@
           "description": "Which wire protocol this provider expects."
         }
       },
+      "type": "object"
+    },
+    "ModelRouterConfigToml": {
+      "additionalProperties": false,
+      "description": "Stable controls in `[model_router]`.",
+      "properties": {
+        "baseline": {
+          "$ref": "#/definitions/ModelRouterRoute"
+        },
+        "fallback": {
+          "type": "string"
+        },
+        "max_prompt_bytes": {
+          "default": 16384,
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "mode": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ModelRouterMode"
+            }
+          ],
+          "default": "off"
+        },
+        "policy_path": {
+          "$ref": "#/definitions/AbsolutePathBuf"
+        },
+        "report_url": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ModelRouterMode": {
+      "description": "Runtime mode for model-router decisions.",
+      "enum": [
+        "off",
+        "shadow-subagents",
+        "shadow-full",
+        "subagents",
+        "full"
+      ],
+      "type": "string"
+    },
+    "ModelRouterRoute": {
+      "additionalProperties": false,
+      "description": "A provider/model/reasoning route configured for reporting or fallback.",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            }
+          ],
+          "default": "medium"
+        }
+      },
+      "required": [
+        "model",
+        "provider"
+      ],
       "type": "object"
     },
     "ModelTokenPrices": {
@@ -3229,8 +3301,8 @@
               "$ref": "#/definitions/ToolCallRenderingMode"
             }
           ],
-          "default": "normal",
-          "description": "Controls how tool calls are rendered in the TUI transcript. Defaults to `normal`."
+          "default": "optimized",
+          "description": "Controls how tool calls are rendered in the TUI transcript. Defaults to `optimized`."
         },
         "vim_mode_default": {
           "default": false,
@@ -4822,6 +4894,9 @@
         "mentions_v2": {
           "type": "boolean"
         },
+        "model_router": {
+          "type": "boolean"
+        },
         "multi_agent": {
           "type": "boolean"
         },
@@ -5183,6 +5258,22 @@
     },
     "model_reasoning_summary": {
       "$ref": "#/definitions/ReasoningSummary"
+    },
+    "model_router": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/ModelRouterConfigToml"
+        }
+      ],
+      "default": {
+        "baseline": null,
+        "fallback": null,
+        "max_prompt_bytes": 16384,
+        "mode": "off",
+        "policy_path": null,
+        "report_url": null
+      },
+      "description": "Experimental model-router controls and policy location."
     },
     "model_verbosity": {
       "allOf": [

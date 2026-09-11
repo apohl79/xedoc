@@ -40,6 +40,8 @@ const RAW_USAGE: &str = "Usage: /raw [on|off]";
 const TOOL_RENDERING_USAGE: &str = "Usage: /tool-rendering [normal|optimized]";
 const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
 const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|report [days]|reset-stats|reset-report|on|off|level <conservative|balanced|aggressive>]";
+const MODEL_ROUTER_USAGE: &str =
+    "Usage: /model-router [status|mode <off|shadow-subagents|shadow-full|subagents|full>|report]";
 
 impl ChatWidget {
     /// Dispatch a bare slash command and record its staged local-history entry.
@@ -267,6 +269,12 @@ impl ChatWidget {
             SlashCommand::Personality => {
                 self.open_personality_popup();
                 self.defer_input_until_settings_applied();
+            }
+            SlashCommand::ModelRouter => {
+                self.add_info_message(
+                    format!("Model router mode: {:?}.", self.config.model_router.mode),
+                    Some("Use `mode <mode>` or `report`.".to_string()),
+                );
             }
             SlashCommand::TokenUsageOptimizer => {
                 let enabled = self.config.features.enabled(Feature::TokenUsageOptimizer);
@@ -687,6 +695,29 @@ impl ChatWidget {
                     _ => self.add_error_message(TOKEN_USAGE_OPTIMIZER_USAGE.to_string()),
                 }
             }
+            SlashCommand::ModelRouter => {
+                let mut parts = trimmed.split_whitespace();
+                match (parts.next(), parts.next(), parts.next()) {
+                    (None | Some("status"), None, None) => {
+                        self.dispatch_command(SlashCommand::ModelRouter);
+                    }
+                    (Some("mode"), Some(mode), None)
+                        if matches!(
+                            mode,
+                            "off" | "shadow-subagents" | "shadow-full" | "subagents" | "full"
+                        ) =>
+                    {
+                        self.app_event_tx.send(AppEvent::UpdateModelRouterMode {
+                            mode: mode.to_string(),
+                        });
+                    }
+                    (Some("report"), None, None) => {
+                        self.app_event_tx
+                            .send(AppEvent::ModelRouterReportOpenRequested);
+                    }
+                    _ => self.add_error_message(MODEL_ROUTER_USAGE.to_string()),
+                }
+            }
             SlashCommand::Rename if !trimmed.is_empty() => {
                 let mut rename_args = trimmed.split_whitespace();
                 if matches!(rename_args.next(), Some("--auto")) {
@@ -1024,6 +1055,7 @@ impl ChatWidget {
             | SlashCommand::Diff
             | SlashCommand::Rename
             | SlashCommand::TokenUsageOptimizer
+            | SlashCommand::ModelRouter
             | SlashCommand::TestApproval => QueueDrain::Continue,
             SlashCommand::New
             | SlashCommand::Archive

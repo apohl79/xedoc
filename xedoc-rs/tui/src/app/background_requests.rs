@@ -64,6 +64,31 @@ impl App {
         });
     }
 
+    pub(super) fn update_model_router_mode(&mut self, app_server: &AppServerSession, mode: String) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            if let Err(error) =
+                crate::config_update::write_model_router_mode(request_handle, mode).await
+            {
+                app_event_tx.send(AppEvent::ModelRouterReportOpenLoaded {
+                    result: Err(format!("Failed to update model-router mode: {error}")),
+                });
+            }
+        });
+    }
+
+    pub(super) fn open_model_router_report(&mut self, app_server: &AppServerSession) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::config_update::open_model_router_report(request_handle)
+                .await
+                .map_err(|err| err.to_string());
+            app_event_tx.send(AppEvent::ModelRouterReportOpenLoaded { result });
+        });
+    }
+
     pub(super) fn fetch_mcp_inventory(
         &mut self,
         app_server: &AppServerSession,

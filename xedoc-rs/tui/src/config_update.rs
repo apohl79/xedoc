@@ -183,6 +183,34 @@ pub(crate) async fn read_token_usage_optimizer(
         .wrap_err("tokenUsageOptimizer/read failed in TUI")
 }
 
+pub(crate) async fn write_model_router_mode(
+    request_handle: AppServerRequestHandle,
+    mode: String,
+) -> Result<()> {
+    write_config_batch(
+        request_handle,
+        vec![replace_config_value(
+            "model_router.mode",
+            serde_json::json!(mode),
+        )],
+    )
+    .await
+    .map(|_| ())
+}
+
+pub(crate) async fn open_model_router_report(
+    request_handle: AppServerRequestHandle,
+) -> Result<xedoc_app_server_protocol::ModelRouterReportOpenResponse> {
+    let request_id = RequestId::String(format!("tui-model-router-report-open-{}", Uuid::new_v4()));
+    request_handle
+        .request_typed(ClientRequest::ModelRouterReportOpen {
+            request_id,
+            params: xedoc_app_server_protocol::ModelRouterReportOpenParams {},
+        })
+        .await
+        .wrap_err("modelRouterReport/open failed in TUI")
+}
+
 pub(crate) async fn read_token_usage_optimizer_report(
     request_handle: AppServerRequestHandle,
     days: Option<u32>,
