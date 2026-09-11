@@ -1587,6 +1587,18 @@ async fn handle_server_request(
             )
             .await
         }
+        ServerRequest::ModelRouterRequestApproval { request_id, params } => {
+            reject_server_request(
+                client,
+                request_id,
+                &method,
+                format!(
+                    "model-router approval is not supported in exec mode for thread `{}`",
+                    params.thread_id
+                ),
+            )
+            .await
+        }
         ServerRequest::ToolRequestUserInput { request_id, params } => {
             reject_server_request(
                 client,
