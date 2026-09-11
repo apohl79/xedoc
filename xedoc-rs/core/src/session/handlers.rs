@@ -279,9 +279,10 @@ pub(super) async fn user_input_or_turn_inner(
                             tracing::warn!(%error, "failed to persist model-router classifier feedback");
                         } else if let Err(error) =
                             crate::model_router::ModelRouterService::recalibrate_from_feedback(
-                                current_context.config.as_ref(),
-                                &feedback_path,
+                                current_context.config.clone(),
+                                feedback_path,
                             )
+                            .await
                         {
                             tracing::warn!(%error, "failed to recalibrate model-router classifier");
                         }

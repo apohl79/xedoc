@@ -148,7 +148,18 @@ impl ModelRouterService {
     ///
     /// The policy store reload keeps subsequent decisions in this process on
     /// the newly calibrated class heads.
-    pub(crate) fn recalibrate_from_feedback(
+    pub(crate) async fn recalibrate_from_feedback(
+        config: std::sync::Arc<Config>,
+        feedback_path: xedoc_utils_absolute_path::AbsolutePathBuf,
+    ) -> Result<xedoc_model_router::FeedbackCalibrationReport, String> {
+        tokio::task::spawn_blocking(move || {
+            Self::recalibrate_from_feedback_sync(&config, feedback_path.as_path())
+        })
+        .await
+        .map_err(|error| format!("model-router recalibration worker failed: {error}"))?
+    }
+
+    fn recalibrate_from_feedback_sync(
         config: &Config,
         feedback_path: &Path,
     ) -> Result<xedoc_model_router::FeedbackCalibrationReport, String> {

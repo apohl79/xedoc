@@ -145,9 +145,10 @@ async fn handle_spawn_agent(
                 tracing::warn!(%error, "failed to persist model-router classifier feedback");
             } else if let Err(error) =
                 crate::model_router::ModelRouterService::recalibrate_from_feedback(
-                    turn.config.as_ref(),
-                    &feedback_path,
+                    turn.config.clone(),
+                    feedback_path,
                 )
+                .await
             {
                 tracing::warn!(%error, "failed to recalibrate model-router classifier");
             }
