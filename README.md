@@ -3,6 +3,8 @@
 Xedoc is a terminal-first coding agent for teams that want to choose their
 models and providers without giving up coordinated agent workflows.
 
+![Xedoc model-router progress](assets/model-router-progress.png)
+
 ## Highlights
 
 - **Cross-provider subagents** — assign a child agent a different configured
