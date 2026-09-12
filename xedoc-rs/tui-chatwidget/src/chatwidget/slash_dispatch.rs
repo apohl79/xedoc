@@ -42,11 +42,19 @@ const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
 const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|report [days]|reset-stats|reset-report|on|off|level <conservative|balanced|aggressive>]";
 const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <on|off>]|mode <off|shadow-subagents|shadow-full|subagents|full>|ab <next|off>|report]";
 
+fn model_router_mode_label(mode: xedoc_config::ModelRouterMode) -> &'static str {
+    match mode {
+        xedoc_config::ModelRouterMode::Off => "off",
+        xedoc_config::ModelRouterMode::ShadowSubagents => "shadow-subagents",
+        xedoc_config::ModelRouterMode::ShadowFull => "shadow-full",
+        xedoc_config::ModelRouterMode::Subagents => "subagents",
+        xedoc_config::ModelRouterMode::Full => "full",
+    }
+}
+
 impl ChatWidget {
     pub fn open_model_router_mode_menu(&mut self) {
-        let current = format!("{:?}", self.config.model_router.mode)
-            .to_ascii_lowercase()
-            .replace('_', "-");
+        let current = model_router_mode_label(self.config.model_router.mode);
         let options = [
             ("off", "Disable model-router decisions."),
             (
@@ -121,9 +129,7 @@ impl ChatWidget {
     }
 
     pub fn open_model_router_menu(&mut self) {
-        let current_mode = format!("{:?}", self.config.model_router.mode)
-            .to_ascii_lowercase()
-            .replace('_', "-");
+        let current_mode = model_router_mode_label(self.config.model_router.mode);
         let approval = self.config.model_router.approval;
         let decision_feedback = self.config.model_router.decision_feedback;
         let mut items = vec![SelectionItem {
