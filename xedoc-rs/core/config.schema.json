@@ -1645,7 +1645,6 @@
       "type": "object"
     },
     "ModelRouterConfigToml": {
-      "additionalProperties": false,
       "description": "Stable controls in `[model_router]`.",
       "properties": {
         "approval": {

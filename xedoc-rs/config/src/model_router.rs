@@ -1,5 +1,6 @@
 //! Configuration and last-good loading for the experimental model router.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -41,7 +42,6 @@ pub struct ModelRouterRoute {
 
 /// Stable controls in `[model_router]`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ModelRouterConfigToml {
     #[serde(default)]
     pub mode: ModelRouterMode,
@@ -56,6 +56,10 @@ pub struct ModelRouterConfigToml {
     #[serde(default = "default_max_prompt_bytes")]
     pub max_prompt_bytes: usize,
     pub report_url: Option<String>,
+    /// Forward-compatible fields preserved only long enough to report a startup warning.
+    #[serde(default, flatten, skip_serializing)]
+    #[schemars(skip)]
+    pub ignored_fields: BTreeMap<String, IgnoredModelRouterField>,
 }
 
 impl Default for ModelRouterConfigToml {
@@ -69,12 +73,26 @@ impl Default for ModelRouterConfigToml {
             policy_path: None,
             max_prompt_bytes: default_max_prompt_bytes(),
             report_url: None,
+            ignored_fields: BTreeMap::new(),
         }
     }
 }
 
 const fn default_decision_feedback() -> bool {
     true
+}
+
+/// Placeholder used to retain an ignored model-router field name without its value.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IgnoredModelRouterField;
+
+impl<'de> Deserialize<'de> for IgnoredModelRouterField {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        serde::de::IgnoredAny::deserialize(deserializer).map(|_| Self)
+    }
 }
 
 impl ModelRouterConfigToml {
