@@ -10,13 +10,27 @@ use crate::task::normalize_task;
 use crate::worker::TaskEmbedder;
 
 /// Closed reasoning effort values accepted by the router.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningEffort {
     Low,
     Medium,
     High,
     ExtraHigh,
+    Max,
+}
+
+/// Ordered quality bands used by the policy ranking ladder.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelClass {
+    Simple,
+    Smart,
+    Intelligent,
 }
 
 /// A provider/model/effort tuple selected for a task.
@@ -31,6 +45,8 @@ pub struct ModelRoute {
 #[derive(Debug, Clone)]
 pub struct ModelCandidate {
     pub route: ModelRoute,
+    /// Reasoning efforts accepted by this provider/model.
+    pub supported_reasoning_efforts: BTreeSet<ReasoningEffort>,
     /// Estimated USD per 1M tokens across one input and one output token.
     ///
     /// Missing prices are never treated as free and therefore are not eligible
@@ -39,6 +55,37 @@ pub struct ModelCandidate {
     /// User-managed capability tags used only to distinguish equally eligible
     /// candidates, such as research from review.
     pub capabilities: BTreeSet<String>,
+}
+
+/// One policy-owned position in the ordered automatic-routing ladder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RankingLadderEntry {
+    pub rank: u16,
+    pub class: ModelClass,
+    pub route: ModelRoute,
+}
+
+/// A classified value with its point contribution and allowed model range.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AxisValue {
+    pub id: String,
+    pub points: u16,
+    pub minimum_class: ModelClass,
+    pub maximum_class: ModelClass,
+}
+
+/// Independently trained classifier head for one routing axis.
+#[derive(Debug, Clone)]
+pub struct AxisRoute {
+    pub values: BTreeMap<String, ClassRoute>,
+}
+
+/// Score domain and ordered candidate routes for automatic ranking.
+#[derive(Debug, Clone)]
+pub struct RankingPolicy {
+    pub minimum_score: u16,
+    pub maximum_score: u16,
+    pub ladder: Vec<RankingLadderEntry>,
 }
 
 /// User-enabled candidates available for automatic route selection.
@@ -54,34 +101,14 @@ impl ModelCatalog {
         }
     }
 
-    fn select(&self, profile: &RouteProfile) -> Option<ModelRoute> {
-        self.candidates
-            .iter()
-            .filter(|candidate| {
-                candidate.price_per_1m_tokens.is_some_and(f64::is_finite)
-                    && candidate
-                        .price_per_1m_tokens
-                        .is_some_and(|price| price >= 0.0)
-                    && effort_rank(candidate.route.reasoning_effort)
-                        >= effort_rank(profile.minimum_reasoning_effort)
-                    && profile
-                        .required_capabilities
-                        .iter()
-                        .all(|capability| candidate.capabilities.contains(capability))
-            })
-            .min_by(|left, right| {
-                let left_price = left.price_per_1m_tokens.unwrap_or(f64::INFINITY);
-                let right_price = right.price_per_1m_tokens.unwrap_or(f64::INFINITY);
-                left_price
-                    .total_cmp(&right_price)
-                    .then_with(|| {
-                        effort_rank(left.route.reasoning_effort)
-                            .cmp(&effort_rank(right.route.reasoning_effort))
-                    })
-                    .then_with(|| left.route.provider_id.cmp(&right.route.provider_id))
-                    .then_with(|| left.route.model_slug.cmp(&right.route.model_slug))
-            })
-            .map(|candidate| candidate.route.clone())
+    fn contains(&self, route: &ModelRoute) -> bool {
+        self.candidates.iter().any(|candidate| {
+            candidate.route.provider_id == route.provider_id
+                && candidate.route.model_slug == route.model_slug
+                && candidate
+                    .supported_reasoning_efforts
+                    .contains(&route.reasoning_effort)
+        })
     }
 }
 
@@ -96,6 +123,7 @@ pub struct RouteProfile {
 #[derive(Debug, Clone)]
 pub struct ClassRoute {
     pub profile: RouteProfile,
+    pub ranking: Option<(u16, ModelClass, ModelClass)>,
     pub weights: Vec<f32>,
     pub minimum_score: f32,
     pub minimum_margin: f32,
@@ -106,7 +134,8 @@ pub struct ClassRoute {
 pub struct RoutingPolicy {
     pub revision: String,
     pub fallback: ModelRoute,
-    pub classes: BTreeMap<String, ClassRoute>,
+    pub axes: BTreeMap<String, AxisRoute>,
+    pub ranking: RankingPolicy,
 }
 
 /// Whether a decision is applied or diagnostic only.
@@ -121,6 +150,7 @@ pub enum RouteDisposition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecisionReason {
     Classified,
+    SteeringBypass,
     LowConfidence,
     NoClass,
     InvalidPolicy,
@@ -135,6 +165,12 @@ pub enum DecisionReason {
 pub struct RouteDecision {
     pub scope: RouteScope,
     pub class_id: Option<String>,
+    pub classifications: BTreeMap<String, String>,
+    pub ranking_score: Option<u16>,
+    pub ranking_minimum_class: Option<ModelClass>,
+    pub ranking_maximum_class: Option<ModelClass>,
+    pub ranking_minimum_rank: Option<u16>,
+    pub ranking_maximum_rank: Option<u16>,
     pub score: f32,
     pub margin: f32,
     pub original_route: Option<ModelRoute>,
@@ -162,6 +198,12 @@ pub fn decide(
     let fallback_decision = |reason, proposed_route| RouteDecision {
         scope,
         class_id: None,
+        classifications: BTreeMap::new(),
+        ranking_score: None,
+        ranking_minimum_class: None,
+        ranking_maximum_class: None,
+        ranking_minimum_rank: None,
+        ranking_maximum_rank: None,
         score: 0.0,
         margin: 0.0,
         original_route: original_route.clone(),
@@ -181,22 +223,54 @@ pub fn decide(
     if !policy_matches_embedding(policy, &embedding) {
         return fallback_decision(DecisionReason::InvalidPolicy, fallback);
     }
-    let Some((class_id, class_route, score, margin)) = best_class(&embedding, &policy.classes)
-    else {
+    let classified = policy
+        .axes
+        .iter()
+        .map(|(axis, route)| best_class(&embedding, &route.values).map(|value| (axis, value)))
+        .collect::<Option<Vec<_>>>();
+    let Some(classified) = classified else {
         return fallback_decision(DecisionReason::NoClass, fallback);
     };
-    let proposed_route = catalog.select(&class_route.profile);
-    if score < class_route.minimum_score || margin < class_route.minimum_margin {
+    let low_confidence = classified.iter().any(|(_, (_, route, score, margin))| {
+        *score < route.minimum_score || *margin < route.minimum_margin
+    });
+    let primary = classified
+        .iter()
+        .find(|(axis, _)| *axis == "work_type")
+        .map(|(_, (_, _, score, margin))| (*score, *margin));
+    let classifications = classified.into_iter().fold(
+        BTreeMap::new(),
+        |mut classifications, (axis, (id, _, _, _))| {
+            classifications.insert(axis.to_string(), id.clone());
+            classifications
+        },
+    );
+    let Some((score, margin)) = primary else {
+        return fallback_decision(DecisionReason::NoClass, fallback);
+    };
+    let class_id = classifications.get("work_type").cloned();
+    if class_id.as_deref() == Some("steering") {
         return RouteDecision {
-            class_id: Some(class_id),
+            class_id,
+            classifications,
+            score,
+            margin,
+            ..fallback_decision(DecisionReason::SteeringBypass, fallback)
+        };
+    }
+    if low_confidence {
+        return RouteDecision {
+            class_id,
+            classifications,
             score,
             margin,
             ..fallback_decision(DecisionReason::LowConfidence, fallback)
         };
     }
-    let Some(proposed_route) = proposed_route else {
+    let Some(selection) = select_ranked_route(policy, catalog, &classifications) else {
         return RouteDecision {
-            class_id: Some(class_id),
+            class_id,
+            classifications,
             score,
             margin,
             ..fallback_decision(DecisionReason::RouteUnavailable, fallback)
@@ -204,11 +278,17 @@ pub fn decide(
     };
     RouteDecision {
         scope,
-        class_id: Some(class_id),
+        class_id,
+        classifications,
+        ranking_score: Some(selection.score),
+        ranking_minimum_class: Some(selection.minimum_class),
+        ranking_maximum_class: Some(selection.maximum_class),
+        ranking_minimum_rank: Some(selection.minimum_rank),
+        ranking_maximum_rank: Some(selection.maximum_rank),
         score,
         margin,
         original_route,
-        proposed_route,
+        proposed_route: selection.route,
         effective_route: None,
         // The host applies the configured mode only after it has also checked
         // explicit user and safety overrides.
@@ -221,23 +301,92 @@ pub fn decide(
 
 fn policy_matches_embedding(policy: &RoutingPolicy, embedding: &[f32]) -> bool {
     !policy.revision.is_empty()
-        && !policy.classes.is_empty()
-        && policy.classes.iter().all(|(class_id, class_route)| {
-            !class_id.is_empty()
-                && class_route.weights.len() == embedding.len()
-                && class_route.weights.iter().all(|weight| weight.is_finite())
-                && class_route.minimum_score.is_finite()
-                && class_route.minimum_margin.is_finite()
+        && policy.axes.len() == 4
+        && policy.axes.values().all(|axis| {
+            !axis.values.is_empty()
+                && axis.values.iter().all(|(class_id, class_route)| {
+                    !class_id.is_empty()
+                        && class_route.weights.len() == embedding.len()
+                        && class_route.weights.iter().all(|weight| weight.is_finite())
+                        && class_route.minimum_score.is_finite()
+                        && class_route.minimum_margin.is_finite()
+                })
         })
+        && policy.ranking.minimum_score <= policy.ranking.maximum_score
+        && !policy.ranking.ladder.is_empty()
 }
 
-const fn effort_rank(effort: ReasoningEffort) -> u8 {
-    match effort {
-        ReasoningEffort::Low => 0,
-        ReasoningEffort::Medium => 1,
-        ReasoningEffort::High => 2,
-        ReasoningEffort::ExtraHigh => 3,
-    }
+struct RankedSelection {
+    route: ModelRoute,
+    score: u16,
+    minimum_class: ModelClass,
+    maximum_class: ModelClass,
+    minimum_rank: u16,
+    maximum_rank: u16,
+}
+
+fn select_ranked_route(
+    policy: &RoutingPolicy,
+    catalog: &ModelCatalog,
+    classifications: &BTreeMap<String, String>,
+) -> Option<RankedSelection> {
+    let selected = policy
+        .axes
+        .iter()
+        .map(|(axis, classifier)| {
+            let id = classifications.get(axis)?;
+            let route = classifier.values.get(id)?;
+            axis_value(id, route)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let score = selected.iter().map(|value| value.points).sum::<u16>();
+    let minimum_class = selected.iter().map(|value| value.minimum_class).max()?;
+    let maximum_class = selected.iter().map(|value| value.maximum_class).max()?;
+    (minimum_class <= maximum_class).then_some(())?;
+    let mut eligible = policy
+        .ranking
+        .ladder
+        .iter()
+        .filter(|entry| {
+            entry.class >= minimum_class
+                && entry.class <= maximum_class
+                && catalog.contains(&entry.route)
+        })
+        .collect::<Vec<_>>();
+    eligible.sort_by_key(|entry| entry.rank);
+    let minimum_rank = eligible.first()?.rank;
+    let maximum_rank = eligible.last()?.rank;
+    let domain = policy.ranking.maximum_score - policy.ranking.minimum_score;
+    let bounded = score.clamp(policy.ranking.minimum_score, policy.ranking.maximum_score);
+    let offset = if domain == 0 {
+        0
+    } else {
+        let numerator = u32::from(bounded - policy.ranking.minimum_score)
+            * u32::from(maximum_rank - minimum_rank);
+        ((numerator + u32::from(domain) / 2) / u32::from(domain)) as u16
+    };
+    let selected_rank = minimum_rank + offset;
+    let entry = eligible
+        .iter()
+        .min_by_key(|entry| entry.rank.abs_diff(selected_rank))?;
+    Some(RankedSelection {
+        route: entry.route.clone(),
+        score,
+        minimum_class,
+        maximum_class,
+        minimum_rank,
+        maximum_rank,
+    })
+}
+
+fn axis_value(id: &str, route: &ClassRoute) -> Option<AxisValue> {
+    let (points, minimum_class, maximum_class) = route.ranking.as_ref()?.clone();
+    Some(AxisValue {
+        id: id.to_string(),
+        points,
+        minimum_class,
+        maximum_class,
+    })
 }
 
 /// Apply the configured mode after a single shared classification decision.

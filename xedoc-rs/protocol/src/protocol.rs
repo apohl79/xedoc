@@ -1654,6 +1654,13 @@ pub struct ModelRouterDecisionEvent {
     pub disposition: ModelRouterDisposition,
     pub reason: ModelRouterDecisionReason,
     pub policy_revision: String,
+    #[serde(default)]
+    pub classifications: BTreeMap<String, String>,
+    pub ranking_score: Option<u16>,
+    pub ranking_minimum_class: Option<String>,
+    pub ranking_maximum_class: Option<String>,
+    pub ranking_minimum_rank: Option<u16>,
+    pub ranking_maximum_rank: Option<u16>,
     pub proposed_provider_id: String,
     pub proposed_model_slug: String,
     pub proposed_reasoning_effort: String,
@@ -1745,6 +1752,7 @@ pub enum ModelRouterDisposition {
 #[ts(rename_all = "snake_case")]
 pub enum ModelRouterDecisionReason {
     Classified,
+    SteeringBypass,
     LowConfidence,
     NoClass,
     EmbeddingFailed,

@@ -33,6 +33,8 @@ use xedoc_app_server_protocol::ModelRouterPolicyClass as ApiModelRouterPolicyCla
 use xedoc_app_server_protocol::ModelRouterPolicyReadResponse;
 use xedoc_app_server_protocol::ModelRouterPolicyWriteParams;
 use xedoc_app_server_protocol::ModelRouterPolicyWriteResponse;
+use xedoc_app_server_protocol::ModelRouterRankedRoute as ApiModelRouterRankedRoute;
+use xedoc_app_server_protocol::ModelRouterRanking as ApiModelRouterRanking;
 use xedoc_app_server_protocol::ModelsRequirements;
 use xedoc_app_server_protocol::NetworkDomainPermission;
 use xedoc_app_server_protocol::NetworkRequirements;
@@ -392,19 +394,17 @@ impl ConfigRequestProcessor {
                 "model-router classifier thresholds must be finite values from 0 to 1",
             ));
         }
-        if policy.classes.len() != params.classes.len() {
+        if !params.classes.is_empty() {
             return Err(invalid_request(
-                "model-router policy classes must match the installed classifier",
+                "model-router classifier class edits are not supported by the ranking policy",
             ));
         }
-        for class in &mut policy.classes {
-            let Some(update) = params.classes.iter().find(|update| update.id == class.id) else {
-                return Err(invalid_request(
-                    "model-router policy classes must match the installed classifier",
-                ));
-            };
-            class.minimum_reasoning_effort = update.minimum_reasoning_effort.clone();
-            class.required_capabilities = update.required_capabilities.clone();
+        if params.ranking.minimum_score > params.ranking.maximum_score
+            || params.ranking.ladder.is_empty()
+        {
+            return Err(invalid_request(
+                "model-router ranking must contain an ordered non-empty ladder",
+            ));
         }
         policy.capabilities = params
             .capabilities
@@ -417,6 +417,32 @@ impl ConfigRequestProcessor {
             .collect();
         policy.classifier.minimum_score = params.minimum_score as f32;
         policy.classifier.minimum_margin = params.minimum_margin as f32;
+        policy.ranking.minimum_score = params.ranking.minimum_score;
+        policy.ranking.maximum_score = params.ranking.maximum_score;
+        policy.ranking.ladder = params
+            .ranking
+            .ladder
+            .into_iter()
+            .map(|route| {
+                let class = match route.class.as_str() {
+                    "simple" => xedoc_config::ModelRouterModelClass::Simple,
+                    "smart" => xedoc_config::ModelRouterModelClass::Smart,
+                    "intelligent" => xedoc_config::ModelRouterModelClass::Intelligent,
+                    class => {
+                        return Err(invalid_request(format!(
+                            "invalid model-router ranking class `{class}`; expected simple, smart, or intelligent"
+                        )));
+                    }
+                };
+                Ok(xedoc_config::ModelRouterRankedRoute {
+                    rank: route.rank,
+                    class,
+                    provider: route.provider,
+                    model: route.model,
+                    reasoning_effort: route.reasoning_effort,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         policy.policy_revision = format!("user-tuned-{}", chrono::Utc::now().timestamp_millis());
         xedoc_config::write_model_router_policy(&path, &policy).map_err(|error| {
             invalid_request(format!("failed to write model-router policy: {error}"))
@@ -573,6 +599,28 @@ fn map_model_router_policy(policy: xedoc_config::ModelRouterPolicy) -> ApiModelR
                 required_capabilities: class.required_capabilities,
             })
             .collect(),
+        ranking: ApiModelRouterRanking {
+            minimum_score: policy.ranking.minimum_score,
+            maximum_score: policy.ranking.maximum_score,
+            ladder: policy
+                .ranking
+                .ladder
+                .into_iter()
+                .map(|route| ApiModelRouterRankedRoute {
+                    rank: route.rank,
+                    class: match route.class {
+                        xedoc_config::ModelRouterModelClass::Simple => "simple".to_string(),
+                        xedoc_config::ModelRouterModelClass::Smart => "smart".to_string(),
+                        xedoc_config::ModelRouterModelClass::Intelligent => {
+                            "intelligent".to_string()
+                        }
+                    },
+                    provider: route.provider,
+                    model: route.model,
+                    reasoning_effort: route.reasoning_effort,
+                })
+                .collect(),
+        },
     }
 }
 

@@ -26,4 +26,5 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 xedoc-config = { workspace = true }
+xedoc-protocol = { workspace = true }
 xedoc-utils-path = { workspace = true }

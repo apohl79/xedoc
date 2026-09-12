@@ -41,6 +41,18 @@ enum Command {
         #[arg(long)]
         artifact: PathBuf,
     },
+    /// Derive a four-axis policy from a locally reviewed Markdown corpus.
+    CalibrateReviewPolicy {
+        /// Explicit local reviewed Markdown corpus. Prompt text is not written to the policy.
+        #[arg(long)]
+        review: PathBuf,
+        /// Checked local Arctic artifact directory.
+        #[arg(long)]
+        artifact: PathBuf,
+        /// Policy TOML to write.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Stage and assess a policy revision without changing the active mapping.
     TunePropose {
         /// Frozen reproducibility manifest JSON.
@@ -174,6 +186,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "fallbacks": 0,
                 })
             );
+            Ok(())
+        }
+        Command::CalibrateReviewPolicy {
+            review,
+            artifact,
+            output,
+        } => {
+            xedoc_model_router::calibrate_review_policy(&review, &artifact, &output)?;
             Ok(())
         }
         Command::TunePropose {

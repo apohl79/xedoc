@@ -28,28 +28,22 @@ impl ChatWidget {
             dismiss_parent_on_child_accept: true,
             ..Default::default()
         });
-        for class in &policy.classes {
-            let class_policy = policy.clone();
-            let class_id = class.id.clone();
-            let route = configured_route(&policy, class);
-            items.push(SelectionItem {
-                name: format!("Class: {}", class.id),
-                description: Some(format!(
-                    "Effort: {}; model: {}",
-                    class.minimum_reasoning_effort,
-                    route.as_deref().unwrap_or("Automatic")
-                )),
-                actions: vec![Box::new(move |tx| {
-                    tx.send(AppEvent::OpenModelRouterPolicyClassMenu {
-                        policy: class_policy.clone(),
-                        class_id: class_id.clone(),
-                    })
-                })],
-                dismiss_on_select: false,
-                dismiss_parent_on_child_accept: true,
-                ..Default::default()
-            });
-        }
+        let ladder_policy = policy.clone();
+        items.push(SelectionItem {
+            name: format!("Model ladder: {} routes", policy.ranking.ladder.len()),
+            description: Some(format!(
+                "Score range: {}–{}; ordered routes drive automatic selection.",
+                policy.ranking.minimum_score, policy.ranking.maximum_score
+            )),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::OpenModelRouterPolicyLadderMenu {
+                    policy: ladder_policy.clone(),
+                })
+            })],
+            dismiss_on_select: false,
+            dismiss_parent_on_child_accept: true,
+            ..Default::default()
+        });
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Model-router policy".to_string()),
             subtitle: Some(format!(
@@ -261,6 +255,170 @@ impl ChatWidget {
         });
     }
 
+    pub fn open_model_router_policy_ladder_menu(
+        &mut self,
+        policy: xedoc_app_server_protocol::ModelRouterPolicy,
+    ) {
+        let items = policy
+            .ranking
+            .ladder
+            .iter()
+            .map(|route| {
+                let policy = policy.clone();
+                let rank = route.rank;
+                SelectionItem {
+                    name: format!(
+                        "{}. {}/{} ({})",
+                        route.rank, route.provider, route.model, route.reasoning_effort
+                    ),
+                    description: Some(format!("{} model class", route.class)),
+                    actions: vec![Box::new(move |tx| {
+                        tx.send(AppEvent::OpenModelRouterPolicyLadderRouteMenu {
+                            policy: policy.clone(),
+                            rank,
+                        })
+                    })],
+                    dismiss_on_select: false,
+                    dismiss_parent_on_child_accept: true,
+                    ..Default::default()
+                }
+            })
+            .collect();
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Automatic model ladder".to_string()),
+            subtitle: Some(
+                "Order is the smartness/price ranking; each slot selects model and effort."
+                    .to_string(),
+            ),
+            items,
+            ..Default::default()
+        });
+    }
+
+    pub fn open_model_router_policy_ladder_route_menu(
+        &mut self,
+        policy: xedoc_app_server_protocol::ModelRouterPolicy,
+        rank: u16,
+    ) {
+        let Some(route) = policy
+            .ranking
+            .ladder
+            .iter()
+            .find(|route| route.rank == rank)
+        else {
+            return;
+        };
+        let effort_policy = policy.clone();
+        let mut items = vec![SelectionItem {
+            name: format!("Effort: {}", route.reasoning_effort),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::OpenModelRouterPolicyLadderEffortMenu {
+                    policy: effort_policy.clone(),
+                    rank,
+                })
+            })],
+            dismiss_on_select: false,
+            dismiss_parent_on_child_accept: true,
+            ..Default::default()
+        }];
+        let mut models = self
+            .model_catalog
+            .try_list_models()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|model| model.show_in_picker && model.supported_in_api)
+            .collect::<Vec<_>>();
+        models.sort_by(|left, right| {
+            left.provider_id
+                .cmp(&right.provider_id)
+                .then_with(|| left.model.cmp(&right.model))
+        });
+        for model in models {
+            let provider = model.provider_id;
+            let model_slug = model.model;
+            let current = route.provider == provider && route.model == model_slug;
+            let next = ladder_model_update(
+                &policy,
+                rank,
+                provider.clone(),
+                model_slug.clone(),
+                model.default_reasoning_effort,
+            );
+            items.push(SelectionItem {
+                name: format!("{provider}/{model_slug}"),
+                is_current: current,
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::UpdateModelRouterPolicy {
+                        policy: model_router_policy_update(&next),
+                    })
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            });
+        }
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some(format!("Ladder slot {rank}")),
+            items,
+            ..Default::default()
+        });
+    }
+
+    pub fn open_model_router_policy_ladder_effort_menu(
+        &mut self,
+        policy: xedoc_app_server_protocol::ModelRouterPolicy,
+        rank: u16,
+    ) {
+        let Some(route) = policy
+            .ranking
+            .ladder
+            .iter()
+            .find(|route| route.rank == rank)
+        else {
+            return;
+        };
+        let current = route.reasoning_effort.clone();
+        let efforts = self
+            .model_catalog
+            .try_list_models()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|model| model.provider_id == route.provider && model.model == route.model)
+            .map(|model| {
+                let mut efforts = model
+                    .supported_reasoning_efforts
+                    .into_iter()
+                    .map(|preset| preset.effort)
+                    .collect::<Vec<_>>();
+                if efforts.is_empty() {
+                    efforts.push(model.default_reasoning_effort);
+                }
+                efforts
+            })
+            .unwrap_or_else(|| vec![current.clone()]);
+        let items = efforts
+            .into_iter()
+            .map(|effort| {
+                let next = ladder_effort_update(&policy, rank, effort.clone());
+                SelectionItem {
+                    name: effort.to_string(),
+                    is_current: current == effort,
+                    actions: vec![Box::new(move |tx| {
+                        tx.send(AppEvent::UpdateModelRouterPolicy {
+                            policy: model_router_policy_update(&next),
+                        })
+                    })],
+                    dismiss_on_select: true,
+                    ..Default::default()
+                }
+            })
+            .collect();
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some(format!("Ladder slot {rank} effort")),
+            items,
+            ..Default::default()
+        });
+    }
+
     pub fn show_model_router_policy_loading(&mut self) {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             view_id: Some("model-router-policy-loading"),
@@ -306,8 +464,47 @@ fn model_router_policy_update(
         minimum_score: policy.minimum_score,
         minimum_margin: policy.minimum_margin,
         capabilities: policy.capabilities.clone(),
-        classes: policy.classes.clone(),
+        classes: Vec::new(),
+        ranking: policy.ranking.clone(),
     }
+}
+
+fn ladder_model_update(
+    policy: &xedoc_app_server_protocol::ModelRouterPolicy,
+    rank: u16,
+    provider: String,
+    model: String,
+    reasoning_effort: xedoc_protocol::openai_models::ReasoningEffort,
+) -> xedoc_app_server_protocol::ModelRouterPolicy {
+    let mut next = policy.clone();
+    if let Some(route) = next
+        .ranking
+        .ladder
+        .iter_mut()
+        .find(|route| route.rank == rank)
+    {
+        route.provider = provider;
+        route.model = model;
+        route.reasoning_effort = reasoning_effort;
+    }
+    next
+}
+
+fn ladder_effort_update(
+    policy: &xedoc_app_server_protocol::ModelRouterPolicy,
+    rank: u16,
+    reasoning_effort: xedoc_protocol::openai_models::ReasoningEffort,
+) -> xedoc_app_server_protocol::ModelRouterPolicy {
+    let mut next = policy.clone();
+    if let Some(route) = next
+        .ranking
+        .ladder
+        .iter_mut()
+        .find(|route| route.rank == rank)
+    {
+        route.reasoning_effort = reasoning_effort;
+    }
+    next
 }
 
 fn route_tag(class_id: &str) -> String {

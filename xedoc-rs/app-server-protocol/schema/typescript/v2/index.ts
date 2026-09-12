@@ -256,6 +256,8 @@ export type { ModelRouterPolicyReadParams } from "./ModelRouterPolicyReadParams"
 export type { ModelRouterPolicyReadResponse } from "./ModelRouterPolicyReadResponse";
 export type { ModelRouterPolicyWriteParams } from "./ModelRouterPolicyWriteParams";
 export type { ModelRouterPolicyWriteResponse } from "./ModelRouterPolicyWriteResponse";
+export type { ModelRouterRankedRoute } from "./ModelRouterRankedRoute";
+export type { ModelRouterRanking } from "./ModelRouterRanking";
 export type { ModelRouterReportDay } from "./ModelRouterReportDay";
 export type { ModelRouterReportDecision } from "./ModelRouterReportDecision";
 export type { ModelRouterReportOpenParams } from "./ModelRouterReportOpenParams";
