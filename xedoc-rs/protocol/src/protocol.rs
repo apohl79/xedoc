@@ -4135,6 +4135,13 @@ pub enum SubAgentActivityKind {
     Completed,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS, Default)]
+pub struct SubAgentChangeTotals {
+    pub files_edited: usize,
+    pub total_added: usize,
+    pub total_removed: usize,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 pub struct SubAgentActivityEvent {
     pub event_id: String,
@@ -4157,6 +4164,8 @@ pub struct SubAgentActivityEvent {
     /// Max 64 characters.
     #[serde(default)]
     pub current_activity: Option<String>,
+    #[serde(default)]
+    pub change_totals: Option<SubAgentChangeTotals>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]

@@ -406,6 +406,7 @@ impl SubAgentActivityItem {
             reasoning_effort: None,
             kind: self.kind,
             current_activity: self.current_activity.clone(),
+            change_totals: None,
         })
     }
 }

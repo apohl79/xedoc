@@ -191,6 +191,7 @@ pub fn item_event_to_server_notification(
                 model: activity.model,
                 reasoning_effort: activity.reasoning_effort,
                 current_activity: activity.current_activity,
+                change_totals: activity.change_totals.map(Into::into),
             };
             ServerNotification::ItemCompleted(ItemCompletedNotification {
                 thread_id,

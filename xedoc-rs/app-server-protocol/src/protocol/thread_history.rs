@@ -945,6 +945,7 @@ impl ThreadHistoryBuilder {
             model: payload.model.clone(),
             reasoning_effort: payload.reasoning_effort.clone(),
             current_activity: payload.current_activity.clone(),
+            change_totals: payload.change_totals.map(Into::into),
         });
     }
 

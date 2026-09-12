@@ -770,6 +770,31 @@
       ],
       "type": "string"
     },
+    "SubAgentChangeTotals": {
+      "properties": {
+        "filesEdited": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "totalAdded": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "totalRemoved": {
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filesEdited",
+        "totalAdded",
+        "totalRemoved"
+      ],
+      "type": "object"
+    },
     "SubAgentSource": {
       "oneOf": [
         {
@@ -1580,6 +1605,16 @@
             },
             "agentThreadId": {
               "type": "string"
+            },
+            "changeTotals": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SubAgentChangeTotals"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "currentActivity": {
               "type": [
