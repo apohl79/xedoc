@@ -40,6 +40,7 @@ use xedoc_protocol::protocol::ExecCommandStatus as CoreExecCommandStatus;
 use xedoc_protocol::protocol::PatchApplyStatus as CorePatchApplyStatus;
 use xedoc_protocol::protocol::ReviewDecision as CoreReviewDecision;
 use xedoc_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;
+use xedoc_protocol::protocol::SubAgentChangeTotals as CoreSubAgentChangeTotals;
 use xedoc_shell_command::parse_command::shlex_join;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 use xedoc_utils_path_uri::LegacyAppPathString;
@@ -316,6 +317,7 @@ pub enum ThreadItem {
         #[serde(default)]
         reasoning_effort: Option<ReasoningEffort>,
         current_activity: Option<String>,
+        change_totals: Option<SubAgentChangeTotals>,
     },
     WebSearch(WebSearchItem),
     #[serde(rename_all = "camelCase")]
@@ -356,6 +358,25 @@ pub enum ThreadItem {
         proposed_reasoning_effort: String,
         effective_route: crate::protocol::v2::ModelRouterEffectiveRoute,
     },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct SubAgentChangeTotals {
+    pub files_edited: usize,
+    pub total_added: usize,
+    pub total_removed: usize,
+}
+
+impl From<CoreSubAgentChangeTotals> for SubAgentChangeTotals {
+    fn from(totals: CoreSubAgentChangeTotals) -> Self {
+        Self {
+            files_edited: totals.files_edited,
+            total_added: totals.total_added,
+            total_removed: totals.total_removed,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -520,6 +541,7 @@ impl From<CoreTurnItem> for ThreadItem {
                 model: None,
                 reasoning_effort: None,
                 current_activity: activity.current_activity,
+                change_totals: None,
             },
             CoreTurnItem::WebSearch(search) => ThreadItem::WebSearch(WebSearchItem {
                 id: search.id,

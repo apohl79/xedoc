@@ -208,6 +208,14 @@ impl ChatWidget {
     }
 
     pub(super) fn on_sub_agent_activity(&mut self, item: ThreadItem) {
+        if let ThreadItem::SubAgentActivity {
+            kind: xedoc_app_server_protocol::SubAgentActivityKind::Completed,
+            change_totals: Some(totals),
+            ..
+        } = &item
+        {
+            self.record_sub_agent_change_totals(*totals);
+        }
         if let Some(cell) = multi_agents::sub_agent_activity_history_cell(&item) {
             self.on_collab_event(cell);
         }

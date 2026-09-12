@@ -335,7 +335,10 @@ pub fn sub_agent_activity_display(item: &ThreadItem) -> Option<SubAgentActivityD
 }
 pub fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
     let ThreadItem::SubAgentActivity {
-        kind, agent_path, ..
+        kind,
+        agent_path,
+        change_totals,
+        ..
     } = item
     else {
         return None;
@@ -343,9 +346,28 @@ pub fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<PlainHistory
     if matches!(kind, SubAgentActivityKind::Interacted) {
         return None;
     }
+    let details = if *kind == SubAgentActivityKind::Completed {
+        change_totals
+            .map(|totals| {
+                vec![Line::from(format!(
+                    "{} {} edited (+{} -{}).",
+                    totals.files_edited,
+                    if totals.files_edited == 1 {
+                        "file"
+                    } else {
+                        "files"
+                    },
+                    totals.total_added,
+                    totals.total_removed
+                ))]
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     Some(collab_event(
         sub_agent_activity_title(*kind, agent_path),
-        Vec::new(),
+        details,
     ))
 }
 

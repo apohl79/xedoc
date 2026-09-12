@@ -38,6 +38,13 @@ impl ToolCallSummaryState {
         self.cell.record_file_change_stats(id, stats);
     }
 
+    pub(super) fn record_external_file_change_stats(
+        &mut self,
+        stats: history_cell::FileChangeStats,
+    ) {
+        self.cell.record_external_file_change_stats(stats);
+    }
+
     pub(super) fn complete(
         &mut self,
         id: String,
@@ -217,6 +224,19 @@ impl ChatWidget {
         }
     }
 
+    pub(super) fn record_sub_agent_change_totals(
+        &mut self,
+        totals: xedoc_app_server_protocol::SubAgentChangeTotals,
+    ) {
+        if let Some(summary) = self.tool_call_summary.as_mut() {
+            summary.record_external_file_change_stats(history_cell::FileChangeStats {
+                files_edited: totals.files_edited,
+                total_added: totals.total_added,
+                total_removed: totals.total_removed,
+            });
+        }
+    }
+
     pub(super) fn flush_tool_call_summary(&mut self) {
         self.tool_call_summary = None;
     }
@@ -233,7 +253,7 @@ impl ChatWidget {
             return false;
         }
         self.add_boxed_history(Box::new(history_cell::ToolCallCountSummaryCell::new(stats)));
-        self.transcript.needs_final_message_separator = true;
+        self.transcript.needs_final_message_separator = false;
         self.transcript.had_work_activity = true;
         if let Some(summary) = self.tool_call_summary.as_mut() {
             summary.mark_history_summary_emitted();

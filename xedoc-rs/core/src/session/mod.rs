@@ -2029,6 +2029,7 @@ impl Session {
             let state = self.state.lock().await;
             state.cost_tracker.unreported_cost_usd()
         };
+        let change_totals = *self.sub_agent_change_totals.lock().await;
         let communication = InterAgentCommunication {
             id: None,
             author: child_agent_path.clone(),
@@ -2071,6 +2072,7 @@ impl Session {
                     reasoning_effort: None,
                     kind: xedoc_protocol::protocol::SubAgentActivityKind::Completed,
                     current_activity: None,
+                    change_totals: Some(change_totals).filter(|totals| totals.files_edited > 0),
                 },
             )
             .await;
@@ -2131,6 +2133,31 @@ impl Session {
         turn_context: &TurnContext,
         item: TurnItem,
     ) {
+        if let TurnItem::FileChange(file_change) = &item
+            && file_change.status == Some(xedoc_protocol::protocol::PatchApplyStatus::Completed)
+        {
+            let mut totals = self.sub_agent_change_totals.lock().await;
+            for change in file_change.changes.values() {
+                let (added, removed) = match change {
+                    FileChange::Add { content } => (content.lines().count(), 0),
+                    FileChange::Delete { content } => (0, content.lines().count()),
+                    FileChange::Update { unified_diff, .. } => {
+                        unified_diff.lines().fold((0, 0), |(added, removed), line| {
+                            if line.starts_with('+') && !line.starts_with("+++") {
+                                (added + 1, removed)
+                            } else if line.starts_with('-') && !line.starts_with("---") {
+                                (added, removed + 1)
+                            } else {
+                                (added, removed)
+                            }
+                        })
+                    }
+                };
+                totals.files_edited += 1;
+                totals.total_added += added;
+                totals.total_removed += removed;
+            }
+        }
         record_turn_ttfm_metric(turn_context, &item).await;
         self.send_event(
             turn_context,

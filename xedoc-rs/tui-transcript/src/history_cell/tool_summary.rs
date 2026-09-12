@@ -59,6 +59,7 @@ pub struct ToolCallSummaryCell {
     labels: HashMap<String, String>,
     previews: HashMap<String, ToolCallSummaryPreview>,
     file_change_stats: HashMap<String, FileChangeStats>,
+    external_file_change_stats: FileChangeStats,
     in_progress_order: VecDeque<String>,
     capped: bool,
     current_label: Option<String>,
@@ -153,6 +154,7 @@ impl ToolCallSummaryCell {
             labels: HashMap::new(),
             previews: HashMap::new(),
             file_change_stats: HashMap::new(),
+            external_file_change_stats: FileChangeStats::default(),
             in_progress_order: VecDeque::new(),
             capped: false,
             current_label: None,
@@ -185,12 +187,16 @@ impl ToolCallSummaryCell {
                     .clone()
                     .map(|stats| stats.files_edited)
                     .sum()
-            },
+            } + self.external_file_change_stats.files_edited,
             total_added: file_change_stats
                 .clone()
                 .map(|stats| stats.total_added)
-                .sum(),
-            total_removed: file_change_stats.map(|stats| stats.total_removed).sum(),
+                .sum::<usize>()
+                + self.external_file_change_stats.total_added,
+            total_removed: file_change_stats
+                .map(|stats| stats.total_removed)
+                .sum::<usize>()
+                + self.external_file_change_stats.total_removed,
             web_searches: labels
                 .clone()
                 .filter(|label| {
@@ -209,6 +215,12 @@ impl ToolCallSummaryCell {
         if self.calls.contains_key(call_id) {
             self.file_change_stats.insert(call_id.to_string(), stats);
         }
+    }
+
+    pub fn record_external_file_change_stats(&mut self, stats: FileChangeStats) {
+        self.external_file_change_stats.files_edited += stats.files_edited;
+        self.external_file_change_stats.total_added += stats.total_added;
+        self.external_file_change_stats.total_removed += stats.total_removed;
     }
 
     pub fn start_call_with_preview(
