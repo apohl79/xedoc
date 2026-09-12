@@ -111,6 +111,16 @@ pub struct ModelRouterPolicyClass {
     pub required_capabilities: Vec<String>,
 }
 
+/// A provider/model route with user-assigned capability tags.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterCapability {
+    pub provider: String,
+    pub model: String,
+    pub tags: Vec<String>,
+}
+
 /// The stable, user-editable portion of the standalone model-router policy.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
@@ -122,6 +132,7 @@ pub struct ModelRouterPolicy {
     pub minimum_score: f64,
     #[ts(type = "number")]
     pub minimum_margin: f64,
+    pub capabilities: Vec<ModelRouterCapability>,
     pub classes: Vec<ModelRouterPolicyClass>,
 }
 
@@ -162,6 +173,7 @@ pub struct ModelRouterPolicyWriteParams {
     pub minimum_score: f64,
     #[ts(type = "number")]
     pub minimum_margin: f64,
+    pub capabilities: Vec<ModelRouterCapability>,
     pub classes: Vec<ModelRouterPolicyClass>,
 }
 

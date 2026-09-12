@@ -734,10 +734,32 @@ pub enum AppEvent {
     UpdateModelRouterApproval {
         approval: bool,
     },
+    UpdateModelRouterDecisionFeedback {
+        enabled: bool,
+    },
+    OpenModelRouterMenu,
+    OpenModelRouterModeMenu,
+    OpenModelRouterAbMenu,
+    OpenModelRouterPolicyConfidenceMenu {
+        policy: ModelRouterPolicy,
+    },
+    OpenModelRouterPolicyClassMenu {
+        policy: ModelRouterPolicy,
+        class_id: String,
+    },
+    OpenModelRouterPolicyClassEffortMenu {
+        policy: ModelRouterPolicy,
+        class_id: String,
+    },
+    OpenModelRouterPolicyRouteMenu {
+        policy: ModelRouterPolicy,
+        class_id: String,
+    },
     /// Confirm a model-router config update and refresh the TUI's local view.
     ModelRouterConfigUpdated {
         mode: Option<String>,
         approval: Option<bool>,
+        decision_feedback: Option<bool>,
         error: Option<String>,
     },
 

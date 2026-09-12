@@ -75,6 +75,7 @@ impl App {
             app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
                 mode: error.is_none().then_some(mode),
                 approval: None,
+                decision_feedback: None,
                 error,
             });
         });
@@ -95,6 +96,29 @@ impl App {
             app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
                 mode: None,
                 approval: error.is_none().then_some(approval),
+                decision_feedback: None,
+                error,
+            });
+        });
+    }
+
+    pub(super) fn update_model_router_decision_feedback(
+        &mut self,
+        app_server: &AppServerSession,
+        enabled: bool,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let error =
+                crate::config_update::write_model_router_decision_feedback(request_handle, enabled)
+                    .await
+                    .err()
+                    .map(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
+                mode: None,
+                approval: None,
+                decision_feedback: error.is_none().then_some(enabled),
                 error,
             });
         });

@@ -43,49 +43,97 @@ const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status
 const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <on|off>]|mode <off|shadow-subagents|shadow-full|subagents|full>|ab <next|off>|report]";
 
 impl ChatWidget {
-    pub(super) fn open_model_router_menu(&mut self) {
-        let current_mode = format!("{:?}", self.config.model_router.mode)
+    pub fn open_model_router_mode_menu(&mut self) {
+        let current = format!("{:?}", self.config.model_router.mode)
             .to_ascii_lowercase()
             .replace('_', "-");
-        let approval = self.config.model_router.approval;
-        let mode_items = [
+        let options = [
             ("off", "Disable model-router decisions."),
             (
                 "shadow-subagents",
-                "Classify subagent prompts without changing their route.",
+                "Classify subagent prompts without changing routes.",
             ),
             (
                 "shadow-full",
-                "Classify root and subagent prompts without changing routes.",
+                "Classify all prompts without changing routes.",
             ),
-            ("subagents", "Apply routing decisions to subagent prompts."),
-            (
-                "full",
-                "Apply routing decisions to root and subagent prompts.",
-            ),
+            ("subagents", "Apply routing to subagent prompts."),
+            ("full", "Apply routing to all prompts."),
         ];
-        let mut items = mode_items
+        let items = options
             .into_iter()
             .map(|(mode, description)| {
                 let mode = mode.to_string();
-                let selected = mode == current_mode;
                 let event_mode = mode.clone();
                 SelectionItem {
-                    name: format!("Mode: {mode}"),
+                    name: mode.clone(),
                     description: Some(description.to_string()),
-                    selected_description: Some(format!("Select {mode} as the active mode.")),
-                    is_current: selected,
+                    is_current: mode == current,
                     actions: vec![Box::new(move |tx| {
                         tx.send(AppEvent::UpdateModelRouterMode {
                             mode: event_mode.clone(),
-                        });
+                        })
                     })],
                     dismiss_on_select: true,
                     ..Default::default()
                 }
             })
-            .collect::<Vec<_>>();
+            .collect();
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Model-router mode".to_string()),
+            items,
+            ..Default::default()
+        });
+    }
 
+    pub fn open_model_router_ab_menu(&mut self) {
+        let items = vec![
+            SelectionItem {
+                name: "Arm next".to_string(),
+                description: Some(
+                    "Pair the next eligible task with its baseline route.".to_string(),
+                ),
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::ModelRouterAbControlRequested {
+                        action: xedoc_app_server_protocol::ModelRouterAbControlAction::ArmNext,
+                    })
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+            SelectionItem {
+                name: "Disable".to_string(),
+                description: Some("Disable a pending A/B experiment.".to_string()),
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::ModelRouterAbControlRequested {
+                        action: xedoc_app_server_protocol::ModelRouterAbControlAction::Disable,
+                    })
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            },
+        ];
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Model-router A/B test".to_string()),
+            items,
+            ..Default::default()
+        });
+    }
+
+    pub fn open_model_router_menu(&mut self) {
+        let current_mode = format!("{:?}", self.config.model_router.mode)
+            .to_ascii_lowercase()
+            .replace('_', "-");
+        let approval = self.config.model_router.approval;
+        let decision_feedback = self.config.model_router.decision_feedback;
+        let mut items = vec![SelectionItem {
+            name: format!("Mode: {current_mode}"),
+            description: Some("Choose the model-router operating mode.".to_string()),
+            actions: vec![Box::new(|tx| tx.send(AppEvent::OpenModelRouterModeMenu))],
+            dismiss_on_select: false,
+            dismiss_parent_on_child_accept: true,
+            ..Default::default()
+        }];
         items.push(SelectionItem {
             name: format!("Approval prompts: {}", if approval { "on" } else { "off" }),
             description: Some(
@@ -101,25 +149,24 @@ impl ChatWidget {
             ..Default::default()
         });
         items.push(SelectionItem {
-            name: "A/B test: arm next".to_string(),
-            description: Some("Pair the next eligible task with its baseline route.".to_string()),
-            actions: vec![Box::new(|tx| {
-                tx.send(AppEvent::ModelRouterAbControlRequested {
-                    action: xedoc_app_server_protocol::ModelRouterAbControlAction::ArmNext,
-                });
+            name: format!(
+                "Routing feedback: {}",
+                if decision_feedback { "on" } else { "off" }
+            ),
+            description: Some("Show concise entries for router decisions.".to_string()),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::UpdateModelRouterDecisionFeedback {
+                    enabled: !decision_feedback,
+                })
             })],
             dismiss_on_select: true,
             ..Default::default()
         });
         items.push(SelectionItem {
-            name: "A/B test: disable".to_string(),
-            description: Some("Disable a pending A/B experiment.".to_string()),
-            actions: vec![Box::new(|tx| {
-                tx.send(AppEvent::ModelRouterAbControlRequested {
-                    action: xedoc_app_server_protocol::ModelRouterAbControlAction::Disable,
-                });
-            })],
-            dismiss_on_select: true,
+            name: "A/B test".to_string(),
+            description: Some("Arm or disable the next A/B experiment.".to_string()),
+            actions: vec![Box::new(|tx| tx.send(AppEvent::OpenModelRouterAbMenu))],
+            dismiss_on_select: false,
             ..Default::default()
         });
         items.push(SelectionItem {
@@ -139,7 +186,7 @@ impl ChatWidget {
             actions: vec![Box::new(|tx| {
                 tx.send(AppEvent::OpenModelRouterPolicyManager);
             })],
-            dismiss_on_select: true,
+            dismiss_on_select: false,
             ..Default::default()
         });
         items.push(SelectionItem {
@@ -150,7 +197,7 @@ impl ChatWidget {
             actions: vec![Box::new(|tx| {
                 tx.send(AppEvent::BootstrapModelRouterPolicy);
             })],
-            dismiss_on_select: true,
+            dismiss_on_select: false,
             ..Default::default()
         });
 

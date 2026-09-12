@@ -26,6 +26,7 @@ use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ManagedHooksRequirements;
 use xedoc_app_server_protocol::MergeStrategy;
 use xedoc_app_server_protocol::ModelProviderCapabilitiesReadResponse;
+use xedoc_app_server_protocol::ModelRouterCapability as ApiModelRouterCapability;
 use xedoc_app_server_protocol::ModelRouterPolicy as ApiModelRouterPolicy;
 use xedoc_app_server_protocol::ModelRouterPolicyBootstrapResponse;
 use xedoc_app_server_protocol::ModelRouterPolicyClass as ApiModelRouterPolicyClass;
@@ -405,6 +406,15 @@ impl ConfigRequestProcessor {
             class.minimum_reasoning_effort = update.minimum_reasoning_effort.clone();
             class.required_capabilities = update.required_capabilities.clone();
         }
+        policy.capabilities = params
+            .capabilities
+            .into_iter()
+            .map(|capability| xedoc_config::ModelRouterCapability {
+                provider: capability.provider,
+                model: capability.model,
+                tags: capability.tags,
+            })
+            .collect();
         policy.classifier.minimum_score = params.minimum_score as f32;
         policy.classifier.minimum_margin = params.minimum_margin as f32;
         policy.policy_revision = format!("user-tuned-{}", chrono::Utc::now().timestamp_millis());
@@ -545,6 +555,15 @@ fn map_model_router_policy(policy: xedoc_config::ModelRouterPolicy) -> ApiModelR
         classifier_revision: policy.classifier.revision,
         minimum_score: f64::from(policy.classifier.minimum_score),
         minimum_margin: f64::from(policy.classifier.minimum_margin),
+        capabilities: policy
+            .capabilities
+            .into_iter()
+            .map(|capability| ApiModelRouterCapability {
+                provider: capability.provider,
+                model: capability.model,
+                tags: capability.tags,
+            })
+            .collect(),
         classes: policy
             .classes
             .into_iter()
@@ -562,7 +581,10 @@ fn writes_model_router_config(
     value: &serde_json::Value,
     merge_strategy: &MergeStrategy,
 ) -> bool {
-    if matches!(key_path, "model_router.mode" | "model_router.approval") {
+    if matches!(
+        key_path,
+        "model_router.mode" | "model_router.approval" | "model_router.decision_feedback"
+    ) {
         return true;
     }
     if key_path != "model_router" {
@@ -570,9 +592,11 @@ fn writes_model_router_config(
     }
     value.is_null()
         || matches!(merge_strategy, MergeStrategy::Replace)
-        || value
-            .as_object()
-            .is_some_and(|table| table.contains_key("mode") || table.contains_key("approval"))
+        || value.as_object().is_some_and(|table| {
+            table.contains_key("mode")
+                || table.contains_key("approval")
+                || table.contains_key("decision_feedback")
+        })
 }
 
 fn empty_optimizer_insights() -> TokenUsageOptimizerInsights {

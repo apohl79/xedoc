@@ -243,6 +243,7 @@ export type { ModelRouterAbControlResponse } from "./ModelRouterAbControlRespons
 export type { ModelRouterApprovalAction } from "./ModelRouterApprovalAction";
 export type { ModelRouterApprovalParams } from "./ModelRouterApprovalParams";
 export type { ModelRouterApprovalResponse } from "./ModelRouterApprovalResponse";
+export type { ModelRouterCapability } from "./ModelRouterCapability";
 export type { ModelRouterDecisionNotification } from "./ModelRouterDecisionNotification";
 export type { ModelRouterDecisionReason } from "./ModelRouterDecisionReason";
 export type { ModelRouterDisposition } from "./ModelRouterDisposition";

@@ -48,6 +48,8 @@ pub struct ModelRouterConfigToml {
     /// Ask before applying an eligible route in an active router mode.
     #[serde(default)]
     pub approval: bool,
+    #[serde(default = "default_decision_feedback")]
+    pub decision_feedback: bool,
     pub baseline: Option<ModelRouterRoute>,
     pub fallback: Option<String>,
     pub policy_path: Option<AbsolutePathBuf>,
@@ -61,6 +63,7 @@ impl Default for ModelRouterConfigToml {
         Self {
             mode: ModelRouterMode::Off,
             approval: false,
+            decision_feedback: true,
             baseline: None,
             fallback: None,
             policy_path: None,
@@ -68,6 +71,10 @@ impl Default for ModelRouterConfigToml {
             report_url: None,
         }
     }
+}
+
+const fn default_decision_feedback() -> bool {
+    true
 }
 
 impl ModelRouterConfigToml {

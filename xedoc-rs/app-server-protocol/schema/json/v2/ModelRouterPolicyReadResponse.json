@@ -1,9 +1,38 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "ModelRouterCapability": {
+      "description": "A provider/model route with user-assigned capability tags.",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "provider",
+        "tags"
+      ],
+      "type": "object"
+    },
     "ModelRouterPolicy": {
       "description": "The stable, user-editable portion of the standalone model-router policy.",
       "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/definitions/ModelRouterCapability"
+          },
+          "type": "array"
+        },
         "classes": {
           "items": {
             "$ref": "#/definitions/ModelRouterPolicyClass"
@@ -26,6 +55,7 @@
         }
       },
       "required": [
+        "capabilities",
         "classes",
         "classifierRevision",
         "minimumMargin",
