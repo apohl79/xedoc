@@ -87,21 +87,22 @@ impl ToolCallCountSummaryCell {
 impl HistoryCell for ToolCallCountSummaryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let separator = "─".repeat(width as usize).dim();
-        let mut summary = String::new();
+        let mut summary = Vec::new();
         if self.stats.files_edited > 0 {
             let files = if self.stats.files_edited == 1 {
                 "file"
             } else {
                 "files"
             };
-            summary.push_str(&format!("{} {files} edited", self.stats.files_edited));
+            summary.push(format!("{} {files} edited", self.stats.files_edited).dim());
             if self.stats.total_added > 0 || self.stats.total_removed > 0 {
-                summary.push_str(&format!(
-                    " (+{} -{})",
-                    self.stats.total_added, self.stats.total_removed
-                ));
+                summary.push(" (".dim());
+                summary.push(format!("+{}", self.stats.total_added).cl_green());
+                summary.push(" ".dim());
+                summary.push(format!("-{}", self.stats.total_removed).cl_red());
+                summary.push(")".dim());
             }
-            summary.push('.');
+            summary.push(".".dim());
         }
         if self.stats.web_searches > 0 {
             let searches = if self.stats.web_searches == 1 {
@@ -109,10 +110,7 @@ impl HistoryCell for ToolCallCountSummaryCell {
             } else {
                 "searches"
             };
-            summary.push_str(&format!(
-                " {} web {searches} performed.",
-                self.stats.web_searches
-            ));
+            summary.push(format!(" {} web {searches} performed.", self.stats.web_searches).dim());
         }
         if self.stats.web_pages_fetched > 0 {
             let pages = if self.stats.web_pages_fetched == 1 {
@@ -120,14 +118,15 @@ impl HistoryCell for ToolCallCountSummaryCell {
             } else {
                 "pages"
             };
-            summary.push_str(&format!(
-                " {} web {pages} fetched.",
-                self.stats.web_pages_fetched
-            ));
+            summary.push(format!(" {} web {pages} fetched.", self.stats.web_pages_fetched).dim());
         }
         vec![
             separator.clone().into(),
-            vec!["• ".dim(), summary.dim()].into(),
+            vec!["• ".dim()]
+                .into_iter()
+                .chain(summary)
+                .collect::<Vec<_>>()
+                .into(),
             separator.into(),
         ]
     }
@@ -452,25 +451,31 @@ impl HistoryCell for ToolCallSummaryCell {
         lines.insert(0, Line::default());
         lines.push("".into());
         let stats = self.stats();
-        let file_summary = (stats.files_edited > 0).then(|| {
-            format!(
-                ", Files: {} edited · +{} -{}",
-                stats.files_edited, stats.total_added, stats.total_removed
-            )
-        });
-        lines.push(
-            format!(
-                "  Calls: {} · {} succeeded · {} failed · {} in progress{}{}",
-                self.total,
-                self.succeeded,
-                self.failed,
-                self.in_progress,
-                if self.capped { " · truncated" } else { "" },
-                file_summary.unwrap_or_default(),
-            )
-            .dim()
-            .into(),
-        );
+        let mut footer = vec![
+            "  Calls: ".dim(),
+            self.total.to_string().dim(),
+            " · ".dim(),
+            self.succeeded.to_string().cl_green(),
+            " succeeded · ".dim(),
+            self.failed.to_string().cl_red(),
+            " failed · ".dim(),
+            self.in_progress.to_string().cl_cyan(),
+            " in progress".dim(),
+        ];
+        if self.capped {
+            footer.push(" · truncated".dim());
+        }
+        if stats.files_edited > 0 {
+            footer.extend([
+                ", Files: ".dim(),
+                stats.files_edited.to_string().dim(),
+                " edited · ".dim(),
+                format!("+{}", stats.total_added).cl_green(),
+                " ".dim(),
+                format!("-{}", stats.total_removed).cl_red(),
+            ]);
+        }
+        lines.push(footer.into());
         lines.push(Line::default());
         lines
     }
