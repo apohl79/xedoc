@@ -44,12 +44,21 @@ enum ToolCallStatus {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+/// Aggregate changes recorded for one file-change tool call.
+pub struct FileChangeStats {
+    pub files_edited: usize,
+    pub total_added: usize,
+    pub total_removed: usize,
+}
+
 /// A bounded, mutable two-row summary of the tools used during one agent turn.
 #[derive(Debug)]
 pub struct ToolCallSummaryCell {
     calls: HashMap<String, ToolCallStatus>,
     labels: HashMap<String, String>,
     previews: HashMap<String, ToolCallSummaryPreview>,
+    file_change_stats: HashMap<String, FileChangeStats>,
     in_progress_order: VecDeque<String>,
     capped: bool,
     current_label: Option<String>,
@@ -84,7 +93,14 @@ impl HistoryCell for ToolCallCountSummaryCell {
             } else {
                 "files"
             };
-            summary.push_str(&format!("{} {files} edited.", self.stats.files_edited));
+            summary.push_str(&format!("{} {files} edited", self.stats.files_edited));
+            if self.stats.total_added > 0 || self.stats.total_removed > 0 {
+                summary.push_str(&format!(
+                    " (+{} -{})",
+                    self.stats.total_added, self.stats.total_removed
+                ));
+            }
+            summary.push('.');
         }
         if self.stats.web_searches > 0 {
             let searches = if self.stats.web_searches == 1 {
@@ -124,6 +140,8 @@ impl HistoryCell for ToolCallCountSummaryCell {
 pub struct ToolCallSummaryStats {
     pub total: usize,
     pub files_edited: usize,
+    pub total_added: usize,
+    pub total_removed: usize,
     pub web_searches: usize,
     pub web_pages_fetched: usize,
 }
@@ -134,6 +152,7 @@ impl ToolCallSummaryCell {
             calls: HashMap::new(),
             labels: HashMap::new(),
             previews: HashMap::new(),
+            file_change_stats: HashMap::new(),
             in_progress_order: VecDeque::new(),
             capped: false,
             current_label: None,
@@ -153,12 +172,25 @@ impl ToolCallSummaryCell {
 
     pub fn stats(&self) -> ToolCallSummaryStats {
         let labels = self.labels.values();
+        let file_change_stats = self.file_change_stats.values();
         ToolCallSummaryStats {
             total: self.total,
-            files_edited: labels
+            files_edited: if self.file_change_stats.is_empty() {
+                labels
+                    .clone()
+                    .filter(|label| *label == "apply patch")
+                    .count()
+            } else {
+                file_change_stats
+                    .clone()
+                    .map(|stats| stats.files_edited)
+                    .sum()
+            },
+            total_added: file_change_stats
                 .clone()
-                .filter(|label| *label == "apply patch")
-                .count(),
+                .map(|stats| stats.total_added)
+                .sum(),
+            total_removed: file_change_stats.map(|stats| stats.total_removed).sum(),
             web_searches: labels
                 .clone()
                 .filter(|label| {
@@ -171,6 +203,12 @@ impl ToolCallSummaryCell {
 
     pub fn start_call(&mut self, call_id: String, label: String) {
         self.start_call_with_preview(call_id, label, None);
+    }
+
+    pub fn record_file_change_stats(&mut self, call_id: &str, stats: FileChangeStats) {
+        if self.calls.contains_key(call_id) {
+            self.file_change_stats.insert(call_id.to_string(), stats);
+        }
     }
 
     pub fn start_call_with_preview(
@@ -401,14 +439,22 @@ impl HistoryCell for ToolCallSummaryCell {
         };
         lines.insert(0, Line::default());
         lines.push("".into());
+        let stats = self.stats();
+        let file_summary = (stats.files_edited > 0).then(|| {
+            format!(
+                ", Files: {} edited · +{} -{}",
+                stats.files_edited, stats.total_added, stats.total_removed
+            )
+        });
         lines.push(
             format!(
-                "  Calls: {} · {} succeeded · {} failed · {} in progress{}",
+                "  Calls: {} · {} succeeded · {} failed · {} in progress{}{}",
                 self.total,
                 self.succeeded,
                 self.failed,
                 self.in_progress,
-                if self.capped { " · truncated" } else { "" }
+                if self.capped { " · truncated" } else { "" },
+                file_summary.unwrap_or_default(),
             )
             .dim()
             .into(),
