@@ -1128,6 +1128,91 @@ impl App {
             AppEvent::UpdateModelRouterApproval { approval } => {
                 self.update_model_router_approval(app_server, approval);
             }
+            AppEvent::ModelRouterConfigUpdated {
+                mode,
+                approval,
+                error,
+            } => {
+                if let Some(error) = error {
+                    self.chat_widget.add_error_message(format!(
+                        "Failed to update model-router setting: {error}"
+                    ));
+                } else {
+                    if let Some(mode) = mode {
+                        self.chat_widget.update_model_router_mode(&mode);
+                    }
+                    if let Some(approval) = approval {
+                        self.chat_widget.update_model_router_approval(approval);
+                    }
+                    self.chat_widget.add_info_message(
+                        "Model-router setting updated.".to_string(),
+                        /*hint*/ None,
+                    );
+                }
+            }
+            AppEvent::OpenModelRouterPolicyManager => {
+                self.fetch_model_router_policy(app_server);
+            }
+            AppEvent::BootstrapModelRouterPolicy => {
+                self.bootstrap_model_router_policy(app_server);
+            }
+            AppEvent::UpdateModelRouterPolicy { policy } => {
+                self.update_model_router_policy(app_server, policy);
+            }
+            AppEvent::ModelRouterPolicyLoaded { result } => match result {
+                Ok(response) => {
+                    if let Some(policy) = response.policy {
+                        self.chat_widget.open_model_router_policy_manager(policy);
+                    } else if let Some(error) = response.error {
+                        self.chat_widget.add_error_message(format!(
+                            "Model-router policy needs repair before it can be managed: {error}"
+                        ));
+                    } else {
+                        self.chat_widget.add_info_message(
+                            "No model-router policy exists yet. Select Bootstrap policy from `/model-router`."
+                                .to_string(),
+                            /*hint*/ None,
+                        );
+                    }
+                }
+                Err(error) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to read model-router policy: {error}")),
+            },
+            AppEvent::ModelRouterPolicyBootstrapped { result } => match result {
+                Ok(response) => {
+                    let message = if response.created {
+                        "Created the initial model-router policy."
+                    } else {
+                        "Kept the existing model-router policy."
+                    };
+                    self.chat_widget
+                        .add_info_message(message.to_string(), /*hint*/ None);
+                    if let Some(policy) = response.policy {
+                        self.chat_widget.open_model_router_policy_manager(policy);
+                    } else if let Some(error) = response.error {
+                        self.chat_widget.add_error_message(format!(
+                            "Model-router policy needs repair before it can be managed: {error}"
+                        ));
+                    }
+                }
+                Err(error) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to bootstrap model-router policy: {error}")),
+            },
+            AppEvent::ModelRouterPolicyUpdated { result } => match result {
+                Ok(policy) => {
+                    self.chat_widget.add_info_message(
+                        "Model-router policy updated; the next eligible decision uses it."
+                            .to_string(),
+                        /*hint*/ None,
+                    );
+                    self.chat_widget.open_model_router_policy_manager(policy);
+                }
+                Err(error) => self
+                    .chat_widget
+                    .add_error_message(format!("Failed to update model-router policy: {error}")),
+            },
             AppEvent::ModelRouterReportOpenRequested => {
                 self.open_model_router_report(app_server);
             }

@@ -26,6 +26,12 @@ use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ManagedHooksRequirements;
 use xedoc_app_server_protocol::MergeStrategy;
 use xedoc_app_server_protocol::ModelProviderCapabilitiesReadResponse;
+use xedoc_app_server_protocol::ModelRouterPolicy as ApiModelRouterPolicy;
+use xedoc_app_server_protocol::ModelRouterPolicyBootstrapResponse;
+use xedoc_app_server_protocol::ModelRouterPolicyClass as ApiModelRouterPolicyClass;
+use xedoc_app_server_protocol::ModelRouterPolicyReadResponse;
+use xedoc_app_server_protocol::ModelRouterPolicyWriteParams;
+use xedoc_app_server_protocol::ModelRouterPolicyWriteResponse;
 use xedoc_app_server_protocol::ModelsRequirements;
 use xedoc_app_server_protocol::NetworkDomainPermission;
 use xedoc_app_server_protocol::NetworkRequirements;
@@ -316,6 +322,101 @@ impl ConfigRequestProcessor {
         })
     }
 
+    pub(crate) async fn model_router_policy_read(
+        &self,
+    ) -> Result<ModelRouterPolicyReadResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let path = config
+            .model_router
+            .resolved_policy_path(config.xedoc_home.as_path());
+        match xedoc_config::load_model_router_policy(&path) {
+            Ok(policy) => Ok(ModelRouterPolicyReadResponse {
+                exists: true,
+                policy: Some(map_model_router_policy(policy)),
+                error: None,
+            }),
+            Err(xedoc_config::ModelRouterPolicyError::Read { source, .. })
+                if source.kind() == std::io::ErrorKind::NotFound =>
+            {
+                Ok(ModelRouterPolicyReadResponse {
+                    exists: false,
+                    policy: None,
+                    error: None,
+                })
+            }
+            Err(error) => Ok(ModelRouterPolicyReadResponse {
+                exists: true,
+                policy: None,
+                error: Some(error.to_string()),
+            }),
+        }
+    }
+
+    pub(crate) async fn model_router_policy_bootstrap(
+        &self,
+    ) -> Result<ModelRouterPolicyBootstrapResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let path = config
+            .model_router
+            .resolved_policy_path(config.xedoc_home.as_path());
+        let created = xedoc_model_router::bootstrap_initial_policy(&path).map_err(|error| {
+            invalid_request(format!("failed to bootstrap model-router policy: {error}"))
+        })?;
+        self.reload_user_config().await;
+        let response = self.model_router_policy_read().await?;
+        Ok(ModelRouterPolicyBootstrapResponse {
+            created,
+            policy: response.policy,
+            error: response.error,
+        })
+    }
+
+    pub(crate) async fn model_router_policy_write(
+        &self,
+        params: ModelRouterPolicyWriteParams,
+    ) -> Result<ModelRouterPolicyWriteResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let path = config
+            .model_router
+            .resolved_policy_path(config.xedoc_home.as_path());
+        let mut policy = xedoc_config::load_model_router_policy(&path).map_err(|error| {
+            invalid_request(format!("failed to load model-router policy: {error}"))
+        })?;
+        if !params.minimum_score.is_finite()
+            || !params.minimum_margin.is_finite()
+            || !(0.0..=1.0).contains(&params.minimum_score)
+            || !(0.0..=1.0).contains(&params.minimum_margin)
+        {
+            return Err(invalid_request(
+                "model-router classifier thresholds must be finite values from 0 to 1",
+            ));
+        }
+        if policy.classes.len() != params.classes.len() {
+            return Err(invalid_request(
+                "model-router policy classes must match the installed classifier",
+            ));
+        }
+        for class in &mut policy.classes {
+            let Some(update) = params.classes.iter().find(|update| update.id == class.id) else {
+                return Err(invalid_request(
+                    "model-router policy classes must match the installed classifier",
+                ));
+            };
+            class.minimum_reasoning_effort = update.minimum_reasoning_effort.clone();
+            class.required_capabilities = update.required_capabilities.clone();
+        }
+        policy.classifier.minimum_score = params.minimum_score as f32;
+        policy.classifier.minimum_margin = params.minimum_margin as f32;
+        policy.policy_revision = format!("user-tuned-{}", chrono::Utc::now().timestamp_millis());
+        xedoc_config::write_model_router_policy(&path, &policy).map_err(|error| {
+            invalid_request(format!("failed to write model-router policy: {error}"))
+        })?;
+        self.reload_user_config().await;
+        Ok(ModelRouterPolicyWriteResponse {
+            policy: map_model_router_policy(policy),
+        })
+    }
+
     pub(crate) async fn handle_config_mutation(&self) {
         self.thread_manager.plugins_manager().clear_cache();
         self.thread_manager.skills_service().clear_cache();
@@ -435,6 +536,24 @@ impl ConfigRequestProcessor {
             };
             thread.refresh_runtime_config(next_config.clone()).await;
         }
+    }
+}
+
+fn map_model_router_policy(policy: xedoc_config::ModelRouterPolicy) -> ApiModelRouterPolicy {
+    ApiModelRouterPolicy {
+        policy_revision: policy.policy_revision,
+        classifier_revision: policy.classifier.revision,
+        minimum_score: f64::from(policy.classifier.minimum_score),
+        minimum_margin: f64::from(policy.classifier.minimum_margin),
+        classes: policy
+            .classes
+            .into_iter()
+            .map(|class| ApiModelRouterPolicyClass {
+                id: class.id,
+                minimum_reasoning_effort: class.minimum_reasoning_effort,
+                required_capabilities: class.required_capabilities,
+            })
+            .collect(),
     }
 }
 

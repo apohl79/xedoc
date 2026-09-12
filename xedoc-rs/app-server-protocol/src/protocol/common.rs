@@ -811,6 +811,24 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ModelRouterAbControlResponse,
     },
+    #[experimental("modelRouterPolicy/read")]
+    ModelRouterPolicyRead => "modelRouterPolicy/read" {
+        params: v2::ModelRouterPolicyReadParams,
+        serialization: global_shared_read("model-router-policy"),
+        response: v2::ModelRouterPolicyReadResponse,
+    },
+    #[experimental("modelRouterPolicy/bootstrap")]
+    ModelRouterPolicyBootstrap => "modelRouterPolicy/bootstrap" {
+        params: v2::ModelRouterPolicyBootstrapParams,
+        serialization: global("model-router-policy"),
+        response: v2::ModelRouterPolicyBootstrapResponse,
+    },
+    #[experimental("modelRouterPolicy/write")]
+    ModelRouterPolicyWrite => "modelRouterPolicy/write" {
+        params: v2::ModelRouterPolicyWriteParams,
+        serialization: global("model-router-policy"),
+        response: v2::ModelRouterPolicyWriteResponse,
+    },
     #[experimental("modelRouterReport/read")]
     ModelRouterReportRead => "modelRouterReport/read" {
         params: v2::ModelRouterReportReadParams,

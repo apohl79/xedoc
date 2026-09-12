@@ -75,7 +75,7 @@ impl ModelRouterConfigToml {
     pub fn resolved_policy_path(&self, xedoc_home: &Path) -> PathBuf {
         self.policy_path.as_ref().map_or_else(
             || xedoc_home.join("model-router.toml"),
-            |path| path.to_path_buf(),
+            xedoc_utils_absolute_path::AbsolutePathBuf::to_path_buf,
         )
     }
 }
@@ -215,6 +215,43 @@ pub fn write_model_router_policy(
     write_policy_bytes(path, &contents)
 }
 
+/// Atomically install an initial policy only when no policy exists yet.
+///
+/// Returns `true` when `path` was created and `false` when an existing file
+/// (valid or otherwise) was preserved. Callers can use this for packaged
+/// bootstrap defaults without overwriting user-managed policy revisions.
+pub fn bootstrap_model_router_policy(
+    path: &Path,
+    policy: &ModelRouterPolicy,
+) -> Result<bool, ModelRouterPolicyError> {
+    validate_policy(policy)?;
+    if path.exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| ModelRouterPolicyError::Write {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    let contents = toml::to_string_pretty(policy)
+        .map_err(|source| ModelRouterPolicyError::SerializeReview { source })?;
+    write_policy_bytes(path, &contents)?;
+    Ok(true)
+}
+
+/// Atomically install a serialized initial policy only when no policy exists.
+///
+/// This is intended for packaged defaults. Existing user files are never
+/// parsed, replaced, or otherwise modified.
+pub fn bootstrap_model_router_policy_toml(
+    path: &Path,
+    contents: &str,
+) -> Result<bool, ModelRouterPolicyError> {
+    let policy = parse_model_router_policy(path, contents)?;
+    bootstrap_model_router_policy(path, &policy)
+}
+
 fn parse_model_router_policy(
     path: &Path,
     contents: &str,
@@ -336,12 +373,11 @@ fn validate_policy(policy: &ModelRouterPolicy) -> Result<(), ModelRouterPolicyEr
                 "classes.required_capabilities",
             ));
         }
-        if let Some(weights) = &class.weights {
-            if weights.len() != embedding.dimensions
-                || weights.iter().any(|value| !value.is_finite())
-            {
-                return Err(ModelRouterPolicyError::InvalidField("classes.weights"));
-            }
+        if let Some(weights) = &class.weights
+            && (weights.len() != embedding.dimensions
+                || weights.iter().any(|value| !value.is_finite()))
+        {
+            return Err(ModelRouterPolicyError::InvalidField("classes.weights"));
         }
         for (field, value) in [
             ("classes.minimum_score", class.minimum_score),

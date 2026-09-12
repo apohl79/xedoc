@@ -245,6 +245,50 @@ pub(crate) async fn control_model_router_ab(
         .wrap_err("modelRouter/abControl failed in TUI")
 }
 
+pub(crate) async fn read_model_router_policy(
+    request_handle: AppServerRequestHandle,
+) -> Result<xedoc_app_server_protocol::ModelRouterPolicyReadResponse> {
+    let request_id = RequestId::String(format!("tui-model-router-policy-read-{}", Uuid::new_v4()));
+    request_handle
+        .request_typed(ClientRequest::ModelRouterPolicyRead {
+            request_id,
+            params: xedoc_app_server_protocol::ModelRouterPolicyReadParams {},
+        })
+        .await
+        .wrap_err("modelRouterPolicy/read failed in TUI")
+}
+
+pub(crate) async fn bootstrap_model_router_policy(
+    request_handle: AppServerRequestHandle,
+) -> Result<xedoc_app_server_protocol::ModelRouterPolicyBootstrapResponse> {
+    let request_id = RequestId::String(format!(
+        "tui-model-router-policy-bootstrap-{}",
+        Uuid::new_v4()
+    ));
+    request_handle
+        .request_typed(ClientRequest::ModelRouterPolicyBootstrap {
+            request_id,
+            params: xedoc_app_server_protocol::ModelRouterPolicyBootstrapParams {},
+        })
+        .await
+        .wrap_err("modelRouterPolicy/bootstrap failed in TUI")
+}
+
+pub(crate) async fn write_model_router_policy(
+    request_handle: AppServerRequestHandle,
+    policy: xedoc_app_server_protocol::ModelRouterPolicyWriteParams,
+) -> Result<xedoc_app_server_protocol::ModelRouterPolicy> {
+    let request_id = RequestId::String(format!("tui-model-router-policy-write-{}", Uuid::new_v4()));
+    request_handle
+        .request_typed(ClientRequest::ModelRouterPolicyWrite {
+            request_id,
+            params: policy,
+        })
+        .await
+        .map(|response: xedoc_app_server_protocol::ModelRouterPolicyWriteResponse| response.policy)
+        .wrap_err("modelRouterPolicy/write failed in TUI")
+}
+
 pub(crate) async fn read_token_usage_optimizer_report(
     request_handle: AppServerRequestHandle,
     days: Option<u32>,

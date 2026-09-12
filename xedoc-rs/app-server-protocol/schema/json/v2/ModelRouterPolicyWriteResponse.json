@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ModelRouterPolicy": {
+      "description": "The stable, user-editable portion of the standalone model-router policy.",
+      "properties": {
+        "classes": {
+          "items": {
+            "$ref": "#/definitions/ModelRouterPolicyClass"
+          },
+          "type": "array"
+        },
+        "classifierRevision": {
+          "type": "string"
+        },
+        "minimumMargin": {
+          "format": "double",
+          "type": "number"
+        },
+        "minimumScore": {
+          "format": "double",
+          "type": "number"
+        },
+        "policyRevision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "classes",
+        "classifierRevision",
+        "minimumMargin",
+        "minimumScore",
+        "policyRevision"
+      ],
+      "type": "object"
+    },
+    "ModelRouterPolicyClass": {
+      "description": "A user-editable routing class in the standalone model-router policy.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "minimumReasoningEffort": {
+          "$ref": "#/definitions/ReasoningEffort"
+        },
+        "requiredCapabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "minimumReasoningEffort",
+        "requiredCapabilities"
+      ],
+      "type": "object"
+    },
+    "ReasoningEffort": {
+      "description": "A non-empty reasoning effort value advertised by the model.",
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "properties": {
+    "policy": {
+      "$ref": "#/definitions/ModelRouterPolicy"
+    }
+  },
+  "required": [
+    "policy"
+  ],
+  "title": "ModelRouterPolicyWriteResponse",
+  "type": "object"
+}

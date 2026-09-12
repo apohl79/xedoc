@@ -72,6 +72,7 @@ xedoc-mcp-extension = { workspace = true }
 xedoc-model-provider = { workspace = true }
 xedoc-model-provider-info = { workspace = true }
 xedoc-models-manager = { workspace = true }
+xedoc-model-router = { workspace = true }
 xedoc-provider-anthropic = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-app-server-protocol = { workspace = true }

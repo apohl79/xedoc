@@ -101,6 +101,77 @@ pub struct ModelRouterAbControlParams {
 #[ts(export_to = "v2/")]
 pub struct ModelRouterAbControlResponse {}
 
+/// A user-editable routing class in the standalone model-router policy.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicyClass {
+    pub id: String,
+    pub minimum_reasoning_effort: ReasoningEffort,
+    pub required_capabilities: Vec<String>,
+}
+
+/// The stable, user-editable portion of the standalone model-router policy.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicy {
+    pub policy_revision: String,
+    pub classifier_revision: String,
+    #[ts(type = "number")]
+    pub minimum_score: f64,
+    #[ts(type = "number")]
+    pub minimum_margin: f64,
+    pub classes: Vec<ModelRouterPolicyClass>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicyReadParams {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicyReadResponse {
+    pub exists: bool,
+    pub policy: Option<ModelRouterPolicy>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicyBootstrapParams {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicyBootstrapResponse {
+    pub created: bool,
+    pub policy: Option<ModelRouterPolicy>,
+    pub error: Option<String>,
+}
+
+/// Replace the user-editable routing policy controls while preserving classifier weights.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicyWriteParams {
+    #[ts(type = "number")]
+    pub minimum_score: f64,
+    #[ts(type = "number")]
+    pub minimum_margin: f64,
+    pub classes: Vec<ModelRouterPolicyClass>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterPolicyWriteResponse {
+    pub policy: ModelRouterPolicy,
+}
+
 /// The action a user takes on a model-router proposal.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
