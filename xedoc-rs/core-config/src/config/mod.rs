@@ -3050,6 +3050,19 @@ impl Config {
             .startup_warnings()
             .unwrap_or_default()
             .to_vec();
+        let ignored_model_router_fields = cfg
+            .model_router
+            .ignored_fields
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        if !ignored_model_router_fields.is_empty() {
+            let fields = ignored_model_router_fields.join(", ");
+            let message =
+                format!("Ignoring unknown [model_router] configuration field(s): {fields}.");
+            tracing::warn!("{message}");
+            startup_warnings.push(message);
+        }
 
         // Destructure ConfigOverrides fully to ensure all overrides are applied.
         let ConfigOverrides {
