@@ -2080,6 +2080,78 @@
             },
             "method": {
               "enum": [
+                "modelRouterPolicy/read"
+              ],
+              "title": "ModelRouterPolicy/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ModelRouterPolicyReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelRouterPolicy/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "modelRouterPolicy/bootstrap"
+              ],
+              "title": "ModelRouterPolicy/bootstrapRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ModelRouterPolicyBootstrapParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelRouterPolicy/bootstrapRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "modelRouterPolicy/write"
+              ],
+              "title": "ModelRouterPolicy/writeRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ModelRouterPolicyWriteParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelRouterPolicy/writeRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "modelRouterReport/read"
               ],
               "title": "ModelRouterReport/readRequestMethod",
@@ -8585,6 +8657,170 @@
           "type": "object"
         }
       ]
+    },
+    "ModelRouterPolicy": {
+      "description": "The stable, user-editable portion of the standalone model-router policy.",
+      "properties": {
+        "classes": {
+          "items": {
+            "$ref": "#/definitions/ModelRouterPolicyClass"
+          },
+          "type": "array"
+        },
+        "classifierRevision": {
+          "type": "string"
+        },
+        "minimumMargin": {
+          "format": "double",
+          "type": "number"
+        },
+        "minimumScore": {
+          "format": "double",
+          "type": "number"
+        },
+        "policyRevision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "classes",
+        "classifierRevision",
+        "minimumMargin",
+        "minimumScore",
+        "policyRevision"
+      ],
+      "type": "object"
+    },
+    "ModelRouterPolicyBootstrapParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ModelRouterPolicyBootstrapParams",
+      "type": "object"
+    },
+    "ModelRouterPolicyBootstrapResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "created": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelRouterPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "created"
+      ],
+      "title": "ModelRouterPolicyBootstrapResponse",
+      "type": "object"
+    },
+    "ModelRouterPolicyClass": {
+      "description": "A user-editable routing class in the standalone model-router policy.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "minimumReasoningEffort": {
+          "$ref": "#/definitions/ReasoningEffort"
+        },
+        "requiredCapabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "minimumReasoningEffort",
+        "requiredCapabilities"
+      ],
+      "type": "object"
+    },
+    "ModelRouterPolicyReadParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ModelRouterPolicyReadParams",
+      "type": "object"
+    },
+    "ModelRouterPolicyReadResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelRouterPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "exists"
+      ],
+      "title": "ModelRouterPolicyReadResponse",
+      "type": "object"
+    },
+    "ModelRouterPolicyWriteParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Replace the user-editable routing policy controls while preserving classifier weights.",
+      "properties": {
+        "classes": {
+          "items": {
+            "$ref": "#/definitions/ModelRouterPolicyClass"
+          },
+          "type": "array"
+        },
+        "minimumMargin": {
+          "format": "double",
+          "type": "number"
+        },
+        "minimumScore": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "classes",
+        "minimumMargin",
+        "minimumScore"
+      ],
+      "title": "ModelRouterPolicyWriteParams",
+      "type": "object"
+    },
+    "ModelRouterPolicyWriteResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "policy": {
+          "$ref": "#/definitions/ModelRouterPolicy"
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "title": "ModelRouterPolicyWriteResponse",
+      "type": "object"
     },
     "ModelRouterReportDay": {
       "description": "One persisted UTC-day aggregate for the local model router.",

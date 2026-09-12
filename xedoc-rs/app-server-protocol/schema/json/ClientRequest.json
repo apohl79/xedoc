@@ -1849,6 +1849,60 @@
       ],
       "type": "object"
     },
+    "ModelRouterPolicyBootstrapParams": {
+      "type": "object"
+    },
+    "ModelRouterPolicyClass": {
+      "description": "A user-editable routing class in the standalone model-router policy.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "minimumReasoningEffort": {
+          "$ref": "#/definitions/ReasoningEffort"
+        },
+        "requiredCapabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "minimumReasoningEffort",
+        "requiredCapabilities"
+      ],
+      "type": "object"
+    },
+    "ModelRouterPolicyReadParams": {
+      "type": "object"
+    },
+    "ModelRouterPolicyWriteParams": {
+      "description": "Replace the user-editable routing policy controls while preserving classifier weights.",
+      "properties": {
+        "classes": {
+          "items": {
+            "$ref": "#/definitions/ModelRouterPolicyClass"
+          },
+          "type": "array"
+        },
+        "minimumMargin": {
+          "format": "double",
+          "type": "number"
+        },
+        "minimumScore": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "classes",
+        "minimumMargin",
+        "minimumScore"
+      ],
+      "type": "object"
+    },
     "ModelRouterReportOpenParams": {
       "description": "Starts a local browser report for model-router activity.",
       "type": "object"
@@ -6962,6 +7016,78 @@
         "params"
       ],
       "title": "ModelRouter/abControlRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelRouterPolicy/read"
+          ],
+          "title": "ModelRouterPolicy/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterPolicyReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelRouterPolicy/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelRouterPolicy/bootstrap"
+          ],
+          "title": "ModelRouterPolicy/bootstrapRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterPolicyBootstrapParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelRouterPolicy/bootstrapRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelRouterPolicy/write"
+          ],
+          "title": "ModelRouterPolicy/writeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterPolicyWriteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelRouterPolicy/writeRequest",
       "type": "object"
     },
     {

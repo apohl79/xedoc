@@ -49,6 +49,15 @@ pub use worker::TaskEmbedder;
 
 use std::path::Path;
 
+/// Packaged first-run policy derived from the provisional non-steering
+/// work-type calibration corpus. It contains no raw prompt text.
+pub const INITIAL_POLICY_TOML: &str = include_str!("../assets/initial-policy.toml");
+
+/// Install the packaged policy when no user policy exists yet.
+pub fn bootstrap_initial_policy(path: &Path) -> Result<bool, xedoc_config::ModelRouterPolicyError> {
+    xedoc_config::bootstrap_model_router_policy_toml(path, INITIAL_POLICY_TOML)
+}
+
 /// Calibrate a checked local artifact from a bounded local labelled corpus.
 ///
 /// Raw prompts remain in process memory. The frozen input, report, and proposal

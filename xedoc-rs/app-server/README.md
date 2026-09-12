@@ -197,6 +197,9 @@ Example with notification opt-out:
 - `modelRouter/decision` — experimental notification emitted for each local router decision. It includes bounded route, policy, and prompt-hash metadata only; it never includes prompt or output text.
 - `item/modelRouter/requestApproval` — server request emitted when `[model_router].approval = true` and the router proposes a different eligible route. Respond with `approve`, `reject` to keep the current route, or `override` with an optional classification and route. A classification override is fed back into the local embedding classifier.
 - `modelRouter/abControl` — experimental thread-scoped A/B control. Use `armNext` to arm one eligible root turn or `disable` to cancel an armed experiment.
+- `modelRouterPolicy/read` — experimental read of the user-editable policy controls. It exposes confidence thresholds and per-class effort/capability requirements, never the classifier weights or prompts.
+- `modelRouterPolicy/bootstrap` — experimental first-run bootstrap. It installs the packaged initial policy only when no user policy exists, preserving any existing policy including an invalid one.
+- `modelRouterPolicy/write` — experimental update of confidence thresholds and per-class effort/capability requirements. It preserves the installed classifier weights and validates that the submitted class set still matches the classifier.
 - `modelRouterReport/read` — experimental bounded report of persisted UTC-day router aggregates and recent metadata-only decisions. It returns empty collections when local state is unavailable.
 - `modelRouterReport/open` — experimental; opens a short-lived, read-only browser report on a random loopback port. The returned URL keeps its capability in the fragment, and the browser sends it only as a request header.
 - `modelManager/read` — read provider authentication state, smart/fast defaults, default reasoning effort, and per-model context, compaction, and base-instruction settings.

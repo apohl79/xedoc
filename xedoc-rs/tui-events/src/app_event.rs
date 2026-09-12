@@ -21,6 +21,10 @@ use xedoc_app_server_protocol::McpServerStatusDetail;
 use xedoc_app_server_protocol::ModelManagerReadResponse;
 use xedoc_app_server_protocol::ModelManagerUpdateParams;
 use xedoc_app_server_protocol::ModelRouterAbControlAction;
+use xedoc_app_server_protocol::ModelRouterPolicy;
+use xedoc_app_server_protocol::ModelRouterPolicyBootstrapResponse;
+use xedoc_app_server_protocol::ModelRouterPolicyReadResponse;
+use xedoc_app_server_protocol::ModelRouterPolicyWriteParams;
 use xedoc_app_server_protocol::PluginInstallResponse;
 use xedoc_app_server_protocol::PluginListResponse;
 use xedoc_app_server_protocol::PluginReadParams;
@@ -730,11 +734,33 @@ pub enum AppEvent {
     UpdateModelRouterApproval {
         approval: bool,
     },
+    /// Confirm a model-router config update and refresh the TUI's local view.
+    ModelRouterConfigUpdated {
+        mode: Option<String>,
+        approval: Option<bool>,
+        error: Option<String>,
+    },
 
     /// Open the interactive model-router policy manager.
     OpenModelRouterPolicyManager,
     /// Bootstrap a user-owned model-router policy from the bundled defaults.
     BootstrapModelRouterPolicy,
+    /// Save the user-editable policy settings without changing classifier weights.
+    UpdateModelRouterPolicy {
+        policy: ModelRouterPolicyWriteParams,
+    },
+    /// Deliver a policy-manager policy read.
+    ModelRouterPolicyLoaded {
+        result: Result<ModelRouterPolicyReadResponse, String>,
+    },
+    /// Deliver the result of initializing the packaged policy.
+    ModelRouterPolicyBootstrapped {
+        result: Result<ModelRouterPolicyBootstrapResponse, String>,
+    },
+    /// Deliver a saved policy to re-open in the manager.
+    ModelRouterPolicyUpdated {
+        result: Result<ModelRouterPolicy, String>,
+    },
 
     /// Open the bounded model-router browser report.
     ModelRouterReportOpenRequested,

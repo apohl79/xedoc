@@ -889,6 +889,21 @@ impl MessageProcessor {
                 .model_router_ab_control(params)
                 .await
                 .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterPolicyRead { params: _, .. } => self
+                .config_processor
+                .model_router_policy_read()
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterPolicyBootstrap { params: _, .. } => self
+                .config_processor
+                .model_router_policy_bootstrap()
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterPolicyWrite { params, .. } => self
+                .config_processor
+                .model_router_policy_write(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ModelRouterReportRead { params, .. } => self
                 .model_router_report_processor
                 .read(params)

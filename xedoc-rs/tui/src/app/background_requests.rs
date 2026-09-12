@@ -68,13 +68,15 @@ impl App {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();
         tokio::spawn(async move {
-            if let Err(error) =
-                crate::config_update::write_model_router_mode(request_handle, mode).await
-            {
-                app_event_tx.send(AppEvent::ModelRouterReportOpenLoaded {
-                    result: Err(format!("Failed to update model-router mode: {error}")),
-                });
-            }
+            let error = crate::config_update::write_model_router_mode(request_handle, mode.clone())
+                .await
+                .err()
+                .map(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
+                mode: error.is_none().then_some(mode),
+                approval: None,
+                error,
+            });
         });
     }
 
@@ -86,15 +88,15 @@ impl App {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();
         tokio::spawn(async move {
-            if let Err(error) =
-                crate::config_update::write_model_router_approval(request_handle, approval).await
-            {
-                app_event_tx.send(AppEvent::ModelRouterReportOpenLoaded {
-                    result: Err(format!(
-                        "Failed to update model-router approval setting: {error}"
-                    )),
-                });
-            }
+            let error = crate::config_update::write_model_router_approval(request_handle, approval)
+                .await
+                .err()
+                .map(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
+                mode: None,
+                approval: error.is_none().then_some(approval),
+                error,
+            });
         });
     }
 
@@ -123,6 +125,43 @@ impl App {
                     .await
                     .map_err(|error| error.to_string());
             app_event_tx.send(AppEvent::ModelRouterAbControlLoaded { result });
+        });
+    }
+
+    pub(super) fn fetch_model_router_policy(&mut self, app_server: &AppServerSession) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::config_update::read_model_router_policy(request_handle)
+                .await
+                .map_err(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelRouterPolicyLoaded { result });
+        });
+    }
+
+    pub(super) fn bootstrap_model_router_policy(&mut self, app_server: &AppServerSession) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::config_update::bootstrap_model_router_policy(request_handle)
+                .await
+                .map_err(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelRouterPolicyBootstrapped { result });
+        });
+    }
+
+    pub(super) fn update_model_router_policy(
+        &mut self,
+        app_server: &AppServerSession,
+        policy: xedoc_app_server_protocol::ModelRouterPolicyWriteParams,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let result = crate::config_update::write_model_router_policy(request_handle, policy)
+                .await
+                .map_err(|error| error.to_string());
+            app_event_tx.send(AppEvent::ModelRouterPolicyUpdated { result });
         });
     }
 

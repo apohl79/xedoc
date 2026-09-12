@@ -247,6 +247,14 @@ export type { ModelRouterDecisionNotification } from "./ModelRouterDecisionNotif
 export type { ModelRouterDecisionReason } from "./ModelRouterDecisionReason";
 export type { ModelRouterDisposition } from "./ModelRouterDisposition";
 export type { ModelRouterEffectiveRoute } from "./ModelRouterEffectiveRoute";
+export type { ModelRouterPolicy } from "./ModelRouterPolicy";
+export type { ModelRouterPolicyBootstrapParams } from "./ModelRouterPolicyBootstrapParams";
+export type { ModelRouterPolicyBootstrapResponse } from "./ModelRouterPolicyBootstrapResponse";
+export type { ModelRouterPolicyClass } from "./ModelRouterPolicyClass";
+export type { ModelRouterPolicyReadParams } from "./ModelRouterPolicyReadParams";
+export type { ModelRouterPolicyReadResponse } from "./ModelRouterPolicyReadResponse";
+export type { ModelRouterPolicyWriteParams } from "./ModelRouterPolicyWriteParams";
+export type { ModelRouterPolicyWriteResponse } from "./ModelRouterPolicyWriteResponse";
 export type { ModelRouterReportDay } from "./ModelRouterReportDay";
 export type { ModelRouterReportDecision } from "./ModelRouterReportDecision";
 export type { ModelRouterReportOpenParams } from "./ModelRouterReportOpenParams";
