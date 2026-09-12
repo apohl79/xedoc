@@ -1656,6 +1656,10 @@
         "baseline": {
           "$ref": "#/definitions/ModelRouterRoute"
         },
+        "decision_feedback": {
+          "default": true,
+          "type": "boolean"
+        },
         "fallback": {
           "type": "string"
         },
@@ -5273,6 +5277,7 @@
       "default": {
         "approval": false,
         "baseline": null,
+        "decision_feedback": true,
         "fallback": null,
         "max_prompt_bytes": 16384,
         "mode": "off",

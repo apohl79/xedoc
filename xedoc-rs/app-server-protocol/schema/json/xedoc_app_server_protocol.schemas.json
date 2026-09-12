@@ -12406,6 +12406,29 @@
         "title": "ModelRouterAbControlResponse",
         "type": "object"
       },
+      "ModelRouterCapability": {
+        "description": "A provider/model route with user-assigned capability tags.",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "model",
+          "provider",
+          "tags"
+        ],
+        "type": "object"
+      },
       "ModelRouterDecisionNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "description": "Experimental metadata-only record of one local model-router decision.\n\nThis notification never contains prompt or output text.",
@@ -12550,6 +12573,12 @@
       "ModelRouterPolicy": {
         "description": "The stable, user-editable portion of the standalone model-router policy.",
         "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/definitions/v2/ModelRouterCapability"
+            },
+            "type": "array"
+          },
           "classes": {
             "items": {
               "$ref": "#/definitions/v2/ModelRouterPolicyClass"
@@ -12572,6 +12601,7 @@
           }
         },
         "required": [
+          "capabilities",
           "classes",
           "classifierRevision",
           "minimumMargin",
@@ -12675,6 +12705,12 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "description": "Replace the user-editable routing policy controls while preserving classifier weights.",
         "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/definitions/v2/ModelRouterCapability"
+            },
+            "type": "array"
+          },
           "classes": {
             "items": {
               "$ref": "#/definitions/v2/ModelRouterPolicyClass"
@@ -12691,6 +12727,7 @@
           }
         },
         "required": [
+          "capabilities",
           "classes",
           "minimumMargin",
           "minimumScore"
