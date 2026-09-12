@@ -30,6 +30,14 @@ impl ToolCallSummaryState {
         self.cell.start_call_with_preview(id, label, preview);
     }
 
+    pub(super) fn record_file_change_stats(
+        &mut self,
+        id: &str,
+        stats: history_cell::FileChangeStats,
+    ) {
+        self.cell.record_file_change_stats(id, stats);
+    }
+
     pub(super) fn complete(
         &mut self,
         id: String,
@@ -64,6 +72,12 @@ impl ToolCallSummaryState {
             files_edited: stats
                 .files_edited
                 .saturating_sub(self.persisted_stats.files_edited),
+            total_added: stats
+                .total_added
+                .saturating_sub(self.persisted_stats.total_added),
+            total_removed: stats
+                .total_removed
+                .saturating_sub(self.persisted_stats.total_removed),
             web_searches: stats
                 .web_searches
                 .saturating_sub(self.persisted_stats.web_searches),
@@ -103,7 +117,15 @@ impl ChatWidget {
             return;
         }
         if let Some((id, label)) = Self::tool_call_item_label(&item) {
-            self.record_tool_call_start_with_preview(id, label, Self::tool_call_preview(&item));
+            let file_change_stats = Self::tool_call_file_change_stats(&item);
+            self.record_tool_call_start_with_preview(
+                id.clone(),
+                label,
+                Self::tool_call_preview(&item),
+            );
+            if let Some(stats) = file_change_stats {
+                self.record_tool_call_file_change_stats(&id, stats);
+            }
         }
     }
 
@@ -112,12 +134,16 @@ impl ChatWidget {
             return;
         }
         if let Some((id, label, outcome)) = Self::tool_call_item_outcome(&item) {
+            let file_change_stats = Self::tool_call_file_change_stats(&item);
             self.record_tool_call_completion_with_preview(
-                id,
+                id.clone(),
                 label,
                 outcome,
                 Self::tool_call_preview(&item),
             );
+            if let Some(stats) = file_change_stats {
+                self.record_tool_call_file_change_stats(&id, stats);
+            }
         }
     }
 
@@ -181,6 +207,16 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    fn record_tool_call_file_change_stats(
+        &mut self,
+        id: &str,
+        stats: history_cell::FileChangeStats,
+    ) {
+        if let Some(summary) = self.tool_call_summary.as_mut() {
+            summary.record_file_change_stats(id, stats);
+        }
+    }
+
     pub(super) fn flush_tool_call_summary(&mut self) {
         self.tool_call_summary = None;
     }
@@ -197,6 +233,8 @@ impl ChatWidget {
             return false;
         }
         self.add_boxed_history(Box::new(history_cell::ToolCallCountSummaryCell::new(stats)));
+        self.transcript.needs_final_message_separator = true;
+        self.transcript.had_work_activity = true;
         if let Some(summary) = self.tool_call_summary.as_mut() {
             summary.mark_history_summary_emitted();
         }
@@ -366,16 +404,7 @@ impl ChatWidget {
             }),
             ThreadItem::FileChange { changes, .. } => {
                 let change = changes.first()?;
-                let added = change
-                    .diff
-                    .lines()
-                    .filter(|line| line.starts_with('+') && !line.starts_with("+++"))
-                    .count();
-                let removed = change
-                    .diff
-                    .lines()
-                    .filter(|line| line.starts_with('-') && !line.starts_with("---"))
-                    .count();
+                let (added, removed) = diff_line_counts(&change.kind, &change.diff);
                 let (unified_diff, omitted_diff_lines) =
                     xedoc_tui_transcript::diff_render::truncate_unified_diff_preview(
                         &change.diff,
@@ -391,6 +420,45 @@ impl ChatWidget {
                 })
             }
             _ => None,
+        }
+    }
+
+    fn tool_call_file_change_stats(item: &ThreadItem) -> Option<history_cell::FileChangeStats> {
+        let ThreadItem::FileChange { changes, .. } = item else {
+            return None;
+        };
+        Some(
+            changes
+                .iter()
+                .fold(history_cell::FileChangeStats::default(), |stats, change| {
+                    let (added, removed) = diff_line_counts(&change.kind, &change.diff);
+                    history_cell::FileChangeStats {
+                        files_edited: stats.files_edited.saturating_add(1),
+                        total_added: stats.total_added.saturating_add(added),
+                        total_removed: stats.total_removed.saturating_add(removed),
+                    }
+                }),
+        )
+    }
+}
+
+fn diff_line_counts(
+    kind: &xedoc_app_server_protocol::PatchChangeKind,
+    diff: &str,
+) -> (usize, usize) {
+    match kind {
+        xedoc_app_server_protocol::PatchChangeKind::Add => (diff.lines().count(), 0),
+        xedoc_app_server_protocol::PatchChangeKind::Delete => (0, diff.lines().count()),
+        xedoc_app_server_protocol::PatchChangeKind::Update { .. } => {
+            diff.lines().fold((0, 0), |(added, removed), line| {
+                if line.starts_with('+') && !line.starts_with("+++") {
+                    (added.saturating_add(1), removed)
+                } else if line.starts_with('-') && !line.starts_with("---") {
+                    (added, removed.saturating_add(1))
+                } else {
+                    (added, removed)
+                }
+            })
         }
     }
 }

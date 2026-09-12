@@ -426,8 +426,8 @@ impl ChatWidget {
             // Before starting an agent stream, flush any active exec cell group.
             self.flush_unified_exec_wait_streak();
             self.flush_active_cell();
-            if self.optimized_tool_call_rendering() && self.flush_tool_call_summary_into_history() {
-                self.transcript.needs_final_message_separator = false;
+            if self.optimized_tool_call_rendering() {
+                self.flush_tool_call_summary_into_history();
             }
             // If the previous turn inserted non-stream history (exec output, patch status, MCP
             // calls), render a separator before starting the next streamed assistant message.

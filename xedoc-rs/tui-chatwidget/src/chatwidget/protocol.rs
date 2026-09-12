@@ -263,10 +263,10 @@ impl ChatWidget {
     ) {
         match notification.item {
             item @ ThreadItem::CommandExecution { .. } => self.on_command_execution_started(item),
-            ThreadItem::FileChange { id, changes, .. } => {
+            item @ ThreadItem::FileChange { .. } => {
                 if self.optimized_tool_call_rendering() {
-                    self.record_tool_call_start(id, "apply patch".to_string());
-                } else {
+                    self.handle_tool_summary_started_now(item);
+                } else if let ThreadItem::FileChange { id, changes, .. } = item {
                     self.on_patch_apply_begin(id, file_update_changes_to_display(changes));
                 }
             }
