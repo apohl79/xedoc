@@ -293,6 +293,7 @@ async fn handle_spawn_agent(
                     .as_ref()
                     .and_then(|snapshot| snapshot.reasoning_effort.clone()),
                 kind: SubAgentActivityKind::Started,
+                change_totals: None,
                 current_activity: Some("Working".to_string()),
             }
             .into(),
