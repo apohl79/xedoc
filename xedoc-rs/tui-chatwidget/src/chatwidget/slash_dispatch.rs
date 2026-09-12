@@ -43,6 +43,128 @@ const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status
 const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <on|off>]|mode <off|shadow-subagents|shadow-full|subagents|full>|ab <next|off>|report]";
 
 impl ChatWidget {
+    pub(super) fn open_model_router_menu(&mut self) {
+        let current_mode = format!("{:?}", self.config.model_router.mode)
+            .to_ascii_lowercase()
+            .replace('_', "-");
+        let approval = self.config.model_router.approval;
+        let mode_items = [
+            ("off", "Disable model-router decisions."),
+            (
+                "shadow-subagents",
+                "Classify subagent prompts without changing their route.",
+            ),
+            (
+                "shadow-full",
+                "Classify root and subagent prompts without changing routes.",
+            ),
+            ("subagents", "Apply routing decisions to subagent prompts."),
+            (
+                "full",
+                "Apply routing decisions to root and subagent prompts.",
+            ),
+        ];
+        let mut items = mode_items
+            .into_iter()
+            .map(|(mode, description)| {
+                let mode = mode.to_string();
+                let selected = mode == current_mode;
+                let event_mode = mode.clone();
+                SelectionItem {
+                    name: format!("Mode: {mode}"),
+                    description: Some(description.to_string()),
+                    selected_description: Some(format!("Select {mode} as the active mode.")),
+                    is_current: selected,
+                    actions: vec![Box::new(move |tx| {
+                        tx.send(AppEvent::UpdateModelRouterMode {
+                            mode: event_mode.clone(),
+                        });
+                    })],
+                    dismiss_on_select: true,
+                    ..Default::default()
+                }
+            })
+            .collect::<Vec<_>>();
+
+        items.push(SelectionItem {
+            name: format!("Approval prompts: {}", if approval { "on" } else { "off" }),
+            description: Some(
+                "Ask before applying each routing decision; you can override the route."
+                    .to_string(),
+            ),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::UpdateModelRouterApproval {
+                    approval: !approval,
+                });
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+        items.push(SelectionItem {
+            name: "A/B test: arm next".to_string(),
+            description: Some("Pair the next eligible task with its baseline route.".to_string()),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::ModelRouterAbControlRequested {
+                    action: xedoc_app_server_protocol::ModelRouterAbControlAction::ArmNext,
+                });
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+        items.push(SelectionItem {
+            name: "A/B test: disable".to_string(),
+            description: Some("Disable a pending A/B experiment.".to_string()),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::ModelRouterAbControlRequested {
+                    action: xedoc_app_server_protocol::ModelRouterAbControlAction::Disable,
+                });
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+        items.push(SelectionItem {
+            name: "Open routing report".to_string(),
+            description: Some(
+                "Open the local report with decisions, cost, and A/B outcomes.".to_string(),
+            ),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::ModelRouterReportOpenRequested);
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+        items.push(SelectionItem {
+            name: "Policy manager".to_string(),
+            description: Some("Open and tune the user-owned model-router policy.".to_string()),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::OpenModelRouterPolicyManager);
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+        items.push(SelectionItem {
+            name: "Bootstrap policy".to_string(),
+            description: Some(
+                "Create an initial user policy from the bundled defaults.".to_string(),
+            ),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::BootstrapModelRouterPolicy);
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Model router".to_string()),
+            subtitle: Some(format!(
+                "Current mode: {current_mode}; approval: {}",
+                if approval { "on" } else { "off" }
+            )),
+            items,
+            ..Default::default()
+        });
+    }
+
     /// Dispatch a bare slash command and record its staged local-history entry.
     ///
     /// The composer stages history before returning `InputResult::Command`; this wrapper commits
@@ -270,20 +392,7 @@ impl ChatWidget {
                 self.defer_input_until_settings_applied();
             }
             SlashCommand::ModelRouter => {
-                self.add_info_message(
-                    format!(
-                        "Model router mode: {:?}; approval: {}.",
-                        self.config.model_router.mode,
-                        if self.config.model_router.approval {
-                            "on"
-                        } else {
-                            "off"
-                        }
-                    ),
-                    Some(
-                        "Use `settings approval <on|off>`, `mode <mode>`, or `report`.".to_string(),
-                    ),
-                );
+                self.open_model_router_menu();
             }
             SlashCommand::TokenUsageOptimizer => {
                 let enabled = self.config.features.enabled(Feature::TokenUsageOptimizer);
@@ -707,8 +816,25 @@ impl ChatWidget {
             SlashCommand::ModelRouter => {
                 let mut parts = trimmed.split_whitespace();
                 match (parts.next(), parts.next(), parts.next()) {
-                    (None | Some("status"), None, None) => {
-                        self.dispatch_command(SlashCommand::ModelRouter);
+                    (None, None, None) => {
+                        self.open_model_router_menu();
+                    }
+                    (Some("status"), None, None) => {
+                        self.add_info_message(
+                            format!(
+                                "Model router mode: {:?}; approval: {}.",
+                                self.config.model_router.mode,
+                                if self.config.model_router.approval {
+                                    "on"
+                                } else {
+                                    "off"
+                                }
+                            ),
+                            Some(
+                                "Use `/model-router` to open settings, or typed subcommands to change them."
+                                    .to_string(),
+                            ),
+                        );
                     }
                     (Some("settings"), None, None) => {
                         self.add_info_message(
