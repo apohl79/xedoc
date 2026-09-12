@@ -162,6 +162,11 @@ bazel-argument-comment-lint:
 build-for-release:
     bazel build //xedoc-rs/cli:release_binaries
 
+# Build a Developer ID-signed local Xedoc binary outside Bazel's output tree.
+[no-cd]
+build-signed-local *args:
+    python3 {{ justfile_directory() }}/scripts/build_xedoc_signed_local.py {{ args }}
+
 # Run the MCP server
 mcp-server-run *args:
     cargo run -p xedoc-mcp-server -- {args}
