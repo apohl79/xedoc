@@ -731,6 +731,11 @@ pub enum AppEvent {
         approval: bool,
     },
 
+    /// Open the interactive model-router policy manager.
+    OpenModelRouterPolicyManager,
+    /// Bootstrap a user-owned model-router policy from the bundled defaults.
+    BootstrapModelRouterPolicy,
+
     /// Open the bounded model-router browser report.
     ModelRouterReportOpenRequested,
     ModelRouterAbControlRequested {
