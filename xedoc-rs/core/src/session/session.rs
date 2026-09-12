@@ -58,6 +58,7 @@ pub(crate) struct Session {
     >,
     pub(crate) model_router_approval_responses:
         Mutex<HashMap<String, xedoc_protocol::protocol::ModelRouterApprovalResponse>>,
+    pub(crate) sub_agent_change_totals: Mutex<xedoc_protocol::protocol::SubAgentChangeTotals>,
     pub(crate) services: SessionServices,
     pub(super) next_internal_sub_id: AtomicU64,
 }
@@ -1184,6 +1185,7 @@ impl Session {
                 pending_model_router_approvals: Mutex::new(HashMap::new()),
                 pending_model_router_tool_approvals: Mutex::new(HashMap::new()),
                 model_router_approval_responses: Mutex::new(HashMap::new()),
+                sub_agent_change_totals: Mutex::new(Default::default()),
                 services,
                 next_internal_sub_id: AtomicU64::new(0),
             });

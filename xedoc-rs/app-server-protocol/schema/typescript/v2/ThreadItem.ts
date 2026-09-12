@@ -6,6 +6,7 @@ import type { LegacyAppPathString } from "../LegacyAppPathString";
 import type { MessagePhase } from "../MessagePhase";
 import type { ReasoningEffort } from "../ReasoningEffort";
 import type { SleepItem } from "../SleepItem";
+import type { SubAgentChangeTotals } from "../SubAgentChangeTotals";
 import type { WebSearchItem } from "../WebSearchItem";
 import type { JsonValue } from "../serde_json/JsonValue";
 import type { CollabAgentState } from "./CollabAgentState";
@@ -109,4 +110,4 @@ reasoningEffort: ReasoningEffort | null,
 /**
  * Last known status of the target agents, when available.
  */
-agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, modelProvider: string | null, model: string | null, reasoningEffort: ReasoningEffort | null, currentActivity: string | null, } | { "type": "webSearch" } & WebSearchItem | { "type": "imageView", id: string, path: LegacyAppPathString, } | { "type": "sleep" } & SleepItem | { "type": "imageGeneration" } & ImageGenerationItem | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, } | { "type": "modelRouterDecision", id: string, scope: ModelRouterScope, disposition: ModelRouterDisposition, reason: ModelRouterDecisionReason, proposedProviderId: string, proposedModelSlug: string, proposedReasoningEffort: string, effectiveRoute: ModelRouterEffectiveRoute, };
+agentsStates: { [key in string]?: CollabAgentState }, } | { "type": "subAgentActivity", id: string, kind: SubAgentActivityKind, agentThreadId: string, agentPath: string, modelProvider: string | null, model: string | null, reasoningEffort: ReasoningEffort | null, currentActivity: string | null, changeTotals: SubAgentChangeTotals | null, } | { "type": "webSearch" } & WebSearchItem | { "type": "imageView", id: string, path: LegacyAppPathString, } | { "type": "sleep" } & SleepItem | { "type": "imageGeneration" } & ImageGenerationItem | { "type": "enteredReviewMode", id: string, review: string, } | { "type": "exitedReviewMode", id: string, review: string, } | { "type": "contextCompaction", id: string, } | { "type": "modelRouterDecision", id: string, scope: ModelRouterScope, disposition: ModelRouterDisposition, reason: ModelRouterDecisionReason, proposedProviderId: string, proposedModelSlug: string, proposedReasoningEffort: string, effectiveRoute: ModelRouterEffectiveRoute, };

@@ -83,6 +83,7 @@ async fn handle_interrupt_agent(
                 reasoning_effort: None,
                 kind: SubAgentActivityKind::Interrupted,
                 current_activity: None,
+                change_totals: None,
             }
             .into(),
         )

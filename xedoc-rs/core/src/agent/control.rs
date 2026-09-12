@@ -387,6 +387,7 @@ impl AgentControl {
                                     kind:
                                         xedoc_protocol::protocol::SubAgentActivityKind::Interacted,
                                     current_activity: Some(summary),
+                                    change_totals: None,
                                 }
                                 .into(),
                             )
@@ -428,6 +429,7 @@ impl AgentControl {
                                     kind:
                                         xedoc_protocol::protocol::SubAgentActivityKind::Interacted,
                                     current_activity: Some(pending.display_hint),
+                                    change_totals: None,
                                 }
                                 .into(),
                             )
