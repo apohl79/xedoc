@@ -11,7 +11,7 @@ import type { ModelRouterScope } from "./ModelRouterScope";
  *
  * This notification never contains prompt or output text.
  */
-export type ModelRouterDecisionNotification = { decisionId: string, threadId: string, turnId: string, scope: ModelRouterScope, disposition: ModelRouterDisposition, reason: ModelRouterDecisionReason, policyRevision: string, proposedProviderId: string, proposedModelSlug: string, proposedReasoningEffort: string, effectiveRoute: ModelRouterEffectiveRoute, promptSha256: string, promptOriginalBytes: number, promptTruncated: boolean,
+export type ModelRouterDecisionNotification = { decisionId: string, threadId: string, turnId: string, scope: ModelRouterScope, disposition: ModelRouterDisposition, reason: ModelRouterDecisionReason, policyRevision: string, classifications: { [key in string]?: string }, rankingScore: number | null, rankingMinimumClass: string | null, rankingMaximumClass: string | null, rankingMinimumRank: number | null, rankingMaximumRank: number | null, proposedProviderId: string, proposedModelSlug: string, proposedReasoningEffort: string, effectiveRoute: ModelRouterEffectiveRoute, promptSha256: string, promptOriginalBytes: number, promptTruncated: boolean,
 /**
  * Unix timestamp in whole seconds when this immutable decision was made.
  */

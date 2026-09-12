@@ -80,7 +80,13 @@ pub fn recalibrate_classifier_from_feedback(
     let mut policy = xedoc_config::load_model_router_policy(policy_path)
         .map_err(FeedbackCalibrationError::Policy)?;
     let records = read_feedback(feedback_path)?;
-    let active_labels = policy
+    let Some(work_type_axis) = policy.axes.iter().find(|axis| axis.id == "work_type") else {
+        return Ok(FeedbackCalibrationReport {
+            feedback_records: 0,
+            updated_classes: 0,
+        });
+    };
+    let active_labels = work_type_axis
         .classes
         .iter()
         .map(|class| class.id.as_str())
@@ -122,7 +128,13 @@ pub fn recalibrate_classifier_from_feedback(
     }
 
     let mut updated_classes = 0;
-    for class in &mut policy.classes {
+    for class in policy
+        .axes
+        .iter_mut()
+        .find(|axis| axis.id == "work_type")
+        .into_iter()
+        .flat_map(|axis| &mut axis.classes)
+    {
         let Some((count, sum)) = sums.get(&class.id) else {
             continue;
         };
@@ -142,7 +154,7 @@ pub fn recalibrate_classifier_from_feedback(
         updated_classes += 1;
     }
     let parameters =
-        serde_json::to_vec(&policy.classes).map_err(FeedbackCalibrationError::Serialize)?;
+        serde_json::to_vec(&policy.axes).map_err(FeedbackCalibrationError::Serialize)?;
     let digest = format!("{:x}", Sha256::digest(parameters));
     policy.classifier.parameters_sha256 = digest.clone();
     policy.classifier.revision = format!("feedback-{}", &digest[..12]);

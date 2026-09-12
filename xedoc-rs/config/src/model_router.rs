@@ -111,6 +111,7 @@ const fn default_max_prompt_bytes() -> usize {
 
 const MAX_POLICY_IDENTIFIER_BYTES: usize = 128;
 const MAX_REVIEW_NOTE_BYTES: usize = 512;
+const REQUIRED_ROUTING_AXES: [&str; 4] = ["work_type", "complexity", "orchestration", "risk"];
 
 /// Versioned policy loaded from the standalone model-router TOML file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -122,7 +123,12 @@ pub struct ModelRouterPolicy {
     pub classifier: ModelRouterClassifier,
     #[serde(default)]
     pub capabilities: Vec<ModelRouterCapability>,
+    /// Legacy flattened heads retained only so local policy tooling can report
+    /// a schema-v1-to-v2 migration error without rewriting user data.
+    #[serde(default)]
     pub classes: Vec<ModelRouterClass>,
+    pub axes: Vec<ModelRouterAxis>,
+    pub ranking: ModelRouterRanking,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -157,6 +163,48 @@ pub struct ModelRouterClass {
     pub minimum_score: Option<f32>,
     #[serde(default)]
     pub minimum_margin: Option<f32>,
+    pub points: u16,
+    pub minimum_model_class: ModelRouterModelClass,
+    pub maximum_model_class: ModelRouterModelClass,
+}
+
+/// One independently trained task-classification axis.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModelRouterAxis {
+    pub id: String,
+    pub classes: Vec<ModelRouterClass>,
+}
+
+/// User-defined ordered automatic-routing candidate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModelRouterRankedRoute {
+    pub rank: u16,
+    pub class: ModelRouterModelClass,
+    pub provider: String,
+    pub model: String,
+    pub reasoning_effort: ReasoningEffort,
+}
+
+/// Score domain and ordered routes used for automatic ranking.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModelRouterRanking {
+    pub minimum_score: u16,
+    pub maximum_score: u16,
+    pub ladder: Vec<ModelRouterRankedRoute>,
+}
+
+/// The quality range a ranking group permits.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelRouterModelClass {
+    Simple,
+    Smart,
+    Intelligent,
 }
 
 /// User-managed preference tags for one otherwise eligible model.
@@ -184,7 +232,9 @@ pub enum ModelRouterPolicyError {
         #[source]
         source: toml::de::Error,
     },
-    #[error("unsupported model-router policy schema version {0}")]
+    #[error(
+        "unsupported model-router policy schema version {0}; bootstrap a schema-v2 ranking policy"
+    )]
     UnsupportedSchemaVersion(u32),
     #[error("model-router policy must contain at least one class")]
     EmptyClasses,
@@ -240,18 +290,38 @@ pub fn write_model_router_policy(
     write_policy_bytes(path, &contents)
 }
 
-/// Atomically install an initial policy only when no policy exists yet.
+/// Atomically install an initial policy, replacing schema-v1 policies with a
+/// recoverable backup.
 ///
-/// Returns `true` when `path` was created and `false` when an existing file
-/// (valid or otherwise) was preserved. Callers can use this for packaged
-/// bootstrap defaults without overwriting user-managed policy revisions.
+/// Returns `true` when `path` was created or a schema-v1 policy was replaced.
+/// Other existing files are preserved.
 pub fn bootstrap_model_router_policy(
     path: &Path,
     policy: &ModelRouterPolicy,
 ) -> Result<bool, ModelRouterPolicyError> {
     validate_policy(policy)?;
     if path.exists() {
-        return Ok(false);
+        let contents = fs::read_to_string(path).map_err(|source| ModelRouterPolicyError::Read {
+            path: path.to_owned(),
+            source,
+        })?;
+        let raw = toml::from_str::<toml::Value>(&contents).map_err(|source| {
+            ModelRouterPolicyError::Parse {
+                path: path.to_owned(),
+                source,
+            }
+        })?;
+        if raw.get("schema_version").and_then(toml::Value::as_integer) != Some(1) {
+            return Ok(false);
+        }
+        let backup_path = path.with_extension("schema-v1.toml");
+        if backup_path.exists() {
+            return Ok(false);
+        }
+        fs::rename(path, &backup_path).map_err(|source| ModelRouterPolicyError::Write {
+            path: backup_path,
+            source,
+        })?;
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| ModelRouterPolicyError::Write {
@@ -265,10 +335,10 @@ pub fn bootstrap_model_router_policy(
     Ok(true)
 }
 
-/// Atomically install a serialized initial policy only when no policy exists.
+/// Atomically install a serialized initial policy and migrate schema-v1 input.
 ///
-/// This is intended for packaged defaults. Existing user files are never
-/// parsed, replaced, or otherwise modified.
+/// This is intended for packaged defaults. Existing schema-v1 policies are
+/// preserved as a sibling backup before their schema-v2 replacement is installed.
 pub fn bootstrap_model_router_policy_toml(
     path: &Path,
     contents: &str,
@@ -281,6 +351,22 @@ fn parse_model_router_policy(
     path: &Path,
     contents: &str,
 ) -> Result<ModelRouterPolicy, ModelRouterPolicyError> {
+    let raw = toml::from_str::<toml::Value>(contents).map_err(|source| {
+        ModelRouterPolicyError::Parse {
+            path: path.to_owned(),
+            source,
+        }
+    })?;
+    if let Some(schema_version) = raw
+        .get("schema_version")
+        .and_then(toml::Value::as_integer)
+        .and_then(|value| u32::try_from(value).ok())
+        && schema_version != 2
+    {
+        return Err(ModelRouterPolicyError::UnsupportedSchemaVersion(
+            schema_version,
+        ));
+    }
     toml::from_str(contents).map_err(|source| ModelRouterPolicyError::Parse {
         path: path.to_owned(),
         source,
@@ -288,7 +374,7 @@ fn parse_model_router_policy(
 }
 
 fn validate_policy(policy: &ModelRouterPolicy) -> Result<(), ModelRouterPolicyError> {
-    if policy.schema_version != 1 {
+    if policy.schema_version != 2 {
         return Err(ModelRouterPolicyError::UnsupportedSchemaVersion(
             policy.schema_version,
         ));
@@ -296,7 +382,7 @@ fn validate_policy(policy: &ModelRouterPolicy) -> Result<(), ModelRouterPolicyEr
     if !is_bounded_identifier(&policy.policy_revision) {
         return Err(ModelRouterPolicyError::InvalidField("policy_revision"));
     }
-    if policy.classes.is_empty() {
+    if policy.axes.len() != REQUIRED_ROUTING_AXES.len() {
         return Err(ModelRouterPolicyError::EmptyClasses);
     }
     let embedding = &policy.embedding;
@@ -370,47 +456,73 @@ fn validate_policy(policy: &ModelRouterPolicy) -> Result<(), ModelRouterPolicyEr
         }
     }
 
-    let mut class_ids = HashSet::with_capacity(policy.classes.len());
-    for class in &policy.classes {
-        if !is_bounded_identifier(&class.id) {
-            return Err(ModelRouterPolicyError::InvalidField("classes.id"));
-        }
-        if !class_ids.insert(&class.id) {
-            return Err(ModelRouterPolicyError::DuplicateClassId);
-        }
-        if !matches!(
-            class.minimum_reasoning_effort,
-            ReasoningEffort::Low
-                | ReasoningEffort::Medium
-                | ReasoningEffort::High
-                | ReasoningEffort::XHigh
-        ) {
-            return Err(ModelRouterPolicyError::InvalidField(
-                "classes.minimum_reasoning_effort",
-            ));
-        }
-        if class
-            .required_capabilities
-            .iter()
-            .any(|capability| !is_bounded_identifier(capability))
+    let mut axis_ids = HashSet::with_capacity(policy.axes.len());
+    for axis in &policy.axes {
+        if !REQUIRED_ROUTING_AXES.contains(&axis.id.as_str())
+            || !axis_ids.insert(&axis.id)
+            || axis.classes.is_empty()
         {
-            return Err(ModelRouterPolicyError::InvalidField(
-                "classes.required_capabilities",
-            ));
+            return Err(ModelRouterPolicyError::InvalidField("axes"));
         }
-        if let Some(weights) = &class.weights
-            && (weights.len() != embedding.dimensions
-                || weights.iter().any(|value| !value.is_finite()))
-        {
-            return Err(ModelRouterPolicyError::InvalidField("classes.weights"));
-        }
-        for (field, value) in [
-            ("classes.minimum_score", class.minimum_score),
-            ("classes.minimum_margin", class.minimum_margin),
-        ] {
-            if value.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
-                return Err(ModelRouterPolicyError::InvalidField(field));
+        let mut class_ids = HashSet::with_capacity(axis.classes.len());
+        for class in &axis.classes {
+            if !is_bounded_identifier(&class.id) || !class_ids.insert(&class.id) {
+                return Err(ModelRouterPolicyError::InvalidField("classes.id"));
             }
+            if !matches!(
+                class.minimum_reasoning_effort,
+                ReasoningEffort::Low
+                    | ReasoningEffort::Medium
+                    | ReasoningEffort::High
+                    | ReasoningEffort::XHigh
+            ) {
+                return Err(ModelRouterPolicyError::InvalidField(
+                    "classes.minimum_reasoning_effort",
+                ));
+            }
+            if class
+                .required_capabilities
+                .iter()
+                .any(|capability| !is_bounded_identifier(capability))
+            {
+                return Err(ModelRouterPolicyError::InvalidField(
+                    "classes.required_capabilities",
+                ));
+            }
+            if let Some(weights) = &class.weights
+                && (weights.len() != embedding.dimensions
+                    || weights.iter().any(|value| !value.is_finite()))
+            {
+                return Err(ModelRouterPolicyError::InvalidField("classes.weights"));
+            }
+            for (field, value) in [
+                ("classes.minimum_score", class.minimum_score),
+                ("classes.minimum_margin", class.minimum_margin),
+            ] {
+                if value.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
+                    return Err(ModelRouterPolicyError::InvalidField(field));
+                }
+            }
+            if class.minimum_model_class > class.maximum_model_class {
+                return Err(ModelRouterPolicyError::InvalidField(
+                    "classes.model_class_range",
+                ));
+            }
+        }
+    }
+    if policy.ranking.minimum_score > policy.ranking.maximum_score
+        || policy.ranking.ladder.is_empty()
+    {
+        return Err(ModelRouterPolicyError::InvalidField("ranking"));
+    }
+    let mut ranks = HashSet::with_capacity(policy.ranking.ladder.len());
+    for route in &policy.ranking.ladder {
+        if route.rank == 0
+            || !ranks.insert(route.rank)
+            || !is_bounded_identifier(&route.provider)
+            || !is_bounded_identifier(&route.model)
+        {
+            return Err(ModelRouterPolicyError::InvalidField("ranking.ladder"));
         }
     }
     Ok(())

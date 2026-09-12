@@ -755,6 +755,17 @@ pub enum AppEvent {
         policy: ModelRouterPolicy,
         class_id: String,
     },
+    OpenModelRouterPolicyLadderMenu {
+        policy: ModelRouterPolicy,
+    },
+    OpenModelRouterPolicyLadderRouteMenu {
+        policy: ModelRouterPolicy,
+        rank: u16,
+    },
+    OpenModelRouterPolicyLadderEffortMenu {
+        policy: ModelRouterPolicy,
+        rank: u16,
+    },
     /// Confirm a model-router config update and refresh the TUI's local view.
     ModelRouterConfigUpdated {
         mode: Option<String>,

@@ -353,6 +353,13 @@ pub enum ThreadItem {
         scope: crate::protocol::v2::ModelRouterScope,
         disposition: crate::protocol::v2::ModelRouterDisposition,
         reason: crate::protocol::v2::ModelRouterDecisionReason,
+        #[serde(default)]
+        classifications: std::collections::BTreeMap<String, String>,
+        ranking_score: Option<u16>,
+        ranking_minimum_class: Option<String>,
+        ranking_maximum_class: Option<String>,
+        ranking_minimum_rank: Option<u16>,
+        ranking_maximum_rank: Option<u16>,
         proposed_provider_id: String,
         proposed_model_slug: String,
         proposed_reasoning_effort: String,

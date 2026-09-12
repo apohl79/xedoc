@@ -7,4 +7,4 @@ import type { ModelRouterPolicyClass } from "./ModelRouterPolicyClass";
 /**
  * Replace the user-editable routing policy controls while preserving classifier weights.
  */
-export type ModelRouterPolicyWriteParams = { minimumScore: number, minimumMargin: number, capabilities: Array<ModelRouterCapability>, classes: Array<ModelRouterPolicyClass>, };
+export type ModelRouterPolicyWriteParams = { minimumScore: number, minimumMargin: number, capabilities: Array<ModelRouterCapability>, classes: Array<ModelRouterPolicyClass>, ranking: import("./ModelRouterRanking").ModelRouterRanking, };

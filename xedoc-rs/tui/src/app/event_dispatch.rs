@@ -1146,6 +1146,15 @@ impl App {
             AppEvent::OpenModelRouterPolicyRouteMenu { policy, class_id } => self
                 .chat_widget
                 .open_model_router_policy_route_menu(policy, class_id),
+            AppEvent::OpenModelRouterPolicyLadderMenu { policy } => self
+                .chat_widget
+                .open_model_router_policy_ladder_menu(policy),
+            AppEvent::OpenModelRouterPolicyLadderRouteMenu { policy, rank } => self
+                .chat_widget
+                .open_model_router_policy_ladder_route_menu(policy, rank),
+            AppEvent::OpenModelRouterPolicyLadderEffortMenu { policy, rank } => self
+                .chat_widget
+                .open_model_router_policy_ladder_effort_menu(policy, rank),
             AppEvent::ModelRouterConfigUpdated {
                 mode,
                 approval,

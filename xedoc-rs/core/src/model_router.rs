@@ -8,17 +8,22 @@ use std::sync::OnceLock;
 
 use xedoc_config::ModelRouterClass;
 use xedoc_config::ModelRouterMode;
+use xedoc_config::ModelRouterModelClass;
 use xedoc_config::ModelRouterPolicy;
 use xedoc_config::ModelRouterPolicyStore;
 use xedoc_core_config::config::Config;
 use xedoc_install_context::InstallContext;
+use xedoc_model_router::AxisRoute;
 use xedoc_model_router::BoundedEmbedder;
 use xedoc_model_router::ClassRoute;
 use xedoc_model_router::FastEmbedder;
 use xedoc_model_router::LocalArtifact;
 use xedoc_model_router::ModelCandidate;
 use xedoc_model_router::ModelCatalog;
+use xedoc_model_router::ModelClass;
 use xedoc_model_router::ModelRoute;
+use xedoc_model_router::RankingLadderEntry;
+use xedoc_model_router::RankingPolicy;
 use xedoc_model_router::ReasoningEffort as RouterReasoningEffort;
 use xedoc_model_router::RouteDecision;
 use xedoc_model_router::RouteProfile;
@@ -291,11 +296,40 @@ fn routing_policy(policy: &ModelRouterPolicy, fallback: ModelRoute) -> RoutingPo
     RoutingPolicy {
         revision: policy.policy_revision.clone(),
         fallback,
-        classes: policy
-            .classes
+        axes: policy
+            .axes
             .iter()
-            .filter_map(|class| class_route(class, policy))
+            .filter_map(|axis| {
+                Some((
+                    axis.id.clone(),
+                    AxisRoute {
+                        values: axis
+                            .classes
+                            .iter()
+                            .filter_map(|class| class_route(class, policy))
+                            .collect(),
+                    },
+                ))
+            })
             .collect(),
+        ranking: RankingPolicy {
+            minimum_score: policy.ranking.minimum_score,
+            maximum_score: policy.ranking.maximum_score,
+            ladder: policy
+                .ranking
+                .ladder
+                .iter()
+                .map(|entry| RankingLadderEntry {
+                    rank: entry.rank,
+                    class: model_class(entry.class),
+                    route: ModelRoute {
+                        provider_id: entry.provider.clone(),
+                        model_slug: entry.model.clone(),
+                        reasoning_effort: router_reasoning_effort(entry.reasoning_effort.clone()),
+                    },
+                })
+                .collect(),
+        },
     }
 }
 
@@ -312,6 +346,11 @@ fn class_route(
                 ),
                 required_capabilities: class.required_capabilities.iter().cloned().collect(),
             },
+            ranking: Some((
+                class.points,
+                model_class(class.minimum_model_class),
+                model_class(class.maximum_model_class),
+            )),
             weights: class.weights.clone()?,
             minimum_score: class
                 .minimum_score
@@ -349,6 +388,11 @@ async fn model_catalog(
                 model_slug: model.model.clone(),
                 reasoning_effort: router_reasoning_effort(model.default_reasoning_effort),
             },
+            supported_reasoning_efforts: model
+                .supported_reasoning_efforts
+                .into_iter()
+                .map(|preset| router_reasoning_effort(preset.effort))
+                .collect(),
             price_per_1m_tokens,
             capabilities: policy
                 .capabilities
@@ -373,7 +417,12 @@ fn fallback_decision(scope: RouteScope, current_route: ModelRoute, prompt: &str)
             &RoutingPolicy {
                 revision: "unavailable".to_string(),
                 fallback: current_route.clone(),
-                classes: BTreeMap::new(),
+                axes: BTreeMap::new(),
+                ranking: RankingPolicy {
+                    minimum_score: 0,
+                    maximum_score: 0,
+                    ladder: Vec::new(),
+                },
             },
             &ModelCatalog::default(),
             &UnavailableEmbedder,
@@ -381,6 +430,14 @@ fn fallback_decision(scope: RouteScope, current_route: ModelRoute, prompt: &str)
         RouterMode::ShadowSubagents,
         false,
     )
+}
+
+fn model_class(class: ModelRouterModelClass) -> ModelClass {
+    match class {
+        ModelRouterModelClass::Simple => ModelClass::Simple,
+        ModelRouterModelClass::Smart => ModelClass::Smart,
+        ModelRouterModelClass::Intelligent => ModelClass::Intelligent,
+    }
 }
 
 struct UnavailableEmbedder;
@@ -398,10 +455,10 @@ fn router_reasoning_effort(effort: ReasoningEffort) -> RouterReasoningEffort {
         }
         ReasoningEffort::Medium => RouterReasoningEffort::Medium,
         ReasoningEffort::High => RouterReasoningEffort::High,
-        ReasoningEffort::XHigh
-        | ReasoningEffort::Max
-        | ReasoningEffort::Ultra
-        | ReasoningEffort::Custom(_) => RouterReasoningEffort::ExtraHigh,
+        ReasoningEffort::XHigh | ReasoningEffort::Ultra | ReasoningEffort::Custom(_) => {
+            RouterReasoningEffort::ExtraHigh
+        }
+        ReasoningEffort::Max => RouterReasoningEffort::Max,
     }
 }
 
@@ -411,6 +468,7 @@ fn protocol_reasoning_effort(effort: RouterReasoningEffort) -> Option<ReasoningE
         RouterReasoningEffort::Medium => Some(ReasoningEffort::Medium),
         RouterReasoningEffort::High => Some(ReasoningEffort::High),
         RouterReasoningEffort::ExtraHigh => Some(ReasoningEffort::XHigh),
+        RouterReasoningEffort::Max => Some(ReasoningEffort::Max),
     }
 }
 
@@ -453,6 +511,9 @@ pub(crate) fn decision_event(
         },
         reason: match decision.reason {
             xedoc_model_router::DecisionReason::Classified => ModelRouterDecisionReason::Classified,
+            xedoc_model_router::DecisionReason::SteeringBypass => {
+                ModelRouterDecisionReason::SteeringBypass
+            }
             xedoc_model_router::DecisionReason::LowConfidence => {
                 ModelRouterDecisionReason::LowConfidence
             }
@@ -470,6 +531,18 @@ pub(crate) fn decision_event(
             }
         },
         policy_revision: decision.policy_revision,
+        classifications: decision.classifications,
+        ranking_score: decision.ranking_score,
+        ranking_minimum_class: decision
+            .ranking_minimum_class
+            .map(model_class_label)
+            .map(str::to_string),
+        ranking_maximum_class: decision
+            .ranking_maximum_class
+            .map(model_class_label)
+            .map(str::to_string),
+        ranking_minimum_rank: decision.ranking_minimum_rank,
+        ranking_maximum_rank: decision.ranking_maximum_rank,
         proposed_provider_id: decision.proposed_route.provider_id,
         proposed_model_slug: decision.proposed_route.model_slug,
         proposed_reasoning_effort: effort_label(decision.proposed_route.reasoning_effort)
@@ -532,6 +605,7 @@ pub(crate) fn route_from_approval(
             "medium" => RouterReasoningEffort::Medium,
             "high" => RouterReasoningEffort::High,
             "xhigh" => RouterReasoningEffort::ExtraHigh,
+            "max" => RouterReasoningEffort::Max,
             _ => return None,
         },
     })
@@ -543,5 +617,14 @@ const fn effort_label(effort: RouterReasoningEffort) -> &'static str {
         RouterReasoningEffort::Medium => "medium",
         RouterReasoningEffort::High => "high",
         RouterReasoningEffort::ExtraHigh => "xhigh",
+        RouterReasoningEffort::Max => "max",
+    }
+}
+
+const fn model_class_label(class: ModelClass) -> &'static str {
+    match class {
+        ModelClass::Simple => "simple",
+        ModelClass::Smart => "smart",
+        ModelClass::Intelligent => "intelligent",
     }
 }

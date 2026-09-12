@@ -45,6 +45,7 @@ v2_enum_from_core!(
 v2_enum_from_core!(
     pub enum ModelRouterDecisionReason from CoreModelRouterDecisionReason {
         Classified,
+        SteeringBypass,
         LowConfidence,
         NoClass,
         EmbeddingFailed,
@@ -111,6 +112,28 @@ pub struct ModelRouterPolicyClass {
     pub required_capabilities: Vec<String>,
 }
 
+/// A user-editable position in the automatic-routing model ladder.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterRankedRoute {
+    pub rank: u16,
+    pub class: String,
+    pub provider: String,
+    pub model: String,
+    pub reasoning_effort: ReasoningEffort,
+}
+
+/// The score domain and ordered automatic-routing candidates.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterRanking {
+    pub minimum_score: u16,
+    pub maximum_score: u16,
+    pub ladder: Vec<ModelRouterRankedRoute>,
+}
+
 /// A provider/model route with user-assigned capability tags.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
@@ -134,6 +157,7 @@ pub struct ModelRouterPolicy {
     pub minimum_margin: f64,
     pub capabilities: Vec<ModelRouterCapability>,
     pub classes: Vec<ModelRouterPolicyClass>,
+    pub ranking: ModelRouterRanking,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
@@ -175,6 +199,8 @@ pub struct ModelRouterPolicyWriteParams {
     pub minimum_margin: f64,
     pub capabilities: Vec<ModelRouterCapability>,
     pub classes: Vec<ModelRouterPolicyClass>,
+    #[ts(type = "import(\"./ModelRouterRanking\").ModelRouterRanking")]
+    pub ranking: ModelRouterRanking,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -511,6 +537,12 @@ pub struct ModelRouterDecisionNotification {
     pub disposition: ModelRouterDisposition,
     pub reason: ModelRouterDecisionReason,
     pub policy_revision: String,
+    pub classifications: std::collections::BTreeMap<String, String>,
+    pub ranking_score: Option<u16>,
+    pub ranking_minimum_class: Option<String>,
+    pub ranking_maximum_class: Option<String>,
+    pub ranking_minimum_rank: Option<u16>,
+    pub ranking_maximum_rank: Option<u16>,
     pub proposed_provider_id: String,
     pub proposed_model_slug: String,
     pub proposed_reasoning_effort: String,
