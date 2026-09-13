@@ -49,7 +49,7 @@ external command mode.
   `status_line_command`.
 - Custom commands can be configured as a shell command string or as an argv
   list.
-- The setup flow defaults the command path to `~/.claude/statusline.sh`.
+- The setup flow defaults the command path to `~/.xedoc/statusline.sh`.
 - The TUI runs custom status-line commands asynchronously and sends a
   Claude-compatible JSON payload on stdin.
 - The payload includes Xedoc-specific metadata such as `harness: "xedoc"`,

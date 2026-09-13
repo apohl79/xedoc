@@ -313,9 +313,9 @@ download_file() {
 
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$token" ]; then
-      curl -fsSL -H "Authorization: Bearer $token" "$url" -o "$output"
+      curl -fL --progress-bar -H "Authorization: Bearer $token" "$url" -o "$output"
     else
-      curl -fsSL "$url" -o "$output"
+      curl -fL --progress-bar "$url" -o "$output"
     fi
     return
   fi
