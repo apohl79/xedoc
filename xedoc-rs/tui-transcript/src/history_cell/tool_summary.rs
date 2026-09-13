@@ -397,6 +397,7 @@ impl HistoryCell for ToolCallSummaryCell {
                                 .trim_end()
                                 .to_string()
                         })
+                        .filter(|output_line| !output_line.is_empty())
                         .collect::<Vec<_>>();
                     let omitted = output_lines.len().saturating_sub(3);
                     if omitted > 0 {
