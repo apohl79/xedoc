@@ -51,7 +51,7 @@ use crate::render::renderable::Renderable;
 
 const STATUS_LINE_USE_THEME_COLORS_ITEM_ID: &str = "status-line-use-theme-colors";
 const STATUS_LINE_CUSTOM_COMMAND_ITEM_ID: &str = "status-line-custom-command";
-const DEFAULT_STATUS_LINE_COMMAND: &str = "~/.claude/statusline.sh";
+const DEFAULT_STATUS_LINE_COMMAND: &str = "~/.xedoc/statusline.sh";
 
 /// Available items that can be displayed in the status line.
 ///
@@ -333,7 +333,7 @@ impl StatusLineSetupView {
 
         items.push(MultiSelectItem {
             id: STATUS_LINE_CUSTOM_COMMAND_ITEM_ID.to_string(),
-            name: "Custom command".to_string(),
+            name: "Script".to_string(),
             description: Some(command_description),
             enabled: custom_command
                 .lock()
@@ -376,7 +376,7 @@ impl StatusLineSetupView {
         Self {
             picker: MultiSelectPicker::builder(
                 "Configure Status Line".to_string(),
-                Some("Select items, or enable Custom command; tab edits it.".to_string()),
+                Some("Select items, or enable Script; tab edits it.".to_string()),
                 app_event_tx,
             )
             .list_keymap(list_keymap)
@@ -393,7 +393,7 @@ impl StatusLineSetupView {
                         .map(|command| command.command.clone())
                         .unwrap_or_else(|| DEFAULT_STATUS_LINE_COMMAND.to_string());
                     return Some(Line::from(vec![
-                        "custom command: ".dim(),
+                        "script: ".dim(),
                         display_custom_command(&command).into(),
                     ]));
                 }
