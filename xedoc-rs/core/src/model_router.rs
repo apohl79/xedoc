@@ -101,7 +101,10 @@ impl ModelRouterService {
                 &catalog,
                 &runtime.embedder,
             ),
-            Err(()) | Ok(_) => fallback_decision(RouteScope::Subagent, current_route, prompt),
+            Err(error) => {
+                fallback_runtime_decision(RouteScope::Subagent, current_route, prompt, error)
+            }
+            Ok(_) => fallback_decision(RouteScope::Subagent, current_route, prompt),
         };
         Some(xedoc_model_router::finalize_decision(
             decision,
@@ -140,7 +143,8 @@ impl ModelRouterService {
                 &catalog,
                 &runtime.embedder,
             ),
-            Err(()) | Ok(_) => fallback_decision(RouteScope::Root, current_route, prompt),
+            Err(error) => fallback_runtime_decision(RouteScope::Root, current_route, prompt, error),
+            Ok(_) => fallback_decision(RouteScope::Root, current_route, prompt),
         };
         Some(xedoc_model_router::finalize_decision(
             decision,
@@ -189,7 +193,7 @@ impl ModelRouterService {
         Ok(report)
     }
 
-    fn runtime(&self) -> Result<&RouterRuntime, ()> {
+    fn runtime(&self) -> Result<&RouterRuntime, &str> {
         self.runtime
             .get_or_init(|| {
                 let artifact_path = self
@@ -197,9 +201,9 @@ impl ModelRouterService {
                     .as_ref()
                     .ok_or_else(|| "bundled artifact is unavailable".to_string())?;
                 let artifact =
-                    LocalArtifact::load(artifact_path).map_err(|error| error.to_string())?;
+                    LocalArtifact::load(artifact_path).map_err(|error| error_diagnostic(&error))?;
                 let embedder = FastEmbedder::from_local_artifact(&artifact)
-                    .map_err(|error| error.to_string())?;
+                    .map_err(|error| error_diagnostic(&error))?;
                 Ok(RouterRuntime {
                     artifact_sha256: artifact.descriptor.sha256,
                     artifact_revision: artifact.descriptor.revision,
@@ -208,7 +212,7 @@ impl ModelRouterService {
                 })
             })
             .as_ref()
-            .map_err(|_| ())
+            .map_err(String::as_str)
     }
 }
 
@@ -430,6 +434,28 @@ fn fallback_decision(scope: RouteScope, current_route: ModelRoute, prompt: &str)
         RouterMode::ShadowSubagents,
         false,
     )
+}
+
+fn fallback_runtime_decision(
+    scope: RouteScope,
+    current_route: ModelRoute,
+    prompt: &str,
+    error: &str,
+) -> RouteDecision {
+    let mut decision = fallback_decision(scope, current_route, prompt);
+    decision.diagnostic = Some(error.to_string());
+    decision
+}
+
+fn error_diagnostic(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut diagnostic = error.to_string();
+    let mut source = error.source();
+    while let Some(error) = source {
+        diagnostic.push_str(": ");
+        diagnostic.push_str(&error.to_string());
+        source = error.source();
+    }
+    diagnostic
 }
 
 fn model_class(class: ModelRouterModelClass) -> ModelClass {
