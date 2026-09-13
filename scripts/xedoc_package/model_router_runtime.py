@@ -4,6 +4,8 @@ import hashlib
 import json
 import shutil
 import tarfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -90,15 +92,22 @@ def install_runtime(spec: TargetSpec, destination: Path) -> Path:
 
 
 def download(distribution: RuntimeDistribution, destination: Path) -> None:
-    digest = hashlib.sha256()
-    with urllib.request.urlopen(distribution.url, timeout=120) as response:
-        with open(destination, "wb") as archive:
-            while chunk := response.read(1024 * 1024):
-                digest.update(chunk)
-                archive.write(chunk)
-    if digest.hexdigest() != distribution.archive_sha256:
-        destination.unlink(missing_ok=True)
-        raise RuntimeError("Invalid ONNX Runtime download checksum")
+    for attempt in range(3):
+        try:
+            digest = hashlib.sha256()
+            with urllib.request.urlopen(distribution.url, timeout=120) as response:
+                with open(destination, "wb") as archive:
+                    while chunk := response.read(1024 * 1024):
+                        digest.update(chunk)
+                        archive.write(chunk)
+            if digest.hexdigest() != distribution.archive_sha256:
+                raise RuntimeError("Invalid ONNX Runtime download checksum")
+            return
+        except (OSError, urllib.error.URLError):
+            destination.unlink(missing_ok=True)
+            if attempt == 2:
+                raise
+            time.sleep(attempt + 1)
 
 
 def extract_member(archive_path: Path, member: str, destination: Path) -> None:
