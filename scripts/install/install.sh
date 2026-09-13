@@ -697,6 +697,19 @@ install_zip_release() {
   mv "$stage_release" "$release_dir"
 }
 
+clear_macos_quarantine() {
+  package_dir="$1"
+
+  [ "$(uname -s)" = "Darwin" ] || return 0
+  command -v xattr >/dev/null 2>&1 || return 0
+
+  # Browser-downloaded ZIPs can carry com.apple.quarantine, and macOS unzip
+  # propagates it to every extracted executable. Remove only that attribute so
+  # the installed CLI is not blocked by Gatekeeper's quarantine check without
+  # discarding unrelated file metadata.
+  xattr -dr com.apple.quarantine "$package_dir" >/dev/null 2>&1 || true
+}
+
 update_current_link() {
   release_dir="$1"
   tmp_link="$STANDALONE_ROOT/.current.$$"
@@ -817,6 +830,7 @@ if [ -n "$LOCAL_ZIP" ] || ! release_dir_is_complete "$release_dir" "$release_nam
   install_zip_release "$release_dir" "$archive_path"
 fi
 
+clear_macos_quarantine "$release_dir"
 update_current_link "$release_dir"
 update_visible_command
 "$BIN_PATH" --version >/dev/null
