@@ -430,6 +430,12 @@ The fork adds release helpers for building Xedoc packages from `main`.
   cannot create or upload a GitHub release.
 - macOS package signing requires a non-placeholder Developer ID Application
   identity.
+- The signing identity defaults to the sole Developer ID Application
+  certificate returned by the macOS keychain.
+- Pass `--notarize` to sign Mach-O files included in the package and submit ZIP
+  archives with `xcrun notarytool`. The notarytool credentials must first be
+  stored with `xcrun notarytool store-credentials`; pass the profile with
+  `--notarytool-keychain-profile` or `APPLE_NOTARYTOOL_KEYCHAIN_PROFILE`.
 - The helper builds `xedoc-cli` with Bazel by default.
   Pass `--build-system cargo` to use the previous Cargo `--locked` path.
 - Bazel builds use the `xedoc-release` configuration, which matches the Cargo

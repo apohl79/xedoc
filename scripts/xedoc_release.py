@@ -12,6 +12,7 @@ import subprocess
 import sys
 import textwrap
 
+from xedoc_package.archive import write_archive
 from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
 from xedoc_package.targets import default_target
@@ -72,6 +73,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Developer ID identity for native codesign. Can also be set with "
             "APPLE_CODESIGN_IDENTITY. Defaults to the sole Developer ID "
             "Application identity in the keychain."
+        ),
+    )
+    parser.add_argument(
+        "--notarize",
+        action="store_true",
+        help=(
+            "Sign every Mach-O file in the package and submit each ZIP archive "
+            "to Apple with xcrun notarytool."
+        ),
+    )
+    parser.add_argument(
+        "--notarytool-keychain-profile",
+        default=os.environ.get("APPLE_NOTARYTOOL_KEYCHAIN_PROFILE"),
+        help=(
+            "notarytool keychain profile used with --notarize. Can also be set "
+            "with APPLE_NOTARYTOOL_KEYCHAIN_PROFILE."
         ),
     )
     parser.add_argument(
@@ -208,6 +225,12 @@ def build_release(args: argparse.Namespace) -> None:
             "release must match its committed target."
         )
 
+    notarization_profile = None
+    if getattr(args, "notarize", False):
+        notarization_profile = resolve_notarytool_keychain_profile(
+            getattr(args, "notarytool_keychain_profile", None)
+        )
+
     codesign_identity = resolve_codesign_identity(args.codesign_identity)
 
     output_dir = resolve_repo_path(args.output_dir)
@@ -292,6 +315,15 @@ def build_release(args: argparse.Namespace) -> None:
     archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
         output_dir / version / f"xedoc-{args.target}-{version}.zip"
     ]
+    if notarization_profile is not None:
+        unsupported_archives = [
+            path for path in archive_outputs if path.suffix.lower() != ".zip"
+        ]
+        if unsupported_archives:
+            joined_paths = ", ".join(str(path) for path in unsupported_archives)
+            raise RuntimeError(
+                f"--notarize requires ZIP archive outputs; got {joined_paths}"
+            )
 
     package_args = [
         sys.executable,
@@ -316,6 +348,17 @@ def build_release(args: argparse.Namespace) -> None:
         package_args.append("--force")
 
     run(package_args, cwd=source_root)
+
+    if notarization_profile is not None:
+        sign_macos_package(
+            package_dir=package_dir,
+            identity=codesign_identity,
+            entitlements=entitlements,
+            signing_script=signing_script,
+        )
+        for archive_output in archive_outputs:
+            write_archive(package_dir, archive_output, force=True)
+            notarize_archive(archive_output, notarization_profile)
 
     if not args.skip_github_release:
         publish_github_release(
@@ -753,6 +796,75 @@ def native_codesign_identities() -> set[str]:
             identities.add(match.group(1))
             identities.add(match.group(2))
     return identities
+
+
+def resolve_notarytool_keychain_profile(explicit_profile: str | None) -> str:
+    profile = explicit_profile or os.environ.get("APPLE_NOTARYTOOL_KEYCHAIN_PROFILE")
+    if not profile:
+        raise RuntimeError(
+            "--notarize requires a notarytool keychain profile. Store App Store "
+            "Connect credentials with `xcrun notarytool store-credentials`, "
+            "then pass --notarytool-keychain-profile or set "
+            "APPLE_NOTARYTOOL_KEYCHAIN_PROFILE."
+        )
+    return profile
+
+
+def sign_macos_package(
+    *,
+    package_dir: Path,
+    identity: str,
+    entitlements: Path,
+    signing_script: Path,
+) -> None:
+    for target in macos_code_files(package_dir):
+        run(
+            build_codesign_command(
+                target=target,
+                identity=identity,
+                entitlements=entitlements,
+                signing_script=signing_script,
+            ),
+            cwd=REPO_ROOT,
+        )
+        run(["codesign", "--verify", "--strict", "--verbose=2", str(target)])
+
+
+def macos_code_files(package_dir: Path) -> list[Path]:
+    code_files: list[Path] = []
+    for path in sorted(package_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            description = subprocess.check_output(
+                ["file", "-b", "--dereference", str(path)],
+                text=True,
+            )
+        except FileNotFoundError as err:
+            raise RuntimeError(
+                "The macOS `file` command was not found; package notarization "
+                "cannot identify Mach-O files."
+            ) from err
+        except subprocess.CalledProcessError as err:
+            raise RuntimeError(f"Could not inspect package file: {path}") from err
+        if "Mach-O" in description:
+            code_files.append(path)
+    return code_files
+
+
+def notarize_archive(archive_path: Path, keychain_profile: str) -> None:
+    run(
+        [
+            "xcrun",
+            "notarytool",
+            "submit",
+            str(archive_path),
+            "--keychain-profile",
+            keychain_profile,
+            "--wait",
+        ],
+        cwd=REPO_ROOT,
+    )
 
 
 def default_cargo_build_jobs() -> int:
