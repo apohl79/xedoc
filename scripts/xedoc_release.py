@@ -27,6 +27,10 @@ DEFAULT_BUILD_SYSTEM = "bazel"
 CARGO_BUILD_JOBS_ENV_VAR = "XEDOC_CARGO_BUILD_JOBS"
 PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
 DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
+NOTARYTOOL_KEYCHAIN_SERVICE = "com.apple.gke.notary.tool"
+NOTARYTOOL_PROFILE_RE = re.compile(
+    r"com\.apple\.gke\.notary\.tool\.saved-creds\.([^\"]+)"
+)
 VERSION_RE = re.compile(
     r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)"
     r"(?:-(?P<pre_label>alpha|beta)(?:\.(?P<pre_number>[0-9]+))?)?$"
@@ -88,7 +92,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.environ.get("APPLE_NOTARYTOOL_KEYCHAIN_PROFILE"),
         help=(
             "notarytool keychain profile used with --notarize. Can also be set "
-            "with APPLE_NOTARYTOOL_KEYCHAIN_PROFILE."
+            "with APPLE_NOTARYTOOL_KEYCHAIN_PROFILE. Defaults to the sole "
+            "matching profile discovered in the macOS keychain."
         ),
     )
     parser.add_argument(
@@ -800,14 +805,82 @@ def native_codesign_identities() -> set[str]:
 
 def resolve_notarytool_keychain_profile(explicit_profile: str | None) -> str:
     profile = explicit_profile or os.environ.get("APPLE_NOTARYTOOL_KEYCHAIN_PROFILE")
-    if not profile:
+    if profile:
+        return profile
+
+    profiles = native_notarytool_keychain_profiles()
+    if len(profiles) == 1:
+        return profiles[0]
+    if not profiles:
         raise RuntimeError(
-            "--notarize requires a notarytool keychain profile. Store App Store "
-            "Connect credentials with `xcrun notarytool store-credentials`, "
-            "then pass --notarytool-keychain-profile or set "
+            "No notarytool keychain profile was found. Store App Store Connect "
+            "credentials with `xcrun notarytool store-credentials`, then pass "
+            "--notarytool-keychain-profile or set "
             "APPLE_NOTARYTOOL_KEYCHAIN_PROFILE."
         )
-    return profile
+
+    choices = "\n".join(f"  - {profile_name}" for profile_name in profiles)
+    raise RuntimeError(
+        "Multiple notarytool keychain profiles were found. Set "
+        "--notarytool-keychain-profile or APPLE_NOTARYTOOL_KEYCHAIN_PROFILE "
+        "to choose one:\n"
+        f"{choices}"
+    )
+
+
+def native_notarytool_keychain_profiles() -> list[str]:
+    try:
+        stdout = subprocess.check_output(
+            ["security", "dump-keychain"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except FileNotFoundError as err:
+        raise RuntimeError(
+            "The macOS `security` command was not found; notarytool profile "
+            "auto-discovery can only run on macOS."
+        ) from err
+    except subprocess.CalledProcessError:
+        stdout = ""
+
+    profiles = {
+        match.group(1)
+        for line in stdout.splitlines()
+        if (match := NOTARYTOOL_PROFILE_RE.search(line)) is not None
+    }
+    if profiles:
+        return sorted(profiles)
+
+    # Credentials stored by notarytool use the data-protection keychain,
+    # which some macOS security versions cannot dump. Query the generic
+    # password service directly as a fallback; this does not reveal the
+    # credential secret because -g/-w are intentionally omitted.
+    try:
+        stdout = subprocess.check_output(
+            [
+                "security",
+                "find-generic-password",
+                "-s",
+                NOTARYTOOL_KEYCHAIN_SERVICE,
+            ],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except FileNotFoundError as err:
+        raise RuntimeError(
+            "The macOS `security` command was not found; notarytool profile "
+            "auto-discovery can only run on macOS."
+        ) from err
+    except subprocess.CalledProcessError:
+        return []
+
+    return sorted(
+        {
+            match.group(1)
+            for line in stdout.splitlines()
+            if (match := NOTARYTOOL_PROFILE_RE.search(line)) is not None
+        }
+    )
 
 
 def sign_macos_package(

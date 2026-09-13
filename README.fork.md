@@ -434,8 +434,10 @@ The fork adds release helpers for building Xedoc packages from `main`.
   certificate returned by the macOS keychain.
 - Pass `--notarize` to sign Mach-O files included in the package and submit ZIP
   archives with `xcrun notarytool`. The notarytool credentials must first be
-  stored with `xcrun notarytool store-credentials`; pass the profile with
-  `--notarytool-keychain-profile` or `APPLE_NOTARYTOOL_KEYCHAIN_PROFILE`.
+  stored with `xcrun notarytool store-credentials`. If exactly one matching
+  profile is in the macOS keychain, it is selected automatically; otherwise
+  pass the profile with `--notarytool-keychain-profile` or
+  `APPLE_NOTARYTOOL_KEYCHAIN_PROFILE`.
 - The helper builds `xedoc-cli` with Bazel by default.
   Pass `--build-system cargo` to use the previous Cargo `--locked` path.
 - Bazel builds use the `xedoc-release` configuration, which matches the Cargo
