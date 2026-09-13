@@ -188,15 +188,17 @@ pub(crate) async fn write_model_router_mode(
     request_handle: AppServerRequestHandle,
     mode: String,
 ) -> Result<()> {
-    write_config_batch(
-        request_handle,
-        vec![replace_config_value(
-            "model_router.mode",
-            serde_json::json!(mode),
-        )],
-    )
-    .await
-    .map(|_| ())
+    let mut edits = vec![replace_config_value(
+        "model_router.mode",
+        serde_json::json!(&mode),
+    )];
+    if mode != "off" {
+        edits.push(replace_config_value(
+            "features.model_router",
+            serde_json::json!(true),
+        ));
+    }
+    write_config_batch(request_handle, edits).await.map(|_| ())
 }
 
 pub(crate) async fn write_model_router_approval(
