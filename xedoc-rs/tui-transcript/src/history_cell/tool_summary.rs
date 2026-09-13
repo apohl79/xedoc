@@ -434,11 +434,7 @@ impl HistoryCell for ToolCallSummaryCell {
                         move_path: None,
                     },
                 )]);
-                let mut rendered = create_diff_summary(
-                    &changes,
-                    Path::new(""),
-                    usize::from(width).saturating_sub(2),
-                );
+                let mut rendered = create_diff_summary(&changes, Path::new(""), usize::from(width));
                 rendered.remove(0);
                 let omitted = omitted_diff_lines.saturating_add(rendered.len().saturating_sub(3));
                 lines.extend(rendered.into_iter().take(3));
