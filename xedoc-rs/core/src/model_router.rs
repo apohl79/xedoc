@@ -499,6 +499,9 @@ pub(crate) fn decision_event(
     scope: ModelRouterScope,
     created_at: i64,
 ) -> ModelRouterDecisionEvent {
+    if let Some(error) = decision.diagnostic.as_deref() {
+        tracing::warn!(%error, ?scope, "model-router embedding failed");
+    }
     ModelRouterDecisionEvent {
         decision_id: uuid::Uuid::now_v7().to_string(),
         thread_id,

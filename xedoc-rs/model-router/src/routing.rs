@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::error::Error as _;
 
 use crate::RouteScope;
 use crate::RouterMode;
@@ -180,6 +181,8 @@ pub struct RouteDecision {
     pub effective_route: Option<ModelRoute>,
     pub disposition: RouteDisposition,
     pub reason: DecisionReason,
+    /// Prompt-free detail retained for local diagnostics when a dependency fails.
+    pub diagnostic: Option<String>,
     pub policy_revision: String,
     pub prompt: crate::PromptMetadata,
 }
@@ -211,13 +214,23 @@ pub fn decide(
         effective_route: None,
         disposition: RouteDisposition::Fallback,
         reason,
+        diagnostic: None,
         policy_revision: policy.revision.clone(),
         prompt: metadata.clone(),
     };
     let embedding = match embedder.embed(&prompt) {
         Ok(vector) => vector,
-        Err(_) => {
-            return fallback_decision(DecisionReason::EmbeddingFailed, fallback);
+        Err(error) => {
+            let mut diagnostic = error.to_string();
+            let mut source = error.source();
+            while let Some(error) = source {
+                diagnostic.push_str(": ");
+                diagnostic.push_str(&error.to_string());
+                source = error.source();
+            }
+            let mut decision = fallback_decision(DecisionReason::EmbeddingFailed, fallback);
+            decision.diagnostic = Some(diagnostic);
+            return decision;
         }
     };
     if !policy_matches_embedding(policy, &embedding) {
@@ -294,6 +307,7 @@ pub fn decide(
         // explicit user and safety overrides.
         disposition: RouteDisposition::Shadow,
         reason: DecisionReason::Classified,
+        diagnostic: None,
         policy_revision: policy.revision.clone(),
         prompt: metadata,
     }
