@@ -1765,6 +1765,7 @@ impl Session {
                 .with_user_layer_from(&next_config.config_layer_stack);
             config.auto_session_name = next_config.auto_session_name;
             config.model_router = next_config.model_router.clone();
+            config.token_usage_optimizer = next_config.token_usage_optimizer.clone();
             let config = Arc::new(config);
             state.session_configuration.original_config_do_not_use = Arc::clone(&config);
             let new_config = notify_config_contributors
