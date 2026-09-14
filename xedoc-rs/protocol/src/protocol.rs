@@ -1653,6 +1653,8 @@ pub struct ModelRouterDecisionEvent {
     pub scope: ModelRouterScope,
     pub disposition: ModelRouterDisposition,
     pub reason: ModelRouterDecisionReason,
+    /// Prompt-free diagnostic retained when a local router dependency fails.
+    pub diagnostic: Option<String>,
     pub policy_revision: String,
     #[serde(default)]
     pub classifications: BTreeMap<String, String>,

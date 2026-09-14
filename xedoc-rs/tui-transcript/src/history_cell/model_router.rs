@@ -14,6 +14,7 @@ pub fn new_model_router_decision(
         notification.scope,
         notification.disposition,
         notification.reason,
+        notification.diagnostic,
         notification.classifications,
         notification.ranking_score,
         notification.ranking_minimum_class,
@@ -28,6 +29,7 @@ pub fn new_model_router_decision_item(
     scope: ModelRouterScope,
     disposition: ModelRouterDisposition,
     reason: ModelRouterDecisionReason,
+    diagnostic: Option<String>,
     classifications: std::collections::BTreeMap<String, String>,
     ranking_score: Option<u16>,
     ranking_minimum_class: Option<String>,
@@ -40,6 +42,7 @@ pub fn new_model_router_decision_item(
         scope,
         disposition,
         reason,
+        diagnostic,
         classifications,
         ranking_score,
         ranking_minimum_class,
@@ -54,6 +57,7 @@ pub fn model_router_decision_lines(
     scope: ModelRouterScope,
     disposition: ModelRouterDisposition,
     reason: ModelRouterDecisionReason,
+    diagnostic: Option<String>,
     classifications: std::collections::BTreeMap<String, String>,
     ranking_score: Option<u16>,
     ranking_minimum_class: Option<String>,
@@ -94,6 +98,9 @@ pub fn model_router_decision_lines(
     ];
     if !classifications.is_empty() {
         lines.push(format!("  {classifications}{ranking}").dim().into());
+    }
+    if let Some(diagnostic) = diagnostic {
+        lines.push(format!("  {diagnostic}").dim().into());
     }
     lines
 }

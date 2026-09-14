@@ -79,16 +79,20 @@ def install_runtime(spec: TargetSpec, destination: Path) -> Path:
     extract_member(archive_path, distribution.archive_member, library_path)
     extract_member(archive_path, distribution.license_member, destination / "LICENSE")
     archive_path.unlink()
-    runtime_sha256 = sha256_file(library_path)
-    (destination / "manifest.json").write_text(
+    write_runtime_manifest(destination, distribution.library_file)
+    return destination
+
+
+def write_runtime_manifest(runtime_dir: Path, library_file: str) -> None:
+    runtime_sha256 = sha256_file(runtime_dir / library_file)
+    (runtime_dir / "manifest.json").write_text(
         json.dumps(
-            {"file": distribution.library_file, "sha256": runtime_sha256},
+            {"file": library_file, "sha256": runtime_sha256},
             indent=2,
         )
         + "\n",
         encoding="utf-8",
     )
-    return destination
 
 
 def download(distribution: RuntimeDistribution, destination: Path) -> None:

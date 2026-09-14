@@ -444,6 +444,11 @@ class XedocReleaseTest(unittest.TestCase):
                     "default_cargo_build_jobs",
                     return_value=4,
                 ),
+                mock.patch.object(
+                    xedoc_release,
+                    "sign_packaged_model_router_runtime",
+                    return_value=None,
+                ),
                 mock.patch.object(xedoc_release, "run", side_effect=fake_run),
                 mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),
             ):
@@ -515,10 +520,98 @@ class XedocReleaseTest(unittest.TestCase):
                 [
                     str(
                         (
-                            target_dir / "aarch64-apple-darwin" / "release" / "xedoc"
+                            repo_root
+                            / "dist"
+                            / "xedoc"
+                            / "0.141.0"
+                            / "xedoc-package-aarch64-apple-darwin"
+                            / "bin"
+                            / "xedoc"
                         ).resolve()
                     ),
                 ],
+            )
+
+    def test_packaged_model_router_runtime_is_signed_before_checksum_refresh(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_dir = Path(temp_dir)
+            runtime_dir = (
+                package_dir
+                / "xedoc-resources"
+                / "model-router"
+                / "arctic-embed-xs"
+                / "runtime"
+                / "aarch64-apple-darwin"
+            )
+            runtime_dir.mkdir(parents=True)
+            library_path = runtime_dir / "libonnxruntime.dylib"
+            library_path.write_bytes(b"unsigned-library")
+            (runtime_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "file": library_path.name,
+                        "sha256": "0" * 64,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            commands = []
+
+            def fake_run(
+                command: list[str],
+                *,
+                cwd: Path | None = None,
+                env: dict[str, str] | None = None,
+                check: bool = True,
+            ) -> subprocess.CompletedProcess:
+                _ = (cwd, env, check)
+                commands.append(command)
+                return subprocess.CompletedProcess(command, 0)
+
+            with mock.patch.object(xedoc_release, "run", side_effect=fake_run):
+                xedoc_release.sign_packaged_model_router_runtime(
+                    package_dir=package_dir,
+                    target="aarch64-apple-darwin",
+                    identity="Developer ID Application: Example",
+                    signing_script=Path("sign-macos-code.sh"),
+                    cwd=package_dir,
+                )
+
+            self.assertEqual(
+                (
+                    json.loads((runtime_dir / "manifest.json").read_text()),
+                    commands,
+                ),
+                (
+                    {
+                        "file": "libonnxruntime.dylib",
+                        "sha256": "34de88fb27473680a14bae7411e2b5b00faa9d098548ef678b390ecc82c8f843",
+                    },
+                    [
+                        [
+                            "sign-macos-code.sh",
+                            "--target",
+                            str(library_path),
+                            "--identity",
+                            "Developer ID Application: Example",
+                            "--deep",
+                            "false",
+                            "--options",
+                            "runtime",
+                            "--timestamp",
+                            "true",
+                        ],
+                        [
+                            "codesign",
+                            "--verify",
+                            "--strict",
+                            "--verbose=2",
+                            str(library_path),
+                        ],
+                    ],
+                ),
             )
 
     def test_build_release_publishes_github_release_after_packaging(self) -> None:
@@ -625,6 +718,11 @@ class XedocReleaseTest(unittest.TestCase):
                     xedoc_release,
                     "github_release_env",
                     return_value={"GH_TOKEN": "secret-token"},
+                ),
+                mock.patch.object(
+                    xedoc_release,
+                    "sign_packaged_model_router_runtime",
+                    return_value=None,
                 ),
                 mock.patch.object(xedoc_release, "run", side_effect=fake_run),
                 mock.patch.object(
@@ -850,6 +948,11 @@ class XedocReleaseTest(unittest.TestCase):
                     xedoc_release,
                     "default_cargo_build_jobs",
                     return_value=4,
+                ),
+                mock.patch.object(
+                    xedoc_release,
+                    "sign_packaged_model_router_runtime",
+                    return_value=None,
                 ),
                 mock.patch.object(xedoc_release, "run", side_effect=fake_run),
                 mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target_dir)}),

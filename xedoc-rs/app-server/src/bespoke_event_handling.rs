@@ -310,6 +310,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                 scope: event.scope.into(),
                 disposition: event.disposition.into(),
                 reason: event.reason.into(),
+                diagnostic: event.diagnostic,
                 policy_revision: event.policy_revision,
                 classifications: event.classifications,
                 ranking_score: event.ranking_score,

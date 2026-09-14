@@ -536,6 +536,8 @@ pub struct ModelRouterDecisionNotification {
     pub scope: ModelRouterScope,
     pub disposition: ModelRouterDisposition,
     pub reason: ModelRouterDecisionReason,
+    /// Prompt-free diagnostic retained when a local router dependency fails.
+    pub diagnostic: Option<String>,
     pub policy_revision: String,
     pub classifications: std::collections::BTreeMap<String, String>,
     pub ranking_score: Option<u16>,

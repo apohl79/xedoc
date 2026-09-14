@@ -1182,6 +1182,7 @@ impl ThreadHistoryBuilder {
                 scope: payload.scope.into(),
                 disposition: payload.disposition.into(),
                 reason: payload.reason.into(),
+                diagnostic: payload.diagnostic.clone(),
                 classifications: payload.classifications.clone(),
                 ranking_score: payload.ranking_score,
                 ranking_minimum_class: payload.ranking_minimum_class.clone(),

@@ -44,6 +44,8 @@ use xedoc_protocol::protocol::ModelRouterScope;
 
 const MODEL_ROUTER_ARTIFACT_PATH: &str = "model-router/arctic-embed-xs";
 const ROUTER_WORKER_CAPACITY: usize = 8;
+const MAX_EVENT_DIAGNOSTIC_CHARS: usize = 1_024;
+const EVENT_DIAGNOSTIC_TRUNCATION_SUFFIX: &str = "… [truncated]";
 
 pub(crate) struct ModelRouterService {
     policy_store: ModelRouterPolicyStore,
@@ -559,6 +561,25 @@ pub(crate) fn decision_event(
                 ModelRouterDecisionReason::ExplicitOverride
             }
         },
+        diagnostic: decision.diagnostic.map(|diagnostic| {
+            let mut chars = diagnostic.chars();
+            let full_diagnostic = chars
+                .by_ref()
+                .take(MAX_EVENT_DIAGNOSTIC_CHARS + 1)
+                .collect::<String>();
+            if full_diagnostic.chars().count() <= MAX_EVENT_DIAGNOSTIC_CHARS {
+                full_diagnostic
+            } else {
+                let summary = full_diagnostic
+                    .chars()
+                    .take(
+                        MAX_EVENT_DIAGNOSTIC_CHARS
+                            - EVENT_DIAGNOSTIC_TRUNCATION_SUFFIX.chars().count(),
+                    )
+                    .collect::<String>();
+                format!("{summary}{EVENT_DIAGNOSTIC_TRUNCATION_SUFFIX}")
+            }
+        }),
         policy_revision: decision.policy_revision,
         classifications: decision.classifications,
         ranking_score: decision.ranking_score,
