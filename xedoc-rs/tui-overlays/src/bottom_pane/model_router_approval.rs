@@ -1,6 +1,6 @@
 //! Model-router approval control for the bottom pane.
 
-use std::cell::RefCell;
+use std::collections::BTreeMap;
 
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -11,20 +11,16 @@ use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
-use ratatui::widgets::StatefulWidgetRef;
 use ratatui::widgets::Widget;
 use xedoc_app_server_protocol::ModelRouterApprovalAction;
 use xedoc_app_server_protocol::ModelRouterApprovalParams;
 use xedoc_app_server_protocol::ModelRouterApprovalResponse;
-use xedoc_app_server_protocol::ModelRouterRoute;
 use xedoc_protocol::ThreadId;
 
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::BottomPaneView;
 use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::ViewCompletion;
-use crate::bottom_pane::textarea::TextArea;
-use crate::bottom_pane::textarea::TextAreaState;
 use crate::render::renderable::Renderable;
 
 enum ApprovalMode {
@@ -37,8 +33,9 @@ pub struct ModelRouterApprovalView {
     app_event_tx: AppEventSender,
     thread_id: ThreadId,
     mode: ApprovalMode,
-    override_input: TextArea,
-    override_input_state: RefCell<TextAreaState>,
+    selected_override_field: usize,
+    selected_classifications: BTreeMap<String, usize>,
+    selected_route: usize,
     completion: Option<ViewCompletion>,
 }
 
@@ -50,8 +47,9 @@ impl ModelRouterApprovalView {
             app_event_tx,
             thread_id,
             mode: ApprovalMode::Choice,
-            override_input: TextArea::new(),
-            override_input_state: RefCell::new(TextAreaState::default()),
+            selected_override_field: 0,
+            selected_classifications: BTreeMap::new(),
+            selected_route: 0,
             completion: None,
         }
     }
@@ -69,6 +67,7 @@ impl ModelRouterApprovalView {
         self.respond(ModelRouterApprovalResponse {
             action: ModelRouterApprovalAction::Approve,
             classification: None,
+            classifications: BTreeMap::new(),
             route: None,
         });
     }
@@ -77,55 +76,96 @@ impl ModelRouterApprovalView {
         self.respond(ModelRouterApprovalResponse {
             action: ModelRouterApprovalAction::Reject,
             classification: None,
+            classifications: BTreeMap::new(),
             route: None,
         });
     }
 
     fn begin_override(&mut self) {
         self.mode = ApprovalMode::Override;
-        self.override_input.set_text_clearing_elements(&format!(
-            "{}\n{}/{}/{}",
-            self.request.predicted_classification,
-            self.request.proposed_route.provider_id,
-            self.request.proposed_route.model_slug,
-            self.request.proposed_route.reasoning_effort
-        ));
-        self.override_input
-            .set_cursor(self.override_input.text().len());
+        self.selected_override_field = 0;
+        self.selected_classifications = self
+            .request
+            .classification_options
+            .iter()
+            .map(|(axis, options)| {
+                let selection = self
+                    .request
+                    .classifications
+                    .get(axis)
+                    .and_then(|selected| options.iter().position(|option| option == selected))
+                    .unwrap_or_default();
+                (axis.clone(), selection)
+            })
+            .collect();
+        self.selected_route = self
+            .request
+            .available_routes
+            .iter()
+            .position(|route| route == &self.request.proposed_route)
+            .unwrap_or_default();
     }
 
     fn submit_override(&mut self) {
-        let mut lines = self.override_input.text().lines();
-        let classification = lines
-            .next()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let route = lines.next().and_then(parse_route);
+        let classifications: BTreeMap<String, String> = self
+            .request
+            .classification_options
+            .iter()
+            .filter_map(|(axis, options)| {
+                let selection = *self.selected_classifications.get(axis)?;
+                options
+                    .get(selection)
+                    .map(|classification| (axis.clone(), classification.clone()))
+            })
+            .collect();
+        let route = self
+            .request
+            .available_routes
+            .get(self.selected_route)
+            .cloned()
+            .or_else(|| Some(self.request.proposed_route.clone()));
         self.respond(ModelRouterApprovalResponse {
             action: ModelRouterApprovalAction::Override,
-            classification: classification.map(str::to_owned),
+            classification: classifications.get("work_type").cloned(),
+            classifications,
             route,
         });
     }
-}
 
-fn parse_route(value: &str) -> Option<ModelRouterRoute> {
-    let mut segments = value.split('/');
-    let provider_id = segments.next()?.trim();
-    let model_slug = segments.next()?.trim();
-    let reasoning_effort = segments.next()?.trim();
-    if provider_id.is_empty()
-        || model_slug.is_empty()
-        || reasoning_effort.is_empty()
-        || segments.next().is_some()
-    {
-        return None;
+    fn selected_axis(&self) -> Option<(&str, &[String])> {
+        self.request
+            .classification_options
+            .iter()
+            .nth(self.selected_override_field)
+            .map(|(axis, options)| (axis.as_str(), options.as_slice()))
     }
-    Some(ModelRouterRoute {
-        provider_id: provider_id.to_string(),
-        model_slug: model_slug.to_string(),
-        reasoning_effort: reasoning_effort.to_string(),
-    })
+
+    fn cycle_selection(&mut self, direction: isize) {
+        let axis_count = self.request.classification_options.len();
+        if self.selected_override_field < axis_count {
+            let Some((axis, options)) = self
+                .selected_axis()
+                .map(|(axis, options)| (axis.to_string(), options.len()))
+            else {
+                return;
+            };
+            if options == 0 {
+                return;
+            }
+            let selection = self.selected_classifications.entry(axis).or_default();
+            *selection = (*selection as isize + direction).rem_euclid(options as isize) as usize;
+        } else if !self.request.available_routes.is_empty() {
+            self.selected_route = (self.selected_route as isize + direction)
+                .rem_euclid(self.request.available_routes.len() as isize)
+                as usize;
+        }
+    }
+
+    fn cycle_field(&mut self, direction: isize) {
+        let field_count = self.request.classification_options.len() + 1;
+        self.selected_override_field = (self.selected_override_field as isize + direction)
+            .rem_euclid(field_count as isize) as usize;
+    }
 }
 
 impl BottomPaneView for ModelRouterApprovalView {
@@ -163,7 +203,22 @@ impl BottomPaneView for ModelRouterApprovalView {
                     modifiers: KeyModifiers::NONE,
                     ..
                 } => self.mode = ApprovalMode::Choice,
-                other => self.override_input.input(other),
+                KeyEvent {
+                    code: KeyCode::Up, ..
+                } => self.cycle_field(-1),
+                KeyEvent {
+                    code: KeyCode::Down,
+                    ..
+                } => self.cycle_field(1),
+                KeyEvent {
+                    code: KeyCode::Left,
+                    ..
+                } => self.cycle_selection(-1),
+                KeyEvent {
+                    code: KeyCode::Right,
+                    ..
+                } => self.cycle_selection(1),
+                _ => {}
             },
         }
     }
@@ -190,7 +245,9 @@ impl Renderable for ModelRouterApprovalView {
     fn desired_height(&self, _width: u16) -> u16 {
         match self.mode {
             ApprovalMode::Choice => 7,
-            ApprovalMode::Override => 10,
+            ApprovalMode::Override => {
+                u16::try_from(self.request.classification_options.len()).unwrap_or(u16::MAX) + 9
+            }
         }
     }
 
@@ -198,7 +255,7 @@ impl Renderable for ModelRouterApprovalView {
         let route = &self.request.proposed_route;
         let lines: Vec<Line<'_>> = vec![
             " Model route approval".bold().into(),
-            format!(" Class: {}", self.request.predicted_classification).into(),
+            format!(" Classes: {:?}", self.request.classifications).into(),
             format!(
                 " Proposed: {}/{}/{}",
                 route.provider_id, route.model_slug, route.reasoning_effort
@@ -236,7 +293,7 @@ impl Renderable for ModelRouterApprovalView {
             }
             ApprovalMode::Override => {
                 Paragraph::new(
-                    " Edit class on line 1 and provider/model/effort on line 2. Enter applies."
+                    " Use ↑/↓ to select and ←/→ to change a class or model route. Enter applies."
                         .dim(),
                 )
                 .render(
@@ -248,9 +305,45 @@ impl Renderable for ModelRouterApprovalView {
                     },
                     buf,
                 );
-                let mut state = self.override_input_state.borrow_mut();
-                StatefulWidgetRef::render_ref(
-                    &(&self.override_input),
+                let mut selectors = self
+                    .request
+                    .classification_options
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (axis, options))| {
+                        let selected = self
+                            .selected_classifications
+                            .get(axis)
+                            .and_then(|selection| options.get(*selection))
+                            .map_or("", String::as_str);
+                        format!(
+                            "{} {axis}: {selected}",
+                            if index == self.selected_override_field {
+                                ">"
+                            } else {
+                                " "
+                            }
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let route = self
+                    .request
+                    .available_routes
+                    .get(self.selected_route)
+                    .unwrap_or(&self.request.proposed_route);
+                let route_field = self.request.classification_options.len();
+                selectors.push(format!(
+                    "{} route: {}/{}/{}",
+                    if route_field == self.selected_override_field {
+                        ">"
+                    } else {
+                        " "
+                    },
+                    route.provider_id,
+                    route.model_slug,
+                    route.reasoning_effort
+                ));
+                Paragraph::new(selectors.join("\n")).render(
                     Rect {
                         x: area.x,
                         y: area.y.saturating_add(7),
@@ -258,7 +351,6 @@ impl Renderable for ModelRouterApprovalView {
                         height: area.height.saturating_sub(7),
                     },
                     buf,
-                    &mut state,
                 );
             }
         }

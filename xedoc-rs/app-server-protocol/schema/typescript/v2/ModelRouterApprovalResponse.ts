@@ -7,4 +7,4 @@ import type { ModelRouterRoute } from "./ModelRouterRoute";
 /**
  * The response to a model-router approval request.
  */
-export type ModelRouterApprovalResponse = { action: ModelRouterApprovalAction, classification: string | null, route: ModelRouterRoute | null, };
+export type ModelRouterApprovalResponse = { action: ModelRouterApprovalAction, classification: string | null, classifications: { [key in string]?: string }, route: ModelRouterRoute | null, };

@@ -215,6 +215,7 @@ impl PendingAppServerRequests {
                         result: serde_json::to_value(ModelRouterApprovalResponse {
                             action: response.action,
                             classification: response.classification.clone(),
+                            classifications: response.classifications.clone(),
                             route: response.route.clone(),
                         })
                         .map_err(|err| {

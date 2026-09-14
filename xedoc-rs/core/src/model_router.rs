@@ -37,6 +37,7 @@ use xedoc_model_router::decide;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_protocol::openai_models::ReasoningEffort;
+use xedoc_protocol::protocol::ModelRouterApprovalRoute;
 use xedoc_protocol::protocol::ModelRouterDecisionEvent;
 use xedoc_protocol::protocol::ModelRouterDecisionReason;
 use xedoc_protocol::protocol::ModelRouterDisposition;
@@ -615,7 +616,14 @@ pub(crate) fn decision_event(
     }
 }
 
-pub(crate) fn requires_approval(approval: ModelRouterApproval, decision: &RouteDecision) -> bool {
+pub(crate) fn requires_approval(
+    mode: ModelRouterMode,
+    approval: ModelRouterApproval,
+    decision: &RouteDecision,
+) -> bool {
+    if !router_mode(mode).applies(decision.scope) {
+        return false;
+    }
     match approval {
         ModelRouterApproval::Off => false,
         ModelRouterApproval::Changes => {
@@ -627,6 +635,18 @@ pub(crate) fn requires_approval(approval: ModelRouterApproval, decision: &RouteD
                 && decision.reason != xedoc_model_router::DecisionReason::ExplicitOverride
         }
     }
+}
+
+pub(crate) fn feedback_classifications(
+    response: &xedoc_protocol::protocol::ModelRouterApprovalResponse,
+) -> BTreeMap<String, String> {
+    let mut classifications = response.classifications.clone();
+    if let Some(classification) = response.classification.as_ref() {
+        classifications
+            .entry("work_type".to_string())
+            .or_insert_with(|| classification.clone());
+    }
+    classifications
 }
 
 pub(crate) fn approval_event(
@@ -641,6 +661,17 @@ pub(crate) fn approval_event(
         turn_id,
         scope,
         predicted_classification: decision.class_id.clone().unwrap_or_default(),
+        classifications: decision.classifications.clone(),
+        classification_options: decision.classification_options.clone(),
+        available_routes: decision
+            .available_routes
+            .iter()
+            .map(|route| ModelRouterApprovalRoute {
+                provider_id: route.provider_id.clone(),
+                model_slug: route.model_slug.clone(),
+                reasoning_effort: effort_label(route.reasoning_effort).to_string(),
+            })
+            .collect(),
         proposed_provider_id: decision.proposed_route.provider_id.clone(),
         proposed_model_slug: decision.proposed_route.model_slug.clone(),
         proposed_reasoning_effort: effort_label(decision.proposed_route.reasoning_effort)

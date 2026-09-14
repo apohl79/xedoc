@@ -262,7 +262,7 @@ pub(super) async fn user_input_or_turn_inner(
                 if let Some(response) = approval_response.as_ref() {
                     if response.action
                         == xedoc_protocol::protocol::ModelRouterApprovalAction::Override
-                        && let Some(label) = response.classification.as_deref()
+                        && !crate::model_router::feedback_classifications(response).is_empty()
                     {
                         let feedback_path = sess.model_router_feedback_path().await;
                         let prompt = crate::agent::control::render_input_preview(&items);
@@ -270,7 +270,7 @@ pub(super) async fn user_input_or_turn_inner(
                             &feedback_path,
                             &decision.prompt.sha256,
                             crate::turn_timing::now_unix_timestamp_ms() / 1_000,
-                            label,
+                            &crate::model_router::feedback_classifications(response),
                             &prompt,
                         ) {
                             tracing::warn!(%error, "failed to persist model-router classifier feedback");
@@ -304,6 +304,7 @@ pub(super) async fn user_input_or_turn_inner(
                 }
                 if approval_response.is_none()
                     && crate::model_router::requires_approval(
+                        current_context.config.model_router.mode,
                         current_context.config.model_router.approval,
                         &decision,
                     )
@@ -424,15 +425,25 @@ async fn thread_settings_changes_route(
     thread_settings: &ThreadSettingsOverrides,
 ) -> bool {
     let config = sess.get_config().await;
-    let collaboration_mode = sess.collaboration_mode().await;
-    thread_settings
-        .model
-        .as_ref()
-        .is_some_and(|model| model != collaboration_mode.model())
-        || thread_settings
-            .effort
+    let collaboration_mode_changes_route =
+        thread_settings
+            .collaboration_mode
             .as_ref()
-            .is_some_and(|effort| effort != &collaboration_mode.settings.reasoning_effort)
+            .is_some_and(|mode| {
+                mode.model() != config.model.as_deref().unwrap_or_default()
+                    || mode.reasoning_effort().as_ref() != config.model_reasoning_effort.as_ref()
+            });
+    let direct_route_changes = thread_settings.collaboration_mode.is_none()
+        && (thread_settings
+            .model
+            .as_ref()
+            .is_some_and(|model| Some(model) != config.model.as_ref())
+            || thread_settings
+                .effort
+                .as_ref()
+                .is_some_and(|effort| effort.as_ref() != config.model_reasoning_effort.as_ref()));
+    collaboration_mode_changes_route
+        || direct_route_changes
         || thread_settings
             .service_tier
             .as_ref()
@@ -445,10 +456,6 @@ async fn thread_settings_changes_route(
                         .as_deref()
                         .filter(|tier| *tier != SERVICE_TIER_DEFAULT_REQUEST_VALUE)
             })
-        || thread_settings
-            .collaboration_mode
-            .as_ref()
-            .is_some_and(|mode| mode != &collaboration_mode)
         || thread_settings
             .model_provider_id
             .as_ref()

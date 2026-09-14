@@ -42,6 +42,13 @@
         "null"
       ]
     },
+    "classifications": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
+    },
     "route": {
       "anyOf": [
         {

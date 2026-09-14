@@ -2337,6 +2337,7 @@ impl Session {
             .unwrap_or(xedoc_protocol::protocol::ModelRouterApprovalResponse {
                 action: xedoc_protocol::protocol::ModelRouterApprovalAction::Reject,
                 classification: None,
+                classifications: Default::default(),
                 route: None,
             })
     }

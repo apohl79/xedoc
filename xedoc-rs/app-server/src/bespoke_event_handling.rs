@@ -341,6 +341,17 @@ pub(crate) async fn apply_bespoke_event_handling(
                 turn_id: event.turn_id,
                 scope: event.scope.into(),
                 predicted_classification: event.predicted_classification,
+                classifications: event.classifications,
+                classification_options: event.classification_options,
+                available_routes: event
+                    .available_routes
+                    .into_iter()
+                    .map(|route| ModelRouterRoute {
+                        provider_id: route.provider_id,
+                        model_slug: route.model_slug,
+                        reasoning_effort: route.reasoning_effort,
+                    })
+                    .collect(),
                 proposed_route: ModelRouterRoute {
                     provider_id: event.proposed_provider_id,
                     model_slug: event.proposed_model_slug,
@@ -1666,6 +1677,7 @@ async fn on_model_router_approval_response(
             ModelRouterApprovalAction::Override => CoreModelRouterApprovalAction::Override,
         },
         classification: response.classification,
+        classifications: response.classifications,
         route: response.route.map(|route| CoreModelRouterApprovalRoute {
             provider_id: route.provider_id,
             model_slug: route.model_slug,
@@ -1687,6 +1699,7 @@ fn reject_model_router_approval() -> ModelRouterApprovalResponse {
     ModelRouterApprovalResponse {
         action: ModelRouterApprovalAction::Reject,
         classification: None,
+        classifications: Default::default(),
         route: None,
     }
 }

@@ -30,11 +30,11 @@ pub fn append_classifier_feedback(
     path: &Path,
     source_id: &str,
     recorded_at_unix_seconds: i64,
-    label: &str,
+    classifications: &BTreeMap<String, String>,
     prompt: &str,
 ) -> Result<(), std::io::Error> {
     if source_id.is_empty()
-        || label.is_empty()
+        || classifications.is_empty()
         || prompt.is_empty()
         || prompt.len() > MAX_PROMPT_BYTES
     {
@@ -43,7 +43,7 @@ pub fn append_classifier_feedback(
     let record = FeedbackRecord {
         source_id,
         recorded_at_unix_seconds,
-        label,
+        classifications,
         prompt,
     };
     let bytes = serde_json::to_vec(&record).map_err(std::io::Error::other)?;
@@ -57,16 +57,15 @@ pub fn append_classifier_feedback(
 pub struct FeedbackCalibrationReport {
     /// Number of explicit corrections incorporated into the classifier heads.
     pub feedback_records: usize,
-    /// Number of class heads updated by the corrections.
+    /// Number of axis/class heads updated by the corrections.
     pub updated_classes: usize,
 }
 
 /// Re-embed explicit corrections and atomically update affected policy heads.
 ///
 /// Existing heads are retained as a bounded prior so a small number of
-/// corrections improves the matching class without discarding the initial
-/// calibration corpus. Records whose labels are not active policy classes are
-/// ignored.
+/// corrections improves matching classes without discarding the initial
+/// calibration corpus. Corrections for inactive policy classes are ignored.
 ///
 /// # Errors
 ///
@@ -80,20 +79,22 @@ pub fn recalibrate_classifier_from_feedback(
     let mut policy = xedoc_config::load_model_router_policy(policy_path)
         .map_err(FeedbackCalibrationError::Policy)?;
     let records = read_feedback(feedback_path)?;
-    let Some(work_type_axis) = policy.axes.iter().find(|axis| axis.id == "work_type") else {
-        return Ok(FeedbackCalibrationReport {
-            feedback_records: 0,
-            updated_classes: 0,
-        });
-    };
-    let active_labels = work_type_axis
-        .classes
-        .iter()
-        .map(|class| class.id.as_str())
-        .collect::<std::collections::BTreeSet<_>>();
     let records = records
         .into_iter()
-        .filter(|record| active_labels.contains(record.label.as_str()))
+        .filter(|record| {
+            record.classifications.iter().any(|(axis, class)| {
+                policy
+                    .axes
+                    .iter()
+                    .find(|policy_axis| policy_axis.id == *axis)
+                    .is_some_and(|policy_axis| {
+                        policy_axis
+                            .classes
+                            .iter()
+                            .any(|candidate| candidate.id == *class)
+                    })
+            })
+        })
         .collect::<Vec<_>>();
     if records.is_empty() {
         return Ok(FeedbackCalibrationReport {
@@ -111,47 +112,46 @@ pub fn recalibrate_classifier_from_feedback(
     }
     let embedder = FastEmbedder::from_local_artifact(&artifact)
         .map_err(FeedbackCalibrationError::Embedding)?;
-    let mut sums = BTreeMap::<String, (usize, Vec<f32>)>::new();
+    let mut sums = BTreeMap::<(String, String), (usize, Vec<f32>)>::new();
     for record in &records {
         let embedding = embedder
             .embed_sync(&record.prompt)
             .map_err(FeedbackCalibrationError::Embedding)?;
-        let entry = sums
-            .entry(record.label.clone())
-            .or_insert_with(|| (0, vec![0.0; embedding.len()]));
-        entry
-            .1
-            .iter_mut()
-            .zip(embedding)
-            .for_each(|(sum, value)| *sum += value);
-        entry.0 += 1;
+        record.classifications.iter().for_each(|(axis, class)| {
+            let entry = sums
+                .entry((axis.clone(), class.clone()))
+                .or_insert_with(|| (0, vec![0.0; embedding.len()]));
+            entry
+                .1
+                .iter_mut()
+                .zip(&embedding)
+                .for_each(|(sum, value)| *sum += value);
+            entry.0 += 1;
+        });
     }
 
     let mut updated_classes = 0;
-    for class in policy
-        .axes
-        .iter_mut()
-        .find(|axis| axis.id == "work_type")
-        .into_iter()
-        .flat_map(|axis| &mut axis.classes)
-    {
-        let Some((count, sum)) = sums.get(&class.id) else {
-            continue;
-        };
-        let prior = class
-            .weights
-            .as_ref()
-            .map_or_else(|| vec![0.0; sum.len()], Clone::clone);
-        class.weights = Some(
-            prior
-                .iter()
-                .zip(sum)
-                .map(|(weight, feedback)| {
-                    (weight * PRIOR_HEAD_WEIGHT + feedback) / (PRIOR_HEAD_WEIGHT + *count as f32)
-                })
-                .collect(),
-        );
-        updated_classes += 1;
+    for axis in &mut policy.axes {
+        for class in &mut axis.classes {
+            let Some((count, sum)) = sums.get(&(axis.id.clone(), class.id.clone())) else {
+                continue;
+            };
+            let prior = class
+                .weights
+                .as_ref()
+                .map_or_else(|| vec![0.0; sum.len()], Clone::clone);
+            class.weights = Some(
+                prior
+                    .iter()
+                    .zip(sum)
+                    .map(|(weight, feedback)| {
+                        (weight * PRIOR_HEAD_WEIGHT + feedback)
+                            / (PRIOR_HEAD_WEIGHT + *count as f32)
+                    })
+                    .collect(),
+            );
+            updated_classes += 1;
+        }
     }
     let parameters =
         serde_json::to_vec(&policy.axes).map_err(FeedbackCalibrationError::Serialize)?;
@@ -172,7 +172,7 @@ pub fn recalibrate_classifier_from_feedback(
 struct FeedbackRecord<'a> {
     source_id: &'a str,
     recorded_at_unix_seconds: i64,
-    label: &'a str,
+    classifications: &'a BTreeMap<String, String>,
     prompt: &'a str,
 }
 
@@ -180,6 +180,9 @@ struct FeedbackRecord<'a> {
 struct StoredFeedbackRecord {
     source_id: String,
     recorded_at_unix_seconds: i64,
+    #[serde(default)]
+    classifications: BTreeMap<String, String>,
+    #[serde(default)]
     label: String,
     prompt: String,
 }
@@ -201,14 +204,21 @@ fn read_feedback(path: &Path) -> Result<Vec<StoredFeedbackRecord>, FeedbackCalib
             path: path.to_path_buf(),
             source,
         })?;
-        let record: StoredFeedbackRecord =
+        let mut record: StoredFeedbackRecord =
             serde_json::from_str(&line).map_err(FeedbackCalibrationError::Deserialize)?;
         if record.source_id.len() > 128
             || record.recorded_at_unix_seconds <= 0
-            || record.label.is_empty()
             || record.prompt.is_empty()
             || record.prompt.len() > MAX_PROMPT_BYTES
         {
+            return Err(FeedbackCalibrationError::InvalidRecord);
+        }
+        if record.classifications.is_empty() && !record.label.is_empty() {
+            record
+                .classifications
+                .insert("work_type".to_string(), record.label.clone());
+        }
+        if record.classifications.is_empty() {
             return Err(FeedbackCalibrationError::InvalidRecord);
         }
         if records.len() == MAX_FEEDBACK_RECORDS {

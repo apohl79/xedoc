@@ -1503,6 +1503,30 @@
         "approvalId": {
           "type": "string"
         },
+        "availableRoutes": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/ModelRouterRoute"
+          },
+          "type": "array"
+        },
+        "classificationOptions": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "classifications": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
         "classifierRevision": {
           "type": "string"
         },

@@ -8,4 +8,4 @@ import type { ModelRouterScope } from "./ModelRouterScope";
 /**
  * A dedicated, structured request to approve a proposed model route.
  */
-export type ModelRouterApprovalParams = { approvalId: string, threadId: string, turnId: string, scope: ModelRouterScope, predictedClassification: string, proposedRoute: ModelRouterRoute, currentRoute: ModelRouterEffectiveRoute, score: number, margin: number, classifierRevision: string, policyRevision: string, promptSha256: string, };
+export type ModelRouterApprovalParams = { approvalId: string, threadId: string, turnId: string, scope: ModelRouterScope, predictedClassification: string, classifications: { [key in string]?: string }, classificationOptions: { [key in string]?: Array<string> }, availableRoutes: Array<ModelRouterRoute>, proposedRoute: ModelRouterRoute, currentRoute: ModelRouterEffectiveRoute, score: number, margin: number, classifierRevision: string, policyRevision: string, promptSha256: string, };

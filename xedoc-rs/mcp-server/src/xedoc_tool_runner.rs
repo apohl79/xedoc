@@ -259,6 +259,7 @@ async fn run_xedoc_tool_session_inner(
                                 response: ModelRouterApprovalResponse {
                                     action: ModelRouterApprovalAction::Reject,
                                     classification: None,
+                                    classifications: Default::default(),
                                     route: None,
                                 },
                             })

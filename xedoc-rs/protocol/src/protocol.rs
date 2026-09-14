@@ -1688,6 +1688,12 @@ pub struct ModelRouterApprovalRequestEvent {
     pub turn_id: String,
     pub scope: ModelRouterScope,
     pub predicted_classification: String,
+    #[serde(default)]
+    pub classifications: BTreeMap<String, String>,
+    #[serde(default)]
+    pub classification_options: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub available_routes: Vec<ModelRouterApprovalRoute>,
     pub proposed_provider_id: String,
     pub proposed_model_slug: String,
     pub proposed_reasoning_effort: String,
@@ -1704,6 +1710,8 @@ pub struct ModelRouterApprovalRequestEvent {
 pub struct ModelRouterApprovalResponse {
     pub action: ModelRouterApprovalAction,
     pub classification: Option<String>,
+    #[serde(default)]
+    pub classifications: BTreeMap<String, String>,
     pub route: Option<ModelRouterApprovalRoute>,
 }
 

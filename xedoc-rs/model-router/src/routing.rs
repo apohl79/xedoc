@@ -111,6 +111,32 @@ impl ModelCatalog {
                     .contains(&route.reasoning_effort)
         })
     }
+
+    fn routes(&self) -> Vec<ModelRoute> {
+        let mut routes = self
+            .candidates
+            .iter()
+            .flat_map(|candidate| {
+                candidate
+                    .supported_reasoning_efforts
+                    .iter()
+                    .map(|reasoning_effort| ModelRoute {
+                        provider_id: candidate.route.provider_id.clone(),
+                        model_slug: candidate.route.model_slug.clone(),
+                        reasoning_effort: *reasoning_effort,
+                    })
+            })
+            .collect::<Vec<_>>();
+        routes.sort_by(|left, right| {
+            (&left.provider_id, &left.model_slug, left.reasoning_effort).cmp(&(
+                &right.provider_id,
+                &right.model_slug,
+                right.reasoning_effort,
+            ))
+        });
+        routes.dedup();
+        routes
+    }
 }
 
 /// A minimum effort and user-managed capability preference for a classified task.
@@ -167,6 +193,8 @@ pub struct RouteDecision {
     pub scope: RouteScope,
     pub class_id: Option<String>,
     pub classifications: BTreeMap<String, String>,
+    pub classification_options: BTreeMap<String, Vec<String>>,
+    pub available_routes: Vec<ModelRoute>,
     pub ranking_score: Option<u16>,
     pub ranking_minimum_class: Option<ModelClass>,
     pub ranking_maximum_class: Option<ModelClass>,
@@ -198,10 +226,23 @@ pub fn decide(
     let scope = task.scope;
     let original_route = task.current_route.cloned();
     let fallback = policy.fallback.clone();
+    let classification_options: BTreeMap<String, Vec<String>> = policy
+        .axes
+        .iter()
+        .map(|(axis, classifier)| {
+            (
+                axis.clone(),
+                classifier.values.keys().cloned().collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    let available_routes = catalog.routes();
     let fallback_decision = |reason, proposed_route| RouteDecision {
         scope,
         class_id: None,
         classifications: BTreeMap::new(),
+        classification_options: classification_options.clone(),
+        available_routes: available_routes.clone(),
         ranking_score: None,
         ranking_minimum_class: None,
         ranking_maximum_class: None,
@@ -293,6 +334,8 @@ pub fn decide(
         scope,
         class_id,
         classifications,
+        classification_options,
+        available_routes,
         ranking_score: Some(selection.score),
         ranking_minimum_class: Some(selection.minimum_class),
         ranking_maximum_class: Some(selection.maximum_class),

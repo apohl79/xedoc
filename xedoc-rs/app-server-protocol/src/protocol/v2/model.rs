@@ -230,6 +230,12 @@ pub struct ModelRouterApprovalParams {
     pub turn_id: String,
     pub scope: ModelRouterScope,
     pub predicted_classification: String,
+    #[serde(default)]
+    pub classifications: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub classification_options: std::collections::BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub available_routes: Vec<ModelRouterRoute>,
     pub proposed_route: ModelRouterRoute,
     pub current_route: ModelRouterEffectiveRoute,
     #[ts(type = "number")]
@@ -248,6 +254,8 @@ pub struct ModelRouterApprovalParams {
 pub struct ModelRouterApprovalResponse {
     pub action: ModelRouterApprovalAction,
     pub classification: Option<String>,
+    #[serde(default)]
+    pub classifications: std::collections::BTreeMap<String, String>,
     pub route: Option<ModelRouterRoute>,
 }
 

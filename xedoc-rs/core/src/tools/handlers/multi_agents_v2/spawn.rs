@@ -118,7 +118,11 @@ async fn handle_spawn_agent(
             None
         };
     if let Some(decision) = router_decision.as_mut()
-        && crate::model_router::requires_approval(turn.config.model_router.approval, decision)
+        && crate::model_router::requires_approval(
+            turn.config.model_router.mode,
+            turn.config.model_router.approval,
+            decision,
+        )
     {
         let approval = crate::model_router::approval_event(
             decision,
@@ -130,14 +134,14 @@ async fn handle_spawn_agent(
             .request_model_router_approval(turn.as_ref(), approval)
             .await;
         if response.action == xedoc_protocol::protocol::ModelRouterApprovalAction::Override
-            && let Some(label) = response.classification.as_deref()
+            && !crate::model_router::feedback_classifications(&response).is_empty()
         {
             let feedback_path = session.model_router_feedback_path().await;
             if let Err(error) = xedoc_model_router::append_classifier_feedback(
                 &feedback_path,
                 &decision.prompt.sha256,
                 now_unix_timestamp_ms() / 1_000,
-                label,
+                &crate::model_router::feedback_classifications(&response),
                 &message,
             ) {
                 tracing::warn!(%error, "failed to persist model-router classifier feedback");
