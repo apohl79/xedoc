@@ -218,7 +218,7 @@ pub(super) async fn user_input_or_turn_inner(
         .await;
     }
     match sess
-        .steer_input(
+        .steer_input_with_turn_context(
             items.clone(),
             additional_context.clone(),
             /*expected_turn_id*/ None,
@@ -227,8 +227,32 @@ pub(super) async fn user_input_or_turn_inner(
         )
         .await
     {
-        Ok(_) => {
+        Ok((active_turn_id, turn_context)) => {
             sess.services.session_telemetry.user_prompt(&items);
+            if !turn_context.session_source.is_non_root_agent()
+                && let Some(decision) = super::root_shadow_routing::steering_bypass_for_active_turn(
+                    turn_context.as_ref(),
+                    &items,
+                )
+            {
+                let router_event = crate::model_router::decision_event(
+                    decision,
+                    sess.thread_id.to_string(),
+                    active_turn_id.clone(),
+                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                    crate::turn_timing::now_unix_timestamp_ms() / 1_000,
+                );
+                sess.remember_model_router_decision(
+                    &active_turn_id,
+                    router_event.decision_id.clone(),
+                )
+                .await;
+                sess.send_event(
+                    turn_context.as_ref(),
+                    EventMsg::ModelRouterDecision(router_event),
+                )
+                .await;
+            }
         }
         Err(SteerInputError::NoActiveTurn(items)) => {
             let mut current_context = sess

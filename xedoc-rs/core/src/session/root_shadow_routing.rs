@@ -36,3 +36,18 @@ pub(super) async fn decide_for_accepted_input(
     )
     .await
 }
+
+/// Records active-turn steering without loading the embedding runtime.
+pub(super) fn steering_bypass_for_active_turn(
+    turn_context: &TurnContext,
+    input: &[UserInput],
+) -> Option<RouteDecision> {
+    let reasoning_effort = turn_context.reasoning_effort.clone()?;
+    let route = route_for_model(
+        turn_context.config.as_ref(),
+        turn_context.model_info.slug.as_str(),
+        reasoning_effort,
+    );
+    let prompt = render_input_preview(input);
+    ModelRouterService::steering_bypass_root(turn_context.config.as_ref(), &prompt, route)
+}

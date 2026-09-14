@@ -157,6 +157,44 @@ impl ModelRouterService {
         ))
     }
 
+    /// Records accepted active-turn input without embedding or rerouting it.
+    pub(crate) fn steering_bypass_root(
+        config: &Config,
+        prompt: &str,
+        current_route: ModelRoute,
+    ) -> Option<RouteDecision> {
+        let mode = router_mode(config.model_router.mode);
+        if !mode.classifies(RouteScope::Root) {
+            return None;
+        }
+
+        let service = Self::global(config);
+        let _ = service.policy_store.reload_if_changed();
+        let policy = service
+            .policy_store
+            .snapshot()
+            .map(|policy| routing_policy(&policy, current_route.clone()))
+            .unwrap_or_else(|| RoutingPolicy {
+                revision: "unavailable".to_string(),
+                fallback: current_route.clone(),
+                axes: BTreeMap::new(),
+                ranking: RankingPolicy {
+                    minimum_score: 0,
+                    maximum_score: 0,
+                    ladder: Vec::new(),
+                },
+            });
+        Some(xedoc_model_router::steering_bypass(
+            TaskEnvelope {
+                scope: RouteScope::Root,
+                prompt,
+                current_route: Some(&current_route),
+            },
+            &policy,
+            &ModelCatalog::default(),
+        ))
+    }
+
     /// Incorporate explicit user classifier corrections into the active policy.
     ///
     /// The policy store reload keeps subsequent decisions in this process on

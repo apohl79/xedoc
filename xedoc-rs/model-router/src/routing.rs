@@ -356,6 +356,50 @@ pub fn decide(
     }
 }
 
+/// Record that accepted input targets an active turn and must not be rerouted.
+pub fn steering_bypass(
+    task: TaskEnvelope<'_>,
+    policy: &RoutingPolicy,
+    catalog: &ModelCatalog,
+) -> RouteDecision {
+    let (_, prompt) = normalize_task(task.prompt);
+    let original_route = task.current_route.cloned();
+    let proposed_route = original_route
+        .clone()
+        .unwrap_or_else(|| policy.fallback.clone());
+    RouteDecision {
+        scope: task.scope,
+        class_id: Some("steering".to_string()),
+        classifications: BTreeMap::from([("work_type".to_string(), "steering".to_string())]),
+        classification_options: policy
+            .axes
+            .iter()
+            .map(|(axis, classifier)| {
+                (
+                    axis.clone(),
+                    classifier.values.keys().cloned().collect::<Vec<_>>(),
+                )
+            })
+            .collect(),
+        available_routes: catalog.routes(),
+        ranking_score: None,
+        ranking_minimum_class: None,
+        ranking_maximum_class: None,
+        ranking_minimum_rank: None,
+        ranking_maximum_rank: None,
+        score: 0.0,
+        margin: 0.0,
+        original_route: original_route.clone(),
+        proposed_route,
+        effective_route: original_route,
+        disposition: RouteDisposition::Fallback,
+        reason: DecisionReason::SteeringBypass,
+        diagnostic: None,
+        policy_revision: policy.revision.clone(),
+        prompt,
+    }
+}
+
 fn policy_matches_embedding(policy: &RoutingPolicy, embedding: &[f32]) -> bool {
     !policy.revision.is_empty()
         && policy.axes.len() == 4
@@ -497,8 +541,15 @@ fn best_class<'a>(
     let mut scored = classes
         .iter()
         .map(|(class_id, route)| (class_id, route, norm.recip()))
-        .map(|(class_id, route, inverse_norm)| {
-            let score = inverse_norm
+        .map(|(class_id, route, inverse_prompt_norm)| {
+            let weight_norm = route
+                .weights
+                .iter()
+                .map(|weight| weight * weight)
+                .sum::<f32>()
+                .sqrt();
+            let score = inverse_prompt_norm
+                * weight_norm.recip()
                 * embedding
                     .iter()
                     .zip(route.weights.iter())

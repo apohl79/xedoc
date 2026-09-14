@@ -46,8 +46,9 @@ pub fn calibrate_review_policy(
             .embed_sync(&record.prompt)
             .map_err(|source| CalibrationError::Embedding { source })?;
         for (axis, value) in record.labels {
+            let value = work_type_group(&axis, &value).unwrap_or(value.as_str());
             let entry = sums
-                .entry((axis, value))
+                .entry((axis, value.to_string()))
                 .or_insert_with(|| (0, vec![0.0; embedding.len()]));
             entry
                 .1
@@ -62,12 +63,13 @@ pub fn calibrate_review_policy(
     // until a reviewer replaces them with labelled session prompts.
     for axis in AXES {
         for (id, _, _, _) in axis_definitions(axis) {
-            let key = (axis.to_string(), id.to_string());
+            let group = work_type_group(axis, id).unwrap_or(id);
+            let key = (axis.to_string(), group.to_string());
             if sums.contains_key(&key) {
                 continue;
             }
             let prototype =
-                classification_prototype(axis, id).ok_or(CalibrationError::InvalidCorpus)?;
+                classification_prototype(axis, group).ok_or(CalibrationError::InvalidCorpus)?;
             let embedding = embedder
                 .embed_sync(prototype)
                 .map_err(|source| CalibrationError::Embedding { source })?;
@@ -81,8 +83,9 @@ pub fn calibrate_review_policy(
             classes: axis_definitions(axis)
                 .into_iter()
                 .map(|(id, points, minimum_model_class, maximum_model_class)| {
+                    let group = work_type_group(axis, id).unwrap_or(id);
                     let weights =
-                        sums.get(&(axis.to_string(), id.to_string()))
+                        sums.get(&(axis.to_string(), group.to_string()))
                             .map(|(count, sum)| {
                                 sum.iter()
                                     .map(|value| value / *count as f32)
@@ -130,6 +133,17 @@ pub fn calibrate_review_policy(
     xedoc_config::write_model_router_policy(output_path, &policy)
         .map_err(|source| CalibrationError::Policy { source })?;
     Ok(())
+}
+
+fn work_type_group<'a>(axis: &str, value: &'a str) -> Option<&'a str> {
+    (axis == "work_type").then(|| match value {
+        "steering" => "steering",
+        "question" | "docs_analysis" | "packaging" | "operational" | "testing" => "group1",
+        "implementation" | "bug_fix" | "refactor" | "docs_authoring" | "orchestration"
+        | "calibration" => "group2",
+        "research" | "review" | "diagnosis" | "design" => "group3",
+        _ => value,
+    })
 }
 
 fn axis_definitions(
@@ -186,14 +200,17 @@ fn axis_definitions(
 
 fn classification_prototype(axis: &str, id: &str) -> Option<&'static str> {
     match (axis, id) {
-        ("work_type", "docs_analysis") => {
-            Some("Analyze existing documentation and explain its implications.")
+        ("work_type", "group1") => {
+            Some("Answer a question, analyze documentation, package, operate, or test a system.")
         }
-        ("work_type", "docs_authoring") => {
-            Some("Write and revise user-facing technical documentation.")
+        ("work_type", "group2") => Some(
+            "Implement, fix, refactor, write documentation, orchestrate, or calibrate a system.",
+        ),
+        ("work_type", "group3") => {
+            Some("Research, review, diagnose, or design a technical solution.")
         }
-        ("work_type", "calibration") => {
-            Some("Calibrate and evaluate a classifier using labelled examples.")
+        ("work_type", "steering") => {
+            Some("Change the active direction without requesting standalone work.")
         }
         _ => None,
     }

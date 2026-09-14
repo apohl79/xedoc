@@ -38,6 +38,7 @@ pub use routing::RouteProfile;
 pub use routing::RoutingPolicy;
 pub use routing::decide;
 pub use routing::finalize_decision;
+pub use routing::steering_bypass;
 pub use task::MAX_PROMPT_BYTES;
 pub use task::PromptMetadata;
 pub use task::RouteScope;
