@@ -16,6 +16,8 @@ pub fn new_model_router_decision(
         notification.reason,
         notification.diagnostic,
         notification.classifications,
+        notification.confidence_score,
+        notification.confidence_margin,
         notification.ranking_score,
         notification.ranking_minimum_class,
         notification.ranking_maximum_class,
@@ -31,6 +33,8 @@ pub fn new_model_router_decision_item(
     reason: ModelRouterDecisionReason,
     diagnostic: Option<String>,
     classifications: std::collections::BTreeMap<String, String>,
+    confidence_score: f64,
+    confidence_margin: f64,
     ranking_score: Option<u16>,
     ranking_minimum_class: Option<String>,
     ranking_maximum_class: Option<String>,
@@ -44,6 +48,8 @@ pub fn new_model_router_decision_item(
         reason,
         diagnostic,
         classifications,
+        confidence_score,
+        confidence_margin,
         ranking_score,
         ranking_minimum_class,
         ranking_maximum_class,
@@ -59,6 +65,8 @@ pub fn model_router_decision_lines(
     reason: ModelRouterDecisionReason,
     diagnostic: Option<String>,
     classifications: std::collections::BTreeMap<String, String>,
+    confidence_score: f64,
+    confidence_margin: f64,
     ranking_score: Option<u16>,
     ranking_minimum_class: Option<String>,
     ranking_maximum_class: Option<String>,
@@ -97,7 +105,19 @@ pub fn model_router_decision_lines(
         .into(),
     ];
     if !classifications.is_empty() {
-        lines.push(format!("  {classifications}{ranking}").dim().into());
+        lines.push(
+            format!(
+                "  {classifications} · confidence {confidence_score:.3} (margin {confidence_margin:.3}){ranking}"
+            )
+            .dim()
+            .into(),
+        );
+    } else {
+        lines.push(
+            format!("  confidence {confidence_score:.3} (margin {confidence_margin:.3})")
+                .dim()
+                .into(),
+        );
     }
     if let Some(diagnostic) = diagnostic {
         lines.push(format!("  {diagnostic}").dim().into());

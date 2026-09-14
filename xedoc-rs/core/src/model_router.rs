@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use xedoc_config::ModelRouterApproval;
 use xedoc_config::ModelRouterClass;
 use xedoc_config::ModelRouterMode;
 use xedoc_config::ModelRouterModelClass;
@@ -582,6 +583,8 @@ pub(crate) fn decision_event(
         }),
         policy_revision: decision.policy_revision,
         classifications: decision.classifications,
+        confidence_score: decision.score,
+        confidence_margin: decision.margin,
         ranking_score: decision.ranking_score,
         ranking_minimum_class: decision
             .ranking_minimum_class
@@ -609,6 +612,20 @@ pub(crate) fn decision_event(
         prompt_original_bytes: u64::try_from(decision.prompt.original_bytes).unwrap_or(u64::MAX),
         prompt_truncated: decision.prompt.truncated,
         created_at,
+    }
+}
+
+pub(crate) fn requires_approval(approval: ModelRouterApproval, decision: &RouteDecision) -> bool {
+    match approval {
+        ModelRouterApproval::Off => false,
+        ModelRouterApproval::Changes => {
+            decision.disposition == xedoc_model_router::RouteDisposition::Applied
+                && decision.effective_route != decision.original_route
+        }
+        ModelRouterApproval::All => {
+            decision.disposition != xedoc_model_router::RouteDisposition::Shadow
+                && decision.reason != xedoc_model_router::DecisionReason::ExplicitOverride
+        }
     }
 }
 

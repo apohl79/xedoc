@@ -313,6 +313,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 diagnostic: event.diagnostic,
                 policy_revision: event.policy_revision,
                 classifications: event.classifications,
+                confidence_score: event.confidence_score.into(),
+                confidence_margin: event.confidence_margin.into(),
                 ranking_score: event.ranking_score,
                 ranking_minimum_class: event.ranking_minimum_class,
                 ranking_maximum_class: event.ranking_maximum_class,

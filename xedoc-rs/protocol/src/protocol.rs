@@ -1645,7 +1645,7 @@ pub struct ModelRerouteEvent {
 }
 
 /// Bounded, transcript-visible model-router decision metadata.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
 pub struct ModelRouterDecisionEvent {
     pub decision_id: String,
     pub thread_id: String,
@@ -1658,6 +1658,12 @@ pub struct ModelRouterDecisionEvent {
     pub policy_revision: String,
     #[serde(default)]
     pub classifications: BTreeMap<String, String>,
+    /// Classifier confidence score from the task embedding.
+    #[serde(default)]
+    pub confidence_score: f32,
+    /// Margin between the selected classifier head and its runner-up.
+    #[serde(default)]
+    pub confidence_margin: f32,
     pub ranking_score: Option<u16>,
     pub ranking_minimum_class: Option<String>,
     pub ranking_maximum_class: Option<String>,

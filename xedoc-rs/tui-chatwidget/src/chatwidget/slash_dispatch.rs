@@ -40,7 +40,7 @@ const RAW_USAGE: &str = "Usage: /raw [on|off]";
 const TOOL_RENDERING_USAGE: &str = "Usage: /tool-rendering [normal|optimized]";
 const RENAME_AUTO_USAGE: &str = "Usage: /rename --auto on|off";
 const TOKEN_USAGE_OPTIMIZER_USAGE: &str = "Usage: /token-usage-optimizer [status|show|stats|report [days]|reset-stats|reset-report|on|off|level <conservative|balanced|aggressive>]";
-const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <on|off>]|mode <off|shadow-subagents|shadow-full|subagents|full>|ab <next|off>|report]";
+const MODEL_ROUTER_USAGE: &str = "Usage: /model-router [status|settings [approval <off|changes|all>]|mode <off|shadow-subagents|shadow-full|subagents|full>|ab <next|off>|report]";
 
 fn model_router_mode_label(mode: xedoc_config::ModelRouterMode) -> &'static str {
     match mode {
@@ -52,7 +52,50 @@ fn model_router_mode_label(mode: xedoc_config::ModelRouterMode) -> &'static str 
     }
 }
 
+fn model_router_approval_label(approval: xedoc_config::ModelRouterApproval) -> &'static str {
+    match approval {
+        xedoc_config::ModelRouterApproval::Off => "off",
+        xedoc_config::ModelRouterApproval::Changes => "changes",
+        xedoc_config::ModelRouterApproval::All => "all",
+    }
+}
+
 impl ChatWidget {
+    pub fn open_model_router_approval_menu(&mut self) {
+        let current = model_router_approval_label(self.config.model_router.approval);
+        let options = [
+            ("off", "Apply eligible routing decisions without a prompt."),
+            (
+                "changes",
+                "Ask only before a confident decision changes the current route.",
+            ),
+            (
+                "all",
+                "Ask for every non-explicit decision, including low-confidence results.",
+            ),
+        ];
+        let items = options
+            .into_iter()
+            .map(|(mode, description)| SelectionItem {
+                name: mode.to_string(),
+                description: Some(description.to_string()),
+                is_current: mode == current,
+                actions: vec![Box::new(move |tx| {
+                    tx.send(AppEvent::UpdateModelRouterApproval {
+                        mode: mode.to_string(),
+                    });
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            })
+            .collect();
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Model-router approval prompts".to_string()),
+            items,
+            ..Default::default()
+        });
+    }
+
     pub fn open_model_router_mode_menu(&mut self) {
         let current = model_router_mode_label(self.config.model_router.mode);
         let options = [
@@ -141,17 +184,16 @@ impl ChatWidget {
             ..Default::default()
         }];
         items.push(SelectionItem {
-            name: format!("Approval prompts: {}", if approval { "on" } else { "off" }),
-            description: Some(
-                "Ask before applying each routing decision; you can override the route."
-                    .to_string(),
+            name: format!(
+                "Approval prompts: {}",
+                model_router_approval_label(approval)
             ),
-            actions: vec![Box::new(move |tx| {
-                tx.send(AppEvent::UpdateModelRouterApproval {
-                    approval: !approval,
-                });
+            description: Some("Choose when routing decisions require confirmation.".to_string()),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::OpenModelRouterApprovalMenu)
             })],
-            dismiss_on_select: true,
+            dismiss_on_select: false,
+            dismiss_parent_on_child_accept: true,
             ..Default::default()
         });
         items.push(SelectionItem {
@@ -211,7 +253,7 @@ impl ChatWidget {
             title: Some("Model router".to_string()),
             subtitle: Some(format!(
                 "Current mode: {current_mode}; approval: {}",
-                if approval { "on" } else { "off" }
+                model_router_approval_label(approval)
             )),
             items,
             ..Default::default()
@@ -877,11 +919,7 @@ impl ChatWidget {
                             format!(
                                 "Model router mode: {:?}; approval: {}.",
                                 self.config.model_router.mode,
-                                if self.config.model_router.approval {
-                                    "on"
-                                } else {
-                                    "off"
-                                }
+                                model_router_approval_label(self.config.model_router.approval)
                             ),
                             Some(
                                 "Use `/model-router` to open settings, or typed subcommands to change them."
@@ -893,20 +931,20 @@ impl ChatWidget {
                         self.add_info_message(
                             format!(
                                 "Model router settings: approval {}.",
-                                if self.config.model_router.approval {
-                                    "on"
-                                } else {
-                                    "off"
-                                }
+                                model_router_approval_label(self.config.model_router.approval)
                             ),
                             /*hint*/ None,
                         );
                     }
                     (Some("settings"), Some("approval"), Some(value))
-                        if matches!(value, "on" | "off") =>
+                        if matches!(value, "off" | "changes" | "all" | "on") =>
                     {
                         self.app_event_tx.send(AppEvent::UpdateModelRouterApproval {
-                            approval: value == "on",
+                            mode: if value == "on" {
+                                "changes".to_string()
+                            } else {
+                                value.to_string()
+                            },
                         });
                     }
                     (Some("mode"), Some(mode), None)

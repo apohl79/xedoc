@@ -730,15 +730,16 @@ pub enum AppEvent {
         mode: String,
     },
 
-    /// Persist whether active model-router decisions require user approval.
+    /// Persist when active model-router decisions require user approval.
     UpdateModelRouterApproval {
-        approval: bool,
+        mode: String,
     },
     UpdateModelRouterDecisionFeedback {
         enabled: bool,
     },
     OpenModelRouterMenu,
     OpenModelRouterModeMenu,
+    OpenModelRouterApprovalMenu,
     OpenModelRouterAbMenu,
     OpenModelRouterPolicyConfidenceMenu {
         policy: ModelRouterPolicy,
@@ -769,7 +770,7 @@ pub enum AppEvent {
     /// Confirm a model-router config update and refresh the TUI's local view.
     ModelRouterConfigUpdated {
         mode: Option<String>,
-        approval: Option<bool>,
+        approval: Option<String>,
         decision_feedback: Option<bool>,
         error: Option<String>,
     },

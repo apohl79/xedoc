@@ -54,7 +54,7 @@ v2_enum_from_core!(
     }
 );
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(tag = "type", rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
@@ -526,7 +526,7 @@ pub struct ModelReroutedNotification {
 /// Experimental metadata-only record of one local model-router decision.
 ///
 /// This notification never contains prompt or output text.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ModelRouterDecisionNotification {
@@ -540,6 +540,14 @@ pub struct ModelRouterDecisionNotification {
     pub diagnostic: Option<String>,
     pub policy_revision: String,
     pub classifications: std::collections::BTreeMap<String, String>,
+    /// Classifier confidence score from the task embedding.
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub confidence_score: f64,
+    /// Margin between the selected classifier head and its runner-up.
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub confidence_margin: f64,
     pub ranking_score: Option<u16>,
     pub ranking_minimum_class: Option<String>,
     pub ranking_maximum_class: Option<String>,

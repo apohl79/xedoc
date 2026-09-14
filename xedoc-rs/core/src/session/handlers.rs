@@ -16,6 +16,7 @@ use crate::tasks::CompactTask;
 use crate::tasks::UserShellCommandMode;
 use crate::tasks::UserShellCommandTask;
 use crate::tasks::execute_user_shell_command;
+use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::protocol::ErrorEvent;
 use xedoc_protocol::protocol::Event;
@@ -191,11 +192,7 @@ pub(super) async fn user_input_or_turn_inner(
     else {
         unreachable!();
     };
-    let explicit_route_override = thread_settings.model.is_some()
-        || thread_settings.effort.is_some()
-        || thread_settings.service_tier.is_some()
-        || thread_settings.collaboration_mode.is_some()
-        || thread_settings.model_provider_id.is_some();
+    let explicit_route_override = thread_settings_changes_route(sess, &thread_settings).await;
     let emit_thread_settings_applied = thread_settings != ThreadSettingsOverrides::default();
     let updates = if emit_thread_settings_applied {
         thread_settings_update(sess, thread_settings).await
@@ -305,10 +302,11 @@ pub(super) async fn user_input_or_turn_inner(
                         }
                     }
                 }
-                if current_context.config.model_router.approval
-                    && approval_response.is_none()
-                    && decision.disposition == xedoc_model_router::RouteDisposition::Applied
-                    && decision.effective_route != decision.original_route
+                if approval_response.is_none()
+                    && crate::model_router::requires_approval(
+                        current_context.config.model_router.approval,
+                        &decision,
+                    )
                 {
                     let approval = crate::model_router::approval_event(
                         &decision,
@@ -419,6 +417,42 @@ pub(super) async fn user_input_or_turn_inner(
             .await;
         }
     }
+}
+
+async fn thread_settings_changes_route(
+    sess: &Session,
+    thread_settings: &ThreadSettingsOverrides,
+) -> bool {
+    let config = sess.get_config().await;
+    let collaboration_mode = sess.collaboration_mode().await;
+    thread_settings
+        .model
+        .as_ref()
+        .is_some_and(|model| model != collaboration_mode.model())
+        || thread_settings
+            .effort
+            .as_ref()
+            .is_some_and(|effort| effort != &collaboration_mode.settings.reasoning_effort)
+        || thread_settings
+            .service_tier
+            .as_ref()
+            .is_some_and(|service_tier| {
+                service_tier
+                    .as_deref()
+                    .filter(|tier| *tier != SERVICE_TIER_DEFAULT_REQUEST_VALUE)
+                    != config
+                        .service_tier
+                        .as_deref()
+                        .filter(|tier| *tier != SERVICE_TIER_DEFAULT_REQUEST_VALUE)
+            })
+        || thread_settings
+            .collaboration_mode
+            .as_ref()
+            .is_some_and(|mode| mode != &collaboration_mode)
+        || thread_settings
+            .model_provider_id
+            .as_ref()
+            .is_some_and(|provider_id| provider_id != &config.model_provider_id)
 }
 
 /// Queues an inter-agent message, then lets the shared pending-work scheduler

@@ -84,18 +84,19 @@ impl App {
     pub(super) fn update_model_router_approval(
         &mut self,
         app_server: &AppServerSession,
-        approval: bool,
+        mode: String,
     ) {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();
         tokio::spawn(async move {
-            let error = crate::config_update::write_model_router_approval(request_handle, approval)
-                .await
-                .err()
-                .map(|error| error.to_string());
+            let error =
+                crate::config_update::write_model_router_approval(request_handle, mode.clone())
+                    .await
+                    .err()
+                    .map(|error| error.to_string());
             app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
                 mode: None,
-                approval: error.is_none().then_some(approval),
+                approval: error.is_none().then_some(mode),
                 decision_feedback: None,
                 error,
             });

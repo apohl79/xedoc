@@ -203,13 +203,13 @@ pub(crate) async fn write_model_router_mode(
 
 pub(crate) async fn write_model_router_approval(
     request_handle: AppServerRequestHandle,
-    approval: bool,
+    mode: String,
 ) -> Result<()> {
     write_config_batch(
         request_handle,
         vec![replace_config_value(
             "model_router.approval",
-            serde_json::json!(approval),
+            serde_json::json!(mode),
         )],
     )
     .await

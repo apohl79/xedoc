@@ -126,6 +126,7 @@ pub use mcp_types::McpServerToolConfig;
 pub use mcp_types::McpServerTransportConfig;
 pub use mcp_types::RawMcpServerConfig;
 pub use merge::merge_toml_values;
+pub use model_router::ModelRouterApproval;
 pub use model_router::ModelRouterAxis;
 pub use model_router::ModelRouterCapability;
 pub use model_router::ModelRouterClass;

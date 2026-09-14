@@ -8544,6 +8544,24 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "Experimental metadata-only record of one local model-router decision.\n\nThis notification never contains prompt or output text.",
       "properties": {
+        "classifications": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "confidenceMargin": {
+          "default": 0.0,
+          "description": "Margin between the selected classifier head and its runner-up.",
+          "format": "double",
+          "type": "number"
+        },
+        "confidenceScore": {
+          "default": 0.0,
+          "description": "Classifier confidence score from the task embedding.",
+          "format": "double",
+          "type": "number"
+        },
         "createdAt": {
           "description": "Unix timestamp in whole seconds when this immutable decision was made.",
           "format": "int64",
@@ -8551,6 +8569,13 @@
         },
         "decisionId": {
           "type": "string"
+        },
+        "diagnostic": {
+          "description": "Prompt-free diagnostic retained when a local router dependency fails.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "disposition": {
           "$ref": "#/definitions/ModelRouterDisposition"
@@ -8581,6 +8606,42 @@
         "proposedReasoningEffort": {
           "type": "string"
         },
+        "rankingMaximumClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rankingMaximumRank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rankingMinimumClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rankingMinimumRank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rankingScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "reason": {
           "$ref": "#/definitions/ModelRouterDecisionReason"
         },
@@ -8595,6 +8656,7 @@
         }
       },
       "required": [
+        "classifications",
         "createdAt",
         "decisionId",
         "disposition",
@@ -8617,6 +8679,7 @@
     "ModelRouterDecisionReason": {
       "enum": [
         "classified",
+        "steeringBypass",
         "lowConfidence",
         "noClass",
         "embeddingFailed",
@@ -8709,6 +8772,9 @@
         },
         "policyRevision": {
           "type": "string"
+        },
+        "ranking": {
+          "$ref": "#/definitions/ModelRouterRanking"
         }
       },
       "required": [
@@ -8717,7 +8783,8 @@
         "classifierRevision",
         "minimumMargin",
         "minimumScore",
-        "policyRevision"
+        "policyRevision",
+        "ranking"
       ],
       "type": "object"
     },
@@ -8835,13 +8902,17 @@
         "minimumScore": {
           "format": "double",
           "type": "number"
+        },
+        "ranking": {
+          "$ref": "#/definitions/ModelRouterRanking"
         }
       },
       "required": [
         "capabilities",
         "classes",
         "minimumMargin",
-        "minimumScore"
+        "minimumScore",
+        "ranking"
       ],
       "title": "ModelRouterPolicyWriteParams",
       "type": "object"
@@ -8857,6 +8928,63 @@
         "policy"
       ],
       "title": "ModelRouterPolicyWriteResponse",
+      "type": "object"
+    },
+    "ModelRouterRankedRoute": {
+      "description": "A user-editable position in the automatic-routing model ladder.",
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "rank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "reasoningEffort": {
+          "$ref": "#/definitions/ReasoningEffort"
+        }
+      },
+      "required": [
+        "class",
+        "model",
+        "provider",
+        "rank",
+        "reasoningEffort"
+      ],
+      "type": "object"
+    },
+    "ModelRouterRanking": {
+      "description": "The score domain and ordered automatic-routing candidates.",
+      "properties": {
+        "ladder": {
+          "items": {
+            "$ref": "#/definitions/ModelRouterRankedRoute"
+          },
+          "type": "array"
+        },
+        "maximumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "minimumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ladder",
+        "maximumScore",
+        "minimumScore"
+      ],
       "type": "object"
     },
     "ModelRouterReportDay": {
@@ -15872,6 +16000,29 @@
         {
           "description": "Immutable metadata-only model-router decision associated with this turn.",
           "properties": {
+            "classifications": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "type": "object"
+            },
+            "confidenceMargin": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "confidenceScore": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "diagnostic": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "disposition": {
               "$ref": "#/definitions/ModelRouterDisposition"
             },
@@ -15889,6 +16040,42 @@
             },
             "proposedReasoningEffort": {
               "type": "string"
+            },
+            "rankingMaximumClass": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rankingMaximumRank": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rankingMinimumClass": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rankingMinimumRank": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rankingScore": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "reason": {
               "$ref": "#/definitions/ModelRouterDecisionReason"

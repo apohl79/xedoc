@@ -448,8 +448,13 @@ impl ChatWidget {
         };
     }
 
-    pub fn update_model_router_approval(&mut self, approval: bool) {
-        self.config.model_router.approval = approval;
+    pub fn update_model_router_approval(&mut self, mode: &str) {
+        self.config.model_router.approval = match mode {
+            "off" => xedoc_config::ModelRouterApproval::Off,
+            "changes" => xedoc_config::ModelRouterApproval::Changes,
+            "all" => xedoc_config::ModelRouterApproval::All,
+            _ => return,
+        };
     }
 
     pub fn update_model_router_decision_feedback(&mut self, enabled: bool) {

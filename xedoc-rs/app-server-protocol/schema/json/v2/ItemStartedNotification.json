@@ -407,6 +407,7 @@
     "ModelRouterDecisionReason": {
       "enum": [
         "classified",
+        "steeringBypass",
         "lowConfidence",
         "noClass",
         "embeddingFailed",
@@ -1387,6 +1388,29 @@
         {
           "description": "Immutable metadata-only model-router decision associated with this turn.",
           "properties": {
+            "classifications": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "type": "object"
+            },
+            "confidenceMargin": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "confidenceScore": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "diagnostic": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "disposition": {
               "$ref": "#/definitions/ModelRouterDisposition"
             },
@@ -1404,6 +1428,42 @@
             },
             "proposedReasoningEffort": {
               "type": "string"
+            },
+            "rankingMaximumClass": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rankingMaximumRank": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rankingMinimumClass": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rankingMinimumRank": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rankingScore": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "reason": {
               "$ref": "#/definitions/ModelRouterDecisionReason"

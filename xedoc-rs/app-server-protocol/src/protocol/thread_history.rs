@@ -1184,6 +1184,8 @@ impl ThreadHistoryBuilder {
                 reason: payload.reason.into(),
                 diagnostic: payload.diagnostic.clone(),
                 classifications: payload.classifications.clone(),
+                confidence_score: payload.confidence_score.into(),
+                confidence_margin: payload.confidence_margin.into(),
                 ranking_score: payload.ranking_score,
                 ranking_minimum_class: payload.ranking_minimum_class.clone(),
                 ranking_maximum_class: payload.ranking_maximum_class.clone(),

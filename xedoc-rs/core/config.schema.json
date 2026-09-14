@@ -1644,13 +1644,36 @@
       },
       "type": "object"
     },
+    "ModelRouterApproval": {
+      "description": "Controls when active model-router decisions require user approval.",
+      "enum": [
+        "off",
+        "changes",
+        "all"
+      ],
+      "type": "string"
+    },
+    "ModelRouterApprovalSchema": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ModelRouterApproval"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
     "ModelRouterConfigToml": {
       "description": "Stable controls in `[model_router]`.",
       "properties": {
         "approval": {
-          "default": false,
-          "description": "Ask before applying an eligible route in an active router mode.",
-          "type": "boolean"
+          "allOf": [
+            {
+              "$ref": "#/definitions/ModelRouterApprovalSchema"
+            }
+          ],
+          "default": "off",
+          "description": "Controls approval prompts for decisions in an active router mode."
         },
         "baseline": {
           "$ref": "#/definitions/ModelRouterRoute"
@@ -5274,7 +5297,7 @@
         }
       ],
       "default": {
-        "approval": false,
+        "approval": "off",
         "baseline": null,
         "decision_feedback": true,
         "fallback": null,

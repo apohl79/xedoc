@@ -30,6 +30,54 @@ pub enum ModelRouterMode {
     Full,
 }
 
+/// Controls when active model-router decisions require user approval.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelRouterApproval {
+    #[default]
+    Off,
+    Changes,
+    All,
+}
+
+#[derive(JsonSchema)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum ModelRouterApprovalSchema {
+    Mode(ModelRouterApproval),
+    Legacy(bool),
+}
+
+impl<'de> Deserialize<'de> for ModelRouterApproval {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "kebab-case")]
+        enum ApprovalMode {
+            Off,
+            Changes,
+            All,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum ApprovalValue {
+            Mode(ApprovalMode),
+            Legacy(bool),
+        }
+
+        match ApprovalValue::deserialize(deserializer)? {
+            ApprovalValue::Mode(ApprovalMode::Off) | ApprovalValue::Legacy(false) => Ok(Self::Off),
+            ApprovalValue::Mode(ApprovalMode::Changes) | ApprovalValue::Legacy(true) => {
+                Ok(Self::Changes)
+            }
+            ApprovalValue::Mode(ApprovalMode::All) => Ok(Self::All),
+        }
+    }
+}
+
 /// A provider/model/reasoning route configured for reporting or fallback.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -45,9 +93,10 @@ pub struct ModelRouterRoute {
 pub struct ModelRouterConfigToml {
     #[serde(default)]
     pub mode: ModelRouterMode,
-    /// Ask before applying an eligible route in an active router mode.
+    /// Controls approval prompts for decisions in an active router mode.
     #[serde(default)]
-    pub approval: bool,
+    #[schemars(with = "ModelRouterApprovalSchema")]
+    pub approval: ModelRouterApproval,
     #[serde(default = "default_decision_feedback")]
     pub decision_feedback: bool,
     pub baseline: Option<ModelRouterRoute>,
@@ -66,7 +115,7 @@ impl Default for ModelRouterConfigToml {
     fn default() -> Self {
         Self {
             mode: ModelRouterMode::Off,
-            approval: false,
+            approval: ModelRouterApproval::Off,
             decision_feedback: true,
             baseline: None,
             fallback: None,

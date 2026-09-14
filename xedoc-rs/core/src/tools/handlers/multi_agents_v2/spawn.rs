@@ -117,10 +117,8 @@ async fn handle_spawn_agent(
         } else {
             None
         };
-    if turn.config.model_router.approval
-        && let Some(decision) = router_decision.as_mut()
-        && decision.disposition == xedoc_model_router::RouteDisposition::Applied
-        && decision.effective_route != decision.original_route
+    if let Some(decision) = router_decision.as_mut()
+        && crate::model_router::requires_approval(turn.config.model_router.approval, decision)
     {
         let approval = crate::model_router::approval_event(
             decision,

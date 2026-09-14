@@ -47,6 +47,63 @@
       ],
       "type": "object"
     },
+    "ModelRouterRankedRoute": {
+      "description": "A user-editable position in the automatic-routing model ladder.",
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "rank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "reasoningEffort": {
+          "$ref": "#/definitions/ReasoningEffort"
+        }
+      },
+      "required": [
+        "class",
+        "model",
+        "provider",
+        "rank",
+        "reasoningEffort"
+      ],
+      "type": "object"
+    },
+    "ModelRouterRanking": {
+      "description": "The score domain and ordered automatic-routing candidates.",
+      "properties": {
+        "ladder": {
+          "items": {
+            "$ref": "#/definitions/ModelRouterRankedRoute"
+          },
+          "type": "array"
+        },
+        "maximumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "minimumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ladder",
+        "maximumScore",
+        "minimumScore"
+      ],
+      "type": "object"
+    },
     "ReasoningEffort": {
       "description": "A non-empty reasoning effort value advertised by the model.",
       "minLength": 1,
@@ -74,13 +131,17 @@
     "minimumScore": {
       "format": "double",
       "type": "number"
+    },
+    "ranking": {
+      "$ref": "#/definitions/ModelRouterRanking"
     }
   },
   "required": [
     "capabilities",
     "classes",
     "minimumMargin",
-    "minimumScore"
+    "minimumScore",
+    "ranking"
   ],
   "title": "ModelRouterPolicyWriteParams",
   "type": "object"

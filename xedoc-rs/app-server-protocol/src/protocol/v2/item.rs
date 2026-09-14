@@ -356,6 +356,10 @@ pub enum ThreadItem {
         diagnostic: Option<String>,
         #[serde(default)]
         classifications: std::collections::BTreeMap<String, String>,
+        #[serde(default)]
+        confidence_score: f64,
+        #[serde(default)]
+        confidence_margin: f64,
         ranking_score: Option<u16>,
         ranking_minimum_class: Option<String>,
         ranking_maximum_class: Option<String>,

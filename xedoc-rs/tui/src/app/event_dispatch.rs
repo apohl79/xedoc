@@ -1125,14 +1125,17 @@ impl App {
             AppEvent::UpdateModelRouterMode { mode } => {
                 self.update_model_router_mode(app_server, mode);
             }
-            AppEvent::UpdateModelRouterApproval { approval } => {
-                self.update_model_router_approval(app_server, approval);
+            AppEvent::UpdateModelRouterApproval { mode } => {
+                self.update_model_router_approval(app_server, mode);
             }
             AppEvent::UpdateModelRouterDecisionFeedback { enabled } => {
                 self.update_model_router_decision_feedback(app_server, enabled);
             }
             AppEvent::OpenModelRouterMenu => self.chat_widget.open_model_router_menu(),
             AppEvent::OpenModelRouterModeMenu => self.chat_widget.open_model_router_mode_menu(),
+            AppEvent::OpenModelRouterApprovalMenu => {
+                self.chat_widget.open_model_router_approval_menu()
+            }
             AppEvent::OpenModelRouterAbMenu => self.chat_widget.open_model_router_ab_menu(),
             AppEvent::OpenModelRouterPolicyConfidenceMenu { policy } => self
                 .chat_widget
@@ -1170,7 +1173,7 @@ impl App {
                         self.chat_widget.update_model_router_mode(&mode);
                     }
                     if let Some(approval) = approval {
-                        self.chat_widget.update_model_router_approval(approval);
+                        self.chat_widget.update_model_router_approval(&approval);
                     }
                     if let Some(enabled) = decision_feedback {
                         self.chat_widget
