@@ -135,6 +135,7 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
   while IFS= read -r candidate; do
     add_notarytool_profile_candidate "$candidate"
   done < <(discover_notarytool_profiles_from_keychain)
+  add_notarytool_profile_candidate "app-notary"
   add_notarytool_profile_candidate "xedoc-notary"
   add_notarytool_profile_candidate "xedoc"
   add_notarytool_profile_candidate "notarytool"
@@ -148,9 +149,13 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
       break
     fi
   done
+  if [[ -z "$notarytool_profile" ]]; then
+    echo "No usable notarytool keychain profile was found; skipping notarization." >&2
+    exit 0
+  fi
 fi
 
-if [[ -z "$notarytool_profile" ]]; then
+if [[ "$notarization_backend" == "rcodesign" ]]; then
   missing_environment=0
   for variable_name in \
     APPLE_NOTARIZATION_ISSUER_ID \
