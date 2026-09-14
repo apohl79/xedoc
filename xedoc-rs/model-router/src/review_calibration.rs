@@ -251,6 +251,7 @@ fn default_ranking() -> ModelRouterRanking {
                 },
             )
             .collect(),
+        reporting_baseline: None,
     }
 }
 

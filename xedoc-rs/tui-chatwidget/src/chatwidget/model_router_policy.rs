@@ -44,6 +44,33 @@ impl ChatWidget {
             dismiss_parent_on_child_accept: true,
             ..Default::default()
         });
+        let baseline_policy = policy.clone();
+        items.push(SelectionItem {
+            name: format!(
+                "Reporting baseline: {}",
+                policy
+                    .ranking
+                    .reporting_baseline
+                    .as_ref()
+                    .map_or("Not set".to_string(), |route| {
+                        format!(
+                            "{}/{}/{}",
+                            route.provider, route.model, route.reasoning_effort
+                        )
+                    })
+            ),
+            description: Some(
+                "Choose the route used as the reporting comparison baseline.".to_string(),
+            ),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::OpenModelRouterPolicyReportingBaselineMenu {
+                    policy: baseline_policy.clone(),
+                })
+            })],
+            dismiss_on_select: false,
+            dismiss_parent_on_child_accept: true,
+            ..Default::default()
+        });
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Model-router policy".to_string()),
             subtitle: Some(format!(
@@ -290,6 +317,61 @@ impl ChatWidget {
                 "Order is the smartness/price ranking; each slot selects model and effort."
                     .to_string(),
             ),
+            items,
+            ..Default::default()
+        });
+    }
+
+    pub fn open_model_router_policy_reporting_baseline_menu(
+        &mut self,
+        policy: xedoc_app_server_protocol::ModelRouterPolicy,
+    ) {
+        let mut items = vec![SelectionItem {
+            name: "Not set".to_string(),
+            description: Some("Leave comparison fields unavailable in the report.".to_string()),
+            is_current: policy.ranking.reporting_baseline.is_none(),
+            actions: vec![Box::new({
+                let next = policy.clone();
+                move |tx| {
+                    let mut next = next.clone();
+                    next.ranking.reporting_baseline = None;
+                    tx.send(AppEvent::UpdateModelRouterPolicy {
+                        policy: model_router_policy_update(&next),
+                    })
+                }
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        }];
+        items.extend(policy.ranking.ladder.iter().map(|route| {
+            let next = policy.clone();
+            let candidate = route.clone();
+            let is_current = policy
+                .ranking
+                .reporting_baseline
+                .as_ref()
+                .is_some_and(|baseline| baseline == route);
+            SelectionItem {
+                name: format!(
+                    "{}. {}/{} ({})",
+                    route.rank, route.provider, route.model, route.reasoning_effort
+                ),
+                description: Some(format!("{} model class", route.class)),
+                is_current,
+                actions: vec![Box::new(move |tx| {
+                    let mut next = next.clone();
+                    next.ranking.reporting_baseline = Some(candidate.clone());
+                    tx.send(AppEvent::UpdateModelRouterPolicy {
+                        policy: model_router_policy_update(&next),
+                    })
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            }
+        }));
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Reporting baseline".to_string()),
+            subtitle: Some("Select a ranked route for report comparisons.".to_string()),
             items,
             ..Default::default()
         });

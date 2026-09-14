@@ -216,7 +216,6 @@ impl PendingAppServerRequests {
                             action: response.action,
                             classification: response.classification.clone(),
                             classifications: response.classifications.clone(),
-                            route: response.route.clone(),
                         })
                         .map_err(|err| {
                             format!("failed to serialize model-router approval response: {err}")

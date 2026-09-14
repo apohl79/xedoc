@@ -36,6 +36,7 @@ pub use routing::RouteDecision;
 pub use routing::RouteDisposition;
 pub use routing::RouteProfile;
 pub use routing::RoutingPolicy;
+pub use routing::apply_approval_override;
 pub use routing::decide;
 pub use routing::finalize_decision;
 pub use routing::steering_bypass;

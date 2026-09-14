@@ -304,6 +304,9 @@ impl Session {
         input: Vec<TurnInput>,
         task: T,
     ) {
+        let has_user_input = input
+            .iter()
+            .any(|input| matches!(input, TurnInput::UserInput { .. }));
         let task: Arc<dyn AnySessionTask> = Arc::new(task);
         let task_kind = task.kind();
         let span_name = task.span_name();
@@ -338,6 +341,7 @@ impl Session {
         let mut active = self.active_turn.lock().await;
         let turn = active.get_or_insert_with(ActiveTurn::default);
         debug_assert!(turn.task.is_none());
+        turn.has_user_input = has_user_input;
         let agent_execution_guard = self.services.agent_control.execution_guard(
             turn_context.multi_agent_version,
             &turn_context.session_source,

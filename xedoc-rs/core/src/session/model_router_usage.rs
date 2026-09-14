@@ -37,6 +37,31 @@ impl Session {
         let prices = token_usage
             .zip(price)
             .map(|(usage, price)| invocation_prices(usage, price));
+        let reporting_baseline = crate::model_router::ModelRouterService::reporting_baseline(
+            turn_context.config.as_ref(),
+        );
+        let baseline_prices =
+            token_usage
+                .zip(reporting_baseline.as_ref())
+                .and_then(|(usage, baseline)| {
+                    turn_context
+                        .config
+                        .model_providers
+                        .get(&baseline.provider)
+                        .and_then(|provider| provider.model_prices.as_ref())
+                        .and_then(|prices| prices.get(&baseline.model))
+                        .map(|prices| invocation_prices(usage, prices))
+                });
+        let normalized_baseline_usd = baseline_prices.zip(token_usage).map(|(prices, usage)| {
+            prices.input * usage.non_cached_input().max(0) as f64
+                + prices.cached_input * usage.cached_input().max(0) as f64
+                + prices.output * usage.output_tokens.max(0) as f64
+        });
+        let total_cost_usd = prices.zip(token_usage).map(|(prices, usage)| {
+            prices.input * usage.non_cached_input().max(0) as f64
+                + prices.cached_input * usage.cached_input().max(0) as f64
+                + prices.output * usage.output_tokens.max(0) as f64
+        });
         let ab_pair = self
             .services
             .agent_control
@@ -86,20 +111,25 @@ impl Session {
             output_cost_usd: prices
                 .zip(output_tokens)
                 .map(|(prices, tokens)| prices.output * tokens as f64),
-            total_cost_usd: prices.zip(token_usage).map(|(prices, usage)| {
-                prices.input * usage.non_cached_input().max(0) as f64
-                    + prices.cached_input * usage.cached_input().max(0) as f64
-                    + prices.output * usage.output_tokens.max(0) as f64
-            }),
-            baseline_provider_id: None,
-            baseline_model_slug: None,
-            baseline_reasoning_effort: None,
-            baseline_input_price_usd_per_token: None,
-            baseline_cached_input_price_usd_per_token: None,
-            baseline_output_price_usd_per_token: None,
+            total_cost_usd,
+            baseline_provider_id: reporting_baseline
+                .as_ref()
+                .map(|baseline| baseline.provider.clone()),
+            baseline_model_slug: reporting_baseline
+                .as_ref()
+                .map(|baseline| baseline.model.clone()),
+            baseline_reasoning_effort: reporting_baseline
+                .as_ref()
+                .map(|baseline| baseline.reasoning_effort.to_string()),
+            baseline_input_price_usd_per_token: baseline_prices.map(|prices| prices.input),
+            baseline_cached_input_price_usd_per_token: baseline_prices
+                .map(|prices| prices.cached_input),
+            baseline_output_price_usd_per_token: baseline_prices.map(|prices| prices.output),
             baseline_price_revision: None,
-            normalized_baseline_usd: None,
-            estimated_savings_usd: None,
+            normalized_baseline_usd,
+            estimated_savings_usd: normalized_baseline_usd
+                .zip(total_cost_usd)
+                .map(|(baseline, actual)| baseline - actual),
             ab_experiment_overhead_usd: None,
             created_at: crate::turn_timing::now_unix_timestamp_ms() / 1_000,
         };

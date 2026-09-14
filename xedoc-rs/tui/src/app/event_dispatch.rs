@@ -1152,6 +1152,9 @@ impl App {
             AppEvent::OpenModelRouterPolicyLadderMenu { policy } => self
                 .chat_widget
                 .open_model_router_policy_ladder_menu(policy),
+            AppEvent::OpenModelRouterPolicyReportingBaselineMenu { policy } => self
+                .chat_widget
+                .open_model_router_policy_reporting_baseline_menu(policy),
             AppEvent::OpenModelRouterPolicyLadderRouteMenu { policy, rank } => self
                 .chat_widget
                 .open_model_router_policy_ladder_route_menu(policy, rank),

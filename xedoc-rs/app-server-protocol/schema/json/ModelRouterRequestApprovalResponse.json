@@ -9,26 +9,6 @@
         "override"
       ],
       "type": "string"
-    },
-    "ModelRouterRoute": {
-      "description": "A selectable model route proposed by the model router.",
-      "properties": {
-        "modelSlug": {
-          "type": "string"
-        },
-        "providerId": {
-          "type": "string"
-        },
-        "reasoningEffort": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "modelSlug",
-        "providerId",
-        "reasoningEffort"
-      ],
-      "type": "object"
     }
   },
   "description": "The response to a model-router approval request.",
@@ -48,16 +28,6 @@
       },
       "default": {},
       "type": "object"
-    },
-    "route": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/ModelRouterRoute"
-        },
-        {
-          "type": "null"
-        }
-      ]
     }
   },
   "required": [

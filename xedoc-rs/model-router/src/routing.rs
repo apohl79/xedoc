@@ -165,6 +165,15 @@ pub struct RoutingPolicy {
     pub ranking: RankingPolicy,
 }
 
+/// Bounded policy metadata needed to preview an approval override.
+#[derive(Debug, Clone)]
+pub struct ApprovalRouting {
+    pub axes: BTreeMap<String, BTreeMap<String, AxisValue>>,
+    pub minimum_score: u16,
+    pub maximum_score: u16,
+    pub ladder: Vec<RankingLadderEntry>,
+}
+
 /// Whether a decision is applied or diagnostic only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteDisposition {
@@ -195,11 +204,14 @@ pub struct RouteDecision {
     pub classifications: BTreeMap<String, String>,
     pub classification_options: BTreeMap<String, Vec<String>>,
     pub available_routes: Vec<ModelRoute>,
+    pub approval_routing: ApprovalRouting,
     pub ranking_score: Option<u16>,
     pub ranking_minimum_class: Option<ModelClass>,
     pub ranking_maximum_class: Option<ModelClass>,
     pub ranking_minimum_rank: Option<u16>,
     pub ranking_maximum_rank: Option<u16>,
+    pub ranking_target_rank: Option<u16>,
+    pub ranking_selected_rank: Option<u16>,
     pub score: f32,
     pub margin: f32,
     pub original_route: Option<ModelRoute>,
@@ -237,17 +249,21 @@ pub fn decide(
         })
         .collect();
     let available_routes = catalog.routes();
+    let approval_routing = approval_routing(policy, catalog);
     let fallback_decision = |reason, proposed_route| RouteDecision {
         scope,
         class_id: None,
         classifications: BTreeMap::new(),
         classification_options: classification_options.clone(),
         available_routes: available_routes.clone(),
+        approval_routing: approval_routing.clone(),
         ranking_score: None,
         ranking_minimum_class: None,
         ranking_maximum_class: None,
         ranking_minimum_rank: None,
         ranking_maximum_rank: None,
+        ranking_target_rank: None,
+        ranking_selected_rank: None,
         score: 0.0,
         margin: 0.0,
         original_route: original_route.clone(),
@@ -303,18 +319,6 @@ pub fn decide(
         return fallback_decision(DecisionReason::NoClass, fallback);
     };
     let class_id = classifications.get("work_type").cloned();
-    if class_id
-        .as_deref()
-        .is_some_and(|class_id| class_id == "steering" || class_id.starts_with("group0:"))
-    {
-        return RouteDecision {
-            class_id,
-            classifications,
-            score,
-            margin,
-            ..fallback_decision(DecisionReason::SteeringBypass, fallback)
-        };
-    }
     if low_confidence {
         return RouteDecision {
             class_id,
@@ -339,11 +343,14 @@ pub fn decide(
         classifications,
         classification_options,
         available_routes,
+        approval_routing,
         ranking_score: Some(selection.score),
         ranking_minimum_class: Some(selection.minimum_class),
         ranking_maximum_class: Some(selection.maximum_class),
         ranking_minimum_rank: Some(selection.minimum_rank),
         ranking_maximum_rank: Some(selection.maximum_rank),
+        ranking_target_rank: Some(selection.target_rank),
+        ranking_selected_rank: Some(selection.selected_rank),
         score,
         margin,
         original_route,
@@ -388,11 +395,14 @@ pub fn steering_bypass(
             })
             .collect(),
         available_routes: catalog.routes(),
+        approval_routing: approval_routing(policy, catalog),
         ranking_score: None,
         ranking_minimum_class: None,
         ranking_maximum_class: None,
         ranking_minimum_rank: None,
         ranking_maximum_rank: None,
+        ranking_target_rank: None,
+        ranking_selected_rank: None,
         score: 0.0,
         margin: 0.0,
         original_route: original_route.clone(),
@@ -403,6 +413,36 @@ pub fn steering_bypass(
         diagnostic: None,
         policy_revision: policy.revision.clone(),
         prompt,
+    }
+}
+
+fn approval_routing(policy: &RoutingPolicy, catalog: &ModelCatalog) -> ApprovalRouting {
+    ApprovalRouting {
+        axes: policy
+            .axes
+            .iter()
+            .map(|(axis, classifier)| {
+                (
+                    axis.clone(),
+                    classifier
+                        .values
+                        .iter()
+                        .filter_map(|(id, route)| {
+                            axis_value(id, route).map(|value| (id.clone(), value))
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
+        minimum_score: policy.ranking.minimum_score,
+        maximum_score: policy.ranking.maximum_score,
+        ladder: policy
+            .ranking
+            .ladder
+            .iter()
+            .filter(|entry| catalog.contains(&entry.route))
+            .cloned()
+            .collect(),
     }
 }
 
@@ -430,6 +470,8 @@ struct RankedSelection {
     maximum_class: ModelClass,
     minimum_rank: u16,
     maximum_rank: u16,
+    target_rank: u16,
+    selected_rank: u16,
 }
 
 fn select_ranked_route(
@@ -437,45 +479,83 @@ fn select_ranked_route(
     catalog: &ModelCatalog,
     classifications: &BTreeMap<String, String>,
 ) -> Option<RankedSelection> {
-    let selected = policy
+    let approval = approval_routing(policy, catalog);
+    select_approval_route(&approval, classifications)
+}
+
+/// Apply a user-approved classification override and rerank it from policy-owned metadata.
+///
+/// The submitted route is intentionally ignored: clients may preview a route, but only the
+/// router may select the executable route from the submitted classifications.
+pub fn apply_approval_override(
+    decision: &mut RouteDecision,
+    submitted: &BTreeMap<String, String>,
+) -> bool {
+    let mut classifications = decision.classifications.clone();
+    for (axis, value) in submitted {
+        if !decision
+            .approval_routing
+            .axes
+            .get(axis)
+            .is_some_and(|values| values.contains_key(value))
+        {
+            return false;
+        }
+        classifications.insert(axis.clone(), value.clone());
+    }
+    let Some(selection) = select_approval_route(&decision.approval_routing, &classifications)
+    else {
+        return false;
+    };
+    decision.class_id = classifications.get("work_type").cloned();
+    decision.classifications = classifications;
+    decision.ranking_score = Some(selection.score);
+    decision.ranking_minimum_class = Some(selection.minimum_class);
+    decision.ranking_maximum_class = Some(selection.maximum_class);
+    decision.ranking_minimum_rank = Some(selection.minimum_rank);
+    decision.ranking_maximum_rank = Some(selection.maximum_rank);
+    decision.ranking_target_rank = Some(selection.target_rank);
+    decision.ranking_selected_rank = Some(selection.selected_rank);
+    decision.proposed_route = selection.route.clone();
+    decision.effective_route = Some(selection.route);
+    decision.disposition = RouteDisposition::Applied;
+    true
+}
+
+fn select_approval_route(
+    approval: &ApprovalRouting,
+    classifications: &BTreeMap<String, String>,
+) -> Option<RankedSelection> {
+    let selected = approval
         .axes
         .iter()
-        .map(|(axis, classifier)| {
-            let id = classifications.get(axis)?;
-            let route = classifier.values.get(id)?;
-            axis_value(id, route)
-        })
+        .map(|(axis, values)| values.get(classifications.get(axis)?))
         .collect::<Option<Vec<_>>>()?;
     let score = selected.iter().map(|value| value.points).sum::<u16>();
     let minimum_class = selected.iter().map(|value| value.minimum_class).max()?;
     let maximum_class = selected.iter().map(|value| value.maximum_class).max()?;
     (minimum_class <= maximum_class).then_some(())?;
-    let mut eligible = policy
-        .ranking
+    let mut eligible = approval
         .ladder
         .iter()
-        .filter(|entry| {
-            entry.class >= minimum_class
-                && entry.class <= maximum_class
-                && catalog.contains(&entry.route)
-        })
+        .filter(|entry| entry.class >= minimum_class && entry.class <= maximum_class)
         .collect::<Vec<_>>();
     eligible.sort_by_key(|entry| entry.rank);
     let minimum_rank = eligible.first()?.rank;
     let maximum_rank = eligible.last()?.rank;
-    let domain = policy.ranking.maximum_score - policy.ranking.minimum_score;
-    let bounded = score.clamp(policy.ranking.minimum_score, policy.ranking.maximum_score);
+    let domain = approval.maximum_score.checked_sub(approval.minimum_score)?;
+    let bounded = score.clamp(approval.minimum_score, approval.maximum_score);
     let offset = if domain == 0 {
         0
     } else {
-        let numerator = u32::from(bounded - policy.ranking.minimum_score)
-            * u32::from(maximum_rank - minimum_rank);
+        let numerator =
+            u32::from(bounded - approval.minimum_score) * u32::from(maximum_rank - minimum_rank);
         ((numerator + u32::from(domain) / 2) / u32::from(domain)) as u16
     };
-    let selected_rank = minimum_rank + offset;
+    let target_rank = minimum_rank + offset;
     let entry = eligible
         .iter()
-        .min_by_key(|entry| entry.rank.abs_diff(selected_rank))?;
+        .min_by_key(|entry| entry.rank.abs_diff(target_rank))?;
     Some(RankedSelection {
         route: entry.route.clone(),
         score,
@@ -483,6 +563,8 @@ fn select_ranked_route(
         maximum_class,
         minimum_rank,
         maximum_rank,
+        target_rank,
+        selected_rank: entry.rank,
     })
 }
 

@@ -4599,6 +4599,28 @@
       ],
       "type": "string"
     },
+    "ModelRouterApprovalClassRating": {
+      "description": "Rating and allowed model range for one approval classification choice.",
+      "properties": {
+        "maximumModelClass": {
+          "type": "string"
+        },
+        "minimumModelClass": {
+          "type": "string"
+        },
+        "points": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maximumModelClass",
+        "minimumModelClass",
+        "points"
+      ],
+      "type": "object"
+    },
     "ModelRouterApprovalParams": {
       "description": "A dedicated, structured request to approve a proposed model route.",
       "properties": {
@@ -4618,6 +4640,16 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "classificationRatings": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$ref": "#/definitions/ModelRouterApprovalClassRating"
+            },
+            "type": "object"
           },
           "default": {},
           "type": "object"
@@ -4651,6 +4683,23 @@
         "proposedRoute": {
           "$ref": "#/definitions/ModelRouterRoute"
         },
+        "rankingLadder": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/ModelRouterApprovalRankedRoute"
+          },
+          "type": "array"
+        },
+        "rankingMaximumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "rankingMinimumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "scope": {
           "$ref": "#/definitions/v2/ModelRouterScope"
         },
@@ -4674,10 +4723,34 @@
         "predictedClassification",
         "promptSha256",
         "proposedRoute",
+        "rankingMaximumScore",
+        "rankingMinimumScore",
         "scope",
         "score",
         "threadId",
         "turnId"
+      ],
+      "type": "object"
+    },
+    "ModelRouterApprovalRankedRoute": {
+      "description": "One available policy-ranked route for approval preview calculation.",
+      "properties": {
+        "modelClass": {
+          "type": "string"
+        },
+        "rank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "route": {
+          "$ref": "#/definitions/ModelRouterRoute"
+        }
+      },
+      "required": [
+        "modelClass",
+        "rank",
+        "route"
       ],
       "type": "object"
     },
@@ -4705,6 +4778,16 @@
           "default": {},
           "type": "object"
         },
+        "classificationRatings": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$ref": "#/definitions/ModelRouterApprovalClassRating"
+            },
+            "type": "object"
+          },
+          "default": {},
+          "type": "object"
+        },
         "classifications": {
           "additionalProperties": {
             "type": "string"
@@ -4734,6 +4817,23 @@
         "proposedRoute": {
           "$ref": "#/definitions/ModelRouterRoute"
         },
+        "rankingLadder": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/ModelRouterApprovalRankedRoute"
+          },
+          "type": "array"
+        },
+        "rankingMaximumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "rankingMinimumScore": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "scope": {
           "$ref": "#/definitions/v2/ModelRouterScope"
         },
@@ -4757,6 +4857,8 @@
         "predictedClassification",
         "promptSha256",
         "proposedRoute",
+        "rankingMaximumScore",
+        "rankingMinimumScore",
         "scope",
         "score",
         "threadId",
@@ -4784,16 +4886,6 @@
           },
           "default": {},
           "type": "object"
-        },
-        "route": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ModelRouterRoute"
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       },
       "required": [
@@ -12586,6 +12678,22 @@
               "null"
             ]
           },
+          "rankingSelectedRank": {
+            "format": "uint16",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rankingTargetRank": {
+            "format": "uint16",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "reason": {
             "$ref": "#/definitions/v2/ModelRouterDecisionReason"
           },
@@ -12922,6 +13030,16 @@
             "format": "uint16",
             "minimum": 0.0,
             "type": "integer"
+          },
+          "reportingBaseline": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ModelRouterRankedRoute"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -18893,6 +19011,22 @@
                 ]
               },
               "rankingScore": {
+                "format": "uint16",
+                "minimum": 0.0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "rankingSelectedRank": {
+                "format": "uint16",
+                "minimum": 0.0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "rankingTargetRank": {
                 "format": "uint16",
                 "minimum": 0.0,
                 "type": [

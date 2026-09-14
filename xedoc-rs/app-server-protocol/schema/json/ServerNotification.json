@@ -1670,6 +1670,22 @@
             "null"
           ]
         },
+        "rankingSelectedRank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rankingTargetRank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "reason": {
           "$ref": "#/definitions/ModelRouterDecisionReason"
         },
@@ -3913,6 +3929,22 @@
               ]
             },
             "rankingScore": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rankingSelectedRank": {
+              "format": "uint16",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rankingTargetRank": {
               "format": "uint16",
               "minimum": 0.0,
               "type": [

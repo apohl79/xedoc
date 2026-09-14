@@ -1669,6 +1669,8 @@ pub struct ModelRouterDecisionEvent {
     pub ranking_maximum_class: Option<String>,
     pub ranking_minimum_rank: Option<u16>,
     pub ranking_maximum_rank: Option<u16>,
+    pub ranking_target_rank: Option<u16>,
+    pub ranking_selected_rank: Option<u16>,
     pub proposed_provider_id: String,
     pub proposed_model_slug: String,
     pub proposed_reasoning_effort: String,
@@ -1694,6 +1696,12 @@ pub struct ModelRouterApprovalRequestEvent {
     pub classification_options: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub available_routes: Vec<ModelRouterApprovalRoute>,
+    #[serde(default)]
+    pub classification_ratings: BTreeMap<String, BTreeMap<String, ModelRouterApprovalClassRating>>,
+    pub ranking_minimum_score: u16,
+    pub ranking_maximum_score: u16,
+    #[serde(default)]
+    pub ranking_ladder: Vec<ModelRouterApprovalRankedRoute>,
     pub proposed_provider_id: String,
     pub proposed_model_slug: String,
     pub proposed_reasoning_effort: String,
@@ -1712,7 +1720,6 @@ pub struct ModelRouterApprovalResponse {
     pub classification: Option<String>,
     #[serde(default)]
     pub classifications: BTreeMap<String, String>,
-    pub route: Option<ModelRouterApprovalRoute>,
 }
 
 /// Disposition selected by the user for a pending routing decision.
@@ -1731,6 +1738,22 @@ pub struct ModelRouterApprovalRoute {
     pub provider_id: String,
     pub model_slug: String,
     pub reasoning_effort: String,
+}
+
+/// Rating and allowed model range for one approval classification choice.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ModelRouterApprovalClassRating {
+    pub points: u16,
+    pub minimum_model_class: String,
+    pub maximum_model_class: String,
+}
+
+/// One available policy-ranked route for approval preview calculation.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ModelRouterApprovalRankedRoute {
+    pub rank: u16,
+    pub model_class: String,
+    pub route: ModelRouterApprovalRoute,
 }
 
 /// The route that was actually available to execute after routing validation.

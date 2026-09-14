@@ -1191,6 +1191,8 @@ impl ThreadHistoryBuilder {
                 ranking_maximum_class: payload.ranking_maximum_class.clone(),
                 ranking_minimum_rank: payload.ranking_minimum_rank,
                 ranking_maximum_rank: payload.ranking_maximum_rank,
+                ranking_target_rank: payload.ranking_target_rank,
+                ranking_selected_rank: payload.ranking_selected_rank,
                 proposed_provider_id: payload.proposed_provider_id.clone(),
                 proposed_model_slug: payload.proposed_model_slug.clone(),
                 proposed_reasoning_effort: payload.proposed_reasoning_effort.clone(),

@@ -1,6 +1,50 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "ModelRouterApprovalClassRating": {
+      "description": "Rating and allowed model range for one approval classification choice.",
+      "properties": {
+        "maximumModelClass": {
+          "type": "string"
+        },
+        "minimumModelClass": {
+          "type": "string"
+        },
+        "points": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maximumModelClass",
+        "minimumModelClass",
+        "points"
+      ],
+      "type": "object"
+    },
+    "ModelRouterApprovalRankedRoute": {
+      "description": "One available policy-ranked route for approval preview calculation.",
+      "properties": {
+        "modelClass": {
+          "type": "string"
+        },
+        "rank": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "route": {
+          "$ref": "#/definitions/ModelRouterRoute"
+        }
+      },
+      "required": [
+        "modelClass",
+        "rank",
+        "route"
+      ],
+      "type": "object"
+    },
     "ModelRouterEffectiveRoute": {
       "oneOf": [
         {
@@ -99,6 +143,16 @@
       "default": {},
       "type": "object"
     },
+    "classificationRatings": {
+      "additionalProperties": {
+        "additionalProperties": {
+          "$ref": "#/definitions/ModelRouterApprovalClassRating"
+        },
+        "type": "object"
+      },
+      "default": {},
+      "type": "object"
+    },
     "classifications": {
       "additionalProperties": {
         "type": "string"
@@ -128,6 +182,23 @@
     "proposedRoute": {
       "$ref": "#/definitions/ModelRouterRoute"
     },
+    "rankingLadder": {
+      "default": [],
+      "items": {
+        "$ref": "#/definitions/ModelRouterApprovalRankedRoute"
+      },
+      "type": "array"
+    },
+    "rankingMaximumScore": {
+      "format": "uint16",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "rankingMinimumScore": {
+      "format": "uint16",
+      "minimum": 0.0,
+      "type": "integer"
+    },
     "scope": {
       "$ref": "#/definitions/ModelRouterScope"
     },
@@ -151,6 +222,8 @@
     "predictedClassification",
     "promptSha256",
     "proposedRoute",
+    "rankingMaximumScore",
+    "rankingMinimumScore",
     "scope",
     "score",
     "threadId",

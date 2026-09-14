@@ -132,6 +132,7 @@ pub struct ModelRouterRanking {
     pub minimum_score: u16,
     pub maximum_score: u16,
     pub ladder: Vec<ModelRouterRankedRoute>,
+    pub reporting_baseline: Option<ModelRouterRankedRoute>,
 }
 
 /// A provider/model route with user-assigned capability tags.
@@ -236,6 +237,15 @@ pub struct ModelRouterApprovalParams {
     pub classification_options: std::collections::BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub available_routes: Vec<ModelRouterRoute>,
+    #[serde(default)]
+    pub classification_ratings: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, ModelRouterApprovalClassRating>,
+    >,
+    pub ranking_minimum_score: u16,
+    pub ranking_maximum_score: u16,
+    #[serde(default)]
+    pub ranking_ladder: Vec<ModelRouterApprovalRankedRoute>,
     pub proposed_route: ModelRouterRoute,
     pub current_route: ModelRouterEffectiveRoute,
     #[ts(type = "number")]
@@ -256,7 +266,26 @@ pub struct ModelRouterApprovalResponse {
     pub classification: Option<String>,
     #[serde(default)]
     pub classifications: std::collections::BTreeMap<String, String>,
-    pub route: Option<ModelRouterRoute>,
+}
+
+/// Rating and allowed model range for one approval classification choice.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterApprovalClassRating {
+    pub points: u16,
+    pub minimum_model_class: String,
+    pub maximum_model_class: String,
+}
+
+/// One available policy-ranked route for approval preview calculation.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterApprovalRankedRoute {
+    pub rank: u16,
+    pub model_class: String,
+    pub route: ModelRouterRoute,
 }
 
 impl From<CoreModelRouterEffectiveRoute> for ModelRouterEffectiveRoute {
@@ -561,6 +590,8 @@ pub struct ModelRouterDecisionNotification {
     pub ranking_maximum_class: Option<String>,
     pub ranking_minimum_rank: Option<u16>,
     pub ranking_maximum_rank: Option<u16>,
+    pub ranking_target_rank: Option<u16>,
+    pub ranking_selected_rank: Option<u16>,
     pub proposed_provider_id: String,
     pub proposed_model_slug: String,
     pub proposed_reasoning_effort: String,

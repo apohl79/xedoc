@@ -133,15 +133,23 @@ async fn handle_spawn_agent(
         let response = session
             .request_model_router_approval(turn.as_ref(), approval)
             .await;
-        if response.action == xedoc_protocol::protocol::ModelRouterApprovalAction::Override
-            && !crate::model_router::feedback_classifications(&response).is_empty()
+        let override_classifications =
+            if response.action == xedoc_protocol::protocol::ModelRouterApprovalAction::Override {
+                let classifications = crate::model_router::feedback_classifications(&response);
+                xedoc_model_router::apply_approval_override(decision, &classifications)
+                    .then_some(classifications)
+            } else {
+                None
+            };
+        if let Some(classifications) = override_classifications.as_ref()
+            && !classifications.is_empty()
         {
             let feedback_path = session.model_router_feedback_path().await;
             if let Err(error) = xedoc_model_router::append_classifier_feedback(
                 &feedback_path,
                 &decision.prompt.sha256,
                 now_unix_timestamp_ms() / 1_000,
-                &crate::model_router::feedback_classifications(&response),
+                classifications,
                 &message,
             ) {
                 tracing::warn!(%error, "failed to persist model-router classifier feedback");
@@ -161,13 +169,8 @@ async fn handle_spawn_agent(
                 crate::model_router::fallback_to_original_route(decision);
             }
             xedoc_protocol::protocol::ModelRouterApprovalAction::Override => {
-                if let Some(route) = response
-                    .route
-                    .as_ref()
-                    .and_then(crate::model_router::route_from_approval)
-                {
-                    decision.effective_route = Some(route);
-                    decision.disposition = xedoc_model_router::RouteDisposition::Applied;
+                if override_classifications.is_none() {
+                    crate::model_router::fallback_to_original_route(decision);
                 }
             }
         }

@@ -183,6 +183,8 @@ impl ChatWidget {
                 ranking_maximum_class,
                 ranking_minimum_rank,
                 ranking_maximum_rank,
+                ranking_target_rank,
+                ranking_selected_rank,
                 effective_route,
                 ..
             } => self.add_to_history(history_cell::new_model_router_decision_item(
@@ -198,6 +200,8 @@ impl ChatWidget {
                 ranking_maximum_class,
                 ranking_minimum_rank,
                 ranking_maximum_rank,
+                ranking_target_rank,
+                ranking_selected_rank,
                 effective_route,
             )),
             ThreadItem::HookPrompt { .. } => {}

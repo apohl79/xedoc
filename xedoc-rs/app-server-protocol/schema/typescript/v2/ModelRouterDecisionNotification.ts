@@ -23,7 +23,7 @@ confidenceScore: number,
 /**
  * Margin between the selected classifier head and its runner-up.
  */
-confidenceMargin: number, rankingScore: number | null, rankingMinimumClass: string | null, rankingMaximumClass: string | null, rankingMinimumRank: number | null, rankingMaximumRank: number | null, proposedProviderId: string, proposedModelSlug: string, proposedReasoningEffort: string, effectiveRoute: ModelRouterEffectiveRoute, promptSha256: string, promptOriginalBytes: number, promptTruncated: boolean,
+confidenceMargin: number, rankingScore: number | null, rankingMinimumClass: string | null, rankingMaximumClass: string | null, rankingMinimumRank: number | null, rankingMaximumRank: number | null, rankingTargetRank: number | null, rankingSelectedRank: number | null, proposedProviderId: string, proposedModelSlug: string, proposedReasoningEffort: string, effectiveRoute: ModelRouterEffectiveRoute, promptSha256: string, promptOriginalBytes: number, promptTruncated: boolean,
 /**
  * Unix timestamp in whole seconds when this immutable decision was made.
  */

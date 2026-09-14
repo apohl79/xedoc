@@ -243,6 +243,9 @@ pub struct ModelRouterRanking {
     pub minimum_score: u16,
     pub maximum_score: u16,
     pub ladder: Vec<ModelRouterRankedRoute>,
+    /// Optional ladder route used to normalize router-report cost comparisons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporting_baseline: Option<ModelRouterRankedRoute>,
 }
 
 /// The quality range a ranking group permits.
@@ -573,6 +576,16 @@ fn validate_policy(policy: &ModelRouterPolicy) -> Result<(), ModelRouterPolicyEr
         {
             return Err(ModelRouterPolicyError::InvalidField("ranking.ladder"));
         }
+    }
+    if policy
+        .ranking
+        .reporting_baseline
+        .as_ref()
+        .is_some_and(|baseline| !policy.ranking.ladder.contains(baseline))
+    {
+        return Err(ModelRouterPolicyError::InvalidField(
+            "ranking.reporting_baseline",
+        ));
     }
     Ok(())
 }

@@ -103,7 +103,6 @@ use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::ExecApprovalRequestEvent;
 use xedoc_protocol::protocol::ModelRouterApprovalAction as CoreModelRouterApprovalAction;
 use xedoc_protocol::protocol::ModelRouterApprovalResponse as CoreModelRouterApprovalResponse;
-use xedoc_protocol::protocol::ModelRouterApprovalRoute as CoreModelRouterApprovalRoute;
 use xedoc_protocol::protocol::Op;
 use xedoc_protocol::protocol::ReviewDecision;
 use xedoc_protocol::protocol::SubAgentActivityKind;
@@ -320,6 +319,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 ranking_maximum_class: event.ranking_maximum_class,
                 ranking_minimum_rank: event.ranking_minimum_rank,
                 ranking_maximum_rank: event.ranking_maximum_rank,
+                ranking_target_rank: event.ranking_target_rank,
+                ranking_selected_rank: event.ranking_selected_rank,
                 proposed_provider_id: event.proposed_provider_id,
                 proposed_model_slug: event.proposed_model_slug,
                 proposed_reasoning_effort: event.proposed_reasoning_effort,
@@ -351,6 +352,45 @@ pub(crate) async fn apply_bespoke_event_handling(
                         model_slug: route.model_slug,
                         reasoning_effort: route.reasoning_effort,
                     })
+                    .collect(),
+                classification_ratings: event
+                    .classification_ratings
+                    .into_iter()
+                    .map(|(axis, values)| {
+                        (
+                            axis,
+                            values
+                                .into_iter()
+                                .map(|(id, rating)| {
+                                    (
+                                        id,
+                                        xedoc_app_server_protocol::ModelRouterApprovalClassRating {
+                                            points: rating.points,
+                                            minimum_model_class: rating.minimum_model_class,
+                                            maximum_model_class: rating.maximum_model_class,
+                                        },
+                                    )
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+                ranking_minimum_score: event.ranking_minimum_score,
+                ranking_maximum_score: event.ranking_maximum_score,
+                ranking_ladder: event
+                    .ranking_ladder
+                    .into_iter()
+                    .map(
+                        |entry| xedoc_app_server_protocol::ModelRouterApprovalRankedRoute {
+                            rank: entry.rank,
+                            model_class: entry.model_class,
+                            route: ModelRouterRoute {
+                                provider_id: entry.route.provider_id,
+                                model_slug: entry.route.model_slug,
+                                reasoning_effort: entry.route.reasoning_effort,
+                            },
+                        },
+                    )
                     .collect(),
                 proposed_route: ModelRouterRoute {
                     provider_id: event.proposed_provider_id,
@@ -1678,11 +1718,6 @@ async fn on_model_router_approval_response(
         },
         classification: response.classification,
         classifications: response.classifications,
-        route: response.route.map(|route| CoreModelRouterApprovalRoute {
-            provider_id: route.provider_id,
-            model_slug: route.model_slug,
-            reasoning_effort: route.reasoning_effort,
-        }),
     };
     if let Err(err) = conversation
         .submit(Op::ModelRouterApprovalResponse {
@@ -1700,7 +1735,6 @@ fn reject_model_router_approval() -> ModelRouterApprovalResponse {
         action: ModelRouterApprovalAction::Reject,
         classification: None,
         classifications: Default::default(),
-        route: None,
     }
 }
 

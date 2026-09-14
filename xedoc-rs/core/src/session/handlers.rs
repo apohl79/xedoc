@@ -284,9 +284,18 @@ pub(super) async fn user_input_or_turn_inner(
                     .await
                     .remove(&sub_id);
                 if let Some(response) = approval_response.as_ref() {
-                    if response.action
+                    let override_classifications = if response.action
                         == xedoc_protocol::protocol::ModelRouterApprovalAction::Override
-                        && !crate::model_router::feedback_classifications(response).is_empty()
+                    {
+                        let classifications =
+                            crate::model_router::feedback_classifications(response);
+                        xedoc_model_router::apply_approval_override(&mut decision, &classifications)
+                            .then_some(classifications)
+                    } else {
+                        None
+                    };
+                    if let Some(classifications) = override_classifications.as_ref()
+                        && !classifications.is_empty()
                     {
                         let feedback_path = sess.model_router_feedback_path().await;
                         let prompt = crate::agent::control::render_input_preview(&items);
@@ -294,7 +303,7 @@ pub(super) async fn user_input_or_turn_inner(
                             &feedback_path,
                             &decision.prompt.sha256,
                             crate::turn_timing::now_unix_timestamp_ms() / 1_000,
-                            &crate::model_router::feedback_classifications(response),
+                            classifications,
                             &prompt,
                         ) {
                             tracing::warn!(%error, "failed to persist model-router classifier feedback");
@@ -314,20 +323,8 @@ pub(super) async fn user_input_or_turn_inner(
                             crate::model_router::fallback_to_original_route(&mut decision);
                         }
                         xedoc_protocol::protocol::ModelRouterApprovalAction::Override => {
-                            let classifications =
-                                crate::model_router::feedback_classifications(response);
-                            if !classifications.is_empty() {
-                                decision.class_id = classifications.get("work_type").cloned();
-                                decision.classifications = classifications;
-                            }
-                            if let Some(route) = response
-                                .route
-                                .as_ref()
-                                .and_then(crate::model_router::route_from_approval)
-                            {
-                                decision.effective_route = Some(route);
-                                decision.disposition =
-                                    xedoc_model_router::RouteDisposition::Applied;
+                            if override_classifications.is_none() {
+                                crate::model_router::fallback_to_original_route(&mut decision);
                             }
                         }
                     }

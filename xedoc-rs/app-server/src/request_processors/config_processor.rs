@@ -443,6 +443,35 @@ impl ConfigRequestProcessor {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
+        policy.ranking.reporting_baseline = params.ranking.reporting_baseline.map(|route| {
+            let class = match route.class.as_str() {
+                "simple" => xedoc_config::ModelRouterModelClass::Simple,
+                "smart" => xedoc_config::ModelRouterModelClass::Smart,
+                "intelligent" => xedoc_config::ModelRouterModelClass::Intelligent,
+                class => {
+                    return Err(invalid_request(format!(
+                        "invalid model-router reporting baseline class `{class}`; expected simple, smart, or intelligent"
+                    )));
+                }
+            };
+            Ok(xedoc_config::ModelRouterRankedRoute {
+                rank: route.rank,
+                class,
+                provider: route.provider,
+                model: route.model,
+                reasoning_effort: route.reasoning_effort,
+            })
+        }).transpose()?;
+        if policy
+            .ranking
+            .reporting_baseline
+            .as_ref()
+            .is_some_and(|baseline| !policy.ranking.ladder.contains(baseline))
+        {
+            return Err(invalid_request(
+                "model-router reporting baseline must be a route in the ranking ladder",
+            ));
+        }
         policy.policy_revision = format!("user-tuned-{}", chrono::Utc::now().timestamp_millis());
         xedoc_config::write_model_router_policy(&path, &policy).map_err(|error| {
             invalid_request(format!("failed to write model-router policy: {error}"))
@@ -620,6 +649,21 @@ fn map_model_router_policy(policy: xedoc_config::ModelRouterPolicy) -> ApiModelR
                     reasoning_effort: route.reasoning_effort,
                 })
                 .collect(),
+            reporting_baseline: policy.ranking.reporting_baseline.map(|route| {
+                ApiModelRouterRankedRoute {
+                    rank: route.rank,
+                    class: match route.class {
+                        xedoc_config::ModelRouterModelClass::Simple => "simple".to_string(),
+                        xedoc_config::ModelRouterModelClass::Smart => "smart".to_string(),
+                        xedoc_config::ModelRouterModelClass::Intelligent => {
+                            "intelligent".to_string()
+                        }
+                    },
+                    provider: route.provider,
+                    model: route.model,
+                    reasoning_effort: route.reasoning_effort,
+                }
+            }),
         },
     }
 }

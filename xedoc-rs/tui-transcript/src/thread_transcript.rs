@@ -249,6 +249,8 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             ranking_maximum_class,
             ranking_minimum_rank,
             ranking_maximum_rank,
+            ranking_target_rank,
+            ranking_selected_rank,
             effective_route,
             ..
         } => crate::history_cell::model_router_decision_lines(
@@ -264,6 +266,8 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             ranking_maximum_class.clone(),
             *ranking_minimum_rank,
             *ranking_maximum_rank,
+            *ranking_target_rank,
+            *ranking_selected_rank,
             effective_route.clone(),
         ),
         ThreadItem::UserMessage { .. }

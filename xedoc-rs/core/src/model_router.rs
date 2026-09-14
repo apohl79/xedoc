@@ -37,6 +37,8 @@ use xedoc_model_router::decide;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_protocol::openai_models::ReasoningEffort;
+use xedoc_protocol::protocol::ModelRouterApprovalClassRating;
+use xedoc_protocol::protocol::ModelRouterApprovalRankedRoute;
 use xedoc_protocol::protocol::ModelRouterApprovalRoute;
 use xedoc_protocol::protocol::ModelRouterDecisionEvent;
 use xedoc_protocol::protocol::ModelRouterDecisionReason;
@@ -193,6 +195,18 @@ impl ModelRouterService {
             &policy,
             &ModelCatalog::default(),
         ))
+    }
+
+    /// Returns the current user-selected reporting baseline, if any.
+    pub(crate) fn reporting_baseline(
+        config: &Config,
+    ) -> Option<xedoc_config::ModelRouterRankedRoute> {
+        let service = Self::global(config);
+        let _ = service.policy_store.reload_if_changed();
+        service
+            .policy_store
+            .snapshot()
+            .and_then(|policy| policy.ranking.reporting_baseline.clone())
     }
 
     /// Incorporate explicit user classifier corrections into the active policy.
@@ -390,7 +404,7 @@ fn work_type_group_routes(
         ),
         Vec<&ModelRouterClass>,
     >::new();
-    for class in classes {
+    for class in classes.iter().filter(|class| class.id != "steering") {
         groups
             .entry((
                 class.points,
@@ -732,6 +746,8 @@ pub(crate) fn decision_event(
             .map(str::to_string),
         ranking_minimum_rank: decision.ranking_minimum_rank,
         ranking_maximum_rank: decision.ranking_maximum_rank,
+        ranking_target_rank: decision.ranking_target_rank,
+        ranking_selected_rank: decision.ranking_selected_rank,
         proposed_provider_id: decision.proposed_route.provider_id,
         proposed_model_slug: decision.proposed_route.model_slug,
         proposed_reasoning_effort: effort_label(decision.proposed_route.reasoning_effort)
@@ -810,6 +826,47 @@ pub(crate) fn approval_event(
                 reasoning_effort: effort_label(route.reasoning_effort).to_string(),
             })
             .collect(),
+        classification_ratings: decision
+            .approval_routing
+            .axes
+            .iter()
+            .map(|(axis, values)| {
+                (
+                    axis.clone(),
+                    values
+                        .iter()
+                        .map(|(id, value)| {
+                            (
+                                id.clone(),
+                                ModelRouterApprovalClassRating {
+                                    points: value.points,
+                                    minimum_model_class: model_class_label(value.minimum_class)
+                                        .to_string(),
+                                    maximum_model_class: model_class_label(value.maximum_class)
+                                        .to_string(),
+                                },
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
+        ranking_minimum_score: decision.approval_routing.minimum_score,
+        ranking_maximum_score: decision.approval_routing.maximum_score,
+        ranking_ladder: decision
+            .approval_routing
+            .ladder
+            .iter()
+            .map(|entry| ModelRouterApprovalRankedRoute {
+                rank: entry.rank,
+                model_class: model_class_label(entry.class).to_string(),
+                route: ModelRouterApprovalRoute {
+                    provider_id: entry.route.provider_id.clone(),
+                    model_slug: entry.route.model_slug.clone(),
+                    reasoning_effort: effort_label(entry.route.reasoning_effort).to_string(),
+                },
+            })
+            .collect(),
         proposed_provider_id: decision.proposed_route.provider_id.clone(),
         proposed_model_slug: decision.proposed_route.model_slug.clone(),
         proposed_reasoning_effort: effort_label(decision.proposed_route.reasoning_effort)
@@ -828,23 +885,6 @@ pub(crate) fn approval_event(
         policy_revision: decision.policy_revision.clone(),
         prompt_sha256: decision.prompt.sha256.clone(),
     }
-}
-
-pub(crate) fn route_from_approval(
-    route: &xedoc_protocol::protocol::ModelRouterApprovalRoute,
-) -> Option<ModelRoute> {
-    Some(ModelRoute {
-        provider_id: route.provider_id.clone(),
-        model_slug: route.model_slug.clone(),
-        reasoning_effort: match route.reasoning_effort.as_str() {
-            "low" => RouterReasoningEffort::Low,
-            "medium" => RouterReasoningEffort::Medium,
-            "high" => RouterReasoningEffort::High,
-            "xhigh" => RouterReasoningEffort::ExtraHigh,
-            "max" => RouterReasoningEffort::Max,
-            _ => return None,
-        },
-    })
 }
 
 const fn effort_label(effort: RouterReasoningEffort) -> &'static str {

@@ -365,6 +365,8 @@ pub enum ThreadItem {
         ranking_maximum_class: Option<String>,
         ranking_minimum_rank: Option<u16>,
         ranking_maximum_rank: Option<u16>,
+        ranking_target_rank: Option<u16>,
+        ranking_selected_rank: Option<u16>,
         proposed_provider_id: String,
         proposed_model_slug: String,
         proposed_reasoning_effort: String,

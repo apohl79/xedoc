@@ -759,6 +759,9 @@ pub enum AppEvent {
     OpenModelRouterPolicyLadderMenu {
         policy: ModelRouterPolicy,
     },
+    OpenModelRouterPolicyReportingBaselineMenu {
+        policy: ModelRouterPolicy,
+    },
     OpenModelRouterPolicyLadderRouteMenu {
         policy: ModelRouterPolicy,
         rank: u16,

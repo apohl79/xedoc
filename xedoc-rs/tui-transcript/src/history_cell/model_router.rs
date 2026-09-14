@@ -23,6 +23,8 @@ pub fn new_model_router_decision(
         notification.ranking_maximum_class,
         notification.ranking_minimum_rank,
         notification.ranking_maximum_rank,
+        notification.ranking_target_rank,
+        notification.ranking_selected_rank,
         notification.effective_route,
     )
 }
@@ -40,6 +42,8 @@ pub fn new_model_router_decision_item(
     ranking_maximum_class: Option<String>,
     ranking_minimum_rank: Option<u16>,
     ranking_maximum_rank: Option<u16>,
+    ranking_target_rank: Option<u16>,
+    ranking_selected_rank: Option<u16>,
     effective_route: ModelRouterEffectiveRoute,
 ) -> PlainHistoryCell {
     PlainHistoryCell::new(model_router_decision_lines(
@@ -55,6 +59,8 @@ pub fn new_model_router_decision_item(
         ranking_maximum_class,
         ranking_minimum_rank,
         ranking_maximum_rank,
+        ranking_target_rank,
+        ranking_selected_rank,
         effective_route,
     ))
 }
@@ -72,6 +78,8 @@ pub fn model_router_decision_lines(
     ranking_maximum_class: Option<String>,
     ranking_minimum_rank: Option<u16>,
     ranking_maximum_rank: Option<u16>,
+    ranking_target_rank: Option<u16>,
+    ranking_selected_rank: Option<u16>,
     effective_route: ModelRouterEffectiveRoute,
 ) -> Vec<Line<'static>> {
     let route = match effective_route {
@@ -87,15 +95,24 @@ pub fn model_router_decision_lines(
         .map(|(axis, value)| format!("{axis}={value}"))
         .collect::<Vec<_>>()
         .join(", ");
-    let ranking = ranking_score.map_or_else(String::new, |score| {
-        format!(
-            " · rank {score} [{}-{}; {}-{}]",
-            ranking_minimum_class.unwrap_or_default(),
-            ranking_maximum_class.unwrap_or_default(),
-            ranking_minimum_rank.map_or_else(String::new, |rank| rank.to_string()),
-            ranking_maximum_rank.map_or_else(String::new, |rank| rank.to_string()),
-        )
-    });
+    let ranking = ranking_score
+        .zip(ranking_minimum_class)
+        .zip(ranking_maximum_class)
+        .zip(ranking_minimum_rank)
+        .zip(ranking_maximum_rank)
+        .zip(ranking_target_rank)
+        .zip(ranking_selected_rank)
+        .map_or_else(
+            String::new,
+            |(
+                (((((score, minimum_class), maximum_class), minimum_rank), maximum_rank), target_rank),
+                selected_rank,
+            )| {
+                format!(
+                    " · rating {score} → {minimum_class}-{maximum_class} → ranks {minimum_rank}-{maximum_rank} → target {target_rank} → selected {selected_rank}"
+                )
+            },
+        );
     let mut lines = vec![
         vec![
             "  model router ".magenta(),

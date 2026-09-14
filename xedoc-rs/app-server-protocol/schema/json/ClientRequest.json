@@ -1985,6 +1985,16 @@
           "format": "uint16",
           "minimum": 0.0,
           "type": "integer"
+        },
+        "reportingBaseline": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelRouterRankedRoute"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

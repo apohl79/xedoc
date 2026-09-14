@@ -6,4 +6,4 @@ import type { ModelRouterRankedRoute } from "./ModelRouterRankedRoute";
 /**
  * The score domain and ordered automatic-routing candidates.
  */
-export type ModelRouterRanking = { minimumScore: number, maximumScore: number, ladder: Array<ModelRouterRankedRoute>, };
+export type ModelRouterRanking = { minimumScore: number, maximumScore: number, ladder: Array<ModelRouterRankedRoute>, reportingBaseline: ModelRouterRankedRoute | null, };

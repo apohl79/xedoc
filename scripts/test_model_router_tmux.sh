@@ -23,6 +23,9 @@ keep_tmp_dir="${XEDOC_TMUX_TEST_KEEP_DIR:-0}"
 capture_delay_seconds="${XEDOC_TMUX_TEST_CAPTURE_DELAY_SECONDS:-10}"
 expect_approval="${XEDOC_TMUX_TEST_EXPECT_APPROVAL:-}"
 expect_preselected="${XEDOC_TMUX_TEST_EXPECT_PRESELECTED:-}"
+open_policy_baseline="${XEDOC_TMUX_TEST_OPEN_POLICY_BASELINE:-0}"
+policy_baseline_index="${XEDOC_TMUX_TEST_POLICY_BASELINE_INDEX:-1}"
+expect_policy_baseline="${XEDOC_TMUX_TEST_EXPECT_POLICY_BASELINE:-}"
 
 cleanup() {
   tmux send-keys -t "$server_session":0.0 C-c >/dev/null 2>&1 || true
@@ -96,8 +99,10 @@ client_args=(
   --remote
   "unix://$socket_path"
   --no-alt-screen
-  "$prompt"
 )
+if [[ "$open_policy_baseline" != "1" ]]; then
+  client_args+=("$prompt")
+fi
 printf -v client_command '%q ' "${client_args[@]}"
 tmux new-session -d -s "$client_session" "$client_command"
 
@@ -105,6 +110,28 @@ if [[ "${XEDOC_TMUX_TEST_INTERACTIVE:-0}" == "1" ]]; then
   tmux attach-session -t "$client_session"
 else
   sleep "$capture_delay_seconds"
+  if [[ "$open_policy_baseline" == "1" ]]; then
+    tmux send-keys -t "$client_session":0.0 "/model-router" Enter
+    sleep 3
+    for _ in $(seq 1 6); do
+      tmux send-keys -t "$client_session":0.0 j
+      sleep 0.5
+    done
+    tmux send-keys -t "$client_session":0.0 Enter
+    sleep 1
+    for _ in $(seq 1 3); do
+      tmux send-keys -t "$client_session":0.0 j
+      sleep 0.5
+    done
+    tmux send-keys -t "$client_session":0.0 Enter
+    sleep 1
+    for _ in $(seq 0 "$policy_baseline_index"); do
+      tmux send-keys -t "$client_session":0.0 j
+      sleep 0.5
+    done
+    tmux send-keys -t "$client_session":0.0 Enter
+    sleep 2
+  fi
   if [[ "$open_override" == "1" ]]; then
     tmux send-keys -t "$client_session":0.0 o
     sleep 1
@@ -140,5 +167,12 @@ else
   if [[ -n "$expect_preselected" && "$pane" != *"$expect_preselected"* ]]; then
     echo "expected preselected override value was not rendered: $expect_preselected" >&2
     exit 1
+  fi
+  if [[ -n "$expect_policy_baseline" ]]; then
+    if ! rg -F "reporting_baseline" "$test_home/model-router.toml" >/dev/null \
+      || ! rg -F "$expect_policy_baseline" "$test_home/model-router.toml" >/dev/null; then
+      echo "expected reporting baseline was not persisted: $expect_policy_baseline" >&2
+      exit 1
+    fi
   fi
 fi

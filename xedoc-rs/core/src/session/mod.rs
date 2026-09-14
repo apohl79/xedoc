@@ -2338,7 +2338,6 @@ impl Session {
                 action: xedoc_protocol::protocol::ModelRouterApprovalAction::Reject,
                 classification: None,
                 classifications: Default::default(),
-                route: None,
             })
     }
 
@@ -4025,6 +4024,9 @@ impl Session {
         let Some(active_turn) = active.as_mut() else {
             return Err(SteerInputError::NoActiveTurn(input));
         };
+        if !active_turn.has_user_input {
+            return Err(SteerInputError::NoActiveTurn(input));
+        }
 
         let Some(active_task) = active_turn.task.as_ref() else {
             return Err(SteerInputError::NoActiveTurn(input));
