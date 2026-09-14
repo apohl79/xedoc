@@ -78,20 +78,93 @@ if ! command -v zip >/dev/null 2>&1; then
   exit 1
 fi
 
-missing_environment=0
-for variable_name in \
-  APPLE_NOTARIZATION_ISSUER_ID \
-  APPLE_NOTARIZATION_KEY_ID \
-  APPLE_NOTARIZATION_KEY_P8
-do
-  if [[ -z "${!variable_name:-}" ]]; then
-    echo "$variable_name must be set from CI secrets before notarizing a binary." >&2
-    missing_environment=1
-  fi
-done
+notarytool_profile=""
+notarytool_profile_candidates=()
 
-if [[ "$missing_environment" -ne 0 ]]; then
-  exit 2
+add_notarytool_profile_candidate() {
+  local candidate="$1"
+  local existing
+
+  [[ -n "$candidate" ]] || return 0
+  if [[ "${#notarytool_profile_candidates[@]}" -gt 0 ]]; then
+    for existing in "${notarytool_profile_candidates[@]}"; do
+      [[ "$existing" != "$candidate" ]] || return 0
+    done
+  fi
+  notarytool_profile_candidates+=("$candidate")
+}
+
+discover_notarytool_profiles_from_keychain() {
+  if ! command -v security >/dev/null 2>&1; then
+    return 0
+  fi
+
+  security dump-keychain 2>/dev/null | awk '
+    function value(line) {
+      sub(/^.*<blob>="/, "", line)
+      sub(/".*$/, "", line)
+      return line
+    }
+    function emit() {
+      if (account != "" && service == "com.apple.gke.notary.tool") {
+        print account
+      } else if (service ~ /^com[.]apple[.]gke[.]notary[.]tool[.]/) {
+        sub(/^com[.]apple[.]gke[.]notary[.]tool[.]/, "", service)
+        if (service != "") {
+          print service
+        }
+      }
+    }
+    /^keychain:/ {
+      emit()
+      account = ""
+      service = ""
+      next
+    }
+    /"acct"<blob>=/ { account = value($0) }
+    /"svce"<blob>=/ { service = value($0) }
+    END { emit() }
+  '
+}
+
+if [[ "$notarization_backend" == "notarytool" ]]; then
+  add_notarytool_profile_candidate "${NOTARYTOOL_PROFILE:-}"
+  for candidate in ${NOTARYTOOL_PROFILE_CANDIDATES//,/ }; do
+    add_notarytool_profile_candidate "$candidate"
+  done
+  while IFS= read -r candidate; do
+    add_notarytool_profile_candidate "$candidate"
+  done < <(discover_notarytool_profiles_from_keychain)
+  add_notarytool_profile_candidate "xedoc-notary"
+  add_notarytool_profile_candidate "xedoc"
+  add_notarytool_profile_candidate "notarytool"
+
+  for candidate in "${notarytool_profile_candidates[@]}"; do
+    if xcrun notarytool history \
+      --keychain-profile "$candidate" \
+      --output-format json \
+      --no-progress >/dev/null 2>&1; then
+      notarytool_profile="$candidate"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$notarytool_profile" ]]; then
+  missing_environment=0
+  for variable_name in \
+    APPLE_NOTARIZATION_ISSUER_ID \
+    APPLE_NOTARIZATION_KEY_ID \
+    APPLE_NOTARIZATION_KEY_P8
+  do
+    if [[ -z "${!variable_name:-}" ]]; then
+      missing_environment=1
+    fi
+  done
+  if [[ "$missing_environment" -ne 0 ]]; then
+    echo "No usable notarytool keychain profile was found, and App Store Connect API-key credentials are not set." >&2
+    exit 2
+  fi
 fi
 
 mkdir -p "$report_dir"
@@ -99,14 +172,17 @@ mkdir -p "$report_dir"
 notarization_temp_dir="$(mktemp -d)"
 trap 'rm -rf "$notarization_temp_dir" >/dev/null' EXIT
 
-private_key_path="$notarization_temp_dir/AuthKey_${APPLE_NOTARIZATION_KEY_ID}.p8"
-if ! printf '%s' "$APPLE_NOTARIZATION_KEY_P8" | base64 --decode >"$private_key_path" 2>/dev/null; then
-  if ! printf '%s' "$APPLE_NOTARIZATION_KEY_P8" | base64 -D >"$private_key_path" 2>/dev/null; then
-    echo "APPLE_NOTARIZATION_KEY_P8 must be a base64-encoded .p8 private key." >&2
-    exit 2
+private_key_path=""
+if [[ -z "$notarytool_profile" ]]; then
+  private_key_path="$notarization_temp_dir/AuthKey_${APPLE_NOTARIZATION_KEY_ID}.p8"
+  if ! printf '%s' "$APPLE_NOTARIZATION_KEY_P8" | base64 --decode >"$private_key_path" 2>/dev/null; then
+    if ! printf '%s' "$APPLE_NOTARIZATION_KEY_P8" | base64 -D >"$private_key_path" 2>/dev/null; then
+      echo "APPLE_NOTARIZATION_KEY_P8 must be a base64-encoded .p8 private key." >&2
+      exit 2
+    fi
   fi
+  chmod 600 "$private_key_path"
 fi
-chmod 600 "$private_key_path"
 
 binary_name="$(basename "$binary_path")"
 archive_path="$notarization_temp_dir/${binary_name}.zip"
@@ -133,15 +209,25 @@ case "$notarization_backend" in
       2>&1 | tee "$notarization_log"
     ;;
   notarytool)
-    xcrun notarytool submit \
-      "$archive_path" \
-      --key "$private_key_path" \
-      --key-id "$APPLE_NOTARIZATION_KEY_ID" \
-      --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
-      --wait \
-      --timeout "${max_wait_seconds}s" \
-      --output-format json \
-      2>&1 | tee "$notarization_log"
+    if [[ -n "$notarytool_profile" ]]; then
+      xcrun notarytool submit \
+        "$archive_path" \
+        --keychain-profile "$notarytool_profile" \
+        --wait \
+        --timeout "${max_wait_seconds}s" \
+        --output-format json \
+        2>&1 | tee "$notarization_log"
+    else
+      xcrun notarytool submit \
+        "$archive_path" \
+        --key "$private_key_path" \
+        --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+        --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
+        --wait \
+        --timeout "${max_wait_seconds}s" \
+        --output-format json \
+        2>&1 | tee "$notarization_log"
+    fi
     ;;
 esac
 
@@ -150,5 +236,6 @@ esac
   echo "max_wait_seconds=$max_wait_seconds"
   echo "binary_sha256=$(shasum -a 256 "$binary_path" | awk '{ print $1 }')"
   echo "notarization_backend=$notarization_backend"
+  echo "notarytool_profile=$notarytool_profile"
   echo "notarization=completed"
 } >"$report_dir/${binary_name}-notarization-summary.txt"
