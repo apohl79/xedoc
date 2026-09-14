@@ -81,19 +81,9 @@ pub fn recalibrate_classifier_from_feedback(
     let records = read_feedback(feedback_path)?;
     let records = records
         .into_iter()
-        .filter(|record| {
-            record.classifications.iter().any(|(axis, class)| {
-                policy
-                    .axes
-                    .iter()
-                    .find(|policy_axis| policy_axis.id == *axis)
-                    .is_some_and(|policy_axis| {
-                        policy_axis
-                            .classes
-                            .iter()
-                            .any(|candidate| candidate.id == *class)
-                    })
-            })
+        .filter_map(|record| {
+            let classifications = policy_feedback_classifications(&policy, &record.classifications);
+            (!classifications.is_empty()).then_some((record, classifications))
         })
         .collect::<Vec<_>>();
     if records.is_empty() {
@@ -113,11 +103,11 @@ pub fn recalibrate_classifier_from_feedback(
     let embedder = FastEmbedder::from_local_artifact(&artifact)
         .map_err(FeedbackCalibrationError::Embedding)?;
     let mut sums = BTreeMap::<(String, String), (usize, Vec<f32>)>::new();
-    for record in &records {
+    for (record, classifications) in &records {
         let embedding = embedder
             .embed_sync(&record.prompt)
             .map_err(FeedbackCalibrationError::Embedding)?;
-        record.classifications.iter().for_each(|(axis, class)| {
+        classifications.iter().for_each(|(axis, class)| {
             let entry = sums
                 .entry((axis.clone(), class.clone()))
                 .or_insert_with(|| (0, vec![0.0; embedding.len()]));
@@ -166,6 +156,40 @@ pub fn recalibrate_classifier_from_feedback(
         feedback_records: records.len(),
         updated_classes,
     })
+}
+
+fn policy_feedback_classifications(
+    policy: &xedoc_config::ModelRouterPolicy,
+    classifications: &BTreeMap<String, String>,
+) -> Vec<(String, String)> {
+    let mut resolved = Vec::new();
+    for (axis, class) in classifications {
+        let Some(policy_axis) = policy.axes.iter().find(|candidate| candidate.id == *axis) else {
+            continue;
+        };
+        if axis == "work_type"
+            && let Some(leaves) = class.strip_prefix("group: ")
+        {
+            leaves
+                .split(", ")
+                .filter(|leaf| {
+                    policy_axis
+                        .classes
+                        .iter()
+                        .any(|candidate| candidate.id == *leaf)
+                })
+                .for_each(|leaf| {
+                    resolved.push((axis.clone(), leaf.to_string()));
+                });
+        } else if policy_axis
+            .classes
+            .iter()
+            .any(|candidate| candidate.id == *class)
+        {
+            resolved.push((axis.clone(), class.clone()));
+        }
+    }
+    resolved
 }
 
 #[derive(Serialize)]

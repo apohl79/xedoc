@@ -307,17 +307,16 @@ fn routing_policy(policy: &ModelRouterPolicy, fallback: ModelRoute) -> RoutingPo
         axes: policy
             .axes
             .iter()
-            .filter_map(|axis| {
-                Some((
-                    axis.id.clone(),
-                    AxisRoute {
-                        values: axis
-                            .classes
-                            .iter()
-                            .filter_map(|class| class_route(class, policy))
-                            .collect(),
-                    },
-                ))
+            .map(|axis| {
+                let values = if axis.id == "work_type" {
+                    work_type_group_routes(&axis.classes, policy)
+                } else {
+                    axis.classes
+                        .iter()
+                        .filter_map(|class| class_route(class, policy))
+                        .collect()
+                };
+                (axis.id.clone(), AxisRoute { values })
             })
             .collect(),
         ranking: RankingPolicy {
@@ -339,6 +338,82 @@ fn routing_policy(policy: &ModelRouterPolicy, fallback: ModelRoute) -> RoutingPo
                 .collect(),
         },
     }
+}
+
+fn work_type_group_routes(
+    classes: &[ModelRouterClass],
+    policy: &ModelRouterPolicy,
+) -> BTreeMap<String, ClassRoute> {
+    let mut groups = BTreeMap::<
+        (
+            u16,
+            xedoc_config::ModelRouterModelClass,
+            xedoc_config::ModelRouterModelClass,
+        ),
+        Vec<&ModelRouterClass>,
+    >::new();
+    for class in classes {
+        groups
+            .entry((
+                class.points,
+                class.minimum_model_class,
+                class.maximum_model_class,
+            ))
+            .or_default()
+            .push(class);
+    }
+    groups
+        .into_values()
+        .filter_map(|group| {
+            let group_id = format!(
+                "group: {}",
+                group
+                    .iter()
+                    .map(|class| class.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            let routes = group
+                .iter()
+                .filter_map(|class| class_route(class, policy).map(|(_, route)| route))
+                .collect::<Vec<_>>();
+            let first = routes.first()?;
+            let mut weights = vec![0.0; first.weights.len()];
+            for route in &routes {
+                weights
+                    .iter_mut()
+                    .zip(&route.weights)
+                    .for_each(|(sum, weight)| *sum += weight);
+            }
+            let count = routes.len() as f32;
+            weights.iter_mut().for_each(|weight| *weight /= count);
+            Some((
+                group_id,
+                ClassRoute {
+                    profile: RouteProfile {
+                        minimum_reasoning_effort: routes
+                            .iter()
+                            .map(|route| route.profile.minimum_reasoning_effort)
+                            .max()?,
+                        required_capabilities: routes
+                            .iter()
+                            .flat_map(|route| route.profile.required_capabilities.iter().cloned())
+                            .collect(),
+                    },
+                    ranking: first.ranking,
+                    weights,
+                    minimum_score: routes
+                        .iter()
+                        .map(|route| route.minimum_score)
+                        .fold(0.0, f32::max),
+                    minimum_margin: routes
+                        .iter()
+                        .map(|route| route.minimum_margin)
+                        .fold(0.0, f32::max),
+                },
+            ))
+        })
+        .collect()
 }
 
 fn class_route(

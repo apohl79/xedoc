@@ -303,7 +303,7 @@ pub fn decide(
         return fallback_decision(DecisionReason::NoClass, fallback);
     };
     let class_id = classifications.get("work_type").cloned();
-    if class_id.as_deref() == Some("steering") {
+    if matches!(class_id.as_deref(), Some("steering" | "group: steering")) {
         return RouteDecision {
             class_id,
             classifications,
