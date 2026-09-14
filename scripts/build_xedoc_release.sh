@@ -6,4 +6,5 @@ python3 scripts/build_xedoc_release.py \
   --github-repo apohl79/codex \
   --github-account apohl79 \
   --force \
+  --notarize \
   "$@"

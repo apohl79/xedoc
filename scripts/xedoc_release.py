@@ -167,6 +167,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Replace existing package directory and archive outputs.",
     )
     parser.add_argument(
+        "--notarize",
+        action="store_true",
+        help="Submit the signed packaged macOS binary to Apple notarization.",
+    )
+    parser.add_argument(
         "--github-repo",
         default=DEFAULT_GITHUB_REPO,
         help="GitHub repository that receives the release and uploaded archives.",
@@ -360,6 +365,18 @@ def build_release(args: argparse.Namespace) -> None:
         cwd=source_root,
     )
     run(["codesign", "--verify", "--strict", "--verbose=2", str(packaged_entrypoint)])
+    if getattr(args, "notarize", False):
+        run(
+            [
+                str(
+                    source_root
+                    / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
+                ),
+                "--binary",
+                str(packaged_entrypoint),
+            ],
+            cwd=source_root,
+        )
     for archive_output in archive_outputs:
         write_archive(package_dir, archive_output, force=args.force)
 
