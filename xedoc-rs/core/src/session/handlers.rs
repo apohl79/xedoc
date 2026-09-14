@@ -314,6 +314,12 @@ pub(super) async fn user_input_or_turn_inner(
                             crate::model_router::fallback_to_original_route(&mut decision);
                         }
                         xedoc_protocol::protocol::ModelRouterApprovalAction::Override => {
+                            let classifications =
+                                crate::model_router::feedback_classifications(response);
+                            if !classifications.is_empty() {
+                                decision.class_id = classifications.get("work_type").cloned();
+                                decision.classifications = classifications;
+                            }
                             if let Some(route) = response
                                 .route
                                 .as_ref()

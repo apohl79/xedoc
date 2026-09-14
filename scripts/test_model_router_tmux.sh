@@ -18,14 +18,27 @@ socket_path="$test_home/app-server.sock"
 server_session="xedoc-router-server-$$"
 client_session="xedoc-router-client-$$"
 open_override="${XEDOC_TMUX_TEST_OPEN_OVERRIDE:-0}"
+override_keys="${XEDOC_TMUX_TEST_OVERRIDE_KEYS:-}"
+keep_tmp_dir="${XEDOC_TMUX_TEST_KEEP_DIR:-0}"
 capture_delay_seconds="${XEDOC_TMUX_TEST_CAPTURE_DELAY_SECONDS:-10}"
 expect_approval="${XEDOC_TMUX_TEST_EXPECT_APPROVAL:-}"
 expect_preselected="${XEDOC_TMUX_TEST_EXPECT_PRESELECTED:-}"
 
 cleanup() {
+  tmux send-keys -t "$server_session":0.0 C-c >/dev/null 2>&1 || true
+  sleep 1
   tmux kill-session -t "$client_session" >/dev/null 2>&1 || true
   tmux kill-session -t "$server_session" >/dev/null 2>&1 || true
-  rm -rf "$tmp_dir"
+  server_pid="$(pgrep -f "app-server.*$socket_path" || true)"
+  if [[ -n "$server_pid" ]]; then
+    kill "$server_pid" >/dev/null 2>&1 || true
+  fi
+  sleep 1
+  if [[ "$keep_tmp_dir" == "1" ]]; then
+    printf 'Retained XEDOC_HOME: %s\n' "$test_home"
+  else
+    rm -rf "$tmp_dir"
+  fi
 }
 
 trap cleanup EXIT INT TERM HUP
@@ -94,6 +107,13 @@ else
   sleep "$capture_delay_seconds"
   if [[ "$open_override" == "1" ]]; then
     tmux send-keys -t "$client_session":0.0 o
+    sleep 1
+    for key in $override_keys; do
+      tmux send-keys -t "$client_session":0.0 "$key"
+    done
+    if [[ -n "$override_keys" ]]; then
+      sleep 2
+    fi
   fi
   pane="$(tmux capture-pane -pt "$client_session":0.0 -S -160)"
   printf '%s\n' "$pane"

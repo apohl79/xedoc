@@ -133,11 +133,26 @@ impl ModelRouterApprovalView {
     }
 
     fn selected_axis(&self) -> Option<(&str, &[String])> {
-        self.request
-            .classification_options
-            .iter()
+        self.ordered_classification_options()
+            .into_iter()
             .nth(self.selected_override_field)
             .map(|(axis, options)| (axis.as_str(), options.as_slice()))
+    }
+
+    fn ordered_classification_options(&self) -> Vec<(&String, &Vec<String>)> {
+        let mut options = self
+            .request
+            .classification_options
+            .iter()
+            .collect::<Vec<_>>();
+        options.sort_by_key(|(axis, _)| match axis.as_str() {
+            "work_type" => 0,
+            "complexity" => 1,
+            "orchestration" => 2,
+            "risk" => 3,
+            _ => 4,
+        });
+        options
     }
 
     fn cycle_selection(&mut self, direction: isize) {
@@ -306,9 +321,8 @@ impl Renderable for ModelRouterApprovalView {
                     buf,
                 );
                 let mut selectors = self
-                    .request
-                    .classification_options
-                    .iter()
+                    .ordered_classification_options()
+                    .into_iter()
                     .enumerate()
                     .map(|(index, (axis, options))| {
                         let selected = self

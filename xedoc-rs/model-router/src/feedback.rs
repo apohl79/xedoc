@@ -168,7 +168,11 @@ fn policy_feedback_classifications(
             continue;
         };
         if axis == "work_type"
-            && let Some(leaves) = class.strip_prefix("group: ")
+            && let Some(leaves) = class.strip_prefix("group: ").or_else(|| {
+                class
+                    .strip_prefix("group")
+                    .and_then(|group| group.split_once(": ").map(|(_, leaves)| leaves))
+            })
         {
             leaves
                 .split(", ")

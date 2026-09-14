@@ -402,9 +402,10 @@ fn work_type_group_routes(
     }
     groups
         .into_values()
-        .filter_map(|group| {
+        .enumerate()
+        .filter_map(|(group_index, group)| {
             let group_id = format!(
-                "group: {}",
+                "group{group_index}: {}",
                 group
                     .iter()
                     .map(|class| class.id.as_str())
@@ -491,29 +492,49 @@ async fn model_catalog(
     let models = models_manager
         .list_models(RefreshStrategy::Offline, config.http_client_factory())
         .await;
-    ModelCatalog::new(models.into_iter().map(|model| {
+    let mut candidates = Vec::new();
+    for model in models {
         let provider_id = if model.provider_id.is_empty() {
             config.model_provider_id.clone()
         } else {
             model.provider_id
         };
+        let model_info = models_manager
+            .get_model_info_for_provider(
+                &model.model,
+                &provider_id,
+                &config.to_models_manager_config(),
+            )
+            .await;
+        if model_info.used_fallback_model_metadata
+            || config
+                .service_tier
+                .as_deref()
+                .is_some_and(|tier| !model_info.supports_service_tier(tier))
+        {
+            continue;
+        }
+        let supported_reasoning_efforts = model_info
+            .supported_reasoning_levels
+            .iter()
+            .map(|preset| router_reasoning_effort(preset.effort.clone()))
+            .collect::<BTreeSet<_>>();
+        if supported_reasoning_efforts.is_empty() {
+            continue;
+        }
         let price_per_1m_tokens = config
             .model_providers
             .get(&provider_id)
             .and_then(|provider| provider.model_prices.as_ref())
             .and_then(|prices| prices.get(&model.model))
             .map(|prices| prices.input_price_per_1m_tokens + prices.output_price_per_1m_tokens);
-        ModelCandidate {
+        candidates.push(ModelCandidate {
             route: ModelRoute {
                 provider_id: provider_id.clone(),
                 model_slug: model.model.clone(),
                 reasoning_effort: router_reasoning_effort(model.default_reasoning_effort),
             },
-            supported_reasoning_efforts: model
-                .supported_reasoning_efforts
-                .into_iter()
-                .map(|preset| router_reasoning_effort(preset.effort))
-                .collect(),
+            supported_reasoning_efforts,
             price_per_1m_tokens,
             capabilities: policy
                 .capabilities
@@ -523,8 +544,9 @@ async fn model_catalog(
                 })
                 .map(|capability| capability.tags.iter().cloned().collect())
                 .unwrap_or_else(BTreeSet::new),
-        }
-    }))
+        });
+    }
+    ModelCatalog::new(candidates)
 }
 
 fn fallback_decision(scope: RouteScope, current_route: ModelRoute, prompt: &str) -> RouteDecision {
@@ -735,6 +757,9 @@ pub(crate) fn requires_approval(
     decision: &RouteDecision,
 ) -> bool {
     if !router_mode(mode).applies(decision.scope) {
+        return false;
+    }
+    if decision.reason == xedoc_model_router::DecisionReason::SteeringBypass {
         return false;
     }
     match approval {

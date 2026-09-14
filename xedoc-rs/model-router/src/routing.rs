@@ -303,7 +303,10 @@ pub fn decide(
         return fallback_decision(DecisionReason::NoClass, fallback);
     };
     let class_id = classifications.get("work_type").cloned();
-    if matches!(class_id.as_deref(), Some("steering" | "group: steering")) {
+    if class_id
+        .as_deref()
+        .is_some_and(|class_id| class_id == "steering" || class_id.starts_with("group0:"))
+    {
         return RouteDecision {
             class_id,
             classifications,
@@ -369,8 +372,11 @@ pub fn steering_bypass(
         .unwrap_or_else(|| policy.fallback.clone());
     RouteDecision {
         scope: task.scope,
-        class_id: Some("steering".to_string()),
-        classifications: BTreeMap::from([("work_type".to_string(), "steering".to_string())]),
+        class_id: Some("group0: steering".to_string()),
+        classifications: BTreeMap::from([(
+            "work_type".to_string(),
+            "group0: steering".to_string(),
+        )]),
         classification_options: policy
             .axes
             .iter()
