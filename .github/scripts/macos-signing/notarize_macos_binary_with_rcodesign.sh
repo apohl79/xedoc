@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-# Submits a signed standalone macOS binary to Apple notarization through
-# rcodesign. Standalone binaries cannot carry a stapled ticket, so the binary
-# is submitted in a ZIP and the successful notarization log is retained.
+# Submits a signed standalone macOS binary to Apple notarization. CI uses
+# rcodesign; macOS release builds fall back to native xcrun notarytool.
+# Standalone binaries cannot carry a stapled ticket, so the binary is submitted
+# in a ZIP and the successful notarization log is retained.
 
 set -euo pipefail
 
@@ -63,12 +64,19 @@ if [[ ! "$max_wait_seconds" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-for command_name in rcodesign zip; do
-  if ! command -v "$command_name" >/dev/null 2>&1; then
-    echo "$command_name was not found on PATH." >&2
-    exit 1
-  fi
-done
+if command -v rcodesign >/dev/null 2>&1; then
+  notarization_backend="rcodesign"
+elif command -v xcrun >/dev/null 2>&1 && xcrun notarytool --version >/dev/null 2>&1; then
+  notarization_backend="notarytool"
+else
+  echo "Neither rcodesign nor xcrun notarytool was found on PATH." >&2
+  exit 1
+fi
+
+if ! command -v zip >/dev/null 2>&1; then
+  echo "zip was not found on PATH." >&2
+  exit 1
+fi
 
 missing_environment=0
 for variable_name in \
@@ -100,14 +108,6 @@ if ! printf '%s' "$APPLE_NOTARIZATION_KEY_P8" | base64 --decode >"$private_key_p
 fi
 chmod 600 "$private_key_path"
 
-api_key_path="$notarization_temp_dir/app-store-connect-api-key.json"
-rcodesign encode-app-store-connect-api-key \
-  --output-path "$api_key_path" \
-  "$APPLE_NOTARIZATION_ISSUER_ID" \
-  "$APPLE_NOTARIZATION_KEY_ID" \
-  "$private_key_path" \
-  >"$report_dir/encode-app-store-connect-api-key.log" 2>&1
-
 binary_name="$(basename "$binary_path")"
 archive_path="$notarization_temp_dir/${binary_name}.zip"
 (
@@ -116,16 +116,39 @@ archive_path="$notarization_temp_dir/${binary_name}.zip"
 )
 
 notarization_log="$report_dir/${binary_name}-notarization.log"
-rcodesign notarize \
-  --api-key-file "$api_key_path" \
-  --max-wait-seconds "$max_wait_seconds" \
-  --wait \
-  "$archive_path" \
-  2>&1 | tee "$notarization_log"
+case "$notarization_backend" in
+  rcodesign)
+    api_key_path="$notarization_temp_dir/app-store-connect-api-key.json"
+    rcodesign encode-app-store-connect-api-key \
+      --output-path "$api_key_path" \
+      "$APPLE_NOTARIZATION_ISSUER_ID" \
+      "$APPLE_NOTARIZATION_KEY_ID" \
+      "$private_key_path" \
+      >"$report_dir/encode-app-store-connect-api-key.log" 2>&1
+    rcodesign notarize \
+      --api-key-file "$api_key_path" \
+      --max-wait-seconds "$max_wait_seconds" \
+      --wait \
+      "$archive_path" \
+      2>&1 | tee "$notarization_log"
+    ;;
+  notarytool)
+    xcrun notarytool submit \
+      "$archive_path" \
+      --key "$private_key_path" \
+      --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+      --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
+      --wait \
+      --timeout "${max_wait_seconds}s" \
+      --output-format json \
+      2>&1 | tee "$notarization_log"
+    ;;
+esac
 
 {
   echo "binary_name=$binary_name"
   echo "max_wait_seconds=$max_wait_seconds"
   echo "binary_sha256=$(shasum -a 256 "$binary_path" | awk '{ print $1 }')"
-  echo "rcodesign_notarize=completed"
+  echo "notarization_backend=$notarization_backend"
+  echo "notarization=completed"
 } >"$report_dir/${binary_name}-notarization-summary.txt"
