@@ -463,24 +463,30 @@ fn policy_matches_embedding(policy: &RoutingPolicy, embedding: &[f32]) -> bool {
         && !policy.ranking.ladder.is_empty()
 }
 
-struct RankedSelection {
-    route: ModelRoute,
-    score: u16,
-    minimum_class: ModelClass,
-    maximum_class: ModelClass,
-    minimum_rank: u16,
-    maximum_rank: u16,
-    target_rank: u16,
-    selected_rank: u16,
+/// Result of applying the policy ranking calculation to a complete
+/// classification.
+///
+/// The rank bounds and target are retained so callers can explain the
+/// calculation without reimplementing it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RankedRouteSelection {
+    pub route: ModelRoute,
+    pub score: u16,
+    pub minimum_class: ModelClass,
+    pub maximum_class: ModelClass,
+    pub minimum_rank: u16,
+    pub maximum_rank: u16,
+    pub target_rank: u16,
+    pub selected_rank: u16,
 }
 
 fn select_ranked_route(
     policy: &RoutingPolicy,
     catalog: &ModelCatalog,
     classifications: &BTreeMap<String, String>,
-) -> Option<RankedSelection> {
+) -> Option<RankedRouteSelection> {
     let approval = approval_routing(policy, catalog);
-    select_approval_route(&approval, classifications)
+    select_ranked_route_for_classifications(&approval, classifications)
 }
 
 /// Apply a user-approved classification override and rerank it from policy-owned metadata.
@@ -503,7 +509,8 @@ pub fn apply_approval_override(
         }
         classifications.insert(axis.clone(), value.clone());
     }
-    let Some(selection) = select_approval_route(&decision.approval_routing, &classifications)
+    let Some(selection) =
+        select_ranked_route_for_classifications(&decision.approval_routing, &classifications)
     else {
         return false;
     };
@@ -522,10 +529,12 @@ pub fn apply_approval_override(
     true
 }
 
-fn select_approval_route(
+/// Select the nearest available ranked route using the canonical score
+/// interpolation defined by the model-router ranking policy.
+pub fn select_ranked_route_for_classifications(
     approval: &ApprovalRouting,
     classifications: &BTreeMap<String, String>,
-) -> Option<RankedSelection> {
+) -> Option<RankedRouteSelection> {
     let selected = approval
         .axes
         .iter()
@@ -556,7 +565,7 @@ fn select_approval_route(
     let entry = eligible
         .iter()
         .min_by_key(|entry| entry.rank.abs_diff(target_rank))?;
-    Some(RankedSelection {
+    Some(RankedRouteSelection {
         route: entry.route.clone(),
         score,
         minimum_class,

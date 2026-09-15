@@ -15,6 +15,14 @@ use ratatui::widgets::Widget;
 use xedoc_app_server_protocol::ModelRouterApprovalAction;
 use xedoc_app_server_protocol::ModelRouterApprovalParams;
 use xedoc_app_server_protocol::ModelRouterApprovalResponse;
+use xedoc_model_router::ApprovalRouting;
+use xedoc_model_router::AxisValue;
+use xedoc_model_router::ModelClass;
+use xedoc_model_router::ModelRoute;
+use xedoc_model_router::RankedRouteSelection;
+use xedoc_model_router::RankingLadderEntry;
+use xedoc_model_router::ReasoningEffort;
+use xedoc_model_router::select_ranked_route_for_classifications;
 use xedoc_protocol::ThreadId;
 
 use crate::app_event_sender::AppEventSender;
@@ -161,69 +169,84 @@ impl ModelRouterApprovalView {
             .rem_euclid(field_count as isize) as usize;
     }
 
-    fn preview_route(&self) -> Option<&xedoc_app_server_protocol::ModelRouterRoute> {
-        let selected = self
+    fn preview_route(&self) -> Option<RankedRouteSelection> {
+        let axes = self
             .selected_classifications
             .iter()
-            .filter_map(|(axis, selection)| {
-                let option = self
-                    .request
-                    .classification_options
-                    .get(axis)?
-                    .get(*selection)?;
-                self.request.classification_ratings.get(axis)?.get(option)
+            .map(|(axis, _)| {
+                let ratings = self.request.classification_ratings.get(axis)?;
+                let values = ratings
+                    .iter()
+                    .map(|(id, rating)| {
+                        Some((
+                            id.clone(),
+                            AxisValue {
+                                id: id.clone(),
+                                points: rating.points,
+                                minimum_class: model_class(&rating.minimum_model_class)?,
+                                maximum_class: model_class(&rating.maximum_model_class)?,
+                            },
+                        ))
+                    })
+                    .collect::<Option<BTreeMap<_, _>>>()?;
+                Some((axis.clone(), values))
             })
-            .collect::<Vec<_>>();
-        let score = selected.iter().map(|rating| rating.points).sum::<u16>();
-        let minimum_class = selected
-            .iter()
-            .map(|rating| model_class_order(&rating.minimum_model_class))
-            .max()?;
-        let maximum_class = selected
-            .iter()
-            .map(|rating| model_class_order(&rating.maximum_model_class))
-            .max()?;
-        let mut eligible = self
+            .collect::<Option<BTreeMap<_, _>>>()?;
+        let ladder = self
             .request
             .ranking_ladder
             .iter()
-            .filter(|entry| {
-                let class = model_class_order(&entry.model_class);
-                class >= minimum_class && class <= maximum_class
+            .map(|entry| {
+                Some(RankingLadderEntry {
+                    rank: entry.rank,
+                    class: model_class(&entry.model_class)?,
+                    route: ModelRoute {
+                        provider_id: entry.route.provider_id.clone(),
+                        model_slug: entry.route.model_slug.clone(),
+                        reasoning_effort: reasoning_effort(&entry.route.reasoning_effort)?,
+                    },
+                })
             })
-            .collect::<Vec<_>>();
-        eligible.sort_by_key(|entry| entry.rank);
-        let minimum_rank = eligible.first()?.rank;
-        let maximum_rank = eligible.last()?.rank;
-        let domain = self
-            .request
-            .ranking_maximum_score
-            .checked_sub(self.request.ranking_minimum_score)?;
-        let bounded = score.clamp(
-            self.request.ranking_minimum_score,
-            self.request.ranking_maximum_score,
-        );
-        let offset = if domain == 0 {
-            0
-        } else {
-            let numerator = u32::from(bounded - self.request.ranking_minimum_score)
-                * u32::from(maximum_rank - minimum_rank);
-            ((numerator + u32::from(domain) / 2) / u32::from(domain)) as u16
-        };
-        let target_rank = minimum_rank + offset;
-        eligible
-            .into_iter()
-            .min_by_key(|entry| entry.rank.abs_diff(target_rank))
-            .map(|entry| &entry.route)
+            .collect::<Option<Vec<_>>>()?;
+        select_ranked_route_for_classifications(
+            &ApprovalRouting {
+                axes,
+                minimum_score: self.request.ranking_minimum_score,
+                maximum_score: self.request.ranking_maximum_score,
+                ladder,
+            },
+            &self
+                .selected_classifications
+                .iter()
+                .filter_map(|(axis, selection)| {
+                    self.request
+                        .classification_options
+                        .get(axis)?
+                        .get(*selection)
+                        .map(|value| (axis.clone(), value.clone()))
+                })
+                .collect(),
+        )
     }
 }
 
-fn model_class_order(model_class: &str) -> u8 {
+fn model_class(model_class: &str) -> Option<ModelClass> {
     match model_class {
-        "simple" => 0,
-        "smart" => 1,
-        "intelligent" => 2,
-        _ => 0,
+        "simple" => Some(ModelClass::Simple),
+        "smart" => Some(ModelClass::Smart),
+        "intelligent" => Some(ModelClass::Intelligent),
+        _ => None,
+    }
+}
+
+fn reasoning_effort(reasoning_effort: &str) -> Option<ReasoningEffort> {
+    match reasoning_effort {
+        "low" => Some(ReasoningEffort::Low),
+        "medium" => Some(ReasoningEffort::Medium),
+        "high" => Some(ReasoningEffort::High),
+        "xhigh" => Some(ReasoningEffort::ExtraHigh),
+        "max" => Some(ReasoningEffort::Max),
+        _ => None,
     }
 }
 
@@ -305,7 +328,7 @@ impl Renderable for ModelRouterApprovalView {
         match self.mode {
             ApprovalMode::Choice => 7,
             ApprovalMode::Override => {
-                u16::try_from(self.request.classification_options.len()).unwrap_or(u16::MAX) + 8
+                u16::try_from(self.request.classification_options.len()).unwrap_or(u16::MAX) + 9
             }
         }
     }
@@ -384,15 +407,45 @@ impl Renderable for ModelRouterApprovalView {
                         ))
                     })
                     .collect::<Vec<_>>();
-                let route = self.preview_route().unwrap_or(&self.request.proposed_route);
-                selectors.push(
-                    format!(
-                        "  route: {}/{}/{} (derived)",
-                        route.provider_id, route.model_slug, route.reasoning_effort
-                    )
-                    .dim()
-                    .into(),
-                );
+                if let Some(selection) = self.preview_route() {
+                    let bounded_score = selection.score.clamp(
+                        self.request.ranking_minimum_score,
+                        self.request.ranking_maximum_score,
+                    );
+                    selectors.push(
+                        format!(
+                            "  score {} (bounded {}; domain {}–{}) · classes {}–{} · ranks {}–{} · target {} · selected {}",
+                            selection.score,
+                            bounded_score,
+                            self.request.ranking_minimum_score,
+                            self.request.ranking_maximum_score,
+                            model_class_label(selection.minimum_class),
+                            model_class_label(selection.maximum_class),
+                            selection.minimum_rank,
+                            selection.maximum_rank,
+                            selection.target_rank,
+                            selection.selected_rank,
+                        )
+                        .dim()
+                        .into(),
+                    );
+                    selectors.push(
+                        format!(
+                            "  route: {}/{}/{} (derived)",
+                            selection.route.provider_id,
+                            selection.route.model_slug,
+                            reasoning_effort_label(selection.route.reasoning_effort),
+                        )
+                        .dim()
+                        .into(),
+                    );
+                } else {
+                    selectors.push(
+                        "  route: unavailable (incomplete approval metadata)"
+                            .dim()
+                            .into(),
+                    );
+                }
                 Paragraph::new(selectors).render(
                     Rect {
                         x: area.x,
@@ -404,5 +457,23 @@ impl Renderable for ModelRouterApprovalView {
                 );
             }
         }
+    }
+}
+
+fn model_class_label(model_class: ModelClass) -> &'static str {
+    match model_class {
+        ModelClass::Simple => "simple",
+        ModelClass::Smart => "smart",
+        ModelClass::Intelligent => "intelligent",
+    }
+}
+
+fn reasoning_effort_label(reasoning_effort: ReasoningEffort) -> &'static str {
+    match reasoning_effort {
+        ReasoningEffort::Low => "low",
+        ReasoningEffort::Medium => "medium",
+        ReasoningEffort::High => "high",
+        ReasoningEffort::ExtraHigh => "xhigh",
+        ReasoningEffort::Max => "max",
     }
 }

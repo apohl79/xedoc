@@ -36,6 +36,7 @@ use xedoc_model_router::TaskEnvelope;
 use xedoc_model_router::decide;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
+use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::protocol::ModelRouterApprovalClassRating;
 use xedoc_protocol::protocol::ModelRouterApprovalRankedRoute;
@@ -300,10 +301,9 @@ pub(crate) async fn apply_route_to_config(
             .supported_reasoning_levels
             .iter()
             .any(|preset| preset.effort == reasoning_effort)
-        || config
-            .service_tier
-            .as_deref()
-            .is_some_and(|tier| !model_info.supports_service_tier(tier))
+        || config.service_tier.as_deref().is_some_and(|tier| {
+            tier != SERVICE_TIER_DEFAULT_REQUEST_VALUE && !model_info.supports_service_tier(tier)
+        })
     {
         return false;
     }
@@ -521,10 +521,10 @@ async fn model_catalog(
             )
             .await;
         if model_info.used_fallback_model_metadata
-            || config
-                .service_tier
-                .as_deref()
-                .is_some_and(|tier| !model_info.supports_service_tier(tier))
+            || config.service_tier.as_deref().is_some_and(|tier| {
+                tier != SERVICE_TIER_DEFAULT_REQUEST_VALUE
+                    && !model_info.supports_service_tier(tier)
+            })
         {
             continue;
         }
@@ -772,23 +772,29 @@ pub(crate) fn requires_approval(
     approval: ModelRouterApproval,
     decision: &RouteDecision,
 ) -> bool {
-    if !router_mode(mode).applies(decision.scope) {
-        return false;
-    }
-    if decision.reason == xedoc_model_router::DecisionReason::SteeringBypass {
-        return false;
-    }
-    match approval {
-        ModelRouterApproval::Off => false,
-        ModelRouterApproval::Changes => {
-            decision.disposition == xedoc_model_router::RouteDisposition::Applied
-                && decision.effective_route != decision.original_route
-        }
-        ModelRouterApproval::All => {
-            decision.disposition != xedoc_model_router::RouteDisposition::Shadow
-                && decision.reason != xedoc_model_router::DecisionReason::ExplicitOverride
-        }
-    }
+    let required = router_mode(mode).applies(decision.scope)
+        && decision.reason != xedoc_model_router::DecisionReason::SteeringBypass
+        && match approval {
+            ModelRouterApproval::Off => false,
+            ModelRouterApproval::Changes => {
+                decision.disposition == xedoc_model_router::RouteDisposition::Applied
+                    && decision.effective_route != decision.original_route
+            }
+            ModelRouterApproval::All => {
+                decision.disposition != xedoc_model_router::RouteDisposition::Shadow
+                    && decision.reason != xedoc_model_router::DecisionReason::ExplicitOverride
+            }
+        };
+    tracing::debug!(
+        ?mode,
+        ?approval,
+        ?decision.scope,
+        ?decision.disposition,
+        ?decision.reason,
+        required,
+        "evaluated model-router approval requirement"
+    );
+    required
 }
 
 pub(crate) fn feedback_classifications(

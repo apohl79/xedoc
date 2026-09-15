@@ -1348,8 +1348,6 @@ impl App {
             self.config.model_provider = provider;
         }
         let thread_id = session.thread_id;
-        self.primary_thread_id = Some(thread_id);
-        self.primary_session_configured = Some(session.clone());
         self.upsert_agent_picker_thread(
             thread_id, /*agent_nickname*/ None, /*agent_role*/ None,
             /*is_closed*/ false,
@@ -1360,6 +1358,8 @@ impl App {
             store.set_session(session.clone(), turns.clone());
         }
         self.activate_thread_channel(thread_id).await;
+        self.primary_thread_id = Some(thread_id);
+        self.primary_session_configured = Some(session.clone());
         self.chat_widget
             .set_initial_user_message_submit_suppressed(/*suppressed*/ true);
         match presentation {
