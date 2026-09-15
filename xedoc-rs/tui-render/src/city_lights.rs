@@ -166,10 +166,7 @@ pub fn composer_runtime_context_style(effort: &str) -> Style {
         _ => Color::Reset,
     };
 
-    Style::default()
-        .fg(foreground)
-        .bg(rgb(CL_SESSION_TITLE_BG))
-        .dim()
+    Style::default().fg(foreground).bg(rgb(CL_SESSION_TITLE_BG))
 }
 
 /// Style for active Agents and Tasks section headers.

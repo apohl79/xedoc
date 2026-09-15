@@ -349,17 +349,22 @@ pub fn sub_agent_activity_history_cell(item: &ThreadItem) -> Option<PlainHistory
     let details = if *kind == SubAgentActivityKind::Completed {
         change_totals
             .map(|totals| {
-                vec![Line::from(format!(
-                    "{} {} edited (+{} -{}).",
-                    totals.files_edited,
-                    if totals.files_edited == 1 {
-                        "file"
-                    } else {
-                        "files"
-                    },
-                    totals.total_added,
-                    totals.total_removed
-                ))]
+                vec![Line::from(vec![
+                    format!(
+                        "{} {} edited (",
+                        totals.files_edited,
+                        if totals.files_edited == 1 {
+                            "file"
+                        } else {
+                            "files"
+                        },
+                    )
+                    .into(),
+                    format!("+{}", totals.total_added).cl_green(),
+                    " ".into(),
+                    format!("-{}", totals.total_removed).cl_red(),
+                    ").".into(),
+                ])]
             })
             .unwrap_or_default()
     } else {

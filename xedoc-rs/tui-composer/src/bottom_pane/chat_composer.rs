@@ -5704,7 +5704,7 @@ mod tests {
             });
             effort_color_cells.push(
                 if cell.style().fg == effort_foreground
-                    && cell.style().add_modifier.contains(Modifier::DIM)
+                    && !cell.style().add_modifier.contains(Modifier::DIM)
                 {
                     '^'
                 } else {
