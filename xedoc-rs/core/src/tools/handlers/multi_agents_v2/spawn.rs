@@ -234,6 +234,18 @@ async fn handle_spawn_agent(
         ToolMessageKind::NewTask,
     );
     let context = AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
+    let router_event = router_decision.map(|decision| {
+        crate::model_router::decision_event(
+            decision,
+            session.thread_id.to_string(),
+            turn.sub_id.clone(),
+            xedoc_protocol::protocol::ModelRouterScope::Subagent,
+            now_unix_timestamp_ms() / 1_000,
+        )
+    });
+    if let Some(router_event) = router_event.as_ref() {
+        persist_model_router_decision(&session, router_event).await;
+    }
     let spawned_agent = Box::pin(
         session
             .services
@@ -255,19 +267,11 @@ async fn handle_spawn_agent(
     .await
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
-    if let Some(router_decision) = router_decision {
+    if let Some(router_event) = router_event {
         session
             .send_event(
                 &turn,
-                xedoc_protocol::protocol::EventMsg::ModelRouterDecision(
-                    crate::model_router::decision_event(
-                        router_decision,
-                        session.thread_id.to_string(),
-                        turn.sub_id.clone(),
-                        xedoc_protocol::protocol::ModelRouterScope::Subagent,
-                        now_unix_timestamp_ms() / 1_000,
-                    ),
-                ),
+                xedoc_protocol::protocol::EventMsg::ModelRouterDecision(router_event),
             )
             .await;
     }
@@ -520,42 +524,6 @@ async fn try_spawn_ab_pair(
     if let Err(error) = session
         .services
         .agent_control
-        .release_deferred_agent_communication(routed_spawn.thread_id, barrier_id.clone())
-        .await
-    {
-        let _ = session
-            .services
-            .agent_control
-            .shutdown_live_agent(routed_spawn.thread_id)
-            .await;
-        let _ = session
-            .services
-            .agent_control
-            .shutdown_live_agent(baseline_spawn.thread_id)
-            .await;
-        return Err(collab_spawn_error(error));
-    }
-    if let Err(error) = session
-        .services
-        .agent_control
-        .release_deferred_agent_communication(baseline_spawn.thread_id, barrier_id)
-        .await
-    {
-        let _ = session
-            .services
-            .agent_control
-            .shutdown_live_agent(routed_spawn.thread_id)
-            .await;
-        let _ = session
-            .services
-            .agent_control
-            .shutdown_live_agent(baseline_spawn.thread_id)
-            .await;
-        return Err(collab_spawn_error(error));
-    }
-    if let Err(error) = session
-        .services
-        .agent_control
         .commit_deferred_agent_pair(routed_spawn.thread_id, baseline_spawn.thread_id)
         .await
     {
@@ -589,6 +557,61 @@ async fn try_spawn_ab_pair(
             "model-router A/B experiment is no longer available".to_string(),
         ));
     }
+    if let Some(router_event) = router_event.as_ref() {
+        persist_model_router_decision(session, router_event).await;
+        session
+            .set_model_router_ab_decision_id(&active_pair.pair_id, router_event.decision_id.clone())
+            .await;
+        session
+            .start_model_router_ab_outcome(
+                &active_pair.pair_id,
+                &turn.sub_id,
+                Some(router_event.decision_id.clone()),
+            )
+            .await;
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .release_deferred_agent_communication(routed_spawn.thread_id, barrier_id.clone())
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        session
+            .restore_model_router_ab_pair_after_failed_spawn(&active_pair.pair_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
+    if let Err(error) = session
+        .services
+        .agent_control
+        .release_deferred_agent_communication(baseline_spawn.thread_id, barrier_id)
+        .await
+    {
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(routed_spawn.thread_id)
+            .await;
+        let _ = session
+            .services
+            .agent_control
+            .shutdown_live_agent(baseline_spawn.thread_id)
+            .await;
+        session
+            .restore_model_router_ab_pair_after_failed_spawn(&active_pair.pair_id)
+            .await;
+        return Err(collab_spawn_error(error));
+    }
     if let Err(error) = session
         .services
         .agent_control
@@ -611,24 +634,6 @@ async fn try_spawn_ab_pair(
         return Err(collab_spawn_error(error));
     }
     if let Some(router_event) = router_event {
-        let router_decision = xedoc_state::ModelRouterDecisionRecord::from(&router_event);
-        if let Some(state_db) = session.state_db()
-            && let Err(error) = state_db
-                .insert_model_router_decision(&router_decision)
-                .await
-        {
-            tracing::warn!(%error, "failed to persist model-router A/B decision");
-        }
-        session
-            .set_model_router_ab_decision_id(&active_pair.pair_id, router_event.decision_id.clone())
-            .await;
-        session
-            .start_model_router_ab_outcome(
-                &active_pair.pair_id,
-                &turn.sub_id,
-                Some(router_event.decision_id.clone()),
-            )
-            .await;
         session
             .send_event(
                 turn,
@@ -641,6 +646,20 @@ async fn try_spawn_ab_pair(
         routed_task_name,
         orchestrator_task_name,
     }))
+}
+
+async fn persist_model_router_decision(
+    session: &crate::session::session::Session,
+    router_event: &xedoc_protocol::protocol::ModelRouterDecisionEvent,
+) {
+    let router_decision = xedoc_state::ModelRouterDecisionRecord::from(router_event);
+    if let Some(state_db) = session.state_db()
+        && let Err(error) = state_db
+            .insert_model_router_decision(&router_decision)
+            .await
+    {
+        tracing::warn!(%error, "failed to persist model-router decision");
+    }
 }
 
 fn is_operations_or_deployment_task(message: &str) -> bool {

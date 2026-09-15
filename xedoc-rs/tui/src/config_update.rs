@@ -251,15 +251,18 @@ pub(crate) async fn control_model_router_ab(
 ) -> Result<()> {
     let request_id = RequestId::String(format!("tui-model-router-ab-{}", Uuid::new_v4()));
     request_handle
-        .request_typed(ClientRequest::ModelRouterAbControl {
-            request_id,
-            params: xedoc_app_server_protocol::ModelRouterAbControlParams {
-                thread_id: thread_id.to_string(),
-                action,
+        .request_typed::<xedoc_app_server_protocol::ModelRouterAbControlResponse>(
+            ClientRequest::ModelRouterAbControl {
+                request_id,
+                params: xedoc_app_server_protocol::ModelRouterAbControlParams {
+                    thread_id: thread_id.to_string(),
+                    action,
+                },
             },
-        })
+        )
         .await
         .wrap_err("modelRouter/abControl failed in TUI")
+        .map(|_| ())
 }
 
 pub(crate) async fn read_model_router_policy(
