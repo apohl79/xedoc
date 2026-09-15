@@ -88,13 +88,17 @@ pub enum OutgoingEnvelope {
     Broadcast {
         message: OutgoingMessage,
     },
+    BroadcastExperimentalRequest {
+        message: OutgoingMessage,
+        delivery_status_tx: oneshot::Sender<bool>,
+    },
 }
 
 /// Sends messages to the client and manages request callbacks.
 pub struct OutgoingMessageSender {
     next_server_request_id: AtomicI64,
     sender: mpsc::Sender<OutgoingEnvelope>,
-    request_id_to_callback: Mutex<HashMap<RequestId, PendingCallbackEntry>>,
+    request_id_to_callback: Arc<Mutex<HashMap<RequestId, PendingCallbackEntry>>>,
     /// Incoming requests that are still waiting on a final response or error.
     /// We keep them here because this is where responses, errors, and
     /// disconnect cleanup all get handled.
@@ -191,7 +195,7 @@ impl OutgoingMessageSender {
         Self {
             next_server_request_id: AtomicI64::new(0),
             sender,
-            request_id_to_callback: Mutex::new(HashMap::new()),
+            request_id_to_callback: Arc::new(Mutex::new(HashMap::new())),
             request_contexts: Mutex::new(HashMap::new()),
         }
     }
@@ -264,6 +268,8 @@ impl OutgoingMessageSender {
         let id = self.next_request_id();
         let outgoing_message_id = id.clone();
         let request = request.request_with_id(outgoing_message_id.clone());
+        let experimental_request =
+            matches!(&request, ServerRequest::ExtensionInteractionRequest { .. });
 
         let (tx_approve, rx_approve) = oneshot::channel();
         {
@@ -281,11 +287,37 @@ impl OutgoingMessageSender {
         let outgoing_message = OutgoingMessage::Request(request.clone());
         let send_result = match connection_ids {
             None => {
-                self.sender
-                    .send(OutgoingEnvelope::Broadcast {
-                        message: outgoing_message,
-                    })
-                    .await
+                if experimental_request {
+                    let (delivery_status_tx, delivery_status_rx) = oneshot::channel();
+                    let callbacks = Arc::clone(&self.request_id_to_callback);
+                    let callback_request_id = outgoing_message_id.clone();
+                    tokio::spawn(async move {
+                        if !delivery_status_rx.await.unwrap_or(false)
+                            && let Some(entry) = callbacks.lock().await.remove(&callback_request_id)
+                        {
+                            let error = internal_error(
+                                "no initialized experimentalApi-enabled client is available",
+                            );
+                            if let Err(err) = entry.callback.send(Err(error)) {
+                                warn!(
+                                    "could not notify callback for {callback_request_id:?} due to: {err:?}"
+                                );
+                            }
+                        }
+                    });
+                    self.sender
+                        .send(OutgoingEnvelope::BroadcastExperimentalRequest {
+                            message: outgoing_message,
+                            delivery_status_tx,
+                        })
+                        .await
+                } else {
+                    self.sender
+                        .send(OutgoingEnvelope::Broadcast {
+                            message: outgoing_message,
+                        })
+                        .await
+                }
             }
             Some(connection_ids) => {
                 let mut send_error = None;
@@ -654,6 +686,8 @@ mod tests {
     use xedoc_app_server_protocol::CompactionProgressNotification;
     use xedoc_app_server_protocol::ConfigWarningNotification;
     use xedoc_app_server_protocol::DynamicToolCallParams;
+    use xedoc_app_server_protocol::ExtensionInteractionRequestParams;
+    use xedoc_app_server_protocol::ExtensionInteractionSurface;
     use xedoc_app_server_protocol::FileChangeRequestApprovalParams;
     use xedoc_app_server_protocol::ModelRerouteReason;
     use xedoc_app_server_protocol::ModelReroutedNotification;
@@ -951,6 +985,52 @@ mod tests {
             CommandExecutionApprovalDecision::AcceptForSession
         );
     }
+    #[tokio::test]
+    async fn experimental_request_callback_resolves_when_transport_reports_no_recipient() {
+        let (tx, mut rx) = mpsc::channel::<OutgoingEnvelope>(1);
+        let outgoing = OutgoingMessageSender::new(tx);
+
+        let (_request_id, callback) = outgoing
+            .send_request(ServerRequestPayload::ExtensionInteractionRequest(
+                ExtensionInteractionRequestParams {
+                    thread_id: "thread-1".to_string(),
+                    turn_id: "turn-1".to_string(),
+                    request_id: "request-1".to_string(),
+                    extension_id: "extension-1".to_string(),
+                    interaction_id: "interaction-1".to_string(),
+                    continuation: "continuation-1".to_string(),
+                    state_revision: None,
+                    expires_at: 0,
+                    surface: ExtensionInteractionSurface::Notice {
+                        title: "title".to_string(),
+                        body: "body".to_string(),
+                        level: xedoc_app_server_protocol::ExtensionInteractionNoticeLevel::Info,
+                    },
+                },
+            ))
+            .await;
+
+        let envelope = rx.recv().await.expect("request should be sent");
+        let OutgoingEnvelope::BroadcastExperimentalRequest {
+            delivery_status_tx, ..
+        } = envelope
+        else {
+            panic!("experimental request should use the gated broadcast path");
+        };
+        delivery_status_tx
+            .send(false)
+            .expect("sender should await transport delivery status");
+
+        let error = callback
+            .await
+            .expect("callback should resolve")
+            .expect_err("no recipient should resolve the callback with an error");
+        assert_eq!(
+            error.message,
+            "no initialized experimentalApi-enabled client is available"
+        );
+    }
+
     #[tokio::test]
     async fn send_response_routes_to_target_connection() {
         let (tx, mut rx) = mpsc::channel::<OutgoingEnvelope>(4);

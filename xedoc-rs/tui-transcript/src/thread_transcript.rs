@@ -251,6 +251,9 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             ranking_maximum_rank,
             ranking_target_rank,
             ranking_selected_rank,
+            proposed_provider_id,
+            proposed_model_slug,
+            proposed_reasoning_effort,
             effective_route,
             ..
         } => crate::history_cell::model_router_decision_lines(
@@ -268,6 +271,9 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             *ranking_maximum_rank,
             *ranking_target_rank,
             *ranking_selected_rank,
+            proposed_provider_id.clone(),
+            proposed_model_slug.clone(),
+            proposed_reasoning_effort.clone(),
             effective_route.clone(),
         ),
         ThreadItem::UserMessage { .. }

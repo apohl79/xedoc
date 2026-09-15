@@ -26,15 +26,10 @@ use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ManagedHooksRequirements;
 use xedoc_app_server_protocol::MergeStrategy;
 use xedoc_app_server_protocol::ModelProviderCapabilitiesReadResponse;
-use xedoc_app_server_protocol::ModelRouterCapability as ApiModelRouterCapability;
-use xedoc_app_server_protocol::ModelRouterPolicy as ApiModelRouterPolicy;
-use xedoc_app_server_protocol::ModelRouterPolicyBootstrapResponse;
-use xedoc_app_server_protocol::ModelRouterPolicyClass as ApiModelRouterPolicyClass;
-use xedoc_app_server_protocol::ModelRouterPolicyReadResponse;
-use xedoc_app_server_protocol::ModelRouterPolicyWriteParams;
-use xedoc_app_server_protocol::ModelRouterPolicyWriteResponse;
-use xedoc_app_server_protocol::ModelRouterRankedRoute as ApiModelRouterRankedRoute;
-use xedoc_app_server_protocol::ModelRouterRanking as ApiModelRouterRanking;
+use xedoc_app_server_protocol::ModelRouterSettingsInteraction;
+use xedoc_app_server_protocol::ModelRouterSettingsOpenResponse;
+use xedoc_app_server_protocol::ModelRouterSettingsRespondParams;
+use xedoc_app_server_protocol::ModelRouterSettingsRespondResponse;
 use xedoc_app_server_protocol::ModelsRequirements;
 use xedoc_app_server_protocol::NetworkDomainPermission;
 use xedoc_app_server_protocol::NetworkRequirements;
@@ -325,160 +320,48 @@ impl ConfigRequestProcessor {
         })
     }
 
-    pub(crate) async fn model_router_policy_read(
+    pub(crate) async fn model_router_settings_open(
         &self,
-    ) -> Result<ModelRouterPolicyReadResponse, JSONRPCErrorError> {
+    ) -> Result<ModelRouterSettingsOpenResponse, JSONRPCErrorError> {
         let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
-        let path = config
-            .model_router
-            .resolved_policy_path(config.xedoc_home.as_path());
-        match xedoc_config::load_model_router_policy(&path) {
-            Ok(policy) => Ok(ModelRouterPolicyReadResponse {
-                exists: true,
-                policy: Some(map_model_router_policy(policy)),
-                error: None,
-            }),
-            Err(xedoc_config::ModelRouterPolicyError::Read { source, .. })
-                if source.kind() == std::io::ErrorKind::NotFound =>
-            {
-                Ok(ModelRouterPolicyReadResponse {
-                    exists: false,
-                    policy: None,
+        let result = xedoc_core::model_router_settings::open(
+            &config,
+            &self.thread_manager.get_models_manager(),
+        )
+        .await;
+        Ok(model_router_settings_open_response(result))
+    }
+
+    pub(crate) async fn model_router_settings_respond(
+        &self,
+        params: ModelRouterSettingsRespondParams,
+    ) -> Result<ModelRouterSettingsRespondResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let response = serde_json::to_value(params.response)
+            .map_err(|_| invalid_request("invalid model-router settings response"))?;
+        let result = xedoc_core::model_router_settings::respond(
+            &config,
+            &self.thread_manager.get_models_manager(),
+            response,
+        )
+        .await;
+        Ok(match result {
+            Ok(surface) => match parse_model_router_settings_interaction(surface) {
+                Ok(interaction) => ModelRouterSettingsRespondResponse {
+                    interaction: Some(interaction),
                     error: None,
-                })
-            }
-            Err(error) => Ok(ModelRouterPolicyReadResponse {
-                exists: true,
-                policy: None,
-                error: Some(error.to_string()),
-            }),
-        }
-    }
-
-    pub(crate) async fn model_router_policy_bootstrap(
-        &self,
-    ) -> Result<ModelRouterPolicyBootstrapResponse, JSONRPCErrorError> {
-        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
-        let path = config
-            .model_router
-            .resolved_policy_path(config.xedoc_home.as_path());
-        let created = xedoc_model_router::bootstrap_initial_policy(&path).map_err(|error| {
-            invalid_request(format!("failed to bootstrap model-router policy: {error}"))
-        })?;
-        self.reload_user_config().await;
-        let response = self.model_router_policy_read().await?;
-        Ok(ModelRouterPolicyBootstrapResponse {
-            created,
-            policy: response.policy,
-            error: response.error,
-        })
-    }
-
-    pub(crate) async fn model_router_policy_write(
-        &self,
-        params: ModelRouterPolicyWriteParams,
-    ) -> Result<ModelRouterPolicyWriteResponse, JSONRPCErrorError> {
-        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
-        let path = config
-            .model_router
-            .resolved_policy_path(config.xedoc_home.as_path());
-        let mut policy = xedoc_config::load_model_router_policy(&path).map_err(|error| {
-            invalid_request(format!("failed to load model-router policy: {error}"))
-        })?;
-        if !params.minimum_score.is_finite()
-            || !params.minimum_margin.is_finite()
-            || !(0.0..=1.0).contains(&params.minimum_score)
-            || !(0.0..=1.0).contains(&params.minimum_margin)
-        {
-            return Err(invalid_request(
-                "model-router classifier thresholds must be finite values from 0 to 1",
-            ));
-        }
-        if !params.classes.is_empty() {
-            return Err(invalid_request(
-                "model-router classifier class edits are not supported by the ranking policy",
-            ));
-        }
-        if params.ranking.minimum_score > params.ranking.maximum_score
-            || params.ranking.ladder.is_empty()
-        {
-            return Err(invalid_request(
-                "model-router ranking must contain an ordered non-empty ladder",
-            ));
-        }
-        policy.capabilities = params
-            .capabilities
-            .into_iter()
-            .map(|capability| xedoc_config::ModelRouterCapability {
-                provider: capability.provider,
-                model: capability.model,
-                tags: capability.tags,
-            })
-            .collect();
-        policy.classifier.minimum_score = params.minimum_score as f32;
-        policy.classifier.minimum_margin = params.minimum_margin as f32;
-        policy.ranking.minimum_score = params.ranking.minimum_score;
-        policy.ranking.maximum_score = params.ranking.maximum_score;
-        policy.ranking.ladder = params
-            .ranking
-            .ladder
-            .into_iter()
-            .map(|route| {
-                let class = match route.class.as_str() {
-                    "simple" => xedoc_config::ModelRouterModelClass::Simple,
-                    "smart" => xedoc_config::ModelRouterModelClass::Smart,
-                    "intelligent" => xedoc_config::ModelRouterModelClass::Intelligent,
-                    class => {
-                        return Err(invalid_request(format!(
-                            "invalid model-router ranking class `{class}`; expected simple, smart, or intelligent"
-                        )));
-                    }
-                };
-                Ok(xedoc_config::ModelRouterRankedRoute {
-                    rank: route.rank,
-                    class,
-                    provider: route.provider,
-                    model: route.model,
-                    reasoning_effort: route.reasoning_effort,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        policy.ranking.reporting_baseline = params.ranking.reporting_baseline.map(|route| {
-            let class = match route.class.as_str() {
-                "simple" => xedoc_config::ModelRouterModelClass::Simple,
-                "smart" => xedoc_config::ModelRouterModelClass::Smart,
-                "intelligent" => xedoc_config::ModelRouterModelClass::Intelligent,
-                class => {
-                    return Err(invalid_request(format!(
-                        "invalid model-router reporting baseline class `{class}`; expected simple, smart, or intelligent"
-                    )));
-                }
-            };
-            Ok(xedoc_config::ModelRouterRankedRoute {
-                rank: route.rank,
-                class,
-                provider: route.provider,
-                model: route.model,
-                reasoning_effort: route.reasoning_effort,
-            })
-        }).transpose()?;
-        if policy
-            .ranking
-            .reporting_baseline
-            .as_ref()
-            .is_some_and(|baseline| !policy.ranking.ladder.contains(baseline))
-        {
-            return Err(invalid_request(
-                "model-router reporting baseline must be a route in the ranking ladder",
-            ));
-        }
-        policy.policy_revision = format!("user-tuned-{}", chrono::Utc::now().timestamp_millis());
-        xedoc_config::write_model_router_policy(&path, &policy).map_err(|error| {
-            invalid_request(format!("failed to write model-router policy: {error}"))
-        })?;
-        self.reload_user_config().await;
-        Ok(ModelRouterPolicyWriteResponse {
-            policy: map_model_router_policy(policy),
+                },
+                Err(_) => ModelRouterSettingsRespondResponse {
+                    interaction: None,
+                    error: Some(
+                        "model-router script returned an invalid settings surface".to_string(),
+                    ),
+                },
+            },
+            Err(error) => ModelRouterSettingsRespondResponse {
+                interaction: None,
+                error: Some(error),
+            },
         })
     }
 
@@ -609,68 +492,43 @@ impl ConfigRequestProcessor {
     }
 }
 
-fn map_model_router_policy(policy: xedoc_config::ModelRouterPolicy) -> ApiModelRouterPolicy {
-    ApiModelRouterPolicy {
-        policy_revision: policy.policy_revision,
-        classifier_revision: policy.classifier.revision,
-        minimum_score: f64::from(policy.classifier.minimum_score),
-        minimum_margin: f64::from(policy.classifier.minimum_margin),
-        capabilities: policy
-            .capabilities
-            .into_iter()
-            .map(|capability| ApiModelRouterCapability {
-                provider: capability.provider,
-                model: capability.model,
-                tags: capability.tags,
-            })
-            .collect(),
-        classes: policy
-            .classes
-            .into_iter()
-            .map(|class| ApiModelRouterPolicyClass {
-                id: class.id,
-                minimum_reasoning_effort: class.minimum_reasoning_effort,
-                required_capabilities: class.required_capabilities,
-            })
-            .collect(),
-        ranking: ApiModelRouterRanking {
-            minimum_score: policy.ranking.minimum_score,
-            maximum_score: policy.ranking.maximum_score,
-            ladder: policy
-                .ranking
-                .ladder
-                .into_iter()
-                .map(|route| ApiModelRouterRankedRoute {
-                    rank: route.rank,
-                    class: match route.class {
-                        xedoc_config::ModelRouterModelClass::Simple => "simple".to_string(),
-                        xedoc_config::ModelRouterModelClass::Smart => "smart".to_string(),
-                        xedoc_config::ModelRouterModelClass::Intelligent => {
-                            "intelligent".to_string()
-                        }
-                    },
-                    provider: route.provider,
-                    model: route.model,
-                    reasoning_effort: route.reasoning_effort,
-                })
-                .collect(),
-            reporting_baseline: policy.ranking.reporting_baseline.map(|route| {
-                ApiModelRouterRankedRoute {
-                    rank: route.rank,
-                    class: match route.class {
-                        xedoc_config::ModelRouterModelClass::Simple => "simple".to_string(),
-                        xedoc_config::ModelRouterModelClass::Smart => "smart".to_string(),
-                        xedoc_config::ModelRouterModelClass::Intelligent => {
-                            "intelligent".to_string()
-                        }
-                    },
-                    provider: route.provider,
-                    model: route.model,
-                    reasoning_effort: route.reasoning_effort,
-                }
-            }),
+fn model_router_settings_open_response(
+    result: Result<serde_json::Value, String>,
+) -> ModelRouterSettingsOpenResponse {
+    match result {
+        Ok(surface) => match parse_model_router_settings_interaction(surface) {
+            Ok(interaction) => ModelRouterSettingsOpenResponse {
+                interaction: Some(interaction),
+                error: None,
+            },
+            Err(_) => ModelRouterSettingsOpenResponse {
+                interaction: None,
+                error: Some("model-router script returned an invalid settings surface".to_string()),
+            },
+        },
+        Err(error) => ModelRouterSettingsOpenResponse {
+            interaction: None,
+            error: Some(error),
         },
     }
+}
+
+fn parse_model_router_settings_interaction(
+    interaction: serde_json::Value,
+) -> Result<ModelRouterSettingsInteraction, serde_json::Error> {
+    let interaction: xedoc_script_protocol::Interaction = serde_json::from_value(interaction)?;
+    let surface = serde_json::from_value(serde_json::to_value(interaction.surface)?)?;
+    let Some(state_revision) = interaction.state_revision else {
+        return Err(serde_json::Error::io(std::io::Error::other(
+            "settings interaction missing state revision",
+        )));
+    };
+    Ok(ModelRouterSettingsInteraction {
+        interaction_id: interaction.id.as_str().to_string(),
+        continuation: interaction.continuation.as_str().to_string(),
+        state_revision: state_revision.as_str().to_string(),
+        surface,
+    })
 }
 
 fn writes_model_router_config(

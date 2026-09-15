@@ -1122,149 +1122,61 @@ impl App {
                 self.update_token_usage_optimizer_level(app_server, level)
                     .await;
             }
-            AppEvent::UpdateModelRouterMode { mode } => {
-                self.update_model_router_mode(app_server, mode);
+            AppEvent::OpenModelRouterSettings => self.open_model_router_settings(app_server),
+            AppEvent::ModelRouterSettingsOpened { result } => {
+                self.show_model_router_settings_result(result);
             }
-            AppEvent::UpdateModelRouterApproval { mode } => {
-                self.update_model_router_approval(app_server, mode);
-            }
-            AppEvent::UpdateModelRouterDecisionFeedback { enabled } => {
-                self.update_model_router_decision_feedback(app_server, enabled);
-            }
-            AppEvent::OpenModelRouterMenu => self.chat_widget.open_model_router_menu(),
-            AppEvent::OpenModelRouterModeMenu => self.chat_widget.open_model_router_mode_menu(),
-            AppEvent::OpenModelRouterApprovalMenu => {
-                self.chat_widget.open_model_router_approval_menu()
-            }
-            AppEvent::OpenModelRouterAbMenu => self.chat_widget.open_model_router_ab_menu(),
-            AppEvent::OpenModelRouterPolicyConfidenceMenu { policy } => self
-                .chat_widget
-                .open_model_router_policy_confidence_menu(policy),
-            AppEvent::OpenModelRouterPolicyClassMenu { policy, class_id } => self
-                .chat_widget
-                .open_model_router_policy_class_menu(policy, class_id),
-            AppEvent::OpenModelRouterPolicyClassEffortMenu { policy, class_id } => self
-                .chat_widget
-                .open_model_router_policy_class_effort_menu(policy, class_id),
-            AppEvent::OpenModelRouterPolicyRouteMenu { policy, class_id } => self
-                .chat_widget
-                .open_model_router_policy_route_menu(policy, class_id),
-            AppEvent::OpenModelRouterPolicyLadderMenu { policy } => self
-                .chat_widget
-                .open_model_router_policy_ladder_menu(policy),
-            AppEvent::OpenModelRouterPolicyReportingBaselineMenu { policy } => self
-                .chat_widget
-                .open_model_router_policy_reporting_baseline_menu(policy),
-            AppEvent::OpenModelRouterPolicyLadderRouteMenu { policy, rank } => self
-                .chat_widget
-                .open_model_router_policy_ladder_route_menu(policy, rank),
-            AppEvent::OpenModelRouterPolicyLadderEffortMenu { policy, rank } => self
-                .chat_widget
-                .open_model_router_policy_ladder_effort_menu(policy, rank),
-            AppEvent::ModelRouterConfigUpdated {
-                mode,
-                approval,
-                decision_feedback,
-                error,
+            AppEvent::ModelRouterSettingsResponse {
+                response,
+                host_action,
             } => {
-                if let Some(error) = error {
-                    self.chat_widget.add_error_message(format!(
-                        "Failed to update model-router setting: {error}"
-                    ));
-                } else {
-                    if let Some(mode) = mode {
-                        self.chat_widget.update_model_router_mode(&mode);
-                    }
-                    if let Some(approval) = approval {
-                        self.chat_widget.update_model_router_approval(&approval);
-                    }
-                    if let Some(enabled) = decision_feedback {
-                        self.chat_widget
-                            .update_model_router_decision_feedback(enabled);
-                    }
-                    self.chat_widget.add_info_message(
-                        "Model-router setting updated.".to_string(),
-                        /*hint*/ None,
-                    );
-                    self.chat_widget.open_model_router_menu();
+                self.respond_model_router_settings(app_server, response, host_action);
+            }
+            AppEvent::ModelRouterSettingsResponded {
+                result,
+                host_action,
+            } => {
+                let host_action_succeeded = result
+                    .as_ref()
+                    .is_ok_and(|response| response.error.is_none())
+                    && host_action.is_some();
+                if let Some(action) = host_action
+                    && host_action_succeeded
+                {
+                    self.app_event_tx
+                        .send(AppEvent::ModelRouterSettingsHostAction { action });
+                }
+                if !host_action_succeeded {
+                    self.show_model_router_settings_respond_result(result);
                 }
             }
-            AppEvent::OpenModelRouterPolicyManager => {
-                self.chat_widget.show_model_router_policy_loading();
-                self.fetch_model_router_policy(app_server);
-            }
-            AppEvent::BootstrapModelRouterPolicy => {
-                self.chat_widget.show_model_router_policy_loading();
-                self.bootstrap_model_router_policy(app_server);
-            }
-            AppEvent::UpdateModelRouterPolicy { policy } => {
-                self.update_model_router_policy(app_server, policy);
-            }
-            AppEvent::ModelRouterPolicyLoaded { result } => match result {
-                Ok(response) => {
-                    if let Some(policy) = response.policy {
-                        self.chat_widget.open_model_router_policy_manager(policy);
-                    } else if let Some(error) = response.error {
-                        self.chat_widget.dismiss_model_router_policy_loading();
-                        self.chat_widget.add_error_message(format!(
-                            "Model-router policy needs repair before it can be managed: {error}"
-                        ));
-                    } else {
-                        self.chat_widget.dismiss_model_router_policy_loading();
-                        self.chat_widget.add_info_message(
-                            "No model-router policy exists yet. Select Bootstrap policy from `/model-router`."
-                                .to_string(),
-                            /*hint*/ None,
+            AppEvent::ModelRouterSettingsHostAction { action } => match action {
+                xedoc_app_server_protocol::ModelRouterSettingsHostAction::OpenReport => {
+                    self.open_model_router_report(app_server);
+                }
+                xedoc_app_server_protocol::ModelRouterSettingsHostAction::ArmAb
+                | xedoc_app_server_protocol::ModelRouterSettingsHostAction::DisableAb => {
+                    let Some(thread_id) = self.active_thread_id.or(self.chat_widget.thread_id())
+                    else {
+                        self.chat_widget.add_error_message(
+                            "No active thread available for model-router A/B.".to_string(),
                         );
-                    }
-                }
-                Err(error) => {
-                    self.chat_widget.dismiss_model_router_policy_loading();
-                    self.chat_widget
-                        .add_error_message(format!("Failed to read model-router policy: {error}"));
-                }
-            },
-            AppEvent::ModelRouterPolicyBootstrapped { result } => match result {
-                Ok(response) => {
-                    let message = if response.created {
-                        "Created the initial model-router policy."
-                    } else {
-                        "Kept the existing model-router policy."
+                        return Ok(AppRunControl::Continue);
                     };
-                    self.chat_widget
-                        .add_info_message(message.to_string(), /*hint*/ None);
-                    if let Some(policy) = response.policy {
-                        self.chat_widget.open_model_router_policy_manager(policy);
-                    } else if let Some(error) = response.error {
-                        self.chat_widget.dismiss_model_router_policy_loading();
-                        self.chat_widget.add_error_message(format!(
-                            "Model-router policy needs repair before it can be managed: {error}"
-                        ));
-                    }
-                }
-                Err(error) => {
-                    self.chat_widget.dismiss_model_router_policy_loading();
-                    self.chat_widget.add_error_message(format!(
-                        "Failed to bootstrap model-router policy: {error}"
-                    ));
+                    let action = match action {
+                        xedoc_app_server_protocol::ModelRouterSettingsHostAction::ArmAb => {
+                            xedoc_app_server_protocol::ModelRouterAbControlAction::ArmNext
+                        }
+                        xedoc_app_server_protocol::ModelRouterSettingsHostAction::DisableAb => {
+                            xedoc_app_server_protocol::ModelRouterAbControlAction::Disable
+                        }
+                        xedoc_app_server_protocol::ModelRouterSettingsHostAction::OpenReport => {
+                            unreachable!("handled above")
+                        }
+                    };
+                    self.control_model_router_ab(app_server, thread_id, action);
                 }
             },
-            AppEvent::ModelRouterPolicyUpdated { result } => match result {
-                Ok(policy) => {
-                    self.chat_widget.add_info_message(
-                        "Model-router policy updated; the next eligible decision uses it."
-                            .to_string(),
-                        /*hint*/ None,
-                    );
-                    self.chat_widget.open_model_router_policy_manager(policy);
-                }
-                Err(error) => self
-                    .chat_widget
-                    .add_error_message(format!("Failed to update model-router policy: {error}")),
-            },
-            AppEvent::ModelRouterReportOpenRequested => {
-                self.open_model_router_report(app_server);
-            }
             AppEvent::ModelRouterReportOpenLoaded { result } => match result {
                 Ok(response) => {
                     self.app_event_tx
@@ -1274,15 +1186,6 @@ impl App {
                     .chat_widget
                     .add_error_message(format!("Failed to open model-router report: {error}")),
             },
-            AppEvent::ModelRouterAbControlRequested { action } => {
-                let Some(thread_id) = self.active_thread_id.or(self.chat_widget.thread_id()) else {
-                    self.chat_widget.add_error_message(
-                        "No active thread available for model-router A/B.".to_string(),
-                    );
-                    return Ok(AppRunControl::Continue);
-                };
-                self.control_model_router_ab(app_server, thread_id, action);
-            }
             AppEvent::ModelRouterAbControlLoaded { result } => match result {
                 Ok(()) => self.chat_widget.add_info_message(
                     "Model-router A/B setting updated.".to_string(),

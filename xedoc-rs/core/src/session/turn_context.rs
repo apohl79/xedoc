@@ -445,30 +445,29 @@ impl Session {
         .await
     }
 
-    /// Builds one routed turn from an ephemeral session-configuration snapshot.
-    ///
-    /// Automatic routing must not update the persistent orchestrator selection.
-    /// Returning `None` leaves the caller free to run its already-built
-    /// fallback turn when route validation fails.
-    pub(crate) async fn new_routed_turn_from_current_settings_with_sub_id(
+    pub(crate) async fn new_script_routed_turn_from_current_settings_with_sub_id(
         &self,
         sub_id: String,
         final_output_json_schema: Option<serde_json::Value>,
-        route: &xedoc_model_router::ModelRoute,
+        route: &xedoc_script_protocol::Route,
     ) -> Option<Arc<TurnContext>> {
         let mut session_configuration = self.default_turn_configuration().await;
         let service_tier = session_configuration.service_tier.clone();
         let config = Arc::make_mut(&mut session_configuration.original_config_do_not_use);
         config.service_tier = service_tier;
-        if !crate::model_router::apply_route_to_config(config, &self.services.models_manager, route)
-            .await
+        if !crate::model_router::apply_script_route_to_config(
+            config,
+            &self.services.models_manager,
+            route,
+        )
+        .await
         {
             return None;
         }
         session_configuration.provider = config.model_provider.clone();
         session_configuration.collaboration_mode =
             session_configuration.collaboration_mode.with_updates(
-                Some(route.model_slug.clone()),
+                Some(config.model.clone().unwrap_or_default()),
                 Some(config.model_reasoning_effort.clone()),
                 /*developer_instructions*/ None,
             );

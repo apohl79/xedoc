@@ -15,6 +15,275 @@ use xedoc_protocol::protocol::ModelRouterEffectiveRoute as CoreModelRouterEffect
 use xedoc_protocol::protocol::ModelRouterScope as CoreModelRouterScope;
 use xedoc_protocol::protocol::ModelVerification as CoreModelVerification;
 
+/// A generic constrained interaction requested by an extension script.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionRequestParams {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub request_id: String,
+    pub extension_id: String,
+    pub interaction_id: String,
+    pub continuation: String,
+    pub state_revision: Option<String>,
+    pub expires_at: i64,
+    pub surface: ExtensionInteractionSurface,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterSettingsOpenParams {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterSettingsInteraction {
+    pub interaction_id: String,
+    pub continuation: String,
+    pub state_revision: String,
+    pub surface: ExtensionInteractionSurface,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterSettingsOpenResponse {
+    pub interaction: Option<ModelRouterSettingsInteraction>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterSettingsRespondParams {
+    pub response: ExtensionInteractionRequestResponse,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterSettingsRespondResponse {
+    pub interaction: Option<ModelRouterSettingsInteraction>,
+    pub error: Option<String>,
+}
+
+/// The constrained declarative surface an extension client may render.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(tag = "type", rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ExtensionInteractionSurface {
+    Menu {
+        title: String,
+        subtitle: Option<String>,
+        items: Vec<ExtensionInteractionMenuItem>,
+    },
+    Form {
+        id: String,
+        title: String,
+        subtitle: Option<String>,
+        fields: Vec<ExtensionInteractionField>,
+        submit: ExtensionInteractionAction,
+        cancel: Option<ExtensionInteractionAction>,
+    },
+    Confirmation {
+        title: String,
+        body: String,
+        details: Vec<ExtensionInteractionDetail>,
+        actions: Vec<ExtensionInteractionAction>,
+        #[serde(rename = "override")]
+        #[ts(rename = "override")]
+        override_form: Option<ExtensionInteractionForm>,
+    },
+    Notice {
+        title: String,
+        body: String,
+        level: ExtensionInteractionNoticeLevel,
+    },
+}
+
+/// A selectable row in an extension interaction menu.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionMenuItem {
+    pub id: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub action: ExtensionInteractionAction,
+    pub current: Option<bool>,
+    pub disabled: Option<bool>,
+}
+
+/// An opaque action supplied by an extension interaction.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionAction {
+    pub id: String,
+    pub opens: Option<String>,
+    pub host_action: Option<ModelRouterSettingsHostAction>,
+    pub label: Option<String>,
+    pub key_bindings: Vec<String>,
+    pub value: Option<JsonValue>,
+}
+
+/// Explicit host capabilities available to model-router settings scripts.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(rename_all = "kebab-case")]
+#[ts(export_to = "v2/")]
+pub enum ModelRouterSettingsHostAction {
+    OpenReport,
+    ArmAb,
+    DisableAb,
+}
+
+/// A field in an extension interaction form.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export_to = "v2/")]
+pub enum ExtensionInteractionField {
+    #[schemars(rename_all = "camelCase")]
+    Select {
+        id: String,
+        label: String,
+        description: Option<String>,
+        value: Option<String>,
+        options: Vec<ExtensionInteractionOption>,
+    },
+    #[schemars(rename_all = "camelCase")]
+    Boolean {
+        id: String,
+        label: String,
+        description: Option<String>,
+        value: bool,
+    },
+    #[schemars(rename_all = "camelCase")]
+    Text {
+        id: String,
+        label: String,
+        description: Option<String>,
+        value: String,
+        max_bytes: u32,
+    },
+    #[schemars(rename_all = "camelCase")]
+    ModelRoute {
+        id: String,
+        label: String,
+        description: Option<String>,
+        value: Option<ExtensionInteractionRoute>,
+        eligible_routes: Vec<ExtensionInteractionEligibleRoute>,
+    },
+}
+
+/// An opaque selectable option in an extension interaction form.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionOption {
+    pub id: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub disabled: Option<bool>,
+}
+
+/// A form in an extension interaction surface.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionForm {
+    pub id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub fields: Vec<ExtensionInteractionField>,
+    pub submit: ExtensionInteractionAction,
+    pub cancel: Option<ExtensionInteractionAction>,
+}
+
+/// A selected model route in an extension interaction.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionRoute {
+    pub provider_id: String,
+    pub model: String,
+    pub reasoning_effort: String,
+}
+
+/// A model route eligible for selection in an extension interaction.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionEligibleRoute {
+    pub provider_id: String,
+    pub model: String,
+    pub reasoning_efforts: Vec<String>,
+}
+
+/// A visible label/value pair in an extension interaction confirmation.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionDetail {
+    pub label: String,
+    pub value: String,
+}
+
+/// Presentation severity for an extension interaction notice.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ExtensionInteractionNoticeLevel {
+    Info,
+    Success,
+    Warning,
+    Error,
+}
+
+/// A response to a generic scripted extension interaction.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionRequestResponse {
+    pub extension_id: String,
+    pub interaction_id: String,
+    pub continuation: String,
+    pub state_revision: Option<String>,
+    pub outcome: ExtensionInteractionOutcome,
+    pub action: Option<ExtensionInteractionSelectedAction>,
+    pub values: JsonValue,
+}
+
+/// An opaque action selected by the client.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionSelectedAction {
+    pub id: String,
+}
+
+/// How the client concluded an extension interaction.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ExtensionInteractionOutcome {
+    Accepted,
+    Cancelled,
+    Dismissed,
+}
+
 v2_enum_from_core!(
     pub enum ModelRerouteReason from CoreModelRerouteReason {
         HighRiskCyberActivity
@@ -69,16 +338,6 @@ pub enum ModelRouterEffectiveRoute {
     Unavailable,
 }
 
-/// A selectable model route proposed by the model router.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterRoute {
-    pub provider_id: String,
-    pub model_slug: String,
-    pub reasoning_effort: String,
-}
-
 /// A direct user control for the next root-turn A/B experiment.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
@@ -101,192 +360,6 @@ pub struct ModelRouterAbControlParams {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ModelRouterAbControlResponse {}
-
-/// A user-editable routing class in the standalone model-router policy.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicyClass {
-    pub id: String,
-    pub minimum_reasoning_effort: ReasoningEffort,
-    pub required_capabilities: Vec<String>,
-}
-
-/// A user-editable position in the automatic-routing model ladder.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterRankedRoute {
-    pub rank: u16,
-    pub class: String,
-    pub provider: String,
-    pub model: String,
-    pub reasoning_effort: ReasoningEffort,
-}
-
-/// The score domain and ordered automatic-routing candidates.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterRanking {
-    pub minimum_score: u16,
-    pub maximum_score: u16,
-    pub ladder: Vec<ModelRouterRankedRoute>,
-    pub reporting_baseline: Option<ModelRouterRankedRoute>,
-}
-
-/// A provider/model route with user-assigned capability tags.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterCapability {
-    pub provider: String,
-    pub model: String,
-    pub tags: Vec<String>,
-}
-
-/// The stable, user-editable portion of the standalone model-router policy.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicy {
-    pub policy_revision: String,
-    pub classifier_revision: String,
-    #[ts(type = "number")]
-    pub minimum_score: f64,
-    #[ts(type = "number")]
-    pub minimum_margin: f64,
-    pub capabilities: Vec<ModelRouterCapability>,
-    pub classes: Vec<ModelRouterPolicyClass>,
-    pub ranking: ModelRouterRanking,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicyReadParams {}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicyReadResponse {
-    pub exists: bool,
-    pub policy: Option<ModelRouterPolicy>,
-    pub error: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicyBootstrapParams {}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicyBootstrapResponse {
-    pub created: bool,
-    pub policy: Option<ModelRouterPolicy>,
-    pub error: Option<String>,
-}
-
-/// Replace the user-editable routing policy controls while preserving classifier weights.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicyWriteParams {
-    #[ts(type = "number")]
-    pub minimum_score: f64,
-    #[ts(type = "number")]
-    pub minimum_margin: f64,
-    pub capabilities: Vec<ModelRouterCapability>,
-    pub classes: Vec<ModelRouterPolicyClass>,
-    #[ts(type = "import(\"./ModelRouterRanking\").ModelRouterRanking")]
-    pub ranking: ModelRouterRanking,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterPolicyWriteResponse {
-    pub policy: ModelRouterPolicy,
-}
-
-/// The action a user takes on a model-router proposal.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub enum ModelRouterApprovalAction {
-    Approve,
-    Reject,
-    Override,
-}
-
-/// A dedicated, structured request to approve a proposed model route.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterApprovalParams {
-    pub approval_id: String,
-    pub thread_id: String,
-    pub turn_id: String,
-    pub scope: ModelRouterScope,
-    pub predicted_classification: String,
-    #[serde(default)]
-    pub classifications: std::collections::BTreeMap<String, String>,
-    #[serde(default)]
-    pub classification_options: std::collections::BTreeMap<String, Vec<String>>,
-    #[serde(default)]
-    pub available_routes: Vec<ModelRouterRoute>,
-    #[serde(default)]
-    pub classification_ratings: std::collections::BTreeMap<
-        String,
-        std::collections::BTreeMap<String, ModelRouterApprovalClassRating>,
-    >,
-    pub ranking_minimum_score: u16,
-    pub ranking_maximum_score: u16,
-    #[serde(default)]
-    pub ranking_ladder: Vec<ModelRouterApprovalRankedRoute>,
-    pub proposed_route: ModelRouterRoute,
-    pub current_route: ModelRouterEffectiveRoute,
-    #[ts(type = "number")]
-    pub score: f64,
-    #[ts(type = "number")]
-    pub margin: f64,
-    pub classifier_revision: String,
-    pub policy_revision: String,
-    pub prompt_sha256: String,
-}
-
-/// The response to a model-router approval request.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterApprovalResponse {
-    pub action: ModelRouterApprovalAction,
-    pub classification: Option<String>,
-    #[serde(default)]
-    pub classifications: std::collections::BTreeMap<String, String>,
-}
-
-/// Rating and allowed model range for one approval classification choice.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterApprovalClassRating {
-    pub points: u16,
-    pub minimum_model_class: String,
-    pub maximum_model_class: String,
-}
-
-/// One available policy-ranked route for approval preview calculation.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct ModelRouterApprovalRankedRoute {
-    pub rank: u16,
-    pub model_class: String,
-    pub route: ModelRouterRoute,
-}
 
 impl From<CoreModelRouterEffectiveRoute> for ModelRouterEffectiveRoute {
     fn from(value: CoreModelRouterEffectiveRoute) -> Self {
@@ -573,8 +646,13 @@ pub struct ModelRouterDecisionNotification {
     pub scope: ModelRouterScope,
     pub disposition: ModelRouterDisposition,
     pub reason: ModelRouterDecisionReason,
+    /// Whether interactive clients should render this decision's feedback.
+    #[serde(default)]
+    pub feedback_visible: bool,
     /// Prompt-free diagnostic retained when a local router dependency fails.
     pub diagnostic: Option<String>,
+    /// Compact prompt-free decision summary supplied by the router.
+    pub summary: Option<String>,
     pub policy_revision: String,
     pub classifications: std::collections::BTreeMap<String, String>,
     /// Classifier confidence score from the task embedding.

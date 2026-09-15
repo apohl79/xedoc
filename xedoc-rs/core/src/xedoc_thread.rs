@@ -201,6 +201,21 @@ impl XedocThread {
         self.io.submit(op).await
     }
 
+    /// Update the root-thread model-router A/B state without requiring an active turn.
+    pub async fn control_model_router_ab(
+        &self,
+        action: xedoc_protocol::protocol::ModelRouterAbControlAction,
+    ) {
+        match action {
+            xedoc_protocol::protocol::ModelRouterAbControlAction::ArmNext => {
+                self.session.arm_model_router_ab_next().await;
+            }
+            xedoc_protocol::protocol::ModelRouterAbControlAction::Disable => {
+                self.session.disable_model_router_ab().await;
+            }
+        }
+    }
+
     /// Returns the session telemetry handle for thread-scoped production instrumentation.
     pub fn session_telemetry(&self) -> SessionTelemetry {
         self.session.services.session_telemetry.clone()

@@ -1,6 +1,6 @@
 //! Ephemeral root-thread state for one-turn model-router A/B experiments.
 
-use xedoc_model_router::ModelRoute;
+use xedoc_script_protocol::Route;
 
 /// A bounded preference recorded by the root after inspecting a completed pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,7 +25,7 @@ impl AbPairPreference {
 #[derive(Clone, Debug)]
 pub(crate) struct ActiveAbPair {
     pub(crate) pair_id: String,
-    pub(crate) orchestrator_route: ModelRoute,
+    pub(crate) orchestrator_route: Route,
     pub(crate) router_decision_id: Option<String>,
     pub(crate) preference: Option<AbPairPreference>,
     pub(crate) turn_id: Option<String>,
@@ -49,7 +49,7 @@ impl AbPairRuntime {
         self.active = None;
     }
 
-    pub(crate) fn begin_root_turn(&mut self, orchestrator_route: ModelRoute) {
+    pub(crate) fn begin_root_turn(&mut self, orchestrator_route: Route) {
         self.active = self.armed_for_next_root_turn.then(|| ActiveAbPair {
             pair_id: uuid::Uuid::now_v7().to_string(),
             orchestrator_route,

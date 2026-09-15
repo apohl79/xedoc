@@ -6,7 +6,7 @@ impl ChatWidget {
         &mut self,
         notification: ModelRouterDecisionNotification,
     ) {
-        if !self.config.model_router.decision_feedback {
+        if !notification.feedback_visible {
             return;
         }
         self.add_to_history(history_cell::new_model_router_decision(notification));

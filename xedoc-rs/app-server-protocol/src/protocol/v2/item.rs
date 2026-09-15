@@ -353,7 +353,10 @@ pub enum ThreadItem {
         scope: crate::protocol::v2::ModelRouterScope,
         disposition: crate::protocol::v2::ModelRouterDisposition,
         reason: crate::protocol::v2::ModelRouterDecisionReason,
+        #[serde(default)]
+        feedback_visible: bool,
         diagnostic: Option<String>,
+        summary: Option<String>,
         #[serde(default)]
         classifications: std::collections::BTreeMap<String, String>,
         #[serde(default)]

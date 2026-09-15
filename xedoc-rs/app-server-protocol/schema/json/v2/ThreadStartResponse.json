@@ -2108,6 +2108,10 @@
             "effectiveRoute": {
               "$ref": "#/definitions/ModelRouterEffectiveRoute"
             },
+            "feedbackVisible": {
+              "default": false,
+              "type": "boolean"
+            },
             "id": {
               "type": "string"
             },
@@ -2177,6 +2181,12 @@
             },
             "scope": {
               "$ref": "#/definitions/ModelRouterScope"
+            },
+            "summary": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "type": {
               "enum": [

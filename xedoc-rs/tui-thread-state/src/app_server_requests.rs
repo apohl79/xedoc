@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use xedoc_app_server_protocol::CommandExecutionRequestApprovalResponse;
+use xedoc_app_server_protocol::ExtensionInteractionRequestResponse;
 use xedoc_app_server_protocol::FileChangeRequestApprovalResponse;
 use xedoc_app_server_protocol::McpServerElicitationRequestResponse;
-use xedoc_app_server_protocol::ModelRouterApprovalResponse;
 use xedoc_app_server_protocol::PermissionsRequestApprovalResponse;
 use xedoc_app_server_protocol::RequestId as AppServerRequestId;
 use xedoc_app_server_protocol::ServerRequest;
@@ -32,7 +32,7 @@ pub struct PendingAppServerRequests {
     file_change_approvals: HashMap<String, AppServerRequestId>,
     permissions_approvals: HashMap<String, AppServerRequestId>,
     user_inputs: HashMap<String, VecDeque<PendingUserInputRequest>>,
-    model_router_approvals: HashMap<String, AppServerRequestId>,
+    extension_interactions: HashMap<String, AppServerRequestId>,
     mcp_requests: HashMap<McpRequestKey, AppServerRequestId>,
 }
 
@@ -42,7 +42,7 @@ impl PendingAppServerRequests {
         self.file_change_approvals.clear();
         self.permissions_approvals.clear();
         self.user_inputs.clear();
-        self.model_router_approvals.clear();
+        self.extension_interactions.clear();
         self.mcp_requests.clear();
     }
 
@@ -91,9 +91,9 @@ impl PendingAppServerRequests {
                     });
                 None
             }
-            ServerRequest::ModelRouterRequestApproval { request_id, params } => {
-                self.model_router_approvals
-                    .insert(params.approval_id.clone(), request_id.clone());
+            ServerRequest::ExtensionInteractionRequest { request_id, params } => {
+                self.extension_interactions
+                    .insert(params.request_id.clone(), request_id.clone());
                 None
             }
             ServerRequest::McpServerElicitationRequest { request_id, params } => {
@@ -206,19 +206,26 @@ impl PendingAppServerRequests {
                     })
                 })
                 .transpose()?,
-            AppCommand::ModelRouterApproval { id, response } => self
-                .model_router_approvals
-                .remove(id)
+            AppCommand::ExtensionInteractionResponse {
+                request_id,
+                response,
+            } => self
+                .extension_interactions
+                .remove(request_id)
                 .map(|request_id| {
                     Ok::<AppServerRequestResolution, String>(AppServerRequestResolution {
                         request_id,
-                        result: serde_json::to_value(ModelRouterApprovalResponse {
-                            action: response.action,
-                            classification: response.classification.clone(),
-                            classifications: response.classifications.clone(),
+                        result: serde_json::to_value(ExtensionInteractionRequestResponse {
+                            extension_id: response.extension_id.clone(),
+                            interaction_id: response.interaction_id.clone(),
+                            continuation: response.continuation.clone(),
+                            state_revision: response.state_revision.clone(),
+                            outcome: response.outcome,
+                            action: response.action.clone(),
+                            values: response.values.clone(),
                         })
                         .map_err(|err| {
-                            format!("failed to serialize model-router approval response: {err}")
+                            format!("failed to serialize extension interaction response: {err}")
                         })?,
                     })
                 })
@@ -291,13 +298,17 @@ impl PendingAppServerRequests {
             });
         }
 
-        if let Some(id) = self
-            .model_router_approvals
-            .iter()
-            .find_map(|(id, value)| (value == request_id).then(|| id.clone()))
+        if let Some(interaction_request_id) =
+            self.extension_interactions
+                .iter()
+                .find_map(|(interaction_request_id, value)| {
+                    (value == request_id).then(|| interaction_request_id.clone())
+                })
         {
-            self.model_router_approvals.remove(&id);
-            return Some(ResolvedAppServerRequest::ModelRouterApproval { id });
+            self.extension_interactions.remove(&interaction_request_id);
+            return Some(ResolvedAppServerRequest::ExtensionInteraction {
+                request_id: interaction_request_id,
+            });
         }
 
         if let Some(key) = self
@@ -325,8 +336,8 @@ impl PendingAppServerRequests {
                 .file_change_approvals
                 .values()
                 .any(|pending_request_id| pending_request_id == request_id),
-            ServerRequest::ModelRouterRequestApproval { request_id, .. } => self
-                .model_router_approvals
+            ServerRequest::ExtensionInteractionRequest { request_id, .. } => self
+                .extension_interactions
                 .values()
                 .any(|pending_request_id| pending_request_id == request_id),
             ServerRequest::PermissionsRequestApproval { request_id, .. } => self

@@ -1,0 +1,239 @@
+{
+  "approval": "changes",
+  "axes": [
+    {
+      "classes": [
+        {
+          "id": "group1: question, docs_analysis, packaging, operational, testing",
+          "maximumModelClass": "smart",
+          "minimumModelClass": "simple",
+          "points": 1
+        },
+        {
+          "id": "group2: implementation, bug_fix, refactor, docs_authoring, orchestration, calibration",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "simple",
+          "points": 3
+        },
+        {
+          "id": "group3: research, review, diagnosis, design",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "smart",
+          "points": 6
+        }
+      ],
+      "id": "work_type"
+    },
+    {
+      "classes": [
+        {
+          "id": "low",
+          "maximumModelClass": "smart",
+          "minimumModelClass": "simple",
+          "points": 1
+        },
+        {
+          "id": "medium",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "simple",
+          "points": 3
+        },
+        {
+          "id": "high",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "simple",
+          "points": 6
+        },
+        {
+          "id": "very_high",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "smart",
+          "points": 9
+        }
+      ],
+      "id": "complexity"
+    },
+    {
+      "classes": [
+        {
+          "id": "none",
+          "maximumModelClass": "smart",
+          "minimumModelClass": "simple",
+          "points": 0
+        },
+        {
+          "id": "delegate",
+          "maximumModelClass": "smart",
+          "minimumModelClass": "simple",
+          "points": 1
+        },
+        {
+          "id": "coordination",
+          "maximumModelClass": "smart",
+          "minimumModelClass": "smart",
+          "points": 1
+        },
+        {
+          "id": "workflow",
+          "maximumModelClass": "smart",
+          "minimumModelClass": "smart",
+          "points": 3
+        }
+      ],
+      "id": "orchestration"
+    },
+    {
+      "classes": [
+        {
+          "id": "low",
+          "maximumModelClass": "smart",
+          "minimumModelClass": "simple",
+          "points": 1
+        },
+        {
+          "id": "medium",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "simple",
+          "points": 3
+        },
+        {
+          "id": "high",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "smart",
+          "points": 10
+        }
+      ],
+      "id": "risk"
+    }
+  ],
+  "confidence": "balanced",
+  "confidencePresets": {
+    "balanced": {
+      "minimumMargin": 0.08,
+      "minimumScore": 0.35
+    },
+    "permissive": {
+      "minimumMargin": 0.04,
+      "minimumScore": 0.2
+    },
+    "strict": {
+      "minimumMargin": 0.15,
+      "minimumScore": 0.5
+    }
+  },
+  "feedback": true,
+  "mode": "off",
+  "ranking": {
+    "ladder": [
+      {
+        "class": "simple",
+        "model": "gpt-5.6-luna",
+        "providerId": "openai",
+        "rank": 1,
+        "reasoningEffort": "low"
+      },
+      {
+        "class": "simple",
+        "model": "gpt-5.6-luna",
+        "providerId": "openai",
+        "rank": 2,
+        "reasoningEffort": "medium"
+      },
+      {
+        "class": "simple",
+        "model": "gpt-5.6-luna",
+        "providerId": "openai",
+        "rank": 3,
+        "reasoningEffort": "high"
+      },
+      {
+        "class": "simple",
+        "model": "gpt-5.6-luna",
+        "providerId": "openai",
+        "rank": 4,
+        "reasoningEffort": "xhigh"
+      },
+      {
+        "class": "simple",
+        "model": "gpt-5.6-luna",
+        "providerId": "openai",
+        "rank": 5,
+        "reasoningEffort": "max"
+      },
+      {
+        "class": "smart",
+        "model": "gpt-5.6-terra",
+        "providerId": "openai",
+        "rank": 6,
+        "reasoningEffort": "low"
+      },
+      {
+        "class": "smart",
+        "model": "gpt-5.6-terra",
+        "providerId": "openai",
+        "rank": 7,
+        "reasoningEffort": "medium"
+      },
+      {
+        "class": "smart",
+        "model": "gpt-5.6-terra",
+        "providerId": "openai",
+        "rank": 8,
+        "reasoningEffort": "high"
+      },
+      {
+        "class": "smart",
+        "model": "gpt-5.6-terra",
+        "providerId": "openai",
+        "rank": 9,
+        "reasoningEffort": "xhigh"
+      },
+      {
+        "class": "smart",
+        "model": "gpt-5.6-terra",
+        "providerId": "openai",
+        "rank": 10,
+        "reasoningEffort": "max"
+      },
+      {
+        "class": "intelligent",
+        "model": "gpt-5.6-sol",
+        "providerId": "openai",
+        "rank": 11,
+        "reasoningEffort": "low"
+      },
+      {
+        "class": "intelligent",
+        "model": "gpt-5.6-sol",
+        "providerId": "openai",
+        "rank": 12,
+        "reasoningEffort": "medium"
+      },
+      {
+        "class": "intelligent",
+        "model": "gpt-5.6-sol",
+        "providerId": "openai",
+        "rank": 13,
+        "reasoningEffort": "high"
+      },
+      {
+        "class": "intelligent",
+        "model": "gpt-5.6-sol",
+        "providerId": "openai",
+        "rank": 14,
+        "reasoningEffort": "xhigh"
+      },
+      {
+        "class": "intelligent",
+        "model": "gpt-5.6-sol",
+        "providerId": "openai",
+        "rank": 15,
+        "reasoningEffort": "max"
+      }
+    ],
+    "maximumScore": 35,
+    "minimumScore": 3
+  },
+  "reportingBaseline": null,
+  "revision": 1
+}

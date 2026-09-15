@@ -1644,104 +1644,67 @@
       },
       "type": "object"
     },
-    "ModelRouterApproval": {
-      "description": "Controls when active model-router decisions require user approval.",
-      "enum": [
-        "off",
-        "changes",
-        "all"
-      ],
-      "type": "string"
-    },
-    "ModelRouterApprovalSchema": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/ModelRouterApproval"
-        },
-        {
-          "type": "boolean"
-        }
-      ]
-    },
     "ModelRouterConfigToml": {
-      "description": "Stable controls in `[model_router]`.",
+      "description": "Bounded host controls in `[model_router]`.",
       "properties": {
-        "approval": {
+        "context": {
           "allOf": [
             {
-              "$ref": "#/definitions/ModelRouterApprovalSchema"
+              "$ref": "#/definitions/ModelRouterContextToml"
             }
           ],
-          "default": "off",
-          "description": "Controls approval prompts for decisions in an active router mode."
+          "default": {
+            "max_recent_message_bytes": 24576,
+            "recent_messages": 8
+          },
+          "description": "Bounded conversation context supplied to the script."
         },
-        "baseline": {
-          "$ref": "#/definitions/ModelRouterRoute"
-        },
-        "decision_feedback": {
-          "default": true,
-          "type": "boolean"
-        },
-        "fallback": {
-          "type": "string"
-        },
-        "max_prompt_bytes": {
-          "default": 16384,
-          "format": "uint",
+        "decision_timeout_ms": {
+          "default": 3000,
+          "description": "Maximum wall-clock duration for one route decision.",
+          "format": "uint64",
           "minimum": 0.0,
           "type": "integer"
         },
-        "mode": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/ModelRouterMode"
-            }
-          ],
-          "default": "off"
-        },
-        "policy_path": {
-          "$ref": "#/definitions/AbsolutePathBuf"
+        "interaction_timeout_ms": {
+          "default": 10000,
+          "description": "Maximum wall-clock duration for one settings interaction.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
         },
         "report_url": {
+          "description": "Optional public URL for the host-owned routing report.",
           "type": "string"
+        },
+        "script": {
+          "description": "Direct-exec argv for the sole model-router script.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"
     },
-    "ModelRouterMode": {
-      "description": "Runtime mode for model-router decisions.",
-      "enum": [
-        "off",
-        "shadow-subagents",
-        "shadow-full",
-        "subagents",
-        "full"
-      ],
-      "type": "string"
-    },
-    "ModelRouterRoute": {
-      "additionalProperties": false,
-      "description": "A provider/model/reasoning route configured for reporting or fallback.",
+    "ModelRouterContextToml": {
+      "description": "Bounded conversation context supplied to a model-router script.",
       "properties": {
-        "model": {
-          "type": "string"
+        "max_recent_message_bytes": {
+          "default": 24576,
+          "description": "Maximum UTF-8 byte length retained for each recent message.",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
         },
-        "provider": {
-          "type": "string"
-        },
-        "reasoning_effort": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/ReasoningEffort"
-            }
-          ],
-          "default": "medium"
+        "recent_messages": {
+          "default": 8,
+          "description": "Maximum number of recent user and final-assistant messages.",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
         }
       },
-      "required": [
-        "model",
-        "provider"
-      ],
       "type": "object"
     },
     "ModelTokenPrices": {
@@ -5297,14 +5260,14 @@
         }
       ],
       "default": {
-        "approval": "off",
-        "baseline": null,
-        "decision_feedback": true,
-        "fallback": null,
-        "max_prompt_bytes": 16384,
-        "mode": "off",
-        "policy_path": null,
-        "report_url": null
+        "context": {
+          "max_recent_message_bytes": 24576,
+          "recent_messages": 8
+        },
+        "decision_timeout_ms": 3000,
+        "interaction_timeout_ms": 10000,
+        "report_url": null,
+        "script": null
       },
       "description": "Experimental model-router controls and policy location."
     },

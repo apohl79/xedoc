@@ -26,7 +26,6 @@ use xedoc_config::ConstrainedWithSource;
 use xedoc_config::FeatureRequirementsToml;
 use xedoc_config::McpServerRequirement;
 use xedoc_config::ModelRouterConfigToml;
-use xedoc_config::ModelRouterMode;
 use xedoc_config::PluginRequirementsToml;
 use xedoc_config::ProfileV2Name;
 use xedoc_config::ResidencyRequirement;
@@ -3823,7 +3822,7 @@ impl Config {
                 cfg.model_router.clone()
             } else {
                 ModelRouterConfigToml {
-                    mode: ModelRouterMode::Off,
+                    script: None,
                     ..cfg.model_router.clone()
                 }
             },

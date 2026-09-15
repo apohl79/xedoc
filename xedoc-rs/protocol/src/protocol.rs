@@ -310,6 +310,9 @@ pub enum Op {
     /// Release a previously staged inter-agent communication.
     ReleaseInterAgentCommunication { barrier_id: String },
 
+    /// Start an idle turn after previously queued work becomes eligible.
+    StartPendingWork,
+
     /// Approve a command execution
     ExecApproval {
         /// The id of the submission we are approving
@@ -350,12 +353,18 @@ pub enum Op {
         response: RequestUserInputResponse,
     },
 
-    /// Resolve a pending model-router approval request.
-    ModelRouterApprovalResponse {
-        /// Identifier emitted with the pending approval request.
-        approval_id: String,
-        /// User-selected routing outcome.
-        response: ModelRouterApprovalResponse,
+    /// Resolve a pending scripted extension interaction.
+    ScriptedInteractionResponse {
+        /// Identifier emitted with the pending interaction request.
+        request_id: String,
+        /// User-selected interaction outcome.
+        response: ScriptedInteractionResponse,
+    },
+
+    /// Expire a scripted interaction from the host scheduler.
+    ExpireScriptedInteraction {
+        /// Identifier emitted with the pending interaction request.
+        request_id: String,
     },
 
     /// Control the next root-turn model-router A/B experiment.
@@ -603,11 +612,13 @@ impl Op {
             Self::InterAgentCommunication { .. } => "inter_agent_communication",
             Self::StageInterAgentCommunication { .. } => "stage_inter_agent_communication",
             Self::ReleaseInterAgentCommunication { .. } => "release_inter_agent_communication",
+            Self::StartPendingWork => "start_pending_work",
             Self::ExecApproval { .. } => "exec_approval",
             Self::PatchApproval { .. } => "patch_approval",
             Self::ResolveElicitation { .. } => "resolve_elicitation",
             Self::UserInputAnswer { .. } => "user_input_answer",
-            Self::ModelRouterApprovalResponse { .. } => "model_router_approval_response",
+            Self::ScriptedInteractionResponse { .. } => "scripted_interaction_response",
+            Self::ExpireScriptedInteraction { .. } => "expire_scripted_interaction",
             Self::ModelRouterAbControl { .. } => "model_router_ab_control",
             Self::RequestPermissionsResponse { .. } => "request_permissions_response",
             Self::DynamicToolResponse { .. } => "dynamic_tool_response",
@@ -1037,8 +1048,8 @@ pub enum EventMsg {
     /// Model-router decision for a newly accepted root or subagent task.
     ModelRouterDecision(ModelRouterDecisionEvent),
 
-    /// User approval required before applying an active model-router decision.
-    ModelRouterApprovalRequest(ModelRouterApprovalRequestEvent),
+    /// A constrained interaction requested by a scripted extension.
+    ScriptedInteractionRequest(ScriptedInteractionRequestEvent),
 
     /// Backend recommends additional account verification for this turn.
     ModelVerification(ModelVerificationEvent),
@@ -1653,8 +1664,15 @@ pub struct ModelRouterDecisionEvent {
     pub scope: ModelRouterScope,
     pub disposition: ModelRouterDisposition,
     pub reason: ModelRouterDecisionReason,
+    /// Whether interactive clients should render this decision's feedback.
+    #[serde(default)]
+    pub feedback_visible: bool,
     /// Prompt-free diagnostic retained when a local router dependency fails.
     pub diagnostic: Option<String>,
+    /// Compact prompt-free decision summary supplied by the router.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub summary: Option<String>,
     pub policy_revision: String,
     #[serde(default)]
     pub classifications: BTreeMap<String, String>,
@@ -1682,78 +1700,68 @@ pub struct ModelRouterDecisionEvent {
     pub created_at: i64,
 }
 
-/// Bounded routing metadata presented before an active route is applied.
+/// A bounded constrained interaction requested by an extension script.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
-pub struct ModelRouterApprovalRequestEvent {
-    pub approval_id: String,
-    pub thread_id: String,
-    pub turn_id: String,
-    pub scope: ModelRouterScope,
-    pub predicted_classification: String,
-    #[serde(default)]
-    pub classifications: BTreeMap<String, String>,
-    #[serde(default)]
-    pub classification_options: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
-    pub available_routes: Vec<ModelRouterApprovalRoute>,
-    #[serde(default)]
-    pub classification_ratings: BTreeMap<String, BTreeMap<String, ModelRouterApprovalClassRating>>,
-    pub ranking_minimum_score: u16,
-    pub ranking_maximum_score: u16,
-    #[serde(default)]
-    pub ranking_ladder: Vec<ModelRouterApprovalRankedRoute>,
-    pub proposed_provider_id: String,
-    pub proposed_model_slug: String,
-    pub proposed_reasoning_effort: String,
-    pub current_route: ModelRouterEffectiveRoute,
-    pub score: f32,
-    pub margin: f32,
-    pub classifier_revision: String,
-    pub policy_revision: String,
-    pub prompt_sha256: String,
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct ScriptedInteractionRequestEvent {
+    /// Host-generated identifier for this pending interaction.
+    pub request_id: String,
+    /// Identifier of the extension requesting the interaction.
+    pub extension_id: String,
+    /// Opaque script-defined interaction identifier.
+    pub interaction_id: String,
+    /// Opaque script state returned unchanged with the response.
+    pub continuation: String,
+    /// Script state revision used to reject stale submissions.
+    pub state_revision: Option<String>,
+    /// Unix timestamp in whole seconds after which this request is invalid.
+    pub expires_at: i64,
+    /// Canonical camelCase script-protocol surface, retained without projection.
+    pub surface: Value,
 }
 
-/// User-selected route feedback for a pending model-router decision.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-pub struct ModelRouterApprovalResponse {
-    pub action: ModelRouterApprovalAction,
-    pub classification: Option<String>,
-    #[serde(default)]
-    pub classifications: BTreeMap<String, String>,
+/// A user response to a scripted interaction.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct ScriptedInteractionResponse {
+    /// Identifier of the extension that requested the interaction.
+    pub extension_id: String,
+    /// Opaque script-defined interaction identifier.
+    pub interaction_id: String,
+    /// Opaque script continuation received with the request.
+    pub continuation: String,
+    /// State revision rendered by the host.
+    pub state_revision: Option<String>,
+    /// User outcome.
+    pub outcome: ScriptedInteractionOutcome,
+    /// Selected action, when applicable.
+    pub action: Option<ScriptedInteractionSelectedAction>,
+    /// Canonical script-protocol value payload.
+    pub values: Value,
 }
 
-/// Disposition selected by the user for a pending routing decision.
+/// An opaque action selected from a scripted interaction.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct ScriptedInteractionSelectedAction {
+    /// Opaque script-defined action identifier.
+    pub id: String,
+}
+
+/// How the user concluded a scripted interaction.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-#[serde(rename_all = "snake_case")]
-#[ts(rename_all = "snake_case")]
-pub enum ModelRouterApprovalAction {
-    Approve,
-    Reject,
-    Override,
-}
-
-/// A route supplied while overriding a model-router decision.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-pub struct ModelRouterApprovalRoute {
-    pub provider_id: String,
-    pub model_slug: String,
-    pub reasoning_effort: String,
-}
-
-/// Rating and allowed model range for one approval classification choice.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-pub struct ModelRouterApprovalClassRating {
-    pub points: u16,
-    pub minimum_model_class: String,
-    pub maximum_model_class: String,
-}
-
-/// One available policy-ranked route for approval preview calculation.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-pub struct ModelRouterApprovalRankedRoute {
-    pub rank: u16,
-    pub model_class: String,
-    pub route: ModelRouterApprovalRoute,
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum ScriptedInteractionOutcome {
+    /// The user selected an action.
+    Accepted,
+    /// The user cancelled the interaction.
+    Cancelled,
+    /// The user dismissed a notice.
+    Dismissed,
 }
 
 /// The route that was actually available to execute after routing validation.
@@ -4348,6 +4356,91 @@ mod tests {
     use xedoc_utils_absolute_path::AbsolutePathBuf;
     use xedoc_utils_absolute_path::test_support::PathBufExt;
     use xedoc_utils_absolute_path::test_support::test_path_buf;
+
+    #[test]
+    fn scripted_interaction_request_preserves_canonical_surface() -> Result<()> {
+        let surface = json!({
+            "type": "confirmation",
+            "title": "Route request",
+            "body": "Choose a route",
+            "details": [{"label": "provider", "value": "openai"}],
+            "actions": [{
+                "id": "accept",
+                "label": "Accept",
+                "keyBindings": ["enter"],
+                "value": {"route": "fast"}
+            }],
+            "override": {
+                "id": "route-override",
+                "title": "Override",
+                "subtitle": "Optional",
+                "fields": [{
+                    "type": "modelRoute",
+                    "id": "route",
+                    "label": "Route",
+                    "description": "Choose an eligible route",
+                    "value": {"provider": "openai", "model": "gpt-5"},
+                    "eligibleRoutes": [{"provider": "openai", "model": "gpt-5"}]
+                }],
+                "submit": {"id": "submit", "keyBindings": ["enter"], "value": null},
+                "cancel": {"id": "cancel", "keyBindings": ["escape"], "value": null}
+            }
+        });
+        let event = ScriptedInteractionRequestEvent {
+            request_id: "request-1".to_string(),
+            extension_id: "extension-1".to_string(),
+            interaction_id: "interaction-1".to_string(),
+            continuation: "continuation-1".to_string(),
+            state_revision: Some("revision-1".to_string()),
+            expires_at: 123,
+            surface: surface.clone(),
+        };
+
+        let serialized = serde_json::to_value(&event)?;
+
+        assert_eq!(
+            serialized,
+            json!({
+                "requestId": "request-1",
+                "extensionId": "extension-1",
+                "interactionId": "interaction-1",
+                "continuation": "continuation-1",
+                "stateRevision": "revision-1",
+                "expiresAt": 123,
+                "surface": surface
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn scripted_interaction_response_preserves_canonical_response() -> Result<()> {
+        let response = ScriptedInteractionResponse {
+            extension_id: "extension-1".to_string(),
+            interaction_id: "interaction-1".to_string(),
+            continuation: "continuation-1".to_string(),
+            state_revision: Some("revision-1".to_string()),
+            outcome: ScriptedInteractionOutcome::Accepted,
+            action: Some(ScriptedInteractionSelectedAction {
+                id: "accept".to_string(),
+            }),
+            values: json!({"route": {"provider": "openai", "model": "gpt-5"}}),
+        };
+
+        assert_eq!(
+            serde_json::to_value(&response)?,
+            json!({
+                "extensionId": "extension-1",
+                "interactionId": "interaction-1",
+                "continuation": "continuation-1",
+                "stateRevision": "revision-1",
+                "outcome": "accepted",
+                "action": {"id": "accept"},
+                "values": {"route": {"provider": "openai", "model": "gpt-5"}}
+            })
+        );
+        Ok(())
+    }
 
     #[test]
     fn review_decision_denied_round_trip() -> Result<()> {

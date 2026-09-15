@@ -68,6 +68,8 @@ pub use xedoc_mcp::SandboxState;
 mod mcp_tool_call;
 pub(crate) mod mention_syntax;
 mod model_router;
+mod model_router_script_host;
+pub mod model_router_settings;
 pub(crate) mod utils;
 pub use mention_syntax::PLUGIN_TEXT_MENTION_SIGIL;
 pub use mention_syntax::TOOL_MENTION_SIGIL;

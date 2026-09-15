@@ -151,6 +151,7 @@ use xedoc_protocol::request_user_input::RequestUserInputResponse;
 use xedoc_rmcp_client::ElicitationResponse;
 use xedoc_rollout::state_db;
 use xedoc_sandboxing::policy_transforms::intersect_permission_profiles;
+use xedoc_script_protocol::InteractionSurface;
 use xedoc_shell_command::parse_command::parse_command;
 use xedoc_terminal_detection::user_agent;
 use xedoc_thread_store::CreateThreadParams;
@@ -193,12 +194,12 @@ mod inject;
 mod input_queue;
 mod mcp;
 mod mcp_runtime;
+pub(crate) mod model_router_script_context;
 mod model_router_usage;
 pub(crate) mod multi_agents;
 mod review;
 mod rollout_budget;
 mod rollout_reconstruction;
-mod root_shadow_routing;
 #[allow(clippy::module_inception)]
 pub(crate) mod session;
 mod session_name;
@@ -444,6 +445,7 @@ pub(crate) const INITIAL_SUBMIT_ID: &str = "";
 pub(crate) const SUBMISSION_CHANNEL_CAPACITY: usize = 512;
 const CYBER_VERIFY_URL: &str = "https://chatgpt.com/cyber";
 const CYBER_SAFETY_URL: &str = "https://developers.openai.com/codex/concepts/cyber-safety";
+const SCRIPTED_INTERACTION_MAX_LIFETIME_SECONDS: i64 = 5 * 60;
 
 impl Session {
     pub(crate) async fn arm_model_router_ab_next(&self) {
@@ -456,7 +458,7 @@ impl Session {
 
     pub(crate) async fn begin_model_router_ab_root_turn(
         &self,
-        orchestrator_route: xedoc_model_router::ModelRoute,
+        orchestrator_route: xedoc_script_protocol::Route,
     ) {
         self.model_router_ab
             .lock()
@@ -796,6 +798,7 @@ impl Session {
             auth_manager.clone(),
             models_manager.clone(),
             exec_policy,
+            tx_sub.clone(),
             tx_event.clone(),
             agent_status_tx.clone(),
             conversation_history,
@@ -1193,15 +1196,6 @@ impl Session {
     pub(crate) async fn xedoc_home(&self) -> AbsolutePathBuf {
         let state = self.state.lock().await;
         state.session_configuration.xedoc_home().clone()
-    }
-
-    pub(crate) async fn model_router_feedback_path(&self) -> AbsolutePathBuf {
-        self.state
-            .lock()
-            .await
-            .session_configuration
-            .xedoc_home()
-            .join("model-router-feedback.jsonl")
     }
 
     pub(crate) fn subscribe_elicitation_pause_state(&self) -> watch::Receiver<bool> {
@@ -2214,6 +2208,19 @@ impl Session {
         ))
     }
 
+    pub(crate) async fn begin_model_router_script_invocation(&self) -> CancellationToken {
+        let cancellation_token = CancellationToken::new();
+        *self.model_router_script_cancellation_token.lock().await = cancellation_token.clone();
+        cancellation_token
+    }
+
+    pub(crate) async fn cancel_model_router_script_invocation(&self) {
+        self.model_router_script_cancellation_token
+            .lock()
+            .await
+            .cancel();
+    }
+
     pub(crate) async fn record_execpolicy_amendment_message(
         &self,
         sub_id: &str,
@@ -2310,36 +2317,78 @@ impl Session {
             .await;
     }
 
-    /// Emit a model-router approval request and await the user's choice.
+    /// Parks an operation and emits its constrained scripted interaction.
     ///
-    /// Model-router approvals are independent from tool approvals: they gate
-    /// applying a proposed model route, without changing whether the router
-    /// made a decision.
-    pub(crate) async fn request_model_router_approval(
-        &self,
+    /// Returns `false` when the request is expired, excessively long-lived, or
+    /// does not describe the same pending interaction.
+    pub(crate) async fn request_scripted_interaction(
+        self: &Arc<Self>,
         turn_context: &TurnContext,
-        approval: xedoc_protocol::protocol::ModelRouterApprovalRequestEvent,
-    ) -> xedoc_protocol::protocol::ModelRouterApprovalResponse {
-        let approval_id = approval.approval_id.clone();
-        let (sender, receiver) = oneshot::channel();
-        if self
-            .pending_model_router_tool_approvals
+        request: xedoc_protocol::protocol::ScriptedInteractionRequestEvent,
+        pending: crate::session::session::PendingScriptedInteraction,
+    ) -> bool {
+        let now = now_unix_timestamp_ms() / 1_000;
+        let Ok(_surface) = serde_json::from_value::<InteractionSurface>(request.surface.clone())
+        else {
+            return false;
+        };
+        if request.expires_at <= now
+            || request.expires_at > now + SCRIPTED_INTERACTION_MAX_LIFETIME_SECONDS
+            || request.extension_id != pending.extension_id
+            || request.interaction_id != pending.interaction_id
+            || request.continuation != pending.script_continuation
+            || request.state_revision != pending.state_revision
+            || request.expires_at != pending.expires_at
+            || serde_json::to_value(&pending.surface).ok().as_ref() != Some(&request.surface)
+        {
+            return false;
+        }
+        let mut pending_interactions = self.pending_scripted_interactions.lock().await;
+        if pending_interactions.contains_key(&request.request_id) {
+            warn!(
+                request_id = %request.request_id,
+                "scripted interaction request is already pending"
+            );
+            return false;
+        }
+        let request_id = request.request_id.clone();
+        let expires_in_seconds = (pending.expires_at - now).unsigned_abs();
+        pending_interactions.insert(request_id.clone(), pending);
+        drop(pending_interactions);
+        self.send_event(turn_context, EventMsg::ScriptedInteractionRequest(request))
+            .await;
+        let tx_sub = self.tx_sub.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(expires_in_seconds)).await;
+            let _ = tx_sub
+                .send(xedoc_protocol::protocol::Submission {
+                    id: uuid::Uuid::now_v7().to_string(),
+                    op: xedoc_protocol::protocol::Op::ExpireScriptedInteraction { request_id },
+                    client_user_message_id: None,
+                    trace: None,
+                })
+                .await;
+        });
+        true
+    }
+
+    /// Returns the validated response that resumed a scripted interaction.
+    pub(crate) async fn take_scripted_interaction_response(
+        &self,
+        sub_id: &str,
+    ) -> Option<xedoc_protocol::protocol::ScriptedInteractionResponse> {
+        self.scripted_interaction_responses
             .lock()
             .await
-            .insert(approval_id.clone(), sender)
-            .is_some()
-        {
-            warn!("overwriting pending model-router approval: {approval_id}");
-        }
-        self.send_event(turn_context, EventMsg::ModelRouterApprovalRequest(approval))
-            .await;
-        receiver
-            .await
-            .unwrap_or(xedoc_protocol::protocol::ModelRouterApprovalResponse {
-                action: xedoc_protocol::protocol::ModelRouterApprovalAction::Reject,
-                classification: None,
-                classifications: Default::default(),
-            })
+            .remove(sub_id)
+    }
+
+    /// Cancels all parked scripted interactions and drops any undelivered
+    /// responses. Dropping an awaitable continuation notifies its caller that
+    /// the operation was cancelled.
+    pub(crate) async fn cancel_scripted_interactions(&self) {
+        self.pending_scripted_interactions.lock().await.clear();
+        self.scripted_interaction_responses.lock().await.clear();
     }
 
     /// Emit an exec approval request event and await the user's decision.
@@ -4129,6 +4178,7 @@ impl Session {
     pub async fn interrupt_task(self: &Arc<Self>) {
         info!("interrupt received: abort current task, if any");
         let had_active_turn = self.active_turn.lock().await.is_some();
+        self.cancel_scripted_interactions().await;
         self.abort_all_tasks(TurnAbortReason::Interrupted).await;
         if !had_active_turn {
             self.cancel_mcp_startup().await;

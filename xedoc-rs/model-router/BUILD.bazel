@@ -1,7 +1,0 @@
-load("//:defs.bzl", "xedoc_rust_crate")
-
-xedoc_rust_crate(
-    name = "model-router",
-    compile_data = ["assets/initial-policy.toml"],
-    crate_name = "xedoc_model_router",
-)

@@ -25,6 +25,9 @@ pub fn new_model_router_decision(
         notification.ranking_maximum_rank,
         notification.ranking_target_rank,
         notification.ranking_selected_rank,
+        notification.proposed_provider_id,
+        notification.proposed_model_slug,
+        notification.proposed_reasoning_effort,
         notification.effective_route,
     )
 }
@@ -44,6 +47,9 @@ pub fn new_model_router_decision_item(
     ranking_maximum_rank: Option<u16>,
     ranking_target_rank: Option<u16>,
     ranking_selected_rank: Option<u16>,
+    proposed_provider_id: String,
+    proposed_model_slug: String,
+    proposed_reasoning_effort: String,
     effective_route: ModelRouterEffectiveRoute,
 ) -> PlainHistoryCell {
     PlainHistoryCell::new(model_router_decision_lines(
@@ -61,6 +67,9 @@ pub fn new_model_router_decision_item(
         ranking_maximum_rank,
         ranking_target_rank,
         ranking_selected_rank,
+        proposed_provider_id,
+        proposed_model_slug,
+        proposed_reasoning_effort,
         effective_route,
     ))
 }
@@ -80,15 +89,25 @@ pub fn model_router_decision_lines(
     ranking_maximum_rank: Option<u16>,
     ranking_target_rank: Option<u16>,
     ranking_selected_rank: Option<u16>,
+    proposed_provider_id: String,
+    proposed_model_slug: String,
+    proposed_reasoning_effort: String,
     effective_route: ModelRouterEffectiveRoute,
 ) -> Vec<Line<'static>> {
-    let route = match effective_route {
+    let effective_route = match effective_route {
         ModelRouterEffectiveRoute::Available {
             provider_id,
             model_slug,
             reasoning_effort,
         } => format!("{provider_id}/{model_slug}/{reasoning_effort}"),
         ModelRouterEffectiveRoute::Unavailable => "unavailable".to_string(),
+    };
+    let proposed_route =
+        format!("{proposed_provider_id}/{proposed_model_slug}/{proposed_reasoning_effort}");
+    let route = if disposition == ModelRouterDisposition::Shadow {
+        format!("{proposed_route} proposed; kept {effective_route}")
+    } else {
+        effective_route
     };
     let classifications = classifications
         .into_iter()

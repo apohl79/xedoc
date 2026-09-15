@@ -324,6 +324,9 @@ impl App {
                     }),
                 ))
             }
+            ServerRequest::ExtensionInteractionRequest { params, .. } => {
+                Some(ThreadInteractiveRequest::ExtensionInteraction(params.clone()))
+            }
             _ => None,
         })
     }
@@ -337,6 +340,9 @@ impl App {
             ThreadInteractiveRequest::McpServerElicitation(request) => {
                 self.chat_widget
                     .push_mcp_server_elicitation_request(request);
+            }
+            ThreadInteractiveRequest::ExtensionInteraction(request) => {
+                self.chat_widget.push_extension_interaction_request(request);
             }
         }
     }

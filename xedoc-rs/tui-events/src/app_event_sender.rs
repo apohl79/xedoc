@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use crate::app_command::AppCommand;
 use tokio::sync::mpsc::UnboundedSender;
 use xedoc_app_server_protocol::CommandExecutionApprovalDecision;
+use xedoc_app_server_protocol::ExtensionInteractionRequestResponse;
 use xedoc_app_server_protocol::FileChangeApprovalDecision;
 use xedoc_app_server_protocol::McpServerElicitationAction;
-use xedoc_app_server_protocol::ModelRouterApprovalResponse;
 use xedoc_app_server_protocol::RequestId as AppServerRequestId;
 use xedoc_app_server_protocol::ReviewTarget;
 use xedoc_app_server_protocol::ToolRequestUserInputResponse;
@@ -72,15 +72,22 @@ impl AppEventSender {
         )));
     }
 
-    pub fn model_router_approval(
+    pub fn extension_interaction_response(
         &self,
         thread_id: ThreadId,
-        id: String,
-        response: ModelRouterApprovalResponse,
+        request_id: String,
+        response: ExtensionInteractionRequestResponse,
     ) {
         self.send(AppEvent::SubmitThreadOp {
             thread_id,
-            op: AppCommand::model_router_approval(id, response),
+            op: AppCommand::extension_interaction_response(request_id, response),
+        });
+    }
+
+    pub fn model_router_settings_response(&self, response: ExtensionInteractionRequestResponse) {
+        self.send(AppEvent::ModelRouterSettingsResponse {
+            response,
+            host_action: None,
         });
     }
 

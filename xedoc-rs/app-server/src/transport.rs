@@ -183,7 +183,8 @@ async fn send_message_to_connection(
             warn!(
                 "disconnecting connection after a single outbound message exceeded the byte budget: {connection_id:?}"
             );
-            return disconnect_connection(connections, connection_id);
+            let _ = disconnect_connection(connections, connection_id);
+            return false;
         }
         let permits = serialized_json.len().max(1) as u32;
         let byte_permit = if can_disconnect {
@@ -193,34 +194,41 @@ async fn send_message_to_connection(
                     warn!(
                         "disconnecting slow connection after outbound byte budget filled: {connection_id:?}"
                     );
-                    return disconnect_connection(connections, connection_id);
+                    let _ = disconnect_connection(connections, connection_id);
+                    return false;
                 }
             }
         } else {
             match byte_budget.acquire_many_owned(permits).await {
                 Ok(byte_permit) => byte_permit,
-                Err(_) => return disconnect_connection(connections, connection_id),
+                Err(_) => {
+                    let _ = disconnect_connection(connections, connection_id);
+                    return false;
+                }
             }
         };
         QueuedOutgoingMessage::serialized(serialized_json, byte_permit, write_complete_tx)
     };
     if can_disconnect {
         match writer.try_send(queued_message) {
-            Ok(()) => false,
+            Ok(()) => true,
             Err(mpsc::error::TrySendError::Full(_)) => {
                 warn!(
                     "disconnecting slow connection after outbound queue filled: {connection_id:?}"
                 );
-                disconnect_connection(connections, connection_id)
+                let _ = disconnect_connection(connections, connection_id);
+                false
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                disconnect_connection(connections, connection_id)
+                let _ = disconnect_connection(connections, connection_id);
+                false
             }
         }
     } else if writer.send(queued_message).await.is_err() {
-        disconnect_connection(connections, connection_id)
-    } else {
+        let _ = disconnect_connection(connections, connection_id);
         false
+    } else {
+        true
     }
 }
 
@@ -285,6 +293,33 @@ pub(crate) async fn route_outgoing_envelope(
                 )
                 .await;
             }
+        }
+        OutgoingEnvelope::BroadcastExperimentalRequest {
+            message,
+            delivery_status_tx,
+        } => {
+            let target_connections: Vec<ConnectionId> = connections
+                .iter()
+                .filter_map(|(connection_id, connection_state)| {
+                    (connection_state.initialized.load(Ordering::Acquire)
+                        && connection_state
+                            .experimental_api_enabled
+                            .load(Ordering::Acquire))
+                    .then_some(*connection_id)
+                })
+                .collect();
+
+            let mut delivered = false;
+            for connection_id in target_connections {
+                delivered |= send_message_to_connection(
+                    connections,
+                    connection_id,
+                    message.clone(),
+                    /*write_complete_tx*/ None,
+                )
+                .await;
+            }
+            let _ = delivery_status_tx.send(delivered);
         }
     }
 }

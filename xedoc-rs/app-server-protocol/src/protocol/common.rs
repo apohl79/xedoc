@@ -811,23 +811,17 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ModelRouterAbControlResponse,
     },
-    #[experimental("modelRouterPolicy/read")]
-    ModelRouterPolicyRead => "modelRouterPolicy/read" {
-        params: v2::ModelRouterPolicyReadParams,
-        serialization: global_shared_read("model-router-policy"),
-        response: v2::ModelRouterPolicyReadResponse,
+    #[experimental("modelRouter/settings/open")]
+    ModelRouterSettingsOpen => "modelRouter/settings/open" {
+        params: v2::ModelRouterSettingsOpenParams,
+        serialization: global("model-router-settings"),
+        response: v2::ModelRouterSettingsOpenResponse,
     },
-    #[experimental("modelRouterPolicy/bootstrap")]
-    ModelRouterPolicyBootstrap => "modelRouterPolicy/bootstrap" {
-        params: v2::ModelRouterPolicyBootstrapParams,
-        serialization: global("model-router-policy"),
-        response: v2::ModelRouterPolicyBootstrapResponse,
-    },
-    #[experimental("modelRouterPolicy/write")]
-    ModelRouterPolicyWrite => "modelRouterPolicy/write" {
-        params: v2::ModelRouterPolicyWriteParams,
-        serialization: global("model-router-policy"),
-        response: v2::ModelRouterPolicyWriteResponse,
+    #[experimental("modelRouter/settings/respond")]
+    ModelRouterSettingsRespond => "modelRouter/settings/respond" {
+        params: v2::ModelRouterSettingsRespondParams,
+        serialization: global("model-router-settings"),
+        response: v2::ModelRouterSettingsRespondResponse,
     },
     #[experimental("modelRouterReport/read")]
     ModelRouterReportRead => "modelRouterReport/read" {
@@ -1391,10 +1385,11 @@ server_request_definitions! {
         response: v2::McpServerElicitationRequestResponse,
     },
 
-    /// Request approval for a model-router classification and route.
-    ModelRouterRequestApproval => "item/modelRouter/requestApproval" {
-        params: v2::ModelRouterApprovalParams,
-        response: v2::ModelRouterApprovalResponse,
+    #[experimental("item/extensionInteraction/request")]
+    /// Request a constrained interaction from a scripted extension.
+    ExtensionInteractionRequest => "item/extensionInteraction/request" {
+        params: v2::ExtensionInteractionRequestParams,
+        response: v2::ExtensionInteractionRequestResponse,
     },
 
     /// Request approval for additional permissions from the user.

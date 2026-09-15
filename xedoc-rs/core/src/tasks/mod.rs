@@ -469,6 +469,10 @@ impl Session {
     }
 
     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
+        self.cancel_model_router_script_invocation().await;
+        if reason == TurnAbortReason::Replaced {
+            self.cancel_scripted_interactions().await;
+        }
         let mut aborted_turn = false;
         let mut active_turn_to_clear = None;
         let mut turn_context = None;

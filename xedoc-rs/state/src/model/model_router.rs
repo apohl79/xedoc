@@ -36,6 +36,7 @@ pub struct ModelRouterDecisionRecord {
 
 impl From<&ModelRouterDecisionEvent> for ModelRouterDecisionRecord {
     fn from(event: &ModelRouterDecisionEvent) -> Self {
+        let script_feedback = (event.policy_revision == "script").then_some(());
         let (effective_provider_id, effective_model_slug, effective_reasoning_effort) =
             match &event.effective_route {
                 ModelRouterEffectiveRoute::Available {
@@ -62,9 +63,10 @@ impl From<&ModelRouterDecisionEvent> for ModelRouterDecisionRecord {
             policy_revision: event.policy_revision.clone(),
             artifact_revision: None,
             artifact_sha256: None,
-            class_id: None,
-            score: None,
-            margin: None,
+            class_id: script_feedback
+                .and_then(|()| event.classifications.get("classification").cloned()),
+            score: script_feedback.map(|()| f64::from(event.confidence_score)),
+            margin: script_feedback.map(|()| f64::from(event.confidence_margin)),
             proposed_provider_id: Some(event.proposed_provider_id.clone()),
             proposed_model_slug: Some(event.proposed_model_slug.clone()),
             proposed_reasoning_effort: Some(event.proposed_reasoning_effort.clone()),

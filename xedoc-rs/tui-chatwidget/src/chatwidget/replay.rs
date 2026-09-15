@@ -174,6 +174,7 @@ impl ChatWidget {
                 scope,
                 disposition,
                 reason,
+                feedback_visible,
                 diagnostic,
                 classifications,
                 confidence_score,
@@ -185,25 +186,35 @@ impl ChatWidget {
                 ranking_maximum_rank,
                 ranking_target_rank,
                 ranking_selected_rank,
+                proposed_provider_id,
+                proposed_model_slug,
+                proposed_reasoning_effort,
                 effective_route,
                 ..
-            } => self.add_to_history(history_cell::new_model_router_decision_item(
-                scope,
-                disposition,
-                reason,
-                diagnostic,
-                classifications,
-                confidence_score,
-                confidence_margin,
-                ranking_score,
-                ranking_minimum_class,
-                ranking_maximum_class,
-                ranking_minimum_rank,
-                ranking_maximum_rank,
-                ranking_target_rank,
-                ranking_selected_rank,
-                effective_route,
-            )),
+            } => {
+                if feedback_visible {
+                    self.add_to_history(history_cell::new_model_router_decision_item(
+                        scope,
+                        disposition,
+                        reason,
+                        diagnostic,
+                        classifications,
+                        confidence_score,
+                        confidence_margin,
+                        ranking_score,
+                        ranking_minimum_class,
+                        ranking_maximum_class,
+                        ranking_minimum_rank,
+                        ranking_maximum_rank,
+                        ranking_target_rank,
+                        ranking_selected_rank,
+                        proposed_provider_id,
+                        proposed_model_slug,
+                        proposed_reasoning_effort,
+                        effective_route,
+                    ));
+                }
+            }
             ThreadItem::HookPrompt { .. } => {}
             ThreadItem::CollabAgentToolCall {
                 id,

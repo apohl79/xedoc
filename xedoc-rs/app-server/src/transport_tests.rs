@@ -239,6 +239,104 @@ async fn experimental_notifications_are_preserved_with_capability() {
 }
 
 #[tokio::test]
+async fn experimental_requests_only_reach_initialized_capable_connections() {
+    let incapable_connection_id = ConnectionId(14);
+    let capable_connection_id = ConnectionId(15);
+    let (incapable_writer_tx, mut incapable_writer_rx) = mpsc::channel(1);
+    let (capable_writer_tx, mut capable_writer_rx) = mpsc::channel(1);
+    let (delivery_status_tx, delivery_status_rx) = tokio::sync::oneshot::channel();
+
+    let mut connections = HashMap::from([
+        (
+            incapable_connection_id,
+            OutboundConnectionState::new(
+                incapable_writer_tx,
+                Arc::new(AtomicBool::new(true)),
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(RwLock::new(HashSet::new())),
+                /*disconnect_sender*/ None,
+            ),
+        ),
+        (
+            capable_connection_id,
+            OutboundConnectionState::new(
+                capable_writer_tx,
+                Arc::new(AtomicBool::new(true)),
+                Arc::new(AtomicBool::new(true)),
+                Arc::new(RwLock::new(HashSet::new())),
+                /*disconnect_sender*/ None,
+            ),
+        ),
+    ]);
+
+    route_outgoing_envelope(
+        &mut connections,
+        OutgoingEnvelope::BroadcastExperimentalRequest {
+            message: app_server_notification(ServerNotification::ConfigWarning(
+                ConfigWarningNotification {
+                    summary: "experimental request".to_string(),
+                    details: None,
+                    path: None,
+                    range: None,
+                },
+            )),
+            delivery_status_tx,
+        },
+    )
+    .await;
+
+    assert!(
+        delivery_status_rx
+            .await
+            .expect("transport should report delivery")
+    );
+    assert!(incapable_writer_rx.try_recv().is_err());
+    assert!(capable_writer_rx.try_recv().is_ok());
+}
+
+#[tokio::test]
+async fn experimental_requests_report_no_delivery_when_only_eligible_connection_closed() {
+    let connection_id = ConnectionId(16);
+    let (writer_tx, writer_rx) = mpsc::channel(1);
+    drop(writer_rx);
+    let (delivery_status_tx, delivery_status_rx) = tokio::sync::oneshot::channel();
+
+    let mut connections = HashMap::from([(
+        connection_id,
+        OutboundConnectionState::new(
+            writer_tx,
+            Arc::new(AtomicBool::new(true)),
+            Arc::new(AtomicBool::new(true)),
+            Arc::new(RwLock::new(HashSet::new())),
+            /*disconnect_sender*/ None,
+        ),
+    )]);
+
+    route_outgoing_envelope(
+        &mut connections,
+        OutgoingEnvelope::BroadcastExperimentalRequest {
+            message: app_server_notification(ServerNotification::ConfigWarning(
+                ConfigWarningNotification {
+                    summary: "experimental request".to_string(),
+                    details: None,
+                    path: None,
+                    range: None,
+                },
+            )),
+            delivery_status_tx,
+        },
+    )
+    .await;
+
+    assert!(
+        !delivery_status_rx
+            .await
+            .expect("transport should report delivery")
+    );
+    assert!(!connections.contains_key(&connection_id));
+}
+
+#[tokio::test]
 async fn command_execution_request_approval_strips_additional_permissions_without_capability() {
     let connection_id = ConnectionId(8);
     let (writer_tx, mut writer_rx) = mpsc::channel(1);

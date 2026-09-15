@@ -13,9 +13,17 @@ import type { ModelRouterScope } from "./ModelRouterScope";
  */
 export type ModelRouterDecisionNotification = { decisionId: string, threadId: string, turnId: string, scope: ModelRouterScope, disposition: ModelRouterDisposition, reason: ModelRouterDecisionReason,
 /**
+ * Whether interactive clients should render this decision's feedback.
+ */
+feedbackVisible: boolean,
+/**
  * Prompt-free diagnostic retained when a local router dependency fails.
  */
-diagnostic: string | null, policyRevision: string, classifications: { [key in string]?: string },
+diagnostic: string | null,
+/**
+ * Compact prompt-free decision summary supplied by the router.
+ */
+summary: string | null, policyRevision: string, classifications: { [key in string]?: string },
 /**
  * Classifier confidence score from the task embedding.
  */

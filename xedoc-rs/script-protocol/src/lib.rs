@@ -1,0 +1,48 @@
+//! Constrained protocol types and execution for Xedoc extension scripts.
+
+mod interaction;
+mod protocol;
+mod subprocess;
+
+pub use interaction::Action;
+pub use interaction::ConfirmationSurface;
+pub use interaction::Detail;
+pub use interaction::FormField;
+pub use interaction::FormSurface;
+pub use interaction::Interaction;
+pub use interaction::InteractionOutcome;
+pub use interaction::InteractionResponse;
+pub use interaction::InteractionSurface;
+pub use interaction::MenuItem;
+pub use interaction::MenuSurface;
+pub use interaction::ModelRouterSettingsHostAction;
+pub use interaction::NoticeLevel;
+pub use interaction::NoticeSurface;
+pub use interaction::SelectOption;
+pub use interaction::SelectedAction;
+pub use protocol::EligibleRoute;
+pub use protocol::Extension;
+pub use protocol::Method;
+pub use protocol::ModelId;
+pub use protocol::OpaqueId;
+pub use protocol::ProtocolVersion;
+pub use protocol::ProviderId;
+pub use protocol::ReasoningEffort;
+pub use protocol::RequestId;
+pub use protocol::ResponseOutcome;
+pub use protocol::Route;
+pub use protocol::RouteDecision;
+pub use protocol::RouteDisposition;
+pub use protocol::RouteFeedback;
+pub use protocol::SCRIPT_PROTOCOL_V1;
+pub use protocol::ScriptError;
+pub use protocol::ScriptRequest;
+pub use protocol::ScriptResponse;
+pub use protocol::ScriptResult;
+pub use subprocess::OutputLimits;
+pub use subprocess::OutputStream;
+pub use subprocess::SubprocessError;
+pub use subprocess::SubprocessExecutor;
+pub use subprocess::SubprocessFailure;
+pub use subprocess::SubprocessFailureKind;
+pub use subprocess::SubprocessRequest;

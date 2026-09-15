@@ -34,6 +34,7 @@ use xedoc_tool_output_reduce::ReductionSink;
 pub(crate) struct Session {
     pub(crate) thread_id: ThreadId,
     pub(crate) installation_id: String,
+    pub(crate) tx_sub: async_channel::Sender<xedoc_protocol::protocol::Submission>,
     pub(super) tx_event: Sender<Event>,
     pub(super) agent_status: watch::Sender<AgentStatus>,
     pub(super) state: Mutex<SessionState>,
@@ -48,25 +49,44 @@ pub(crate) struct Session {
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
     pub(crate) input_queue: InputQueue,
     pub(crate) model_router_ab: Mutex<crate::session::ab_pairs::AbPairRuntime>,
+    pub(crate) model_router_script_cancellation_token: Mutex<CancellationToken>,
     pub(crate) model_router_decision_ids: Mutex<HashMap<String, String>>,
-    pub(crate) pending_model_router_approvals: Mutex<HashMap<String, PendingModelRouterApproval>>,
-    pub(crate) pending_model_router_tool_approvals: Mutex<
-        HashMap<
-            String,
-            tokio::sync::oneshot::Sender<xedoc_protocol::protocol::ModelRouterApprovalResponse>,
-        >,
-    >,
-    pub(crate) model_router_approval_responses:
-        Mutex<HashMap<String, xedoc_protocol::protocol::ModelRouterApprovalResponse>>,
+    pub(crate) pending_scripted_interactions: Mutex<HashMap<String, PendingScriptedInteraction>>,
+    pub(crate) scripted_interaction_responses:
+        Mutex<HashMap<String, xedoc_protocol::protocol::ScriptedInteractionResponse>>,
     pub(crate) sub_agent_change_totals: Mutex<xedoc_protocol::protocol::SubAgentChangeTotals>,
     pub(crate) services: SessionServices,
     pub(super) next_internal_sub_id: AtomicU64,
 }
 
-pub(crate) struct PendingModelRouterApproval {
+/// An operation parked until a matching scripted interaction response arrives.
+pub(crate) struct PendingScriptedInteraction {
+    pub(crate) continuation: PendingScriptedInteractionContinuation,
+    pub(crate) extension_id: String,
+    pub(crate) interaction_id: String,
+    pub(crate) script_continuation: String,
+    pub(crate) state_revision: Option<String>,
+    pub(crate) expires_at: i64,
+    pub(crate) surface: xedoc_script_protocol::InteractionSurface,
+}
+
+/// A user-input turn waiting for a scripted interaction to conclude.
+pub(crate) struct PendingScriptedInteractionTurn {
     pub(crate) sub_id: String,
     pub(crate) op: Op,
     pub(crate) client_user_message_id: Option<String>,
+}
+
+/// The only turn lifecycles that a scripted interaction may resume.
+pub(crate) enum PendingScriptedInteractionContinuation {
+    /// Resume a root user-input turn.
+    Root(PendingScriptedInteractionTurn),
+    /// Deliver a response to an in-flight caller that has not yet spawned its
+    /// subagent. The caller retains its pre-spawn state and decides whether the
+    /// response permits spawning.
+    AwaitResponse(
+        tokio::sync::oneshot::Sender<xedoc_protocol::protocol::ScriptedInteractionResponse>,
+    ),
 }
 
 #[derive(Clone)]
@@ -558,6 +578,7 @@ impl Session {
         auth_manager: Arc<AuthManager>,
         models_manager: SharedModelsManager,
         exec_policy: Arc<ExecPolicyManager>,
+        tx_sub: async_channel::Sender<xedoc_protocol::protocol::Submission>,
         tx_event: Sender<Event>,
         agent_status: watch::Sender<AgentStatus>,
         mut initial_history: InitialHistory,
@@ -1171,6 +1192,7 @@ impl Session {
             let sess = Arc::new(Session {
                 thread_id,
                 installation_id,
+                tx_sub: tx_sub.clone(),
                 tx_event: tx_event.clone(),
                 agent_status,
                 state: Mutex::new(state),
@@ -1181,10 +1203,10 @@ impl Session {
                 active_turn: Mutex::new(None),
                 input_queue: InputQueue::new(),
                 model_router_ab: Mutex::new(crate::session::ab_pairs::AbPairRuntime::default()),
+                model_router_script_cancellation_token: Mutex::new(CancellationToken::new()),
                 model_router_decision_ids: Mutex::new(HashMap::new()),
-                pending_model_router_approvals: Mutex::new(HashMap::new()),
-                pending_model_router_tool_approvals: Mutex::new(HashMap::new()),
-                model_router_approval_responses: Mutex::new(HashMap::new()),
+                pending_scripted_interactions: Mutex::new(HashMap::new()),
+                scripted_interaction_responses: Mutex::new(HashMap::new()),
                 sub_agent_change_totals: Mutex::new(Default::default()),
                 services,
                 next_internal_sub_id: AtomicU64::new(0),

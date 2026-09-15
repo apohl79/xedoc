@@ -484,6 +484,22 @@ async fn read_thread_started_notification(
                     return;
                 }
             }
+            crate::outgoing_message::OutgoingEnvelope::BroadcastExperimentalRequest {
+                message,
+                ..
+            } => {
+                let crate::outgoing_message::OutgoingMessage::AppServerNotification(notification) =
+                    message
+                else {
+                    continue;
+                };
+                if matches!(
+                    notification.notification,
+                    xedoc_app_server_protocol::ServerNotification::ThreadStarted(_)
+                ) {
+                    return;
+                }
+            }
         }
     }
 }

@@ -45,6 +45,8 @@ pub struct PendingInteractiveReplayState {
     request_permissions_call_ids_by_turn_id: HashMap<String, Vec<String>>,
     request_user_input_call_ids: HashSet<String>,
     request_user_input_call_ids_by_turn_id: HashMap<String, Vec<String>>,
+    extension_interaction_request_ids: HashSet<String>,
+    extension_interaction_request_ids_by_turn_id: HashMap<String, Vec<String>>,
     pending_requests_by_request_id: HashMap<AppServerRequestId, PendingInteractiveRequest>,
 }
 
@@ -67,6 +69,10 @@ enum PendingInteractiveRequest {
         turn_id: String,
         item_id: String,
     },
+    ExtensionInteraction {
+        turn_id: String,
+        request_id: String,
+    },
 }
 
 impl PendingInteractiveReplayState {
@@ -82,6 +88,7 @@ impl PendingInteractiveReplayState {
                 | AppCommand::ResolveElicitation { .. }
                 | AppCommand::RequestPermissionsResponse { .. }
                 | AppCommand::UserInputAnswer { .. }
+                | AppCommand::ExtensionInteractionResponse { .. }
                 | AppCommand::Shutdown
         )
     }
@@ -164,6 +171,18 @@ impl PendingInteractiveReplayState {
                     self.request_user_input_call_ids_by_turn_id.remove(id);
                 }
             }
+            AppCommand::ExtensionInteractionResponse { request_id, .. } => {
+                self.extension_interaction_request_ids.remove(request_id);
+                Self::remove_call_id_from_turn_map(
+                    &mut self.extension_interaction_request_ids_by_turn_id,
+                    request_id,
+                );
+                self.pending_requests_by_request_id.retain(
+                    |_, pending| {
+                        !matches!(pending, PendingInteractiveRequest::ExtensionInteraction { request_id: pending_request_id, .. } if pending_request_id == request_id)
+                    },
+                );
+            }
             AppCommand::Shutdown => self.clear(),
             _ => {}
         }
@@ -245,6 +264,21 @@ impl PendingInteractiveReplayState {
                     },
                 );
             }
+            ServerRequest::ExtensionInteractionRequest { request_id, params } => {
+                self.extension_interaction_request_ids
+                    .insert(params.request_id.clone());
+                self.extension_interaction_request_ids_by_turn_id
+                    .entry(params.turn_id.clone())
+                    .or_default()
+                    .push(params.request_id.clone());
+                self.pending_requests_by_request_id.insert(
+                    request_id.clone(),
+                    PendingInteractiveRequest::ExtensionInteraction {
+                        turn_id: params.turn_id.clone(),
+                        request_id: params.request_id.clone(),
+                    },
+                );
+            }
             _ => {}
         }
     }
@@ -273,6 +307,7 @@ impl PendingInteractiveReplayState {
                 self.clear_patch_approval_turn(&notification.turn.id);
                 self.clear_request_permissions_turn(&notification.turn.id);
                 self.clear_request_user_input_turn(&notification.turn.id);
+                self.clear_extension_interaction_turn(&notification.turn.id);
             }
             ServerNotification::ServerRequestResolved(notification) => {
                 self.remove_request(&notification.request_id);
@@ -345,6 +380,15 @@ impl PendingInteractiveReplayState {
                         .remove(&params.turn_id);
                 }
             }
+            ServerRequest::ExtensionInteractionRequest { params, .. } => {
+                self.extension_interaction_request_ids
+                    .remove(&params.request_id);
+                Self::remove_call_id_from_turn_map_entry(
+                    &mut self.extension_interaction_request_ids_by_turn_id,
+                    &params.turn_id,
+                    &params.request_id,
+                );
+            }
             _ => {}
         }
         self.pending_requests_by_request_id
@@ -371,6 +415,9 @@ impl PendingInteractiveReplayState {
             ServerRequest::PermissionsRequestApproval { params, .. } => {
                 self.request_permissions_call_ids.contains(&params.item_id)
             }
+            ServerRequest::ExtensionInteractionRequest { params, .. } => self
+                .extension_interaction_request_ids
+                .contains(&params.request_id),
             _ => true,
         }
     }
@@ -380,6 +427,7 @@ impl PendingInteractiveReplayState {
             || !self.patch_approval_call_ids.is_empty()
             || !self.elicitation_requests.is_empty()
             || !self.request_permissions_call_ids.is_empty()
+            || !self.extension_interaction_request_ids.is_empty()
     }
 
     pub fn has_pending_thread_user_input(&self) -> bool {
@@ -438,6 +486,22 @@ impl PendingInteractiveReplayState {
         );
     }
 
+    fn clear_extension_interaction_turn(&mut self, turn_id: &str) {
+        if let Some(request_ids) = self
+            .extension_interaction_request_ids_by_turn_id
+            .remove(turn_id)
+        {
+            for request_id in request_ids {
+                self.extension_interaction_request_ids.remove(&request_id);
+            }
+        }
+        self.pending_requests_by_request_id.retain(
+            |_, pending| {
+                !matches!(pending, PendingInteractiveRequest::ExtensionInteraction { turn_id: pending_turn_id, .. } if pending_turn_id == turn_id)
+            },
+        );
+    }
+
     fn remove_call_id_from_turn_map(
         call_ids_by_turn_id: &mut HashMap<String, Vec<String>>,
         call_id: &str,
@@ -475,6 +539,8 @@ impl PendingInteractiveReplayState {
         self.request_permissions_call_ids_by_turn_id.clear();
         self.request_user_input_call_ids.clear();
         self.request_user_input_call_ids_by_turn_id.clear();
+        self.extension_interaction_request_ids.clear();
+        self.extension_interaction_request_ids_by_turn_id.clear();
         self.pending_requests_by_request_id.clear();
     }
 
@@ -521,6 +587,17 @@ impl PendingInteractiveReplayState {
                     &item_id,
                 );
             }
+            PendingInteractiveRequest::ExtensionInteraction {
+                turn_id,
+                request_id,
+            } => {
+                self.extension_interaction_request_ids.remove(&request_id);
+                Self::remove_call_id_from_turn_map_entry(
+                    &mut self.extension_interaction_request_ids_by_turn_id,
+                    &turn_id,
+                    &request_id,
+                );
+            }
         }
     }
 
@@ -555,6 +632,13 @@ impl PendingInteractiveReplayState {
                 PendingInteractiveRequest::RequestUserInput { turn_id, item_id },
                 ServerRequest::ToolRequestUserInput { params, .. },
             ) => turn_id == &params.turn_id && item_id == &params.item_id,
+            (
+                PendingInteractiveRequest::ExtensionInteraction {
+                    turn_id,
+                    request_id,
+                },
+                ServerRequest::ExtensionInteractionRequest { params, .. },
+            ) => turn_id == &params.turn_id && request_id == &params.request_id,
             _ => false,
         }
     }

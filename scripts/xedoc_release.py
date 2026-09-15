@@ -17,8 +17,6 @@ from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
 from xedoc_package.targets import default_target
 from xedoc_package.archive import write_archive
-from xedoc_package.layout import validate_model_router_runtime
-from xedoc_package.model_router_runtime import write_runtime_manifest
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -347,13 +345,6 @@ def build_release(args: argparse.Namespace) -> None:
         package_args.append("--force")
 
     run(package_args, cwd=source_root)
-    sign_packaged_model_router_runtime(
-        package_dir=package_dir,
-        target=args.target,
-        identity=codesign_identity,
-        signing_script=signing_script,
-        cwd=source_root,
-    )
     packaged_entrypoint = package_dir / "bin" / "xedoc"
     run(
         build_codesign_command(
@@ -1430,49 +1421,6 @@ def build_codesign_command(
         "--entitlements",
         str(entitlements),
     ]
-
-
-def sign_packaged_model_router_runtime(
-    *,
-    package_dir: Path,
-    target: str,
-    identity: str,
-    signing_script: Path,
-    cwd: Path,
-) -> None:
-    runtime_dir = (
-        package_dir
-        / "xedoc-resources"
-        / "model-router"
-        / "arctic-embed-xs"
-        / "runtime"
-        / target
-    )
-    manifest_path = runtime_dir / "manifest.json"
-    runtime_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    library_file = runtime_manifest.get("file")
-    if not isinstance(library_file, str):
-        raise RuntimeError("Invalid packaged model-router runtime manifest")
-    library_path = runtime_dir / library_file
-    run(
-        [
-            str(signing_script),
-            "--target",
-            str(library_path),
-            "--identity",
-            identity,
-            "--deep",
-            "false",
-            "--options",
-            "runtime",
-            "--timestamp",
-            "true",
-        ],
-        cwd=cwd,
-    )
-    run(["codesign", "--verify", "--strict", "--verbose=2", str(library_path)])
-    write_runtime_manifest(runtime_dir, library_file)
-    validate_model_router_runtime(runtime_dir)
 
 
 def resolve_repo_path(path: Path) -> Path:

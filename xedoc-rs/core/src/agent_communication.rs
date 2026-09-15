@@ -40,6 +40,7 @@ pub(crate) struct AgentCommunicationContext {
     kind: AgentCommunicationKind,
     sender_thread_id: ThreadId,
     ab_pair: Option<AbPairTransportMetadata>,
+    router_decision_id: Option<String>,
 }
 
 impl AgentCommunicationContext {
@@ -48,7 +49,14 @@ impl AgentCommunicationContext {
             kind,
             sender_thread_id,
             ab_pair: None,
+            router_decision_id: None,
         }
+    }
+
+    /// Associates an ordinary routed child with the decision that selected it.
+    pub(crate) fn with_router_decision_id(mut self, router_decision_id: String) -> Self {
+        self.router_decision_id = Some(router_decision_id);
+        self
     }
 
     pub(crate) fn with_ab_pair(
@@ -67,6 +75,10 @@ impl AgentCommunicationContext {
 
     pub(crate) fn ab_pair(&self) -> Option<&AbPairTransportMetadata> {
         self.ab_pair.as_ref()
+    }
+
+    pub(crate) fn router_decision_id(&self) -> Option<&str> {
+        self.router_decision_id.as_deref()
     }
 }
 

@@ -1,0 +1,611 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ExtensionInteractionAction": {
+      "description": "An opaque action supplied by an extension interaction.",
+      "properties": {
+        "hostAction": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelRouterSettingsHostAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "keyBindings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opens": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": true
+      },
+      "required": [
+        "id",
+        "keyBindings"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionDetail": {
+      "description": "A visible label/value pair in an extension interaction confirmation.",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionEligibleRoute": {
+      "description": "A model route eligible for selection in an extension interaction.",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "reasoningEfforts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "providerId",
+        "reasoningEfforts"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionField": {
+      "description": "A field in an extension interaction form.",
+      "oneOf": [
+        {
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "options": {
+              "items": {
+                "$ref": "#/definitions/ExtensionInteractionOption"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "select"
+              ],
+              "title": "SelectExtensionInteractionFieldType",
+              "type": "string"
+            },
+            "value": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "options",
+            "type"
+          ],
+          "title": "SelectExtensionInteractionField",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "boolean"
+              ],
+              "title": "BooleanExtensionInteractionFieldType",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "type",
+            "value"
+          ],
+          "title": "BooleanExtensionInteractionField",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "maxBytes": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "text"
+              ],
+              "title": "TextExtensionInteractionFieldType",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "maxBytes",
+            "type",
+            "value"
+          ],
+          "title": "TextExtensionInteractionField",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "eligibleRoutes": {
+              "items": {
+                "$ref": "#/definitions/ExtensionInteractionEligibleRoute"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "modelRoute"
+              ],
+              "title": "ModelRouteExtensionInteractionFieldType",
+              "type": "string"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ExtensionInteractionRoute"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "eligibleRoutes",
+            "id",
+            "label",
+            "type"
+          ],
+          "title": "ModelRouteExtensionInteractionField",
+          "type": "object"
+        }
+      ]
+    },
+    "ExtensionInteractionForm": {
+      "description": "A form in an extension interaction surface.",
+      "properties": {
+        "cancel": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ExtensionInteractionAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/definitions/ExtensionInteractionField"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "submit": {
+          "$ref": "#/definitions/ExtensionInteractionAction"
+        },
+        "subtitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "id",
+        "submit",
+        "title"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionMenuItem": {
+      "description": "A selectable row in an extension interaction menu.",
+      "properties": {
+        "action": {
+          "$ref": "#/definitions/ExtensionInteractionAction"
+        },
+        "current": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionNoticeLevel": {
+      "description": "Presentation severity for an extension interaction notice.",
+      "enum": [
+        "info",
+        "success",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "ExtensionInteractionOption": {
+      "description": "An opaque selectable option in an extension interaction form.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionRoute": {
+      "description": "A selected model route in an extension interaction.",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "reasoningEffort": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "providerId",
+        "reasoningEffort"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionSurface": {
+      "description": "The constrained declarative surface an extension client may render.",
+      "oneOf": [
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/definitions/ExtensionInteractionMenuItem"
+              },
+              "type": "array"
+            },
+            "subtitle": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "menu"
+              ],
+              "title": "MenuExtensionInteractionSurfaceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "items",
+            "title",
+            "type"
+          ],
+          "title": "MenuExtensionInteractionSurface",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "cancel": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ExtensionInteractionAction"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fields": {
+              "items": {
+                "$ref": "#/definitions/ExtensionInteractionField"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "submit": {
+              "$ref": "#/definitions/ExtensionInteractionAction"
+            },
+            "subtitle": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "form"
+              ],
+              "title": "FormExtensionInteractionSurfaceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "fields",
+            "id",
+            "submit",
+            "title",
+            "type"
+          ],
+          "title": "FormExtensionInteractionSurface",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "actions": {
+              "items": {
+                "$ref": "#/definitions/ExtensionInteractionAction"
+              },
+              "type": "array"
+            },
+            "body": {
+              "type": "string"
+            },
+            "details": {
+              "items": {
+                "$ref": "#/definitions/ExtensionInteractionDetail"
+              },
+              "type": "array"
+            },
+            "override": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ExtensionInteractionForm"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "confirmation"
+              ],
+              "title": "ConfirmationExtensionInteractionSurfaceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "actions",
+            "body",
+            "details",
+            "title",
+            "type"
+          ],
+          "title": "ConfirmationExtensionInteractionSurface",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "body": {
+              "type": "string"
+            },
+            "level": {
+              "$ref": "#/definitions/ExtensionInteractionNoticeLevel"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "notice"
+              ],
+              "title": "NoticeExtensionInteractionSurfaceType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "body",
+            "level",
+            "title",
+            "type"
+          ],
+          "title": "NoticeExtensionInteractionSurface",
+          "type": "object"
+        }
+      ]
+    },
+    "ModelRouterSettingsHostAction": {
+      "description": "Explicit host capabilities available to model-router settings scripts.",
+      "enum": [
+        "open-report",
+        "arm-ab",
+        "disable-ab"
+      ],
+      "type": "string"
+    },
+    "ModelRouterSettingsInteraction": {
+      "properties": {
+        "continuation": {
+          "type": "string"
+        },
+        "interactionId": {
+          "type": "string"
+        },
+        "stateRevision": {
+          "type": "string"
+        },
+        "surface": {
+          "$ref": "#/definitions/ExtensionInteractionSurface"
+        }
+      },
+      "required": [
+        "continuation",
+        "interactionId",
+        "stateRevision",
+        "surface"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "interaction": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ModelRouterSettingsInteraction"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "title": "ModelRouterSettingsOpenResponse",
+  "type": "object"
+}

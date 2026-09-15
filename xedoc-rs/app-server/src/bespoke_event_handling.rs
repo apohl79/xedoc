@@ -34,6 +34,9 @@ use xedoc_app_server_protocol::DynamicToolCallParams;
 use xedoc_app_server_protocol::EnvironmentConnectionNotification;
 use xedoc_app_server_protocol::ErrorNotification;
 use xedoc_app_server_protocol::ExecPolicyAmendment as V2ExecPolicyAmendment;
+use xedoc_app_server_protocol::ExtensionInteractionOutcome;
+use xedoc_app_server_protocol::ExtensionInteractionRequestParams;
+use xedoc_app_server_protocol::ExtensionInteractionRequestResponse;
 use xedoc_app_server_protocol::FileChangeApprovalDecision;
 use xedoc_app_server_protocol::FileChangeRequestApprovalParams;
 use xedoc_app_server_protocol::FileChangeRequestApprovalResponse;
@@ -48,11 +51,7 @@ use xedoc_app_server_protocol::McpServerElicitationRequestResponse;
 use xedoc_app_server_protocol::McpServerStartupState;
 use xedoc_app_server_protocol::McpServerStatusUpdatedNotification;
 use xedoc_app_server_protocol::ModelReroutedNotification;
-use xedoc_app_server_protocol::ModelRouterApprovalAction;
-use xedoc_app_server_protocol::ModelRouterApprovalParams;
-use xedoc_app_server_protocol::ModelRouterApprovalResponse;
 use xedoc_app_server_protocol::ModelRouterDecisionNotification;
-use xedoc_app_server_protocol::ModelRouterRoute;
 use xedoc_app_server_protocol::ModelSafetyBufferingUpdatedNotification;
 use xedoc_app_server_protocol::ModelVerificationNotification;
 use xedoc_app_server_protocol::NetworkApprovalContext as V2NetworkApprovalContext;
@@ -101,10 +100,10 @@ use xedoc_protocol::protocol::COMPACTION_PROGRESS_PREFIX;
 use xedoc_protocol::protocol::Event;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::ExecApprovalRequestEvent;
-use xedoc_protocol::protocol::ModelRouterApprovalAction as CoreModelRouterApprovalAction;
-use xedoc_protocol::protocol::ModelRouterApprovalResponse as CoreModelRouterApprovalResponse;
 use xedoc_protocol::protocol::Op;
 use xedoc_protocol::protocol::ReviewDecision;
+use xedoc_protocol::protocol::ScriptedInteractionOutcome as CoreScriptedInteractionOutcome;
+use xedoc_protocol::protocol::ScriptedInteractionResponse as CoreScriptedInteractionResponse;
 use xedoc_protocol::protocol::SubAgentActivityKind;
 use xedoc_protocol::protocol::TokenCountEvent;
 use xedoc_protocol::protocol::TurnAbortedEvent;
@@ -309,7 +308,9 @@ pub(crate) async fn apply_bespoke_event_handling(
                 scope: event.scope.into(),
                 disposition: event.disposition.into(),
                 reason: event.reason.into(),
+                feedback_visible: event.feedback_visible,
                 diagnostic: event.diagnostic,
+                summary: event.summary,
                 policy_revision: event.policy_revision,
                 classifications: event.classifications,
                 confidence_score: event.confidence_score.into(),
@@ -334,82 +335,58 @@ pub(crate) async fn apply_bespoke_event_handling(
                 .send_server_notification(ServerNotification::ModelRouterDecision(notification))
                 .await;
         }
-        EventMsg::ModelRouterApprovalRequest(event) => {
-            let approval_id = event.approval_id.clone();
-            let params = ModelRouterApprovalParams {
-                approval_id: approval_id.clone(),
-                thread_id: event.thread_id,
-                turn_id: event.turn_id,
-                scope: event.scope.into(),
-                predicted_classification: event.predicted_classification,
-                classifications: event.classifications,
-                classification_options: event.classification_options,
-                available_routes: event
-                    .available_routes
-                    .into_iter()
-                    .map(|route| ModelRouterRoute {
-                        provider_id: route.provider_id,
-                        model_slug: route.model_slug,
-                        reasoning_effort: route.reasoning_effort,
-                    })
-                    .collect(),
-                classification_ratings: event
-                    .classification_ratings
-                    .into_iter()
-                    .map(|(axis, values)| {
-                        (
-                            axis,
-                            values
-                                .into_iter()
-                                .map(|(id, rating)| {
-                                    (
-                                        id,
-                                        xedoc_app_server_protocol::ModelRouterApprovalClassRating {
-                                            points: rating.points,
-                                            minimum_model_class: rating.minimum_model_class,
-                                            maximum_model_class: rating.maximum_model_class,
-                                        },
-                                    )
-                                })
-                                .collect(),
-                        )
-                    })
-                    .collect(),
-                ranking_minimum_score: event.ranking_minimum_score,
-                ranking_maximum_score: event.ranking_maximum_score,
-                ranking_ladder: event
-                    .ranking_ladder
-                    .into_iter()
-                    .map(
-                        |entry| xedoc_app_server_protocol::ModelRouterApprovalRankedRoute {
-                            rank: entry.rank,
-                            model_class: entry.model_class,
-                            route: ModelRouterRoute {
-                                provider_id: entry.route.provider_id,
-                                model_slug: entry.route.model_slug,
-                                reasoning_effort: entry.route.reasoning_effort,
-                            },
-                        },
-                    )
-                    .collect(),
-                proposed_route: ModelRouterRoute {
-                    provider_id: event.proposed_provider_id,
-                    model_slug: event.proposed_model_slug,
-                    reasoning_effort: event.proposed_reasoning_effort,
-                },
-                current_route: event.current_route.into(),
-                score: event.score.into(),
-                margin: event.margin.into(),
-                classifier_revision: event.classifier_revision,
-                policy_revision: event.policy_revision,
-                prompt_sha256: event.prompt_sha256,
+        EventMsg::ScriptedInteractionRequest(event) => {
+            let request_id = event.request_id.clone();
+            let extension_id = event.extension_id.clone();
+            let interaction_id = event.interaction_id.clone();
+            let continuation = event.continuation.clone();
+            let state_revision = event.state_revision.clone();
+            let surface = match serde_json::from_value(event.surface) {
+                Ok(surface) => surface,
+                Err(error) => {
+                    error!("failed to deserialize scripted interaction surface: {error}");
+                    let response = CoreScriptedInteractionResponse {
+                        extension_id,
+                        interaction_id,
+                        continuation,
+                        state_revision,
+                        outcome: CoreScriptedInteractionOutcome::Cancelled,
+                        action: None,
+                        values: serde_json::Value::Null,
+                    };
+                    if let Err(error) = conversation
+                        .submit(Op::ScriptedInteractionResponse {
+                            request_id,
+                            response,
+                        })
+                        .await
+                    {
+                        error!("failed to submit ScriptedInteractionResponse: {error}");
+                    }
+                    return;
+                }
+            };
+            let params = ExtensionInteractionRequestParams {
+                thread_id: conversation_id.to_string(),
+                turn_id: event_turn_id.clone(),
+                request_id: request_id.clone(),
+                extension_id: event.extension_id,
+                interaction_id: event.interaction_id,
+                continuation: event.continuation,
+                state_revision: event.state_revision,
+                expires_at: event.expires_at,
+                surface,
             };
             let (pending_request_id, receiver) = outgoing
-                .send_request(ServerRequestPayload::ModelRouterRequestApproval(params))
+                .send_request(ServerRequestPayload::ExtensionInteractionRequest(params))
                 .await;
             tokio::spawn(async move {
-                on_model_router_approval_response(
-                    approval_id,
+                on_extension_interaction_response(
+                    request_id,
+                    extension_id,
+                    interaction_id,
+                    continuation,
+                    state_revision,
                     pending_request_id,
                     receiver,
                     conversation,
@@ -1685,56 +1662,66 @@ async fn on_request_user_input_response(
     }
 }
 
-async fn on_model_router_approval_response(
-    approval_id: String,
+async fn on_extension_interaction_response(
+    request_id: String,
+    extension_id: String,
+    interaction_id: String,
+    continuation: String,
+    state_revision: Option<String>,
     pending_request_id: RequestId,
     receiver: oneshot::Receiver<ClientRequestResult>,
     conversation: Arc<XedocThread>,
     thread_state: Arc<Mutex<ThreadState>>,
 ) {
-    let response = receiver.await;
-    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
-    let response = match response {
-        Ok(Ok(value)) => serde_json::from_value::<ModelRouterApprovalResponse>(value)
-            .unwrap_or_else(|err| {
-                error!("failed to deserialize ModelRouterApprovalResponse: {err}");
-                reject_model_router_approval()
+    let cancelled_response = ExtensionInteractionRequestResponse {
+        extension_id,
+        interaction_id,
+        continuation,
+        state_revision,
+        outcome: ExtensionInteractionOutcome::Cancelled,
+        action: None,
+        values: serde_json::Value::Null,
+    };
+    let response = match receiver.await {
+        Ok(Ok(value)) => serde_json::from_value::<ExtensionInteractionRequestResponse>(value)
+            .unwrap_or_else(|error| {
+                error!("failed to deserialize ExtensionInteractionRequestResponse: {error}");
+                cancelled_response.clone()
             }),
-        Ok(Err(err)) if is_turn_transition_server_request_error(&err) => return,
-        Ok(Err(err)) => {
-            error!("model-router approval request failed with client error: {err:?}");
-            reject_model_router_approval()
+        Ok(Err(error)) if is_turn_transition_server_request_error(&error) => return,
+        Ok(Err(error)) => {
+            error!("extension interaction request failed with client error: {error:?}");
+            cancelled_response.clone()
         }
-        Err(err) => {
-            error!("model-router approval request failed: {err:?}");
-            reject_model_router_approval()
+        Err(error) => {
+            error!("extension interaction request failed: {error:?}");
+            cancelled_response
         }
     };
-    let response = CoreModelRouterApprovalResponse {
-        action: match response.action {
-            ModelRouterApprovalAction::Approve => CoreModelRouterApprovalAction::Approve,
-            ModelRouterApprovalAction::Reject => CoreModelRouterApprovalAction::Reject,
-            ModelRouterApprovalAction::Override => CoreModelRouterApprovalAction::Override,
+    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    let response = CoreScriptedInteractionResponse {
+        extension_id: response.extension_id,
+        interaction_id: response.interaction_id,
+        continuation: response.continuation,
+        state_revision: response.state_revision,
+        outcome: match response.outcome {
+            ExtensionInteractionOutcome::Accepted => CoreScriptedInteractionOutcome::Accepted,
+            ExtensionInteractionOutcome::Cancelled => CoreScriptedInteractionOutcome::Cancelled,
+            ExtensionInteractionOutcome::Dismissed => CoreScriptedInteractionOutcome::Dismissed,
         },
-        classification: response.classification,
-        classifications: response.classifications,
+        action: response.action.map(|action| {
+            xedoc_protocol::protocol::ScriptedInteractionSelectedAction { id: action.id }
+        }),
+        values: response.values,
     };
-    if let Err(err) = conversation
-        .submit(Op::ModelRouterApprovalResponse {
-            approval_id,
+    if let Err(error) = conversation
+        .submit(Op::ScriptedInteractionResponse {
+            request_id,
             response,
         })
         .await
     {
-        error!("failed to submit ModelRouterApprovalResponse: {err}");
-    }
-}
-
-fn reject_model_router_approval() -> ModelRouterApprovalResponse {
-    ModelRouterApprovalResponse {
-        action: ModelRouterApprovalAction::Reject,
-        classification: None,
-        classifications: Default::default(),
+        error!("failed to submit ScriptedInteractionResponse: {error}");
     }
 }
 
@@ -2180,6 +2167,7 @@ mod tests {
             .ok_or_else(|| anyhow!("should send one message"))?;
         match envelope {
             OutgoingEnvelope::Broadcast { message } => Ok(message),
+            OutgoingEnvelope::BroadcastExperimentalRequest { message, .. } => Ok(message),
             OutgoingEnvelope::ToConnection { message, .. } => Ok(message),
         }
     }

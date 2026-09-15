@@ -459,10 +459,7 @@ impl ThreadRequestProcessor {
                 xedoc_protocol::protocol::ModelRouterAbControlAction::Disable
             }
         };
-        thread
-            .submit(xedoc_protocol::protocol::Op::ModelRouterAbControl { action })
-            .await
-            .map_err(|error| invalid_request(format!("failed to control A/B session: {error}")))?;
+        thread.control_model_router_ab(action).await;
         Ok(xedoc_app_server_protocol::ModelRouterAbControlResponse {})
     }
 

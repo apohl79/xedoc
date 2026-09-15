@@ -118,6 +118,11 @@
     "effectiveRoute": {
       "$ref": "#/definitions/ModelRouterEffectiveRoute"
     },
+    "feedbackVisible": {
+      "default": false,
+      "description": "Whether interactive clients should render this decision's feedback.",
+      "type": "boolean"
+    },
     "policyRevision": {
       "type": "string"
     },
@@ -198,6 +203,13 @@
     },
     "scope": {
       "$ref": "#/definitions/ModelRouterScope"
+    },
+    "summary": {
+      "description": "Compact prompt-free decision summary supplied by the router.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "threadId": {
       "type": "string"

@@ -120,10 +120,10 @@ pub use xedoc_tui_overlays::bottom_pane::ListSelectionView;
 pub use xedoc_tui_overlays::bottom_pane::McpElicitationApprovalRequest;
 pub use xedoc_tui_overlays::bottom_pane::McpServerElicitationFormRequest;
 pub use xedoc_tui_overlays::bottom_pane::McpServerElicitationOverlay;
-pub use xedoc_tui_overlays::bottom_pane::ModelRouterApprovalView;
 pub use xedoc_tui_overlays::bottom_pane::OnSelectionChangedCallback;
 pub use xedoc_tui_overlays::bottom_pane::PermissionsApprovalRequest;
 pub use xedoc_tui_overlays::bottom_pane::RequestUserInputOverlay;
+pub use xedoc_tui_overlays::bottom_pane::ScriptedInteractionView;
 pub use xedoc_tui_overlays::bottom_pane::SelectionRowDisplay;
 pub use xedoc_tui_overlays::bottom_pane::SelectionToggle;
 pub use xedoc_tui_overlays::bottom_pane::SelectionViewParams;
@@ -1507,19 +1507,33 @@ impl BottomPane {
         self.push_view(Box::new(modal));
     }
 
-    pub fn push_model_router_approval_request(
+    pub fn push_extension_interaction_request(
         &mut self,
-        request: xedoc_app_server_protocol::ModelRouterApprovalParams,
+        request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
     ) {
         self.pause_status_timer_for_modal();
         self.set_composer_input_enabled(
             /*enabled*/ false,
-            Some("Approve or override the model route to continue.".to_string()),
+            Some("Respond to the extension request to continue.".to_string()),
         );
-        self.push_view(Box::new(ModelRouterApprovalView::new(
+        self.push_view(Box::new(ScriptedInteractionView::new(
             request,
             self.app_event_tx.clone(),
         )));
+    }
+
+    pub fn push_model_router_settings_request(
+        &mut self,
+        request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
+    ) {
+        self.pause_status_timer_for_modal();
+        self.set_composer_input_enabled(
+            /*enabled*/ false,
+            Some("Respond to the model-router settings request to continue.".to_string()),
+        );
+        self.push_view(Box::new(
+            ScriptedInteractionView::new_model_router_settings(request, self.app_event_tx.clone()),
+        ));
     }
 
     pub fn push_mcp_server_elicitation_request(

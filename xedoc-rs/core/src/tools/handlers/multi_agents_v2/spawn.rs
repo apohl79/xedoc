@@ -11,6 +11,7 @@ use crate::tools::handlers::multi_agents_v2::message_tool::message_content;
 use xedoc_protocol::AgentPath;
 use xedoc_protocol::models::PermissionProfile;
 use xedoc_protocol::protocol::SandboxPolicy;
+use xedoc_script_protocol::InteractionSurface;
 use xedoc_tools::ToolSpec;
 
 #[derive(Default)]
@@ -44,6 +45,7 @@ async fn handle_spawn_agent(
     let ToolInvocation {
         session,
         turn,
+        cancellation_token,
         payload,
         call_id,
         ..
@@ -96,101 +98,179 @@ async fn handle_spawn_agent(
     apply_spawn_agent_delegation_override(&mut config, args.allow_delegation);
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
     let orchestrator_config = config.clone();
-    let mut router_decision =
-        if let Some(current_route) = crate::model_router::current_route(&config) {
-            crate::model_router::ModelRouterService::decide_subagent(
-                turn.config.as_ref(),
-                &session.services.models_manager,
-                &message,
-                current_route,
-                args.model.is_some()
+    let mut router_event = None;
+    let mut router_decision_id = None;
+    if let Some(script_host) =
+        crate::model_router_script_host::ModelRouterScriptHost::from_config(&config)
+    {
+        let eligible_routes =
+            crate::model_router::eligible_script_routes(&config, &session.services.models_manager)
+                .await;
+        if let Some(current_route) = crate::model_router::current_script_route(&config) {
+            let context = crate::session::model_router_script_context::build(
+                crate::session::model_router_script_context::RoutingContextInput {
+                    session: session.as_ref(),
+                    turn: turn.as_ref(),
+                    turn_state: crate::session::model_router_script_context::RoutingTurnState::PendingSubagent,
+                    current_route: &current_route,
+                    eligible_routes: &eligible_routes,
+                },
+            )
+            .await;
+            let params = serde_json::json!({
+                "prompt": message,
+                "explicitRouteOverride": args.model.is_some()
                     || args.reasoning_effort.is_some()
                     || args.service_tier.is_some()
                     || role_name.is_some()
                     || turn.config.agent_default_subagent_model.is_some()
-                    || turn
-                        .config
-                        .agent_default_subagent_reasoning_effort
-                        .is_some(),
-            )
-            .await
-        } else {
-            None
-        };
-    if let Some(decision) = router_decision.as_mut()
-        && crate::model_router::requires_approval(
-            turn.config.model_router.mode,
-            turn.config.model_router.approval,
-            decision,
-        )
-    {
-        let approval = crate::model_router::approval_event(
-            decision,
-            session.thread_id.to_string(),
-            turn.sub_id.clone(),
-            xedoc_protocol::protocol::ModelRouterScope::Subagent,
-        );
-        let response = session
-            .request_model_router_approval(turn.as_ref(), approval)
-            .await;
-        let override_classifications =
-            if response.action == xedoc_protocol::protocol::ModelRouterApprovalAction::Override {
-                let classifications = crate::model_router::feedback_classifications(&response);
-                xedoc_model_router::apply_approval_override(decision, &classifications)
-                    .then_some(classifications)
-            } else {
-                None
-            };
-        if let Some(classifications) = override_classifications.as_ref()
-            && !classifications.is_empty()
-        {
-            let feedback_path = session.model_router_feedback_path().await;
-            if let Err(error) = xedoc_model_router::append_classifier_feedback(
-                &feedback_path,
-                &decision.prompt.sha256,
-                now_unix_timestamp_ms() / 1_000,
-                classifications,
-                &message,
-            ) {
-                tracing::warn!(%error, "failed to persist model-router classifier feedback");
-            } else if let Err(error) =
-                crate::model_router::ModelRouterService::recalibrate_from_feedback(
-                    turn.config.clone(),
-                    feedback_path,
+                    || turn.config.agent_default_subagent_reasoning_effort.is_some(),
+            });
+            let mut outcome = match script_host
+                .decide(
+                    context.clone(),
+                    params,
+                    &eligible_routes,
+                    /*route_mutable*/ true,
+                    cancellation_token.child_token(),
                 )
                 .await
             {
-                tracing::warn!(%error, "failed to recalibrate model-router classifier");
-            }
-        }
-        match response.action {
-            xedoc_protocol::protocol::ModelRouterApprovalAction::Approve => {}
-            xedoc_protocol::protocol::ModelRouterApprovalAction::Reject => {
-                crate::model_router::fallback_to_original_route(decision);
-            }
-            xedoc_protocol::protocol::ModelRouterApprovalAction::Override => {
-                if override_classifications.is_none() {
-                    crate::model_router::fallback_to_original_route(decision);
+                crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Apply {
+                    decision,
+                    route,
+                } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
+                    decision,
+                    route,
+                },
+                crate::model_router_script_host::ModelRouterScriptDecisionOutcome::KeepCurrent {
+                    decision,
+                    failure,
+                } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
+                    decision,
+                    failure,
+                },
+                crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Interaction(
+                    interaction,
+                ) => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(interaction),
+            };
+            loop {
+                match outcome {
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
+                        decision,
+                        route,
+                    } => {
+                        let applied = crate::model_router::apply_script_route_to_config(
+                            &mut config,
+                            &session.services.models_manager,
+                            &route,
+                        )
+                        .await;
+                        if !applied {
+                            tracing::warn!(
+                                decision_id = %decision.id.as_str(),
+                                "validated script subagent route could not be applied; retaining current route"
+                            );
+                        }
+                        let event = crate::model_router_script_host::decision_event(
+                            decision,
+                            if applied { &route } else { &current_route },
+                            session.thread_id.to_string(),
+                            turn.sub_id.clone(),
+                            xedoc_protocol::protocol::ModelRouterScope::Subagent,
+                            applied,
+                            None,
+                        );
+                        router_decision_id = Some(event.decision_id.clone());
+                        router_event = Some(event);
+                        break;
+                    }
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(
+                        interaction,
+                    ) => {
+                        let Ok((request, extension_id, interaction_id, continuation, state_revision)) =
+                            crate::model_router_script_host::interaction_request(interaction)
+                        else {
+                            tracing::warn!("failed to encode scripted model-router interaction; retaining current route");
+                            break;
+                        };
+                        let Ok(surface) =
+                            serde_json::from_value::<InteractionSurface>(request.surface.clone())
+                        else {
+                            tracing::warn!("failed to validate scripted model-router interaction surface; retaining current route");
+                            break;
+                        };
+                        let (sender, receiver) = tokio::sync::oneshot::channel();
+                        let pending = crate::session::session::PendingScriptedInteraction {
+                            extension_id,
+                            interaction_id,
+                            script_continuation: continuation,
+                            state_revision,
+                            expires_at: request.expires_at,
+                            surface,
+                            continuation: crate::session::session::PendingScriptedInteractionContinuation::AwaitResponse(sender),
+                        };
+                        if !session
+                            .request_scripted_interaction(turn.as_ref(), request, pending)
+                            .await
+                        {
+                            tracing::warn!("failed to park scripted model-router interaction; retaining current route");
+                            break;
+                        }
+                        let Ok(response) = receiver.await else {
+                            tracing::warn!("scripted model-router interaction cancelled; retaining current route");
+                            break;
+                        };
+                        outcome = script_host
+                            .respond(
+                                context.clone(),
+                                crate::model_router_script_host::interaction_response(response),
+                                &eligible_routes,
+                                /*route_mutable*/ true,
+                                cancellation_token.child_token(),
+                            )
+                            .await;
+                    }
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
+                        decision,
+                        failure,
+                    } => {
+                        if let Some(failure) = failure.as_ref() {
+                            tracing::warn!(
+                                failure = %failure.diagnostic(),
+                                "scripted model-router retained current subagent route"
+                            );
+                        } else if let Some(decision) = decision.as_ref() {
+                            tracing::debug!(decision_id = %decision.id.as_str(), "scripted model-router retained current subagent route");
+                        }
+                        if let Some(decision) = decision {
+                            let event = crate::model_router_script_host::decision_event(
+                                decision,
+                                &current_route,
+                                session.thread_id.to_string(),
+                                turn.sub_id.clone(),
+                                xedoc_protocol::protocol::ModelRouterScope::Subagent,
+                                /*applied*/ false,
+                                failure.as_ref(),
+                            );
+                            router_decision_id = Some(event.decision_id.clone());
+                            session
+                                .emit_model_router_decision(turn.as_ref(), event)
+                                .await;
+                        }
+                        break;
+                    }
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Failure(
+                        failure,
+                    ) => {
+                        tracing::warn!(
+                            failure = %failure.diagnostic(),
+                            "scripted model-router interaction failed; retaining current route"
+                        );
+                        break;
+                    }
                 }
             }
-        }
-    }
-    if let Some(decision) = router_decision.as_mut()
-        && decision.disposition == xedoc_model_router::RouteDisposition::Applied
-    {
-        let applied = match decision.effective_route.as_ref() {
-            Some(route) => {
-                crate::model_router::apply_route_to_config(
-                    &mut config,
-                    &session.services.models_manager,
-                    route,
-                )
-                .await
-            }
-            None => false,
-        };
-        if !applied {
-            crate::model_router::fallback_to_original_route(decision);
         }
     }
 
@@ -204,7 +284,7 @@ async fn handle_spawn_agent(
         &message,
         &config,
         &orchestrator_config,
-        router_decision.as_ref(),
+        router_event.as_ref(),
     )
     .await?
     {
@@ -234,18 +314,11 @@ async fn handle_spawn_agent(
         ToolMessageKind::NewTask,
     );
     let context = AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
-    let router_event = router_decision.map(|decision| {
-        crate::model_router::decision_event(
-            decision,
-            session.thread_id.to_string(),
-            turn.sub_id.clone(),
-            xedoc_protocol::protocol::ModelRouterScope::Subagent,
-            now_unix_timestamp_ms() / 1_000,
-        )
-    });
-    if let Some(router_event) = router_event.as_ref() {
-        persist_model_router_decision(&session, router_event).await;
-    }
+    let context = if let Some(router_decision_id) = router_decision_id {
+        context.with_router_decision_id(router_decision_id)
+    } else {
+        context
+    };
     let spawned_agent = Box::pin(
         session
             .services
@@ -269,10 +342,7 @@ async fn handle_spawn_agent(
     let new_thread_id = spawned_agent.thread_id;
     if let Some(router_event) = router_event {
         session
-            .send_event(
-                &turn,
-                xedoc_protocol::protocol::EventMsg::ModelRouterDecision(router_event),
-            )
+            .emit_model_router_decision(&turn, router_event)
             .await;
     }
     let agent_snapshot = session
@@ -341,11 +411,11 @@ async fn try_spawn_ab_pair(
     message: &str,
     routed_config: &crate::config::Config,
     orchestrator_config: &crate::config::Config,
-    router_decision: Option<&xedoc_model_router::RouteDecision>,
+    router_event: Option<&xedoc_protocol::protocol::ModelRouterDecisionEvent>,
 ) -> Result<Option<SpawnAgentResult>, FunctionCallError> {
     if turn.session_source.is_non_root_agent()
         || is_operations_or_deployment_task(message)
-        || !matches!(router_decision, Some(decision) if decision.disposition == xedoc_model_router::RouteDisposition::Applied)
+        || !matches!(router_event, Some(event) if event.disposition == xedoc_protocol::protocol::ModelRouterDisposition::Applied)
     {
         return Ok(None);
     }
@@ -355,7 +425,7 @@ async fn try_spawn_ab_pair(
     };
     let mut routed_config = routed_config.clone();
     let mut baseline_config = orchestrator_config.clone();
-    if !crate::model_router::apply_route_to_config(
+    if !crate::model_router::apply_script_route_to_config(
         &mut baseline_config,
         &session.services.models_manager,
         &active_pair.orchestrator_route,
@@ -424,16 +494,7 @@ async fn try_spawn_ab_pair(
         options.parent_thread_id = Some(session.thread_id);
         options.environments = Some(turn.environments.to_selections());
     }
-    let router_event = router_decision.map(|decision| {
-        crate::model_router::decision_event(
-            decision.clone(),
-            session.thread_id.to_string(),
-            turn.sub_id.clone(),
-            xedoc_protocol::protocol::ModelRouterScope::Subagent,
-            now_unix_timestamp_ms() / 1_000,
-        )
-    });
-    let router_decision_id = router_event.as_ref().map(|event| event.decision_id.clone());
+    let router_decision_id = router_event.map(|event| event.decision_id.clone());
     let routed_context =
         AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id)
             .with_ab_pair(
@@ -557,16 +618,17 @@ async fn try_spawn_ab_pair(
             "model-router A/B experiment is no longer available".to_string(),
         ));
     }
-    if let Some(router_event) = router_event.as_ref() {
-        persist_model_router_decision(session, router_event).await;
+    if let Some(router_event) = router_event.cloned() {
+        let router_decision_id = router_event.decision_id.clone();
+        session.emit_model_router_decision(turn, router_event).await;
         session
-            .set_model_router_ab_decision_id(&active_pair.pair_id, router_event.decision_id.clone())
+            .set_model_router_ab_decision_id(&active_pair.pair_id, router_decision_id.clone())
             .await;
         session
             .start_model_router_ab_outcome(
                 &active_pair.pair_id,
                 &turn.sub_id,
-                Some(router_event.decision_id.clone()),
+                Some(router_decision_id),
             )
             .await;
     }
@@ -633,33 +695,11 @@ async fn try_spawn_ab_pair(
             .await;
         return Err(collab_spawn_error(error));
     }
-    if let Some(router_event) = router_event {
-        session
-            .send_event(
-                turn,
-                xedoc_protocol::protocol::EventMsg::ModelRouterDecision(router_event),
-            )
-            .await;
-    }
     Ok(Some(SpawnAgentResult::AbPair {
         pair_id: active_pair.pair_id,
         routed_task_name,
         orchestrator_task_name,
     }))
-}
-
-async fn persist_model_router_decision(
-    session: &crate::session::session::Session,
-    router_event: &xedoc_protocol::protocol::ModelRouterDecisionEvent,
-) {
-    let router_decision = xedoc_state::ModelRouterDecisionRecord::from(router_event);
-    if let Some(state_db) = session.state_db()
-        && let Err(error) = state_db
-            .insert_model_router_decision(&router_decision)
-            .await
-    {
-        tracing::warn!(%error, "failed to persist model-router decision");
-    }
 }
 
 fn is_operations_or_deployment_task(message: &str) -> bool {

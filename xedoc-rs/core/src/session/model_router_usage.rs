@@ -1,13 +1,47 @@
 //! Persists exact provider completion usage for model-router analysis.
 
 use xedoc_model_provider_info::ModelTokenPrices;
+use xedoc_protocol::protocol::EventMsg;
+use xedoc_protocol::protocol::ModelRouterDecisionEvent;
 use xedoc_protocol::protocol::TokenUsage;
+use xedoc_state::ModelRouterDecisionRecord;
 use xedoc_state::ModelRouterInvocationRecord;
 
 use super::Session;
 use super::turn_context::TurnContext;
 
 impl Session {
+    pub(crate) async fn emit_model_router_decision(
+        &self,
+        turn_context: &TurnContext,
+        event: ModelRouterDecisionEvent,
+    ) {
+        self.persist_model_router_decision(&event).await;
+        self.send_event(turn_context, EventMsg::ModelRouterDecision(event))
+            .await;
+    }
+
+    pub(crate) async fn emit_and_remember_model_router_decision(
+        &self,
+        turn_context: &TurnContext,
+        event: ModelRouterDecisionEvent,
+    ) {
+        self.persist_model_router_decision(&event).await;
+        self.remember_model_router_decision(&event.turn_id, event.decision_id.clone())
+            .await;
+        self.send_event(turn_context, EventMsg::ModelRouterDecision(event))
+            .await;
+    }
+
+    async fn persist_model_router_decision(&self, event: &ModelRouterDecisionEvent) {
+        let decision = ModelRouterDecisionRecord::from(event);
+        if let Some(state_db) = self.state_db()
+            && let Err(error) = state_db.insert_model_router_decision(&decision).await
+        {
+            tracing::warn!(%error, "failed to persist model-router decision");
+        }
+    }
+
     pub(crate) async fn record_model_router_invocation(
         &self,
         turn_context: &TurnContext,
@@ -37,9 +71,10 @@ impl Session {
         let prices = token_usage
             .zip(price)
             .map(|(usage, price)| invocation_prices(usage, price));
-        let reporting_baseline = crate::model_router::ModelRouterService::reporting_baseline(
-            turn_context.config.as_ref(),
-        );
+        let reporting_baseline =
+            crate::model_router_script_host::ModelRouterScriptHost::reporting_baseline(
+                turn_context.config.as_ref(),
+            );
         let baseline_prices =
             token_usage
                 .zip(reporting_baseline.as_ref())
@@ -47,9 +82,9 @@ impl Session {
                     turn_context
                         .config
                         .model_providers
-                        .get(&baseline.provider)
+                        .get(baseline.provider_id.as_str())
                         .and_then(|provider| provider.model_prices.as_ref())
-                        .and_then(|prices| prices.get(&baseline.model))
+                        .and_then(|prices| prices.get(baseline.model.as_str()))
                         .map(|prices| invocation_prices(usage, prices))
                 });
         let normalized_baseline_usd = baseline_prices.zip(token_usage).map(|(prices, usage)| {
@@ -69,7 +104,12 @@ impl Session {
         let decision_id = ab_pair
             .as_ref()
             .and_then(|metadata| metadata.router_decision_id.clone())
-            .or(self.model_router_decision_id(&turn_context.sub_id).await);
+            .or(self.model_router_decision_id(&turn_context.sub_id).await)
+            .or_else(|| {
+                self.services
+                    .agent_control
+                    .router_decision_id_for_thread(self.thread_id)
+            });
         let invocation = ModelRouterInvocationRecord {
             invocation_id: model_router_invocation_id(
                 &self.thread_id.to_string(),
@@ -114,13 +154,13 @@ impl Session {
             total_cost_usd,
             baseline_provider_id: reporting_baseline
                 .as_ref()
-                .map(|baseline| baseline.provider.clone()),
+                .map(|baseline| baseline.provider_id.as_str().to_string()),
             baseline_model_slug: reporting_baseline
                 .as_ref()
-                .map(|baseline| baseline.model.clone()),
+                .map(|baseline| baseline.model.as_str().to_string()),
             baseline_reasoning_effort: reporting_baseline
                 .as_ref()
-                .map(|baseline| baseline.reasoning_effort.to_string()),
+                .map(|baseline| baseline.reasoning_effort.as_str().to_string()),
             baseline_input_price_usd_per_token: baseline_prices.map(|prices| prices.input),
             baseline_cached_input_price_usd_per_token: baseline_prices
                 .map(|prices| prices.cached_input),

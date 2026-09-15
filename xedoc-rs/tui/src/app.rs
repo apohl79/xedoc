@@ -218,6 +218,7 @@ const THREAD_EVENT_CHANNEL_CAPACITY: usize = 32768;
 enum ThreadInteractiveRequest {
     Approval(ApprovalRequest),
     McpServerElicitation(McpServerElicitationFormRequest),
+    ExtensionInteraction(xedoc_app_server_protocol::ExtensionInteractionRequestParams),
 }
 
 /// Extracts `receiver_thread_ids` from collab agent tool-call notifications.

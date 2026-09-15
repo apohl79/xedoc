@@ -1,0 +1,1305 @@
+#!/usr/bin/env python3
+"""Deterministic packaged reference implementation of xedoc.script/v1 routing."""
+
+import base64
+import copy
+import json
+import math
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+
+POLICY_PATH = Path(__file__).with_name("reference-router.policy.json")
+MODES = ("off", "shadow-subagents", "shadow-full", "subagents", "full")
+APPROVALS = ("off", "changes", "all")
+WORK_TYPES = (
+    "group1: question, docs_analysis, packaging, operational, testing",
+    "group2: implementation, bug_fix, refactor, docs_authoring, orchestration, calibration",
+    "group3: research, review, diagnosis, design",
+)
+COMPLEXITIES = ("low", "medium", "high", "very_high")
+ORCHESTRATIONS = ("none", "delegate", "coordination", "workflow")
+RISKS = ("low", "medium", "high")
+MODEL_CLASSES = ("simple", "smart", "intelligent")
+CLASS_ORDER = {model_class: index for index, model_class in enumerate(MODEL_CLASSES)}
+AXIS_VALUES = {
+    "work_type": WORK_TYPES,
+    "complexity": COMPLEXITIES,
+    "orchestration": ORCHESTRATIONS,
+    "risk": RISKS,
+}
+
+
+def load_policy():
+    with POLICY_PATH.open(encoding="utf-8") as source:
+        policy = json.load(source)
+    validate_policy(policy)
+    return policy
+
+
+def validate_policy(policy):
+    presets = policy.get("confidencePresets")
+    if not isinstance(presets, dict) or policy.get("confidence") not in presets:
+        raise ValueError("policy selects an unknown confidence preset")
+    for preset in presets.values():
+        score = preset.get("minimumScore")
+        margin = preset.get("minimumMargin")
+        if (
+            not isinstance(score, (int, float))
+            or isinstance(score, bool)
+            or not math.isfinite(score)
+            or not 0.0 <= score <= 1.0
+            or not isinstance(margin, (int, float))
+            or isinstance(margin, bool)
+            or not math.isfinite(margin)
+            or not 0.0 <= margin <= 1.0
+        ):
+            raise ValueError(
+                "policy confidence thresholds must be finite values from zero to one"
+            )
+    axes = policy.get("axes")
+    if not isinstance(axes, list) or {axis.get("id") for axis in axes} != set(
+        AXIS_VALUES
+    ):
+        raise ValueError("policy must define the four ranking axes")
+    for axis in axes:
+        expected = set(AXIS_VALUES[axis["id"]])
+        classes = axis.get("classes")
+        if (
+            not isinstance(classes, list)
+            or {item.get("id") for item in classes} != expected
+        ):
+            raise ValueError(f"policy axis {axis['id']} has invalid classes")
+        for item in classes:
+            if (
+                not isinstance(item.get("points"), int)
+                or isinstance(item.get("points"), bool)
+                or item.get("points") < 0
+                or item.get("minimumModelClass") not in CLASS_ORDER
+                or item.get("maximumModelClass") not in CLASS_ORDER
+                or CLASS_ORDER[item["minimumModelClass"]]
+                > CLASS_ORDER[item["maximumModelClass"]]
+            ):
+                raise ValueError(
+                    f"policy axis {axis['id']} has invalid ranking metadata"
+                )
+    ranking = policy.get("ranking")
+    if (
+        not isinstance(ranking, dict)
+        or not isinstance(ranking.get("minimumScore"), int)
+        or not isinstance(ranking.get("maximumScore"), int)
+        or ranking["minimumScore"] > ranking["maximumScore"]
+    ):
+        raise ValueError("policy ranking score domain is invalid")
+    ladder = ranking.get("ladder")
+    if not isinstance(ladder, list) or not ladder:
+        raise ValueError("policy ranking ladder must not be empty")
+    ranks = [entry.get("rank") for entry in ladder]
+    if ranks != sorted(ranks) or len(ranks) != len(set(ranks)):
+        raise ValueError("policy ranking ladder ranks must be unique and ordered")
+    for entry in ladder:
+        if (
+            not isinstance(entry.get("rank"), int)
+            or isinstance(entry.get("rank"), bool)
+            or entry["rank"] < 1
+            or entry.get("class") not in CLASS_ORDER
+            or valid_route_shape(entry) is None
+        ):
+            raise ValueError("policy ranking ladder contains an invalid slot")
+
+
+def save_policy(policy):
+    destination = POLICY_PATH.parent
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{POLICY_PATH.name}.", dir=destination, text=True
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            json.dump(policy, out, indent=2, sort_keys=True)
+            out.write("\n")
+        os.replace(temporary, POLICY_PATH)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def response(request, result=None, error=None):
+    answer = {
+        "protocol": "xedoc.script/v1",
+        "requestId": request["requestId"],
+    }
+    if error is not None:
+        answer["error"] = error
+    else:
+        answer["result"] = result
+    json.dump(answer, sys.stdout, separators=(",", ":"))
+    sys.stdout.write("\n")
+
+
+def action(
+    identifier,
+    label=None,
+    *,
+    host_action=None,
+    opens=None,
+    value=None,
+    bindings=None,
+):
+    result = {"id": identifier}
+    if label is not None:
+        result["label"] = label
+    if host_action is not None:
+        result["hostAction"] = host_action
+    if opens is not None:
+        result["opens"] = opens
+    if value is not None:
+        result["value"] = value
+    if bindings:
+        result["keyBindings"] = bindings
+    return result
+
+
+def interaction(identifier, continuation, policy, surface):
+    return {
+        "kind": "interaction",
+        "interaction": {
+            "id": identifier,
+            "continuation": continuation,
+            "stateRevision": str(policy["revision"]),
+            "surface": surface,
+        },
+    }
+
+
+def menu(policy, title, items, subtitle=None, *, continuation="settings:root"):
+    surface = {"type": "menu", "title": title, "items": items}
+    if subtitle:
+        surface["subtitle"] = subtitle
+    return interaction("router-settings", continuation, policy, surface)
+
+
+def root_menu(policy, conflict=None):
+    subtitle = f"{policy['confidence'].title()} policy"
+    if conflict:
+        subtitle = f"Settings conflict: {conflict} {subtitle}"
+    return menu(
+        policy,
+        "Model router",
+        [
+            item(
+                "mode",
+                f"Mode: {policy['mode']}",
+                "Choose where routing applies.",
+                "open-mode",
+            ),
+            item(
+                "approval",
+                f"Approval prompts: {policy['approval']}",
+                "Choose when a route needs confirmation.",
+                "open-approval",
+            ),
+            item(
+                "feedback",
+                f"Routing feedback: {'on' if policy['feedback'] else 'off'}",
+                "Show script-provided classification and route details.",
+                "toggle-feedback",
+            ),
+            item(
+                "ab-arm",
+                "Arm A/B test",
+                "Arm the next eligible routing experiment.",
+                "arm-ab",
+                host_action="arm-ab",
+            ),
+            item(
+                "ab-disable",
+                "Disable A/B test",
+                "Disable a pending routing experiment.",
+                "disable-ab",
+                host_action="disable-ab",
+            ),
+            item(
+                "report",
+                "Open routing report",
+                "Open Xedoc's bounded local routing report.",
+                "open-report",
+                host_action="open-report",
+            ),
+            item(
+                "policy",
+                "Policy manager",
+                "Tune confidence, model ladder, and reporting baseline.",
+                "open-policy",
+            ),
+        ],
+        subtitle,
+    )
+
+
+def item(identifier, label, description, action_id, *, host_action=None):
+    return {
+        "id": identifier,
+        "label": label,
+        "description": description,
+        "action": action(action_id, host_action=host_action, bindings=["enter"]),
+    }
+
+
+def select_field(identifier, label, selected, options):
+    return {
+        "type": "select",
+        "id": identifier,
+        "label": label,
+        "value": select_option_id(selected),
+        "options": [
+            {
+                "id": select_option_id(option),
+                "label": option.replace("-", " ").title(),
+            }
+            for option in options
+        ],
+    }
+
+
+def select_option_id(option):
+    if option in WORK_TYPES:
+        return option.split(":", 1)[0]
+    return option
+
+
+def selected_option(option_id, options, fallback):
+    return next(
+        (
+            option
+            for option in options
+            if select_option_id(option) == option_id
+        ),
+        fallback,
+    )
+
+
+def form(
+    policy,
+    title,
+    continuation,
+    fields,
+    submit_id,
+    submit_label="Save",
+    *,
+    form_id=None,
+):
+    return interaction(
+        title.lower().replace(" ", "-"),
+        continuation,
+        policy,
+        {
+            "type": "form",
+            "id": form_id or continuation,
+            "title": title,
+            "fields": fields,
+            "submit": action(submit_id, submit_label, bindings=["enter"]),
+            "cancel": action("back", "Back", bindings=["escape"]),
+        },
+    )
+
+
+def eligible(context):
+    return context.get("eligibleRoutes", [])
+
+
+def route_label(route):
+    if not route:
+        return "Not set"
+    return "{}/{}/{}".format(
+        route["providerId"], route["model"], route["reasoningEffort"]
+    )
+
+
+def ladder(policy):
+    return policy["ranking"]["ladder"]
+
+
+def entry_route(entry):
+    return {
+        "providerId": entry["providerId"],
+        "model": entry["model"],
+        "reasoningEffort": entry["reasoningEffort"],
+    }
+
+
+def ladder_entry(policy, rank):
+    return next((entry for entry in ladder(policy) if entry["rank"] == rank), None)
+
+
+def matching_ladder_rank(policy, route):
+    return next(
+        (entry["rank"] for entry in ladder(policy) if entry_route(entry) == route),
+        None,
+    )
+
+
+def policy_menu(policy):
+    items = [
+        item(
+            "confidence",
+            f"Confidence: {policy['confidence'].title()}",
+            "Set minimum score and margin.",
+            "open-confidence",
+        ),
+        item(
+            "ladder",
+            f"Model ladder: {len(ladder(policy))} ranked slots",
+            "Edit every class-ranked model route.",
+            "open-ladder",
+        ),
+        item(
+            "baseline",
+            f"Reporting baseline: {route_label(policy.get('reportingBaseline'))}",
+            "Choose a ladder route for reports.",
+            "open-baseline",
+        ),
+    ]
+    if policy.get("reportingBaseline") is not None:
+        items.append(
+            item(
+                "clear-baseline",
+                "Clear reporting baseline",
+                "Set the reporting baseline to Not set.",
+                "clear-baseline",
+            )
+        )
+    items.append(item("back", "Back", "Return to model-router settings.", "back"))
+    return menu(
+        policy,
+        "Routing policy",
+        items,
+        continuation="settings:policy",
+    )
+
+
+def ladder_menu(policy):
+    items = [
+        item(
+            f"ladder-{entry['rank']}",
+            (
+                f"Rank {entry['rank']} · {entry['class']}: "
+                f"{route_label(entry_route(entry))}"
+            ),
+            "Choose the eligible provider, model, and reasoning effort for this slot.",
+            f"open-ladder-slot:{entry['rank']}",
+        )
+        for entry in ladder(policy)
+    ]
+    items.append(item("back", "Back", "Return to routing policy.", "open-policy"))
+    return menu(
+        policy,
+        "Model ladder",
+        items,
+        "Ordered from least to most capable within simple, smart, and intelligent classes.",
+        continuation="settings:ladder",
+    )
+
+
+def settings_open(request, policy):
+    return root_menu(policy)
+
+
+def update(policy, **values):
+    updated = copy.deepcopy(policy)
+    updated.update(values)
+    updated["revision"] += 1
+    validate_policy(updated)
+    save_policy(updated)
+    policy.clear()
+    policy.update(updated)
+
+
+def route_form(policy, context, entry):
+    return form(
+        policy,
+        f"Model ladder rank {entry['rank']}",
+        f"settings:ladder:{entry['rank']}",
+        [
+            {
+                "type": "modelRoute",
+                "id": "route",
+                "label": "Model route",
+                "description": f"Class: {entry['class']}",
+                "value": valid_route(entry_route(entry), eligible(context)),
+                "eligibleRoutes": eligible(context),
+            }
+        ],
+        f"set-ladder-slot:{entry['rank']}",
+    )
+
+
+def ladder_eligible_routes(policy, context):
+    available = {route_key(route) for route in offered_routes(context)}
+    grouped = {}
+    for entry in ladder(policy):
+        route = entry_route(entry)
+        if route_key(route) not in available:
+            continue
+        key = (route["providerId"], route["model"])
+        grouped.setdefault(key, [])
+        if route["reasoningEffort"] not in grouped[key]:
+            grouped[key].append(route["reasoningEffort"])
+    return [
+        {
+            "providerId": provider,
+            "model": model,
+            "reasoningEfforts": efforts,
+        }
+        for (provider, model), efforts in grouped.items()
+    ]
+
+
+def baseline_form(policy, context):
+    current = valid_route(policy.get("reportingBaseline"), eligible(context))
+    return form(
+        policy,
+        "Reporting baseline",
+        "settings:baseline",
+        [
+            {
+                "type": "modelRoute",
+                "id": "route",
+                "label": "Reporting baseline",
+                "value": current,
+                "eligibleRoutes": ladder_eligible_routes(policy, context),
+            }
+        ],
+        "set-baseline",
+    )
+
+
+def settings_surface(policy, context, continuation):
+    if continuation == "settings:root":
+        return root_menu(policy)
+    if continuation == "settings:policy":
+        return policy_menu(policy)
+    if continuation == "settings:ladder":
+        return ladder_menu(policy)
+    if continuation == "settings:mode":
+        return form(
+            policy,
+            "Routing mode",
+            continuation,
+            [select_field("mode", "Mode", policy["mode"], MODES)],
+            "set-mode",
+        )
+    if continuation == "settings:approval":
+        return form(
+            policy,
+            "Approval prompts",
+            continuation,
+            [
+                select_field(
+                    "approval", "Approval prompts", policy["approval"], APPROVALS
+                )
+            ],
+            "set-approval",
+        )
+    if continuation == "settings:confidence":
+        return form(
+            policy,
+            "Confidence",
+            continuation,
+            [
+                select_field(
+                    "confidence",
+                    "Preset",
+                    policy["confidence"],
+                    tuple(policy["confidencePresets"]),
+                )
+            ],
+            "set-confidence",
+        )
+    if continuation == "settings:baseline":
+        return baseline_form(policy, context)
+    if isinstance(continuation, str) and continuation.startswith("settings:ladder:"):
+        rank = parse_rank(continuation, "settings:ladder:")
+        entry = ladder_entry(policy, rank)
+        if entry is not None:
+            return route_form(policy, context, entry)
+    return None
+
+
+def action_is_enabled(surface, params):
+    selected = params.get("action") or {}
+    action_id = selected.get("id")
+    if not isinstance(action_id, str):
+        return False
+    outcome = params.get("outcome")
+    kind = surface.get("type")
+    if kind == "menu" and outcome == "accepted":
+        return any(
+            item.get("disabled") is not True
+            and (item.get("action") or {}).get("id") == action_id
+            for item in surface.get("items", [])
+        )
+    if kind == "form":
+        if outcome == "accepted":
+            return (surface.get("submit") or {}).get("id") == action_id
+        if outcome == "cancelled":
+            return (surface.get("cancel") or {}).get("id") == action_id
+    if kind == "confirmation":
+        if outcome == "accepted":
+            return (
+                any(
+                    action.get("opens") is None and action.get("id") == action_id
+                    for action in surface.get("actions", [])
+                )
+                or (surface.get("override") or {}).get("submit", {}).get("id")
+                == action_id
+            )
+        if outcome == "cancelled":
+            return (surface.get("override") or {}).get("cancel", {}).get(
+                "id"
+            ) == action_id
+    return False
+
+
+def settings_conflict(policy, message):
+    return root_menu(policy, message)
+
+
+def rendered_settings_action(policy, request):
+    params = request.get("params") or {}
+    continuation = params.get("continuation")
+    rendered = settings_surface(policy, request.get("context") or {}, continuation)
+    if rendered is None:
+        return None, settings_conflict(
+            policy, "This settings surface is no longer available."
+        )
+    interaction_data = rendered["interaction"]
+    if (
+        params.get("interactionId") != interaction_data["id"]
+        or params.get("stateRevision") != interaction_data["stateRevision"]
+    ):
+        return None, settings_conflict(
+            policy, "Settings changed before this action was submitted."
+        )
+    if not action_is_enabled(interaction_data["surface"], params):
+        return None, settings_conflict(
+            policy, "That action is not enabled on the rendered settings surface."
+        )
+    return (params.get("action") or {}).get("id"), None
+
+
+def settings_response(request, policy):
+    action_id, conflict = rendered_settings_action(policy, request)
+    if conflict is not None:
+        return conflict
+    params = request.get("params") or {}
+    values = params.get("values") or {}
+    context = request.get("context", {})
+    if action_id == "open-mode":
+        return form(
+            policy,
+            "Routing mode",
+            "settings:mode",
+            [select_field("mode", "Mode", policy["mode"], MODES)],
+            "set-mode",
+        )
+    if action_id == "set-mode":
+        mode = values.get("mode")
+        if mode not in MODES:
+            return error_notice(policy, "Mode must be one of the offered choices.")
+        update(policy, mode=mode)
+        return root_menu(policy)
+    if action_id == "open-approval":
+        return form(
+            policy,
+            "Approval prompts",
+            "settings:approval",
+            [
+                select_field(
+                    "approval", "Approval prompts", policy["approval"], APPROVALS
+                )
+            ],
+            "set-approval",
+        )
+    if action_id == "set-approval":
+        approval = values.get("approval")
+        if approval not in APPROVALS:
+            return error_notice(policy, "Approval must be one of the offered choices.")
+        update(policy, approval=approval)
+        return root_menu(policy)
+    if action_id == "toggle-feedback":
+        update(policy, feedback=not policy["feedback"])
+        return root_menu(policy)
+    if action_id in ("arm-ab", "disable-ab", "open-report"):
+        return root_menu(policy)
+    if action_id == "open-policy":
+        return policy_menu(policy)
+    if action_id == "open-confidence":
+        return form(
+            policy,
+            "Confidence",
+            "settings:confidence",
+            [
+                select_field(
+                    "confidence",
+                    "Preset",
+                    policy["confidence"],
+                    tuple(policy["confidencePresets"]),
+                )
+            ],
+            "set-confidence",
+        )
+    if action_id == "set-confidence":
+        confidence = values.get("confidence")
+        if confidence not in policy["confidencePresets"]:
+            return error_notice(
+                policy, "Confidence must be one of the offered choices."
+            )
+        update(policy, confidence=confidence)
+        return policy_menu(policy)
+    if action_id == "open-ladder":
+        return ladder_menu(policy)
+    if isinstance(action_id, str) and action_id.startswith("open-ladder-slot:"):
+        rank = parse_rank(action_id, "open-ladder-slot:")
+        entry = ladder_entry(policy, rank)
+        if entry is None:
+            return error_notice(policy, "Unknown model-ladder slot.")
+        return route_form(policy, context, entry)
+    if isinstance(action_id, str) and action_id.startswith("set-ladder-slot:"):
+        rank = parse_rank(action_id, "set-ladder-slot:")
+        entry = ladder_entry(policy, rank)
+        if entry is None:
+            return error_notice(policy, "Unknown model-ladder slot.")
+        route = valid_route(values.get("route"), eligible(context))
+        if route is None:
+            return error_notice(policy, "Choose an eligible model route.")
+        updated_ladder = copy.deepcopy(ladder(policy))
+        updated_entry = next(item for item in updated_ladder if item["rank"] == rank)
+        updated_entry.update(route)
+        update(
+            policy,
+            ranking={
+                **policy["ranking"],
+                "ladder": updated_ladder,
+            },
+        )
+        return ladder_menu(policy)
+    if action_id == "open-baseline":
+        return baseline_form(policy, context)
+    if action_id == "set-baseline":
+        route = valid_route(values.get("route"), eligible(context))
+        if route is None or matching_ladder_rank(policy, route) is None:
+            return error_notice(policy, "Choose an eligible model-ladder route.")
+        update(policy, reportingBaseline=route)
+        return policy_menu(policy)
+    if action_id == "clear-baseline":
+        update(policy, reportingBaseline=None)
+        return policy_menu(policy)
+    if action_id == "back":
+        return root_menu(policy)
+    return error_notice(policy, "Unknown settings action.")
+
+
+def notice(policy, title, body):
+    return interaction(
+        "router-notice",
+        "settings:root",
+        policy,
+        {"type": "notice", "title": title, "body": body, "level": "info"},
+    )
+
+
+def error_notice(policy, body):
+    return interaction(
+        "router-error",
+        "settings:root",
+        policy,
+        {"type": "notice", "title": "Model router", "body": body, "level": "error"},
+    )
+
+
+def parse_rank(value, prefix):
+    if not isinstance(value, str) or not value.startswith(prefix):
+        return None
+    try:
+        return int(value[len(prefix) :])
+    except ValueError:
+        return None
+
+
+def valid_route_shape(value):
+    if not isinstance(value, dict):
+        return None
+    candidate = {
+        "providerId": value.get("providerId"),
+        "model": value.get("model"),
+        "reasoningEffort": value.get("reasoningEffort"),
+    }
+    if any(not isinstance(part, str) or not part for part in candidate.values()):
+        return None
+    return candidate
+
+
+def route_key(route):
+    return (
+        route["providerId"],
+        route["model"],
+        route["reasoningEffort"],
+    )
+
+
+def valid_route(value, eligible_routes):
+    candidate = valid_route_shape(value)
+    if candidate is None:
+        return None
+    for route in eligible_routes:
+        if (
+            route.get("providerId") == candidate["providerId"]
+            and route.get("model") == candidate["model"]
+            and candidate["reasoningEffort"] in route.get("reasoningEfforts", [])
+        ):
+            return candidate
+    return None
+
+
+def classify(prompt):
+    lower = prompt.lower()
+    work_type = WORK_TYPES[0]
+    complexity = "low"
+    orchestration = "none"
+    risk = "low"
+    risk_matched = False
+    complexity_matched = False
+    orchestration_matched = False
+    work_type_matched = False
+    if any(word in lower for word in ("security", "auth", "payment", "delete")):
+        risk = "high"
+        risk_matched = True
+    elif any(word in lower for word in ("migration", "production", "deploy")):
+        risk = "medium"
+        risk_matched = True
+    if any(word in lower for word in ("implement", "fix", "refactor", "code")):
+        work_type = WORK_TYPES[1]
+        complexity = "high"
+        work_type_matched = True
+        complexity_matched = True
+    elif any(word in lower for word in ("research", "review", "diagnose", "design")):
+        work_type = WORK_TYPES[2]
+        complexity = "high"
+        work_type_matched = True
+        complexity_matched = True
+    elif any(
+        word in lower
+        for word in ("question", "explain", "docs", "package", "test", "operational")
+    ):
+        work_type_matched = True
+    if any(
+        word in lower for word in ("multi-agent", "coordinate", "parallel", "delegate")
+    ):
+        orchestration = "coordination"
+        orchestration_matched = True
+    if any(word in lower for word in ("workflow", "rollout", "end-to-end", "e2e")):
+        orchestration = "workflow"
+        complexity = "very_high"
+        orchestration_matched = True
+        complexity_matched = True
+    axes = {
+        "work_type": work_type,
+        "complexity": complexity,
+        "orchestration": orchestration,
+        "risk": risk,
+    }
+    evidence = {
+        "work_type": (0.88, 0.60) if work_type_matched else (0.45, 0.10),
+        "complexity": (0.86, 0.56) if complexity_matched else (0.66, 0.24),
+        "orchestration": (0.92, 0.72) if orchestration_matched else (0.74, 0.32),
+        "risk": (0.94, 0.78) if risk_matched else (0.72, 0.30),
+    }
+    return axes, evidence
+
+
+def classification_label(axes):
+    return (
+        f"{axes['work_type']}; {axes['complexity']} complexity; "
+        f"{axes['orchestration']} orchestration; {axes['risk']} risk"
+    )
+
+
+def classification_confidence(evidence):
+    return (
+        min(score for score, _ in evidence.values()),
+        min(margin for _, margin in evidence.values()),
+    )
+
+
+def offered_routes(context):
+    routes = []
+    for offered in eligible(context):
+        for effort in offered.get("reasoningEfforts", []):
+            route = valid_route(
+                {
+                    "providerId": offered.get("providerId"),
+                    "model": offered.get("model"),
+                    "reasoningEffort": effort,
+                },
+                eligible(context),
+            )
+            if route:
+                routes.append(route)
+    return routes
+
+
+def axis_class(policy, axis_id, class_id):
+    axis = next(axis for axis in policy["axes"] if axis["id"] == axis_id)
+    return next(item for item in axis["classes"] if item["id"] == class_id)
+
+
+def choose_route(policy, context, axes):
+    selected = [axis_class(policy, axis_id, axes[axis_id]) for axis_id in AXIS_VALUES]
+    score = sum(item["points"] for item in selected)
+    minimum_class = max(
+        (item["minimumModelClass"] for item in selected),
+        key=CLASS_ORDER.__getitem__,
+    )
+    maximum_class = max(
+        (item["maximumModelClass"] for item in selected),
+        key=CLASS_ORDER.__getitem__,
+    )
+    available = {route_key(route) for route in offered_routes(context)}
+    eligible_entries = [
+        entry
+        for entry in ladder(policy)
+        if (
+            CLASS_ORDER[minimum_class]
+            <= CLASS_ORDER[entry["class"]]
+            <= CLASS_ORDER[maximum_class]
+            and route_key(entry_route(entry)) in available
+        )
+    ]
+    if not eligible_entries:
+        return {
+            "route": None,
+            "score": score,
+            "minimumClass": minimum_class,
+            "maximumClass": maximum_class,
+            "minimumRank": None,
+            "maximumRank": None,
+            "boundedScore": None,
+            "targetRank": None,
+            "selectedRank": None,
+        }
+    minimum_rank = eligible_entries[0]["rank"]
+    maximum_rank = eligible_entries[-1]["rank"]
+    minimum_score = policy["ranking"]["minimumScore"]
+    maximum_score = policy["ranking"]["maximumScore"]
+    bounded_score = max(minimum_score, min(maximum_score, score))
+    domain = maximum_score - minimum_score
+    offset = (
+        0
+        if domain == 0
+        else (
+            (bounded_score - minimum_score) * (maximum_rank - minimum_rank)
+            + domain // 2
+        )
+        // domain
+    )
+    target_rank = minimum_rank + offset
+    entry = min(
+        eligible_entries,
+        key=lambda candidate: abs(candidate["rank"] - target_rank),
+    )
+    return {
+        "route": entry_route(entry),
+        "score": score,
+        "minimumClass": minimum_class,
+        "maximumClass": maximum_class,
+        "minimumRank": minimum_rank,
+        "maximumRank": maximum_rank,
+        "boundedScore": bounded_score,
+        "targetRank": target_rank,
+        "selectedRank": entry["rank"],
+    }
+
+
+def confidence_thresholds(policy):
+    return policy["confidencePresets"][policy["confidence"]]
+
+
+def confidence_passes(policy, score, margin):
+    thresholds = confidence_thresholds(policy)
+    return score >= thresholds["minimumScore"] and margin >= thresholds["minimumMargin"]
+
+
+def routing_calculation(policy, selection, score, margin):
+    ranking = policy["ranking"]
+    if selection["route"] is None:
+        ranking_detail = (
+            f"score {selection['score']} · classes "
+            f"{selection['minimumClass']}–{selection['maximumClass']} · "
+            "no eligible ladder route"
+        )
+    else:
+        ranking_detail = (
+            f"score {selection['score']} "
+            f"(bounded {selection['boundedScore']}; "
+            f"domain {ranking['minimumScore']}–{ranking['maximumScore']}) · "
+            f"classes {selection['minimumClass']}–{selection['maximumClass']} · "
+            f"ranks {selection['minimumRank']}–{selection['maximumRank']} · "
+            f"target {selection['targetRank']} · "
+            f"selected {selection['selectedRank']}"
+        )
+    thresholds = confidence_thresholds(policy)
+    return (
+        f"{ranking_detail} · confidence {score:.2f}/{margin:.2f} "
+        f"(minimum {thresholds['minimumScore']:.2f}/"
+        f"{thresholds['minimumMargin']:.2f})"
+    )
+
+
+def decision(
+    policy,
+    request_id,
+    axes,
+    confidence,
+    margin,
+    selection,
+    disposition,
+    reason=None,
+):
+    category = classification_label(axes)
+    route = selection["route"]
+    chosen = route_label(route)
+    summary = f"{category} classified at {confidence:.2f}/{margin:.2f}; {chosen}."
+    if reason is not None:
+        summary += f" {reason}"
+    return {
+        "kind": "route",
+        "decision": {
+            "id": f"reference-{request_id}-{policy['revision']}",
+            "disposition": disposition,
+            "route": route if disposition in ("apply", "shadow") else None,
+            "summary": summary,
+            "feedback": {
+                "enabled": policy["feedback"],
+                "classification": category,
+                "confidence": confidence,
+                "confidenceMargin": margin,
+                "routingCalculation": routing_calculation(
+                    policy,
+                    selection,
+                    confidence,
+                    margin,
+                ),
+                "rankingScore": selection["score"],
+                "rankingMinimumClass": selection["minimumClass"],
+                "rankingMaximumClass": selection["maximumClass"],
+                "rankingMinimumRank": selection["minimumRank"],
+                "rankingMaximumRank": selection["maximumRank"],
+                "rankingTargetRank": selection["targetRank"],
+                "rankingSelectedRank": selection["selectedRank"],
+            },
+            "reportingBaseline": policy.get("reportingBaseline"),
+        },
+    }
+
+
+def approval_continuation(policy, axes, confidence, margin, context):
+    state = {
+        "axes": axes,
+        "confidence": confidence,
+        "margin": margin,
+        "eligibleRoutes": eligible(context),
+        "policyRevision": str(policy["revision"]),
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(state, separators=(",", ":"), sort_keys=True).encode()
+    ).decode()
+    return f"approval:{encoded}"
+
+
+def approval(policy, axes, confidence, margin, selection, context, notice_text=None):
+    category = classification_label(axes)
+    route = selection["route"]
+    continuation = approval_continuation(policy, axes, confidence, margin, context)
+    details = [
+        {"label": "Classification", "value": category},
+        {"label": "Confidence", "value": f"{confidence:.2f} / margin {margin:.2f}"},
+        {
+            "label": "Routing calculation",
+            "value": routing_calculation(
+                policy,
+                selection,
+                confidence,
+                margin,
+            ),
+        },
+        {"label": "Model choice", "value": route_label(route)},
+    ]
+    if notice_text is not None:
+        details.append({"label": "Notice", "value": notice_text})
+    override = form(
+        policy,
+        "Change classification",
+        continuation,
+        [
+            select_field("work_type", "Work type", axes["work_type"], WORK_TYPES),
+            select_field("complexity", "Complexity", axes["complexity"], COMPLEXITIES),
+            select_field(
+                "orchestration", "Orchestration", axes["orchestration"], ORCHESTRATIONS
+            ),
+            select_field("risk", "Risk", axes["risk"], RISKS),
+        ],
+        "submit-override",
+        "Apply override",
+        form_id="classification-override",
+    )["interaction"]["surface"]
+    return interaction(
+        "route-approval",
+        continuation,
+        policy,
+        {
+            "type": "confirmation",
+            "title": f"Use {route_label(route)}?",
+            "body": "The reference router requests confirmation for this decision.",
+            "details": details,
+            "actions": [
+                action("approve", "Use this route", bindings=["enter"]),
+                action("keep-current", "Keep current route", bindings=["escape"]),
+                action(
+                    "begin-override",
+                    "Change classification",
+                    opens="classification-override",
+                    bindings=["o"],
+                ),
+            ],
+            "override": override,
+        },
+    )
+
+
+def routing_decide(request, policy):
+    context = request.get("context", {})
+    turn = context.get("turn", {})
+    prompt = (request.get("params") or {}).get("prompt", "")
+    axes, evidence = classify(prompt)
+    confidence, margin = classification_confidence(evidence)
+    selection = choose_route(policy, context, axes)
+    route = selection["route"]
+    confident = confidence_passes(policy, confidence, margin)
+    scope = turn.get("scope")
+    active = turn.get("active", False)
+    mode = policy["mode"]
+    enabled = mode == "full" or (mode == "subagents" and scope == "subagent")
+    shadow = mode == "shadow-full" or (
+        mode == "shadow-subagents" and scope == "subagent"
+    )
+    should_apply = enabled and not active and route is not None and confident
+    should_shadow = shadow and not active and route is not None and confident
+    current = context.get("currentRoute")
+    changed = route != current
+    needs_approval = should_apply and (
+        policy["approval"] == "all" or (policy["approval"] == "changes" and changed)
+    )
+    if needs_approval:
+        return approval(
+            policy,
+            axes,
+            confidence,
+            margin,
+            selection,
+            context,
+        )
+    disposition = (
+        "apply" if should_apply else "shadow" if should_shadow else "keepCurrent"
+    )
+    reason = None
+    if not confident:
+        reason = "Confidence thresholds retained the current route."
+    elif route is None:
+        reason = "No eligible ranked route was available."
+    result = decision(
+        policy,
+        request["requestId"],
+        axes,
+        confidence,
+        margin,
+        selection,
+        disposition,
+        reason,
+    )
+    if should_shadow:
+        result["decision"]["summary"] += " Shadow decision retained current route."
+    return result
+
+
+def approval_state(continuation):
+    try:
+        _, encoded = continuation.split(":", 1)
+        state = json.loads(base64.urlsafe_b64decode(encoded.encode()))
+        axes = state["axes"]
+        confidence = float(state["confidence"])
+        margin = float(state["margin"])
+        context = {"eligibleRoutes": state["eligibleRoutes"]}
+        policy_revision = state["policyRevision"]
+        if (
+            not isinstance(policy_revision, str)
+            or axes["work_type"] not in WORK_TYPES
+            or axes["complexity"] not in COMPLEXITIES
+            or axes["orchestration"] not in ORCHESTRATIONS
+            or axes["risk"] not in RISKS
+        ):
+            raise ValueError("invalid approval state")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return axes, confidence, margin, context, policy_revision
+
+
+def fresh_approval(policy, axes, confidence, margin, context, notice_text):
+    selection = choose_route(policy, context, axes)
+    return approval(
+        policy,
+        axes,
+        confidence,
+        margin,
+        selection,
+        context,
+        notice_text=notice_text,
+    )
+
+
+def approval_response(request, policy):
+    params = request.get("params") or {}
+    continuation = params.get("continuation", "")
+    decoded = approval_state(continuation)
+    if decoded is None:
+        return error_notice(policy, "Invalid approval continuation.")
+    axes, confidence, margin, rendered_context, policy_revision = decoded
+    current_context = request.get("context") or rendered_context
+    if not current_context.get("eligibleRoutes"):
+        current_context = rendered_context
+    if policy_revision != str(policy["revision"]):
+        return fresh_approval(
+            policy,
+            axes,
+            confidence,
+            margin,
+            current_context,
+            "This approval preview is stale. Review the updated route before applying it.",
+        )
+    selection = choose_route(policy, rendered_context, axes)
+    rendered = approval(policy, axes, confidence, margin, selection, rendered_context)[
+        "interaction"
+    ]
+    if (
+        params.get("interactionId") != rendered["id"]
+        or params.get("stateRevision") != rendered["stateRevision"]
+        or not action_is_enabled(rendered["surface"], params)
+    ):
+        return fresh_approval(
+            policy,
+            axes,
+            confidence,
+            margin,
+            current_context,
+            "This approval preview is no longer valid. Review the updated route before applying it.",
+        )
+    selected = (params.get("action") or {}).get("id")
+    if selected == "keep-current" or params.get("outcome") != "accepted":
+        return decision(
+            policy,
+            request["requestId"],
+            axes,
+            confidence,
+            margin,
+            selection,
+            "keepCurrent",
+        )
+    values = params.get("values") or {}
+    if selected == "submit-override":
+        axes = {
+            "work_type": selected_option(
+                values.get("work_type"),
+                WORK_TYPES,
+                axes["work_type"],
+            ),
+            "complexity": values.get("complexity", axes["complexity"]),
+            "orchestration": values.get("orchestration", axes["orchestration"]),
+            "risk": values.get("risk", axes["risk"]),
+        }
+        if (
+            axes["work_type"] not in WORK_TYPES
+            or axes["complexity"] not in COMPLEXITIES
+            or axes["orchestration"] not in ORCHESTRATIONS
+            or axes["risk"] not in RISKS
+        ):
+            return error_notice(
+                policy, "Override values must be chosen from the offered choices."
+            )
+        confidence = 1.0
+        margin = 1.0
+        selection = choose_route(policy, rendered_context, axes)
+        if selection["route"] is None:
+            return decision(
+                policy,
+                request["requestId"],
+                axes,
+                confidence,
+                margin,
+                selection,
+                "keepCurrent",
+                "No eligible ranked route was available.",
+            )
+        return approval(
+            policy,
+            axes,
+            confidence,
+            margin,
+            selection,
+            rendered_context,
+        )
+    return decision(
+        policy,
+        request["requestId"],
+        axes,
+        confidence,
+        margin,
+        selection,
+        "apply",
+    )
+
+
+def main():
+    try:
+        request = json.load(sys.stdin)
+        if (
+            request.get("protocol") != "xedoc.script/v1"
+            or request.get("extension") != "model-router"
+        ):
+            raise ValueError("unsupported protocol or extension")
+        policy = load_policy()
+        method = request.get("method")
+        if method == "settings.open":
+            result = settings_open(request, policy)
+        elif method == "interaction.respond":
+            continuation = (request.get("params") or {}).get("continuation", "")
+            result = (
+                approval_response(request, policy)
+                if continuation.startswith("approval:")
+                else settings_response(request, policy)
+            )
+        elif method == "routing.decide":
+            result = routing_decide(request, policy)
+        else:
+            raise ValueError("unsupported method")
+        response(request, result=result)
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+        request_id = locals().get("request", {}).get("requestId", "")
+        response(
+            {"requestId": request_id},
+            error={"code": "invalid_request", "message": str(error)[:256]},
+        )
+
+
+if __name__ == "__main__":
+    main()

@@ -184,53 +184,6 @@ pub(crate) async fn read_token_usage_optimizer(
         .wrap_err("tokenUsageOptimizer/read failed in TUI")
 }
 
-pub(crate) async fn write_model_router_mode(
-    request_handle: AppServerRequestHandle,
-    mode: String,
-) -> Result<()> {
-    let mut edits = vec![replace_config_value(
-        "model_router.mode",
-        serde_json::json!(&mode),
-    )];
-    if mode != "off" {
-        edits.push(replace_config_value(
-            "features.model_router",
-            serde_json::json!(true),
-        ));
-    }
-    write_config_batch(request_handle, edits).await.map(|_| ())
-}
-
-pub(crate) async fn write_model_router_approval(
-    request_handle: AppServerRequestHandle,
-    mode: String,
-) -> Result<()> {
-    write_config_batch(
-        request_handle,
-        vec![replace_config_value(
-            "model_router.approval",
-            serde_json::json!(mode),
-        )],
-    )
-    .await
-    .map(|_| ())
-}
-
-pub(crate) async fn write_model_router_decision_feedback(
-    request_handle: AppServerRequestHandle,
-    enabled: bool,
-) -> Result<()> {
-    write_config_batch(
-        request_handle,
-        vec![replace_config_value(
-            "model_router.decision_feedback",
-            serde_json::json!(enabled),
-        )],
-    )
-    .await
-    .map(|_| ())
-}
-
 pub(crate) async fn open_model_router_report(
     request_handle: AppServerRequestHandle,
 ) -> Result<xedoc_app_server_protocol::ModelRouterReportOpenResponse> {
@@ -261,52 +214,40 @@ pub(crate) async fn control_model_router_ab(
             },
         )
         .await
+        .map(|_| ())
         .wrap_err("modelRouter/abControl failed in TUI")
         .map(|_| ())
 }
 
-pub(crate) async fn read_model_router_policy(
+pub(crate) async fn open_model_router_settings(
     request_handle: AppServerRequestHandle,
-) -> Result<xedoc_app_server_protocol::ModelRouterPolicyReadResponse> {
-    let request_id = RequestId::String(format!("tui-model-router-policy-read-{}", Uuid::new_v4()));
+) -> Result<xedoc_app_server_protocol::ModelRouterSettingsOpenResponse> {
     request_handle
-        .request_typed(ClientRequest::ModelRouterPolicyRead {
-            request_id,
-            params: xedoc_app_server_protocol::ModelRouterPolicyReadParams {},
+        .request_typed(ClientRequest::ModelRouterSettingsOpen {
+            request_id: RequestId::String(format!(
+                "tui-model-router-settings-open-{}",
+                Uuid::new_v4()
+            )),
+            params: xedoc_app_server_protocol::ModelRouterSettingsOpenParams {},
         })
         .await
-        .wrap_err("modelRouterPolicy/read failed in TUI")
+        .wrap_err("modelRouter/settings/open failed in TUI")
 }
 
-pub(crate) async fn bootstrap_model_router_policy(
+pub(crate) async fn respond_model_router_settings(
     request_handle: AppServerRequestHandle,
-) -> Result<xedoc_app_server_protocol::ModelRouterPolicyBootstrapResponse> {
-    let request_id = RequestId::String(format!(
-        "tui-model-router-policy-bootstrap-{}",
-        Uuid::new_v4()
-    ));
+    response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
+) -> Result<xedoc_app_server_protocol::ModelRouterSettingsRespondResponse> {
     request_handle
-        .request_typed(ClientRequest::ModelRouterPolicyBootstrap {
-            request_id,
-            params: xedoc_app_server_protocol::ModelRouterPolicyBootstrapParams {},
+        .request_typed(ClientRequest::ModelRouterSettingsRespond {
+            request_id: RequestId::String(format!(
+                "tui-model-router-settings-respond-{}",
+                Uuid::new_v4()
+            )),
+            params: xedoc_app_server_protocol::ModelRouterSettingsRespondParams { response },
         })
         .await
-        .wrap_err("modelRouterPolicy/bootstrap failed in TUI")
-}
-
-pub(crate) async fn write_model_router_policy(
-    request_handle: AppServerRequestHandle,
-    policy: xedoc_app_server_protocol::ModelRouterPolicyWriteParams,
-) -> Result<xedoc_app_server_protocol::ModelRouterPolicy> {
-    let request_id = RequestId::String(format!("tui-model-router-policy-write-{}", Uuid::new_v4()));
-    request_handle
-        .request_typed(ClientRequest::ModelRouterPolicyWrite {
-            request_id,
-            params: policy,
-        })
-        .await
-        .map(|response: xedoc_app_server_protocol::ModelRouterPolicyWriteResponse| response.policy)
-        .wrap_err("modelRouterPolicy/write failed in TUI")
+        .wrap_err("modelRouter/settings/respond failed in TUI")
 }
 
 pub(crate) async fn read_token_usage_optimizer_report(

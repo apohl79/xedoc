@@ -162,6 +162,22 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    pub fn push_extension_interaction_request(
+        &mut self,
+        request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
+    ) {
+        self.bottom_pane.push_extension_interaction_request(request);
+        self.request_redraw();
+    }
+
+    pub fn push_model_router_settings_request(
+        &mut self,
+        request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
+    ) {
+        self.bottom_pane.push_model_router_settings_request(request);
+        self.request_redraw();
+    }
+
     pub fn handle_request_user_input_now(&mut self, ev: ToolRequestUserInputParams) {
         self.flush_answer_stream_with_separator();
         let question_count = ev.questions.len();

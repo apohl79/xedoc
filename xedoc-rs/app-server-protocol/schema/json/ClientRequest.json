@@ -787,6 +787,69 @@
       },
       "type": "object"
     },
+    "ExtensionInteractionOutcome": {
+      "description": "How the client concluded an extension interaction.",
+      "enum": [
+        "accepted",
+        "cancelled",
+        "dismissed"
+      ],
+      "type": "string"
+    },
+    "ExtensionInteractionRequestResponse": {
+      "description": "A response to a generic scripted extension interaction.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ExtensionInteractionSelectedAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "continuation": {
+          "type": "string"
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "interactionId": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/definitions/ExtensionInteractionOutcome"
+        },
+        "stateRevision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "values": true
+      },
+      "required": [
+        "continuation",
+        "extensionId",
+        "interactionId",
+        "outcome",
+        "values"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionSelectedAction": {
+      "description": "An opaque action selected by the client.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
     "FsCopyParams": {
       "description": "Copy a file or directory tree on the host filesystem.",
       "properties": {
@@ -1849,161 +1912,6 @@
       ],
       "type": "object"
     },
-    "ModelRouterCapability": {
-      "description": "A provider/model route with user-assigned capability tags.",
-      "properties": {
-        "model": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "tags": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "model",
-        "provider",
-        "tags"
-      ],
-      "type": "object"
-    },
-    "ModelRouterPolicyBootstrapParams": {
-      "type": "object"
-    },
-    "ModelRouterPolicyClass": {
-      "description": "A user-editable routing class in the standalone model-router policy.",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "minimumReasoningEffort": {
-          "$ref": "#/definitions/ReasoningEffort"
-        },
-        "requiredCapabilities": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "id",
-        "minimumReasoningEffort",
-        "requiredCapabilities"
-      ],
-      "type": "object"
-    },
-    "ModelRouterPolicyReadParams": {
-      "type": "object"
-    },
-    "ModelRouterPolicyWriteParams": {
-      "description": "Replace the user-editable routing policy controls while preserving classifier weights.",
-      "properties": {
-        "capabilities": {
-          "items": {
-            "$ref": "#/definitions/ModelRouterCapability"
-          },
-          "type": "array"
-        },
-        "classes": {
-          "items": {
-            "$ref": "#/definitions/ModelRouterPolicyClass"
-          },
-          "type": "array"
-        },
-        "minimumMargin": {
-          "format": "double",
-          "type": "number"
-        },
-        "minimumScore": {
-          "format": "double",
-          "type": "number"
-        },
-        "ranking": {
-          "$ref": "#/definitions/ModelRouterRanking"
-        }
-      },
-      "required": [
-        "capabilities",
-        "classes",
-        "minimumMargin",
-        "minimumScore",
-        "ranking"
-      ],
-      "type": "object"
-    },
-    "ModelRouterRankedRoute": {
-      "description": "A user-editable position in the automatic-routing model ladder.",
-      "properties": {
-        "class": {
-          "type": "string"
-        },
-        "model": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "rank": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "reasoningEffort": {
-          "$ref": "#/definitions/ReasoningEffort"
-        }
-      },
-      "required": [
-        "class",
-        "model",
-        "provider",
-        "rank",
-        "reasoningEffort"
-      ],
-      "type": "object"
-    },
-    "ModelRouterRanking": {
-      "description": "The score domain and ordered automatic-routing candidates.",
-      "properties": {
-        "ladder": {
-          "items": {
-            "$ref": "#/definitions/ModelRouterRankedRoute"
-          },
-          "type": "array"
-        },
-        "maximumScore": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "minimumScore": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "reportingBaseline": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/ModelRouterRankedRoute"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "ladder",
-        "maximumScore",
-        "minimumScore"
-      ],
-      "type": "object"
-    },
     "ModelRouterReportOpenParams": {
       "description": "Starts a local browser report for model-router activity.",
       "type": "object"
@@ -2037,6 +1945,20 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "ModelRouterSettingsOpenParams": {
+      "type": "object"
+    },
+    "ModelRouterSettingsRespondParams": {
+      "properties": {
+        "response": {
+          "$ref": "#/definitions/ExtensionInteractionRequestResponse"
+        }
+      },
+      "required": [
+        "response"
+      ],
       "type": "object"
     },
     "MultiAgentMode": {
@@ -7126,13 +7048,13 @@
         },
         "method": {
           "enum": [
-            "modelRouterPolicy/read"
+            "modelRouter/settings/open"
           ],
-          "title": "ModelRouterPolicy/readRequestMethod",
+          "title": "ModelRouter/settings/openRequestMethod",
           "type": "string"
         },
         "params": {
-          "$ref": "#/definitions/ModelRouterPolicyReadParams"
+          "$ref": "#/definitions/ModelRouterSettingsOpenParams"
         }
       },
       "required": [
@@ -7140,7 +7062,7 @@
         "method",
         "params"
       ],
-      "title": "ModelRouterPolicy/readRequest",
+      "title": "ModelRouter/settings/openRequest",
       "type": "object"
     },
     {
@@ -7150,13 +7072,13 @@
         },
         "method": {
           "enum": [
-            "modelRouterPolicy/bootstrap"
+            "modelRouter/settings/respond"
           ],
-          "title": "ModelRouterPolicy/bootstrapRequestMethod",
+          "title": "ModelRouter/settings/respondRequestMethod",
           "type": "string"
         },
         "params": {
-          "$ref": "#/definitions/ModelRouterPolicyBootstrapParams"
+          "$ref": "#/definitions/ModelRouterSettingsRespondParams"
         }
       },
       "required": [
@@ -7164,31 +7086,7 @@
         "method",
         "params"
       ],
-      "title": "ModelRouterPolicy/bootstrapRequest",
-      "type": "object"
-    },
-    {
-      "properties": {
-        "id": {
-          "$ref": "#/definitions/RequestId"
-        },
-        "method": {
-          "enum": [
-            "modelRouterPolicy/write"
-          ],
-          "title": "ModelRouterPolicy/writeRequestMethod",
-          "type": "string"
-        },
-        "params": {
-          "$ref": "#/definitions/ModelRouterPolicyWriteParams"
-        }
-      },
-      "required": [
-        "id",
-        "method",
-        "params"
-      ],
-      "title": "ModelRouterPolicy/writeRequest",
+      "title": "ModelRouter/settings/respondRequest",
       "type": "object"
     },
     {

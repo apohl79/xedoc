@@ -44,8 +44,8 @@ impl ChatWidget {
             ServerRequest::ToolRequestUserInput { params, .. } => {
                 self.on_request_user_input(params);
             }
-            ServerRequest::ModelRouterRequestApproval { params, .. } => {
-                self.bottom_pane.push_model_router_approval_request(params);
+            ServerRequest::ExtensionInteractionRequest { params, .. } => {
+                self.bottom_pane.push_extension_interaction_request(params);
                 self.request_redraw();
             }
             ServerRequest::DynamicToolCall { .. }

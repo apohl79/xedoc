@@ -4,9 +4,9 @@ use serde::Serialize;
 use serde_json::Value;
 use xedoc_app_server_protocol::AskForApproval;
 use xedoc_app_server_protocol::CommandExecutionApprovalDecision;
+use xedoc_app_server_protocol::ExtensionInteractionRequestResponse;
 use xedoc_app_server_protocol::FileChangeApprovalDecision;
 use xedoc_app_server_protocol::McpServerElicitationAction;
-use xedoc_app_server_protocol::ModelRouterApprovalResponse;
 use xedoc_app_server_protocol::RequestId as AppServerRequestId;
 use xedoc_app_server_protocol::ReviewTarget;
 use xedoc_app_server_protocol::ToolRequestUserInputResponse;
@@ -76,9 +76,9 @@ pub enum AppCommand {
         id: String,
         response: ToolRequestUserInputResponse,
     },
-    ModelRouterApproval {
-        id: String,
-        response: ModelRouterApprovalResponse,
+    ExtensionInteractionResponse {
+        request_id: String,
+        response: ExtensionInteractionRequestResponse,
     },
     RequestPermissionsResponse {
         id: String,
@@ -170,7 +170,7 @@ impl AppCommand {
             | Self::PatchApproval { .. }
             | Self::ResolveElicitation { .. }
             | Self::UserInputAnswer { .. }
-            | Self::ModelRouterApproval { .. }
+            | Self::ExtensionInteractionResponse { .. }
             | Self::RequestPermissionsResponse { .. }
             | Self::ReloadUserConfig
             | Self::ListSkills { .. }
@@ -244,8 +244,14 @@ impl AppCommand {
         Self::UserInputAnswer { id, response }
     }
 
-    pub fn model_router_approval(id: String, response: ModelRouterApprovalResponse) -> Self {
-        Self::ModelRouterApproval { id, response }
+    pub fn extension_interaction_response(
+        request_id: String,
+        response: ExtensionInteractionRequestResponse,
+    ) -> Self {
+        Self::ExtensionInteractionResponse {
+            request_id,
+            response,
+        }
     }
 
     pub fn request_permissions_response(id: String, response: RequestPermissionsResponse) -> Self {

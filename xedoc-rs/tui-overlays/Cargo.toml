@@ -16,7 +16,6 @@ workspace = true
 xedoc-app-server-protocol = { workspace = true }
 xedoc-config = { workspace = true }
 xedoc-features = { workspace = true }
-xedoc-model-router = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-tui-completion = { workspace = true }
 xedoc-tui-composer = { workspace = true }

@@ -97,6 +97,7 @@ pub(crate) enum SpawnAgentForkMode {
     LastNTurns(usize),
 }
 
+#[derive(Default)]
 pub(crate) struct SpawnAgentOptions {
     pub(crate) fork_parent_spawn_call_id: Option<String>,
     pub(crate) fork_mode: Option<SpawnAgentForkMode>,
@@ -104,19 +105,6 @@ pub(crate) struct SpawnAgentOptions {
     pub(crate) environments: Option<Vec<TurnEnvironmentSelection>>,
     pub(crate) pre_reserved_spawn_slot: Option<SpawnReservation>,
     pub(crate) pre_reserved_v2_residency_slot: Option<residency::V2ResidencySlot>,
-}
-
-impl Default for SpawnAgentOptions {
-    fn default() -> Self {
-        Self {
-            fork_parent_spawn_call_id: None,
-            fork_mode: None,
-            parent_thread_id: None,
-            environments: None,
-            pre_reserved_spawn_slot: None,
-            pre_reserved_v2_residency_slot: None,
-        }
-    }
 }
 
 pub(crate) struct AbPairCapacityReservation {
@@ -169,6 +157,7 @@ pub(crate) struct AgentControl {
     v2_agent_io_locks: Arc<Mutex<HashMap<ThreadId, Arc<tokio::sync::Mutex<()>>>>>,
     v2_agent_io_generations: Arc<Mutex<HashMap<ThreadId, u64>>>,
     ab_pair_transport: Arc<Mutex<HashMap<ThreadId, AbPairTransportMetadata>>>,
+    router_decision_transport: Arc<Mutex<HashMap<ThreadId, String>>>,
 }
 
 impl AgentControl {
@@ -639,6 +628,13 @@ impl AgentControl {
         let last_task_message = last_task_message_from_communication(&communication);
         let communication_for_log =
             crate::agent_communication::logging_enabled().then(|| communication.clone());
+        let router_decision_id = context.router_decision_id().map(ToOwned::to_owned);
+        if let Some(router_decision_id) = router_decision_id.as_ref() {
+            self.router_decision_transport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(agent_id, router_decision_id.clone());
+        }
         let result = self
             .handle_thread_request_result(
                 agent_id,
@@ -657,6 +653,12 @@ impl AgentControl {
                 &communication,
                 agent_id,
             );
+        }
+        if result.is_err() && router_decision_id.is_some() {
+            self.router_decision_transport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&agent_id);
         }
         if result.is_ok() {
             if let Some(metadata) = context.ab_pair() {
@@ -684,6 +686,13 @@ impl AgentControl {
         barrier_id: String,
     ) -> XedocResult<String> {
         let last_task_message = last_task_message_from_communication(&communication);
+        let router_decision_id = context.router_decision_id().map(ToOwned::to_owned);
+        if let Some(router_decision_id) = router_decision_id.as_ref() {
+            self.router_decision_transport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(agent_id, router_decision_id.clone());
+        }
         let result = self
             .handle_thread_request_result(
                 agent_id,
@@ -699,6 +708,12 @@ impl AgentControl {
                     .await,
             )
             .await;
+        if result.is_err() && router_decision_id.is_some() {
+            self.router_decision_transport
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&agent_id);
+        }
         if result.is_ok() {
             if let Some(metadata) = context.ab_pair() {
                 self.ab_pair_transport
@@ -721,6 +736,14 @@ impl AgentControl {
         thread_id: ThreadId,
     ) -> Option<AbPairTransportMetadata> {
         self.ab_pair_transport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&thread_id)
+            .cloned()
+    }
+
+    pub(crate) fn router_decision_id_for_thread(&self, thread_id: ThreadId) -> Option<String> {
+        self.router_decision_transport
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(&thread_id)

@@ -347,14 +347,14 @@ impl AgentControl {
         second_agent_id: ThreadId,
     ) -> XedocResult<()> {
         let state = self.upgrade()?;
-        let (first, second) = tokio::try_join!(
-            state.get_thread(first_agent_id),
-            state.get_thread(second_agent_id),
-        )?;
-        tokio::join!(
-            first.session.maybe_start_turn_for_pending_work(),
-            second.session.maybe_start_turn_for_pending_work(),
+        let (first, second) = tokio::join!(
+            state.send_op(first_agent_id, Op::StartPendingWork),
+            state.send_op(second_agent_id, Op::StartPendingWork),
         );
+        self.handle_thread_request_result(first_agent_id, &state, first)
+            .await?;
+        self.handle_thread_request_result(second_agent_id, &state, second)
+            .await?;
         Ok(())
     }
 

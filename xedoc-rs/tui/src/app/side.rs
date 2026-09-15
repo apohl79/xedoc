@@ -92,7 +92,7 @@ impl SideParentStatus {
             ServerRequest::CommandExecutionRequestApproval { .. }
             | ServerRequest::FileChangeRequestApproval { .. }
             | ServerRequest::McpServerElicitationRequest { .. }
-            | ServerRequest::ModelRouterRequestApproval { .. }
+            | ServerRequest::ExtensionInteractionRequest { .. }
             | ServerRequest::PermissionsRequestApproval { .. }
             | ServerRequest::ApplyPatchApproval { .. }
             | ServerRequest::ExecCommandApproval { .. } => Some(SideParentStatus::NeedsApproval),

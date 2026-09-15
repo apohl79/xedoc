@@ -87,7 +87,7 @@ members = [
     "xedoc-mcp",
     "mcp-server",
     "model-provider-info",
-    "model-router",
+    "script-protocol",
     "models-manager",
     "provider-anthropic",
     "provider-gemini",
@@ -165,7 +165,6 @@ members = [
     "xedoc-experimental-api-macros",
     "plugin",
     "model-provider",
-    "model-router",
 ]
 resolver = "2"
 
@@ -268,7 +267,7 @@ xedoc-mcp = { path = "xedoc-mcp" }
 xedoc-mcp-extension = { path = "ext/mcp" }
 xedoc-mcp-server = { path = "mcp-server" }
 xedoc-model-provider-info = { path = "model-provider-info" }
-xedoc-model-router = { path = "model-router" }
+xedoc-script-protocol = { path = "script-protocol" }
 xedoc-models-manager = { path = "models-manager" }
 xedoc-network-proxy = { path = "network-proxy" }
 xedoc-ollama = { path = "ollama" }

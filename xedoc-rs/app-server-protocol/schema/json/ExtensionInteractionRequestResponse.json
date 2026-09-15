@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ExtensionInteractionOutcome": {
+      "description": "How the client concluded an extension interaction.",
+      "enum": [
+        "accepted",
+        "cancelled",
+        "dismissed"
+      ],
+      "type": "string"
+    },
+    "ExtensionInteractionSelectedAction": {
+      "description": "An opaque action selected by the client.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "A response to a generic scripted extension interaction.",
+  "properties": {
+    "action": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ExtensionInteractionSelectedAction"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "continuation": {
+      "type": "string"
+    },
+    "extensionId": {
+      "type": "string"
+    },
+    "interactionId": {
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/definitions/ExtensionInteractionOutcome"
+    },
+    "stateRevision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "values": true
+  },
+  "required": [
+    "continuation",
+    "extensionId",
+    "interactionId",
+    "outcome",
+    "values"
+  ],
+  "title": "ExtensionInteractionRequestResponse",
+  "type": "object"
+}

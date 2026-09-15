@@ -20,6 +20,93 @@ use crate::hooks_rpc::write_hook_trusts;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 impl App {
+    pub(super) fn show_model_router_settings_result(
+        &mut self,
+        result: Result<xedoc_app_server_protocol::ModelRouterSettingsOpenResponse, String>,
+    ) {
+        match result {
+            Ok(response) => {
+                self.show_model_router_settings_interaction(response.interaction, response.error)
+            }
+            Err(error) => self.chat_widget.add_error_message(error),
+        }
+    }
+
+    pub(super) fn show_model_router_settings_respond_result(
+        &mut self,
+        result: Result<xedoc_app_server_protocol::ModelRouterSettingsRespondResponse, String>,
+    ) {
+        match result {
+            Ok(response) => {
+                self.show_model_router_settings_interaction(response.interaction, response.error)
+            }
+            Err(error) => self.chat_widget.add_error_message(error),
+        }
+    }
+
+    fn show_model_router_settings_interaction(
+        &mut self,
+        interaction: Option<xedoc_app_server_protocol::ModelRouterSettingsInteraction>,
+        error: Option<String>,
+    ) {
+        if let Some(error) = error {
+            self.chat_widget.add_error_message(error);
+            return;
+        }
+        let Some(interaction) = interaction else {
+            self.chat_widget.add_error_message(
+                "model-router settings script returned no interaction".to_string(),
+            );
+            return;
+        };
+        self.chat_widget.push_model_router_settings_request(
+            xedoc_app_server_protocol::ExtensionInteractionRequestParams {
+                thread_id: String::new(),
+                turn_id: String::new(),
+                request_id: interaction.interaction_id.clone(),
+                extension_id: "model-router".to_string(),
+                interaction_id: interaction.interaction_id,
+                continuation: interaction.continuation,
+                state_revision: Some(interaction.state_revision),
+                expires_at: i64::MAX,
+                surface: interaction.surface,
+            },
+        );
+    }
+
+    pub(super) fn open_model_router_settings(&mut self, app_server: &AppServerSession) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            app_event_tx.send(AppEvent::ModelRouterSettingsOpened {
+                result: crate::config_update::open_model_router_settings(request_handle)
+                    .await
+                    .map_err(|error| error.to_string()),
+            });
+        });
+    }
+
+    pub(super) fn respond_model_router_settings(
+        &mut self,
+        app_server: &AppServerSession,
+        response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
+        host_action: Option<xedoc_app_server_protocol::ModelRouterSettingsHostAction>,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            app_event_tx.send(AppEvent::ModelRouterSettingsResponded {
+                result: crate::config_update::respond_model_router_settings(
+                    request_handle,
+                    response,
+                )
+                .await
+                .map_err(|error| error.to_string()),
+                host_action,
+            });
+        });
+    }
+
     pub(super) fn reset_token_usage_optimizer_stats(&mut self, app_server: &AppServerSession) {
         let request_handle = app_server.request_handle();
         let read_handle = app_server.request_handle();
@@ -64,67 +151,6 @@ impl App {
         });
     }
 
-    pub(super) fn update_model_router_mode(&mut self, app_server: &AppServerSession, mode: String) {
-        let request_handle = app_server.request_handle();
-        let app_event_tx = self.app_event_tx.clone();
-        tokio::spawn(async move {
-            let error = crate::config_update::write_model_router_mode(request_handle, mode.clone())
-                .await
-                .err()
-                .map(|error| error.to_string());
-            app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
-                mode: error.is_none().then_some(mode),
-                approval: None,
-                decision_feedback: None,
-                error,
-            });
-        });
-    }
-
-    pub(super) fn update_model_router_approval(
-        &mut self,
-        app_server: &AppServerSession,
-        mode: String,
-    ) {
-        let request_handle = app_server.request_handle();
-        let app_event_tx = self.app_event_tx.clone();
-        tokio::spawn(async move {
-            let error =
-                crate::config_update::write_model_router_approval(request_handle, mode.clone())
-                    .await
-                    .err()
-                    .map(|error| error.to_string());
-            app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
-                mode: None,
-                approval: error.is_none().then_some(mode),
-                decision_feedback: None,
-                error,
-            });
-        });
-    }
-
-    pub(super) fn update_model_router_decision_feedback(
-        &mut self,
-        app_server: &AppServerSession,
-        enabled: bool,
-    ) {
-        let request_handle = app_server.request_handle();
-        let app_event_tx = self.app_event_tx.clone();
-        tokio::spawn(async move {
-            let error =
-                crate::config_update::write_model_router_decision_feedback(request_handle, enabled)
-                    .await
-                    .err()
-                    .map(|error| error.to_string());
-            app_event_tx.send(AppEvent::ModelRouterConfigUpdated {
-                mode: None,
-                approval: None,
-                decision_feedback: error.is_none().then_some(enabled),
-                error,
-            });
-        });
-    }
-
     pub(super) fn open_model_router_report(&mut self, app_server: &AppServerSession) {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();
@@ -150,43 +176,6 @@ impl App {
                     .await
                     .map_err(|error| error.to_string());
             app_event_tx.send(AppEvent::ModelRouterAbControlLoaded { result });
-        });
-    }
-
-    pub(super) fn fetch_model_router_policy(&mut self, app_server: &AppServerSession) {
-        let request_handle = app_server.request_handle();
-        let app_event_tx = self.app_event_tx.clone();
-        tokio::spawn(async move {
-            let result = crate::config_update::read_model_router_policy(request_handle)
-                .await
-                .map_err(|error| error.to_string());
-            app_event_tx.send(AppEvent::ModelRouterPolicyLoaded { result });
-        });
-    }
-
-    pub(super) fn bootstrap_model_router_policy(&mut self, app_server: &AppServerSession) {
-        let request_handle = app_server.request_handle();
-        let app_event_tx = self.app_event_tx.clone();
-        tokio::spawn(async move {
-            let result = crate::config_update::bootstrap_model_router_policy(request_handle)
-                .await
-                .map_err(|error| error.to_string());
-            app_event_tx.send(AppEvent::ModelRouterPolicyBootstrapped { result });
-        });
-    }
-
-    pub(super) fn update_model_router_policy(
-        &mut self,
-        app_server: &AppServerSession,
-        policy: xedoc_app_server_protocol::ModelRouterPolicyWriteParams,
-    ) {
-        let request_handle = app_server.request_handle();
-        let app_event_tx = self.app_event_tx.clone();
-        tokio::spawn(async move {
-            let result = crate::config_update::write_model_router_policy(request_handle, policy)
-                .await
-                .map_err(|error| error.to_string());
-            app_event_tx.send(AppEvent::ModelRouterPolicyUpdated { result });
         });
     }
 

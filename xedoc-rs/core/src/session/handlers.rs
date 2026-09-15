@@ -36,6 +36,11 @@ use xedoc_protocol::protocol::WarningEvent;
 use xedoc_protocol::protocol::XedocErrorInfo;
 use xedoc_protocol::request_permissions::RequestPermissionsResponse;
 use xedoc_protocol::request_user_input::RequestUserInputResponse;
+use xedoc_script_protocol::Action;
+use xedoc_script_protocol::FormField;
+use xedoc_script_protocol::FormSurface;
+use xedoc_script_protocol::InteractionSurface;
+use xedoc_script_protocol::Route;
 
 use crate::context_manager::is_user_turn_boundary;
 use serde_json::Value;
@@ -227,31 +232,69 @@ pub(super) async fn user_input_or_turn_inner(
         )
         .await
     {
-        Ok((active_turn_id, turn_context)) => {
+        Ok((_active_turn_id, turn_context)) => {
             sess.services.session_telemetry.user_prompt(&items);
-            if !turn_context.session_source.is_non_root_agent()
-                && let Some(decision) = super::root_shadow_routing::steering_bypass_for_active_turn(
-                    turn_context.as_ref(),
-                    &items,
+            if let Some(script_host) =
+                crate::model_router_script_host::ModelRouterScriptHost::from_config(
+                    turn_context.config.as_ref(),
                 )
+                && let Some(current_route) =
+                    crate::model_router::current_script_route(turn_context.config.as_ref())
             {
-                let router_event = crate::model_router::decision_event(
-                    decision,
-                    sess.thread_id.to_string(),
-                    active_turn_id.clone(),
-                    xedoc_protocol::protocol::ModelRouterScope::Root,
-                    crate::turn_timing::now_unix_timestamp_ms() / 1_000,
-                );
-                sess.remember_model_router_decision(
-                    &active_turn_id,
-                    router_event.decision_id.clone(),
+                let eligible_routes = crate::model_router::eligible_script_routes(
+                    turn_context.config.as_ref(),
+                    &sess.services.models_manager,
                 )
                 .await;
-                sess.send_event(
-                    turn_context.as_ref(),
-                    EventMsg::ModelRouterDecision(router_event),
+                let Some((active_turn_context, cancellation)) =
+                    sess.active_turn_context_and_cancellation_token().await
+                else {
+                    return;
+                };
+                if active_turn_context.sub_id != turn_context.sub_id {
+                    return;
+                }
+                let context = crate::session::model_router_script_context::build(
+                    crate::session::model_router_script_context::RoutingContextInput {
+                        session: sess,
+                        turn: turn_context.as_ref(),
+                        turn_state: crate::session::model_router_script_context::RoutingTurnState::ActiveRoot,
+                        current_route: &current_route,
+                        eligible_routes: &eligible_routes,
+                    },
                 )
                 .await;
+                let outcome = script_host
+                    .decide(
+                        context,
+                        serde_json::json!({
+                            "prompt": crate::agent::control::render_input_preview(&items),
+                            "explicitRouteOverride": explicit_route_override,
+                        }),
+                        &eligible_routes,
+                        /*route_mutable*/ false,
+                        cancellation.child_token(),
+                    )
+                    .await;
+                if let crate::model_router_script_host::ModelRouterScriptDecisionOutcome::KeepCurrent {
+                    decision: Some(decision),
+                    failure,
+                } = outcome
+                {
+                    sess.emit_model_router_decision(
+                        turn_context.as_ref(),
+                        crate::model_router_script_host::decision_event(
+                            decision,
+                            &current_route,
+                            sess.thread_id.to_string(),
+                            turn_context.sub_id.clone(),
+                            xedoc_protocol::protocol::ModelRouterScope::Root,
+                            /*applied*/ false,
+                            failure.as_ref(),
+                        ),
+                    )
+                    .await;
+                }
             }
         }
         Err(SteerInputError::NoActiveTurn(items)) => {
@@ -263,149 +306,221 @@ pub(super) async fn user_input_or_turn_inner(
                 .await;
             if !current_context.session_source.is_non_root_agent()
                 && let Some(orchestrator_route) =
-                    crate::model_router::current_route(current_context.config.as_ref())
+                    crate::model_router::current_script_route(current_context.config.as_ref())
             {
                 sess.begin_model_router_ab_root_turn(orchestrator_route)
                     .await;
             }
             sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
                 .await;
-            if let Some(mut decision) = super::root_shadow_routing::decide_for_accepted_input(
-                sess,
-                current_context.as_ref(),
-                &items,
-                explicit_route_override,
-            )
-            .await
+            if let Some(script_host) =
+                crate::model_router_script_host::ModelRouterScriptHost::from_config(
+                    current_context.config.as_ref(),
+                )
+                && let Some(current_route) =
+                    crate::model_router::current_script_route(current_context.config.as_ref())
             {
-                let approval_response = sess
-                    .model_router_approval_responses
-                    .lock()
-                    .await
-                    .remove(&sub_id);
-                if let Some(response) = approval_response.as_ref() {
-                    let override_classifications = if response.action
-                        == xedoc_protocol::protocol::ModelRouterApprovalAction::Override
-                    {
-                        let classifications =
-                            crate::model_router::feedback_classifications(response);
-                        xedoc_model_router::apply_approval_override(&mut decision, &classifications)
-                            .then_some(classifications)
-                    } else {
-                        None
-                    };
-                    if let Some(classifications) = override_classifications.as_ref()
-                        && !classifications.is_empty()
-                    {
-                        let feedback_path = sess.model_router_feedback_path().await;
-                        let prompt = crate::agent::control::render_input_preview(&items);
-                        if let Err(error) = xedoc_model_router::append_classifier_feedback(
-                            &feedback_path,
-                            &decision.prompt.sha256,
-                            crate::turn_timing::now_unix_timestamp_ms() / 1_000,
-                            classifications,
-                            &prompt,
-                        ) {
-                            tracing::warn!(%error, "failed to persist model-router classifier feedback");
-                        } else if let Err(error) =
-                            crate::model_router::ModelRouterService::recalibrate_from_feedback(
-                                current_context.config.clone(),
-                                feedback_path,
+                let eligible_routes = crate::model_router::eligible_script_routes(
+                    current_context.config.as_ref(),
+                    &sess.services.models_manager,
+                )
+                .await;
+                let cancellation = sess.begin_model_router_script_invocation().await;
+                let context = crate::session::model_router_script_context::build(
+                    crate::session::model_router_script_context::RoutingContextInput {
+                        session: sess,
+                        turn: current_context.as_ref(),
+                        turn_state: crate::session::model_router_script_context::RoutingTurnState::PendingRoot,
+                        current_route: &current_route,
+                        eligible_routes: &eligible_routes,
+                    },
+                )
+                .await;
+                let response = sess.take_scripted_interaction_response(&sub_id).await;
+                let outcome = match response {
+                    Some(response) => {
+                        script_host
+                            .respond(
+                                context,
+                                crate::model_router_script_host::interaction_response(response),
+                                &eligible_routes,
+                                /*route_mutable*/ true,
+                                cancellation.child_token(),
                             )
                             .await
-                        {
-                            tracing::warn!(%error, "failed to recalibrate model-router classifier");
+                    }
+                    None => match script_host
+                        .decide(
+                            context,
+                            serde_json::json!({
+                                "prompt": crate::agent::control::render_input_preview(&items),
+                                "explicitRouteOverride": explicit_route_override,
+                            }),
+                            &eligible_routes,
+                            /*route_mutable*/ true,
+                            cancellation.child_token(),
+                        )
+                        .await
+                    {
+                        crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Apply {
+                            decision,
+                            route,
+                        } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
+                            decision,
+                            route,
+                        },
+                        crate::model_router_script_host::ModelRouterScriptDecisionOutcome::KeepCurrent {
+                            decision,
+                            failure,
+                        } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
+                            decision,
+                            failure,
+                        },
+                        crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Interaction(
+                            interaction,
+                        ) => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(interaction),
+                    },
+                };
+                match outcome {
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
+                        decision,
+                        route,
+                    } => {
+                        let routed_context = sess
+                            .new_script_routed_turn_from_current_settings_with_sub_id(
+                                sub_id.clone(),
+                                final_output_json_schema.clone(),
+                                &route,
+                            )
+                            .await;
+                        if let Some(routed_context) = routed_context {
+                            sess.emit_and_remember_model_router_decision(
+                                current_context.as_ref(),
+                                crate::model_router_script_host::decision_event(
+                                    decision,
+                                    &route,
+                                    sess.thread_id.to_string(),
+                                    current_context.sub_id.clone(),
+                                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                                    /*applied*/ true,
+                                    None,
+                                ),
+                            )
+                            .await;
+                            if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
+                                startup_prewarm.abort().await;
+                            }
+                            sess.force_full_context_replay().await;
+                            current_context = routed_context;
+                            sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
+                                .await;
+                        } else {
+                            warn!(
+                                decision_id = %decision.id.as_str(),
+                                "validated script route could not be applied; retaining current route"
+                            );
+                            sess.emit_and_remember_model_router_decision(
+                                current_context.as_ref(),
+                                crate::model_router_script_host::decision_event(
+                                    decision,
+                                    &current_route,
+                                    sess.thread_id.to_string(),
+                                    current_context.sub_id.clone(),
+                                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                                    /*applied*/ false,
+                                    None,
+                                ),
+                            )
+                            .await;
                         }
                     }
-                    match response.action {
-                        xedoc_protocol::protocol::ModelRouterApprovalAction::Approve => {}
-                        xedoc_protocol::protocol::ModelRouterApprovalAction::Reject => {
-                            crate::model_router::fallback_to_original_route(&mut decision);
-                        }
-                        xedoc_protocol::protocol::ModelRouterApprovalAction::Override => {
-                            if override_classifications.is_none() {
-                                crate::model_router::fallback_to_original_route(&mut decision);
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(
+                        interaction,
+                    ) => {
+                        match crate::model_router_script_host::interaction_request(interaction) {
+                            Ok((request, extension_id, interaction_id, continuation, state_revision)) => {
+                                if let Ok(surface) =
+                                    serde_json::from_value::<InteractionSurface>(request.surface.clone())
+                                {
+                                    let pending = crate::session::session::PendingScriptedInteraction {
+                                        extension_id,
+                                        interaction_id,
+                                        script_continuation: continuation,
+                                        state_revision,
+                                        expires_at: request.expires_at,
+                                        surface,
+                                        continuation: crate::session::session::PendingScriptedInteractionContinuation::Root(
+                                            crate::session::session::PendingScriptedInteractionTurn {
+                                                sub_id: sub_id.clone(),
+                                                op: Op::UserInput {
+                                                    items: items.clone(),
+                                                    final_output_json_schema: final_output_json_schema
+                                                        .clone(),
+                                                    responsesapi_client_metadata:
+                                                        responsesapi_client_metadata.clone(),
+                                                    additional_context: additional_context.clone(),
+                                                    thread_settings: ThreadSettingsOverrides::default(),
+                                                },
+                                                client_user_message_id: client_user_message_id.clone(),
+                                            },
+                                        ),
+                                    };
+                                    if sess
+                                        .request_scripted_interaction(current_context.as_ref(), request, pending)
+                                        .await
+                                    {
+                                        return;
+                                    }
+                                    warn!("failed to park scripted model-router interaction; retaining current route");
+                                } else {
+                                    warn!("failed to validate scripted model-router interaction surface; retaining current route");
+                                }
+                            }
+                            Err(error) => {
+                                warn!(
+                                    failure = %error.diagnostic(),
+                                    "failed to encode scripted model-router interaction; retaining current route"
+                                );
                             }
                         }
                     }
-                }
-                if approval_response.is_none()
-                    && crate::model_router::requires_approval(
-                        current_context.config.model_router.mode,
-                        current_context.config.model_router.approval,
-                        &decision,
-                    )
-                {
-                    let approval = crate::model_router::approval_event(
-                        &decision,
-                        sess.thread_id.to_string(),
-                        current_context.sub_id.clone(),
-                        xedoc_protocol::protocol::ModelRouterScope::Root,
-                    );
-                    sess.pending_model_router_approvals.lock().await.insert(
-                        approval.approval_id.clone(),
-                        crate::session::session::PendingModelRouterApproval {
-                            sub_id: sub_id.clone(),
-                            op: Op::UserInput {
-                                items,
-                                final_output_json_schema,
-                                responsesapi_client_metadata,
-                                additional_context,
-                                thread_settings: ThreadSettingsOverrides::default(),
-                            },
-                            client_user_message_id,
-                        },
-                    );
-                    sess.send_event(
-                        current_context.as_ref(),
-                        EventMsg::ModelRouterApprovalRequest(approval),
-                    )
-                    .await;
-                    return;
-                }
-                if decision.disposition == xedoc_model_router::RouteDisposition::Applied
-                    && decision.effective_route != decision.original_route
-                {
-                    let routed_context = match decision.effective_route.as_ref() {
-                        Some(route) => {
-                            sess.new_routed_turn_from_current_settings_with_sub_id(
-                                sub_id.clone(),
-                                final_output_json_schema,
-                                route,
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
+                        decision,
+                        failure,
+                    } => {
+                        if let Some(failure) = failure.as_ref() {
+                            warn!(
+                                failure = %failure.diagnostic(),
+                                "scripted model-router retained current route"
+                            );
+                        } else if let Some(decision) = decision.as_ref() {
+                            tracing::debug!(decision_id = %decision.id.as_str(), "scripted model-router retained current route");
+                        }
+                        if let Some(decision) = decision {
+                            sess.emit_and_remember_model_router_decision(
+                                current_context.as_ref(),
+                                crate::model_router_script_host::decision_event(
+                                    decision,
+                                    &current_route,
+                                    sess.thread_id.to_string(),
+                                    current_context.sub_id.clone(),
+                                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                                    /*applied*/ false,
+                                    failure.as_ref(),
+                                ),
                             )
-                            .await
-                        }
-                        None => None,
-                    };
-                    if let Some(routed_context) = routed_context {
-                        if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
-                            startup_prewarm.abort().await;
-                        }
-                        sess.force_full_context_replay().await;
-                        current_context = routed_context;
-                        sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
                             .await;
-                    } else {
-                        crate::model_router::fallback_to_original_route(&mut decision);
+                        }
+                    }
+                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Failure(
+                        failure,
+                    ) => {
+                        warn!(
+                            failure = %failure.diagnostic(),
+                            "scripted model-router interaction failed; retaining current route"
+                        );
                     }
                 }
-                let router_event = crate::model_router::decision_event(
-                    decision,
-                    sess.thread_id.to_string(),
-                    current_context.sub_id.clone(),
-                    xedoc_protocol::protocol::ModelRouterScope::Root,
-                    crate::turn_timing::now_unix_timestamp_ms() / 1_000,
-                );
-                sess.remember_model_router_decision(
-                    &current_context.sub_id,
-                    router_event.decision_id.clone(),
-                )
-                .await;
-                sess.send_event(
-                    current_context.as_ref(),
-                    EventMsg::ModelRouterDecision(router_event),
-                )
-                .await;
             }
             if let Some(responsesapi_client_metadata) = responsesapi_client_metadata {
                 current_context
@@ -664,37 +779,184 @@ pub async fn request_user_input_response(
     sess.notify_user_input_response(&id, response).await;
 }
 
-pub async fn model_router_approval_response(
+pub async fn scripted_interaction_response(
     sess: &Arc<Session>,
-    approval_id: String,
-    response: xedoc_protocol::protocol::ModelRouterApprovalResponse,
+    request_id: String,
+    response: xedoc_protocol::protocol::ScriptedInteractionResponse,
 ) {
-    if let Some(sender) = sess
-        .pending_model_router_tool_approvals
-        .lock()
-        .await
-        .remove(&approval_id)
-    {
-        let _ = sender.send(response);
+    let now = crate::turn_timing::now_unix_timestamp_ms() / 1_000;
+    let pending = {
+        let mut pending_interactions = sess.pending_scripted_interactions.lock().await;
+        let Some(pending) = pending_interactions.get(&request_id) else {
+            return;
+        };
+        if pending.expires_at <= now
+            || pending.extension_id != response.extension_id
+            || pending.interaction_id != response.interaction_id
+            || pending.script_continuation != response.continuation
+            || pending.state_revision != response.state_revision
+            || !scripted_interaction_response_is_valid(&pending.surface, &response)
+        {
+            None
+        } else {
+            pending_interactions.remove(&request_id)
+        }
+    };
+    let Some(pending) = pending else {
+        warn!("discarding invalid scripted interaction response: {request_id}");
         return;
+    };
+    resume_scripted_interaction(sess, pending, response).await;
+}
+
+fn scripted_interaction_response_is_valid(
+    surface: &InteractionSurface,
+    response: &xedoc_protocol::protocol::ScriptedInteractionResponse,
+) -> bool {
+    use xedoc_protocol::protocol::ScriptedInteractionOutcome;
+
+    match (surface, response.outcome) {
+        (InteractionSurface::Menu(menu), ScriptedInteractionOutcome::Accepted) => {
+            response.action.as_ref().is_some_and(|action| {
+                menu.items
+                    .iter()
+                    .any(|item| item.disabled != Some(true) && item.action.id.as_str() == action.id)
+            }) && empty_object(&response.values)
+        }
+        (InteractionSurface::Form(form), ScriptedInteractionOutcome::Accepted) => {
+            action_matches(response, &form.submit) && form_values_are_valid(form, &response.values)
+        }
+        (InteractionSurface::Form(form), ScriptedInteractionOutcome::Cancelled) => {
+            form.cancel.as_ref().is_some_and(|cancel| {
+                action_matches(response, cancel) && empty_object(&response.values)
+            })
+        }
+        (InteractionSurface::Confirmation(confirmation), ScriptedInteractionOutcome::Accepted) => {
+            confirmation.actions.iter().any(|action| {
+                action.opens.is_none()
+                    && action_matches(response, action)
+                    && empty_object(&response.values)
+            }) || confirmation.override_form.as_ref().is_some_and(|form| {
+                action_matches(response, &form.submit)
+                    && form_values_are_valid(form, &response.values)
+            })
+        }
+        (InteractionSurface::Confirmation(confirmation), ScriptedInteractionOutcome::Cancelled) => {
+            confirmation.override_form.as_ref().is_some_and(|form| {
+                form.cancel.as_ref().is_some_and(|cancel| {
+                    action_matches(response, cancel) && empty_object(&response.values)
+                })
+            })
+        }
+        (InteractionSurface::Notice(_), ScriptedInteractionOutcome::Dismissed) => {
+            response.action.is_none() && empty_object(&response.values)
+        }
+        _ => false,
     }
+}
+
+fn action_matches(
+    response: &xedoc_protocol::protocol::ScriptedInteractionResponse,
+    expected: &Action,
+) -> bool {
+    response
+        .action
+        .as_ref()
+        .is_some_and(|action| action.id == expected.id.as_str())
+}
+
+fn empty_object(values: &Value) -> bool {
+    matches!(values, Value::Object(fields) if fields.is_empty())
+}
+
+fn form_values_are_valid(form: &FormSurface, values: &Value) -> bool {
+    let Value::Object(values) = values else {
+        return false;
+    };
+    values.iter().all(|(id, value)| {
+        form.fields
+            .iter()
+            .find(|field| form_field_id(field) == id)
+            .is_some_and(|field| form_value_is_valid(field, value))
+    })
+}
+
+fn form_field_id(field: &FormField) -> &str {
+    match field {
+        FormField::Select { id, .. }
+        | FormField::Boolean { id, .. }
+        | FormField::Text { id, .. }
+        | FormField::ModelRoute { id, .. } => id.as_str(),
+    }
+}
+
+fn form_value_is_valid(field: &FormField, value: &Value) -> bool {
+    match field {
+        FormField::Select { options, .. } => value.as_str().is_some_and(|selected| {
+            options
+                .iter()
+                .any(|option| option.disabled != Some(true) && option.id.as_str() == selected)
+        }),
+        FormField::Boolean { .. } => value.is_boolean(),
+        FormField::Text { max_bytes, .. } => value.as_str().is_some_and(|text| {
+            usize::try_from(*max_bytes).is_ok_and(|max_bytes| text.len() <= max_bytes)
+        }),
+        FormField::ModelRoute {
+            eligible_routes, ..
+        } => serde_json::from_value::<Route>(value.clone())
+            .is_ok_and(|route| route_is_eligible(&route, eligible_routes)),
+    }
+}
+
+fn route_is_eligible(
+    route: &Route,
+    eligible_routes: &[xedoc_script_protocol::EligibleRoute],
+) -> bool {
+    eligible_routes.iter().any(|eligible| {
+        eligible.provider_id == route.provider_id
+            && eligible.model == route.model
+            && eligible.reasoning_efforts.contains(&route.reasoning_effort)
+    })
+}
+
+pub(crate) async fn expire_scripted_interaction(sess: &Arc<Session>, request_id: String) {
     let pending = sess
-        .pending_model_router_approvals
+        .pending_scripted_interactions
         .lock()
         .await
-        .remove(&approval_id);
-    if let Some(pending) = pending {
-        sess.model_router_approval_responses
-            .lock()
-            .await
-            .insert(pending.sub_id.clone(), response);
-        user_input_or_turn(
-            sess,
-            pending.sub_id,
-            pending.op,
-            pending.client_user_message_id,
-        )
-        .await;
+        .remove(&request_id);
+    let Some(pending) = pending else {
+        return;
+    };
+    warn!("scripted interaction expired: {request_id}");
+    let response = xedoc_protocol::protocol::ScriptedInteractionResponse {
+        extension_id: pending.extension_id.clone(),
+        interaction_id: pending.interaction_id.clone(),
+        continuation: pending.script_continuation.clone(),
+        state_revision: pending.state_revision.clone(),
+        outcome: xedoc_protocol::protocol::ScriptedInteractionOutcome::Dismissed,
+        action: None,
+        values: Value::Null,
+    };
+    resume_scripted_interaction(sess, pending, response).await;
+}
+
+async fn resume_scripted_interaction(
+    sess: &Arc<Session>,
+    pending: crate::session::session::PendingScriptedInteraction,
+    response: xedoc_protocol::protocol::ScriptedInteractionResponse,
+) {
+    match pending.continuation {
+        crate::session::session::PendingScriptedInteractionContinuation::Root(turn) => {
+            sess.scripted_interaction_responses
+                .lock()
+                .await
+                .insert(turn.sub_id.clone(), response);
+            user_input_or_turn(sess, turn.sub_id, turn.op, turn.client_user_message_id).await;
+        }
+        crate::session::session::PendingScriptedInteractionContinuation::AwaitResponse(sender) => {
+            let _ = sender.send(response);
+        }
     }
 }
 
@@ -835,6 +1097,7 @@ async fn shutdown_session_runtime(sess: &Arc<Session>) {
     if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
         startup_prewarm.abort().await;
     }
+    sess.cancel_scripted_interactions().await;
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
     sess.services
         .unified_exec_manager
@@ -976,6 +1239,11 @@ pub(super) async fn submission_loop(
                     release_inter_agent_communication(&sess, sub.id.clone(), barrier_id).await;
                     false
                 }
+                Op::StartPendingWork => {
+                    sess.maybe_start_turn_for_pending_work_with_sub_id(sub.id.clone())
+                        .await;
+                    false
+                }
                 Op::ExecApproval {
                     id: approval_id,
                     turn_id,
@@ -992,11 +1260,15 @@ pub(super) async fn submission_loop(
                     request_user_input_response(&sess, id, response).await;
                     false
                 }
-                Op::ModelRouterApprovalResponse {
-                    approval_id,
+                Op::ScriptedInteractionResponse {
+                    request_id,
                     response,
                 } => {
-                    model_router_approval_response(&sess, approval_id, response).await;
+                    scripted_interaction_response(&sess, request_id, response).await;
+                    false
+                }
+                Op::ExpireScriptedInteraction { request_id } => {
+                    expire_scripted_interaction(&sess, request_id).await;
                     false
                 }
                 Op::ModelRouterAbControl { action } => {

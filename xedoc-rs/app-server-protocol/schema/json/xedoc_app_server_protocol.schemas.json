@@ -1712,13 +1712,13 @@
             },
             "method": {
               "enum": [
-                "modelRouterPolicy/read"
+                "modelRouter/settings/open"
               ],
-              "title": "ModelRouterPolicy/readRequestMethod",
+              "title": "ModelRouter/settings/openRequestMethod",
               "type": "string"
             },
             "params": {
-              "$ref": "#/definitions/v2/ModelRouterPolicyReadParams"
+              "$ref": "#/definitions/v2/ModelRouterSettingsOpenParams"
             }
           },
           "required": [
@@ -1726,7 +1726,7 @@
             "method",
             "params"
           ],
-          "title": "ModelRouterPolicy/readRequest",
+          "title": "ModelRouter/settings/openRequest",
           "type": "object"
         },
         {
@@ -1736,13 +1736,13 @@
             },
             "method": {
               "enum": [
-                "modelRouterPolicy/bootstrap"
+                "modelRouter/settings/respond"
               ],
-              "title": "ModelRouterPolicy/bootstrapRequestMethod",
+              "title": "ModelRouter/settings/respondRequestMethod",
               "type": "string"
             },
             "params": {
-              "$ref": "#/definitions/v2/ModelRouterPolicyBootstrapParams"
+              "$ref": "#/definitions/v2/ModelRouterSettingsRespondParams"
             }
           },
           "required": [
@@ -1750,31 +1750,7 @@
             "method",
             "params"
           ],
-          "title": "ModelRouterPolicy/bootstrapRequest",
-          "type": "object"
-        },
-        {
-          "properties": {
-            "id": {
-              "$ref": "#/definitions/v2/RequestId"
-            },
-            "method": {
-              "enum": [
-                "modelRouterPolicy/write"
-              ],
-              "title": "ModelRouterPolicy/writeRequestMethod",
-              "type": "string"
-            },
-            "params": {
-              "$ref": "#/definitions/v2/ModelRouterPolicyWriteParams"
-            }
-          },
-          "required": [
-            "id",
-            "method",
-            "params"
-          ],
-          "title": "ModelRouterPolicy/writeRequest",
+          "title": "ModelRouter/settings/respondRequest",
           "type": "object"
         },
         {
@@ -3159,6 +3135,99 @@
         "decision"
       ],
       "title": "ExecCommandApprovalResponse",
+      "type": "object"
+    },
+    "ExtensionInteractionRequestParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "A generic constrained interaction requested by an extension script.",
+      "properties": {
+        "continuation": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "interactionId": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "stateRevision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "surface": {
+          "$ref": "#/definitions/v2/ExtensionInteractionSurface"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "continuation",
+        "expiresAt",
+        "extensionId",
+        "interactionId",
+        "requestId",
+        "surface",
+        "threadId",
+        "turnId"
+      ],
+      "title": "ExtensionInteractionRequestParams",
+      "type": "object"
+    },
+    "ExtensionInteractionRequestResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "A response to a generic scripted extension interaction.",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/v2/ExtensionInteractionSelectedAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "continuation": {
+          "type": "string"
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "interactionId": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/definitions/v2/ExtensionInteractionOutcome"
+        },
+        "stateRevision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "values": true
+      },
+      "required": [
+        "continuation",
+        "extensionId",
+        "interactionId",
+        "outcome",
+        "values"
+      ],
+      "title": "ExtensionInteractionRequestResponse",
       "type": "object"
     },
     "FileChange": {
@@ -6539,6 +6608,31 @@
           "type": "object"
         },
         {
+          "description": "Request a constrained interaction from a scripted extension.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "item/extensionInteraction/request"
+              ],
+              "title": "Item/extensionInteraction/requestRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ExtensionInteractionRequestParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Item/extensionInteraction/requestRequest",
+          "type": "object"
+        },
+        {
           "description": "Request approval for additional permissions from the user.",
           "properties": {
             "id": {
@@ -9726,6 +9820,623 @@
           }
         ]
       },
+      "ExtensionInteractionAction": {
+        "description": "An opaque action supplied by an extension interaction.",
+        "properties": {
+          "hostAction": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ModelRouterSettingsHostAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyBindings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "opens": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": true
+        },
+        "required": [
+          "id",
+          "keyBindings"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionDetail": {
+        "description": "A visible label/value pair in an extension interaction confirmation.",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionEligibleRoute": {
+        "description": "A model route eligible for selection in an extension interaction.",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "reasoningEfforts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "model",
+          "providerId",
+          "reasoningEfforts"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionField": {
+        "description": "A field in an extension interaction form.",
+        "oneOf": [
+          {
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "options": {
+                "items": {
+                  "$ref": "#/definitions/v2/ExtensionInteractionOption"
+                },
+                "type": "array"
+              },
+              "type": {
+                "enum": [
+                  "select"
+                ],
+                "title": "SelectExtensionInteractionFieldType",
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "options",
+              "type"
+            ],
+            "title": "SelectExtensionInteractionField",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "boolean"
+                ],
+                "title": "BooleanExtensionInteractionFieldType",
+                "type": "string"
+              },
+              "value": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "type",
+              "value"
+            ],
+            "title": "BooleanExtensionInteractionField",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "maxBytes": {
+                "format": "uint32",
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              "type": {
+                "enum": [
+                  "text"
+                ],
+                "title": "TextExtensionInteractionFieldType",
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "maxBytes",
+              "type",
+              "value"
+            ],
+            "title": "TextExtensionInteractionField",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eligibleRoutes": {
+                "items": {
+                  "$ref": "#/definitions/v2/ExtensionInteractionEligibleRoute"
+                },
+                "type": "array"
+              },
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "modelRoute"
+                ],
+                "title": "ModelRouteExtensionInteractionFieldType",
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ExtensionInteractionRoute"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "eligibleRoutes",
+              "id",
+              "label",
+              "type"
+            ],
+            "title": "ModelRouteExtensionInteractionField",
+            "type": "object"
+          }
+        ]
+      },
+      "ExtensionInteractionForm": {
+        "description": "A form in an extension interaction surface.",
+        "properties": {
+          "cancel": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ExtensionInteractionAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/definitions/v2/ExtensionInteractionField"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "submit": {
+            "$ref": "#/definitions/v2/ExtensionInteractionAction"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fields",
+          "id",
+          "submit",
+          "title"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionMenuItem": {
+        "description": "A selectable row in an extension interaction menu.",
+        "properties": {
+          "action": {
+            "$ref": "#/definitions/v2/ExtensionInteractionAction"
+          },
+          "current": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "id",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionNoticeLevel": {
+        "description": "Presentation severity for an extension interaction notice.",
+        "enum": [
+          "info",
+          "success",
+          "warning",
+          "error"
+        ],
+        "type": "string"
+      },
+      "ExtensionInteractionOption": {
+        "description": "An opaque selectable option in an extension interaction form.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionOutcome": {
+        "description": "How the client concluded an extension interaction.",
+        "enum": [
+          "accepted",
+          "cancelled",
+          "dismissed"
+        ],
+        "type": "string"
+      },
+      "ExtensionInteractionRequestResponse": {
+        "description": "A response to a generic scripted extension interaction.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ExtensionInteractionSelectedAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "continuation": {
+            "type": "string"
+          },
+          "extensionId": {
+            "type": "string"
+          },
+          "interactionId": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/definitions/v2/ExtensionInteractionOutcome"
+          },
+          "stateRevision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "values": true
+        },
+        "required": [
+          "continuation",
+          "extensionId",
+          "interactionId",
+          "outcome",
+          "values"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionRoute": {
+        "description": "A selected model route in an extension interaction.",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "reasoningEffort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "providerId",
+          "reasoningEffort"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionSelectedAction": {
+        "description": "An opaque action selected by the client.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionSurface": {
+        "description": "The constrained declarative surface an extension client may render.",
+        "oneOf": [
+          {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/definitions/v2/ExtensionInteractionMenuItem"
+                },
+                "type": "array"
+              },
+              "subtitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "menu"
+                ],
+                "title": "MenuExtensionInteractionSurfaceType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "items",
+              "title",
+              "type"
+            ],
+            "title": "MenuExtensionInteractionSurface",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "cancel": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ExtensionInteractionAction"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "fields": {
+                "items": {
+                  "$ref": "#/definitions/v2/ExtensionInteractionField"
+                },
+                "type": "array"
+              },
+              "id": {
+                "type": "string"
+              },
+              "submit": {
+                "$ref": "#/definitions/v2/ExtensionInteractionAction"
+              },
+              "subtitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "form"
+                ],
+                "title": "FormExtensionInteractionSurfaceType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fields",
+              "id",
+              "submit",
+              "title",
+              "type"
+            ],
+            "title": "FormExtensionInteractionSurface",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "actions": {
+                "items": {
+                  "$ref": "#/definitions/v2/ExtensionInteractionAction"
+                },
+                "type": "array"
+              },
+              "body": {
+                "type": "string"
+              },
+              "details": {
+                "items": {
+                  "$ref": "#/definitions/v2/ExtensionInteractionDetail"
+                },
+                "type": "array"
+              },
+              "override": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/v2/ExtensionInteractionForm"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "confirmation"
+                ],
+                "title": "ConfirmationExtensionInteractionSurfaceType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "actions",
+              "body",
+              "details",
+              "title",
+              "type"
+            ],
+            "title": "ConfirmationExtensionInteractionSurface",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "level": {
+                "$ref": "#/definitions/v2/ExtensionInteractionNoticeLevel"
+              },
+              "title": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "notice"
+                ],
+                "title": "NoticeExtensionInteractionSurfaceType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "body",
+              "level",
+              "title",
+              "type"
+            ],
+            "title": "NoticeExtensionInteractionSurface",
+            "type": "object"
+          }
+        ]
+      },
       "FileChangeOutputDeltaNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "description": "Deprecated legacy notification for `apply_patch` textual output.\n\nThe server no longer emits this notification.",
@@ -12553,29 +13264,6 @@
         "title": "ModelRouterAbControlResponse",
         "type": "object"
       },
-      "ModelRouterCapability": {
-        "description": "A provider/model route with user-assigned capability tags.",
-        "properties": {
-          "model": {
-            "type": "string"
-          },
-          "provider": {
-            "type": "string"
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "model",
-          "provider",
-          "tags"
-        ],
-        "type": "object"
-      },
       "ModelRouterDecisionNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "description": "Experimental metadata-only record of one local model-router decision.\n\nThis notification never contains prompt or output text.",
@@ -12618,6 +13306,11 @@
           },
           "effectiveRoute": {
             "$ref": "#/definitions/v2/ModelRouterEffectiveRoute"
+          },
+          "feedbackVisible": {
+            "default": false,
+            "description": "Whether interactive clients should render this decision's feedback.",
+            "type": "boolean"
           },
           "policyRevision": {
             "type": "string"
@@ -12699,6 +13392,13 @@
           },
           "scope": {
             "$ref": "#/definitions/v2/ModelRouterScope"
+          },
+          "summary": {
+            "description": "Compact prompt-free decision summary supplied by the router.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "threadId": {
             "type": "string"
@@ -12795,259 +13495,6 @@
             "type": "object"
           }
         ]
-      },
-      "ModelRouterPolicy": {
-        "description": "The stable, user-editable portion of the standalone model-router policy.",
-        "properties": {
-          "capabilities": {
-            "items": {
-              "$ref": "#/definitions/v2/ModelRouterCapability"
-            },
-            "type": "array"
-          },
-          "classes": {
-            "items": {
-              "$ref": "#/definitions/v2/ModelRouterPolicyClass"
-            },
-            "type": "array"
-          },
-          "classifierRevision": {
-            "type": "string"
-          },
-          "minimumMargin": {
-            "format": "double",
-            "type": "number"
-          },
-          "minimumScore": {
-            "format": "double",
-            "type": "number"
-          },
-          "policyRevision": {
-            "type": "string"
-          },
-          "ranking": {
-            "$ref": "#/definitions/v2/ModelRouterRanking"
-          }
-        },
-        "required": [
-          "capabilities",
-          "classes",
-          "classifierRevision",
-          "minimumMargin",
-          "minimumScore",
-          "policyRevision",
-          "ranking"
-        ],
-        "type": "object"
-      },
-      "ModelRouterPolicyBootstrapParams": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "ModelRouterPolicyBootstrapParams",
-        "type": "object"
-      },
-      "ModelRouterPolicyBootstrapResponse": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "created": {
-            "type": "boolean"
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "policy": {
-            "anyOf": [
-              {
-                "$ref": "#/definitions/v2/ModelRouterPolicy"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "created"
-        ],
-        "title": "ModelRouterPolicyBootstrapResponse",
-        "type": "object"
-      },
-      "ModelRouterPolicyClass": {
-        "description": "A user-editable routing class in the standalone model-router policy.",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "minimumReasoningEffort": {
-            "$ref": "#/definitions/v2/ReasoningEffort"
-          },
-          "requiredCapabilities": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "minimumReasoningEffort",
-          "requiredCapabilities"
-        ],
-        "type": "object"
-      },
-      "ModelRouterPolicyReadParams": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "ModelRouterPolicyReadParams",
-        "type": "object"
-      },
-      "ModelRouterPolicyReadResponse": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "exists": {
-            "type": "boolean"
-          },
-          "policy": {
-            "anyOf": [
-              {
-                "$ref": "#/definitions/v2/ModelRouterPolicy"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "exists"
-        ],
-        "title": "ModelRouterPolicyReadResponse",
-        "type": "object"
-      },
-      "ModelRouterPolicyWriteParams": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "description": "Replace the user-editable routing policy controls while preserving classifier weights.",
-        "properties": {
-          "capabilities": {
-            "items": {
-              "$ref": "#/definitions/v2/ModelRouterCapability"
-            },
-            "type": "array"
-          },
-          "classes": {
-            "items": {
-              "$ref": "#/definitions/v2/ModelRouterPolicyClass"
-            },
-            "type": "array"
-          },
-          "minimumMargin": {
-            "format": "double",
-            "type": "number"
-          },
-          "minimumScore": {
-            "format": "double",
-            "type": "number"
-          },
-          "ranking": {
-            "$ref": "#/definitions/v2/ModelRouterRanking"
-          }
-        },
-        "required": [
-          "capabilities",
-          "classes",
-          "minimumMargin",
-          "minimumScore",
-          "ranking"
-        ],
-        "title": "ModelRouterPolicyWriteParams",
-        "type": "object"
-      },
-      "ModelRouterPolicyWriteResponse": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "properties": {
-          "policy": {
-            "$ref": "#/definitions/v2/ModelRouterPolicy"
-          }
-        },
-        "required": [
-          "policy"
-        ],
-        "title": "ModelRouterPolicyWriteResponse",
-        "type": "object"
-      },
-      "ModelRouterRankedRoute": {
-        "description": "A user-editable position in the automatic-routing model ladder.",
-        "properties": {
-          "class": {
-            "type": "string"
-          },
-          "model": {
-            "type": "string"
-          },
-          "provider": {
-            "type": "string"
-          },
-          "rank": {
-            "format": "uint16",
-            "minimum": 0.0,
-            "type": "integer"
-          },
-          "reasoningEffort": {
-            "$ref": "#/definitions/v2/ReasoningEffort"
-          }
-        },
-        "required": [
-          "class",
-          "model",
-          "provider",
-          "rank",
-          "reasoningEffort"
-        ],
-        "type": "object"
-      },
-      "ModelRouterRanking": {
-        "description": "The score domain and ordered automatic-routing candidates.",
-        "properties": {
-          "ladder": {
-            "items": {
-              "$ref": "#/definitions/v2/ModelRouterRankedRoute"
-            },
-            "type": "array"
-          },
-          "maximumScore": {
-            "format": "uint16",
-            "minimum": 0.0,
-            "type": "integer"
-          },
-          "minimumScore": {
-            "format": "uint16",
-            "minimum": 0.0,
-            "type": "integer"
-          },
-          "reportingBaseline": {
-            "anyOf": [
-              {
-                "$ref": "#/definitions/v2/ModelRouterRankedRoute"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "ladder",
-          "maximumScore",
-          "minimumScore"
-        ],
-        "type": "object"
       },
       "ModelRouterReportDay": {
         "description": "One persisted UTC-day aggregate for the local model router.",
@@ -13379,6 +13826,102 @@
           "subagent"
         ],
         "type": "string"
+      },
+      "ModelRouterSettingsHostAction": {
+        "description": "Explicit host capabilities available to model-router settings scripts.",
+        "enum": [
+          "open-report",
+          "arm-ab",
+          "disable-ab"
+        ],
+        "type": "string"
+      },
+      "ModelRouterSettingsInteraction": {
+        "properties": {
+          "continuation": {
+            "type": "string"
+          },
+          "interactionId": {
+            "type": "string"
+          },
+          "stateRevision": {
+            "type": "string"
+          },
+          "surface": {
+            "$ref": "#/definitions/v2/ExtensionInteractionSurface"
+          }
+        },
+        "required": [
+          "continuation",
+          "interactionId",
+          "stateRevision",
+          "surface"
+        ],
+        "type": "object"
+      },
+      "ModelRouterSettingsOpenParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "ModelRouterSettingsOpenParams",
+        "type": "object"
+      },
+      "ModelRouterSettingsOpenResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "interaction": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ModelRouterSettingsInteraction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ModelRouterSettingsOpenResponse",
+        "type": "object"
+      },
+      "ModelRouterSettingsRespondParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "response": {
+            "$ref": "#/definitions/v2/ExtensionInteractionRequestResponse"
+          }
+        },
+        "required": [
+          "response"
+        ],
+        "title": "ModelRouterSettingsRespondParams",
+        "type": "object"
+      },
+      "ModelRouterSettingsRespondResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "interaction": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/ModelRouterSettingsInteraction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ModelRouterSettingsRespondResponse",
+        "type": "object"
       },
       "ModelSafetyBufferingUpdatedNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -18970,6 +19513,10 @@
               "effectiveRoute": {
                 "$ref": "#/definitions/v2/ModelRouterEffectiveRoute"
               },
+              "feedbackVisible": {
+                "default": false,
+                "type": "boolean"
+              },
               "id": {
                 "type": "string"
               },
@@ -19039,6 +19586,12 @@
               },
               "scope": {
                 "$ref": "#/definitions/v2/ModelRouterScope"
+              },
+              "summary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "type": {
                 "enum": [

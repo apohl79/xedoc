@@ -20,11 +20,7 @@ use xedoc_app_server_protocol::McpServerStatus;
 use xedoc_app_server_protocol::McpServerStatusDetail;
 use xedoc_app_server_protocol::ModelManagerReadResponse;
 use xedoc_app_server_protocol::ModelManagerUpdateParams;
-use xedoc_app_server_protocol::ModelRouterAbControlAction;
-use xedoc_app_server_protocol::ModelRouterPolicy;
-use xedoc_app_server_protocol::ModelRouterPolicyBootstrapResponse;
-use xedoc_app_server_protocol::ModelRouterPolicyReadResponse;
-use xedoc_app_server_protocol::ModelRouterPolicyWriteParams;
+use xedoc_app_server_protocol::ModelRouterSettingsHostAction;
 use xedoc_app_server_protocol::PluginInstallResponse;
 use xedoc_app_server_protocol::PluginListResponse;
 use xedoc_app_server_protocol::PluginReadParams;
@@ -725,84 +721,20 @@ pub enum AppEvent {
         level: String,
     },
 
-    /// Persist a model-router mode through the app server.
-    UpdateModelRouterMode {
-        mode: String,
+    OpenModelRouterSettings,
+    ModelRouterSettingsOpened {
+        result: Result<xedoc_app_server_protocol::ModelRouterSettingsOpenResponse, String>,
     },
-
-    /// Persist when active model-router decisions require user approval.
-    UpdateModelRouterApproval {
-        mode: String,
+    ModelRouterSettingsResponse {
+        response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
+        host_action: Option<ModelRouterSettingsHostAction>,
     },
-    UpdateModelRouterDecisionFeedback {
-        enabled: bool,
+    ModelRouterSettingsHostAction {
+        action: ModelRouterSettingsHostAction,
     },
-    OpenModelRouterMenu,
-    OpenModelRouterModeMenu,
-    OpenModelRouterApprovalMenu,
-    OpenModelRouterAbMenu,
-    OpenModelRouterPolicyConfidenceMenu {
-        policy: ModelRouterPolicy,
-    },
-    OpenModelRouterPolicyClassMenu {
-        policy: ModelRouterPolicy,
-        class_id: String,
-    },
-    OpenModelRouterPolicyClassEffortMenu {
-        policy: ModelRouterPolicy,
-        class_id: String,
-    },
-    OpenModelRouterPolicyRouteMenu {
-        policy: ModelRouterPolicy,
-        class_id: String,
-    },
-    OpenModelRouterPolicyLadderMenu {
-        policy: ModelRouterPolicy,
-    },
-    OpenModelRouterPolicyReportingBaselineMenu {
-        policy: ModelRouterPolicy,
-    },
-    OpenModelRouterPolicyLadderRouteMenu {
-        policy: ModelRouterPolicy,
-        rank: u16,
-    },
-    OpenModelRouterPolicyLadderEffortMenu {
-        policy: ModelRouterPolicy,
-        rank: u16,
-    },
-    /// Confirm a model-router config update and refresh the TUI's local view.
-    ModelRouterConfigUpdated {
-        mode: Option<String>,
-        approval: Option<String>,
-        decision_feedback: Option<bool>,
-        error: Option<String>,
-    },
-
-    /// Open the interactive model-router policy manager.
-    OpenModelRouterPolicyManager,
-    /// Bootstrap a user-owned model-router policy from the bundled defaults.
-    BootstrapModelRouterPolicy,
-    /// Save the user-editable policy settings without changing classifier weights.
-    UpdateModelRouterPolicy {
-        policy: ModelRouterPolicyWriteParams,
-    },
-    /// Deliver a policy-manager policy read.
-    ModelRouterPolicyLoaded {
-        result: Result<ModelRouterPolicyReadResponse, String>,
-    },
-    /// Deliver the result of initializing the packaged policy.
-    ModelRouterPolicyBootstrapped {
-        result: Result<ModelRouterPolicyBootstrapResponse, String>,
-    },
-    /// Deliver a saved policy to re-open in the manager.
-    ModelRouterPolicyUpdated {
-        result: Result<ModelRouterPolicy, String>,
-    },
-
-    /// Open the bounded model-router browser report.
-    ModelRouterReportOpenRequested,
-    ModelRouterAbControlRequested {
-        action: ModelRouterAbControlAction,
+    ModelRouterSettingsResponded {
+        result: Result<xedoc_app_server_protocol::ModelRouterSettingsRespondResponse, String>,
+        host_action: Option<ModelRouterSettingsHostAction>,
     },
     ModelRouterAbControlLoaded {
         result: Result<(), String>,
