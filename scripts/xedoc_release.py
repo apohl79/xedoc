@@ -191,7 +191,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--skip-github-release",
         action="store_true",
-        help="Build the package without creating or uploading a GitHub release.",
+        help="Build the package without GitHub publication or macOS notarization.",
     )
     parser.add_argument(
         "--allow-dirty",
@@ -356,7 +356,7 @@ def build_release(args: argparse.Namespace) -> None:
         cwd=source_root,
     )
     run(["codesign", "--verify", "--strict", "--verbose=2", str(packaged_entrypoint)])
-    if getattr(args, "notarize", False):
+    if getattr(args, "notarize", False) and not args.skip_github_release:
         run(
             [
                 str(
