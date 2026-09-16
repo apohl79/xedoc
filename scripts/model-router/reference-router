@@ -1097,7 +1097,7 @@ def approval(
         {
             "title": "Classification:",
             "rows": [
-                {"text": f"└ Work Type: {axes['work_type']}", "indent": 1},
+                {"text": f"└ Work Type: {axes['work_type']}", "indent": 0},
                 {"text": f"Complexity: {axes['complexity']}", "indent": 1},
                 {"text": f"Orchestration: {axes['orchestration']}", "indent": 1},
                 {"text": f"Risk: {axes['risk']}", "indent": 1},
