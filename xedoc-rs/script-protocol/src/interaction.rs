@@ -143,6 +143,8 @@ pub enum FormField {
         description: Option<String>,
         /// Currently selected option identifier.
         value: Option<OpaqueId>,
+        /// Script-owned current option identifier, distinct from a pending selection.
+        current: Option<OpaqueId>,
         /// Selectable options.
         options: Vec<SelectOption>,
     },

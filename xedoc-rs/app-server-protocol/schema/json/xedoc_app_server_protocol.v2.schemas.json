@@ -5549,6 +5549,12 @@
       "oneOf": [
         {
           "properties": {
+            "current": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "description": {
               "type": [
                 "string",

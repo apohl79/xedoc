@@ -965,6 +965,7 @@ fn validate_form_field(
             label,
             description,
             value,
+            current,
             options,
         } => {
             validate_opaque_identifier(id)?;
@@ -974,9 +975,20 @@ fn validate_form_field(
                 MAX_INTERACTION_DESCRIPTION_BYTES,
             )?;
             value.as_ref().map_or(Ok(()), validate_opaque_identifier)?;
+            current
+                .as_ref()
+                .map_or(Ok(()), validate_opaque_identifier)?;
             validate_collection_len(options.len(), MAX_INTERACTION_OPTIONS)?;
             options.iter().try_for_each(validate_select_option)?;
-            validate_unique_identifiers(options.iter().map(|option| option.id.as_str()))
+            validate_unique_identifiers(options.iter().map(|option| option.id.as_str()))?;
+            if current
+                .as_ref()
+                .is_none_or(|current| options.iter().any(|option| option.id == *current))
+            {
+                Ok(())
+            } else {
+                Err(ModelRouterScriptFailure::InvalidInteraction)
+            }
         }
         xedoc_script_protocol::FormField::Boolean {
             id,

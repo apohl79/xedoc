@@ -298,6 +298,7 @@ def select_field(identifier, label, selected, options):
         "id": identifier,
         "label": label,
         "value": select_option_id(selected),
+        "current": select_option_id(selected),
         "options": [
             {
                 "id": select_option_id(option),
@@ -1020,13 +1021,15 @@ def decision(
     selection,
     disposition,
     reason=None,
+    summary=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
     chosen = route_label(route)
-    summary = f"{category} classified at {confidence:.2f}/{margin:.2f}; {chosen}."
-    if reason is not None:
-        summary += f" {reason}"
+    if summary is None:
+        summary = f"{category} classified at {confidence:.2f}/{margin:.2f}; {chosen}."
+        if reason is not None:
+            summary += f" {reason}"
     return {
         "kind": "route",
         "decision": {
@@ -1311,6 +1314,10 @@ def approval_response(request, policy):
             margin,
             selection,
             "keepCurrent",
+            summary=(
+                "User rejected proposed route; "
+                f"kept {route_label(current_context.get('currentRoute'))}."
+            ),
         )
     values = params.get("values") or {}
     if selected == "submit-override":

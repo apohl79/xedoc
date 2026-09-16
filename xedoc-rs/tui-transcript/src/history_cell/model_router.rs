@@ -14,6 +14,7 @@ pub fn new_model_router_decision(
         notification.scope,
         notification.disposition,
         notification.reason,
+        notification.summary,
         notification.diagnostic,
         notification.classifications,
         notification.confidence_score,
@@ -36,6 +37,7 @@ pub fn new_model_router_decision_item(
     scope: ModelRouterScope,
     disposition: ModelRouterDisposition,
     reason: ModelRouterDecisionReason,
+    summary: Option<String>,
     diagnostic: Option<String>,
     classifications: std::collections::BTreeMap<String, String>,
     confidence_score: f64,
@@ -56,6 +58,7 @@ pub fn new_model_router_decision_item(
         scope,
         disposition,
         reason,
+        summary,
         diagnostic,
         classifications,
         confidence_score,
@@ -78,6 +81,7 @@ pub fn model_router_decision_lines(
     scope: ModelRouterScope,
     disposition: ModelRouterDisposition,
     reason: ModelRouterDecisionReason,
+    summary: Option<String>,
     diagnostic: Option<String>,
     classifications: std::collections::BTreeMap<String, String>,
     confidence_score: f64,
@@ -94,6 +98,13 @@ pub fn model_router_decision_lines(
     proposed_reasoning_effort: String,
     effective_route: ModelRouterEffectiveRoute,
 ) -> Vec<Line<'static>> {
+    if let Some(summary) = summary {
+        let mut lines = vec![vec!["  model router ".magenta(), summary.dim()].into()];
+        if let Some(diagnostic) = diagnostic {
+            lines.push(format!("  {diagnostic}").dim().into());
+        }
+        return lines;
+    }
     let effective_route = match effective_route {
         ModelRouterEffectiveRoute::Available {
             provider_id,

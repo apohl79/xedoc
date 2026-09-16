@@ -975,10 +975,15 @@ impl ScriptedInteractionView {
                             action_label_width,
                         )
                     );
-                    if index == self.action_selected {
+                    let action_text = if index == self.action_selected {
                         action_line.cyan().into()
                     } else {
                         action_line.into()
+                    };
+                    if let Some(context) = action.context.as_deref() {
+                        Line::from(vec![action_text, format!(" {context}").dim()])
+                    } else {
+                        Line::from(action_text)
                     }
                 }));
                 lines
@@ -1046,12 +1051,7 @@ impl ScriptedInteractionView {
                                 } else {
                                     " "
                                 };
-                                let current = match value {
-                                    FieldValue::Select {
-                                        option_index: current,
-                                    } if *current == Some(option_index) => " (current)",
-                                    _ => "",
-                                };
+                                let current = select_option_is_current(field, option_index);
                                 let unavailable = if option.disabled == Some(true) {
                                     " (unavailable)"
                                 } else {
@@ -1089,7 +1089,7 @@ impl ScriptedInteractionView {
         );
         lines.push(Line::default());
         let (
-            ExtensionInteractionField::Select { options, .. },
+            field @ ExtensionInteractionField::Select { options, .. },
             FieldValue::Select { option_index },
         ) = (&form.fields[0], &self.active_form_values()[0])
         else {
@@ -1101,11 +1101,7 @@ impl ScriptedInteractionView {
             } else {
                 " "
             };
-            let current = if *option_index == Some(index) {
-                " (current)"
-            } else {
-                ""
-            };
+            let current = select_option_is_current(field, index);
             let unavailable = if option.disabled == Some(true) {
                 " (unavailable)"
             } else {
@@ -1129,6 +1125,16 @@ impl ScriptedInteractionView {
             ExtensionInteractionSurface::Notice { .. }
         ) {
             "Press enter or esc to dismiss".dim().into()
+        } else if self.active_form().is_some_and(|form| {
+            form.fields.len() > 1
+                && form
+                    .fields
+                    .iter()
+                    .any(|field| matches!(field, ExtensionInteractionField::Select { .. }))
+        }) {
+            "↑/↓ select · → open choices · enter confirm · esc back"
+                .dim()
+                .into()
         } else {
             "Press enter to confirm or esc to go back".dim().into()
         }
@@ -1212,10 +1218,22 @@ fn action_label(action: &ExtensionInteractionAction, label: &str, label_width: u
     } else {
         format!(" [{}]", action.key_bindings.join(", "))
     };
-    action.context.as_deref().map_or_else(
-        || format!("{label:label_width$}{binding}"),
-        |context| format!("{label:label_width$}{binding} {context}"),
-    )
+    format!("{label:label_width$}{binding}")
+}
+
+fn select_option_is_current(
+    field: &ExtensionInteractionField,
+    option_index: usize,
+) -> &'static str {
+    match field {
+        ExtensionInteractionField::Select {
+            current, options, ..
+        } if current.as_ref() == options.get(option_index).map(|option| &option.id) => " (current)",
+        ExtensionInteractionField::Select { .. }
+        | ExtensionInteractionField::Boolean { .. }
+        | ExtensionInteractionField::Text { .. }
+        | ExtensionInteractionField::ModelRoute { .. } => "",
+    }
 }
 
 fn titled_lines(title: &str, subtitle: Option<&str>, width: u16) -> Vec<Line<'static>> {

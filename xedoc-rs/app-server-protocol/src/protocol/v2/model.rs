@@ -183,6 +183,7 @@ pub enum ExtensionInteractionField {
         label: String,
         description: Option<String>,
         value: Option<String>,
+        current: Option<String>,
         options: Vec<ExtensionInteractionOption>,
     },
     #[schemars(rename_all = "camelCase")]
