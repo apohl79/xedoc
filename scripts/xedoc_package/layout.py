@@ -187,6 +187,8 @@ def validate_package_dir(
             path = package_dir / relative_file
             if not is_executable(path):
                 raise RuntimeError(f"Package file is not executable: {relative_file}")
+
+
 def copy_executable(src: Path, dest: Path, *, is_windows: bool) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, dest)
