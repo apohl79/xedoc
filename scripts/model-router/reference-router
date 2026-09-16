@@ -8,10 +8,13 @@ import math
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
 POLICY_PATH = Path(__file__).with_name("reference-router.policy.json")
+DIAGNOSTICS_PATH = Path(__file__).with_name("reference-router.diagnostics.jsonl")
+MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MODES = ("off", "shadow-subagents", "shadow-full", "subagents", "full")
 APPROVALS = ("off", "changes", "all")
 WORK_TYPES = (
@@ -123,6 +126,45 @@ def save_policy(policy):
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
+
+
+def record_recalibration(policy, event, before, after, selection):
+    route = selection["route"]
+    record = {
+        "event": event,
+        "recordedAtUnixSeconds": int(time.time()),
+        "policyRevision": policy["revision"],
+        "before": before,
+        "after": after,
+        "ranking": {
+            "score": selection["score"],
+            "selectedRank": selection["selectedRank"],
+            "targetRank": selection["targetRank"],
+        },
+    }
+    if route is not None:
+        record["route"] = {
+            "providerId": route["providerId"],
+            "model": route["model"],
+            "reasoningEffort": route["reasoningEffort"],
+        }
+    encoded = json.dumps(record, separators=(",", ":"), sort_keys=True)
+    try:
+        if (
+            DIAGNOSTICS_PATH.exists()
+            and DIAGNOSTICS_PATH.stat().st_size + len(encoded) + 1
+            > MAX_DIAGNOSTICS_BYTES
+        ):
+            DIAGNOSTICS_PATH.unlink()
+        fd = os.open(
+            DIAGNOSTICS_PATH,
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT,
+            0o600,
+        )
+        with os.fdopen(fd, "a", encoding="utf-8") as output:
+            output.write(f"{encoded}\n")
+    except OSError:
+        pass
 
 
 def response(request, result=None, error=None):
@@ -289,19 +331,23 @@ def form(
     submit_label="Save",
     *,
     form_id=None,
+    subtitle=None,
 ):
+    surface = {
+        "type": "form",
+        "id": form_id or continuation,
+        "title": title,
+        "fields": fields,
+        "submit": action(submit_id, submit_label, bindings=["enter"]),
+        "cancel": action("back", "Back", bindings=["escape"]),
+    }
+    if subtitle is not None:
+        surface["subtitle"] = subtitle
     return interaction(
         title.lower().replace(" ", "-"),
         continuation,
         policy,
-        {
-            "type": "form",
-            "id": form_id or continuation,
-            "title": title,
-            "fields": fields,
-            "submit": action(submit_id, submit_label, bindings=["enter"]),
-            "cancel": action("back", "Back", bindings=["escape"]),
-        },
+        surface,
     )
 
 
@@ -1004,13 +1050,14 @@ def decision(
     }
 
 
-def approval_continuation(policy, axes, confidence, margin, context):
+def approval_continuation(policy, axes, confidence, margin, context, recalibrated=False):
     state = {
         "axes": axes,
         "confidence": confidence,
         "margin": margin,
         "eligibleRoutes": eligible(context),
         "policyRevision": str(policy["revision"]),
+        "recalibrated": recalibrated,
     }
     encoded = base64.urlsafe_b64encode(
         json.dumps(state, separators=(",", ":"), sort_keys=True).encode()
@@ -1018,10 +1065,21 @@ def approval_continuation(policy, axes, confidence, margin, context):
     return f"approval:{encoded}"
 
 
-def approval(policy, axes, confidence, margin, selection, context, notice_text=None):
+def approval(
+    policy,
+    axes,
+    confidence,
+    margin,
+    selection,
+    context,
+    notice_text=None,
+    recalibrated=False,
+):
     category = classification_label(axes)
     route = selection["route"]
-    continuation = approval_continuation(policy, axes, confidence, margin, context)
+    continuation = approval_continuation(
+        policy, axes, confidence, margin, context, recalibrated
+    )
     details = [
         {"label": "Classification", "value": category},
         {"label": "Confidence", "value": f"{confidence:.2f} / margin {margin:.2f}"},
@@ -1053,6 +1111,7 @@ def approval(policy, axes, confidence, margin, selection, context, notice_text=N
         "submit-override",
         "Apply override",
         form_id="classification-override",
+        subtitle="Adjust the classification used to choose this route.",
     )["interaction"]["surface"]
     return interaction(
         "route-approval",
@@ -1142,8 +1201,10 @@ def approval_state(continuation):
         margin = float(state["margin"])
         context = {"eligibleRoutes": state["eligibleRoutes"]}
         policy_revision = state["policyRevision"]
+        recalibrated = state.get("recalibrated", False)
         if (
             not isinstance(policy_revision, str)
+            or not isinstance(recalibrated, bool)
             or axes["work_type"] not in WORK_TYPES
             or axes["complexity"] not in COMPLEXITIES
             or axes["orchestration"] not in ORCHESTRATIONS
@@ -1152,10 +1213,12 @@ def approval_state(continuation):
             raise ValueError("invalid approval state")
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
-    return axes, confidence, margin, context, policy_revision
+    return axes, confidence, margin, context, policy_revision, recalibrated
 
 
-def fresh_approval(policy, axes, confidence, margin, context, notice_text):
+def fresh_approval(
+    policy, axes, confidence, margin, context, notice_text, recalibrated=False
+):
     selection = choose_route(policy, context, axes)
     return approval(
         policy,
@@ -1165,6 +1228,7 @@ def fresh_approval(policy, axes, confidence, margin, context, notice_text):
         selection,
         context,
         notice_text=notice_text,
+        recalibrated=recalibrated,
     )
 
 
@@ -1174,7 +1238,7 @@ def approval_response(request, policy):
     decoded = approval_state(continuation)
     if decoded is None:
         return error_notice(policy, "Invalid approval continuation.")
-    axes, confidence, margin, rendered_context, policy_revision = decoded
+    axes, confidence, margin, rendered_context, policy_revision, recalibrated = decoded
     current_context = request.get("context") or rendered_context
     if not current_context.get("eligibleRoutes"):
         current_context = rendered_context
@@ -1186,6 +1250,7 @@ def approval_response(request, policy):
             margin,
             current_context,
             "This approval preview is stale. Review the updated route before applying it.",
+            recalibrated,
         )
     selection = choose_route(policy, rendered_context, axes)
     rendered = approval(policy, axes, confidence, margin, selection, rendered_context)[
@@ -1203,9 +1268,18 @@ def approval_response(request, policy):
             margin,
             current_context,
             "This approval preview is no longer valid. Review the updated route before applying it.",
+            recalibrated,
         )
     selected = (params.get("action") or {}).get("id")
     if selected == "keep-current" or params.get("outcome") != "accepted":
+        if recalibrated:
+            record_recalibration(
+                policy,
+                "classification_override_rejected",
+                axes,
+                axes,
+                selection,
+            )
         return decision(
             policy,
             request["requestId"],
@@ -1217,6 +1291,7 @@ def approval_response(request, policy):
         )
     values = params.get("values") or {}
     if selected == "submit-override":
+        original_axes = axes
         axes = {
             "work_type": selected_option(
                 values.get("work_type"),
@@ -1239,7 +1314,21 @@ def approval_response(request, policy):
         confidence = 1.0
         margin = 1.0
         selection = choose_route(policy, rendered_context, axes)
+        record_recalibration(
+            policy,
+            "classification_override_submitted",
+            original_axes,
+            axes,
+            selection,
+        )
         if selection["route"] is None:
+            record_recalibration(
+                policy,
+                "classification_override_rejected",
+                axes,
+                axes,
+                selection,
+            )
             return decision(
                 policy,
                 request["requestId"],
@@ -1257,6 +1346,15 @@ def approval_response(request, policy):
             margin,
             selection,
             rendered_context,
+            recalibrated=True,
+        )
+    if recalibrated:
+        record_recalibration(
+            policy,
+            "classification_override_approved",
+            axes,
+            axes,
+            selection,
         )
     return decision(
         policy,

@@ -50,6 +50,11 @@ enum FieldValue {
     },
 }
 
+struct SelectPickerState {
+    field_index: usize,
+    option_index: Option<usize>,
+}
+
 pub struct ScriptedInteractionView {
     request: ExtensionInteractionRequestParams,
     model_router_settings: bool,
@@ -59,6 +64,7 @@ pub struct ScriptedInteractionView {
     menu_selected: usize,
     action_selected: usize,
     field_selected: usize,
+    select_picker: Option<SelectPickerState>,
     form_values: Vec<FieldValue>,
     override_values: Vec<FieldValue>,
     completion: Option<ViewCompletion>,
@@ -101,6 +107,7 @@ impl ScriptedInteractionView {
             menu_selected: 0,
             action_selected: 0,
             field_selected: 0,
+            select_picker: None,
             form_values,
             override_values,
             completion: None,
@@ -369,12 +376,7 @@ impl ScriptedInteractionView {
             return;
         };
         match (&field, value) {
-            (
-                ExtensionInteractionField::Select { options, .. },
-                FieldValue::Select { option_index },
-            ) => {
-                *option_index = cycle_enabled_index(*option_index, options, direction);
-            }
+            (ExtensionInteractionField::Select { .. }, FieldValue::Select { .. }) => {}
             (ExtensionInteractionField::Boolean { .. }, FieldValue::Boolean(value)) => {
                 *value = !*value;
             }
@@ -486,7 +488,10 @@ impl ScriptedInteractionView {
             } => (
                 actions
                     .get(self.action_selected)
-                    .filter(|action| action_matches_key(action, key_event))
+                    .filter(|action| {
+                        enter_binding_matches(key_event, KeyModifiers::NONE)
+                            || action_matches_key(action, key_event)
+                    })
                     .or_else(|| {
                         actions
                             .iter()
@@ -535,10 +540,97 @@ impl ScriptedInteractionView {
         ) {
             self.mode = RenderMode::Override;
             self.field_selected = 0;
+            self.select_picker = None;
         }
     }
 
+    fn open_active_select_picker(&mut self) -> bool {
+        let Some(form) = self.active_form() else {
+            return false;
+        };
+        let field_index = self.field_selected;
+        let Some(ExtensionInteractionField::Select { options, .. }) = form.fields.get(field_index)
+        else {
+            return false;
+        };
+        let Some(FieldValue::Select { option_index }) = self.active_form_values().get(field_index)
+        else {
+            return false;
+        };
+        self.select_picker = Some(SelectPickerState {
+            field_index,
+            option_index: option_index.or_else(|| {
+                options
+                    .iter()
+                    .position(|option| option.disabled != Some(true))
+            }),
+        });
+        true
+    }
+
+    fn cycle_select_picker_option(&mut self, direction: i8) {
+        let Some(field_index) = self.select_picker.as_ref().map(|picker| picker.field_index) else {
+            return;
+        };
+        let Some(form) = self.active_form() else {
+            return;
+        };
+        let Some(ExtensionInteractionField::Select { options, .. }) = form.fields.get(field_index)
+        else {
+            return;
+        };
+        if let Some(picker) = &mut self.select_picker {
+            picker.option_index = cycle_enabled_index(picker.option_index, options, direction);
+        }
+    }
+
+    fn choose_select_picker_option(&mut self) {
+        let Some(picker) = self.select_picker.take() else {
+            return;
+        };
+        let Some(form) = self.active_form() else {
+            return;
+        };
+        let Some(ExtensionInteractionField::Select { options, .. }) =
+            form.fields.get(picker.field_index)
+        else {
+            return;
+        };
+        if picker
+            .option_index
+            .and_then(|index| options.get(index))
+            .is_some_and(|option| option.disabled != Some(true))
+            && let Some(FieldValue::Select { option_index }) =
+                self.active_form_values_mut().get_mut(picker.field_index)
+        {
+            *option_index = picker.option_index;
+        }
+    }
+
+    fn close_select_picker(&mut self) -> bool {
+        self.select_picker.take().is_some()
+    }
+
     fn handle_form_key_event(&mut self, key_event: KeyEvent) {
+        if self.select_picker.is_some() {
+            match key_event.code {
+                KeyCode::Up => self.cycle_select_picker_option(-1),
+                KeyCode::Down | KeyCode::Tab => self.cycle_select_picker_option(1),
+                KeyCode::Right | KeyCode::Char(' ')
+                    if !enter_binding_matches(key_event, KeyModifiers::NONE) =>
+                {
+                    self.choose_select_picker_option();
+                }
+                KeyCode::Esc | KeyCode::Left => {
+                    self.close_select_picker();
+                }
+                _ if enter_binding_matches(key_event, KeyModifiers::NONE) => {
+                    self.choose_select_picker_option();
+                }
+                _ => {}
+            }
+            return;
+        }
         let Some(form) = self.active_form() else {
             return;
         };
@@ -561,7 +653,11 @@ impl ScriptedInteractionView {
             KeyCode::Up => self.cycle_field(-1),
             KeyCode::Down | KeyCode::Tab => self.cycle_field(1),
             KeyCode::Left => self.adjust_active_field(-1),
-            KeyCode::Right | KeyCode::Char(' ') => self.adjust_active_field(1),
+            KeyCode::Right | KeyCode::Char(' ') => {
+                if !self.open_active_select_picker() {
+                    self.adjust_active_field(1);
+                }
+            }
             KeyCode::Char('[') => self.adjust_model_route_effort(-1),
             KeyCode::Char(']') => self.adjust_model_route_effort(1),
             _ => {}
@@ -575,6 +671,9 @@ impl BottomPaneView for ScriptedInteractionView {
             return;
         }
         if key_event.code == KeyCode::Esc {
+            if self.close_select_picker() {
+                return;
+            }
             if !self.cancel_form() {
                 if self.model_router_settings {
                     self.completion = Some(ViewCompletion::Cancelled);
@@ -706,13 +805,15 @@ impl ScriptedInteractionView {
                     } else {
                         ""
                     };
-                    let mut item_lines = vec![
-                        format!(
-                            "{marker} {}{current}{disabled}",
-                            action_label(&item.action, &item.label)
-                        )
-                        .into(),
-                    ];
+                    let item_line = format!(
+                        "{marker} {}{current}{disabled}",
+                        action_label(&item.action, &item.label)
+                    );
+                    let mut item_lines = vec![if index == self.menu_selected {
+                        item_line.cyan().into()
+                    } else {
+                        item_line.into()
+                    }];
                     if let Some(description) = &item.description {
                         item_lines.extend(wrapped_lines(description, width, "  "));
                     }
@@ -747,7 +848,7 @@ impl ScriptedInteractionView {
                         .map(|detail| format!(" {}: {}", detail.label, detail.value).dim().into()),
                 );
                 lines.extend(actions.iter().enumerate().map(|(index, action)| {
-                    format!(
+                    let action_line = format!(
                         "{} {}",
                         if index == self.action_selected {
                             ">"
@@ -758,8 +859,12 @@ impl ScriptedInteractionView {
                             action,
                             action.label.as_deref().unwrap_or(action.id.as_str())
                         )
-                    )
-                    .into()
+                    );
+                    if index == self.action_selected {
+                        action_line.cyan().into()
+                    } else {
+                        action_line.into()
+                    }
                 }));
                 lines.push(" ↑/↓ select · Esc back".dim().into());
                 lines
@@ -782,7 +887,13 @@ impl ScriptedInteractionView {
         let Some(form) = self.active_form() else {
             return Vec::new();
         };
-        let mut lines = titled_lines(&form.title, form.subtitle.as_deref(), width);
+        let mut lines = titled_lines(
+            &form.title,
+            form.subtitle
+                .as_deref()
+                .or(Some("Choose a setting, then apply your changes.")),
+            width,
+        );
         lines.extend(
             form.fields
                 .iter()
@@ -795,18 +906,62 @@ impl ScriptedInteractionView {
                         " "
                     };
                     let (label, description) = field_label_and_description(field, value);
-                    let mut field_lines = vec![format!("{marker} {label}").into()];
+                    let field_line = format!("{marker} {label}");
+                    let mut field_lines = vec![if index == self.field_selected {
+                        field_line.cyan().into()
+                    } else {
+                        field_line.into()
+                    }];
                     if let Some(description) = description {
                         field_lines.extend(wrapped_lines(description, width, "  "));
+                    }
+                    if self
+                        .select_picker
+                        .as_ref()
+                        .is_some_and(|picker| picker.field_index == index)
+                        && let (ExtensionInteractionField::Select { options, .. }, Some(picker)) =
+                            (field, self.select_picker.as_ref())
+                    {
+                        field_lines.extend(options.iter().enumerate().map(
+                            |(option_index, option)| {
+                                let marker = if picker.option_index == Some(option_index) {
+                                    ">"
+                                } else {
+                                    " "
+                                };
+                                let current = match value {
+                                    FieldValue::Select {
+                                        option_index: current,
+                                    } if *current == Some(option_index) => " (current)",
+                                    _ => "",
+                                };
+                                let unavailable = if option.disabled == Some(true) {
+                                    " (unavailable)"
+                                } else {
+                                    ""
+                                };
+                                let option_line =
+                                    format!("    {marker} {}{current}{unavailable}", option.label);
+                                if picker.option_index == Some(option_index) {
+                                    option_line.cyan().into()
+                                } else if option.disabled == Some(true) {
+                                    option_line.dim().into()
+                                } else {
+                                    option_line.into()
+                                }
+                            },
+                        ));
                     }
                     field_lines
                 }),
         );
-        lines.push(
-            " ↑/↓ field · ←/→ change · [/] model effort · Esc back"
+        lines.push(if self.select_picker.is_some() {
+            " ↑/↓ select · Enter choose · Esc back".dim().into()
+        } else {
+            " ↑/↓ field · → choose · [/] model effort · Esc back"
                 .dim()
-                .into(),
-        );
+                .into()
+        });
         lines.push(
             action_hints(std::iter::once(&form.submit).chain(form.cancel.as_ref()))
                 .dim()
