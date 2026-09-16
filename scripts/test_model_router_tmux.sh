@@ -398,8 +398,9 @@ fresh, surface = interaction(result)
 assert fresh["id"] == "route-approval", fresh
 assert fresh["stateRevision"] != approval["stateRevision"], fresh
 assert any(
-    detail["label"] == "Notice" and "stale" in detail["value"]
-    for detail in surface["details"]
+    "Notice:" in row["text"] and "stale" in row["text"]
+    for section in surface["sections"]
+    for row in section["rows"]
 ), surface
 PY
   reset_policy
@@ -749,17 +750,18 @@ open_settings() {
   [[ -n "$tmux_session" ]] || fail "cannot open settings before starting the isolated TUI"
   local pane
   pane="$(capture_viewport)"
-  if [[ "$pane" == *"Model router"* && "$pane" == *"↑/↓ select"* ]]; then
-    return
+  if [[ "$pane" == *"Model Router Settings"* && "$pane" == *"Press enter to confirm"* ]]; then
+    send_key Escape
   fi
   send_prompt "/model-router"
-  wait_for_pane "Model router"
+  wait_for_pane "Model Router Settings"
 }
 
 select_menu_item() {
   local index="$1"
   local expected="$2"
   local count=0
+  send_key Home
   while (( count < index )); do
     send_key Down
     count=$((count + 1))
@@ -771,14 +773,15 @@ select_menu_item() {
 set_select_value() {
   local expected="$1"
   local options="$2"
+  local option="${expected#*: }"
   local pane
   for _ in $(seq 0 "$options"); do
     pane="$(capture_viewport)"
-    if [[ "$pane" == *"$expected"* ]]; then
+    if [[ "$pane" == *"> $option"* ]]; then
       send_key Enter
       return
     fi
-    send_key Right
+    send_key Down
   done
   fail "could not select form value: $expected"
 }
@@ -820,10 +823,20 @@ set_approval() {
   local approval="$1"
   local label="$2"
   open_settings
-  select_menu_item 1 "Approval prompts"
+  select_menu_item 2 "Approval prompts"
   set_select_value "Approval prompts: $label" 3
   wait_for_pane "Approval prompts: $approval"
   assert_policy "approval=$approval"
+  assert_config_unchanged
+}
+
+set_session_mode() {
+  local mode="$1"
+  local label="$2"
+  open_settings
+  select_menu_item 1 "Session routing mode"
+  set_select_value "Session mode: $label" 6
+  wait_for_pane "Session mode: $mode"
   assert_config_unchanged
 }
 
@@ -1231,6 +1244,25 @@ run_mode_matrix() {
   run_root_mode full ROUTER_E2E_MODE_FULL applied Full
 }
 
+run_session_mode_override() {
+  reset_policy
+  start_tui
+  set_mode off Off
+  set_session_mode full Full
+  assert_policy "mode=off"
+  set_approval all All
+  send_key Escape
+  send_prompt "ROUTER_E2E_SESSION_OVERRIDE review workflow security"
+  assert_approval_details
+  send_key Enter
+  wait_for_request_marker "ROUTER_E2E_SESSION_OVERRIDE"
+  await_turn
+  assert_request_route "ROUTER_E2E_SESSION_OVERRIDE" "gpt-5.6-sol" high
+  assert_policy "mode=off"
+  record_scenario session-mode-override \
+    "session mode full overrode shared off mode and required approval"
+}
+
 run_feature_disabled() {
   reset_policy
   start_tui
@@ -1250,10 +1282,10 @@ run_feature_disabled() {
 }
 
 assert_approval_details() {
+  wait_for_pane "Routing:"
+  wait_for_pane "Prompt:"
   wait_for_pane "Classification"
   wait_for_pane "Confidence"
-  wait_for_pane "Routing calculation"
-  wait_for_pane "Model choice"
 }
 
 run_approval_matrix() {
@@ -1554,6 +1586,11 @@ main() {
     finish_host_action_thread
     run_feature_disabled
     run_mode_matrix
+  elif [[ "$phase" == "session-override" ]]; then
+    run_session_mode_override
+    assert_config_unchanged
+    printf 'PASS: session-scoped scripted model-router tmux acceptance\n'
+    return
   elif [[ "$phase" == "post-modes" ]]; then
     start_tui
   elif [[ "$phase" == "baseline-ab" || "$phase" == "ab" ]]; then

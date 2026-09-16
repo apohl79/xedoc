@@ -16,6 +16,7 @@ from pathlib import Path
 POLICY_PATH = Path(__file__).with_name("reference-router.policy.json")
 DIAGNOSTICS_PATH = Path(__file__).with_name("reference-router.diagnostics.jsonl")
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
+MAX_PROMPT_PREVIEW_BYTES = 508
 MODES = ("off", "shadow-subagents", "shadow-full", "subagents", "full")
 APPROVALS = ("off", "changes", "all")
 WORK_TYPES = (
@@ -129,6 +130,45 @@ def save_policy(policy):
         raise
 
 
+def record_diagnostic(record):
+    encoded = json.dumps(record, separators=(",", ":"), sort_keys=True)
+    encoded_size = len(encoded.encode("utf-8"))
+    if encoded_size + 1 >= MAX_DIAGNOSTICS_BYTES:
+        return
+    try:
+        if (
+            DIAGNOSTICS_PATH.exists()
+            and DIAGNOSTICS_PATH.stat().st_size + encoded_size + 1
+            > MAX_DIAGNOSTICS_BYTES
+        ):
+            DIAGNOSTICS_PATH.unlink()
+        fd = os.open(
+            DIAGNOSTICS_PATH,
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT,
+            0o600,
+        )
+        with os.fdopen(fd, "a", encoding="utf-8") as output:
+            output.write(f"{encoded}\n")
+    except OSError:
+        pass
+
+
+def prompt_preview(prompt):
+    if not isinstance(prompt, str):
+        return ""
+    normalized = "".join(
+        character if character.isprintable() else " " for character in prompt
+    )
+    normalized = " ".join(normalized.split())
+    encoded = normalized.encode("utf-8")
+    if len(encoded) <= MAX_PROMPT_PREVIEW_BYTES:
+        return normalized
+    prefix = encoded[: MAX_PROMPT_PREVIEW_BYTES - 3].decode(
+        "utf-8", errors="ignore"
+    )
+    return f"{prefix}..."
+
+
 def record_recalibration(policy, event, before, after, selection):
     route = selection["route"]
     record = {
@@ -149,23 +189,52 @@ def record_recalibration(policy, event, before, after, selection):
             "model": route["model"],
             "reasoningEffort": route["reasoningEffort"],
         }
-    encoded = json.dumps(record, separators=(",", ":"), sort_keys=True)
-    try:
-        if (
-            DIAGNOSTICS_PATH.exists()
-            and DIAGNOSTICS_PATH.stat().st_size + len(encoded) + 1
-            > MAX_DIAGNOSTICS_BYTES
-        ):
-            DIAGNOSTICS_PATH.unlink()
-        fd = os.open(
-            DIAGNOSTICS_PATH,
-            os.O_WRONLY | os.O_APPEND | os.O_CREAT,
-            0o600,
-        )
-        with os.fdopen(fd, "a", encoding="utf-8") as output:
-            output.write(f"{encoded}\n")
-    except OSError:
-        pass
+    record_diagnostic(record)
+
+
+def record_routing_decision(
+    policy,
+    context,
+    axes,
+    confidence,
+    margin,
+    selection,
+    mode,
+    active,
+    steering,
+    disposition,
+):
+    route = selection["route"]
+    record = {
+        "event": "routing_decision",
+        "recordedAtUnixSeconds": int(time.time()),
+        "policyRevision": policy["revision"],
+        "turn": {
+            "scope": (context.get("turn") or {}).get("scope"),
+            "active": active,
+            "routeMutable": (context.get("turn") or {}).get("routeMutable"),
+        },
+        "mode": {
+            "effective": mode,
+            "sessionOverride": session_mode(context),
+        },
+        "classification": axes,
+        "confidence": {"score": confidence, "margin": margin},
+        "selection": {
+            "score": selection["score"],
+            "selectedRank": selection["selectedRank"],
+            "targetRank": selection["targetRank"],
+        },
+        "steering": steering,
+        "disposition": disposition,
+    }
+    if route is not None:
+        record["route"] = {
+            "providerId": route["providerId"],
+            "model": route["model"],
+            "reasoningEffort": route["reasoningEffort"],
+        }
+    record_diagnostic(record)
 
 
 def response(request, result=None, error=None):
@@ -1189,6 +1258,7 @@ def approval_continuation(policy, axes, confidence, margin, context, recalibrate
         "margin": margin,
         "eligibleRoutes": eligible(context),
         "currentRoute": context.get("currentRoute"),
+        "routerPrompt": prompt_preview(context.get("routerPrompt")),
         "policyRevision": str(policy["revision"]),
         "recalibrated": recalibrated,
     }
@@ -1212,18 +1282,20 @@ def approval(
     route = selection["route"]
     current_route = route_label(context.get("currentRoute"))
     scope = (context.get("turn") or {}).get("scope", "root")
-    prompt = context.get("routerPrompt", "")
+    prompt = prompt_preview(context.get("routerPrompt"))
     continuation = approval_continuation(
         policy, axes, confidence, margin, context, recalibrated
     )
     sections = [
         {
             "title": "Routing:",
-            "rows": [
-                {"text": f"└ Scope: {scope}"},
-                *([{"text": f"Prompt: {prompt}"}] if prompt else []),
-            ],
+            "rows": [{"text": f"└ Scope: {scope}"}],
         },
+        *(
+            [{"title": "Prompt:", "rows": [{"text": f"└ {prompt}"}]}]
+            if prompt
+            else []
+        ),
         {
             "title": "Classification:",
             "rows": [
@@ -1241,7 +1313,7 @@ def approval(
         },
     ]
     if notice_text is not None:
-        sections[1]["rows"].append({"text": f"Notice: {notice_text}"})
+        sections[-2]["rows"].append({"text": f"Notice: {notice_text}"})
     override = form(
         policy,
         "Change classification",
@@ -1320,6 +1392,18 @@ def routing_decide(request, policy):
         policy["approval"] == "all" or (policy["approval"] == "changes" and changed)
     )
     if needs_approval:
+        record_routing_decision(
+            policy,
+            context,
+            axes,
+            confidence,
+            margin,
+            selection,
+            mode,
+            active,
+            steering,
+            "approval",
+        )
         context = {
             **context,
             "routerPrompt": prompt,
@@ -1342,6 +1426,18 @@ def routing_decide(request, policy):
         reason = "Confidence thresholds retained the current route."
     elif route is None:
         reason = "No eligible ranked route was available."
+    record_routing_decision(
+        policy,
+        context,
+        axes,
+        confidence,
+        margin,
+        selection,
+        mode,
+        active,
+        steering,
+        disposition,
+    )
     result = decision(
         policy,
         request["requestId"],
@@ -1367,6 +1463,7 @@ def approval_state(continuation):
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
             "currentRoute": state.get("currentRoute"),
+            "routerPrompt": prompt_preview(state.get("routerPrompt")),
         }
         policy_revision = state["policyRevision"]
         recalibrated = state.get("recalibrated", False)
@@ -1407,7 +1504,7 @@ def approval_response(request, policy):
     if decoded is None:
         return error_notice(policy, "Invalid approval continuation.")
     axes, confidence, margin, rendered_context, policy_revision, recalibrated = decoded
-    current_context = request.get("context") or rendered_context
+    current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
         current_context = rendered_context
     if policy_revision != str(policy["revision"]):
