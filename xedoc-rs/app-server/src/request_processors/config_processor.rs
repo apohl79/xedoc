@@ -24,7 +24,6 @@ use xedoc_app_server_protocol::ExperimentalFeatureEnablementSetParams;
 use xedoc_app_server_protocol::ExperimentalFeatureEnablementSetResponse;
 use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ManagedHooksRequirements;
-use xedoc_app_server_protocol::MergeStrategy;
 use xedoc_app_server_protocol::ModelProviderCapabilitiesReadResponse;
 use xedoc_app_server_protocol::ModelRouterSettingsInteraction;
 use xedoc_app_server_protocol::ModelRouterSettingsOpenResponse;
@@ -397,8 +396,7 @@ impl ConfigRequestProcessor {
         &self,
         params: ConfigValueWriteParams,
     ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
-        let refresh_model_router =
-            writes_model_router_config(&params.key_path, &params.value, &params.merge_strategy);
+        let refresh_model_router = writes_model_router_config(&params.key_path);
         let response = self
             .config_manager
             .write_value(params)
@@ -415,9 +413,10 @@ impl ConfigRequestProcessor {
         params: ConfigBatchWriteParams,
     ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
         let reload_user_config = params.reload_user_config
-            || params.edits.iter().any(|edit| {
-                writes_model_router_config(&edit.key_path, &edit.value, &edit.merge_strategy)
-            });
+            || params
+                .edits
+                .iter()
+                .any(|edit| writes_model_router_config(&edit.key_path));
         let response = self
             .config_manager
             .batch_write(params)
@@ -531,27 +530,8 @@ fn parse_model_router_settings_interaction(
     })
 }
 
-fn writes_model_router_config(
-    key_path: &str,
-    value: &serde_json::Value,
-    merge_strategy: &MergeStrategy,
-) -> bool {
-    if matches!(
-        key_path,
-        "model_router.mode" | "model_router.approval" | "model_router.decision_feedback"
-    ) {
-        return true;
-    }
-    if key_path != "model_router" {
-        return false;
-    }
-    value.is_null()
-        || matches!(merge_strategy, MergeStrategy::Replace)
-        || value.as_object().is_some_and(|table| {
-            table.contains_key("mode")
-                || table.contains_key("approval")
-                || table.contains_key("decision_feedback")
-        })
+fn writes_model_router_config(key_path: &str) -> bool {
+    key_path == "model_router" || key_path.starts_with("model_router.")
 }
 
 fn empty_optimizer_insights() -> TokenUsageOptimizerInsights {

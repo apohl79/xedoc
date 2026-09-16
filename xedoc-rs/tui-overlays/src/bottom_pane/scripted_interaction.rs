@@ -574,6 +574,16 @@ impl BottomPaneView for ScriptedInteractionView {
         if key_event.kind == KeyEventKind::Release {
             return;
         }
+        if key_event.code == KeyCode::Esc {
+            if !self.cancel_form() {
+                if self.model_router_settings {
+                    self.completion = Some(ViewCompletion::Cancelled);
+                } else {
+                    self.dismiss();
+                }
+            }
+            return;
+        }
         match (&self.request.surface, &self.mode) {
             (ExtensionInteractionSurface::Menu { .. }, RenderMode::Surface) => {
                 self.select_menu_action(key_event);
@@ -604,7 +614,7 @@ impl BottomPaneView for ScriptedInteractionView {
                 }
             }
             (ExtensionInteractionSurface::Notice { .. }, RenderMode::Surface) => {
-                if matches!(key_event.code, KeyCode::Enter | KeyCode::Esc) {
+                if key_event.code == KeyCode::Enter {
                     self.dismiss();
                 }
             }
@@ -625,6 +635,10 @@ impl BottomPaneView for ScriptedInteractionView {
         } else {
             CancellationEvent::NotHandled
         }
+    }
+
+    fn prefer_esc_to_handle_key_event(&self) -> bool {
+        true
     }
 
     fn is_complete(&self) -> bool {
@@ -704,7 +718,7 @@ impl ScriptedInteractionView {
                     }
                     item_lines
                 }));
-                lines.push(" ↑/↓ select".dim().into());
+                lines.push(" ↑/↓ select · Esc back".dim().into());
                 lines
             }
             (ExtensionInteractionSurface::Form { .. }, RenderMode::Surface)
@@ -747,7 +761,7 @@ impl ScriptedInteractionView {
                     )
                     .into()
                 }));
-                lines.push(" ↑/↓ select".dim().into());
+                lines.push(" ↑/↓ select · Esc back".dim().into());
                 lines
             }
             (ExtensionInteractionSurface::Notice { title, body, level }, RenderMode::Surface) => {
@@ -788,7 +802,11 @@ impl ScriptedInteractionView {
                     field_lines
                 }),
         );
-        lines.push(" ↑/↓ field · ←/→ change · [/] model effort".dim().into());
+        lines.push(
+            " ↑/↓ field · ←/→ change · [/] model effort · Esc back"
+                .dim()
+                .into(),
+        );
         lines.push(
             action_hints(std::iter::once(&form.submit).chain(form.cancel.as_ref()))
                 .dim()
