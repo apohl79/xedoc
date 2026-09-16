@@ -1252,6 +1252,7 @@ def decision(
 
 
 def approval_continuation(policy, axes, confidence, margin, context, recalibrated=False):
+    turn = context.get("turn") or {}
     state = {
         "axes": axes,
         "confidence": confidence,
@@ -1259,6 +1260,7 @@ def approval_continuation(policy, axes, confidence, margin, context, recalibrate
         "eligibleRoutes": eligible(context),
         "currentRoute": context.get("currentRoute"),
         "routerPrompt": prompt_preview(context.get("routerPrompt")),
+        "scope": turn.get("scope", "root"),
         "policyRevision": str(policy["revision"]),
         "recalibrated": recalibrated,
     }
@@ -1460,16 +1462,19 @@ def approval_state(continuation):
         axes = state["axes"]
         confidence = float(state["confidence"])
         margin = float(state["margin"])
+        scope = state.get("scope", "root")
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
             "currentRoute": state.get("currentRoute"),
             "routerPrompt": prompt_preview(state.get("routerPrompt")),
+            "turn": {"scope": scope},
         }
         policy_revision = state["policyRevision"]
         recalibrated = state.get("recalibrated", False)
         if (
             not isinstance(policy_revision, str)
             or not isinstance(recalibrated, bool)
+            or scope not in ("root", "subagent")
             or axes["work_type"] not in WORK_TYPES
             or axes["complexity"] not in COMPLEXITIES
             or axes["orchestration"] not in ORCHESTRATIONS

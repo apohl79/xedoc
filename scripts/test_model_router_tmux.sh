@@ -402,6 +402,24 @@ assert any(
     for section in surface["sections"]
     for row in section["rows"]
 ), surface
+
+subagent_context = {
+    **router_context(),
+    "turn": {"scope": "subagent", "active": False, "routeMutable": True},
+}
+subagent_approval, subagent_surface = interaction(
+    call(
+        "routing.decide",
+        {"prompt": "review workflow security"},
+        subagent_context,
+    )
+)
+assert subagent_surface["sections"][0]["rows"] == [{"text": "└ Scope: subagent"}]
+subagent_refreshed, subagent_surface = interaction(
+    respond(subagent_approval, "submit-override", {"work_type": "group2"})
+)
+assert subagent_refreshed["id"] == "route-approval", subagent_refreshed
+assert subagent_surface["sections"][0]["rows"] == [{"text": "└ Scope: subagent"}]
 PY
   reset_policy
   record_scenario interaction-conflicts \
@@ -1371,6 +1389,7 @@ run_override_case() {
     send_key Down
     count=$((count + 1))
   done
+  send_key Right
   set_select_value "$expected_form" 8
   wait_for_pane "Use openai/"
   wait_for_pane "$expected_classification"
