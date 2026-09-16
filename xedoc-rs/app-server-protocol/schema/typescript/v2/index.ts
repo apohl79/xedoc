@@ -109,6 +109,8 @@ export type { ExtensionInteractionOutcome } from "./ExtensionInteractionOutcome"
 export type { ExtensionInteractionRequestParams } from "./ExtensionInteractionRequestParams";
 export type { ExtensionInteractionRequestResponse } from "./ExtensionInteractionRequestResponse";
 export type { ExtensionInteractionRoute } from "./ExtensionInteractionRoute";
+export type { ExtensionInteractionRow } from "./ExtensionInteractionRow";
+export type { ExtensionInteractionSection } from "./ExtensionInteractionSection";
 export type { ExtensionInteractionSelectedAction } from "./ExtensionInteractionSelectedAction";
 export type { ExtensionInteractionSurface } from "./ExtensionInteractionSurface";
 export type { FileChangeApprovalDecision } from "./FileChangeApprovalDecision";
@@ -254,11 +256,6 @@ export type { ModelReroutedNotification } from "./ModelReroutedNotification";
 export type { ModelRouterAbControlAction } from "./ModelRouterAbControlAction";
 export type { ModelRouterAbControlParams } from "./ModelRouterAbControlParams";
 export type { ModelRouterAbControlResponse } from "./ModelRouterAbControlResponse";
-export type { ModelRouterApprovalAction } from "./ModelRouterApprovalAction";
-export type { ModelRouterApprovalClassRating } from "./ModelRouterApprovalClassRating";
-export type { ModelRouterApprovalParams } from "./ModelRouterApprovalParams";
-export type { ModelRouterApprovalRankedRoute } from "./ModelRouterApprovalRankedRoute";
-export type { ModelRouterApprovalResponse } from "./ModelRouterApprovalResponse";
 export type { ModelRouterDecisionNotification } from "./ModelRouterDecisionNotification";
 export type { ModelRouterDecisionReason } from "./ModelRouterDecisionReason";
 export type { ModelRouterDisposition } from "./ModelRouterDisposition";
@@ -269,7 +266,6 @@ export type { ModelRouterReportOpenParams } from "./ModelRouterReportOpenParams"
 export type { ModelRouterReportOpenResponse } from "./ModelRouterReportOpenResponse";
 export type { ModelRouterReportReadParams } from "./ModelRouterReportReadParams";
 export type { ModelRouterReportReadResponse } from "./ModelRouterReportReadResponse";
-export type { ModelRouterRoute } from "./ModelRouterRoute";
 export type { ModelRouterScope } from "./ModelRouterScope";
 export type { ModelRouterSettingsHostAction } from "./ModelRouterSettingsHostAction";
 export type { ModelRouterSettingsInteraction } from "./ModelRouterSettingsInteraction";

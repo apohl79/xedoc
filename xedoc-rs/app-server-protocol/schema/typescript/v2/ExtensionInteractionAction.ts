@@ -7,4 +7,4 @@ import type { ModelRouterSettingsHostAction } from "./ModelRouterSettingsHostAct
 /**
  * An opaque action supplied by an extension interaction.
  */
-export type ExtensionInteractionAction = { id: string, opens: string | null, hostAction: ModelRouterSettingsHostAction | null, label: string | null, keyBindings: Array<string>, value: JsonValue | null, };
+export type ExtensionInteractionAction = { id: string, opens: string | null, hostAction: ModelRouterSettingsHostAction | null, label: string | null, keyBindings: Array<string>, context: string | null, value: JsonValue | null, };

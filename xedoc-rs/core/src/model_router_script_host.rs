@@ -48,6 +48,12 @@ const MAX_INTERACTION_ITEMS: usize = 64;
 const MAX_INTERACTION_FIELDS: usize = 32;
 const MAX_INTERACTION_OPTIONS: usize = 64;
 const MAX_INTERACTION_DETAILS: usize = 32;
+const MAX_INTERACTION_SECTIONS: usize = 16;
+const MAX_INTERACTION_SECTION_ROWS: usize = 16;
+const MAX_INTERACTION_SECTION_ROWS_TOTAL: usize = 16;
+const MAX_INTERACTION_SECTION_ROW_BYTES: usize = 512;
+const MAX_INTERACTION_SECTION_TEXT_BYTES: usize = 2_048;
+const MAX_INTERACTION_INDENT: u8 = 8;
 const MAX_INTERACTION_ACTIONS: usize = 16;
 const MAX_INTERACTION_KEY_BINDINGS: usize = 4;
 const MAX_INTERACTION_ACTION_VALUE_BYTES: usize = 4_096;
@@ -857,6 +863,34 @@ fn validate_interaction(
                 validate_plain_text(&detail.label, MAX_INTERACTION_TITLE_BYTES)?;
                 validate_plain_text(&detail.value, MAX_INTERACTION_TEXT_BYTES)
             })?;
+            validate_collection_len(confirmation.sections.len(), MAX_INTERACTION_SECTIONS)?;
+            confirmation.sections.iter().try_fold(
+                (0usize, 0usize),
+                |(section_text_bytes, section_rows), section| {
+                    validate_optional_plain_text(
+                        section.title.as_deref(),
+                        MAX_INTERACTION_TITLE_BYTES,
+                    )?;
+                    validate_collection_len(section.rows.len(), MAX_INTERACTION_SECTION_ROWS)?;
+                    section.rows.iter().try_fold(
+                        (section_text_bytes, section_rows),
+                        |(text_bytes, row_count), row| {
+                            validate_plain_text(&row.text, MAX_INTERACTION_SECTION_ROW_BYTES)?;
+                            if row.indent > MAX_INTERACTION_INDENT {
+                                return Err(ModelRouterScriptFailure::InvalidInteraction);
+                            }
+                            let text_bytes = text_bytes.saturating_add(row.text.len());
+                            let row_count = row_count.saturating_add(1);
+                            if text_bytes > MAX_INTERACTION_SECTION_TEXT_BYTES
+                                || row_count > MAX_INTERACTION_SECTION_ROWS_TOTAL
+                            {
+                                return Err(ModelRouterScriptFailure::InvalidInteraction);
+                            }
+                            Ok((text_bytes, row_count))
+                        },
+                    )
+                },
+            )?;
             validate_collection_len(confirmation.actions.len(), MAX_INTERACTION_ACTIONS)?;
             confirmation.actions.iter().try_for_each(validate_action)?;
             validate_unique_identifiers(
@@ -1015,6 +1049,7 @@ fn validate_action(action: &xedoc_script_protocol::Action) -> Result<(), ModelRo
         .as_ref()
         .map_or(Ok(()), validate_opaque_identifier)?;
     validate_optional_plain_text(action.label.as_deref(), MAX_INTERACTION_TITLE_BYTES)?;
+    validate_optional_plain_text(action.context.as_deref(), MAX_INTERACTION_DESCRIPTION_BYTES)?;
     validate_collection_len(action.key_bindings.len(), MAX_INTERACTION_KEY_BINDINGS)?;
     action
         .key_bindings

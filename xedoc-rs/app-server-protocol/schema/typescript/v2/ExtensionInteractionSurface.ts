@@ -7,8 +7,9 @@ import type { ExtensionInteractionField } from "./ExtensionInteractionField";
 import type { ExtensionInteractionForm } from "./ExtensionInteractionForm";
 import type { ExtensionInteractionMenuItem } from "./ExtensionInteractionMenuItem";
 import type { ExtensionInteractionNoticeLevel } from "./ExtensionInteractionNoticeLevel";
+import type { ExtensionInteractionSection } from "./ExtensionInteractionSection";
 
 /**
  * The constrained declarative surface an extension client may render.
  */
-export type ExtensionInteractionSurface = { "type": "menu", title: string, subtitle: string | null, items: Array<ExtensionInteractionMenuItem>, } | { "type": "form", id: string, title: string, subtitle: string | null, fields: Array<ExtensionInteractionField>, submit: ExtensionInteractionAction, cancel: ExtensionInteractionAction | null, } | { "type": "confirmation", title: string, body: string, details: Array<ExtensionInteractionDetail>, actions: Array<ExtensionInteractionAction>, override: ExtensionInteractionForm | null, } | { "type": "notice", title: string, body: string, level: ExtensionInteractionNoticeLevel, };
+export type ExtensionInteractionSurface = { "type": "menu", title: string, subtitle: string | null, items: Array<ExtensionInteractionMenuItem>, } | { "type": "form", id: string, title: string, subtitle: string | null, fields: Array<ExtensionInteractionField>, submit: ExtensionInteractionAction, cancel: ExtensionInteractionAction | null, } | { "type": "confirmation", title: string, body: string, details: Array<ExtensionInteractionDetail>, sections: Array<ExtensionInteractionSection>, actions: Array<ExtensionInteractionAction>, override: ExtensionInteractionForm | null, } | { "type": "notice", title: string, body: string, level: ExtensionInteractionNoticeLevel, };

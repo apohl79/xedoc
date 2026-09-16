@@ -4659,330 +4659,6 @@
       "title": "McpServerElicitationRequestResponse",
       "type": "object"
     },
-    "ModelRouterApprovalAction": {
-      "description": "The action a user takes on a model-router proposal.",
-      "enum": [
-        "approve",
-        "reject",
-        "override"
-      ],
-      "type": "string"
-    },
-    "ModelRouterApprovalClassRating": {
-      "description": "Rating and allowed model range for one approval classification choice.",
-      "properties": {
-        "maximumModelClass": {
-          "type": "string"
-        },
-        "minimumModelClass": {
-          "type": "string"
-        },
-        "points": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "maximumModelClass",
-        "minimumModelClass",
-        "points"
-      ],
-      "type": "object"
-    },
-    "ModelRouterApprovalParams": {
-      "description": "A dedicated, structured request to approve a proposed model route.",
-      "properties": {
-        "approvalId": {
-          "type": "string"
-        },
-        "availableRoutes": {
-          "default": [],
-          "items": {
-            "$ref": "#/definitions/ModelRouterRoute"
-          },
-          "type": "array"
-        },
-        "classificationOptions": {
-          "additionalProperties": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "classificationRatings": {
-          "additionalProperties": {
-            "additionalProperties": {
-              "$ref": "#/definitions/ModelRouterApprovalClassRating"
-            },
-            "type": "object"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "classifications": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "classifierRevision": {
-          "type": "string"
-        },
-        "currentRoute": {
-          "$ref": "#/definitions/v2/ModelRouterEffectiveRoute"
-        },
-        "margin": {
-          "format": "double",
-          "type": "number"
-        },
-        "policyRevision": {
-          "type": "string"
-        },
-        "predictedClassification": {
-          "type": "string"
-        },
-        "promptSha256": {
-          "type": "string"
-        },
-        "proposedRoute": {
-          "$ref": "#/definitions/ModelRouterRoute"
-        },
-        "rankingLadder": {
-          "default": [],
-          "items": {
-            "$ref": "#/definitions/ModelRouterApprovalRankedRoute"
-          },
-          "type": "array"
-        },
-        "rankingMaximumScore": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "rankingMinimumScore": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "scope": {
-          "$ref": "#/definitions/v2/ModelRouterScope"
-        },
-        "score": {
-          "format": "double",
-          "type": "number"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "approvalId",
-        "classifierRevision",
-        "currentRoute",
-        "margin",
-        "policyRevision",
-        "predictedClassification",
-        "promptSha256",
-        "proposedRoute",
-        "rankingMaximumScore",
-        "rankingMinimumScore",
-        "scope",
-        "score",
-        "threadId",
-        "turnId"
-      ],
-      "type": "object"
-    },
-    "ModelRouterApprovalRankedRoute": {
-      "description": "One available policy-ranked route for approval preview calculation.",
-      "properties": {
-        "modelClass": {
-          "type": "string"
-        },
-        "rank": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "route": {
-          "$ref": "#/definitions/ModelRouterRoute"
-        }
-      },
-      "required": [
-        "modelClass",
-        "rank",
-        "route"
-      ],
-      "type": "object"
-    },
-    "ModelRouterRequestApprovalParams": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "description": "A dedicated, structured request to approve a proposed model route.",
-      "properties": {
-        "approvalId": {
-          "type": "string"
-        },
-        "availableRoutes": {
-          "default": [],
-          "items": {
-            "$ref": "#/definitions/ModelRouterRoute"
-          },
-          "type": "array"
-        },
-        "classificationOptions": {
-          "additionalProperties": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "classificationRatings": {
-          "additionalProperties": {
-            "additionalProperties": {
-              "$ref": "#/definitions/ModelRouterApprovalClassRating"
-            },
-            "type": "object"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "classifications": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "classifierRevision": {
-          "type": "string"
-        },
-        "currentRoute": {
-          "$ref": "#/definitions/v2/ModelRouterEffectiveRoute"
-        },
-        "margin": {
-          "format": "double",
-          "type": "number"
-        },
-        "policyRevision": {
-          "type": "string"
-        },
-        "predictedClassification": {
-          "type": "string"
-        },
-        "promptSha256": {
-          "type": "string"
-        },
-        "proposedRoute": {
-          "$ref": "#/definitions/ModelRouterRoute"
-        },
-        "rankingLadder": {
-          "default": [],
-          "items": {
-            "$ref": "#/definitions/ModelRouterApprovalRankedRoute"
-          },
-          "type": "array"
-        },
-        "rankingMaximumScore": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "rankingMinimumScore": {
-          "format": "uint16",
-          "minimum": 0.0,
-          "type": "integer"
-        },
-        "scope": {
-          "$ref": "#/definitions/v2/ModelRouterScope"
-        },
-        "score": {
-          "format": "double",
-          "type": "number"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "approvalId",
-        "classifierRevision",
-        "currentRoute",
-        "margin",
-        "policyRevision",
-        "predictedClassification",
-        "promptSha256",
-        "proposedRoute",
-        "rankingMaximumScore",
-        "rankingMinimumScore",
-        "scope",
-        "score",
-        "threadId",
-        "turnId"
-      ],
-      "title": "ModelRouterApprovalParams",
-      "type": "object"
-    },
-    "ModelRouterRequestApprovalResponse": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "description": "The response to a model-router approval request.",
-      "properties": {
-        "action": {
-          "$ref": "#/definitions/ModelRouterApprovalAction"
-        },
-        "classification": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "classifications": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        }
-      },
-      "required": [
-        "action"
-      ],
-      "title": "ModelRouterApprovalResponse",
-      "type": "object"
-    },
-    "ModelRouterRoute": {
-      "description": "A selectable model route proposed by the model router.",
-      "properties": {
-        "modelSlug": {
-          "type": "string"
-        },
-        "providerId": {
-          "type": "string"
-        },
-        "reasoningEffort": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "modelSlug",
-        "providerId",
-        "reasoningEffort"
-      ],
-      "type": "object"
-    },
     "NetworkApprovalContext": {
       "properties": {
         "host": {
@@ -6580,31 +6256,6 @@
             "params"
           ],
           "title": "McpServer/elicitation/requestRequest",
-          "type": "object"
-        },
-        {
-          "description": "Request approval for a model-router classification and route.",
-          "properties": {
-            "id": {
-              "$ref": "#/definitions/v2/RequestId"
-            },
-            "method": {
-              "enum": [
-                "item/modelRouter/requestApproval"
-              ],
-              "title": "Item/modelRouter/requestApprovalRequestMethod",
-              "type": "string"
-            },
-            "params": {
-              "$ref": "#/definitions/ModelRouterApprovalParams"
-            }
-          },
-          "required": [
-            "id",
-            "method",
-            "params"
-          ],
-          "title": "Item/modelRouter/requestApprovalRequest",
           "type": "object"
         },
         {
@@ -9823,6 +9474,12 @@
       "ExtensionInteractionAction": {
         "description": "An opaque action supplied by an extension interaction.",
         "properties": {
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "hostAction": {
             "anyOf": [
               {
@@ -10260,6 +9917,45 @@
         ],
         "type": "object"
       },
+      "ExtensionInteractionRow": {
+        "description": "One script-owned confirmation row.",
+        "properties": {
+          "indent": {
+            "default": 0,
+            "format": "uint8",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "ExtensionInteractionSection": {
+        "description": "A titled group of script-owned confirmation rows.",
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/definitions/v2/ExtensionInteractionRow"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "type": "object"
+      },
       "ExtensionInteractionSelectedAction": {
         "description": "An opaque action selected by the client.",
         "properties": {
@@ -10385,6 +10081,13 @@
                     "type": "null"
                   }
                 ]
+              },
+              "sections": {
+                "default": [],
+                "items": {
+                  "$ref": "#/definitions/v2/ExtensionInteractionSection"
+                },
+                "type": "array"
               },
               "title": {
                 "type": "string"

@@ -24,6 +24,8 @@ pub struct Action {
     #[serde(rename = "keyBindings")]
     #[serde(default)]
     pub key_bindings: Vec<String>,
+    /// Optional trailing context rendered after the label and key bindings.
+    pub context: Option<String>,
     /// Optional script-defined action value.
     pub value: Option<Value>,
 }
@@ -207,11 +209,35 @@ pub struct ConfirmationSurface {
     pub body: String,
     /// Supplementary label/value pairs.
     pub details: Vec<Detail>,
+    /// Script-owned grouped content rendered between the body and actions.
+    #[serde(default)]
+    pub sections: Vec<ConfirmationSection>,
     /// Actions offered by the confirmation.
     pub actions: Vec<Action>,
     /// Optional form used to override a proposed route.
     #[serde(rename = "override")]
     pub override_form: Option<FormSurface>,
+}
+
+/// A titled group of confirmation rows.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmationSection {
+    /// Optional section heading.
+    pub title: Option<String>,
+    /// Rows rendered in order.
+    pub rows: Vec<ConfirmationRow>,
+}
+
+/// One script-owned confirmation row.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmationRow {
+    /// Complete row text supplied by the script.
+    pub text: String,
+    /// Number of two-space indentation levels.
+    #[serde(default)]
+    pub indent: u8,
 }
 
 /// A visible label/value pair.

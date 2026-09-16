@@ -92,6 +92,8 @@ pub enum ExtensionInteractionSurface {
         title: String,
         body: String,
         details: Vec<ExtensionInteractionDetail>,
+        #[serde(default)]
+        sections: Vec<ExtensionInteractionSection>,
         actions: Vec<ExtensionInteractionAction>,
         #[serde(rename = "override")]
         #[ts(rename = "override")]
@@ -127,7 +129,27 @@ pub struct ExtensionInteractionAction {
     pub host_action: Option<ModelRouterSettingsHostAction>,
     pub label: Option<String>,
     pub key_bindings: Vec<String>,
+    pub context: Option<String>,
     pub value: Option<JsonValue>,
+}
+
+/// A titled group of script-owned confirmation rows.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionSection {
+    pub title: Option<String>,
+    pub rows: Vec<ExtensionInteractionRow>,
+}
+
+/// One script-owned confirmation row.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionRow {
+    pub text: String,
+    #[serde(default)]
+    pub indent: u8,
 }
 
 /// Explicit host capabilities available to model-router settings scripts.

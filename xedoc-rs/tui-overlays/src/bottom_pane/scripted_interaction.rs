@@ -734,6 +734,15 @@ impl BottomPaneView for ScriptedInteractionView {
                 self.mode = RenderMode::Surface;
                 return;
             }
+            if matches!(
+                &self.request.surface,
+                ExtensionInteractionSurface::Confirmation { .. }
+            ) {
+                self.select_confirmation_action(key_event);
+                if self.is_complete() || matches!(self.mode, RenderMode::Override) {
+                    return;
+                }
+            }
             if self.return_to_parent_menu() {
                 return;
             }
@@ -923,18 +932,35 @@ impl ScriptedInteractionView {
                     title,
                     body,
                     details,
+                    sections,
                     actions,
                     override_form: _,
                 },
                 RenderMode::Surface,
             ) => {
                 let mut lines = titled_lines(title, None, width);
+                lines.push(Line::default());
                 lines.extend(wrapped_lines(body, width, ""));
                 lines.extend(
                     details
                         .iter()
                         .map(|detail| format!(" {}: {}", detail.label, detail.value).dim().into()),
                 );
+                for section in sections {
+                    lines.push(Line::default());
+                    if let Some(title) = section.title.as_deref() {
+                        lines.push(title.to_string().bold().into());
+                    }
+                    lines.extend(section.rows.iter().flat_map(|row| {
+                        wrapped_lines(&row.text, width, &"  ".repeat(usize::from(row.indent)))
+                    }));
+                }
+                lines.push(Line::default());
+                let action_label_width = actions
+                    .iter()
+                    .map(|action| action.label.as_deref().unwrap_or(action.id.as_str()).len())
+                    .max()
+                    .unwrap_or_default();
                 lines.extend(actions.iter().enumerate().map(|(index, action)| {
                     let action_line = format!(
                         "{} {}",
@@ -945,7 +971,8 @@ impl ScriptedInteractionView {
                         },
                         action_label(
                             action,
-                            action.label.as_deref().unwrap_or(action.id.as_str())
+                            action.label.as_deref().unwrap_or(action.id.as_str()),
+                            action_label_width,
                         )
                     );
                     if index == self.action_selected {
@@ -1179,12 +1206,16 @@ fn enter_binding_matches(key_event: KeyEvent, modifiers: KeyModifiers) -> bool {
             && key_event.modifiers == KeyModifiers::CONTROL
 }
 
-fn action_label(action: &ExtensionInteractionAction, label: &str) -> String {
-    if action.key_bindings.is_empty() {
-        label.to_string()
+fn action_label(action: &ExtensionInteractionAction, label: &str, label_width: usize) -> String {
+    let binding = if action.key_bindings.is_empty() {
+        String::new()
     } else {
-        format!("{label} [{}]", action.key_bindings.join(", "))
-    }
+        format!(" [{}]", action.key_bindings.join(", "))
+    };
+    action.context.as_deref().map_or_else(
+        || format!("{label:label_width$}{binding}"),
+        |context| format!("{label:label_width$}{binding} {context}"),
+    )
 }
 
 fn titled_lines(title: &str, subtitle: Option<&str>, width: u16) -> Vec<Line<'static>> {

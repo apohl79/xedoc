@@ -188,6 +188,7 @@ def action(
     opens=None,
     value=None,
     bindings=None,
+    context=None,
 ):
     result = {"id": identifier}
     if label is not None:
@@ -200,6 +201,8 @@ def action(
         result["value"] = value
     if bindings:
         result["keyBindings"] = bindings
+    if context is not None:
+        result["context"] = context
     return result
 
 
@@ -1061,6 +1064,7 @@ def approval_continuation(policy, axes, confidence, margin, context, recalibrate
         "confidence": confidence,
         "margin": margin,
         "eligibleRoutes": eligible(context),
+        "currentRoute": context.get("currentRoute"),
         "policyRevision": str(policy["revision"]),
         "recalibrated": recalibrated,
     }
@@ -1082,25 +1086,29 @@ def approval(
 ):
     category = classification_label(axes)
     route = selection["route"]
+    current_route = route_label(context.get("currentRoute"))
     continuation = approval_continuation(
         policy, axes, confidence, margin, context, recalibrated
     )
-    details = [
-        {"label": "Classification", "value": category},
-        {"label": "Confidence", "value": f"{confidence:.2f} / margin {margin:.2f}"},
+    sections = [
         {
-            "label": "Routing calculation",
-            "value": routing_calculation(
-                policy,
-                selection,
-                confidence,
-                margin,
-            ),
+            "title": "Classification:",
+            "rows": [
+                {"text": f"└ Work Type: {axes['work_type']}", "indent": 1},
+                {"text": f"Complexity: {axes['complexity']}", "indent": 1},
+                {"text": f"Orchestration: {axes['orchestration']}", "indent": 1},
+                {"text": f"Risk: {axes['risk']}", "indent": 1},
+            ],
         },
-        {"label": "Model choice", "value": route_label(route)},
+        {
+            "title": None,
+            "rows": [
+                {"text": f"Confidence: {confidence:.2f} / margin {margin:.2f}"},
+            ],
+        },
     ]
     if notice_text is not None:
-        details.append({"label": "Notice", "value": notice_text})
+        sections[1]["rows"].append({"text": f"Notice: {notice_text}"})
     override = form(
         policy,
         "Change classification",
@@ -1126,15 +1134,22 @@ def approval(
             "type": "confirmation",
             "title": f"Use {route_label(route)}?",
             "body": "The reference router requests confirmation for this decision.",
-            "details": details,
+            "details": [],
+            "sections": sections,
             "actions": [
-                action("approve", "Use this route", bindings=["enter"]),
-                action("keep-current", "Keep current route", bindings=["escape"]),
+                action("approve", "Accept this route", bindings=["enter"]),
+                action(
+                    "keep-current",
+                    "Keep current route",
+                    bindings=["escape"],
+                    context=current_route,
+                ),
                 action(
                     "begin-override",
                     "Change classification",
                     opens="classification-override",
                     bindings=["o"],
+                    context="Update the classification and tune the router",
                 ),
             ],
             "override": override,
@@ -1204,7 +1219,10 @@ def approval_state(continuation):
         axes = state["axes"]
         confidence = float(state["confidence"])
         margin = float(state["margin"])
-        context = {"eligibleRoutes": state["eligibleRoutes"]}
+        context = {
+            "eligibleRoutes": state["eligibleRoutes"],
+            "currentRoute": state.get("currentRoute"),
+        }
         policy_revision = state["policyRevision"]
         recalibrated = state.get("recalibrated", False)
         if (

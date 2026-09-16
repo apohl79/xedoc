@@ -4,6 +4,12 @@
     "ExtensionInteractionAction": {
       "description": "An opaque action supplied by an extension interaction.",
       "properties": {
+        "context": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "hostAction": {
           "anyOf": [
             {
@@ -390,6 +396,45 @@
       ],
       "type": "object"
     },
+    "ExtensionInteractionRow": {
+      "description": "One script-owned confirmation row.",
+      "properties": {
+        "indent": {
+          "default": 0,
+          "format": "uint8",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "ExtensionInteractionSection": {
+      "description": "A titled group of script-owned confirmation rows.",
+      "properties": {
+        "rows": {
+          "items": {
+            "$ref": "#/definitions/ExtensionInteractionRow"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "type": "object"
+    },
     "ExtensionInteractionSurface": {
       "description": "The constrained declarative surface an extension client may render.",
       "oneOf": [
@@ -503,6 +548,13 @@
                   "type": "null"
                 }
               ]
+            },
+            "sections": {
+              "default": [],
+              "items": {
+                "$ref": "#/definitions/ExtensionInteractionSection"
+              },
+              "type": "array"
             },
             "title": {
               "type": "string"
