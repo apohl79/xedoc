@@ -9,6 +9,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
 use std::time::Duration;
+use std::time::Instant;
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tokio::sync::TryLockError;
 use tracing::Instrument as _;
@@ -26,6 +28,8 @@ use xedoc_protocol::openai_models::ModelsResponse;
 
 const MODEL_CACHE_FILE: &str = "models_cache_v2.json";
 const DEFAULT_MODEL_CACHE_TTL: Duration = Duration::from_secs(300);
+const MODEL_REFRESH_FAILURE_BACKOFF: Duration = Duration::from_secs(300);
+const MODEL_REFRESH_MAX_BACKOFF: Duration = Duration::from_secs(1800);
 
 /// Remote endpoint used by the OpenAI-compatible model manager.
 ///
@@ -433,9 +437,16 @@ impl ModelsManager for MultiProviderModelsManager {
 pub struct OpenAiModelsManager {
     remote_models: RwLock<Vec<ModelInfo>>,
     etag: RwLock<Option<String>>,
+    refresh_state: Mutex<ModelRefreshState>,
     cache_manager: Option<ModelsCacheManager>,
     endpoint_client: SharedModelsEndpointClient,
     auth_manager: Option<Arc<AuthManager>>,
+}
+
+#[derive(Debug, Default)]
+struct ModelRefreshState {
+    retry_after: Option<Instant>,
+    consecutive_failures: u32,
 }
 
 /// Static model manager backed by an authoritative in-process catalog.
@@ -497,6 +508,7 @@ impl OpenAiModelsManager {
         Self {
             remote_models: RwLock::new(remote_models),
             etag: RwLock::new(None),
+            refresh_state: Mutex::new(ModelRefreshState::default()),
             cache_manager,
             endpoint_client,
             auth_manager,
@@ -597,6 +609,20 @@ impl OpenAiModelsManager {
         refresh_strategy: RefreshStrategy,
         http_client_factory: &HttpClientFactory,
     ) -> CoreResult<()> {
+        let mut refresh_state = self.refresh_state.lock().await;
+        if refresh_state
+            .retry_after
+            .is_some_and(|retry_after| Instant::now() < retry_after)
+        {
+            if matches!(
+                refresh_strategy,
+                RefreshStrategy::Offline | RefreshStrategy::OnlineIfUncached
+            ) {
+                self.try_load_cache().await;
+            }
+            return Ok(());
+        }
+
         if !self.should_refresh_models().await {
             if matches!(
                 refresh_strategy,
@@ -607,7 +633,7 @@ impl OpenAiModelsManager {
             return Ok(());
         }
 
-        match refresh_strategy {
+        let result = match refresh_strategy {
             RefreshStrategy::Offline => {
                 // Only try to load from cache, never fetch
                 self.try_load_cache().await;
@@ -626,7 +652,20 @@ impl OpenAiModelsManager {
                 // Always fetch from network
                 self.fetch_and_update_models(http_client_factory).await
             }
+        };
+        if result.is_ok() {
+            refresh_state.retry_after = None;
+            refresh_state.consecutive_failures = 0;
+        } else {
+            refresh_state.consecutive_failures =
+                refresh_state.consecutive_failures.saturating_add(1);
+            let exponent = refresh_state.consecutive_failures.saturating_sub(1).min(5);
+            let backoff = MODEL_REFRESH_FAILURE_BACKOFF
+                .saturating_mul(1u32 << exponent)
+                .min(MODEL_REFRESH_MAX_BACKOFF);
+            refresh_state.retry_after = Some(Instant::now() + backoff);
         }
+        result
     }
 
     async fn fetch_and_update_models(

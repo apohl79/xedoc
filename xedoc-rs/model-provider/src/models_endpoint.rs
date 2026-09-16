@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use http::HeaderMap;
+use tokio::sync::OnceCell;
 use tokio::time::timeout;
 use xedoc_api::AgentIdentityTelemetry;
 use xedoc_api::ModelCatalog;
@@ -16,6 +17,7 @@ use xedoc_api::auth_header_telemetry;
 use xedoc_api::map_api_error;
 use xedoc_http_client::ClientRouteClass;
 use xedoc_http_client::HttpClientFactory;
+use xedoc_http_client::OutboundProxyPolicy;
 use xedoc_login::AuthEnvTelemetry;
 use xedoc_login::AuthManager;
 use xedoc_login::XedocAuth;
@@ -47,6 +49,8 @@ pub(crate) struct OpenAiModelsEndpoint {
     auth_manager: Option<Arc<AuthManager>>,
     api_key_source: Option<ProviderApiKeySource>,
     transport_builder: Arc<dyn ModelsTransportBuilder>,
+    reqwest_default_transport: OnceCell<ReqwestTransport>,
+    system_proxy_transport: OnceCell<ReqwestTransport>,
 }
 
 impl OpenAiModelsEndpoint {
@@ -68,6 +72,8 @@ impl OpenAiModelsEndpoint {
             auth_manager,
             api_key_source,
             transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
+            reqwest_default_transport: OnceCell::new(),
+            system_proxy_transport: OnceCell::new(),
         }
     }
 
@@ -115,10 +121,25 @@ impl OpenAiModelsEndpoint {
             api_auth.as_ref(),
         );
         timeout(MODELS_REFRESH_TIMEOUT, async {
-            let transport = self
-                .transport_builder
-                .build(http_client_factory, request_url.clone())
-                .await?;
+            let transport = match http_client_factory.outbound_proxy_policy() {
+                OutboundProxyPolicy::ReqwestDefault => {
+                    self.reqwest_default_transport
+                        .get_or_try_init(|| {
+                            self.transport_builder
+                                .build(http_client_factory, request_url.clone())
+                        })
+                        .await?
+                }
+                OutboundProxyPolicy::RespectSystemProxy => {
+                    self.system_proxy_transport
+                        .get_or_try_init(|| {
+                            self.transport_builder
+                                .build(http_client_factory, request_url.clone())
+                        })
+                        .await?
+                }
+            }
+            .clone();
             let client = ModelsClient::new(transport, api_provider, api_auth)
                 .with_telemetry(Some(request_telemetry));
             let (catalog, etag) = client
@@ -445,6 +466,8 @@ mod tests {
             transport_builder: Arc::new(RecordingTransportBuilder {
                 observed_request: Arc::clone(&observed_request),
             }),
+            reqwest_default_transport: OnceCell::new(),
+            system_proxy_transport: OnceCell::new(),
         };
 
         endpoint
