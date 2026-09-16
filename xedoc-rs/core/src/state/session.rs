@@ -159,6 +159,7 @@ pub(crate) struct SessionState {
     pub(crate) server_reasoning_included: bool,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
+    model_router_session_mode: Option<String>,
     /// Settings used by the latest regular user turn, used for turn-to-turn
     /// model handling on subsequent regular turns (including full-context
     /// reinjection after resume or `/compact`).
@@ -195,6 +196,7 @@ impl SessionState {
             server_reasoning_included: false,
             mcp_dependency_prompted: HashSet::new(),
             additional_context: AdditionalContextStore::default(),
+            model_router_session_mode: None,
             previous_turn_settings: None,
             auto_compact_window: AutoCompactWindow::new_with_ids(auto_compact_window_ids),
             startup_prewarm: None,
@@ -222,6 +224,14 @@ impl SessionState {
         previous_turn_settings: Option<PreviousTurnSettings>,
     ) {
         self.previous_turn_settings = previous_turn_settings;
+    }
+
+    pub(crate) fn model_router_session_mode(&self) -> Option<&str> {
+        self.model_router_session_mode.as_deref()
+    }
+
+    pub(crate) fn set_model_router_session_mode(&mut self, mode: Option<String>) {
+        self.model_router_session_mode = mode;
     }
 
     pub(crate) fn clone_history(&self) -> ContextManager {

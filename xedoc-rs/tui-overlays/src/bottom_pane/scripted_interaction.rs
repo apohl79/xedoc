@@ -64,6 +64,7 @@ pub struct ScriptedInteractionView {
     model_router_settings: bool,
     app_event_tx: AppEventSender,
     thread_id: ThreadId,
+    model_router_settings_thread_id: Option<ThreadId>,
     mode: RenderMode,
     menu_selected: usize,
     action_selected: usize,
@@ -92,6 +93,9 @@ impl ScriptedInteractionView {
         model_router_settings: bool,
     ) -> Self {
         let thread_id = ThreadId::from_string(&request.thread_id).unwrap_or_default();
+        let model_router_settings_thread_id = (!request.thread_id.is_empty())
+            .then(|| ThreadId::from_string(&request.thread_id).ok())
+            .flatten();
         let surface_form = Self::surface_form(&request.surface);
         let form_values = Self::form_values(surface_form.as_ref());
         let override_values = match &request.surface {
@@ -107,6 +111,7 @@ impl ScriptedInteractionView {
             model_router_settings,
             app_event_tx,
             thread_id,
+            model_router_settings_thread_id,
             mode: RenderMode::Surface,
             menu_selected: 0,
             action_selected: 0,
@@ -254,6 +259,7 @@ impl ScriptedInteractionView {
                     host_action: (outcome == ExtensionInteractionOutcome::Accepted)
                         .then(|| action.and_then(|action| action.host_action))
                         .flatten(),
+                    thread_id: self.model_router_settings_thread_id,
                 });
         } else {
             self.app_event_tx.extension_interaction_response(

@@ -68,6 +68,12 @@
   "properties": {
     "response": {
       "$ref": "#/definitions/ExtensionInteractionRequestResponse"
+    },
+    "threadId": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [

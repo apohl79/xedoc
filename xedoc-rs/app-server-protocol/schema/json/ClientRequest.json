@@ -1948,12 +1948,26 @@
       "type": "object"
     },
     "ModelRouterSettingsOpenParams": {
+      "properties": {
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "ModelRouterSettingsRespondParams": {
       "properties": {
         "response": {
           "$ref": "#/definitions/ExtensionInteractionRequestResponse"
+        },
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

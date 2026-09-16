@@ -216,6 +216,16 @@ impl XedocThread {
         }
     }
 
+    /// Updates the router mode override for this live session only.
+    pub async fn set_model_router_session_mode(&self, mode: Option<String>) {
+        self.session.set_model_router_session_mode(mode).await;
+    }
+
+    /// Returns this live session's router mode override, if one is active.
+    pub async fn model_router_session_mode(&self) -> Option<String> {
+        self.session.model_router_session_mode().await
+    }
+
     /// Returns the session telemetry handle for thread-scoped production instrumentation.
     pub fn session_telemetry(&self) -> SessionTelemetry {
         self.session.services.session_telemetry.clone()

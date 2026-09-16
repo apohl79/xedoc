@@ -221,6 +221,7 @@ pub(crate) async fn control_model_router_ab(
 
 pub(crate) async fn open_model_router_settings(
     request_handle: AppServerRequestHandle,
+    thread_id: Option<ThreadId>,
 ) -> Result<xedoc_app_server_protocol::ModelRouterSettingsOpenResponse> {
     request_handle
         .request_typed(ClientRequest::ModelRouterSettingsOpen {
@@ -228,7 +229,9 @@ pub(crate) async fn open_model_router_settings(
                 "tui-model-router-settings-open-{}",
                 Uuid::new_v4()
             )),
-            params: xedoc_app_server_protocol::ModelRouterSettingsOpenParams {},
+            params: xedoc_app_server_protocol::ModelRouterSettingsOpenParams {
+                thread_id: thread_id.map(|thread_id| thread_id.to_string()),
+            },
         })
         .await
         .wrap_err("modelRouter/settings/open failed in TUI")
@@ -237,6 +240,7 @@ pub(crate) async fn open_model_router_settings(
 pub(crate) async fn respond_model_router_settings(
     request_handle: AppServerRequestHandle,
     response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
+    thread_id: Option<ThreadId>,
 ) -> Result<xedoc_app_server_protocol::ModelRouterSettingsRespondResponse> {
     request_handle
         .request_typed(ClientRequest::ModelRouterSettingsRespond {
@@ -244,7 +248,10 @@ pub(crate) async fn respond_model_router_settings(
                 "tui-model-router-settings-respond-{}",
                 Uuid::new_v4()
             )),
-            params: xedoc_app_server_protocol::ModelRouterSettingsRespondParams { response },
+            params: xedoc_app_server_protocol::ModelRouterSettingsRespondParams {
+                thread_id: thread_id.map(|thread_id| thread_id.to_string()),
+                response,
+            },
         })
         .await
         .wrap_err("modelRouter/settings/respond failed in TUI")

@@ -23,11 +23,14 @@ impl App {
     pub(super) fn show_model_router_settings_result(
         &mut self,
         result: Result<xedoc_app_server_protocol::ModelRouterSettingsOpenResponse, String>,
+        thread_id: Option<xedoc_protocol::ThreadId>,
     ) {
         match result {
-            Ok(response) => {
-                self.show_model_router_settings_interaction(response.interaction, response.error)
-            }
+            Ok(response) => self.show_model_router_settings_interaction(
+                response.interaction,
+                response.error,
+                thread_id,
+            ),
             Err(error) => self.chat_widget.add_error_message(error),
         }
     }
@@ -35,11 +38,14 @@ impl App {
     pub(super) fn show_model_router_settings_respond_result(
         &mut self,
         result: Result<xedoc_app_server_protocol::ModelRouterSettingsRespondResponse, String>,
+        thread_id: Option<xedoc_protocol::ThreadId>,
     ) {
         match result {
-            Ok(response) => {
-                self.show_model_router_settings_interaction(response.interaction, response.error)
-            }
+            Ok(response) => self.show_model_router_settings_interaction(
+                response.interaction,
+                response.error,
+                thread_id,
+            ),
             Err(error) => self.chat_widget.add_error_message(error),
         }
     }
@@ -48,6 +54,7 @@ impl App {
         &mut self,
         interaction: Option<xedoc_app_server_protocol::ModelRouterSettingsInteraction>,
         error: Option<String>,
+        thread_id: Option<xedoc_protocol::ThreadId>,
     ) {
         if let Some(error) = error {
             self.chat_widget.add_error_message(error);
@@ -61,7 +68,7 @@ impl App {
         };
         self.chat_widget.push_model_router_settings_request(
             xedoc_app_server_protocol::ExtensionInteractionRequestParams {
-                thread_id: String::new(),
+                thread_id: thread_id.map_or_else(String::new, |thread_id| thread_id.to_string()),
                 turn_id: String::new(),
                 request_id: interaction.interaction_id.clone(),
                 extension_id: "model-router".to_string(),
@@ -76,12 +83,14 @@ impl App {
 
     pub(super) fn open_model_router_settings(&mut self, app_server: &AppServerSession) {
         let request_handle = app_server.request_handle();
+        let thread_id = self.current_displayed_thread_id();
         let app_event_tx = self.app_event_tx.clone();
         tokio::spawn(async move {
             app_event_tx.send(AppEvent::ModelRouterSettingsOpened {
-                result: crate::config_update::open_model_router_settings(request_handle)
+                result: crate::config_update::open_model_router_settings(request_handle, thread_id)
                     .await
                     .map_err(|error| error.to_string()),
+                thread_id,
             });
         });
     }
@@ -91,6 +100,7 @@ impl App {
         app_server: &AppServerSession,
         response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
         host_action: Option<xedoc_app_server_protocol::ModelRouterSettingsHostAction>,
+        thread_id: Option<xedoc_protocol::ThreadId>,
     ) {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();
@@ -99,10 +109,12 @@ impl App {
                 result: crate::config_update::respond_model_router_settings(
                     request_handle,
                     response,
+                    thread_id,
                 )
                 .await
                 .map_err(|error| error.to_string()),
                 host_action,
+                thread_id,
             });
         });
     }

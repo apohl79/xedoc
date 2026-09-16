@@ -9765,6 +9765,14 @@
     },
     "ModelRouterSettingsOpenParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "title": "ModelRouterSettingsOpenParams",
       "type": "object"
     },
@@ -9796,6 +9804,12 @@
       "properties": {
         "response": {
           "$ref": "#/definitions/ExtensionInteractionRequestResponse"
+        },
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

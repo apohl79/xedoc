@@ -88,6 +88,7 @@ impl AppEventSender {
         self.send(AppEvent::ModelRouterSettingsResponse {
             response,
             host_action: None,
+            thread_id: None,
         });
     }
 

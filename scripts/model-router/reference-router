@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import time
@@ -206,8 +207,8 @@ def action(
     return result
 
 
-def interaction(identifier, continuation, policy, surface):
-    return {
+def interaction(identifier, continuation, policy, surface, session_update=None):
+    result = {
         "kind": "interaction",
         "interaction": {
             "id": identifier,
@@ -216,29 +217,70 @@ def interaction(identifier, continuation, policy, surface):
             "surface": surface,
         },
     }
+    if session_update is not None:
+        result["interaction"]["sessionUpdate"] = session_update
+    return result
 
 
-def menu(policy, title, items, subtitle=None, *, continuation="settings:root"):
+def menu(
+    policy,
+    title,
+    items,
+    subtitle=None,
+    *,
+    continuation="settings:root",
+    session_update=None,
+):
     surface = {"type": "menu", "title": title, "items": items}
     if subtitle:
         surface["subtitle"] = subtitle
-    return interaction("router-settings", continuation, policy, surface)
+    return interaction(
+        "router-settings", continuation, policy, surface, session_update
+    )
 
 
-def root_menu(policy, conflict=None):
+def session_mode(context):
+    return (context.get("session") or {}).get("routerMode")
+
+
+def supports_session_mode(context):
+    return (context.get("session") or {}).get("supportsRouterMode", False)
+
+
+def effective_mode(policy, context):
+    return session_mode(context) or policy["mode"]
+
+
+def root_menu(policy, context=None, conflict=None, session_update=None):
+    context = context or {}
     subtitle = "Update routing settings and the policy."
     if conflict:
         subtitle = f"Settings conflict: {conflict} {subtitle}"
-    return menu(
-        policy,
-        "Model Router Settings",
-        [
+    items = [
+        item(
+            "mode",
+            f"Mode: {policy['mode']}",
+            "Change the shared routing default for all sessions.",
+            "open-mode",
+        )
+    ]
+    if supports_session_mode(context):
+        current_session_mode = session_mode(context)
+        label = (
+            f"Session mode: {current_session_mode}"
+            if current_session_mode
+            else f"Session mode: shared default ({policy['mode']})"
+        )
+        items.append(
             item(
-                "mode",
-                f"Mode: {policy['mode']}",
-                "Choose where routing applies.",
-                "open-mode",
-            ),
+                "session-mode",
+                label,
+                "Override routing only for this current session.",
+                "open-session-mode",
+            )
+        )
+    items.extend(
+        [
             item(
                 "approval",
                 f"Approval prompts: {policy['approval']}",
@@ -278,8 +320,14 @@ def root_menu(policy, conflict=None):
                 "Tune confidence, model ladder, and reporting baseline.",
                 "open-policy",
             ),
-        ],
+        ]
+    )
+    return menu(
+        policy,
+        "Model Router Settings",
+        items,
         subtitle,
+        session_update=session_update,
     )
 
 
@@ -305,6 +353,30 @@ def select_field(identifier, label, selected, options):
                 "label": option.replace("-", " ").title(),
             }
             for option in options
+        ],
+    }
+
+
+def session_mode_field(policy, context):
+    selected = session_mode(context) or "default"
+    return {
+        "type": "select",
+        "id": "mode",
+        "label": "Session mode",
+        "value": selected,
+        "current": selected,
+        "options": [
+            {
+                "id": "default",
+                "label": f"Use shared default ({policy['mode']})",
+            },
+            *[
+                {
+                    "id": mode,
+                    "label": mode.replace("-", " ").title(),
+                }
+                for mode in MODES
+            ],
         ],
     }
 
@@ -454,7 +526,7 @@ def ladder_menu(policy):
 
 
 def settings_open(request, policy):
-    return root_menu(policy)
+    return root_menu(policy, request.get("context") or {})
 
 
 def update(policy, **values):
@@ -530,7 +602,7 @@ def baseline_form(policy, context):
 
 def settings_surface(policy, context, continuation):
     if continuation == "settings:root":
-        return root_menu(policy)
+        return root_menu(policy, context)
     if continuation == "settings:policy":
         return policy_menu(policy)
     if continuation == "settings:ladder":
@@ -542,6 +614,15 @@ def settings_surface(policy, context, continuation):
             continuation,
             [select_field("mode", "Mode", policy["mode"], MODES)],
             "set-mode",
+        )
+    if continuation == "settings:session-mode":
+        return form(
+            policy,
+            "Session routing mode",
+            continuation,
+            [session_mode_field(policy, context)],
+            "set-session-mode",
+            subtitle="Choose a setting for this session only.",
         )
     if continuation == "settings:approval":
         return form(
@@ -616,8 +697,8 @@ def action_is_enabled(surface, params):
     return False
 
 
-def settings_conflict(policy, message):
-    return root_menu(policy, message)
+def settings_conflict(policy, context, message):
+    return root_menu(policy, context, message)
 
 
 def rendered_settings_action(policy, request):
@@ -626,7 +707,7 @@ def rendered_settings_action(policy, request):
     rendered = settings_surface(policy, request.get("context") or {}, continuation)
     if rendered is None:
         return None, settings_conflict(
-            policy, "This settings surface is no longer available."
+            policy, request.get("context") or {}, "This settings surface is no longer available."
         )
     interaction_data = rendered["interaction"]
     if (
@@ -634,11 +715,13 @@ def rendered_settings_action(policy, request):
         or params.get("stateRevision") != interaction_data["stateRevision"]
     ):
         return None, settings_conflict(
-            policy, "Settings changed before this action was submitted."
+            policy, request.get("context") or {}, "Settings changed before this action was submitted."
         )
     if not action_is_enabled(interaction_data["surface"], params):
         return None, settings_conflict(
-            policy, "That action is not enabled on the rendered settings surface."
+            policy,
+            request.get("context") or {},
+            "That action is not enabled on the rendered settings surface.",
         )
     return (params.get("action") or {}).get("id"), None
 
@@ -658,12 +741,37 @@ def settings_response(request, policy):
             [select_field("mode", "Mode", policy["mode"], MODES)],
             "set-mode",
         )
+    if action_id == "open-session-mode":
+        return form(
+            policy,
+            "Session routing mode",
+            "settings:session-mode",
+            [session_mode_field(policy, context)],
+            "set-session-mode",
+            subtitle="Choose a setting for this session only.",
+        )
     if action_id == "set-mode":
         mode = values.get("mode")
         if mode not in MODES:
             return error_notice(policy, "Mode must be one of the offered choices.")
         update(policy, mode=mode)
-        return root_menu(policy)
+        return root_menu(policy, context)
+    if action_id == "set-session-mode":
+        mode = values.get("mode")
+        if mode != "default" and mode not in MODES:
+            return error_notice(policy, "Session mode must be one of the offered choices.")
+        updated_context = {
+            **context,
+            "session": {
+                **(context.get("session") or {}),
+                "routerMode": None if mode == "default" else mode,
+            },
+        }
+        return root_menu(
+            policy,
+            updated_context,
+            session_update={"routerMode": None if mode == "default" else mode},
+        )
     if action_id == "open-approval":
         return form(
             policy,
@@ -681,12 +789,12 @@ def settings_response(request, policy):
         if approval not in APPROVALS:
             return error_notice(policy, "Approval must be one of the offered choices.")
         update(policy, approval=approval)
-        return root_menu(policy)
+        return root_menu(policy, context)
     if action_id == "toggle-feedback":
         update(policy, feedback=not policy["feedback"])
-        return root_menu(policy)
+        return root_menu(policy, context)
     if action_id in ("arm-ab", "disable-ab", "open-report"):
-        return root_menu(policy)
+        return root_menu(policy, context)
     if action_id == "open-policy":
         return policy_menu(policy)
     if action_id == "open-confidence":
@@ -752,7 +860,7 @@ def settings_response(request, policy):
         update(policy, reportingBaseline=None)
         return policy_menu(policy)
     if action_id == "back":
-        return root_menu(policy)
+        return root_menu(policy, context)
     return error_notice(policy, "Unknown settings action.")
 
 
@@ -818,7 +926,20 @@ def valid_route(value, eligible_routes):
     return None
 
 
-def classify(prompt):
+def steering_prompt(prompt):
+    normalized = " ".join(prompt.strip().lower().split())
+    if not normalized or len(normalized) > 80:
+        return False
+    return bool(
+        re.fullmatch(
+            r"(?:\d{1,2}|[a-z]|yes|no|ok|okay|y|n|both|none|"
+            r"accept|reject|cancel|continue|back|next|previous)",
+            normalized,
+        )
+    )
+
+
+def classify(prompt, has_prior_messages):
     lower = prompt.lower()
     work_type = WORK_TYPES[0]
     complexity = "low"
@@ -871,7 +992,7 @@ def classify(prompt):
         "orchestration": (0.92, 0.72) if orchestration_matched else (0.74, 0.32),
         "risk": (0.94, 0.78) if risk_matched else (0.72, 0.30),
     }
-    return axes, evidence
+    return axes, evidence, has_prior_messages and steering_prompt(prompt)
 
 
 def classification_label(axes):
@@ -1090,10 +1211,19 @@ def approval(
     category = classification_label(axes)
     route = selection["route"]
     current_route = route_label(context.get("currentRoute"))
+    scope = (context.get("turn") or {}).get("scope", "root")
+    prompt = context.get("routerPrompt", "")
     continuation = approval_continuation(
         policy, axes, confidence, margin, context, recalibrated
     )
     sections = [
+        {
+            "title": "Routing:",
+            "rows": [
+                {"text": f"└ Scope: {scope}"},
+                *([{"text": f"Prompt: {prompt}"}] if prompt else []),
+            ],
+        },
         {
             "title": "Classification:",
             "rows": [
@@ -1164,26 +1294,36 @@ def routing_decide(request, policy):
     context = request.get("context", {})
     turn = context.get("turn", {})
     prompt = (request.get("params") or {}).get("prompt", "")
-    axes, evidence = classify(prompt)
+    recent_messages = (context.get("conversation") or {}).get("recentMessages", [])
+    has_prior_messages = isinstance(recent_messages, list) and bool(recent_messages)
+    axes, evidence, steering = classify(prompt, has_prior_messages)
     confidence, margin = classification_confidence(evidence)
     selection = choose_route(policy, context, axes)
     route = selection["route"]
     confident = confidence_passes(policy, confidence, margin)
     scope = turn.get("scope")
     active = turn.get("active", False)
-    mode = policy["mode"]
+    mode = effective_mode(policy, context)
     enabled = mode == "full" or (mode == "subagents" and scope == "subagent")
     shadow = mode == "shadow-full" or (
         mode == "shadow-subagents" and scope == "subagent"
     )
-    should_apply = enabled and not active and route is not None and confident
-    should_shadow = shadow and not active and route is not None and confident
+    should_apply = (
+        enabled and not active and not steering and route is not None and confident
+    )
+    should_shadow = (
+        shadow and not active and not steering and route is not None and confident
+    )
     current = context.get("currentRoute")
     changed = route != current
     needs_approval = should_apply and (
         policy["approval"] == "all" or (policy["approval"] == "changes" and changed)
     )
     if needs_approval:
+        context = {
+            **context,
+            "routerPrompt": prompt,
+        }
         return approval(
             policy,
             axes,
@@ -1196,7 +1336,9 @@ def routing_decide(request, policy):
         "apply" if should_apply else "shadow" if should_shadow else "keepCurrent"
     )
     reason = None
-    if not confident:
+    if steering:
+        reason = "Steering input retained the current route."
+    elif not confident:
         reason = "Confidence thresholds retained the current route."
     elif route is None:
         reason = "No eligible ranked route was available."

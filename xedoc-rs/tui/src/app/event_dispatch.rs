@@ -1123,18 +1123,20 @@ impl App {
                     .await;
             }
             AppEvent::OpenModelRouterSettings => self.open_model_router_settings(app_server),
-            AppEvent::ModelRouterSettingsOpened { result } => {
-                self.show_model_router_settings_result(result);
+            AppEvent::ModelRouterSettingsOpened { result, thread_id } => {
+                self.show_model_router_settings_result(result, thread_id);
             }
             AppEvent::ModelRouterSettingsResponse {
                 response,
                 host_action,
+                thread_id,
             } => {
-                self.respond_model_router_settings(app_server, response, host_action);
+                self.respond_model_router_settings(app_server, response, host_action, thread_id);
             }
             AppEvent::ModelRouterSettingsResponded {
                 result,
                 host_action,
+                thread_id,
             } => {
                 let host_action_succeeded = result
                     .as_ref()
@@ -1144,19 +1146,21 @@ impl App {
                     && host_action_succeeded
                 {
                     self.app_event_tx
-                        .send(AppEvent::ModelRouterSettingsHostAction { action });
+                        .send(AppEvent::ModelRouterSettingsHostAction { action, thread_id });
                 }
                 if !host_action_succeeded {
-                    self.show_model_router_settings_respond_result(result);
+                    self.show_model_router_settings_respond_result(result, thread_id);
                 }
             }
-            AppEvent::ModelRouterSettingsHostAction { action } => match action {
+            AppEvent::ModelRouterSettingsHostAction { action, thread_id } => match action {
                 xedoc_app_server_protocol::ModelRouterSettingsHostAction::OpenReport => {
                     self.open_model_router_report(app_server);
                 }
                 xedoc_app_server_protocol::ModelRouterSettingsHostAction::ArmAb
                 | xedoc_app_server_protocol::ModelRouterSettingsHostAction::DisableAb => {
-                    let Some(thread_id) = self.active_thread_id.or(self.chat_widget.thread_id())
+                    let Some(thread_id) = thread_id
+                        .or(self.active_thread_id)
+                        .or(self.chat_widget.thread_id())
                     else {
                         self.chat_widget.add_error_message(
                             "No active thread available for model-router A/B.".to_string(),

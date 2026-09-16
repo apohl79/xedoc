@@ -58,6 +58,7 @@ use xedoc_features::TokenUsageOptimizerLevel as CoreTokenUsageOptimizerLevel;
 use xedoc_features::canonical_feature_for_key;
 use xedoc_features::feature_for_key;
 use xedoc_model_provider::create_model_provider;
+use xedoc_protocol::ThreadId;
 use xedoc_protocol::config_types::WebSearchMode;
 use xedoc_rollout::state_db::StateDbHandle;
 
@@ -321,11 +322,21 @@ impl ConfigRequestProcessor {
 
     pub(crate) async fn model_router_settings_open(
         &self,
+        params: xedoc_app_server_protocol::ModelRouterSettingsOpenParams,
     ) -> Result<ModelRouterSettingsOpenResponse, JSONRPCErrorError> {
         let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let thread = self
+            .model_router_settings_thread(params.thread_id.as_deref())
+            .await?;
+        let session_mode = match thread.as_ref() {
+            Some(thread) => thread.model_router_session_mode().await,
+            None => None,
+        };
         let result = xedoc_core::model_router_settings::open(
             &config,
             &self.thread_manager.get_models_manager(),
+            session_mode.as_deref(),
+            thread.is_some(),
         )
         .await;
         Ok(model_router_settings_open_response(result))
@@ -336,27 +347,52 @@ impl ConfigRequestProcessor {
         params: ModelRouterSettingsRespondParams,
     ) -> Result<ModelRouterSettingsRespondResponse, JSONRPCErrorError> {
         let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let thread = self
+            .model_router_settings_thread(params.thread_id.as_deref())
+            .await?;
+        let session_mode = match thread.as_ref() {
+            Some(thread) => thread.model_router_session_mode().await,
+            None => None,
+        };
         let response = serde_json::to_value(params.response)
             .map_err(|_| invalid_request("invalid model-router settings response"))?;
         let result = xedoc_core::model_router_settings::respond(
             &config,
             &self.thread_manager.get_models_manager(),
             response,
+            session_mode.as_deref(),
+            thread.is_some(),
         )
         .await;
         Ok(match result {
-            Ok(surface) => match parse_model_router_settings_interaction(surface) {
-                Ok(interaction) => ModelRouterSettingsRespondResponse {
-                    interaction: Some(interaction),
-                    error: None,
-                },
-                Err(_) => ModelRouterSettingsRespondResponse {
-                    interaction: None,
-                    error: Some(
-                        "model-router script returned an invalid settings surface".to_string(),
-                    ),
-                },
-            },
+            Ok(result) => {
+                if let Some(session_update) = result.session_update {
+                    let Some(thread) = thread else {
+                        return Ok(ModelRouterSettingsRespondResponse {
+                            interaction: None,
+                            error: Some(
+                                "model-router script requested a session update without a session"
+                                    .to_string(),
+                            ),
+                        });
+                    };
+                    thread
+                        .set_model_router_session_mode(session_update.router_mode)
+                        .await;
+                }
+                match parse_model_router_settings_interaction(result.interaction) {
+                    Ok(interaction) => ModelRouterSettingsRespondResponse {
+                        interaction: Some(interaction),
+                        error: None,
+                    },
+                    Err(_) => ModelRouterSettingsRespondResponse {
+                        interaction: None,
+                        error: Some(
+                            "model-router script returned an invalid settings surface".to_string(),
+                        ),
+                    },
+                }
+            }
             Err(error) => ModelRouterSettingsRespondResponse {
                 interaction: None,
                 error: Some(error),
@@ -367,6 +403,22 @@ impl ConfigRequestProcessor {
     pub(crate) async fn handle_config_mutation(&self) {
         self.thread_manager.plugins_manager().clear_cache();
         self.thread_manager.skills_service().clear_cache();
+    }
+
+    async fn model_router_settings_thread(
+        &self,
+        thread_id: Option<&str>,
+    ) -> Result<Option<Arc<xedoc_core::XedocThread>>, JSONRPCErrorError> {
+        let Some(thread_id) = thread_id else {
+            return Ok(None);
+        };
+        let thread_id = ThreadId::from_string(thread_id)
+            .map_err(|error| invalid_request(format!("invalid thread id: {error}")))?;
+        self.thread_manager
+            .get_thread(thread_id)
+            .await
+            .map(Some)
+            .map_err(|error| invalid_request(format!("failed to load thread: {error}")))
     }
 
     async fn handle_config_mutation_result<T>(
@@ -492,10 +544,10 @@ impl ConfigRequestProcessor {
 }
 
 fn model_router_settings_open_response(
-    result: Result<serde_json::Value, String>,
+    result: Result<xedoc_core::model_router_settings::ModelRouterSettingsResult, String>,
 ) -> ModelRouterSettingsOpenResponse {
     match result {
-        Ok(surface) => match parse_model_router_settings_interaction(surface) {
+        Ok(result) => match parse_model_router_settings_interaction(result.interaction) {
             Ok(interaction) => ModelRouterSettingsOpenResponse {
                 interaction: Some(interaction),
                 error: None,

@@ -147,11 +147,15 @@ impl ModelRouterScriptHost {
             .await?;
         match outcome {
             ResponseOutcome::Result {
-                result: ScriptResult::Interaction { interaction },
+                result: ScriptResult::Interaction { mut interaction },
             } => {
                 validate_interaction(&interaction, eligible_routes)?;
                 require_state_revision(&interaction)?;
-                Ok(ModelRouterScriptSettingsInteraction { interaction })
+                let session_update = interaction.session_update.take();
+                Ok(ModelRouterScriptSettingsInteraction {
+                    interaction,
+                    session_update,
+                })
             }
             ResponseOutcome::Result {
                 result: ScriptResult::Route { .. },
@@ -184,11 +188,15 @@ impl ModelRouterScriptHost {
             .await?;
         match outcome {
             ResponseOutcome::Result {
-                result: ScriptResult::Interaction { interaction },
+                result: ScriptResult::Interaction { mut interaction },
             } => {
                 validate_interaction(&interaction, eligible_routes)?;
                 require_state_revision(&interaction)?;
-                Ok(ModelRouterScriptSettingsInteraction { interaction })
+                let session_update = interaction.session_update.take();
+                Ok(ModelRouterScriptSettingsInteraction {
+                    interaction,
+                    session_update,
+                })
             }
             ResponseOutcome::Result {
                 result: ScriptResult::Route { .. },
@@ -500,6 +508,8 @@ pub(crate) enum ModelRouterScriptInteractionOutcome {
 pub(crate) struct ModelRouterScriptSettingsInteraction {
     /// Declarative script-owned settings surface.
     pub(crate) interaction: Interaction,
+    /// Script-requested state that the host applies only to the current session.
+    pub(crate) session_update: Option<xedoc_script_protocol::SessionUpdate>,
 }
 
 impl ModelRouterScriptDecisionOutcome {
@@ -825,6 +835,11 @@ fn validate_interaction(
     validate_opaque_continuation(&interaction.continuation)?;
     if let Some(state_revision) = interaction.state_revision.as_ref() {
         validate_opaque_identifier(state_revision)?;
+    }
+    if let Some(session_update) = interaction.session_update.as_ref()
+        && let Some(mode) = session_update.router_mode.as_ref()
+    {
+        validate_opaque_identifier(mode)?;
     }
     match &interaction.surface {
         InteractionSurface::Menu(menu) => {

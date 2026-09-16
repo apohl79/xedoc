@@ -20,6 +20,7 @@ pub use interaction::NoticeLevel;
 pub use interaction::NoticeSurface;
 pub use interaction::SelectOption;
 pub use interaction::SelectedAction;
+pub use interaction::SessionUpdate;
 pub use protocol::EligibleRoute;
 pub use protocol::Extension;
 pub use protocol::Method;

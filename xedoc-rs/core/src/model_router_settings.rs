@@ -11,13 +11,32 @@ use crate::model_router_script_host::ModelRouterScriptFailure;
 use crate::model_router_script_host::ModelRouterScriptHost;
 use crate::model_router_script_host::interaction_response;
 
+/// A script-requested update to the live session's router state.
+pub struct ModelRouterSettingsSessionUpdate {
+    /// Mode override to retain until the session ends, or `None` for the shared policy mode.
+    pub router_mode: Option<String>,
+}
+
+/// A validated script-owned settings interaction and optional session update.
+pub struct ModelRouterSettingsResult {
+    /// Renderable replacement interaction.
+    pub interaction: Value,
+    /// State that the caller applies to the selected live session.
+    pub session_update: Option<ModelRouterSettingsSessionUpdate>,
+}
+
 /// Opens the configured script-owned model-router settings surface.
 ///
 /// # Errors
 ///
 /// Returns a prompt-free message when the configured script cannot provide a
 /// valid settings surface.
-pub async fn open(config: &Config, models_manager: &SharedModelsManager) -> Result<Value, String> {
+pub async fn open(
+    config: &Config,
+    models_manager: &SharedModelsManager,
+    session_mode: Option<&str>,
+    supports_session_mode: bool,
+) -> Result<ModelRouterSettingsResult, String> {
     let Some(host) = ModelRouterScriptHost::from_config(config) else {
         return Err("model-router script is not configured".to_string());
     };
@@ -29,6 +48,10 @@ pub async fn open(config: &Config, models_manager: &SharedModelsManager) -> Resu
         },
         "eligibleRoutes": eligible_routes,
         "currentRoute": current_script_route(config),
+        "session": {
+            "routerMode": session_mode,
+            "supportsRouterMode": supports_session_mode,
+        },
     });
     let cancellation = CancellationToken::new();
     let _cancel_on_drop = cancellation.clone().drop_guard();
@@ -37,6 +60,10 @@ pub async fn open(config: &Config, models_manager: &SharedModelsManager) -> Resu
         .await
         .map_err(settings_error)?;
     serde_json::to_value(interaction.interaction)
+        .map(|interaction| ModelRouterSettingsResult {
+            interaction,
+            session_update: None,
+        })
         .map_err(|_| "model-router script returned an invalid settings surface".to_string())
 }
 
@@ -50,7 +77,9 @@ pub async fn respond(
     config: &Config,
     models_manager: &SharedModelsManager,
     response: Value,
-) -> Result<Value, String> {
+    session_mode: Option<&str>,
+    supports_session_mode: bool,
+) -> Result<ModelRouterSettingsResult, String> {
     let Some(host) = ModelRouterScriptHost::from_config(config) else {
         return Err("model-router script is not configured".to_string());
     };
@@ -64,6 +93,10 @@ pub async fn respond(
         },
         "eligibleRoutes": eligible_routes,
         "currentRoute": current_script_route(config),
+        "session": {
+            "routerMode": session_mode,
+            "supportsRouterMode": supports_session_mode,
+        },
     });
     let cancellation = CancellationToken::new();
     let _cancel_on_drop = cancellation.clone().drop_guard();
@@ -76,7 +109,17 @@ pub async fn respond(
         )
         .await
         .map_err(settings_error)?;
+    let session_update =
+        interaction
+            .session_update
+            .map(|update| ModelRouterSettingsSessionUpdate {
+                router_mode: update.router_mode.map(|mode| mode.as_str().to_string()),
+            });
     serde_json::to_value(interaction.interaction)
+        .map(|surface| ModelRouterSettingsResult {
+            interaction: surface,
+            session_update,
+        })
         .map_err(|_| "model-router script returned an invalid settings surface".to_string())
 }
 

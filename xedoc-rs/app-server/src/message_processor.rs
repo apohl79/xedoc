@@ -889,9 +889,9 @@ impl MessageProcessor {
                 .model_router_ab_control(params)
                 .await
                 .map(|response| Some(response.into())),
-            ClientRequest::ModelRouterSettingsOpen { params: _, .. } => self
+            ClientRequest::ModelRouterSettingsOpen { params, .. } => self
                 .config_processor
-                .model_router_settings_open()
+                .model_router_settings_open(params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::ModelRouterSettingsRespond { params, .. } => self

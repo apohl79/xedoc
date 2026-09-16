@@ -59,8 +59,19 @@ pub struct Interaction {
     pub continuation: OpaqueId,
     /// Script state revision used to reject stale submissions.
     pub state_revision: Option<OpaqueId>,
+    /// Optional session-scoped router state to apply after this interaction succeeds.
+    #[serde(default)]
+    pub session_update: Option<SessionUpdate>,
     /// Surface the host may render.
     pub surface: InteractionSurface,
+}
+
+/// A bounded router state update that lasts only for the live session.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUpdate {
+    /// Router mode override, or `null` to resume the shared policy mode.
+    pub router_mode: Option<OpaqueId>,
 }
 
 /// A renderable surface.

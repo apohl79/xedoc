@@ -34,7 +34,10 @@ pub struct ExtensionInteractionRequestParams {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
-pub struct ModelRouterSettingsOpenParams {}
+pub struct ModelRouterSettingsOpenParams {
+    #[ts(optional = nullable)]
+    pub thread_id: Option<String>,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +61,8 @@ pub struct ModelRouterSettingsOpenResponse {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ModelRouterSettingsRespondParams {
+    #[ts(optional = nullable)]
+    pub thread_id: Option<String>,
     pub response: ExtensionInteractionRequestResponse,
 }
 

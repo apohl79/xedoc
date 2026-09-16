@@ -724,17 +724,21 @@ pub enum AppEvent {
     OpenModelRouterSettings,
     ModelRouterSettingsOpened {
         result: Result<xedoc_app_server_protocol::ModelRouterSettingsOpenResponse, String>,
+        thread_id: Option<ThreadId>,
     },
     ModelRouterSettingsResponse {
         response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
         host_action: Option<ModelRouterSettingsHostAction>,
+        thread_id: Option<ThreadId>,
     },
     ModelRouterSettingsHostAction {
         action: ModelRouterSettingsHostAction,
+        thread_id: Option<ThreadId>,
     },
     ModelRouterSettingsResponded {
         result: Result<xedoc_app_server_protocol::ModelRouterSettingsRespondResponse, String>,
         host_action: Option<ModelRouterSettingsHostAction>,
+        thread_id: Option<ThreadId>,
     },
     ModelRouterAbControlLoaded {
         result: Result<(), String>,
