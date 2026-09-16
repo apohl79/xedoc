@@ -165,11 +165,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Replace existing package directory and archive outputs.",
     )
     parser.add_argument(
-        "--notarize",
-        action="store_true",
-        help="Submit the signed packaged macOS binary to Apple notarization.",
-    )
-    parser.add_argument(
         "--github-repo",
         default=DEFAULT_GITHUB_REPO,
         help="GitHub repository that receives the release and uploaded archives.",
