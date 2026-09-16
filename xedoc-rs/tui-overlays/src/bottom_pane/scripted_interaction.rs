@@ -7,6 +7,8 @@ use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Constraint;
+use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
@@ -31,6 +33,7 @@ use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::BottomPaneView;
 use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::ViewCompletion;
+use crate::bottom_pane::selection_popup_common::render_menu_surface;
 use crate::render::renderable::Renderable;
 
 enum RenderMode {
@@ -421,6 +424,28 @@ impl ScriptedInteractionView {
         *effort_index = cycle_index(*effort_index, route.reasoning_efforts.len(), direction);
     }
 
+    fn cycle_single_select_field(&mut self, direction: i8) {
+        let Some(form) = self.active_form() else {
+            return;
+        };
+        let Some(ExtensionInteractionField::Select { options, .. }) = form.fields.first() else {
+            return;
+        };
+        if let Some(FieldValue::Select { option_index }) = self.active_form_values_mut().first_mut()
+        {
+            *option_index = cycle_enabled_index(*option_index, options, direction);
+        }
+    }
+
+    fn has_single_select_field(&self) -> bool {
+        self.active_form().is_some_and(|form| {
+            matches!(
+                form.fields.as_slice(),
+                [ExtensionInteractionField::Select { .. }]
+            )
+        })
+    }
+
     fn edit_active_text(&mut self, key_event: KeyEvent) -> bool {
         let Some(form) = self.active_form() else {
             return false;
@@ -634,6 +659,15 @@ impl ScriptedInteractionView {
         let Some(form) = self.active_form() else {
             return;
         };
+        if self.has_single_select_field() {
+            match key_event.code {
+                KeyCode::Up => self.cycle_single_select_field(-1),
+                KeyCode::Down | KeyCode::Tab => self.cycle_single_select_field(1),
+                _ if action_matches_key(&form.submit, key_event) => self.submit_form(),
+                _ => {}
+            }
+            return;
+        }
         if action_matches_key(&form.submit, key_event) {
             self.submit_form();
             return;
@@ -769,16 +803,35 @@ impl BottomPaneView for ScriptedInteractionView {
 
 impl Renderable for ScriptedInteractionView {
     fn desired_height(&self, width: u16) -> u16 {
-        u16::try_from(self.lines(width).len()).unwrap_or(u16::MAX)
+        u16::try_from(self.content_lines(width.saturating_sub(4)).len())
+            .unwrap_or(u16::MAX)
+            .saturating_add(3)
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new(self.lines(area.width)).render(area, buf);
+        let content_lines = self.content_lines(area.width.saturating_sub(4));
+        let menu_height = u16::try_from(content_lines.len())
+            .unwrap_or(u16::MAX)
+            .saturating_add(2)
+            .min(area.height.saturating_sub(1));
+        let [menu_area, footer_area] =
+            Layout::vertical([Constraint::Length(menu_height), Constraint::Fill(1)]).areas(area);
+        let content_area = render_menu_surface(menu_area, buf);
+        Paragraph::new(content_lines).render(content_area, buf);
+        Paragraph::new(self.footer_line()).render(
+            Rect {
+                x: footer_area.x.saturating_add(2),
+                y: footer_area.y,
+                width: footer_area.width.saturating_sub(2),
+                height: footer_area.height,
+            },
+            buf,
+        );
     }
 }
 
 impl ScriptedInteractionView {
-    fn lines(&self, width: u16) -> Vec<Line<'static>> {
+    fn content_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines = match (&self.request.surface, &self.mode) {
             (
                 ExtensionInteractionSurface::Menu {
@@ -789,14 +842,21 @@ impl ScriptedInteractionView {
                 RenderMode::Surface,
             ) => {
                 let mut lines = titled_lines(title, subtitle.as_deref(), width);
-                lines.extend(items.iter().enumerate().flat_map(|(index, item)| {
+                lines.push(Line::default());
+                let label_width = items
+                    .iter()
+                    .map(|item| item.label.len())
+                    .max()
+                    .unwrap_or_default()
+                    .min(usize::from(width) / 2);
+                lines.extend(items.iter().enumerate().map(|(index, item)| {
                     let marker = if index == self.menu_selected {
                         ">"
                     } else {
                         " "
                     };
                     let current = if item.current == Some(true) {
-                        " ✓"
+                        " (current)"
                     } else {
                         ""
                     };
@@ -806,20 +866,16 @@ impl ScriptedInteractionView {
                         ""
                     };
                     let item_line = format!(
-                        "{marker} {}{current}{disabled}",
-                        action_label(&item.action, &item.label)
+                        "{marker} {:label_width$}  {}{current}{disabled}",
+                        item.label,
+                        item.description.as_deref().unwrap_or_default(),
                     );
-                    let mut item_lines = vec![if index == self.menu_selected {
+                    if index == self.menu_selected {
                         item_line.cyan().into()
                     } else {
                         item_line.into()
-                    }];
-                    if let Some(description) = &item.description {
-                        item_lines.extend(wrapped_lines(description, width, "  "));
                     }
-                    item_lines
                 }));
-                lines.push(" ↑/↓ select · Esc back".dim().into());
                 lines
             }
             (ExtensionInteractionSurface::Form { .. }, RenderMode::Surface)
@@ -866,13 +922,11 @@ impl ScriptedInteractionView {
                         action_line.into()
                     }
                 }));
-                lines.push(" ↑/↓ select · Esc back".dim().into());
                 lines
             }
             (ExtensionInteractionSurface::Notice { title, body, level }, RenderMode::Surface) => {
                 let mut lines = vec![format!(" {}", notice_prefix(*level, title)).bold().into()];
                 lines.extend(wrapped_lines(body, width, ""));
-                lines.push(" Enter or Esc dismiss".dim().into());
                 lines
             }
             _ => Vec::new(),
@@ -887,6 +941,9 @@ impl ScriptedInteractionView {
         let Some(form) = self.active_form() else {
             return Vec::new();
         };
+        if self.has_single_select_field() {
+            return self.single_select_form_lines(&form, width);
+        }
         let mut lines = titled_lines(
             &form.title,
             form.subtitle
@@ -894,6 +951,7 @@ impl ScriptedInteractionView {
                 .or(Some("Choose a setting, then apply your changes.")),
             width,
         );
+        lines.push(Line::default());
         lines.extend(
             form.fields
                 .iter()
@@ -955,19 +1013,66 @@ impl ScriptedInteractionView {
                     field_lines
                 }),
         );
-        lines.push(if self.select_picker.is_some() {
-            " ↑/↓ select · Enter choose · Esc back".dim().into()
-        } else {
-            " ↑/↓ field · → choose · [/] model effort · Esc back"
-                .dim()
-                .into()
-        });
-        lines.push(
-            action_hints(std::iter::once(&form.submit).chain(form.cancel.as_ref()))
-                .dim()
-                .into(),
-        );
         lines
+    }
+
+    fn single_select_form_lines(
+        &self,
+        form: &ExtensionInteractionForm,
+        width: u16,
+    ) -> Vec<Line<'static>> {
+        let mut lines = titled_lines(
+            &form.title,
+            form.subtitle
+                .as_deref()
+                .or(Some("Choose a setting, then apply your changes.")),
+            width,
+        );
+        lines.push(Line::default());
+        let (
+            ExtensionInteractionField::Select { options, .. },
+            FieldValue::Select { option_index },
+        ) = (&form.fields[0], &self.active_form_values()[0])
+        else {
+            return lines;
+        };
+        lines.extend(options.iter().enumerate().map(|(index, option)| {
+            let marker = if *option_index == Some(index) {
+                ">"
+            } else {
+                " "
+            };
+            let current = if *option_index == Some(index) {
+                " (current)"
+            } else {
+                ""
+            };
+            let unavailable = if option.disabled == Some(true) {
+                " (unavailable)"
+            } else {
+                ""
+            };
+            let option_line = format!("{marker} {}{current}{unavailable}", option.label);
+            if *option_index == Some(index) {
+                option_line.cyan().into()
+            } else if option.disabled == Some(true) {
+                option_line.dim().into()
+            } else {
+                option_line.into()
+            }
+        }));
+        lines
+    }
+
+    fn footer_line(&self) -> Line<'static> {
+        if matches!(
+            &self.request.surface,
+            ExtensionInteractionSurface::Notice { .. }
+        ) {
+            "Press enter or esc to dismiss".dim().into()
+        } else {
+            "Press enter to confirm or esc to go back".dim().into()
+        }
     }
 }
 
@@ -1050,25 +1155,8 @@ fn action_label(action: &ExtensionInteractionAction, label: &str) -> String {
     }
 }
 
-fn action_hints<'a>(actions: impl Iterator<Item = &'a ExtensionInteractionAction>) -> String {
-    let hints = actions
-        .filter(|action| !action.key_bindings.is_empty())
-        .map(|action| {
-            action_label(
-                action,
-                action.label.as_deref().unwrap_or(action.id.as_str()),
-            )
-        })
-        .collect::<Vec<_>>();
-    if hints.is_empty() {
-        " No action keys declared".to_string()
-    } else {
-        format!(" {}", hints.join(" · "))
-    }
-}
-
 fn titled_lines(title: &str, subtitle: Option<&str>, width: u16) -> Vec<Line<'static>> {
-    let mut lines = vec![format!(" {title}").bold().into()];
+    let mut lines = vec![title.to_string().bold().into()];
     if let Some(subtitle) = subtitle {
         lines.extend(wrapped_lines(subtitle, width, ""));
     }

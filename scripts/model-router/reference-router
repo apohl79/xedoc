@@ -223,12 +223,12 @@ def menu(policy, title, items, subtitle=None, *, continuation="settings:root"):
 
 
 def root_menu(policy, conflict=None):
-    subtitle = f"{policy['confidence'].title()} policy"
+    subtitle = "Update routing settings and the policy."
     if conflict:
         subtitle = f"Settings conflict: {conflict} {subtitle}"
     return menu(
         policy,
-        "Model router",
+        "Model Router Settings",
         [
             item(
                 "mode",
