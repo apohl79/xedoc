@@ -332,6 +332,7 @@ def form(
     *,
     form_id=None,
     subtitle=None,
+    cancel_action_id="back",
 ):
     surface = {
         "type": "form",
@@ -339,7 +340,7 @@ def form(
         "title": title,
         "fields": fields,
         "submit": action(submit_id, submit_label, bindings=["enter"]),
-        "cancel": action("back", "Back", bindings=["escape"]),
+        "cancel": action(cancel_action_id, "Back", bindings=["escape"]),
     }
     if subtitle is not None:
         surface["subtitle"] = subtitle
@@ -478,6 +479,7 @@ def route_form(policy, context, entry):
             }
         ],
         f"set-ladder-slot:{entry['rank']}",
+        cancel_action_id="open-ladder",
     )
 
 
@@ -518,6 +520,7 @@ def baseline_form(policy, context):
             }
         ],
         "set-baseline",
+        cancel_action_id="open-policy",
     )
 
 
@@ -562,6 +565,7 @@ def settings_surface(policy, context, continuation):
                 )
             ],
             "set-confidence",
+            cancel_action_id="open-policy",
         )
     if continuation == "settings:baseline":
         return baseline_form(policy, context)
@@ -695,6 +699,7 @@ def settings_response(request, policy):
                 )
             ],
             "set-confidence",
+            cancel_action_id="open-policy",
         )
     if action_id == "set-confidence":
         confidence = values.get("confidence")

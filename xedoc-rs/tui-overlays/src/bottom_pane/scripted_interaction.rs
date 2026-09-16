@@ -12,6 +12,7 @@ use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
+use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
 use serde_json::Map;
@@ -549,6 +550,27 @@ impl ScriptedInteractionView {
         }
     }
 
+    fn return_to_parent_menu(&mut self) -> bool {
+        let action = match &self.request.surface {
+            ExtensionInteractionSurface::Menu { items, .. } => items
+                .iter()
+                .find(|item| item.label == "Back" && item.disabled != Some(true))
+                .map(|item| item.action.clone()),
+            ExtensionInteractionSurface::Confirmation { .. }
+            | ExtensionInteractionSurface::Form { .. }
+            | ExtensionInteractionSurface::Notice { .. } => None,
+        };
+        let Some(action) = action else {
+            return false;
+        };
+        self.respond(
+            ExtensionInteractionOutcome::Accepted,
+            Some(&action),
+            Value::Object(Map::new()),
+        );
+        true
+    }
+
     fn cycle_confirmation_action(&mut self, direction: i8) {
         if let ExtensionInteractionSurface::Confirmation { actions, .. } = &self.request.surface {
             self.action_selected = cycle_index(self.action_selected, actions.len(), direction);
@@ -708,6 +730,13 @@ impl BottomPaneView for ScriptedInteractionView {
             if self.close_select_picker() {
                 return;
             }
+            if matches!(self.mode, RenderMode::Override) {
+                self.mode = RenderMode::Surface;
+                return;
+            }
+            if self.return_to_parent_menu() {
+                return;
+            }
             if !self.cancel_form() {
                 if self.model_router_settings {
                     self.completion = Some(ViewCompletion::Cancelled);
@@ -865,16 +894,19 @@ impl ScriptedInteractionView {
                     } else {
                         ""
                     };
-                    let item_line = format!(
-                        "{marker} {:label_width$}  {}{current}{disabled}",
-                        item.label,
+                    let label = format!("{marker} {:label_width$}", item.label,);
+                    let information = format!(
+                        "  {}{current}{disabled}",
                         item.description.as_deref().unwrap_or_default(),
                     );
-                    if index == self.menu_selected {
-                        item_line.cyan().into()
-                    } else {
-                        item_line.into()
-                    }
+                    Line::from(vec![
+                        if index == self.menu_selected {
+                            label.cyan()
+                        } else {
+                            label.into()
+                        },
+                        Span::from(information).dim(),
+                    ])
                 }));
                 lines
             }
