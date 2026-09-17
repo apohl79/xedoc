@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from xedoc_package.layout import build_package_dir
 from xedoc_package.layout import validate_package_dir
+from xedoc_package.model_router_runtime import RuntimeReference
 from xedoc_package.targets import PACKAGE_VARIANTS
 from xedoc_package.targets import PackageInputs
 from xedoc_package.targets import TARGET_SPECS
@@ -33,11 +34,13 @@ class PackageLayoutTest(unittest.TestCase):
                 PACKAGE_VARIANTS["xedoc"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
                 inputs,
+                model_router_runtime=runtime_reference(),
             )
             validate_package_dir(
                 package_dir,
                 PACKAGE_VARIANTS["xedoc"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
+                model_router_runtime=runtime_reference(),
             )
 
             metadata = json.loads(
@@ -68,12 +71,14 @@ class PackageLayoutTest(unittest.TestCase):
                 PACKAGE_VARIANTS["xedoc-app-server"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
                 inputs,
+                model_router_runtime=runtime_reference(),
                 include_session_control=True,
             )
             validate_package_dir(
                 package_dir,
                 PACKAGE_VARIANTS["xedoc-app-server"],
                 TARGET_SPECS["x86_64-unknown-linux-musl"],
+                model_router_runtime=runtime_reference(),
                 include_session_control=True,
             )
 
@@ -89,6 +94,15 @@ class PackageLayoutTest(unittest.TestCase):
 def touch_executable(path: Path) -> Path:
     path.touch(mode=0o755)
     return path
+
+
+def runtime_reference() -> RuntimeReference:
+    return RuntimeReference(
+        runtime_id="r1-sha256-test",
+        asset_name="xedoc-model-router-runtime-x86_64-unknown-linux-musl-r1-sha256-test.zip",
+        sha256="0" * 64,
+        source_release_tag="model-router-runtime-r1-sha256-test",
+    )
 
 
 if __name__ == "__main__":

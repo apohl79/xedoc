@@ -24,6 +24,9 @@ RUNTIME_DIR = Path(
         str(Path(__file__).with_name("runtime")),
     )
 )
+RUNTIME_SEMANTIC_POLICY_PATH = (
+    RUNTIME_DIR / "classifier" / SEMANTIC_POLICY_PATH.name
+)
 DIAGNOSTICS_PATH = Path(__file__).with_name("reference-router.diagnostics.jsonl")
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MAX_PROMPT_PREVIEW_BYTES = 508
@@ -51,7 +54,12 @@ def load_policy():
     with POLICY_PATH.open(encoding="utf-8") as source:
         policy = json.load(source)
     if "semanticClassifier" not in policy:
-        with SEMANTIC_POLICY_PATH.open(encoding="utf-8") as source:
+        semantic_policy_path = (
+            RUNTIME_SEMANTIC_POLICY_PATH
+            if RUNTIME_SEMANTIC_POLICY_PATH.is_file()
+            else SEMANTIC_POLICY_PATH
+        )
+        with semantic_policy_path.open(encoding="utf-8") as source:
             semantic_policy = json.load(source)
         policy["semanticClassifier"] = {
             "dimensions": semantic_policy["embedding"]["dimensions"],

@@ -1,4 +1,4 @@
-"""Build the separately installed Python runtime for semantic model routing."""
+"""Build immutable Python runtimes for semantic model routing."""
 
 import hashlib
 import json
@@ -8,17 +8,35 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
+from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from .archive import write_archive
 from .targets import TargetSpec
 
 
+RUNTIME_SERIES = "r1"
+RUNTIME_MANIFEST = "model-router-runtime.json"
 PYTHON_RELEASE = "20260814"
 PYTHON_VERSION = "3.12.14"
-MODEL_BASE_URL = (
-    "https://huggingface.co/Snowflake/snowflake-arctic-embed-xs/resolve/main"
+MODEL_NAME = "snowflake-arctic-embed-xs"
+MODEL_BASE_URL = f"https://huggingface.co/Snowflake/{MODEL_NAME}/resolve/main"
+SEMANTIC_POLICY_SOURCE = (
+    Path(__file__).resolve().parents[1]
+    / "model-router"
+    / "reference-router.semantic-policy.json"
+)
+SEMANTIC_POLICY_PATH = Path("classifier") / SEMANTIC_POLICY_SOURCE.name
+WHEEL_LOCK_SOURCE = Path(__file__).with_name("model_router_runtime_wheels.json")
+RUNTIME_REQUIREMENTS = (
+    "coloredlogs==15.0.1",
+    "flatbuffers==25.12.19",
+    "humanfriendly==10.0",
+    "mpmath==1.3.0",
+    "numpy==2.3.5",
+    "packaging==26.3",
+    "protobuf==7.36.1",
+    "sympy==1.14.0",
 )
 MODEL_FILES = {
     "onnx/model.onnx": "cf2698d30ff05da02c70a088313bad56e5c2f401d734cb24a8390d446111936c",
@@ -31,7 +49,6 @@ MODEL_FILES = {
         "9ca59277519f6e3692c8685e26b94d4afca2d5438deff66483db495e48735810"
     ),
 }
-RUNTIME_MANIFEST = "model-router-runtime.json"
 
 
 @dataclass(frozen=True)
@@ -40,6 +57,22 @@ class RuntimeDistribution:
     python_sha256: str
     pip_platform: str
     onnxruntime_version: str
+
+
+@dataclass(frozen=True)
+class RuntimeReference:
+    runtime_id: str
+    asset_name: str
+    sha256: str
+    source_release_tag: str
+
+    def package_metadata(self) -> dict[str, str]:
+        return {
+            "runtimeId": self.runtime_id,
+            "assetName": self.asset_name,
+            "sha256": self.sha256,
+            "sourceReleaseTag": self.source_release_tag,
+        }
 
 
 def python_distribution(
@@ -73,19 +106,19 @@ RUNTIME_DISTRIBUTIONS: dict[str, RuntimeDistribution] = {
     "x86_64-apple-darwin": python_distribution(
         "x86_64-apple-darwin",
         "aec265e3cddaccdb2a3d783331596351b24d4a63c97af0a38f75f643c9451de9",
-        "macosx_10_15_x86_64",
+        "macosx_11_0_x86_64",
         "1.19.2",
     ),
     "aarch64-unknown-linux-gnu": python_distribution(
         "aarch64-unknown-linux-gnu",
         "2d8e17dfd732102cfeb18e0e1fa6769b24caa034e159981129590fe409c7157a",
-        "manylinux_2_17_aarch64",
+        "manylinux_2_27_aarch64",
         "1.19.2",
     ),
     "x86_64-unknown-linux-gnu": python_distribution(
         "x86_64-unknown-linux-gnu",
         "5acfa3e9ba26b51ae161c83aff278da915b590d22373a424b2ba55b8afe91fcc",
-        "manylinux_2_17_x86_64",
+        "manylinux_2_27_x86_64",
         "1.19.2",
     ),
     "aarch64-pc-windows-msvc": python_distribution(
@@ -103,18 +136,71 @@ RUNTIME_DISTRIBUTIONS: dict[str, RuntimeDistribution] = {
 }
 
 
-def runtime_asset_name(version: str, target: str) -> str:
-    return f"xedoc-model-router-runtime-{target}-{version}.zip"
+def runtime_id() -> str:
+    """Return the logical runtime identity shared by every supported target."""
+    digest = hashlib.sha256(
+        json.dumps(
+            runtime_identity_inputs(),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    return f"{RUNTIME_SERIES}-sha256-{digest}"
+
+
+def runtime_identity_inputs() -> dict[str, object]:
+    """Return every immutable input that defines a router runtime revision."""
+    if not SEMANTIC_POLICY_SOURCE.is_file():
+        raise RuntimeError(
+            f"Missing semantic classifier weights: {SEMANTIC_POLICY_SOURCE}"
+        )
+    return {
+        "runtimeSeries": RUNTIME_SERIES,
+        "python": {
+            "release": PYTHON_RELEASE,
+            "version": PYTHON_VERSION,
+            "distributions": {
+                target: asdict(distribution)
+                for target, distribution in sorted(RUNTIME_DISTRIBUTIONS.items())
+            },
+        },
+        "wheels": load_wheel_lock(),
+        "model": {
+            "name": MODEL_NAME,
+            "files": MODEL_FILES,
+        },
+        "classifierWeights": {
+            "path": SEMANTIC_POLICY_PATH.as_posix(),
+            "sha256": sha256_file(SEMANTIC_POLICY_SOURCE),
+        },
+    }
+
+
+def runtime_release_tag(runtime_id_value: str) -> str:
+    return f"model-router-runtime-{runtime_id_value}"
+
+
+def runtime_asset_name(runtime_id_value: str, target: str) -> str:
+    return f"xedoc-model-router-runtime-{target}-{runtime_id_value}.zip"
+
+
+def runtime_reference(spec: TargetSpec, archive_path: Path) -> RuntimeReference:
+    runtime_id_value = runtime_id()
+    return RuntimeReference(
+        runtime_id=runtime_id_value,
+        asset_name=runtime_asset_name(runtime_id_value, spec.target),
+        sha256=sha256_file(archive_path),
+        source_release_tag=runtime_release_tag(runtime_id_value),
+    )
 
 
 def build_runtime_archive(
     spec: TargetSpec,
-    version: str,
     destination: Path,
     *,
     force: bool,
-) -> None:
-    """Build one checksummed, target-specific semantic-router runtime archive."""
+) -> RuntimeReference:
+    """Build one reproducible, checksummed target runtime archive."""
     try:
         distribution = RUNTIME_DISTRIBUTIONS[spec.target]
     except KeyError as error:
@@ -122,34 +208,52 @@ def build_runtime_archive(
             f"No semantic model-router runtime is available for {spec.target}."
         ) from error
 
+    runtime_id_value = runtime_id()
+    expected_asset_name = runtime_asset_name(runtime_id_value, spec.target)
+    if destination.name != expected_asset_name:
+        raise RuntimeError(
+            "Runtime archive name must match its immutable identity: "
+            f"expected {expected_asset_name}, got {destination.name}"
+        )
+
     with tempfile.TemporaryDirectory(prefix="xedoc-model-router-runtime-") as temp:
         root = Path(temp) / "runtime"
         root.mkdir()
         archive = Path(temp) / "python.tar.gz"
         download_file(distribution.python_url, archive, distribution.python_sha256)
         extract_tar(archive, root)
-        install_wheels(
+        wheel_set = install_wheels(
             root=root,
+            target=spec.target,
             distribution=distribution,
             temp_dir=Path(temp),
         )
         download_model(root / "arctic-embed-xs")
-        write_manifest(root, spec.target, version)
-        write_archive(root, destination, force=force)
+        copy_classifier_weights(root)
+        write_manifest(
+            root,
+            spec.target,
+            runtime_id_value,
+            distribution,
+            wheel_set,
+        )
+        write_runtime_archive(root, destination, force=force)
+
+    return runtime_reference(spec, destination)
 
 
 def install_wheels(
     *,
     root: Path,
+    target: str,
     distribution: RuntimeDistribution,
     temp_dir: Path,
-) -> None:
+) -> list[dict[str, str]]:
     wheels_dir = temp_dir / "wheels"
     wheels_dir.mkdir()
     requirements = [
         f"onnxruntime=={distribution.onnxruntime_version}",
-        "tokenizers==0.23.2",
-        "numpy==2.3.5",
+        *RUNTIME_REQUIREMENTS,
     ]
     subprocess.run(
         [
@@ -158,6 +262,7 @@ def install_wheels(
             "pip",
             "download",
             "--only-binary=:all:",
+            "--no-deps",
             "--dest",
             str(wheels_dir),
             "--platform",
@@ -172,11 +277,66 @@ def install_wheels(
         ],
         check=True,
     )
+    wheel_set = validate_wheels(wheels_dir, target)
     site_packages = root / "site-packages"
     site_packages.mkdir()
     for wheel in sorted(wheels_dir.glob("*.whl")):
         with zipfile.ZipFile(wheel) as archive:
             extract_zip(archive, site_packages)
+    return wheel_set
+
+
+def load_wheel_lock() -> dict[str, dict[str, str]]:
+    """Load the exact target wheel artifacts that define this runtime revision."""
+    try:
+        contents = json.loads(WHEEL_LOCK_SOURCE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            f"Could not load model-router wheel lock: {WHEEL_LOCK_SOURCE}"
+        ) from error
+    if not isinstance(contents, dict) or set(contents) != set(RUNTIME_DISTRIBUTIONS):
+        raise RuntimeError("Model-router wheel lock must cover every supported target.")
+    lock: dict[str, dict[str, str]] = {}
+    for target, wheel_hashes in contents.items():
+        if (
+            not isinstance(wheel_hashes, dict)
+            or not wheel_hashes
+            or any(
+                not isinstance(name, str)
+                or not name.endswith(".whl")
+                or not isinstance(checksum, str)
+                or len(checksum) != 64
+                or any(character not in "0123456789abcdef" for character in checksum)
+                for name, checksum in wheel_hashes.items()
+            )
+        ):
+            raise RuntimeError(
+                f"Model-router wheel lock has invalid artifacts for {target}."
+            )
+        lock[target] = dict(sorted(wheel_hashes.items()))
+    return dict(sorted(lock.items()))
+
+
+def validate_wheels(wheels_dir: Path, target: str) -> list[dict[str, str]]:
+    expected = load_wheel_lock()[target]
+    actual = {
+        wheel.name: sha256_file(wheel) for wheel in sorted(wheels_dir.glob("*.whl"))
+    }
+    if actual != expected:
+        missing = sorted(set(expected).difference(actual))
+        unexpected = sorted(set(actual).difference(expected))
+        changed = sorted(
+            name
+            for name in set(expected).intersection(actual)
+            if expected[name] != actual[name]
+        )
+        raise RuntimeError(
+            f"Model-router runtime wheels for {target} differ from the checked-in "
+            f"lock (missing={missing}, unexpected={unexpected}, changed={changed})."
+        )
+    return [
+        {"assetName": name, "sha256": checksum} for name, checksum in expected.items()
+    ]
 
 
 def download_model(destination: Path) -> None:
@@ -188,6 +348,12 @@ def download_model(destination: Path) -> None:
             destination_path,
             expected_sha256,
         )
+
+
+def copy_classifier_weights(root: Path) -> None:
+    destination = root / SEMANTIC_POLICY_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(SEMANTIC_POLICY_SOURCE.read_bytes())
 
 
 def download_file(url: str, destination: Path, expected_sha256: str) -> None:
@@ -232,7 +398,13 @@ def validate_member_path(destination: Path, name: str) -> None:
         )
 
 
-def write_manifest(root: Path, target: str, version: str) -> None:
+def write_manifest(
+    root: Path,
+    target: str,
+    runtime_id_value: str,
+    distribution: RuntimeDistribution,
+    wheel_set: list[dict[str, str]],
+) -> None:
     checksums = {
         path.relative_to(root).as_posix(): sha256_file(path)
         for path in sorted(root.rglob("*"))
@@ -241,10 +413,24 @@ def write_manifest(root: Path, target: str, version: str) -> None:
     (root / RUNTIME_MANIFEST).write_text(
         json.dumps(
             {
-                "version": version,
+                "runtimeId": runtime_id_value,
                 "target": target,
-                "model": "snowflake-arctic-embed-xs",
-                "python": PYTHON_VERSION,
+                "pythonDistribution": {
+                    "release": PYTHON_RELEASE,
+                    "version": PYTHON_VERSION,
+                    "url": distribution.python_url,
+                    "sha256": distribution.python_sha256,
+                },
+                "wheelSet": wheel_set,
+                "installedDistributions": installed_wheels(root),
+                "model": {
+                    "name": MODEL_NAME,
+                    "files": MODEL_FILES,
+                },
+                "classifierWeights": {
+                    "path": SEMANTIC_POLICY_PATH.as_posix(),
+                    "sha256": sha256_file(root / SEMANTIC_POLICY_PATH),
+                },
                 "files": checksums,
             },
             indent=2,
@@ -253,6 +439,45 @@ def write_manifest(root: Path, target: str, version: str) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def installed_wheels(root: Path) -> list[dict[str, str]]:
+    wheel_set: list[dict[str, str]] = []
+    for metadata in sorted((root / "site-packages").glob("*.dist-info/METADATA")):
+        name = ""
+        version = ""
+        for line in metadata.read_text(encoding="utf-8").splitlines():
+            if line.startswith("Name: "):
+                name = line.removeprefix("Name: ")
+            elif line.startswith("Version: "):
+                version = line.removeprefix("Version: ")
+            if name and version:
+                wheel_set.append({"name": name, "version": version})
+                break
+    return wheel_set
+
+
+def write_runtime_archive(root: Path, destination: Path, *, force: bool) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        if not force:
+            raise RuntimeError(f"Runtime archive output already exists: {destination}")
+        destination.unlink()
+
+    with zipfile.ZipFile(
+        destination,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            relative_path = path.relative_to(root).as_posix()
+            info = zipfile.ZipInfo(relative_path, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = (path.stat().st_mode & 0o777) << 16
+            archive.writestr(info, path.read_bytes())
 
 
 def sha256_file(path: Path) -> str:

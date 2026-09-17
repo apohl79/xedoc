@@ -8,10 +8,10 @@ from pathlib import Path
 from .targets import PackageInputs
 from .targets import PackageVariant
 from .targets import TargetSpec
-from .model_router_runtime import runtime_asset_name
+from .model_router_runtime import RuntimeReference
 
-LAYOUT_VERSION = 1
-SESSION_CONTROL_LAYOUT_VERSION = 2
+LAYOUT_VERSION = 2
+SESSION_CONTROL_LAYOUT_VERSION = 3
 SESSION_CONTROL_SOURCE = Path(__file__).resolve().parents[1] / "xedoc-session"
 SESSION_CONTROL_NAME = "xedoc-session"
 MODEL_ROUTER_RESOURCE_SOURCE = (
@@ -56,6 +56,7 @@ def build_package_dir(
     spec: TargetSpec,
     inputs: PackageInputs,
     *,
+    model_router_runtime: RuntimeReference,
     include_session_control: bool = False,
 ) -> None:
     bin_dir = package_dir / "bin"
@@ -135,7 +136,7 @@ def build_package_dir(
         "resourcesDir": "xedoc-resources",
         "modelRouterScript": f"xedoc-resources/{MODEL_ROUTER_RESOURCE_PATH}",
         "modelRouterPolicy": f"xedoc-resources/{MODEL_ROUTER_POLICY_PATH}",
-        "modelRouterRuntimeAsset": runtime_asset_name(version, spec.target),
+        "modelRouterRuntime": model_router_runtime.package_metadata(),
         "pathDir": "xedoc-path",
     }
     write_json(package_dir / "xedoc-package.json", metadata)
@@ -146,6 +147,7 @@ def validate_package_dir(
     variant: PackageVariant,
     spec: TargetSpec,
     *,
+    model_router_runtime: RuntimeReference,
     include_session_control: bool = False,
 ) -> None:
     required_dirs = [
@@ -177,7 +179,7 @@ def validate_package_dir(
         "resourcesDir": "xedoc-resources",
         "modelRouterScript": f"xedoc-resources/{MODEL_ROUTER_RESOURCE_PATH}",
         "modelRouterPolicy": f"xedoc-resources/{MODEL_ROUTER_POLICY_PATH}",
-        "modelRouterRuntimeAsset": runtime_asset_name(metadata["version"], spec.target),
+        "modelRouterRuntime": model_router_runtime.package_metadata(),
         "pathDir": "xedoc-path",
     }
     for key, expected in expected_metadata.items():

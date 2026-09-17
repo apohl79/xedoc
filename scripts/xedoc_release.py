@@ -18,12 +18,14 @@ from xedoc_package.targets import default_target
 from xedoc_package.archive import write_archive
 from xedoc_package.model_router_runtime import build_runtime_archive
 from xedoc_package.model_router_runtime import runtime_asset_name
+from xedoc_package.model_router_runtime import runtime_id
+from xedoc_package.model_router_runtime import RuntimeReference
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_REF = "main"
-DEFAULT_GITHUB_REPO = "apohl79/codex"
+DEFAULT_GITHUB_REPO = "apohl79/xedoc"
 DEFAULT_GITHUB_ACCOUNT = "apohl79"
 DEFAULT_BUILD_SYSTEM = "bazel"
 CARGO_BUILD_JOBS_ENV_VAR = "XEDOC_CARGO_BUILD_JOBS"
@@ -103,7 +105,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help=(
             "Archive output for the separately installed semantic model-router "
-            "runtime. Defaults beside the CLI archive."
+            "runtime. Its filename must match the immutable runtime ID."
         ),
     )
     parser.add_argument(
@@ -296,10 +298,19 @@ def build_release(args: argparse.Namespace) -> None:
     archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
         output_dir / version / f"xedoc-{args.target}-{version}.zip"
     ]
+    runtime_id_value = runtime_id()
     runtime_archive_output = (
         resolve_repo_path(args.model_router_runtime_archive_output)
         if args.model_router_runtime_archive_output is not None
-        else output_dir / version / runtime_asset_name(version, args.target)
+        else output_dir
+        / "model-router-runtime"
+        / runtime_id_value
+        / runtime_asset_name(runtime_id_value, args.target)
+    )
+    runtime_reference = build_runtime_archive(
+        spec,
+        runtime_archive_output,
+        force=args.force,
     )
 
     package_args = [
@@ -318,6 +329,14 @@ def build_release(args: argparse.Namespace) -> None:
         "--package-dir",
         str(package_dir),
         "--include-session-control",
+        "--model-router-runtime-id",
+        runtime_reference.runtime_id,
+        "--model-router-runtime-asset",
+        runtime_reference.asset_name,
+        "--model-router-runtime-sha256",
+        runtime_reference.sha256,
+        "--model-router-runtime-source-release-tag",
+        runtime_reference.source_release_tag,
     ]
     if args.force:
         package_args.append("--force")
@@ -348,21 +367,23 @@ def build_release(args: argparse.Namespace) -> None:
         )
     for archive_output in archive_outputs:
         write_archive(package_dir, archive_output, force=args.force)
-    build_runtime_archive(
-        spec,
-        version,
-        runtime_archive_output,
-        force=args.force,
-    )
 
     if not args.skip_github_release:
+        publish_immutable_runtime_release(
+            gh=args.gh,
+            repo=args.github_repo,
+            reference=runtime_reference,
+            target=release_target,
+            archive_output=runtime_archive_output,
+            env=github_env,
+        )
         publish_github_release(
             gh=args.gh,
             repo=args.github_repo,
             tag=release_tag,
             title=version,
             target=release_target,
-            archive_outputs=[*archive_outputs, runtime_archive_output],
+            archive_outputs=archive_outputs,
             env=github_env,
             notes=generate_release_notes(
                 release_tag,
@@ -1163,6 +1184,146 @@ def publish_github_release(
             cwd=REPO_ROOT,
             env=env,
         )
+
+
+def publish_immutable_runtime_release(
+    *,
+    gh: str,
+    repo: str,
+    reference: RuntimeReference,
+    target: str,
+    archive_output: Path,
+    env: dict[str, str] | None = None,
+) -> None:
+    """Publish a runtime once, refusing to alter an existing immutable release."""
+    tag = reference.source_release_tag
+    if github_release_exists(gh=gh, repo=repo, tag=tag, env=env):
+        digest = github_release_asset_digest(
+            gh=gh,
+            repo=repo,
+            tag=tag,
+            asset_name=reference.asset_name,
+            env=env,
+        )
+        if digest is None:
+            print(
+                f"Adding {reference.asset_name} to immutable model-router runtime "
+                f"release {tag} in {repo}.",
+                flush=True,
+            )
+            run(
+                [
+                    gh,
+                    "release",
+                    "upload",
+                    tag,
+                    str(archive_output),
+                    "--repo",
+                    repo,
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+            )
+        elif digest != reference.sha256:
+            raise RuntimeError(
+                f"Immutable runtime release {tag} already has a different "
+                f"{reference.asset_name} digest: expected {reference.sha256}, got {digest}."
+            )
+        else:
+            print(
+                f"Reusing immutable model-router runtime release {tag} in {repo}.",
+                flush=True,
+            )
+            return
+        published_digest = github_release_asset_digest(
+            gh=gh,
+            repo=repo,
+            tag=tag,
+            asset_name=reference.asset_name,
+            env=env,
+        )
+        if published_digest != reference.sha256:
+            raise RuntimeError(
+                f"Published runtime asset {reference.asset_name} digest mismatch: "
+                f"expected {reference.sha256}, got {published_digest}."
+            )
+        return
+
+    print(f"Creating immutable model-router runtime release {tag} in {repo}.")
+    run(
+        [
+            gh,
+            "release",
+            "create",
+            tag,
+            "--repo",
+            repo,
+            "--title",
+            f"Model router runtime {reference.runtime_id}",
+            "--notes",
+            (f"Immutable semantic model-router runtime. SHA-256: {reference.sha256}"),
+            "--target",
+            target,
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+    )
+    run(
+        [
+            gh,
+            "release",
+            "upload",
+            tag,
+            str(archive_output),
+            "--repo",
+            repo,
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+    )
+    published_digest = github_release_asset_digest(
+        gh=gh,
+        repo=repo,
+        tag=tag,
+        asset_name=reference.asset_name,
+        env=env,
+    )
+    if published_digest != reference.sha256:
+        raise RuntimeError(
+            f"Published runtime asset {reference.asset_name} digest mismatch: "
+            f"expected {reference.sha256}, got {published_digest}."
+        )
+
+
+def github_release_asset_digest(
+    *,
+    gh: str,
+    repo: str,
+    tag: str,
+    asset_name: str,
+    env: dict[str, str] | None = None,
+) -> str | None:
+    release = json.loads(
+        command_output(
+            [gh, "api", f"repos/{repo}/releases/tags/{tag}"],
+            cwd=REPO_ROOT,
+            env=env,
+        )
+    )
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise RuntimeError(f"GitHub runtime release {tag} has invalid asset metadata.")
+    for asset in assets:
+        if not isinstance(asset, dict) or asset.get("name") != asset_name:
+            continue
+        digest = asset.get("digest")
+        if isinstance(digest, str) and digest.startswith("sha256:"):
+            return digest.removeprefix("sha256:")
+        raise RuntimeError(
+            f"GitHub runtime release {tag} does not expose a SHA-256 digest for "
+            f"{asset_name}."
+        )
+    return None
 
 
 def github_release_exists(

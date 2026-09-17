@@ -9,6 +9,7 @@ from .cargo import build_source_binaries
 from .layout import build_package_dir
 from .layout import prepare_package_dir
 from .layout import validate_package_dir
+from .model_router_runtime import RuntimeReference
 from .ripgrep import resolve_rg_bin
 from .targets import PACKAGE_VARIANTS
 from .targets import TARGET_SPECS
@@ -106,6 +107,22 @@ def parse_args() -> argparse.Namespace:
             "scripts/xedoc_package/rg."
         ),
     )
+    parser.add_argument(
+        "--model-router-runtime-id",
+        help="Immutable semantic-router runtime identity for package metadata.",
+    )
+    parser.add_argument(
+        "--model-router-runtime-asset",
+        help="Target-specific immutable semantic-router runtime asset name.",
+    )
+    parser.add_argument(
+        "--model-router-runtime-sha256",
+        help="SHA-256 digest of the semantic-router runtime archive.",
+    )
+    parser.add_argument(
+        "--model-router-runtime-source-release-tag",
+        help="GitHub release tag that owns the immutable runtime asset.",
+    )
     return parser.parse_args()
 
 
@@ -137,6 +154,7 @@ def main() -> int:
         ),
     )
     version = args.version or read_workspace_version()
+    model_router_runtime = runtime_reference_from_args(args)
     inputs = PackageInputs(
         entrypoint_bin=source_outputs.entrypoint_bin,
         rg_bin=resolve_rg_bin(spec, args.rg_bin),
@@ -149,12 +167,14 @@ def main() -> int:
         variant,
         spec,
         inputs,
+        model_router_runtime=model_router_runtime,
         include_session_control=args.include_session_control,
     )
     validate_package_dir(
         package_dir,
         variant,
         spec,
+        model_router_runtime=model_router_runtime,
         include_session_control=args.include_session_control,
     )
 
@@ -176,3 +196,25 @@ def resolve_optional_input_path(
         return None
 
     return resolve_input_path(explicit_path, description, flag_name)
+
+
+def runtime_reference_from_args(args: argparse.Namespace) -> RuntimeReference:
+    values = {
+        "runtime ID": args.model_router_runtime_id,
+        "asset": args.model_router_runtime_asset,
+        "SHA-256": args.model_router_runtime_sha256,
+        "source release tag": args.model_router_runtime_source_release_tag,
+    }
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        joined = ", ".join(missing)
+        raise RuntimeError(
+            "Package metadata requires an immutable model-router runtime: "
+            f"missing {joined}."
+        )
+    return RuntimeReference(
+        runtime_id=args.model_router_runtime_id,
+        asset_name=args.model_router_runtime_asset,
+        sha256=args.model_router_runtime_sha256,
+        source_release_tag=args.model_router_runtime_source_release_tag,
+    )

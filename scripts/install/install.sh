@@ -2,7 +2,7 @@
 
 set -eu
 
-RELEASE_REPO="${XEDOC_RELEASE_REPO:-apohl79/codex}"
+RELEASE_REPO="${XEDOC_RELEASE_REPO:-apohl79/xedoc}"
 RELEASE_TAG="${XEDOC_RELEASE_TAG:-}"
 RELEASE_TARGET="${XEDOC_RELEASE_TARGET:-}"
 LOCAL_ZIP="${XEDOC_LOCAL_ZIP:-}"
@@ -16,6 +16,7 @@ ZSHRC_APP_SERVER_CHOICE_PATH="$XEDOC_HOME_DIR/app-server-daemon/zshrc-start"
 STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
+MODEL_ROUTER_RUNTIME_ROOT="$XEDOC_HOME_DIR/packages/model-router-runtime"
 CHECK_ONLY=false
 tmp_dir=""
 app_server_was_running=false
@@ -43,7 +44,7 @@ Options:
   --tag TAG        Release tag to install. Defaults to the current vX.Y.Z tag.
   --target TARGET  Release target triple. Defaults to the current platform.
   --repo OWNER/REPO
-                   GitHub repository to read releases from. Defaults to apohl79/codex.
+                   GitHub repository to read releases from. Defaults to apohl79/xedoc.
   --local-zip PATH  Install a local release ZIP instead of downloading one from GitHub.
                    The ZIP must contain xedoc-package.json.
   --check          Verify that the release asset exists, then print the plan and exit.
@@ -522,7 +523,6 @@ prepare_local_package() {
 
   local_version="$(local_package_metadata_field version)"
   local_target="$(local_package_metadata_field target)"
-  local_runtime_asset="$(local_package_metadata_field modelRouterRuntimeAsset)"
   [ -n "$local_version" ] ||
     die "Local package metadata is missing version: $LOCAL_ZIP"
   [ -n "$local_target" ] ||
@@ -701,12 +701,113 @@ install_zip_release() {
 runtime_is_complete() {
   local runtime_dir="$1"
   local expected_target="$2"
-  local target
+  local expected_runtime_id="$3"
+  local manifest target runtime_id file_count relative_path expected_digest actual_digest
 
   [ -f "$runtime_dir/model-router-runtime.json" ] &&
-    target="$(sed -n 's/.*"target":[[:space:]]*"\([^"]*\)".*/\1/p' \
-      "$runtime_dir/model-router-runtime.json" | head -n 1)" &&
-    [ "$target" = "$expected_target" ]
+    manifest="$runtime_dir/model-router-runtime.json" &&
+    target="$(runtime_manifest_field "$manifest" target)" &&
+    runtime_id="$(runtime_manifest_field "$manifest" runtimeId)" &&
+    [ "$target" = "$expected_target" ] &&
+    [ "$runtime_id" = "$expected_runtime_id" ] || return 1
+
+  file_count=0
+  while IFS='|' read -r relative_path expected_digest; do
+    [ -n "$relative_path" ] && [ -n "$expected_digest" ] || return 1
+    case "/$relative_path/" in
+      *"/../"* | //*) return 1 ;;
+    esac
+    [ -f "$runtime_dir/$relative_path" ] || return 1
+    actual_digest="$(file_sha256 "$runtime_dir/$relative_path")"
+    [ "$actual_digest" = "$expected_digest" ] || return 1
+    file_count=$((file_count + 1))
+  done <<EOF
+$(runtime_manifest_files "$manifest")
+EOF
+  [ "$file_count" -gt 0 ]
+}
+
+runtime_manifest_field() {
+  manifest="$1"
+  field="$2"
+  sed -n "s/^[[:space:]]*\"$field\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" \
+    "$manifest" | head -n 1
+}
+
+runtime_manifest_files() {
+  manifest="$1"
+  awk '
+    /"files"[[:space:]]*:[[:space:]]*\{/ { in_files = 1; next }
+    in_files && /^[[:space:]]*\}/ { exit }
+    in_files {
+      line = $0
+      sub(/^[[:space:]]*"/, "", line)
+      split(line, fields, /"[[:space:]]*:[[:space:]]*"/)
+      if (length(fields) == 2) {
+        path = fields[1]
+        digest = fields[2]
+        sub(/".*$/, "", digest)
+        print path "|" digest
+      }
+    }
+  ' "$manifest"
+}
+
+package_runtime_field() {
+  package_metadata="$1"
+  field="$2"
+  awk -v requested_field="$field" '
+    /"modelRouterRuntime"[[:space:]]*:[[:space:]]*\{/ { in_runtime = 1; next }
+    in_runtime && /^[[:space:]]*\}/ { exit }
+    in_runtime {
+      line = $0
+      sub(/^[[:space:]]*"/, "", line)
+      split(line, fields, /"[[:space:]]*:[[:space:]]*"/)
+      if (length(fields) == 2 && fields[1] == requested_field) {
+        value = fields[2]
+        sub(/".*$/, "", value)
+        print value
+        exit
+      }
+    }
+  ' "$package_metadata"
+}
+
+validate_runtime_metadata() {
+  runtime_id="$1"
+  runtime_asset="$2"
+  runtime_digest="$3"
+  runtime_tag="$4"
+  runtime_target="$5"
+  runtime_id_digest="${runtime_id#*-sha256-}"
+
+  case "$runtime_id" in
+    r[0-9]*-sha256-*) ;;
+    *) die "Package metadata has an invalid model-router runtime ID." ;;
+  esac
+  case "$runtime_id" in
+    */* | *\\* | *..* | *[!0123456789abcdefghijklmnopqrstuvwxyz-]*)
+      die "Package metadata has an invalid model-router runtime ID."
+      ;;
+  esac
+  case "$runtime_id_digest" in
+    *[!0123456789abcdef]* | "") die "Package metadata has an invalid model-router runtime ID." ;;
+  esac
+  [ "${#runtime_id_digest}" -eq 64 ] ||
+    die "Package metadata has an invalid model-router runtime ID."
+  case "$runtime_asset" in
+    "xedoc-model-router-runtime-$runtime_target-$runtime_id.zip") ;;
+    *) die "Package metadata has an invalid model-router runtime asset." ;;
+  esac
+  case "$runtime_tag" in
+    "model-router-runtime-$runtime_id") ;;
+    *) die "Package metadata has an invalid model-router runtime source release." ;;
+  esac
+  case "$runtime_digest" in
+    *[!0123456789abcdef]* | "") die "Package metadata has an invalid model-router runtime SHA256." ;;
+  esac
+  [ "${#runtime_digest}" -eq 64 ] ||
+    die "Package metadata has an invalid model-router runtime SHA256."
 }
 
 runtime_python() {
@@ -722,21 +823,34 @@ runtime_python() {
 install_router_runtime() {
   release_dir="$1"
   expected_target="$2"
-  archive_path="$3"
-  runtime_dir="$release_dir/xedoc-resources/model-router/runtime"
-  stage_runtime="$release_dir/xedoc-resources/model-router/.runtime.$$.staging"
+  expected_runtime_id="$3"
+  archive_path="$4"
+  runtime_dir="$MODEL_ROUTER_RUNTIME_ROOT/$expected_target/$expected_runtime_id"
+  stage_runtime="$MODEL_ROUTER_RUNTIME_ROOT/$expected_target/.${expected_runtime_id}.$$.staging"
+  release_runtime_link="$release_dir/xedoc-resources/model-router/runtime"
+  stage_link="$release_dir/xedoc-resources/model-router/.runtime.$$.staging"
 
-  runtime_is_complete "$runtime_dir" "$expected_target" && return
-
-  rm -rf "$stage_runtime"
-  mkdir -p "$stage_runtime"
-  unzip -q "$archive_path" -d "$stage_runtime"
-  runtime_is_complete "$stage_runtime" "$expected_target" ||
-    die "Model-router runtime archive is incomplete or targets another platform."
-  if [ -e "$runtime_dir" ] || [ -L "$runtime_dir" ]; then
-    rm -rf "$runtime_dir"
+  if runtime_is_complete "$runtime_dir" "$expected_target" "$expected_runtime_id"; then
+    step "Reusing cached model-router runtime $expected_runtime_id"
+  else
+    rm -rf "$stage_runtime"
+    mkdir -p "$stage_runtime"
+    unzip -q "$archive_path" -d "$stage_runtime"
+    runtime_is_complete "$stage_runtime" "$expected_target" "$expected_runtime_id" ||
+      die "Model-router runtime archive is incomplete, invalid, or targets another platform."
+    if [ -e "$runtime_dir" ] || [ -L "$runtime_dir" ]; then
+      rm -rf "$runtime_dir"
+    fi
+    mkdir -p "$(dirname "$runtime_dir")"
+    mv "$stage_runtime" "$runtime_dir"
   fi
-  mv "$stage_runtime" "$runtime_dir"
+
+  rm -f "$stage_link"
+  ln -s "$runtime_dir" "$stage_link"
+  if [ -e "$release_runtime_link" ] || [ -L "$release_runtime_link" ]; then
+    rm -rf "$release_runtime_link"
+  fi
+  mv "$stage_link" "$release_runtime_link"
 }
 
 warm_router_runtime() {
@@ -824,7 +938,6 @@ tag="$(current_release_tag)"
 target="$(detect_target)"
 release_version="${tag#v}"
 asset="xedoc-$target-$release_version.zip"
-router_runtime_asset="xedoc-model-router-runtime-$target-$release_version.zip"
 release_name="$release_version-$target"
 release_dir="$RELEASES_DIR/$release_name"
 
@@ -833,12 +946,6 @@ if [ -n "$LOCAL_ZIP" ]; then
   step "Found local Xedoc package"
   printf 'Package:    %s\n' "$LOCAL_ZIP"
   printf 'SHA256:     %s\n' "$local_digest"
-  if [ -n "${local_runtime_asset:-}" ]; then
-    router_runtime_asset="$local_runtime_asset"
-    router_runtime_archive="$(local_runtime_archive "$router_runtime_asset")"
-    [ -f "$router_runtime_archive" ] ||
-      die "Local model-router runtime archive does not exist: $router_runtime_archive"
-  fi
 else
   download_url="$(release_url_for_asset "$tag" "$asset")"
   expected_digest="$(release_asset_digest "$tag" "$asset")"
@@ -847,10 +954,6 @@ else
   printf 'Asset:      %s\n' "$asset"
   printf 'SHA256:     %s\n' "$expected_digest"
   printf 'URL:        %s\n' "$download_url"
-  router_runtime_url="$(release_url_for_asset "$tag" "$router_runtime_asset")"
-  router_runtime_digest="$(release_asset_digest "$tag" "$router_runtime_asset")"
-  printf 'Model-router runtime: %s\n' "$router_runtime_asset"
-  printf 'Runtime SHA256:       %s\n' "$router_runtime_digest"
 fi
 printf 'Tag:        %s\n' "$tag"
 printf 'Target:     %s\n' "$target"
@@ -884,17 +987,59 @@ if [ -n "$LOCAL_ZIP" ] || ! release_dir_is_complete "$release_dir" "$release_nam
   install_zip_release "$release_dir" "$archive_path"
 fi
 
-if [ -n "${local_runtime_asset:-}" ] || [ -z "$LOCAL_ZIP" ]; then
+router_runtime_id="$(package_runtime_field "$release_dir/xedoc-package.json" runtimeId)"
+router_runtime_asset="$(package_runtime_field "$release_dir/xedoc-package.json" assetName)"
+router_runtime_digest="$(package_runtime_field "$release_dir/xedoc-package.json" sha256)"
+router_runtime_tag="$(package_runtime_field "$release_dir/xedoc-package.json" sourceReleaseTag)"
+
+if [ -n "$router_runtime_id" ] || [ -n "$router_runtime_asset" ] || \
+  [ -n "$router_runtime_digest" ] || [ -n "$router_runtime_tag" ]; then
+  [ -n "$router_runtime_id" ] && [ -n "$router_runtime_asset" ] &&
+    [ -n "$router_runtime_digest" ] && [ -n "$router_runtime_tag" ] ||
+    die "Package metadata has an incomplete model-router runtime reference."
+  validate_runtime_metadata \
+    "$router_runtime_id" \
+    "$router_runtime_asset" \
+    "$router_runtime_digest" \
+    "$router_runtime_tag" \
+    "$target"
+
+  if ! runtime_is_complete \
+    "$MODEL_ROUTER_RUNTIME_ROOT/$target/$router_runtime_id" \
+    "$target" \
+    "$router_runtime_id"; then
   if [ -n "$LOCAL_ZIP" ]; then
-    step "Installing local model-router runtime"
+      router_runtime_archive="$(local_runtime_archive "$router_runtime_asset")"
+      [ -f "$router_runtime_archive" ] ||
+        die "Local model-router runtime archive does not exist: $router_runtime_archive"
+      verify_archive_digest "$router_runtime_archive" "$router_runtime_digest"
+      step "Installing local model-router runtime"
   else
     router_runtime_archive="$tmp_dir/$router_runtime_asset"
+      router_runtime_url="$(release_url_for_asset "$router_runtime_tag" "$router_runtime_asset")"
     step "Downloading $router_runtime_asset"
     download_file "$router_runtime_url" "$router_runtime_archive"
     verify_archive_digest "$router_runtime_archive" "$router_runtime_digest"
   fi
-  install_router_runtime "$release_dir" "$target" "$router_runtime_archive"
+  else
+    router_runtime_archive=""
+  fi
+  if [ -n "$router_runtime_archive" ]; then
+    install_router_runtime \
+      "$release_dir" \
+      "$target" \
+      "$router_runtime_id" \
+      "$router_runtime_archive"
+  else
+    install_router_runtime \
+      "$release_dir" \
+      "$target" \
+      "$router_runtime_id" \
+      /dev/null
+  fi
   warm_router_runtime "$release_dir"
+else
+  step "Package has no model-router runtime reference; semantic routing is unavailable"
 fi
 
 update_current_link "$release_dir"
