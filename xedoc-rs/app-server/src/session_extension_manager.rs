@@ -14,6 +14,7 @@ use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
 use tokio::sync::Mutex;
+use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
@@ -57,6 +58,7 @@ use crate::outgoing_message::OutgoingMessageSender;
 use crate::session_script_host::SessionScriptHost;
 use crate::session_script_registry::SessionScriptRegistry;
 use crate::session_script_registry::send_deliveries;
+use crate::thread_state::ThreadStateManager;
 
 const SESSION_EXTENSION_INVOCATION_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
 const APPROVAL_ACTION_SESSION: &str = "approve-session";
@@ -76,6 +78,7 @@ pub(crate) struct SessionExtensionManager {
 struct SessionExtensionManagerInner {
     config: Arc<Config>,
     thread_manager: Arc<ThreadManager>,
+    thread_state_manager: ThreadStateManager,
     outgoing: Arc<OutgoingMessageSender>,
     session_script_registry: SessionScriptRegistry,
     session_script_host: Arc<Mutex<SessionScriptHost>>,
@@ -120,6 +123,7 @@ impl SessionExtensionManager {
     pub(crate) fn new(
         config: Arc<Config>,
         thread_manager: Arc<ThreadManager>,
+        thread_state_manager: ThreadStateManager,
         outgoing: Arc<OutgoingMessageSender>,
         session_script_registry: SessionScriptRegistry,
         session_script_host: Arc<Mutex<SessionScriptHost>>,
@@ -133,6 +137,7 @@ impl SessionExtensionManager {
             inner: Arc::new(SessionExtensionManagerInner {
                 config,
                 thread_manager,
+                thread_state_manager,
                 outgoing,
                 session_script_registry,
                 session_script_host,
@@ -542,16 +547,35 @@ impl SessionExtensionManager {
             expires_at: i64::MAX,
             surface,
         };
-        let (_, receiver) = self
+        let connection_ids = self
+            .inner
+            .thread_state_manager
+            .subscribed_connection_ids(thread_id)
+            .await;
+        if connection_ids.is_empty() {
+            return Err("no client is subscribed to the extension thread".to_string());
+        }
+        let (request_id, receiver) = self
             .inner
             .outgoing
             .send_request_to_connections(
-                /*connection_ids*/ None,
+                Some(&connection_ids),
                 ServerRequestPayload::ExtensionInteractionRequest(params),
                 Some(thread_id),
             )
             .await;
-        deserialize_interaction_response(receiver).await
+        match timeout(
+            SESSION_EXTENSION_INVOCATION_TIMEOUT,
+            deserialize_interaction_response(receiver),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                self.inner.outgoing.cancel_request(&request_id).await;
+                Err("extension interaction timed out".to_string())
+            }
+        }
     }
 
     async fn invoke_script(

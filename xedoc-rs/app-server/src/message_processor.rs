@@ -359,6 +359,7 @@ impl MessageProcessor {
         let session_extension_manager = SessionExtensionManager::new(
             Arc::clone(&config),
             Arc::clone(&thread_manager),
+            thread_state_manager.clone(),
             outgoing.clone(),
             session_script_registry.clone(),
             session_script_host,
