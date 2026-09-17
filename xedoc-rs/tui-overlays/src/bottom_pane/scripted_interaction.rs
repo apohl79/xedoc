@@ -742,7 +742,10 @@ impl ScriptedInteractionView {
                 return;
             }
         }
-        if action_matches_key(&form.submit, key_event) {
+        if action_matches_key(&form.submit, key_event)
+            || form.submit.key_bindings.is_empty()
+                && enter_binding_matches(key_event, KeyModifiers::NONE)
+        {
             self.submit_form();
             return;
         }
