@@ -7,6 +7,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -14,6 +15,7 @@ use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -61,6 +63,7 @@ use crate::session_script_registry::send_deliveries;
 use crate::thread_state::ThreadStateManager;
 
 const SESSION_EXTENSION_INVOCATION_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
+const SESSION_EXTENSION_REQUEST_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 2);
 const APPROVAL_ACTION_SESSION: &str = "approve-session";
 const APPROVAL_ACTION_ALWAYS: &str = "approve-always";
 const APPROVAL_ACTION_DENY: &str = "deny";
@@ -547,33 +550,55 @@ impl SessionExtensionManager {
             expires_at: i64::MAX,
             surface,
         };
-        let connection_ids = self
-            .inner
-            .thread_state_manager
-            .subscribed_connection_ids(thread_id)
-            .await;
-        if connection_ids.is_empty() {
-            return Err("no client is subscribed to the extension thread".to_string());
-        }
-        let (request_id, receiver) = self
-            .inner
-            .outgoing
-            .send_request_to_connections(
-                Some(&connection_ids),
-                ServerRequestPayload::ExtensionInteractionRequest(params),
-                Some(thread_id),
+        let deadline = Instant::now() + SESSION_EXTENSION_INVOCATION_TIMEOUT;
+        let mut last_connection_ids = None;
+        loop {
+            let connection_ids = self
+                .inner
+                .thread_state_manager
+                .subscribed_connection_ids(thread_id)
+                .await;
+            if connection_ids.is_empty() {
+                if Instant::now() >= deadline {
+                    return Err("no client is subscribed to the extension thread".to_string());
+                }
+                sleep(Duration::from_millis(100)).await;
+                continue;
+            }
+            let (request_id, receiver) = self
+                .inner
+                .outgoing
+                .send_request_to_connections(
+                    Some(&connection_ids),
+                    ServerRequestPayload::ExtensionInteractionRequest(params.clone()),
+                    Some(thread_id),
+                )
+                .await;
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match timeout(
+                SESSION_EXTENSION_REQUEST_ATTEMPT_TIMEOUT.min(remaining),
+                deserialize_interaction_response(receiver),
             )
-            .await;
-        match timeout(
-            SESSION_EXTENSION_INVOCATION_TIMEOUT,
-            deserialize_interaction_response(receiver),
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(_) => {
-                self.inner.outgoing.cancel_request(&request_id).await;
-                Err("extension interaction timed out".to_string())
+            .await
+            {
+                Ok(result) => return result,
+                Err(_) => {
+                    self.inner.outgoing.cancel_request(&request_id).await;
+                    let current_connection_ids = self
+                        .inner
+                        .thread_state_manager
+                        .subscribed_connection_ids(thread_id)
+                        .await;
+                    if current_connection_ids == connection_ids
+                        && last_connection_ids.as_ref() == Some(&connection_ids)
+                    {
+                        return Err("extension interaction timed out".to_string());
+                    }
+                    last_connection_ids = Some(current_connection_ids);
+                    if Instant::now() >= deadline {
+                        return Err("extension interaction timed out".to_string());
+                    }
+                }
             }
         }
     }
