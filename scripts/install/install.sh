@@ -185,6 +185,10 @@ restart_model_router_daemon() {
   runtime_real_dir="$(CDPATH='' cd "$runtime_dir" && pwd -P)"
   runtime_state_dir="$(dirname "$runtime_real_dir")"
   state_path="$runtime_state_dir/embedder-daemon.json"
+  legacy_state_path="$runtime_dir/embedder-daemon.json"
+  if [ ! -f "$state_path" ] && [ -f "$legacy_state_path" ]; then
+    state_path="$legacy_state_path"
+  fi
   embedder="$release_dir/xedoc-resources/model-router/reference-router-embedder.py"
   python="$(runtime_python "$runtime_dir")"
 
@@ -195,12 +199,16 @@ restart_model_router_daemon() {
 
   if ! prompt_user_available; then
     step "Model-router semantic runtime is running; leaving it unchanged in non-interactive mode"
+    [ "$state_path" = "$runtime_state_dir/embedder-daemon.json" ] ||
+      cp "$state_path" "$runtime_state_dir/embedder-daemon.json"
     skip_model_router_warm=true
     return 0
   fi
 
   if ! prompt_yes_no "The model-router semantic runtime is running. Gracefully restart it for the upgraded runtime?"; then
     step "Leaving the running model-router semantic runtime unchanged"
+    [ "$state_path" = "$runtime_state_dir/embedder-daemon.json" ] ||
+      cp "$state_path" "$runtime_state_dir/embedder-daemon.json"
     skip_model_router_warm=true
     return 0
   fi
@@ -210,6 +218,8 @@ restart_model_router_daemon() {
     step "Model-router semantic runtime stopped"
   else
     printf 'WARNING: Could not stop the running model-router semantic runtime. Leaving it unchanged.\n' >&2
+    [ "$state_path" = "$runtime_state_dir/embedder-daemon.json" ] ||
+      cp "$state_path" "$runtime_state_dir/embedder-daemon.json"
     skip_model_router_warm=true
   fi
 }
