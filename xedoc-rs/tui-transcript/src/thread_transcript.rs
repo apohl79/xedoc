@@ -240,6 +240,7 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             scope,
             disposition,
             reason,
+            feedback_visible,
             summary,
             diagnostic,
             classifications,
@@ -257,27 +258,31 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             proposed_reasoning_effort,
             effective_route,
             ..
-        } => crate::history_cell::model_router_decision_lines(
-            scope.clone(),
-            disposition.clone(),
-            reason.clone(),
-            summary.clone(),
-            diagnostic.clone(),
-            classifications.clone(),
-            *confidence_score,
-            *confidence_margin,
-            *ranking_score,
-            ranking_minimum_class.clone(),
-            ranking_maximum_class.clone(),
-            *ranking_minimum_rank,
-            *ranking_maximum_rank,
-            *ranking_target_rank,
-            *ranking_selected_rank,
-            proposed_provider_id.clone(),
-            proposed_model_slug.clone(),
-            proposed_reasoning_effort.clone(),
-            effective_route.clone(),
-        ),
+        } => feedback_visible
+            .then(|| {
+                crate::history_cell::model_router_decision_lines(
+                    scope.clone(),
+                    disposition.clone(),
+                    reason.clone(),
+                    summary.clone(),
+                    diagnostic.clone(),
+                    classifications.clone(),
+                    *confidence_score,
+                    *confidence_margin,
+                    *ranking_score,
+                    ranking_minimum_class.clone(),
+                    ranking_maximum_class.clone(),
+                    *ranking_minimum_rank,
+                    *ranking_maximum_rank,
+                    *ranking_target_rank,
+                    *ranking_selected_rank,
+                    proposed_provider_id.clone(),
+                    proposed_model_slug.clone(),
+                    proposed_reasoning_effort.clone(),
+                    effective_route.clone(),
+                )
+            })
+            .unwrap_or_default(),
         ThreadItem::UserMessage { .. }
         | ThreadItem::AgentMessage { .. }
         | ThreadItem::Plan { .. }
