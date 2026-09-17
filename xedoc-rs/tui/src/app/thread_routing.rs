@@ -1223,12 +1223,12 @@ impl App {
         request: ServerRequest,
     ) -> Result<()> {
         if self.primary_thread_id.is_some() && !self.is_primary_or_known_thread(thread_id) {
-            if matches!(&request, ServerRequest::ExtensionInteractionRequest { .. }) {
-                self.pending_primary_events
-                    .push_back(PendingPrimaryThreadEvent {
-                        thread_id,
-                        event: ThreadBufferedEvent::Request(request),
-                    });
+            if matches!(&request, ServerRequest::ExtensionInteractionRequest { .. })
+                && let Some(interactive_request) = self
+                    .interactive_request_for_thread_request(thread_id, &request)
+                    .await?
+            {
+                self.push_thread_interactive_request(interactive_request);
             }
             return Ok(());
         }
