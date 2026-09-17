@@ -312,6 +312,14 @@ def blend_semantic_weights(weights, embedding, prior_weight=64):
     ]
 
 
+def next_policy_revision(revision):
+    if isinstance(revision, int) and not isinstance(revision, bool):
+        return revision + 1
+    if isinstance(revision, str) and revision:
+        return f"{revision}-update-{time.time_ns()}"
+    raise ValueError("policy revision must be a non-empty string or integer")
+
+
 def recalibrate_semantic_policy(policy, prompt, scope, axes):
     embedding = semantic_embedding(prompt)
     semantic = policy["semanticClassifier"]
@@ -342,9 +350,7 @@ def recalibrate_semantic_policy(policy, prompt, scope, axes):
                 )
                 updates += 1
     semantic["feedbackUpdates"] = semantic.get("feedbackUpdates", 0) + updates
-    policy["revision"] = (
-        f"{str(policy['revision']).split('-feedback-', 1)[0]}-feedback-{int(time.time())}"
-    )
+    policy["revision"] = next_policy_revision(policy["revision"])
     save_policy(policy)
     return updates
 
@@ -791,7 +797,7 @@ def settings_open(request, policy):
 def update(policy, **values):
     updated = copy.deepcopy(policy)
     updated.update(values)
-    updated["revision"] += 1
+    updated["revision"] = next_policy_revision(updated["revision"])
     validate_policy(updated)
     save_policy(updated)
     policy.clear()
