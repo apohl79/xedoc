@@ -1,6 +1,7 @@
 use super::*;
 use pretty_assertions::assert_eq;
 use ratatui::style::Color;
+use std::path::PathBuf;
 
 fn rendered_lines(cell: &ToolCallSummaryCell) -> Vec<String> {
     rendered_lines_at_width(cell, /*width*/ 120)
@@ -115,7 +116,7 @@ fn persistent_summary_counts_file_and_web_activity() {
     );
     cell.start_call("fetch".to_string(), "Read https://ratatui.rs".to_string());
 
-    let summary = ToolCallCountSummaryCell::new(cell.stats());
+    let summary = ToolCallCountSummaryCell::new(cell.stats(), PathBuf::from("/"));
     let rendered = summary
         .display_lines(/*width*/ 20)
         .iter()

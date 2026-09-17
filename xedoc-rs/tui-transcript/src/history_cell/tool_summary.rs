@@ -84,11 +84,12 @@ pub struct ToolCallSummaryCell {
 #[derive(Debug)]
 pub struct ToolCallCountSummaryCell {
     stats: ToolCallSummaryStats,
+    cwd: PathBuf,
 }
 
 impl ToolCallCountSummaryCell {
-    pub fn new(stats: ToolCallSummaryStats) -> Self {
-        Self { stats }
+    pub fn new(stats: ToolCallSummaryStats, cwd: PathBuf) -> Self {
+        Self { stats, cwd }
     }
 }
 
@@ -112,17 +113,33 @@ impl HistoryCell for ToolCallCountSummaryCell {
                 summary.push(")".dim());
             }
             summary.push(".".dim());
-            let mut file_changes = self.stats.file_changes.iter().collect::<Vec<_>>();
-            file_changes.sort_by(|left, right| left.path.cmp(&right.path));
-            file_detail_lines.extend(file_changes.into_iter().map(|change| {
-                Line::from(vec![
-                    format!("  └ {}", change.path).into(),
-                    " ".into(),
-                    format!("+{}", change.added).cl_green(),
-                    " ".into(),
-                    format!("-{}", change.removed).cl_red(),
-                ])
-            }));
+            let mut file_changes_by_path = HashMap::new();
+            for change in &self.stats.file_changes {
+                let display_path = Path::new(&change.path)
+                    .strip_prefix(&self.cwd)
+                    .unwrap_or_else(|_| Path::new(&change.path))
+                    .display()
+                    .to_string();
+                file_changes_by_path.insert(display_path, change);
+            }
+            let mut file_changes = file_changes_by_path.into_iter().collect::<Vec<_>>();
+            file_changes.sort_by(|left, right| left.0.cmp(&right.0));
+            file_detail_lines.extend(file_changes.into_iter().enumerate().map(
+                |(index, (display_path, change))| {
+                    Line::from(vec![
+                        if index == 0 {
+                            "  └ ".dim()
+                        } else {
+                            "    ".into()
+                        },
+                        display_path.dim(),
+                        " ".into(),
+                        format!("+{}", change.added).cl_green(),
+                        " ".into(),
+                        format!("-{}", change.removed).cl_red(),
+                    ])
+                },
+            ));
         }
         if self.stats.web_searches > 0 {
             let searches = if self.stats.web_searches == 1 {

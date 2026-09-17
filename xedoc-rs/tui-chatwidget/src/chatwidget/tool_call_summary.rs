@@ -258,7 +258,10 @@ impl ChatWidget {
         if stats.files_edited == 0 && stats.web_searches == 0 && stats.web_pages_fetched == 0 {
             return false;
         }
-        self.add_boxed_history(Box::new(history_cell::ToolCallCountSummaryCell::new(stats)));
+        self.add_boxed_history(Box::new(history_cell::ToolCallCountSummaryCell::new(
+            stats,
+            self.config.cwd.clone().to_path_buf(),
+        )));
         self.transcript.needs_final_message_separator = false;
         self.transcript.had_work_activity = true;
         if let Some(summary) = self.tool_call_summary.as_mut() {
