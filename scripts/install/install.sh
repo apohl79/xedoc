@@ -20,6 +20,7 @@ MODEL_ROUTER_RUNTIME_ROOT="$XEDOC_HOME_DIR/packages/model-router-runtime"
 CHECK_ONLY=false
 tmp_dir=""
 app_server_was_running=false
+skip_model_router_warm=false
 
 script_dir="$(CDPATH='' cd "$(dirname "$0")" && pwd)"
 repo_root="$(CDPATH='' cd "$script_dir/../.." && pwd)"
@@ -168,6 +169,48 @@ restart_running_app_server() {
   else
     printf 'WARNING: Could not restart the running Xedoc app-server. Run: "%s" app-server daemon restart\n' \
       "$BIN_PATH" >&2
+  fi
+}
+
+embedder_daemon_is_running() {
+  state_path="$1"
+  [ -f "$state_path" ] || return 1
+  pid="$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$state_path" | head -n 1)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+restart_model_router_daemon() {
+  release_dir="$1"
+  runtime_dir="$release_dir/xedoc-resources/model-router/runtime"
+  runtime_real_dir="$(CDPATH='' cd "$runtime_dir" && pwd -P)"
+  runtime_state_dir="$(dirname "$runtime_real_dir")"
+  state_path="$runtime_state_dir/embedder-daemon.json"
+  embedder="$release_dir/xedoc-resources/model-router/reference-router-embedder.py"
+  python="$(runtime_python "$runtime_dir")"
+
+  if ! embedder_daemon_is_running "$state_path"; then
+    [ -f "$state_path" ] && rm -f "$state_path"
+    return 0
+  fi
+
+  if ! prompt_user_available; then
+    step "Model-router semantic runtime is running; leaving it unchanged in non-interactive mode"
+    skip_model_router_warm=true
+    return 0
+  fi
+
+  if ! prompt_yes_no "The model-router semantic runtime is running. Gracefully restart it for the upgraded runtime?"; then
+    step "Leaving the running model-router semantic runtime unchanged"
+    skip_model_router_warm=true
+    return 0
+  fi
+
+  step "Gracefully restarting model-router semantic runtime"
+  if "$python" "$embedder" "$runtime_dir" --stop-daemon "$state_path"; then
+    step "Model-router semantic runtime stopped"
+  else
+    printf 'WARNING: Could not stop the running model-router semantic runtime. Leaving it unchanged.\n' >&2
+    skip_model_router_warm=true
   fi
 }
 
@@ -856,13 +899,16 @@ install_router_runtime() {
 warm_router_runtime() {
   release_dir="$1"
   runtime_dir="$release_dir/xedoc-resources/model-router/runtime"
+  runtime_real_dir="$(CDPATH='' cd "$runtime_dir" && pwd -P)"
+  runtime_state_dir="$(dirname "$runtime_real_dir")"
+  state_path="$runtime_state_dir/embedder-daemon.json"
   embedder="$release_dir/xedoc-resources/model-router/reference-router-embedder.py"
   python="$(runtime_python "$runtime_dir")"
 
   [ -x "$python" ] && [ -f "$embedder" ] || return
   step "Starting model-router semantic runtime"
   if ! "$python" "$embedder" "$runtime_dir" \
-    --start-daemon "$runtime_dir/embedder-daemon.json"; then
+    --start-daemon "$state_path"; then
     printf 'WARNING: Model-router semantic runtime did not start. Router diagnostics will report the failure.\n' >&2
   fi
 }
@@ -1004,6 +1050,16 @@ if [ -n "$router_runtime_id" ] || [ -n "$router_runtime_asset" ] || \
     "$router_runtime_tag" \
     "$target"
 
+  current_runtime_dir="$CURRENT_LINK/xedoc-resources/model-router/runtime"
+  current_runtime_id=""
+  if [ -f "$current_runtime_dir/model-router-runtime.json" ]; then
+    current_runtime_id="$(runtime_manifest_field \
+      "$current_runtime_dir/model-router-runtime.json" runtimeId)"
+  fi
+  if [ -n "$current_runtime_id" ] && [ "$current_runtime_id" != "$router_runtime_id" ]; then
+    restart_model_router_daemon "$CURRENT_LINK"
+  fi
+
   if ! runtime_is_complete \
     "$MODEL_ROUTER_RUNTIME_ROOT/$target/$router_runtime_id" \
     "$target" \
@@ -1037,7 +1093,11 @@ if [ -n "$router_runtime_id" ] || [ -n "$router_runtime_asset" ] || \
       "$router_runtime_id" \
       /dev/null
   fi
-  warm_router_runtime "$release_dir"
+  if [ "$skip_model_router_warm" = false ]; then
+    warm_router_runtime "$release_dir"
+  else
+    step "Skipping model-router semantic runtime warmup because the existing daemon was left running"
+  fi
 else
   step "Package has no model-router runtime reference; semantic routing is unavailable"
 fi

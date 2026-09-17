@@ -4,9 +4,12 @@
 import json
 import math
 import os
+import secrets
+import socket
 import socketserver
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
 from pathlib import Path
@@ -194,12 +197,22 @@ def request_texts(request):
 
 def daemon(runtime_dir: Path, state_path: Path) -> int:
     embed = load_embedder(runtime_dir)
+    shutdown_token = secrets.token_hex(16)
 
     class Handler(socketserver.StreamRequestHandler):
         def handle(self):
             try:
                 request = json.loads(self.rfile.readline(1024 * 1024))
-                response = {"embeddings": embed(request_texts(request))}
+                if (
+                    request.get("command") == "shutdown"
+                    and request.get("token") == shutdown_token
+                ):
+                    response = {"stopped": True}
+                    threading.Thread(
+                        target=self.server.shutdown, daemon=True
+                    ).start()
+                else:
+                    response = {"embeddings": embed(request_texts(request))}
             except (ValueError, json.JSONDecodeError) as error:
                 response = {"error": str(error)[:256]}
             self.wfile.write(
@@ -213,7 +226,13 @@ def daemon(runtime_dir: Path, state_path: Path) -> int:
     with Server(("127.0.0.1", 0), Handler) as server:
         temporary = state_path.with_suffix(".tmp")
         temporary.write_text(
-            json.dumps({"pid": os.getpid(), "port": server.server_address[1]}),
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "port": server.server_address[1],
+                    "token": shutdown_token,
+                }
+            ),
             encoding="utf-8",
         )
         os.replace(temporary, state_path)
@@ -222,6 +241,15 @@ def daemon(runtime_dir: Path, state_path: Path) -> int:
 
 
 def start_daemon(runtime_dir: Path, state_path: Path) -> int:
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            port = state["port"]
+            if isinstance(port, int):
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    return 0
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            pass
     state_path.unlink(missing_ok=True)
     command = [sys.executable, __file__, str(runtime_dir), "--daemon", str(state_path)]
     kwargs = {
@@ -241,6 +269,30 @@ def start_daemon(runtime_dir: Path, state_path: Path) -> int:
     raise RuntimeError("semantic embedder daemon did not start")
 
 
+def stop_daemon(state_path: Path) -> int:
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        port = state["port"]
+        token = state["token"]
+        if not isinstance(port, int) or not isinstance(token, str):
+            raise ValueError("invalid semantic embedder state")
+    except (OSError, ValueError, KeyError, json.JSONDecodeError):
+        return 1
+
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2) as connection:
+            connection.sendall(
+                (json.dumps({"command": "shutdown", "token": token}) + "\n").encode()
+            )
+            response = json.loads(connection.makefile(encoding="utf-8").readline())
+            if response.get("stopped") is not True:
+                raise RuntimeError("semantic embedder daemon rejected shutdown")
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"failed to stop semantic embedder daemon: {error}") from error
+    state_path.unlink(missing_ok=True)
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) not in (2, 4):
         raise ValueError("expected an installed model-router runtime directory")
@@ -249,6 +301,8 @@ def main() -> int:
         return daemon(runtime_dir, Path(sys.argv[3]))
     if len(sys.argv) == 4 and sys.argv[2] == "--start-daemon":
         return start_daemon(runtime_dir, Path(sys.argv[3]))
+    if len(sys.argv) == 4 and sys.argv[2] == "--stop-daemon":
+        return stop_daemon(Path(sys.argv[3]))
     request = json.load(sys.stdin)
     json.dump(
         {"embeddings": load_embedder(runtime_dir)(request_texts(request))},

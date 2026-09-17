@@ -1199,7 +1199,7 @@ def semantic_embeddings(texts):
     )
     if not python.is_file():
         raise RuntimeError("semantic router Python runtime is missing")
-    state_path = RUNTIME_DIR / "embedder-daemon.json"
+    state_path = RUNTIME_DIR.resolve().parent / "embedder-daemon.json"
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
         port = state["port"]
