@@ -845,6 +845,29 @@ impl BottomPaneView for ScriptedInteractionView {
         }
     }
 
+    fn handle_paste(&mut self, pasted: String) -> bool {
+        let Some(form) = self.active_form() else {
+            return false;
+        };
+        let field_selected = self.field_selected;
+        let Some(ExtensionInteractionField::Text { max_bytes, .. }) =
+            form.fields.get(field_selected).cloned()
+        else {
+            return false;
+        };
+        let Some(FieldValue::Text(value)) = self.active_form_values_mut().get_mut(field_selected)
+        else {
+            return false;
+        };
+        if pasted.is_empty() {
+            return false;
+        }
+        let mut candidate = value.clone();
+        candidate.push_str(&pasted);
+        *value = truncate_utf8(&candidate, max_bytes);
+        true
+    }
+
     fn on_ctrl_c(&mut self) -> CancellationEvent {
         if matches!(
             &self.request.surface,
