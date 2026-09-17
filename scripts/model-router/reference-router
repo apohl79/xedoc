@@ -558,12 +558,26 @@ def root_menu(policy, context=None, conflict=None, session_update=None):
     )
 
 
-def item(identifier, label, description, action_id, *, host_action=None):
+def item(
+    identifier,
+    label,
+    description,
+    action_id,
+    *,
+    host_action=None,
+    bindings=None,
+    current=None,
+):
     return {
         "id": identifier,
         "label": label,
         "description": description,
-        "action": action(action_id, host_action=host_action, bindings=["enter"]),
+        "action": action(
+            action_id,
+            host_action=host_action,
+            bindings=bindings or ["enter"],
+        ),
+        **({"current": True} if current else {}),
     }
 
 
@@ -697,7 +711,18 @@ def policy_menu(policy):
             f"Confidence: {policy['confidence'].title()}",
             "Set minimum score and margin.",
             "open-confidence",
+            bindings=["right"],
         ),
+        *[
+            item(
+                f"confidence-{preset}",
+                f"  {preset.title()}",
+                "",
+                f"set-confidence:{preset}",
+                current=preset == policy["confidence"],
+            )
+            for preset in policy["confidencePresets"]
+        ],
         item(
             "ladder",
             f"Model ladder: {len(ladder(policy))} ranked slots",
@@ -720,7 +745,6 @@ def policy_menu(policy):
                 "clear-baseline",
             )
         )
-    items.append(item("back", "Back", "Return to model-router settings.", "back"))
     return menu(
         policy,
         "Routing policy",
@@ -897,6 +921,8 @@ def action_is_enabled(surface, params):
     outcome = params.get("outcome")
     kind = surface.get("type")
     if kind == "menu" and outcome == "accepted":
+        if params.get("continuation") == "settings:policy" and action_id == "back":
+            return True
         return any(
             item.get("disabled") is not True
             and (item.get("action") or {}).get("id") == action_id
@@ -1025,21 +1051,15 @@ def settings_response(request, policy):
     if action_id == "open-policy":
         return policy_menu(policy)
     if action_id == "open-confidence":
-        return form(
-            policy,
-            "Confidence",
-            "settings:confidence",
-            [
-                select_field(
-                    "confidence",
-                    "Preset",
-                    policy["confidence"],
-                    tuple(policy["confidencePresets"]),
-                )
-            ],
-            "set-confidence",
-            cancel_action_id="open-policy",
-        )
+        return policy_menu(policy)
+    if isinstance(action_id, str) and action_id.startswith("set-confidence:"):
+        confidence = action_id.removeprefix("set-confidence:")
+        if confidence not in policy["confidencePresets"]:
+            return error_notice(
+                policy, "Confidence must be one of the offered choices."
+            )
+        update(policy, confidence=confidence)
+        return policy_menu(policy)
     if action_id == "set-confidence":
         confidence = values.get("confidence")
         if confidence not in policy["confidencePresets"]:

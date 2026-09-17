@@ -566,6 +566,19 @@ impl ScriptedInteractionView {
             | ExtensionInteractionSurface::Form { .. }
             | ExtensionInteractionSurface::Notice { .. } => None,
         };
+        let action = action.or_else(|| {
+            (self.model_router_settings && self.request.continuation == "settings:policy").then(
+                || ExtensionInteractionAction {
+                    id: "back".to_string(),
+                    opens: None,
+                    host_action: None,
+                    label: Some("Back".to_string()),
+                    key_bindings: vec!["escape".to_string()],
+                    context: None,
+                    value: None,
+                },
+            )
+        });
         let Some(action) = action else {
             return false;
         };
