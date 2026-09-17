@@ -1418,6 +1418,8 @@ impl App {
                         .await?;
                 }
                 ThreadBufferedEvent::Request(request) => {
+                    self.pending_app_server_requests
+                        .note_server_request(&request);
                     self.enqueue_thread_request(target_thread_id, request)
                         .await?;
                 }
@@ -1726,9 +1728,12 @@ impl App {
             ThreadBufferedEvent::Notification(notification) => self
                 .chat_widget
                 .handle_server_notification(notification, Some(ReplayKind::ThreadSnapshot)),
-            ThreadBufferedEvent::Request(request) => self
-                .chat_widget
-                .handle_server_request(request, Some(ReplayKind::ThreadSnapshot)),
+            ThreadBufferedEvent::Request(request) => {
+                self.pending_app_server_requests
+                    .note_server_request(&request);
+                self.chat_widget
+                    .handle_server_request(request, Some(ReplayKind::ThreadSnapshot));
+            }
             ThreadBufferedEvent::HistoryEntryResponse(event) => {
                 self.chat_widget.handle_history_entry_response(event)
             }

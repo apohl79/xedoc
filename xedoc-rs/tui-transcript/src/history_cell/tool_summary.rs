@@ -99,20 +99,6 @@ impl HistoryCell for ToolCallCountSummaryCell {
         let mut summary = Vec::new();
         let mut file_detail_lines = Vec::new();
         if self.stats.files_edited > 0 {
-            let files = if self.stats.files_edited == 1 {
-                "file"
-            } else {
-                "files"
-            };
-            summary.push(format!("{} {files} edited", self.stats.files_edited).dim());
-            if self.stats.total_added > 0 || self.stats.total_removed > 0 {
-                summary.push(" (".dim());
-                summary.push(format!("+{}", self.stats.total_added).cl_green());
-                summary.push(" ".dim());
-                summary.push(format!("-{}", self.stats.total_removed).cl_red());
-                summary.push(")".dim());
-            }
-            summary.push(".".dim());
             let mut file_changes_by_path = HashMap::new();
             for change in &self.stats.file_changes {
                 let display_path = Path::new(&change.path)
@@ -120,10 +106,37 @@ impl HistoryCell for ToolCallCountSummaryCell {
                     .unwrap_or_else(|_| Path::new(&change.path))
                     .display()
                     .to_string();
-                file_changes_by_path.insert(display_path, change);
+                let entry = file_changes_by_path
+                    .entry(display_path)
+                    .or_insert((0usize, 0usize));
+                entry.0 = entry.0.saturating_add(change.added);
+                entry.1 = entry.1.saturating_add(change.removed);
             }
             let mut file_changes = file_changes_by_path.into_iter().collect::<Vec<_>>();
             file_changes.sort_by(|left, right| left.0.cmp(&right.0));
+            let (files_edited, total_added, total_removed) = if file_changes.is_empty() {
+                (
+                    self.stats.files_edited,
+                    self.stats.total_added,
+                    self.stats.total_removed,
+                )
+            } else {
+                (
+                    file_changes.len(),
+                    file_changes.iter().map(|(_, change)| change.0).sum(),
+                    file_changes.iter().map(|(_, change)| change.1).sum(),
+                )
+            };
+            let files = if files_edited == 1 { "file" } else { "files" };
+            summary.push(format!("{files_edited} {files} edited").dim());
+            if total_added > 0 || total_removed > 0 {
+                summary.push(" (".dim());
+                summary.push(format!("+{total_added}").cl_green());
+                summary.push(" ".dim());
+                summary.push(format!("-{total_removed}").cl_red());
+                summary.push(")".dim());
+            }
+            summary.push(".".dim());
             file_detail_lines.extend(file_changes.into_iter().enumerate().map(
                 |(index, (display_path, change))| {
                     Line::from(vec![
@@ -134,9 +147,9 @@ impl HistoryCell for ToolCallCountSummaryCell {
                         },
                         display_path.dim(),
                         " ".into(),
-                        format!("+{}", change.added).cl_green(),
+                        format!("+{}", change.0).cl_green(),
                         " ".into(),
-                        format!("-{}", change.removed).cl_red(),
+                        format!("-{}", change.1).cl_red(),
                     ])
                 },
             ));

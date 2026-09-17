@@ -565,11 +565,12 @@ impl SessionExtensionManager {
                 sleep(Duration::from_millis(100)).await;
                 continue;
             }
+            let target_connection_id = connection_ids[0];
             let (request_id, receiver) = self
                 .inner
                 .outgoing
                 .send_request_to_connections(
-                    Some(&connection_ids),
+                    Some(std::slice::from_ref(&target_connection_id)),
                     ServerRequestPayload::ExtensionInteractionRequest(params.clone()),
                     Some(thread_id),
                 )
