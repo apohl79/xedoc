@@ -187,6 +187,11 @@ struct DelayedApprovalRequest {
     features: Features,
 }
 
+struct QueuedScriptedInteraction {
+    request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
+    model_router_settings: bool,
+}
+
 #[derive(Clone)]
 struct ComposerRuntimeContext {
     model: String,
@@ -207,6 +212,7 @@ pub struct BottomPane {
     /// Stack of views displayed instead of the composer (e.g. popups/modals).
     view_stack: Vec<Box<dyn BottomPaneView>>,
     delayed_approval_requests: VecDeque<DelayedApprovalRequest>,
+    queued_scripted_interactions: VecDeque<QueuedScriptedInteraction>,
     last_composer_activity_at: Option<Instant>,
 
     app_event_tx: AppEventSender,
@@ -282,6 +288,7 @@ impl BottomPane {
             composer,
             view_stack: Vec::new(),
             delayed_approval_requests: VecDeque::new(),
+            queued_scripted_interactions: VecDeque::new(),
             last_composer_activity_at: None,
             app_event_tx,
             frame_requester: frame_requester.clone(),
@@ -1455,6 +1462,7 @@ impl BottomPane {
 
         let now = Instant::now();
         if !self.delayed_approval_requests.is_empty()
+            || !self.view_stack.is_empty()
             || self.approval_prompt_delay_remaining(now).is_some()
         {
             self.delayed_approval_requests
@@ -1511,29 +1519,69 @@ impl BottomPane {
         &mut self,
         request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
     ) {
-        self.pause_status_timer_for_modal();
-        self.set_composer_input_enabled(
-            /*enabled*/ false,
-            Some("Respond to the extension request to continue.".to_string()),
-        );
-        self.push_view(Box::new(ScriptedInteractionView::new(
-            request,
-            self.app_event_tx.clone(),
-        )));
+        self.push_scripted_interaction(request, /*model_router_settings*/ false);
     }
 
     pub fn push_model_router_settings_request(
         &mut self,
         request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
     ) {
+        self.push_scripted_interaction(request, /*model_router_settings*/ true);
+    }
+
+    fn push_scripted_interaction(
+        &mut self,
+        request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
+        model_router_settings: bool,
+    ) {
+        if !self.view_stack.is_empty() || !self.queued_scripted_interactions.is_empty() {
+            self.queued_scripted_interactions
+                .push_back(QueuedScriptedInteraction {
+                    request,
+                    model_router_settings,
+                });
+            return;
+        }
+        self.show_scripted_interaction(request, model_router_settings);
+    }
+
+    fn maybe_show_queued_scripted_interaction(&mut self) {
+        if !self.view_stack.is_empty() {
+            return;
+        }
+        let Some(QueuedScriptedInteraction {
+            request,
+            model_router_settings,
+        }) = self.queued_scripted_interactions.pop_front()
+        else {
+            return;
+        };
+        self.show_scripted_interaction(request, model_router_settings);
+    }
+
+    fn show_scripted_interaction(
+        &mut self,
+        request: xedoc_app_server_protocol::ExtensionInteractionRequestParams,
+        model_router_settings: bool,
+    ) {
         self.pause_status_timer_for_modal();
         self.set_composer_input_enabled(
             /*enabled*/ false,
-            Some("Respond to the model-router settings request to continue.".to_string()),
+            Some(
+                if model_router_settings {
+                    "Respond to the model-router settings request to continue."
+                } else {
+                    "Respond to the extension request to continue."
+                }
+                .to_string(),
+            ),
         );
-        self.push_view(Box::new(
-            ScriptedInteractionView::new_model_router_settings(request, self.app_event_tx.clone()),
-        ));
+        let view = if model_router_settings {
+            ScriptedInteractionView::new_model_router_settings(request, self.app_event_tx.clone())
+        } else {
+            ScriptedInteractionView::new(request, self.app_event_tx.clone())
+        };
+        self.push_view(Box::new(view));
     }
 
     pub fn push_mcp_server_elicitation_request(
@@ -1574,15 +1622,24 @@ impl BottomPane {
             !approval_overlay::matches_resolved_request(&delayed.request, request)
         });
         let delayed_changed = self.delayed_approval_requests.len() != delayed_len;
+        let queued_len = self.queued_scripted_interactions.len();
+        self.queued_scripted_interactions.retain(|queued| {
+            !matches!(
+                request,
+                ResolvedAppServerRequest::ExtensionInteraction { request_id }
+                    if request_id == &queued.request.request_id
+            )
+        });
+        let queued_changed = self.queued_scripted_interactions.len() != queued_len;
 
         if self.view_stack.is_empty() {
-            if delayed_changed {
+            if delayed_changed || queued_changed {
                 self.request_redraw();
             }
-            return delayed_changed;
+            return delayed_changed || queued_changed;
         }
 
-        let mut changed = delayed_changed;
+        let mut changed = delayed_changed || queued_changed;
         let mut completed_indices = Vec::new();
         for index in (0..self.view_stack.len()).rev() {
             let view = &mut self.view_stack[index];
@@ -1606,6 +1663,14 @@ impl BottomPane {
     }
 
     fn on_active_view_complete(&mut self) {
+        self.maybe_show_queued_scripted_interaction();
+        if !self.view_stack.is_empty() {
+            return;
+        }
+        self.maybe_show_delayed_approval_requests_at(Instant::now());
+        if !self.view_stack.is_empty() {
+            return;
+        }
         self.resume_status_timer_after_modal();
         self.set_composer_input_enabled(/*enabled*/ true, /*placeholder*/ None);
     }

@@ -8,6 +8,7 @@ from pathlib import Path
 from .targets import PackageInputs
 from .targets import PackageVariant
 from .targets import TargetSpec
+from .model_router_runtime import runtime_asset_name
 
 LAYOUT_VERSION = 1
 SESSION_CONTROL_LAYOUT_VERSION = 2
@@ -16,8 +17,18 @@ SESSION_CONTROL_NAME = "xedoc-session"
 MODEL_ROUTER_RESOURCE_SOURCE = (
     Path(__file__).resolve().parents[1] / "model-router" / "reference-router"
 )
+MODEL_ROUTER_EMBEDDER_SOURCE = MODEL_ROUTER_RESOURCE_SOURCE.with_name(
+    "reference-router-embedder.py"
+)
+MODEL_ROUTER_SEMANTIC_POLICY_SOURCE = MODEL_ROUTER_RESOURCE_SOURCE.with_name(
+    "reference-router.semantic-policy.json"
+)
 MODEL_ROUTER_POLICY_SOURCE = MODEL_ROUTER_RESOURCE_SOURCE.with_suffix(".policy.json")
 MODEL_ROUTER_RESOURCE_PATH = Path("model-router") / "reference-router"
+MODEL_ROUTER_EMBEDDER_PATH = Path("model-router") / "reference-router-embedder.py"
+MODEL_ROUTER_SEMANTIC_POLICY_PATH = (
+    Path("model-router") / "reference-router.semantic-policy.json"
+)
 MODEL_ROUTER_POLICY_PATH = Path("model-router") / "reference-router.policy.json"
 
 
@@ -84,9 +95,27 @@ def build_package_dir(
         raise RuntimeError(
             f"Missing packaged model-router policy: {MODEL_ROUTER_POLICY_SOURCE}"
         )
+    if not MODEL_ROUTER_EMBEDDER_SOURCE.is_file():
+        raise RuntimeError(
+            f"Missing packaged model-router embedder: {MODEL_ROUTER_EMBEDDER_SOURCE}"
+        )
+    if not MODEL_ROUTER_SEMANTIC_POLICY_SOURCE.is_file():
+        raise RuntimeError(
+            "Missing packaged model-router semantic policy: "
+            f"{MODEL_ROUTER_SEMANTIC_POLICY_SOURCE}"
+        )
     copy_executable(
         MODEL_ROUTER_RESOURCE_SOURCE,
         resources_dir / MODEL_ROUTER_RESOURCE_PATH,
+        is_windows=spec.is_windows,
+    )
+    shutil.copyfile(
+        MODEL_ROUTER_SEMANTIC_POLICY_SOURCE,
+        resources_dir / MODEL_ROUTER_SEMANTIC_POLICY_PATH,
+    )
+    copy_executable(
+        MODEL_ROUTER_EMBEDDER_SOURCE,
+        resources_dir / MODEL_ROUTER_EMBEDDER_PATH,
         is_windows=spec.is_windows,
     )
     shutil.copyfile(
@@ -106,6 +135,7 @@ def build_package_dir(
         "resourcesDir": "xedoc-resources",
         "modelRouterScript": f"xedoc-resources/{MODEL_ROUTER_RESOURCE_PATH}",
         "modelRouterPolicy": f"xedoc-resources/{MODEL_ROUTER_POLICY_PATH}",
+        "modelRouterRuntimeAsset": runtime_asset_name(version, spec.target),
         "pathDir": "xedoc-path",
     }
     write_json(package_dir / "xedoc-package.json", metadata)
@@ -147,6 +177,7 @@ def validate_package_dir(
         "resourcesDir": "xedoc-resources",
         "modelRouterScript": f"xedoc-resources/{MODEL_ROUTER_RESOURCE_PATH}",
         "modelRouterPolicy": f"xedoc-resources/{MODEL_ROUTER_POLICY_PATH}",
+        "modelRouterRuntimeAsset": runtime_asset_name(metadata["version"], spec.target),
         "pathDir": "xedoc-path",
     }
     for key, expected in expected_metadata.items():
@@ -159,10 +190,13 @@ def validate_package_dir(
         Path("bin") / variant.entrypoint_name(spec),
         Path("xedoc-path") / spec.rg_name,
         Path("xedoc-resources") / MODEL_ROUTER_RESOURCE_PATH,
+        Path("xedoc-resources") / MODEL_ROUTER_EMBEDDER_PATH,
+        Path("xedoc-resources") / MODEL_ROUTER_SEMANTIC_POLICY_PATH,
         Path("xedoc-resources") / MODEL_ROUTER_POLICY_PATH,
     ]
     executable_files = list(required_files)
     executable_files.remove(Path("xedoc-resources") / MODEL_ROUTER_POLICY_PATH)
+    executable_files.remove(Path("xedoc-resources") / MODEL_ROUTER_SEMANTIC_POLICY_PATH)
     if not spec.is_windows:
         executable_files.append(Path("xedoc-resources") / MODEL_ROUTER_RESOURCE_PATH)
 

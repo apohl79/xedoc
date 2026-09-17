@@ -502,6 +502,11 @@ local_package_metadata_field() {
     head -n 1
 }
 
+local_runtime_archive() {
+  asset="$1"
+  printf '%s/%s\n' "$(dirname "$LOCAL_ZIP")" "$asset"
+}
+
 prepare_local_package() {
   [ -n "$LOCAL_ZIP" ] || return 1
   [ -f "$LOCAL_ZIP" ] || die "Local package ZIP does not exist: $LOCAL_ZIP"
@@ -517,6 +522,7 @@ prepare_local_package() {
 
   local_version="$(local_package_metadata_field version)"
   local_target="$(local_package_metadata_field target)"
+  local_runtime_asset="$(local_package_metadata_field modelRouterRuntimeAsset)"
   [ -n "$local_version" ] ||
     die "Local package metadata is missing version: $LOCAL_ZIP"
   [ -n "$local_target" ] ||
@@ -692,6 +698,61 @@ install_zip_release() {
   mv "$stage_release" "$release_dir"
 }
 
+runtime_is_complete() {
+  local runtime_dir="$1"
+  local expected_target="$2"
+  local target
+
+  [ -f "$runtime_dir/model-router-runtime.json" ] &&
+    target="$(sed -n 's/.*"target":[[:space:]]*"\([^"]*\)".*/\1/p' \
+      "$runtime_dir/model-router-runtime.json" | head -n 1)" &&
+    [ "$target" = "$expected_target" ]
+}
+
+runtime_python() {
+  runtime_dir="$1"
+
+  if [ -x "$runtime_dir/python/python.exe" ]; then
+    printf '%s\n' "$runtime_dir/python/python.exe"
+  else
+    printf '%s\n' "$runtime_dir/python/bin/python3"
+  fi
+}
+
+install_router_runtime() {
+  release_dir="$1"
+  expected_target="$2"
+  archive_path="$3"
+  runtime_dir="$release_dir/xedoc-resources/model-router/runtime"
+  stage_runtime="$release_dir/xedoc-resources/model-router/.runtime.$$.staging"
+
+  runtime_is_complete "$runtime_dir" "$expected_target" && return
+
+  rm -rf "$stage_runtime"
+  mkdir -p "$stage_runtime"
+  unzip -q "$archive_path" -d "$stage_runtime"
+  runtime_is_complete "$stage_runtime" "$expected_target" ||
+    die "Model-router runtime archive is incomplete or targets another platform."
+  if [ -e "$runtime_dir" ] || [ -L "$runtime_dir" ]; then
+    rm -rf "$runtime_dir"
+  fi
+  mv "$stage_runtime" "$runtime_dir"
+}
+
+warm_router_runtime() {
+  release_dir="$1"
+  runtime_dir="$release_dir/xedoc-resources/model-router/runtime"
+  embedder="$release_dir/xedoc-resources/model-router/reference-router-embedder.py"
+  python="$(runtime_python "$runtime_dir")"
+
+  [ -x "$python" ] && [ -f "$embedder" ] || return
+  step "Starting model-router semantic runtime"
+  if ! "$python" "$embedder" "$runtime_dir" \
+    --start-daemon "$runtime_dir/embedder-daemon.json"; then
+    printf 'WARNING: Model-router semantic runtime did not start. Router diagnostics will report the failure.\n' >&2
+  fi
+}
+
 update_current_link() {
   release_dir="$1"
   tmp_link="$STANDALONE_ROOT/.current.$$"
@@ -763,6 +824,7 @@ tag="$(current_release_tag)"
 target="$(detect_target)"
 release_version="${tag#v}"
 asset="xedoc-$target-$release_version.zip"
+router_runtime_asset="xedoc-model-router-runtime-$target-$release_version.zip"
 release_name="$release_version-$target"
 release_dir="$RELEASES_DIR/$release_name"
 
@@ -771,6 +833,12 @@ if [ -n "$LOCAL_ZIP" ]; then
   step "Found local Xedoc package"
   printf 'Package:    %s\n' "$LOCAL_ZIP"
   printf 'SHA256:     %s\n' "$local_digest"
+  if [ -n "${local_runtime_asset:-}" ]; then
+    router_runtime_asset="$local_runtime_asset"
+    router_runtime_archive="$(local_runtime_archive "$router_runtime_asset")"
+    [ -f "$router_runtime_archive" ] ||
+      die "Local model-router runtime archive does not exist: $router_runtime_archive"
+  fi
 else
   download_url="$(release_url_for_asset "$tag" "$asset")"
   expected_digest="$(release_asset_digest "$tag" "$asset")"
@@ -779,6 +847,10 @@ else
   printf 'Asset:      %s\n' "$asset"
   printf 'SHA256:     %s\n' "$expected_digest"
   printf 'URL:        %s\n' "$download_url"
+  router_runtime_url="$(release_url_for_asset "$tag" "$router_runtime_asset")"
+  router_runtime_digest="$(release_asset_digest "$tag" "$router_runtime_asset")"
+  printf 'Model-router runtime: %s\n' "$router_runtime_asset"
+  printf 'Runtime SHA256:       %s\n' "$router_runtime_digest"
 fi
 printf 'Tag:        %s\n' "$tag"
 printf 'Target:     %s\n' "$target"
@@ -810,6 +882,19 @@ if [ -n "$LOCAL_ZIP" ] || ! release_dir_is_complete "$release_dir" "$release_nam
 
   step "Installing standalone package to $release_dir"
   install_zip_release "$release_dir" "$archive_path"
+fi
+
+if [ -n "${local_runtime_asset:-}" ] || [ -z "$LOCAL_ZIP" ]; then
+  if [ -n "$LOCAL_ZIP" ]; then
+    step "Installing local model-router runtime"
+  else
+    router_runtime_archive="$tmp_dir/$router_runtime_asset"
+    step "Downloading $router_runtime_asset"
+    download_file "$router_runtime_url" "$router_runtime_archive"
+    verify_archive_digest "$router_runtime_archive" "$router_runtime_digest"
+  fi
+  install_router_runtime "$release_dir" "$target" "$router_runtime_archive"
+  warm_router_runtime "$release_dir"
 fi
 
 update_current_link "$release_dir"

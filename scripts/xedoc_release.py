@@ -16,6 +16,8 @@ from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
 from xedoc_package.targets import default_target
 from xedoc_package.archive import write_archive
+from xedoc_package.model_router_runtime import build_runtime_archive
+from xedoc_package.model_router_runtime import runtime_asset_name
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -94,6 +96,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Archive output path. May be repeated. Defaults to a versioned "
             ".zip under --output-dir/version."
+        ),
+    )
+    parser.add_argument(
+        "--model-router-runtime-archive-output",
+        type=Path,
+        help=(
+            "Archive output for the separately installed semantic model-router "
+            "runtime. Defaults beside the CLI archive."
         ),
     )
     parser.add_argument(
@@ -286,6 +296,11 @@ def build_release(args: argparse.Namespace) -> None:
     archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
         output_dir / version / f"xedoc-{args.target}-{version}.zip"
     ]
+    runtime_archive_output = (
+        resolve_repo_path(args.model_router_runtime_archive_output)
+        if args.model_router_runtime_archive_output is not None
+        else output_dir / version / runtime_asset_name(version, args.target)
+    )
 
     package_args = [
         sys.executable,
@@ -333,6 +348,12 @@ def build_release(args: argparse.Namespace) -> None:
         )
     for archive_output in archive_outputs:
         write_archive(package_dir, archive_output, force=args.force)
+    build_runtime_archive(
+        spec,
+        version,
+        runtime_archive_output,
+        force=args.force,
+    )
 
     if not args.skip_github_release:
         publish_github_release(
@@ -341,7 +362,7 @@ def build_release(args: argparse.Namespace) -> None:
             tag=release_tag,
             title=version,
             target=release_target,
-            archive_outputs=archive_outputs,
+            archive_outputs=[*archive_outputs, runtime_archive_output],
             env=github_env,
             notes=generate_release_notes(
                 release_tag,
@@ -358,6 +379,7 @@ def build_release(args: argparse.Namespace) -> None:
     print(f"Package directory: {package_dir}")
     for archive_output in archive_outputs:
         print(f"Archive: {archive_output}")
+    print(f"Model-router runtime archive: {runtime_archive_output}")
 
 
 def build_cargo_release_binaries(

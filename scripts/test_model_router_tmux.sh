@@ -15,6 +15,8 @@ repo_root="$(cd -- "$script_dir/.." && pwd)"
 readonly repo_root
 readonly source_router="$repo_root/scripts/model-router/reference-router"
 readonly source_policy="$repo_root/scripts/model-router/reference-router.policy.json"
+readonly source_embedder="$repo_root/scripts/model-router/reference-router-embedder.py"
+readonly source_semantic_policy="$repo_root/scripts/model-router/reference-router.semantic-policy.json"
 readonly source_catalog="$repo_root/xedoc-rs/models-manager/models.json"
 readonly mock_server="$script_dir/model_router_tmux_responses_mock.py"
 readonly initial_model="gpt-5.6-luna"
@@ -27,11 +29,13 @@ readonly package_dir="$tmp_dir/package"
 readonly runtime_home="$tmp_dir/runtime-home"
 readonly artifact_dir="$tmp_dir/artifacts"
 readonly policy_path="$package_dir/xedoc-resources/model-router/reference-router.policy.json"
+readonly router_diagnostics="$package_dir/xedoc-resources/model-router/reference-router.diagnostics.jsonl"
 readonly request_log="$artifact_dir/responses.jsonl"
 readonly scenario_log="$artifact_dir/scenarios.tsv"
 readonly mock_port_file="$artifact_dir/mock-port"
 readonly hold_response_file="$artifact_dir/release-held-root"
 readonly state_db="$runtime_home/state_5.sqlite"
+readonly router_runtime="${XEDOC_TMUX_ROUTER_RUNTIME:-}"
 
 tmux_session=""
 mock_pid=""
@@ -74,6 +78,14 @@ trap 'cleanup "$?"' EXIT INT TERM HUP
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
+}
+
+runtime_python() {
+  if [[ -x "$router_runtime/python/python.exe" ]]; then
+    printf '%s\n' "$router_runtime/python/python.exe"
+  else
+    printf '%s\n' "$router_runtime/python/bin/python3"
+  fi
 }
 
 record_scenario() {
@@ -281,12 +293,13 @@ PY
 
 assert_script_conflict_protocol() {
   python3 - "$package_dir/xedoc-resources/model-router/reference-router" \
-    "$policy_path" <<'PY'
+    "$policy_path" "$router_runtime" <<'PY'
 import json
+import os
 import subprocess
 import sys
 
-router, policy_path = sys.argv[1:]
+router, policy_path, runtime = sys.argv[1:]
 request_number = 0
 
 
@@ -307,6 +320,7 @@ def call(method, params=None, context=None):
         text=True,
         capture_output=True,
         check=True,
+        env={**os.environ, "XEDOC_ROUTER_RUNTIME": runtime},
     )
     response = json.loads(completed.stdout)
     assert "error" not in response, response
@@ -465,6 +479,36 @@ assert actual == expected, f"Responses request route for {marker!r}: expected={e
 PY
 }
 
+assert_latest_router_decision() {
+  local expected_steering="$1"
+  local expected_prior_messages="$2"
+  python3 - "$router_diagnostics" "$expected_steering" "$expected_prior_messages" <<'PY'
+import json
+import sys
+
+path, expected_steering, expected_prior_messages = sys.argv[1:]
+records = [
+    json.loads(line)
+    for line in open(path, encoding="utf-8")
+    if line.strip()
+]
+decisions = [
+    record
+    for record in records
+    if record.get("event") == "routing_decision"
+]
+assert decisions, "no routing decision diagnostic"
+decision = decisions[-1]
+assert decision.get("turn", {}).get("active") is False, decision
+assert decision.get("steering") is (expected_steering == "true"), decision
+recent_message_count = decision.get("conversation", {}).get("recentMessageCount", 0)
+if expected_prior_messages == "yes":
+    assert recent_message_count > 0, decision
+else:
+    assert recent_message_count == 0, decision
+PY
+}
+
 assert_request_not_route() {
   local marker="$1"
   local forbidden_model="$2"
@@ -616,6 +660,42 @@ wait_for_request_marker() {
   fail "timed out waiting for Responses request marker: $marker"
 }
 
+request_count() {
+  wc -l <"$request_log"
+}
+
+wait_for_request_count() {
+  local expected="$1"
+  for _ in $(seq 1 300); do
+    if [[ "$(request_count)" -ge "$expected" ]]; then
+      return
+    fi
+    sleep 0.1
+  done
+  fail "timed out waiting for Responses request count: $expected"
+}
+
+assert_latest_request_route() {
+  local expected_model="$1"
+  local expected_effort="$2"
+  python3 - "$request_log" "$expected_model" "$expected_effort" <<'PY'
+import json
+import sys
+
+path, expected_model, expected_effort = sys.argv[1:]
+requests = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+matching = [
+    request
+    for request in requests
+    if request.get("client_metadata", {}).get("turn_id") != "session-name"
+]
+assert matching, "no routed Responses request"
+request = matching[-1]
+actual = (request.get("model"), (request.get("reasoning") or {}).get("effort"))
+assert actual == (expected_model, expected_effort), actual
+PY
+}
+
 start_mock() {
   python3 "$mock_server" --port-file "$mock_port_file" --request-log "$request_log" \
     --hold-response-file "$hold_response_file" \
@@ -632,10 +712,13 @@ prepare_package() {
   mkdir -p "$package_dir/bin" "$package_dir/xedoc-resources/model-router" "$package_dir/xedoc-path"
   cp "$binary" "$package_dir/bin/xedoc"
   cp "$source_router" "$package_dir/xedoc-resources/model-router/reference-router"
+  cp "$source_embedder" "$package_dir/xedoc-resources/model-router/reference-router-embedder.py"
+  cp "$source_semantic_policy" "$package_dir/xedoc-resources/model-router/reference-router.semantic-policy.json"
   cp "$source_policy" "$policy_path"
   chmod +x \
     "$package_dir/bin/xedoc" \
-    "$package_dir/xedoc-resources/model-router/reference-router"
+    "$package_dir/xedoc-resources/model-router/reference-router" \
+    "$package_dir/xedoc-resources/model-router/reference-router-embedder.py"
   cat >"$package_dir/xedoc-package.json" <<'JSON'
 {
   "layoutVersion": 1,
@@ -743,6 +826,7 @@ start_tui() {
   local args=(
     env
     "XEDOC_HOME=$runtime_home"
+    "XEDOC_ROUTER_RUNTIME=$router_runtime"
     OPENAI_API_KEY=router-e2e-key
     XEDOC_DISABLE_AUTO_UPDATE=1
     "$package_dir/bin/xedoc"
@@ -770,6 +854,7 @@ open_settings() {
   pane="$(capture_viewport)"
   if [[ "$pane" == *"Model Router Settings"* && "$pane" == *"Press enter to confirm"* ]]; then
     send_key Escape
+    wait_for_pane_absent "Model Router Settings"
   fi
   send_prompt "/model-router"
   wait_for_pane "Model Router Settings"
@@ -830,7 +915,7 @@ set_mode() {
   local mode="$1"
   local label="$2"
   open_settings
-  select_menu_item 0 "Routing mode"
+  select_menu_item 0 "Choose a setting, then apply your changes."
   set_select_value "Mode: $label" 5
   wait_for_pane "Mode: $mode"
   assert_policy "mode=$mode"
@@ -841,7 +926,7 @@ set_approval() {
   local approval="$1"
   local label="$2"
   open_settings
-  select_menu_item 2 "Approval prompts"
+  select_menu_item 2 "Choose a setting, then apply your changes."
   set_select_value "Approval prompts: $label" 3
   wait_for_pane "Approval prompts: $approval"
   assert_policy "approval=$approval"
@@ -852,7 +937,7 @@ set_session_mode() {
   local mode="$1"
   local label="$2"
   open_settings
-  select_menu_item 1 "Session routing mode"
+  select_menu_item 1 "Choose a setting for this session only."
   set_select_value "Session mode: $label" 6
   wait_for_pane "Session mode: $mode"
   assert_config_unchanged
@@ -860,15 +945,15 @@ set_session_mode() {
 
 set_feedback() {
   local expected="$1"
-  local label="off"
+  local persisted="off"
   if [[ "$expected" == "true" ]]; then
-    label="on"
+    persisted="on"
   fi
   open_settings
-  if [[ "$(capture_viewport)" != *"Routing feedback: $label"* ]]; then
-    select_menu_item 2 "Model router"
+  if [[ "$(capture_viewport)" != *"Routing feedback: $persisted"* ]]; then
+    select_menu_item 3 "Routing feedback: $persisted"
   fi
-  wait_for_pane "Routing feedback: $label"
+  wait_for_pane "Routing feedback: $persisted"
   assert_policy "feedback=$expected"
   assert_config_unchanged
 }
@@ -1275,10 +1360,44 @@ run_session_mode_override() {
   send_key Enter
   wait_for_request_marker "ROUTER_E2E_SESSION_OVERRIDE"
   await_turn
-  assert_request_route "ROUTER_E2E_SESSION_OVERRIDE" "gpt-5.6-sol" high
+  assert_request_route "ROUTER_E2E_SESSION_OVERRIDE" "gpt-5.6-terra" low
   assert_policy "mode=off"
   record_scenario session-mode-override \
     "session mode full overrode shared off mode and required approval"
+}
+
+run_steering_matrix() {
+  local seeded_model="gpt-5.6-terra"
+  local seeded_effort="low"
+  reset_policy
+  set_mode full Full
+  set_approval off Off
+  set_feedback true
+  start_tui
+
+  send_prompt "ROUTER_E2E_STEERING_SEED what are the current security review options"
+  wait_for_request_marker "ROUTER_E2E_STEERING_SEED"
+  await_turn
+  assert_request_route "ROUTER_E2E_STEERING_SEED" "$seeded_model" "$seeded_effort"
+  assert_latest_router_decision false no
+
+  local expected_requests
+  expected_requests=$(( $(request_count) + 1 ))
+  send_prompt "both"
+  wait_for_request_count "$expected_requests"
+  await_turn
+  assert_latest_request_route "$initial_model" "$initial_effort"
+  assert_latest_router_decision true yes
+
+  expected_requests=$(( $(request_count) + 1 ))
+  send_prompt \
+    "Please continue from the options above, choose the recommended one, and carry out the implementation in the active task."
+  wait_for_request_count "$expected_requests"
+  await_turn
+  assert_latest_request_route "$initial_model" "$initial_effort"
+  assert_latest_router_decision true yes
+  record_scenario steering-followups \
+    "completed-turn token and long semantic follow-ups retained the current route"
 }
 
 run_feature_disabled() {
@@ -1586,8 +1705,12 @@ main() {
   [[ -x "$binary" ]] || fail "XEDOC_TMUX_TEST_BIN is not executable: $binary"
   [[ -x "$source_router" ]] || fail "missing packaged reference router: $source_router"
   [[ -f "$source_policy" ]] || fail "missing packaged reference policy: $source_policy"
+  [[ -x "$source_embedder" ]] || fail "missing packaged semantic embedder: $source_embedder"
+  [[ -f "$source_semantic_policy" ]] || fail "missing packaged semantic policy: $source_semantic_policy"
   [[ -f "$source_catalog" ]] || fail "missing local model catalog: $source_catalog"
   [[ -f "$mock_server" ]] || fail "missing local Responses mock: $mock_server"
+  [[ -n "$router_runtime" ]] || fail "XEDOC_TMUX_ROUTER_RUNTIME must name an installed semantic runtime"
+  [[ -x "$(runtime_python)" ]] || fail "semantic runtime Python is missing"
   mkdir -p "$artifact_dir"
   : >"$request_log"
   tmux start-server
@@ -1605,10 +1728,17 @@ main() {
     finish_host_action_thread
     run_feature_disabled
     run_mode_matrix
+    run_steering_matrix
   elif [[ "$phase" == "session-override" ]]; then
     run_session_mode_override
     assert_config_unchanged
     printf 'PASS: session-scoped scripted model-router tmux acceptance\n'
+    return
+  elif [[ "$phase" == "steering" ]]; then
+    start_tui
+    run_steering_matrix
+    assert_config_unchanged
+    printf 'PASS: scripted model-router tmux steering acceptance\n'
     return
   elif [[ "$phase" == "post-modes" ]]; then
     start_tui
