@@ -800,7 +800,9 @@ runtime_manifest_files() {
         path = fields[1]
         digest = fields[2]
         sub(/".*$/, "", digest)
-        print path "|" digest
+        if (path !~ /(^|\/)__pycache__(\/|$)/ && path !~ /\.pyc$/) {
+          print path "|" digest
+        }
       }
     }
   ' "$manifest"
