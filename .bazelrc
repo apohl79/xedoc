@@ -170,6 +170,9 @@ build:argument-comment-lint --aspects=//tools/argument-comment-lint:lint_aspect.
 build:argument-comment-lint --output_groups=argument_comment_lint_checks
 build:argument-comment-lint --@rules_rust//rust/toolchain/channel=nightly
 
+# Select the registered stable Rust toolchain for local and RBE builds.
+common --@rules_rust//rust/toolchain/channel=stable
+
 # Rearrange caches on Windows so they're on the same volume as the checkout.
 common:ci-windows --config=ci-bazel
 common:ci-windows --build_metadata=TAG_os=windows
