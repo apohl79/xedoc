@@ -62,8 +62,8 @@ use crate::session_script_registry::SessionScriptRegistry;
 use crate::session_script_registry::send_deliveries;
 use crate::thread_state::ThreadStateManager;
 
-const SESSION_EXTENSION_INVOCATION_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
-const SESSION_EXTENSION_REQUEST_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 2);
+const SESSION_EXTENSION_INVOCATION_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 300);
+const SESSION_EXTENSION_REQUEST_ATTEMPT_TIMEOUT: Duration = SESSION_EXTENSION_INVOCATION_TIMEOUT;
 const APPROVAL_ACTION_SESSION: &str = "approve-session";
 const APPROVAL_ACTION_ALWAYS: &str = "approve-always";
 const APPROVAL_ACTION_DENY: &str = "deny";
