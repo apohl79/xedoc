@@ -585,12 +585,12 @@ def item(
     return {
         "id": identifier,
         "label": label,
-        "description": description,
         "action": action(
             action_id,
             host_action=host_action,
             bindings=bindings or ["enter"],
         ),
+        **({"description": description} if description else {}),
         **({"current": True} if current else {}),
     }
 
