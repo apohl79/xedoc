@@ -208,9 +208,7 @@ def daemon(runtime_dir: Path, state_path: Path) -> int:
                     and request.get("token") == shutdown_token
                 ):
                     response = {"stopped": True}
-                    threading.Thread(
-                        target=self.server.shutdown, daemon=True
-                    ).start()
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
                 else:
                     response = {"embeddings": embed(request_texts(request))}
             except (ValueError, json.JSONDecodeError) as error:
@@ -288,7 +286,9 @@ def stop_daemon(state_path: Path) -> int:
             if response.get("stopped") is not True:
                 raise RuntimeError("semantic embedder daemon rejected shutdown")
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
-        raise RuntimeError(f"failed to stop semantic embedder daemon: {error}") from error
+        raise RuntimeError(
+            f"failed to stop semantic embedder daemon: {error}"
+        ) from error
     state_path.unlink(missing_ok=True)
     return 0
 
