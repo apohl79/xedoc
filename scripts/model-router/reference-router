@@ -1537,6 +1537,7 @@ def decision(
     disposition,
     reason=None,
     summary=None,
+    feedback_enabled=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -1553,7 +1554,11 @@ def decision(
             "route": route if disposition in ("apply", "shadow") else None,
             "summary": summary,
             "feedback": {
-                "enabled": policy["feedback"],
+                "enabled": (
+                    policy["feedback"]
+                    if feedback_enabled is None
+                    else feedback_enabled
+                ),
                 "classification": category,
                 "confidence": confidence,
                 "confidenceMargin": margin,
@@ -1781,6 +1786,7 @@ def routing_decide(request, policy):
         selection,
         disposition,
         reason,
+        feedback_enabled=policy["feedback"] and mode != "off",
     )
     if should_shadow:
         result["decision"]["summary"] += " Shadow decision retained current route."
