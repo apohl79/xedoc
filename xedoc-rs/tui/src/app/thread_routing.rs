@@ -1228,6 +1228,15 @@ impl App {
                     .interactive_request_for_thread_request(thread_id, &request)
                     .await?
             {
+                let store = {
+                    let channel = self.ensure_thread_channel(thread_id);
+                    Arc::clone(&channel.store)
+                };
+                {
+                    let mut guard = store.lock().await;
+                    guard.active = true;
+                    guard.push_request(request.clone());
+                }
                 self.push_thread_interactive_request(interactive_request);
             }
             return Ok(());
