@@ -867,7 +867,7 @@ impl App {
 
     pub(super) async fn try_resolve_app_server_request(
         &mut self,
-        app_server: &AppServerSession,
+        app_server: &mut AppServerSession,
         thread_id: ThreadId,
         op: &AppCommand,
     ) -> Result<bool> {
@@ -884,6 +884,26 @@ impl App {
             .await
         {
             Ok(()) => {
+                if matches!(op, AppCommand::ExtensionInteractionResponse { .. }) {
+                    match app_server.session_extension_list(thread_id).await {
+                        Ok(response) => self.chat_widget.set_session_extension_commands(
+                            response
+                                .commands
+                                .into_iter()
+                                .map(|command| {
+                                    crate::bottom_pane::slash_commands::SessionExtensionCommand {
+                                        extension_id: command.extension_id,
+                                        name: command.name,
+                                        description: command.description,
+                                    }
+                                })
+                                .collect(),
+                        ),
+                        Err(error) => {
+                            tracing::debug!(%error, %thread_id, "failed to refresh session extension commands")
+                        }
+                    }
+                }
                 if ThreadEventStore::op_can_change_pending_replay_state(op) {
                     self.note_thread_outbound_op(thread_id, op).await;
                     self.refresh_pending_thread_approvals().await;

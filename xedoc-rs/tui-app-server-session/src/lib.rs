@@ -46,6 +46,8 @@ use xedoc_app_server_protocol::ReviewDelivery;
 use xedoc_app_server_protocol::ReviewStartParams;
 use xedoc_app_server_protocol::ReviewStartResponse;
 use xedoc_app_server_protocol::ReviewTarget;
+use xedoc_app_server_protocol::SessionExtensionListParams;
+use xedoc_app_server_protocol::SessionExtensionListResponse;
 use xedoc_app_server_protocol::SessionSource;
 use xedoc_app_server_protocol::SkillsListParams;
 use xedoc_app_server_protocol::SkillsListResponse;
@@ -1189,6 +1191,25 @@ impl AppServerSession {
             .request_typed(ClientRequest::SkillsList { request_id, params })
             .await
             .wrap_err("skills/list failed in TUI")
+    }
+
+    /// Fetches the approved session-extension commands after an interaction changes extension
+    /// state. The notification can race with TUI thread attachment, so callers use this as a
+    /// reliable post-approval refresh.
+    pub async fn session_extension_list(
+        &mut self,
+        thread_id: ThreadId,
+    ) -> Result<SessionExtensionListResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::SessionExtensionList {
+                request_id,
+                params: SessionExtensionListParams {
+                    thread_id: thread_id.to_string(),
+                },
+            })
+            .await
+            .map_err(|err| bootstrap_request_error("sessionExtension/list failed", err))
     }
 
     pub async fn reload_user_config(&mut self) -> Result<()> {
