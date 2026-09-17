@@ -1283,10 +1283,20 @@ fn field_label_and_description<'a>(
         ),
         (
             ExtensionInteractionField::Text {
-                label, description, ..
+                label,
+                description,
+                sensitive,
+                ..
             },
             FieldValue::Text(value),
-        ) => (format!("{label}: {value}"), description.as_deref()),
+        ) => {
+            let display_value = if *sensitive {
+                "•".repeat(value.chars().count())
+            } else {
+                value.clone()
+            };
+            (format!("{label}: {display_value}"), description.as_deref())
+        }
         (
             ExtensionInteractionField::ModelRoute {
                 label,

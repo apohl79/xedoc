@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "SessionScriptSession": {
+      "description": "Stable session fields a script may cache until the next replacement update.",
+      "properties": {
+        "cwd": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "cwd",
+        "sessionId",
+        "threadId"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "registrationId": {
+      "type": "string"
+    },
+    "revision": {
+      "format": "uint64",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "session": {
+      "$ref": "#/definitions/SessionScriptSession"
+    }
+  },
+  "required": [
+    "registrationId",
+    "revision",
+    "session"
+  ],
+  "title": "SessionScriptUpdatedNotification",
+  "type": "object"
+}

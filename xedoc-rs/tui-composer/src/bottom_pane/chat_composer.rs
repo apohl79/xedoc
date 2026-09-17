@@ -257,6 +257,7 @@ use super::skill_popup::MentionItem;
 use super::skill_popup::SkillPopup;
 use super::slash_commands::BuiltinCommandFlags;
 use super::slash_commands::ServiceTierCommand;
+use super::slash_commands::SessionExtensionCommand;
 use super::slash_commands::SlashCommandItem;
 use crate::bottom_pane::paste_burst::FlushResult;
 use crate::city_lights::CityLightsStylize;
@@ -396,6 +397,8 @@ pub enum InputResult {
     Command(SlashCommand),
     /// A bare model service-tier command parsed by the composer.
     ServiceTierCommand(ServiceTierCommand),
+    /// An approved session extension command and its trimmed argument text.
+    SessionExtensionCommand(SessionExtensionCommand, String),
     /// An inline slash command and its trimmed argument text.
     ///
     /// The `TextElement` ranges are rebased into the argument string, while any pending local
@@ -521,6 +524,7 @@ pub struct ChatComposer {
     plugins_command_enabled: bool,
     service_tier_commands_enabled: bool,
     service_tier_commands: Vec<ServiceTierCommand>,
+    session_extension_commands: Vec<SessionExtensionCommand>,
     mentions_v2_enabled: bool,
     goal_command_enabled: bool,
     personality_command_enabled: bool,
@@ -585,6 +589,7 @@ impl ChatComposer {
             self.draft.is_bash_mode,
             self.builtin_command_flags(),
             &self.service_tier_commands,
+            &self.session_extension_commands,
         )
     }
 
@@ -692,6 +697,7 @@ impl ChatComposer {
             plugins_command_enabled: false,
             service_tier_commands_enabled: false,
             service_tier_commands: Vec::new(),
+            session_extension_commands: Vec::new(),
             mentions_v2_enabled: false,
             goal_command_enabled: false,
             personality_command_enabled: false,
@@ -820,6 +826,12 @@ impl ChatComposer {
 
     pub fn set_service_tier_commands(&mut self, commands: Vec<ServiceTierCommand>) {
         self.service_tier_commands = commands;
+        self.sync_popups();
+    }
+
+    /// Replace the approved session extension commands available in this composer.
+    pub fn set_session_extension_commands(&mut self, commands: Vec<SessionExtensionCommand>) {
+        self.session_extension_commands = commands;
         self.sync_popups();
     }
 
@@ -3095,6 +3107,7 @@ impl ChatComposer {
                 | InputResult::Queued { .. }
                 | InputResult::Command(_)
                 | InputResult::ServiceTierCommand(_)
+                | InputResult::SessionExtensionCommand(_, _)
                 | InputResult::CommandWithArgs(_, _, _)
         ) {
             self.draft.textarea.enter_vim_normal_mode();
@@ -3280,6 +3293,9 @@ impl ChatComposer {
         Some(match command {
             SlashCommandItem::Builtin(cmd) => InputResult::Command(cmd),
             SlashCommandItem::ServiceTier(command) => InputResult::ServiceTierCommand(command),
+            SlashCommandItem::SessionExtension(command) => {
+                InputResult::SessionExtensionCommand(command, String::new())
+            }
         })
     }
 
@@ -3304,14 +3320,17 @@ impl ChatComposer {
         );
         let trimmed_rest = inline_command.rest.trim();
         args_elements = Self::trim_text_elements(inline_command.rest, trimmed_rest, args_elements);
-        let SlashCommandItem::Builtin(cmd) = command else {
-            return None;
-        };
-        Some(InputResult::CommandWithArgs(
-            cmd,
-            trimmed_rest.to_string(),
-            args_elements,
-        ))
+        match command {
+            SlashCommandItem::Builtin(cmd) => Some(InputResult::CommandWithArgs(
+                cmd,
+                trimmed_rest.to_string(),
+                args_elements,
+            )),
+            SlashCommandItem::SessionExtension(command) => Some(
+                InputResult::SessionExtensionCommand(command, trimmed_rest.to_string()),
+            ),
+            SlashCommandItem::ServiceTier(_) => None,
+        }
     }
 
     /// Expand pending placeholders and extract normalized inline-command args.
@@ -9172,6 +9191,9 @@ mod tests {
                 Some(CommandItem::ServiceTier(command)) => {
                     panic!("expected model command, got service tier {command:?}")
                 }
+                Some(CommandItem::SessionExtension(command)) => {
+                    panic!("expected model command, got session extension {command:?}")
+                }
                 None => panic!("no selected command for '/mo'"),
             },
             _ => panic!("slash popup not active after typing '/mo'"),
@@ -9254,6 +9276,9 @@ mod tests {
                 Some(CommandItem::ServiceTier(command)) => {
                     panic!("expected resume command, got service tier {command:?}")
                 }
+                Some(CommandItem::SessionExtension(command)) => {
+                    panic!("expected resume command, got session extension {command:?}")
+                }
                 None => panic!("no selected command for '/res'"),
             },
             _ => panic!("slash popup not active after typing '/res'"),
@@ -9307,6 +9332,9 @@ mod tests {
                 }
                 Some(CommandItem::ServiceTier(command)) => {
                     panic!("expected btw command, got service tier {command:?}")
+                }
+                Some(CommandItem::SessionExtension(command)) => {
+                    panic!("expected btw command, got session extension {command:?}")
                 }
                 None => panic!("no selected command for '/bt'"),
             },
@@ -9362,6 +9390,9 @@ mod tests {
                 Some(CommandItem::ServiceTier(command)) => {
                     panic!("expected side command, got service tier {command:?}")
                 }
+                Some(CommandItem::SessionExtension(command)) => {
+                    panic!("expected side command, got session extension {command:?}")
+                }
                 None => panic!("no selected command for '/si'"),
             },
             _ => panic!("slash popup not active after typing '/si'"),
@@ -9397,6 +9428,83 @@ mod tests {
                 name: "fast".to_string(),
                 description: "Fastest inference with increased plan usage".to_string(),
             })
+        );
+    }
+
+    #[test]
+    fn session_extension_slash_command_dispatches_trimmed_args_and_recalls_history() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Xedoc to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        composer.set_session_extension_commands(vec![SessionExtensionCommand {
+            extension_id: "com.example.review".to_string(),
+            name: "extension-review".to_string(),
+            description: "Review with the session extension".to_string(),
+        }]);
+        let input = "/extension-review   inspect this  ";
+        type_chars_humanlike(&mut composer, &input.chars().collect::<Vec<_>>());
+
+        let (result, _needs_redraw) =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(
+            result,
+            InputResult::SessionExtensionCommand(
+                SessionExtensionCommand {
+                    extension_id: "com.example.review".to_string(),
+                    name: "extension-review".to_string(),
+                    description: "Review with the session extension".to_string(),
+                },
+                "inspect this".to_string(),
+            )
+        );
+        composer.record_pending_slash_command_history();
+        let (recalled, _needs_redraw) =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(recalled, InputResult::None);
+        assert_eq!(composer.current_text(), input.trim());
+    }
+
+    #[test]
+    fn bare_session_extension_slash_command_has_empty_args() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            /*has_input_focus*/ true,
+            sender,
+            /*enhanced_keys_supported*/ false,
+            "Ask Xedoc to do anything".to_string(),
+            /*disable_paste_burst*/ false,
+        );
+        composer.set_session_extension_commands(vec![SessionExtensionCommand {
+            extension_id: "com.example.review".to_string(),
+            name: "extension-review".to_string(),
+            description: "Review with the session extension".to_string(),
+        }]);
+        type_chars_humanlike(
+            &mut composer,
+            &"/extension-review".chars().collect::<Vec<_>>(),
+        );
+
+        let (result, _needs_redraw) =
+            composer.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(
+            result,
+            InputResult::SessionExtensionCommand(
+                SessionExtensionCommand {
+                    extension_id: "com.example.review".to_string(),
+                    name: "extension-review".to_string(),
+                    description: "Review with the session extension".to_string(),
+                },
+                String::new(),
+            )
         );
     }
 
@@ -9459,6 +9567,9 @@ mod tests {
             }
             InputResult::ServiceTierCommand(command) => {
                 panic!("expected init command, got service tier {command:?}")
+            }
+            InputResult::SessionExtensionCommand(command, _) => {
+                panic!("expected init command, got session extension {command:?}")
             }
             InputResult::Submitted { text, .. } => {
                 panic!("expected command dispatch, but composer submitted literal text: {text}")
@@ -9972,6 +10083,9 @@ mod tests {
             InputResult::ServiceTierCommand(command) => {
                 panic!("expected diff command, got service tier {command:?}")
             }
+            InputResult::SessionExtensionCommand(command, _) => {
+                panic!("expected diff command, got session extension {command:?}")
+            }
             InputResult::Submitted { text, .. } => {
                 panic!("expected command dispatch after Tab completion, got literal submit: {text}")
             }
@@ -10173,6 +10287,9 @@ mod tests {
             }
             InputResult::ServiceTierCommand(command) => {
                 panic!("expected mention command, got service tier {command:?}")
+            }
+            InputResult::SessionExtensionCommand(command, _) => {
+                panic!("expected mention command, got session extension {command:?}")
             }
             InputResult::Submitted { text, .. } => {
                 panic!("expected command dispatch, but composer submitted literal text: {text}")

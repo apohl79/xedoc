@@ -257,6 +257,30 @@ pub(crate) async fn respond_model_router_settings(
         .wrap_err("modelRouter/settings/respond failed in TUI")
 }
 
+pub(crate) async fn invoke_session_extension_command(
+    request_handle: AppServerRequestHandle,
+    thread_id: ThreadId,
+    extension_id: String,
+    command: String,
+    arguments: Vec<String>,
+) -> Result<xedoc_app_server_protocol::SessionExtensionCommandInvokeResponse> {
+    request_handle
+        .request_typed(ClientRequest::SessionExtensionCommandInvoke {
+            request_id: RequestId::String(format!(
+                "tui-session-extension-command-invoke-{}",
+                Uuid::new_v4()
+            )),
+            params: xedoc_app_server_protocol::SessionExtensionCommandInvokeParams {
+                thread_id: thread_id.to_string(),
+                extension_id,
+                command,
+                arguments,
+            },
+        })
+        .await
+        .wrap_err("sessionExtension/command/invoke failed in TUI")
+}
+
 pub(crate) async fn read_token_usage_optimizer_report(
     request_handle: AppServerRequestHandle,
     days: Option<u32>,

@@ -18,6 +18,23 @@
   "hooks": "./hooks.json",
   "mcpServers": "./.mcp.json",
   "apps": "./.app.json",
+  "extensions": [
+    {
+      "id": "signal",
+      "entrypoint": "./extensions/signal-bridge",
+      "commands": [
+        {
+          "name": "signal",
+          "description": "Configure or control the Signal bridge"
+        }
+      ],
+      "requestedCapabilities": [
+        "session.observe",
+        "userInput.send",
+        "prompt.requestUserInput.respond"
+      ]
+    }
+  ],
   "interface": {
     "displayName": "Plugin Display Name",
     "shortDescription": "Short description for subtitle",
@@ -65,6 +82,17 @@
 - `hooks` (`string`): Hook config path.
 - `mcpServers` (`string` or `object`): MCP config path, or an object whose keys are MCP server names and whose values are MCP server config objects.
 - `apps` (`string`): App manifest path for plugin integrations.
+- `extensions` (`array`): Host-discoverable session extension declarations. Entries are
+  metadata only; Xedoc does not execute an entrypoint while loading a manifest.
+  - `id` (`string`): Stable ASCII identifier using letters, digits, `-`, or `_`.
+  - `entrypoint` (`string`): Entrypoint path relative to the plugin root. It must begin with
+    `./` and must not contain `..` or escape the plugin root.
+  - `commands` (`array`): Optional slash commands exposed after host approval.
+    - `name` (`string`): Command name without `/`, using the same identifier rules as `id`.
+    - `description` (`string`): Non-empty user-facing command description.
+  - `requestedCapabilities` (`array` of `string`): Capabilities the extension asks the host
+    to review and grant. Values must be non-empty and contain no whitespace or control
+    characters.
 - `interface` (`object`): Interface/UX metadata block for plugin presentation.
 
 `mcpServers` may be declared as a companion file path:

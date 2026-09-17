@@ -2339,11 +2339,19 @@ async fn record_token_usage_info_notifies_extension_contributors() {
     };
 
     session
-        .record_token_usage_info(&turn_context, Some(&first_usage))
+        .record_token_usage_info_with_response_id(
+            &turn_context,
+            /*response_id*/ None,
+            Some(&first_usage),
+        )
         .await
         .expect("first usage should be recorded");
     session
-        .record_token_usage_info(&turn_context, Some(&second_usage))
+        .record_token_usage_info_with_response_id(
+            &turn_context,
+            /*response_id*/ None,
+            Some(&second_usage),
+        )
         .await
         .expect("second usage should be recorded");
 
@@ -5078,6 +5086,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_packaged_zsh() {
         user_shell_override: None,
     };
 
+    let (tx_sub, _rx_sub) = async_channel::unbounded();
     let (tx_event, _rx_event) = async_channel::unbounded();
     let (agent_status_tx, _agent_status_rx) = watch::channel(AgentStatus::PendingInit);
     let plugins_manager = Arc::new(PluginsManager::new(config.xedoc_home.to_path_buf()));
@@ -5096,6 +5105,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_packaged_zsh() {
         auth_manager,
         models_manager,
         Arc::new(ExecPolicyManager::default()),
+        tx_sub,
         tx_event,
         agent_status_tx,
         InitialHistory::New,
@@ -5365,7 +5375,11 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         active_turn: Mutex::new(None),
         input_queue: super::input_queue::InputQueue::new(),
         model_router_ab: Mutex::new(super::ab_pairs::AbPairRuntime::default()),
+        model_router_script_cancellation_token: Mutex::new(CancellationToken::new()),
         model_router_decision_ids: Mutex::new(HashMap::new()),
+        pending_scripted_interactions: Mutex::new(HashMap::new()),
+        scripted_interaction_responses: Mutex::new(HashMap::new()),
+        sub_agent_change_totals: Mutex::new(Default::default()),
         services,
         next_internal_sub_id: AtomicU64::new(0),
     };
@@ -5446,6 +5460,7 @@ async fn make_session_with_config_and_rx(
         user_shell_override: None,
     };
 
+    let (tx_sub, _rx_sub) = async_channel::unbounded();
     let (tx_event, rx_event) = async_channel::unbounded();
     let (agent_status_tx, _agent_status_rx) = watch::channel(AgentStatus::PendingInit);
     let plugins_manager = Arc::new(PluginsManager::new(config.xedoc_home.to_path_buf()));
@@ -5465,6 +5480,7 @@ async fn make_session_with_config_and_rx(
         auth_manager,
         models_manager,
         Arc::new(ExecPolicyManager::default()),
+        tx_sub,
         tx_event,
         agent_status_tx,
         InitialHistory::New,
@@ -5548,6 +5564,7 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
         user_shell_override: None,
     };
 
+    let (tx_sub, _rx_sub) = async_channel::unbounded();
     let (tx_event, rx_event) = async_channel::unbounded();
     let (agent_status_tx, _agent_status_rx) = watch::channel(AgentStatus::PendingInit);
     let plugins_manager = Arc::new(PluginsManager::new(config.xedoc_home.to_path_buf()));
@@ -5567,6 +5584,7 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
         auth_manager,
         models_manager,
         Arc::new(ExecPolicyManager::default()),
+        tx_sub,
         tx_event,
         agent_status_tx,
         initial_history,
@@ -7211,7 +7229,11 @@ where
         active_turn: Mutex::new(None),
         input_queue: super::input_queue::InputQueue::new(),
         model_router_ab: Mutex::new(super::ab_pairs::AbPairRuntime::default()),
+        model_router_script_cancellation_token: Mutex::new(CancellationToken::new()),
         model_router_decision_ids: Mutex::new(HashMap::new()),
+        pending_scripted_interactions: Mutex::new(HashMap::new()),
+        scripted_interaction_responses: Mutex::new(HashMap::new()),
+        sub_agent_change_totals: Mutex::new(Default::default()),
         services,
         next_internal_sub_id: AtomicU64::new(0),
     });

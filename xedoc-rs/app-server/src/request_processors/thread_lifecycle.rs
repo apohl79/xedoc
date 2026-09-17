@@ -1,4 +1,5 @@
 use super::*;
+use crate::session_script_registry::SessionScriptRegistry;
 use xedoc_protocol::config_types::MultiAgentMode;
 
 pub(super) const THREAD_UNLOADING_DELAY: Duration = Duration::from_secs(30 * 60);
@@ -7,6 +8,7 @@ pub(super) const THREAD_UNLOADING_DELAY: Duration = Duration::from_secs(30 * 60)
 pub(super) struct ListenerTaskContext {
     pub(super) thread_manager: Arc<ThreadManager>,
     pub(super) thread_state_manager: ThreadStateManager,
+    pub(super) session_script_registry: SessionScriptRegistry,
     pub(super) outgoing: Arc<OutgoingMessageSender>,
     pub(super) pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
     pub(super) thread_watch_manager: ThreadWatchManager,
@@ -186,6 +188,60 @@ pub(super) async fn ensure_conversation_listener(
     Ok(EnsureConversationListenerResult::Attached)
 }
 
+#[expect(
+    clippy::await_holding_invalid_type,
+    reason = "listener subscription must be serialized against pending unloads"
+)]
+pub(super) async fn ensure_session_script_listener(
+    listener_task_context: ListenerTaskContext,
+    conversation_id: ThreadId,
+    connection_id: ConnectionId,
+) -> Result<EnsureConversationListenerResult, JSONRPCErrorError> {
+    let conversation = match listener_task_context
+        .thread_manager
+        .get_thread(conversation_id)
+        .await
+    {
+        Ok(conversation) => conversation,
+        Err(_) => {
+            return Err(invalid_request(format!(
+                "thread not found: {conversation_id}"
+            )));
+        }
+    };
+    let thread_state = {
+        let pending_thread_unloads = listener_task_context.pending_thread_unloads.lock().await;
+        if pending_thread_unloads.contains(&conversation_id) {
+            return Err(invalid_request(format!(
+                "thread {conversation_id} is closing; retry after the thread is closed"
+            )));
+        }
+        let Some(thread_state) = listener_task_context
+            .thread_state_manager
+            .try_add_session_script_connection(conversation_id, connection_id)
+            .await
+        else {
+            return Ok(EnsureConversationListenerResult::ConnectionClosed);
+        };
+        thread_state
+    };
+    if let Err(error) = ensure_listener_task_running(
+        listener_task_context.clone(),
+        conversation_id,
+        conversation,
+        thread_state,
+    )
+    .await
+    {
+        listener_task_context
+            .thread_state_manager
+            .remove_session_script_connection(conversation_id, connection_id)
+            .await;
+        return Err(error);
+    }
+    Ok(EnsureConversationListenerResult::Attached)
+}
+
 pub(super) fn log_listener_attach_result(
     result: Result<EnsureConversationListenerResult, JSONRPCErrorError>,
     thread_id: ThreadId,
@@ -266,6 +322,7 @@ pub(super) async fn ensure_listener_task_running(
         outgoing,
         thread_manager,
         thread_state_manager,
+        session_script_registry,
         pending_thread_unloads,
         thread_watch_manager,
         thread_list_state_permit,
@@ -338,6 +395,8 @@ pub(super) async fn ensure_listener_task_running(
                         conversation.clone(),
                         thread_manager.clone(),
                         thread_outgoing,
+                        session_script_registry.clone(),
+                        outgoing_for_task.clone(),
                         thread_state.clone(),
                         thread_watch_manager.clone(),
                         thread_list_state_permit.clone(),

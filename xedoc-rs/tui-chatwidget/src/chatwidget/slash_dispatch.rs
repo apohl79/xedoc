@@ -11,8 +11,9 @@ use crate::app_event::ThreadGoalSetMode;
 use crate::bottom_pane::prompt_args::parse_slash_name;
 use crate::bottom_pane::slash_commands::BuiltinCommandFlags;
 use crate::bottom_pane::slash_commands::ServiceTierCommand;
+use crate::bottom_pane::slash_commands::SessionExtensionCommand;
 use crate::bottom_pane::slash_commands::SlashCommandItem;
-use crate::bottom_pane::slash_commands::find_slash_command;
+use crate::bottom_pane::slash_commands::find_slash_command_with_session_extensions;
 use crate::goal_display::GOAL_USAGE;
 use xedoc_config::types::ToolCallRenderingMode;
 
@@ -66,6 +67,39 @@ impl ChatWidget {
             return;
         }
         self.toggle_service_tier_from_ui(command);
+        self.bottom_pane.record_pending_slash_command_history();
+    }
+
+    pub(super) fn handle_session_extension_command_dispatch(
+        &mut self,
+        command: SessionExtensionCommand,
+        arguments: String,
+    ) {
+        if self.active_side_conversation {
+            self.add_error_message(format!(
+                "'/{}' is unavailable in side conversations. {SIDE_SLASH_COMMAND_UNAVAILABLE_HINT}",
+                command.name
+            ));
+            self.bottom_pane.drain_pending_submission_state();
+            self.bottom_pane.record_pending_slash_command_history();
+            return;
+        }
+        let Some(thread_id) = self.thread_id else {
+            self.add_error_message(format!(
+                "'/{}' is unavailable before the session starts.",
+                command.name
+            ));
+            self.bottom_pane.drain_pending_submission_state();
+            self.bottom_pane.record_pending_slash_command_history();
+            return;
+        };
+        self.app_event_tx
+            .send(AppEvent::InvokeSessionExtensionCommand {
+                thread_id,
+                extension_id: command.extension_id,
+                command: command.name,
+                arguments: arguments.split_whitespace().map(str::to_string).collect(),
+            });
         self.bottom_pane.record_pending_slash_command_history();
     }
 
@@ -938,9 +972,12 @@ impl ChatWidget {
         }
 
         let service_tier_commands = self.current_model_service_tier_commands();
-        let Some(command) =
-            find_slash_command(name, self.builtin_command_flags(), &service_tier_commands)
-        else {
+        let Some(command) = find_slash_command_with_session_extensions(
+            name,
+            self.builtin_command_flags(),
+            &service_tier_commands,
+            &self.session_extension_commands,
+        ) else {
             self.add_info_message(
                 format!(
                     r#"Unrecognized command '/{name}'. Type "/" for a list of supported commands."#
@@ -960,6 +997,10 @@ impl ChatWidget {
                     self.handle_service_tier_command_dispatch(command);
                     QueueDrain::Continue
                 }
+                SlashCommandItem::SessionExtension(command) => {
+                    self.handle_session_extension_command_dispatch(command, String::new());
+                    QueueDrain::Continue
+                }
             };
         }
 
@@ -973,15 +1014,22 @@ impl ChatWidget {
             });
             return QueueDrain::Stop;
         }
-        let SlashCommandItem::Builtin(cmd) = command else {
-            self.submit_user_message(UserMessage {
-                text,
-                local_images,
-                remote_image_urls,
-                text_elements,
-                mention_bindings,
-            });
-            return QueueDrain::Stop;
+        let cmd = match command {
+            SlashCommandItem::Builtin(cmd) => cmd,
+            SlashCommandItem::SessionExtension(command) => {
+                self.handle_session_extension_command_dispatch(command, rest.to_string());
+                return QueueDrain::Continue;
+            }
+            SlashCommandItem::ServiceTier(_) => {
+                self.submit_user_message(UserMessage {
+                    text,
+                    local_images,
+                    remote_image_urls,
+                    text_elements,
+                    mention_bindings,
+                });
+                return QueueDrain::Stop;
+            }
         };
 
         let trimmed_start = rest.trim_start();

@@ -740,6 +740,7 @@ async fn load_plugin(
         manifest_name: None,
         plugin_namespace: None,
         manifest_description: None,
+        extensions: Vec::new(),
         root,
         enabled: plugin.enabled,
         skill_roots: Vec::new(),
@@ -790,6 +791,7 @@ async fn load_plugin(
         } => {
             loaded_plugin.manifest_name = Some(manifest.display_name().to_string());
             loaded_plugin.manifest_description = manifest.description.clone();
+            loaded_plugin.extensions = manifest.extensions.clone();
             loaded_plugin.skill_roots = plugin_skill_roots(&plugin_root, manifest_paths);
             let resolved_skills = load_plugin_skills(
                 &plugin_root,

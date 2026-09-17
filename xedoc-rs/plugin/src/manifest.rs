@@ -54,8 +54,31 @@ pub struct PluginManifest<Resource> {
     pub version: Option<String>,
     pub description: Option<String>,
     pub keywords: Vec<String>,
+    pub extensions: Vec<PluginManifestExtension<Resource>>,
     pub paths: PluginManifestPaths<Resource>,
     pub interface: Option<PluginManifestInterface<Resource>>,
+}
+
+/// Declares one host-discoverable session extension without activating it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginManifestExtension<Resource> {
+    /// Stable identifier used to address this extension.
+    pub id: String,
+    /// Entrypoint resource resolved relative to the plugin root.
+    pub entrypoint: Resource,
+    /// Slash commands exposed after the host approves the extension.
+    pub commands: Vec<PluginManifestExtensionCommand>,
+    /// Capabilities requested by the extension for host approval.
+    pub requested_capabilities: Vec<String>,
+}
+
+/// Describes one slash command declared by a plugin extension.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginManifestExtensionCommand {
+    /// Command name without the leading slash.
+    pub name: String,
+    /// User-facing description shown during command discovery and approval.
+    pub description: String,
 }
 
 /// Component resources declared by a plugin manifest.
@@ -145,6 +168,7 @@ impl<Resource> PluginManifest<Resource> {
             version,
             description,
             keywords,
+            extensions,
             paths,
             interface,
         } = self;
@@ -222,6 +246,23 @@ impl<Resource> PluginManifest<Resource> {
             version,
             description,
             keywords,
+            extensions: extensions
+                .into_iter()
+                .map(|extension| {
+                    let PluginManifestExtension {
+                        id,
+                        entrypoint,
+                        commands,
+                        requested_capabilities,
+                    } = extension;
+                    Ok(PluginManifestExtension {
+                        id,
+                        entrypoint: map(entrypoint)?,
+                        commands,
+                        requested_capabilities,
+                    })
+                })
+                .collect::<Result<Vec<_>, Error>>()?,
             paths: PluginManifestPaths {
                 skills: skills
                     .into_iter()

@@ -205,6 +205,8 @@ pub enum ExtensionInteractionField {
         description: Option<String>,
         value: String,
         max_bytes: u32,
+        #[serde(default)]
+        sensitive: bool,
     },
     #[schemars(rename_all = "camelCase")]
     ModelRoute {

@@ -512,6 +512,30 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadUnsubscribeResponse,
     },
+    #[experimental("script/register")]
+    ScriptRegister => "script/register" {
+        params: v2::SessionScriptRegisterParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::SessionScriptRegisterResponse,
+    },
+    #[experimental("script/unregister")]
+    ScriptUnregister => "script/unregister" {
+        params: v2::SessionScriptUnregisterParams,
+        serialization: None,
+        response: v2::SessionScriptUnregisterResponse,
+    },
+    #[experimental("script/read")]
+    ScriptRead => "script/read" {
+        params: v2::SessionScriptReadParams,
+        serialization: None,
+        response: v2::SessionScriptReadResponse,
+    },
+    #[experimental("script/respond")]
+    ScriptRespond => "script/respond" {
+        params: v2::SessionScriptRespondParams,
+        serialization: None,
+        response: v2::SessionScriptRespondResponse,
+    },
     #[experimental("thread/increment_elicitation")]
     /// Increment the thread-local out-of-band elicitation counter.
     ///
@@ -834,6 +858,18 @@ client_request_definitions! {
         params: v2::ModelRouterReportOpenParams,
         serialization: global("model-router-report"),
         response: v2::ModelRouterReportOpenResponse,
+    },
+    #[experimental("sessionExtension/list")]
+    SessionExtensionList => "sessionExtension/list" {
+        params: v2::SessionExtensionListParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::SessionExtensionListResponse,
+    },
+    #[experimental("sessionExtension/command/invoke")]
+    SessionExtensionCommandInvoke => "sessionExtension/command/invoke" {
+        params: v2::SessionExtensionCommandInvokeParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::SessionExtensionCommandInvokeResponse,
     },
     ModelProviderApiKeySet => "modelProvider/apiKey/set" {
         params: v2::ModelProviderApiKeySetParams,
@@ -1522,6 +1558,16 @@ server_notification_definitions! {
     ThreadDeleted => "thread/deleted" (v2::ThreadDeletedNotification),
     ThreadUnarchived => "thread/unarchived" (v2::ThreadUnarchivedNotification),
     ThreadClosed => "thread/closed" (v2::ThreadClosedNotification),
+    #[experimental("script/sessionUpdated")]
+    ScriptSessionUpdated => "script/sessionUpdated" (v2::SessionScriptUpdatedNotification),
+    #[experimental("script/promptOpened")]
+    ScriptPromptOpened => "script/promptOpened" (v2::SessionScriptPromptOpenedNotification),
+    #[experimental("script/promptClosed")]
+    ScriptPromptClosed => "script/promptClosed" (v2::SessionScriptPromptClosedNotification),
+    #[experimental("script/resyncRequired")]
+    ScriptResyncRequired => "script/resyncRequired" (v2::SessionScriptResyncRequiredNotification),
+    #[experimental("sessionExtension/commandsUpdated")]
+    SessionExtensionCommandsUpdated => "sessionExtension/commandsUpdated" (v2::SessionExtensionCommandsUpdatedNotification),
     SkillsChanged => "skills/changed" (v2::SkillsChangedNotification),
     ThreadNameUpdated => "thread/name/updated" (v2::ThreadNameUpdatedNotification),
     ThreadGoalUpdated => "thread/goal/updated" (v2::ThreadGoalUpdatedNotification),

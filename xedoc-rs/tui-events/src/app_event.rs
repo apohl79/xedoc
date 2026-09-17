@@ -666,6 +666,14 @@ pub enum AppEvent {
         service_tier: Option<String>,
     },
 
+    /// Invoke one approved slash command from a session extension.
+    InvokeSessionExtensionCommand {
+        thread_id: ThreadId,
+        extension_id: String,
+        command: String,
+        arguments: Vec<String>,
+    },
+
     /// Open the reasoning selection popup after picking a model.
     OpenReasoningPopup {
         model: ModelPreset,

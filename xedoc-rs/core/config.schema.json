@@ -2767,6 +2767,75 @@
       ],
       "type": "string"
     },
+    "SessionScriptCapabilityToml": {
+      "description": "A capability that the host may grant to a configured session script.",
+      "enum": [
+        "userInput.send",
+        "prompt.requestUserInput.respond"
+      ],
+      "type": "string"
+    },
+    "SessionScriptConfigToml": {
+      "additionalProperties": false,
+      "description": "One host-managed script that may attach to a loaded session.",
+      "properties": {
+        "capabilities": {
+          "default": [],
+          "description": "Capabilities that the host may grant when this script registers.",
+          "items": {
+            "$ref": "#/definitions/SessionScriptCapabilityToml"
+          },
+          "type": "array"
+        },
+        "command": {
+          "description": "Direct-exec argv for the script. The host never evaluates this through a shell.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable host-owned script identifier.",
+          "type": "string"
+        },
+        "response_timeout_ms": {
+          "default": 10000,
+          "description": "Maximum time the script may exclusively hold a request-user-input prompt.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "subscriptions": {
+          "default": [],
+          "description": "Notifications that the host may deliver to this script.",
+          "items": {
+            "$ref": "#/definitions/SessionScriptSubscriptionToml"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "command",
+        "id"
+      ],
+      "type": "object"
+    },
+    "SessionScriptSubscriptionToml": {
+      "description": "A notification class that the host may deliver to a configured session script.",
+      "enum": [
+        "modelResponseDeltas",
+        "modelResponseCompleted",
+        "turnCompleted",
+        "sessionUpdates",
+        "prompts.requestUserInput",
+        "prompts.extensionInteraction",
+        "prompts.commandExecutionApproval",
+        "prompts.fileChangeApproval",
+        "prompts.permissionsApproval",
+        "prompts.mcpElicitation"
+      ],
+      "type": "string"
+    },
     "ShellEnvironmentPolicyInherit": {
       "oneOf": [
         {
@@ -5411,6 +5480,14 @@
     "service_tier": {
       "description": "Optional explicit service tier request id for new turns (for example `default`, `priority`, or `flex`; legacy `fast` also works).",
       "type": "string"
+    },
+    "session_scripts": {
+      "default": [],
+      "description": "Host-managed persistent scripts allowed to observe one loaded session.",
+      "items": {
+        "$ref": "#/definitions/SessionScriptConfigToml"
+      },
+      "type": "array"
     },
     "shell_environment_policy": {
       "allOf": [

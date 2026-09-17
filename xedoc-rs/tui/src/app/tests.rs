@@ -1622,6 +1622,7 @@ async fn sub_agent_activity_caches_active_agent_display_metadata() -> Result<()>
                 model: Some("claude-opus-4-8".to_string()),
                 reasoning_effort: Some(ReasoningEffortConfig::Medium),
                 current_activity: None,
+                change_totals: None,
             },
         }),
     ));
@@ -1934,6 +1935,7 @@ async fn inactive_agent_turn_completed_clears_active_agent_display() -> Result<(
                 model: None,
                 reasoning_effort: None,
                 current_activity: None,
+                change_totals: None,
             },
         }),
     ));
@@ -5611,6 +5613,7 @@ fn sub_agent_activity_notification_with_current_activity(
             model: model.map(str::to_string),
             reasoning_effort: None,
             current_activity: current_activity.map(str::to_string),
+            change_totals: None,
         },
     })
 }

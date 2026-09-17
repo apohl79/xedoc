@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "SessionExtensionCommand": {
+      "description": "One approved plugin extension slash command.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "extensionId",
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Announces the replacement command set after approval, activation, or disabling.",
+  "properties": {
+    "commands": {
+      "items": {
+        "$ref": "#/definitions/SessionExtensionCommand"
+      },
+      "type": "array"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "commands",
+    "threadId"
+  ],
+  "title": "SessionExtensionCommandsUpdatedNotification",
+  "type": "object"
+}

@@ -417,6 +417,7 @@ mod model_router_report_processor;
 mod plugins;
 mod process_exec_processor;
 mod search;
+mod session_script_processor;
 mod thread_fork_goal;
 mod thread_processor;
 mod token_usage_replay;

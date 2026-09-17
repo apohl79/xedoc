@@ -653,6 +653,7 @@ async fn websocket_disconnects_when_outbound_byte_budget_is_full() {
         Arc::new(AtomicBool::new(true)),
         Arc::new(AtomicBool::new(true)),
         Arc::new(RwLock::new(HashSet::new())),
+        Arc::new(AtomicBool::new(false)),
         Some(disconnect_token.clone()),
     );
     let byte_budget = Arc::clone(&connection.byte_budget);
@@ -696,6 +697,7 @@ async fn websocket_queue_does_not_retain_typed_message_after_serialization() {
             Arc::new(AtomicBool::new(true)),
             Arc::new(AtomicBool::new(true)),
             Arc::new(RwLock::new(HashSet::new())),
+            Arc::new(AtomicBool::new(false)),
             Some(disconnect_token),
         ),
     )]);
@@ -734,6 +736,7 @@ async fn websocket_disconnects_when_one_message_exceeds_outbound_byte_budget() {
             Arc::new(AtomicBool::new(true)),
             Arc::new(AtomicBool::new(true)),
             Arc::new(RwLock::new(HashSet::new())),
+            Arc::new(AtomicBool::new(false)),
             Some(disconnect_token.clone()),
         ),
     )]);

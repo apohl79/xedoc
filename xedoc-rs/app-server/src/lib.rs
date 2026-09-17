@@ -30,6 +30,7 @@ use crate::outgoing_message::ConnectionId;
 use crate::outgoing_message::OutgoingEnvelope;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::QueuedOutgoingMessage;
+use crate::session_script_host::SessionScriptHost;
 use crate::transport::CHANNEL_CAPACITY;
 use crate::transport::ConnectionOrigin;
 use crate::transport::ConnectionState;
@@ -43,6 +44,7 @@ use crate::transport::route_outgoing_envelope;
 use crate::transport::start_control_socket_acceptor;
 use crate::transport::start_stdio_connection;
 use crate::transport::start_websocket_acceptor;
+use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -98,6 +100,9 @@ mod models;
 mod models_refresh_worker;
 mod plugin_watcher;
 mod request_processors;
+mod session_extension_manager;
+mod session_script_host;
+mod session_script_registry;
 mod skills_watcher;
 mod thread_state;
 mod thread_status;
@@ -156,6 +161,7 @@ enum OutboundControlEvent {
         initialized: Arc<AtomicBool>,
         experimental_api_enabled: Arc<AtomicBool>,
         opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
+        session_script: Arc<AtomicBool>,
     },
     /// Remove state for a closed/disconnected connection.
     Closed { connection_id: ConnectionId },
@@ -684,6 +690,7 @@ pub async fn run_main_with_transport_options(
                                 initialized,
                                 experimental_api_enabled,
                                 opted_out_notification_methods,
+                                session_script,
                             } => {
                                 outbound_connections.insert(
                                     connection_id,
@@ -693,6 +700,7 @@ pub async fn run_main_with_transport_options(
                                         initialized,
                                         experimental_api_enabled,
                                         opted_out_notification_methods,
+                                        session_script,
                                         disconnect_sender,
                                     ),
                                 );
@@ -727,6 +735,10 @@ pub async fn run_main_with_transport_options(
         let auth_manager = Arc::clone(&auth_manager);
         let outgoing_message_sender = Arc::new(OutgoingMessageSender::new(outgoing_tx));
         let outbound_control_tx = outbound_control_tx;
+        let session_script_host = Arc::new(Mutex::new(SessionScriptHost::new(
+            config.session_scripts.clone(),
+            transport_event_tx.clone(),
+        )));
         let processor = Arc::new(MessageProcessor::new(MessageProcessorArgs {
             outgoing: outgoing_message_sender,
             arg0_paths,
@@ -740,8 +752,14 @@ pub async fn run_main_with_transport_options(
             auth_manager,
             installation_id,
             plugin_startup_tasks: runtime_options.plugin_startup_tasks,
+            session_script_host: Arc::clone(&session_script_host),
         }));
+        let session_extension_manager = processor.session_extension_manager();
         let mut thread_created_rx = processor.thread_created_receiver();
+        let mut session_script_thread_started_rx =
+            processor.session_script_thread_started_receiver();
+        let mut session_script_thread_removed_rx =
+            processor.session_script_thread_removed_receiver();
         let mut running_turn_count_rx = processor.subscribe_running_assistant_turn_count();
         let mut connections = HashMap::<ConnectionId, ConnectionState>::new();
         let mut connection_cleanup_tasks = ConnectionCleanupTasks::new();
@@ -790,6 +808,7 @@ pub async fn run_main_with_transport_options(
                             TransportEvent::ConnectionOpened {
                                 connection_id,
                                 origin,
+                                session_script_scope,
                                 writer,
                                 disconnect_sender,
                             } => {
@@ -798,6 +817,13 @@ pub async fn run_main_with_transport_options(
                                     Arc::new(AtomicBool::new(false));
                                 let outbound_opted_out_notification_methods =
                                     Arc::new(RwLock::new(HashSet::new()));
+                                let connection_state = ConnectionState::new(
+                                    origin,
+                                    session_script_scope,
+                                    Arc::clone(&outbound_initialized),
+                                    Arc::clone(&outbound_experimental_api_enabled),
+                                    Arc::clone(&outbound_opted_out_notification_methods),
+                                );
                                 if outbound_control_tx
                                     .send(OutboundControlEvent::Opened {
                                         connection_id,
@@ -811,6 +837,9 @@ pub async fn run_main_with_transport_options(
                                         opted_out_notification_methods: Arc::clone(
                                             &outbound_opted_out_notification_methods,
                                         ),
+                                        session_script: connection_state
+                                            .session
+                                            .session_script_flag(),
                                     })
                                     .await
                                     .is_err()
@@ -819,12 +848,7 @@ pub async fn run_main_with_transport_options(
                                 }
                                 connections.insert(
                                     connection_id,
-                                    ConnectionState::new(
-                                        origin,
-                                        outbound_initialized,
-                                        outbound_experimental_api_enabled,
-                                        outbound_opted_out_notification_methods,
-                                    ),
+                                    connection_state,
                                 );
                             }
                             TransportEvent::ConnectionClosed { connection_id } => {
@@ -929,6 +953,32 @@ pub async fn run_main_with_transport_options(
                         }
                     }
                     _ = connection_cleanup_tasks.reap_next() => {}
+                    started = session_script_thread_started_rx.recv() => {
+                        match started {
+                            Ok(thread_id) => {
+                                if processor.is_loaded_root_thread(thread_id).await {
+                                    session_script_host.lock().await.start_for_thread(thread_id).await;
+                                    session_extension_manager.start_for_thread(thread_id).await;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                warn!("session-script thread-start receiver lagged");
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
+                    removed = session_script_thread_removed_rx.recv() => {
+                        match removed {
+                            Ok(thread_id) => {
+                                session_script_host.lock().await.stop_thread(thread_id).await;
+                                session_extension_manager.stop_thread(thread_id).await;
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                warn!("session-script thread-removal receiver lagged");
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
                     created = thread_created_rx.recv(), if listen_for_threads => {
                         match created {
                             Ok(thread_id) => {
@@ -944,6 +994,10 @@ pub async fn run_main_with_transport_options(
                                         initialized_connection_ids,
                                     )
                                     .await;
+                                if processor.is_loaded_root_thread(thread_id).await {
+                                    session_script_host.lock().await.start_for_thread(thread_id).await;
+                                    session_extension_manager.start_for_thread(thread_id).await;
+                                }
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                                 // TODO(jif) handle lag.
@@ -960,6 +1014,7 @@ pub async fn run_main_with_transport_options(
                 }
             };
 
+            session_script_host.lock().await.shutdown().await;
             if !shutdown_state.forced() {
                 futures::future::join_all(
                     connections

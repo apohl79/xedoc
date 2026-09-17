@@ -1,6 +1,7 @@
 //! Constrained protocol types and execution for Xedoc extension scripts.
 
 mod interaction;
+mod invoker;
 mod protocol;
 mod subprocess;
 
@@ -21,6 +22,8 @@ pub use interaction::NoticeSurface;
 pub use interaction::SelectOption;
 pub use interaction::SelectedAction;
 pub use interaction::SessionUpdate;
+pub use invoker::MAX_SCRIPT_SUMMARY_BYTES;
+pub use invoker::ScriptInvoker;
 pub use protocol::EligibleRoute;
 pub use protocol::Extension;
 pub use protocol::Method;

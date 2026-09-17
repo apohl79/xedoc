@@ -8,13 +8,16 @@ use crate::request_processors::populate_thread_turns_from_history;
 use crate::request_processors::thread_from_stored_thread;
 use crate::request_processors::thread_settings_from_core_snapshot;
 use crate::server_request_error::is_turn_transition_server_request_error;
+use crate::session_script_registry::SessionScriptRegistry;
 use crate::thread_state::ThreadState;
 use crate::thread_state::TurnSummary;
 use crate::thread_state::resolve_server_request_on_thread_listener;
 use crate::thread_status::ThreadWatchActiveGuard;
 use crate::thread_status::ThreadWatchManager;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tokio::sync::Mutex;
@@ -64,6 +67,10 @@ use xedoc_app_server_protocol::RawResponseItemCompletedNotification;
 use xedoc_app_server_protocol::RequestId;
 use xedoc_app_server_protocol::ServerNotification;
 use xedoc_app_server_protocol::ServerRequestPayload;
+use xedoc_app_server_protocol::SessionScriptPromptClosedReason;
+use xedoc_app_server_protocol::SessionScriptPromptKind;
+use xedoc_app_server_protocol::SessionScriptPromptRequest;
+use xedoc_app_server_protocol::SessionScriptSession;
 use xedoc_app_server_protocol::ThreadGoalUpdatedNotification;
 use xedoc_app_server_protocol::ThreadItem;
 use xedoc_app_server_protocol::ThreadRollbackResponse;
@@ -139,6 +146,8 @@ pub(crate) async fn apply_bespoke_event_handling(
     conversation: Arc<XedocThread>,
     thread_manager: Arc<ThreadManager>,
     outgoing: ThreadScopedOutgoingMessageSender,
+    session_script_registry: SessionScriptRegistry,
+    session_script_outgoing: Arc<crate::outgoing_message::OutgoingMessageSender>,
     thread_state: Arc<tokio::sync::Mutex<ThreadState>>,
     thread_watch_manager: ThreadWatchManager,
     thread_list_state_permit: Arc<tokio::sync::Semaphore>,
@@ -176,12 +185,27 @@ pub(crate) async fn apply_bespoke_event_handling(
                 turn,
             };
             outgoing
-                .send_server_notification(ServerNotification::TurnStarted(notification))
+                .send_server_notification(ServerNotification::TurnStarted(notification.clone()))
+                .await;
+            session_script_registry
+                .publish_turn_started(
+                    &session_script_outgoing,
+                    conversation_id,
+                    ServerNotification::TurnStarted(notification),
+                )
                 .await;
         }
         EventMsg::TurnComplete(turn_complete_event) => {
             // All per-thread requests are bound to a turn, so abort them.
             outgoing.abort_pending_server_requests().await;
+            session_script_registry
+                .close_prompts_for_turn(
+                    &session_script_outgoing,
+                    conversation_id,
+                    &event_turn_id,
+                    SessionScriptPromptClosedReason::TurnEnded,
+                )
+                .await;
             respond_to_pending_interrupts(&thread_state, &outgoing).await;
             let turn_failed = thread_state.lock().await.turn_summary.last_error.is_some();
             thread_watch_manager
@@ -194,7 +218,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                     state.completed_turn_had_mid_turn_auto_session_name_request(&event_turn_id),
                 )
             };
-            handle_turn_complete(
+            let notification = handle_turn_complete(
                 conversation_id,
                 event_turn_id,
                 turn_complete_event,
@@ -202,12 +226,21 @@ pub(crate) async fn apply_bespoke_event_handling(
                 &thread_state,
             )
             .await;
+            session_script_registry
+                .publish_turn_completed(
+                    &session_script_outgoing,
+                    conversation_id,
+                    ServerNotification::TurnCompleted(notification),
+                )
+                .await;
             if !turn_failed {
                 maybe_spawn_auto_session_name_update(
                     conversation_id,
                     conversation,
                     thread_manager,
                     outgoing,
+                    session_script_registry,
+                    session_script_outgoing,
                     thread_state,
                     thread_list_state_permit,
                     AutoSessionNameUpdate::turn_completed(
@@ -377,9 +410,24 @@ pub(crate) async fn apply_bespoke_event_handling(
                 expires_at: event.expires_at,
                 surface,
             };
+            let script_prompt_id = session_script_registry
+                .open_observed_prompt(
+                    &session_script_outgoing,
+                    conversation_id,
+                    SessionScriptPromptKind::ExtensionInteraction,
+                    Some(event_turn_id.clone()),
+                    Some(request_id.clone()),
+                    SessionScriptPromptRequest {
+                        method: "item/extensionInteraction/request".to_string(),
+                        params: serde_json::to_value(&params).unwrap_or(serde_json::Value::Null),
+                    },
+                )
+                .await;
             let (pending_request_id, receiver) = outgoing
                 .send_request(ServerRequestPayload::ExtensionInteractionRequest(params))
                 .await;
+            let script_registry = session_script_registry.clone();
+            let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 on_extension_interaction_response(
                     request_id,
@@ -393,6 +441,13 @@ pub(crate) async fn apply_bespoke_event_handling(
                     thread_state,
                 )
                 .await;
+                script_registry
+                    .close_prompt(
+                        &script_outgoing,
+                        &script_prompt_id,
+                        SessionScriptPromptClosedReason::Answered,
+                    )
+                    .await;
             });
         }
         EventMsg::ModelVerification(event) => {
@@ -445,9 +500,24 @@ pub(crate) async fn apply_bespoke_event_handling(
                 reason: event.reason.clone(),
                 grant_root: event.grant_root.clone(),
             };
+            let script_prompt_id = session_script_registry
+                .open_observed_prompt(
+                    &session_script_outgoing,
+                    conversation_id,
+                    SessionScriptPromptKind::FileChangeApproval,
+                    Some(event.turn_id),
+                    Some(item_id.clone()),
+                    SessionScriptPromptRequest {
+                        method: "item/fileChange/requestApproval".to_string(),
+                        params: serde_json::to_value(&params).unwrap_or(serde_json::Value::Null),
+                    },
+                )
+                .await;
             let (pending_request_id, rx) = outgoing
                 .send_request(ServerRequestPayload::FileChangeRequestApproval(params))
                 .await;
+            let script_registry = session_script_registry.clone();
+            let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 on_file_change_request_approval_response(
                     item_id,
@@ -458,6 +528,13 @@ pub(crate) async fn apply_bespoke_event_handling(
                     permission_guard,
                 )
                 .await;
+                script_registry
+                    .close_prompt(
+                        &script_outgoing,
+                        &script_prompt_id,
+                        SessionScriptPromptClosedReason::Answered,
+                    )
+                    .await;
             });
         }
         EventMsg::ExecApprovalRequest(ev) => {
@@ -561,11 +638,26 @@ pub(crate) async fn apply_bespoke_event_handling(
                 proposed_network_policy_amendments: proposed_network_policy_amendments_v2,
                 available_decisions: Some(available_decisions),
             };
+            let script_prompt_id = session_script_registry
+                .open_observed_prompt(
+                    &session_script_outgoing,
+                    conversation_id,
+                    SessionScriptPromptKind::CommandExecutionApproval,
+                    Some(turn_id),
+                    Some(call_id.clone()),
+                    SessionScriptPromptRequest {
+                        method: "item/commandExecution/requestApproval".to_string(),
+                        params: serde_json::to_value(&params).unwrap_or(serde_json::Value::Null),
+                    },
+                )
+                .await;
             let (pending_request_id, rx) = outgoing
                 .send_request(ServerRequestPayload::CommandExecutionRequestApproval(
                     params,
                 ))
                 .await;
+            let script_registry = session_script_registry.clone();
+            let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 on_command_execution_request_approval_response(
                     event_turn_id,
@@ -581,6 +673,13 @@ pub(crate) async fn apply_bespoke_event_handling(
                     permission_guard,
                 )
                 .await;
+                script_registry
+                    .close_prompt(
+                        &script_outgoing,
+                        &script_prompt_id,
+                        SessionScriptPromptClosedReason::Answered,
+                    )
+                    .await;
             });
         }
         EventMsg::RequestUserInput(request) => {
@@ -614,20 +713,52 @@ pub(crate) async fn apply_bespoke_event_handling(
                 questions,
                 auto_resolution_ms: request.auto_resolution_ms,
             };
-            let (pending_request_id, rx) = outgoing
-                .send_request(ServerRequestPayload::ToolRequestUserInput(params))
+            let script_prompt = session_script_registry
+                .open_request_user_input(&session_script_outgoing, conversation_id, params.clone())
                 .await;
-            tokio::spawn(async move {
-                on_request_user_input_response(
-                    event_turn_id,
-                    pending_request_id,
-                    rx,
-                    conversation,
-                    thread_state,
-                    user_input_guard,
-                )
-                .await;
-            });
+            if let Some(response_receiver) = script_prompt.response_receiver {
+                let script_registry = session_script_registry.clone();
+                let script_outgoing = session_script_outgoing.clone();
+                let response_timeout = script_prompt
+                    .response_timeout
+                    .expect("a delegated requestUserInput prompt has a response timeout");
+                tokio::spawn(async move {
+                    on_session_script_request_user_input_response(
+                        event_turn_id,
+                        response_receiver,
+                        script_prompt.prompt_id,
+                        params,
+                        response_timeout,
+                        conversation,
+                        thread_state,
+                        user_input_guard,
+                        outgoing,
+                        script_registry,
+                        script_outgoing,
+                    )
+                    .await;
+                });
+            } else {
+                let (pending_request_id, rx) = outgoing
+                    .send_request(ServerRequestPayload::ToolRequestUserInput(params))
+                    .await;
+                let script_registry = session_script_registry.clone();
+                let script_outgoing = session_script_outgoing.clone();
+                tokio::spawn(async move {
+                    on_observed_request_user_input_response(
+                        event_turn_id,
+                        pending_request_id,
+                        rx,
+                        conversation,
+                        thread_state,
+                        user_input_guard,
+                        script_prompt.prompt_id,
+                        script_registry,
+                        script_outgoing,
+                    )
+                    .await;
+                });
+            }
         }
         EventMsg::ElicitationRequest(request) => {
             let permission_guard = thread_watch_manager
@@ -671,9 +802,24 @@ pub(crate) async fn apply_bespoke_event_handling(
                 server_name: request.server_name.clone(),
                 request: request_body,
             };
+            let script_prompt_id = session_script_registry
+                .open_observed_prompt(
+                    &session_script_outgoing,
+                    conversation_id,
+                    SessionScriptPromptKind::McpElicitation,
+                    params.turn_id.clone(),
+                    None,
+                    SessionScriptPromptRequest {
+                        method: "mcpServer/elicitation/request".to_string(),
+                        params: serde_json::to_value(&params).unwrap_or(serde_json::Value::Null),
+                    },
+                )
+                .await;
             let (pending_request_id, rx) = outgoing
                 .send_request(ServerRequestPayload::McpServerElicitationRequest(params))
                 .await;
+            let script_registry = session_script_registry.clone();
+            let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 on_mcp_server_elicitation_response(
                     request.server_name,
@@ -685,6 +831,13 @@ pub(crate) async fn apply_bespoke_event_handling(
                     permission_guard,
                 )
                 .await;
+                script_registry
+                    .close_prompt(
+                        &script_outgoing,
+                        &script_prompt_id,
+                        SessionScriptPromptClosedReason::Answered,
+                    )
+                    .await;
             });
         }
         EventMsg::RequestPermissions(request) => {
@@ -706,6 +859,19 @@ pub(crate) async fn apply_bespoke_event_handling(
                 reason: request.reason,
                 permissions: request.permissions.into(),
             };
+            let script_prompt_id = session_script_registry
+                .open_observed_prompt(
+                    &session_script_outgoing,
+                    conversation_id,
+                    SessionScriptPromptKind::PermissionsApproval,
+                    Some(request.turn_id.clone()),
+                    Some(request.call_id.clone()),
+                    SessionScriptPromptRequest {
+                        method: "item/permissions/requestApproval".to_string(),
+                        params: serde_json::to_value(&params).unwrap_or(serde_json::Value::Null),
+                    },
+                )
+                .await;
             let (pending_request_id, rx) = outgoing
                 .send_request(ServerRequestPayload::PermissionsRequestApproval(params))
                 .await;
@@ -720,8 +886,17 @@ pub(crate) async fn apply_bespoke_event_handling(
                 receiver: rx,
                 request_permissions_guard: permission_guard,
             };
+            let script_registry = session_script_registry.clone();
+            let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 on_request_permissions_response(pending_response, conversation, thread_state).await;
+                script_registry
+                    .close_prompt(
+                        &script_outgoing,
+                        &script_prompt_id,
+                        SessionScriptPromptClosedReason::Answered,
+                    )
+                    .await;
             });
         }
         EventMsg::DynamicToolCallRequest(_)
@@ -819,17 +994,31 @@ pub(crate) async fn apply_bespoke_event_handling(
                     conversation.clone(),
                     thread_manager.clone(),
                     outgoing.clone(),
+                    session_script_registry.clone(),
+                    session_script_outgoing.clone(),
                     thread_state.clone(),
                     thread_list_state_permit.clone(),
                     AutoSessionNameUpdate::mid_turn(request),
                 );
             }
+            let is_agent_message_delta = matches!(&msg, EventMsg::AgentMessageContentDelta(_));
             let notification = item_event_to_server_notification(
                 msg,
                 &conversation_id.to_string(),
                 &event_turn_id,
             );
-            outgoing.send_server_notification(notification).await;
+            outgoing
+                .send_server_notification(notification.clone())
+                .await;
+            if is_agent_message_delta {
+                session_script_registry
+                    .publish_model_response_delta(
+                        &session_script_outgoing,
+                        conversation_id,
+                        notification,
+                    )
+                    .await;
+            }
         }
         EventMsg::ContextCompacted(..) => {
             // Core still fans out this deprecated event for raw-event and rollout compatibility
@@ -951,6 +1140,7 @@ pub(crate) async fn apply_bespoke_event_handling(
             }
         }
         EventMsg::ItemCompleted(event) => {
+            let is_agent_message = matches!(&event.item, CoreTurnItem::AgentMessage(_));
             if let CoreTurnItem::AgentMessage(agent_message) = &event.item {
                 let message = agent_message
                     .content
@@ -969,6 +1159,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                         conversation.clone(),
                         thread_manager.clone(),
                         outgoing.clone(),
+                        session_script_registry.clone(),
+                        session_script_outgoing.clone(),
                         thread_state.clone(),
                         thread_list_state_permit.clone(),
                         AutoSessionNameUpdate::mid_turn(request),
@@ -987,7 +1179,18 @@ pub(crate) async fn apply_bespoke_event_handling(
                 &conversation_id.to_string(),
                 &event_turn_id,
             );
-            outgoing.send_server_notification(notification).await;
+            outgoing
+                .send_server_notification(notification.clone())
+                .await;
+            if is_agent_message {
+                session_script_registry
+                    .publish_model_response_completed(
+                        &session_script_outgoing,
+                        conversation_id,
+                        notification,
+                    )
+                    .await;
+            }
         }
         msg @ (EventMsg::PatchApplyUpdated(_) | EventMsg::TerminalInteraction(_)) => {
             let notification = item_event_to_server_notification(
@@ -1054,6 +1257,14 @@ pub(crate) async fn apply_bespoke_event_handling(
         EventMsg::TurnAborted(turn_aborted_event) => {
             // All per-thread requests are bound to a turn, so abort them.
             outgoing.abort_pending_server_requests().await;
+            session_script_registry
+                .close_prompts_for_turn(
+                    &session_script_outgoing,
+                    conversation_id,
+                    &event_turn_id,
+                    SessionScriptPromptClosedReason::TurnEnded,
+                )
+                .await;
             respond_to_pending_interrupts(&thread_state, &outgoing).await;
 
             thread_watch_manager
@@ -1151,6 +1362,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 state.note_thread_settings(thread_settings.clone())
             };
             if changed {
+                let session =
+                    session_script_session_from_cwd(conversation_id, thread_settings.cwd.as_path());
                 outgoing
                     .send_server_notification(ServerNotification::ThreadSettingsUpdated(
                         ThreadSettingsUpdatedNotification {
@@ -1158,6 +1371,9 @@ pub(crate) async fn apply_bespoke_event_handling(
                             thread_settings,
                         },
                     ))
+                    .await;
+                session_script_registry
+                    .publish_session_updated(&session_script_outgoing, conversation_id, session)
                     .await;
             }
         }
@@ -1180,6 +1396,24 @@ pub(crate) async fn apply_bespoke_event_handling(
         }
 
         _ => {}
+    }
+}
+
+fn session_script_session_from_cwd(thread_id: ThreadId, cwd: &Path) -> SessionScriptSession {
+    let project_root = xedoc_git_utils::get_git_repo_root(cwd);
+    let project_name = project_root
+        .as_deref()
+        .or(Some(cwd))
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy().to_string());
+    let thread_id = thread_id.to_string();
+    SessionScriptSession {
+        session_id: thread_id.clone(),
+        thread_id,
+        title: None,
+        project_name,
+        project_root: project_root.map(|path| path.display().to_string()),
+        cwd: cwd.display().to_string(),
     }
 }
 
@@ -1234,7 +1468,7 @@ async fn emit_turn_completed_with_status(
     event_turn_id: String,
     turn_completion_metadata: TurnCompletionMetadata,
     outgoing: &ThreadScopedOutgoingMessageSender,
-) {
+) -> TurnCompletedNotification {
     let notification = TurnCompletedNotification {
         thread_id: conversation_id.to_string(),
         turn: Turn {
@@ -1249,8 +1483,9 @@ async fn emit_turn_completed_with_status(
         },
     };
     outgoing
-        .send_server_notification(ServerNotification::TurnCompleted(notification))
+        .send_server_notification(ServerNotification::TurnCompleted(notification.clone()))
         .await;
+    notification
 }
 
 async fn apply_canonical_item_completed_side_effects(
@@ -1420,7 +1655,7 @@ async fn handle_turn_complete(
     turn_complete_event: TurnCompleteEvent,
     outgoing: &ThreadScopedOutgoingMessageSender,
     thread_state: &Arc<Mutex<ThreadState>>,
-) {
+) -> TurnCompletedNotification {
     let turn_summary = find_and_remove_turn_summary(conversation_id, thread_state).await;
 
     let (status, error) = match turn_summary.last_error {
@@ -1440,7 +1675,7 @@ async fn handle_turn_complete(
         },
         outgoing,
     )
-    .await;
+    .await
 }
 
 async fn handle_turn_interrupted(
@@ -1452,7 +1687,7 @@ async fn handle_turn_interrupted(
 ) {
     let turn_summary = find_and_remove_turn_summary(conversation_id, thread_state).await;
 
-    emit_turn_completed_with_status(
+    let _ = emit_turn_completed_with_status(
         conversation_id,
         event_turn_id,
         TurnCompletionMetadata {
@@ -1651,6 +1886,119 @@ async fn on_request_user_input_response(
             .collect(),
     };
 
+    submit_request_user_input_response(event_turn_id, response, conversation).await;
+}
+
+async fn on_observed_request_user_input_response(
+    event_turn_id: String,
+    pending_request_id: RequestId,
+    receiver: oneshot::Receiver<ClientRequestResult>,
+    conversation: Arc<XedocThread>,
+    thread_state: Arc<Mutex<ThreadState>>,
+    user_input_guard: ThreadWatchActiveGuard,
+    prompt_id: String,
+    session_script_registry: SessionScriptRegistry,
+    session_script_outgoing: Arc<crate::outgoing_message::OutgoingMessageSender>,
+) {
+    on_request_user_input_response(
+        event_turn_id,
+        pending_request_id,
+        receiver,
+        conversation,
+        thread_state,
+        user_input_guard,
+    )
+    .await;
+    session_script_registry
+        .close_prompt(
+            &session_script_outgoing,
+            &prompt_id,
+            SessionScriptPromptClosedReason::Answered,
+        )
+        .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn on_session_script_request_user_input_response(
+    event_turn_id: String,
+    mut response_receiver: oneshot::Receiver<ToolRequestUserInputResponse>,
+    prompt_id: String,
+    params: ToolRequestUserInputParams,
+    response_timeout: Duration,
+    conversation: Arc<XedocThread>,
+    thread_state: Arc<Mutex<ThreadState>>,
+    user_input_guard: ThreadWatchActiveGuard,
+    outgoing: ThreadScopedOutgoingMessageSender,
+    session_script_registry: SessionScriptRegistry,
+    session_script_outgoing: Arc<crate::outgoing_message::OutgoingMessageSender>,
+) {
+    let response_timeout = params
+        .auto_resolution_ms
+        .map(Duration::from_millis)
+        .map_or(response_timeout, |auto_resolution_timeout| {
+            auto_resolution_timeout.min(response_timeout)
+        });
+    let response = tokio::select! {
+        response = &mut response_receiver => Some(response),
+        _ = tokio::time::sleep(response_timeout) => {
+            let lease_expired = session_script_registry
+                .close_prompt(
+                    &session_script_outgoing,
+                    &prompt_id,
+                    SessionScriptPromptClosedReason::Expired,
+                )
+                .await;
+            if lease_expired {
+                None
+            } else {
+                Some(response_receiver.await)
+            }
+        }
+    };
+    match response {
+        Some(Ok(response)) => {
+            drop(user_input_guard);
+            let response = CoreRequestUserInputResponse {
+                answers: response
+                    .answers
+                    .into_iter()
+                    .map(|(id, answer)| {
+                        (
+                            id,
+                            CoreRequestUserInputAnswer {
+                                answers: answer.answers,
+                            },
+                        )
+                    })
+                    .collect(),
+            };
+            submit_request_user_input_response(event_turn_id, response, conversation).await;
+        }
+        None | Some(Err(_)) => {
+            let (pending_request_id, receiver) = outgoing
+                .send_request(ServerRequestPayload::ToolRequestUserInput(params))
+                .await;
+            on_observed_request_user_input_response(
+                event_turn_id,
+                pending_request_id,
+                receiver,
+                conversation,
+                thread_state,
+                user_input_guard,
+                prompt_id,
+                session_script_registry,
+                session_script_outgoing,
+            )
+            .await;
+        }
+    }
+}
+
+async fn submit_request_user_input_response(
+    event_turn_id: String,
+    response: CoreRequestUserInputResponse,
+    conversation: Arc<XedocThread>,
+) {
     if let Err(err) = conversation
         .submit(Op::UserInputAnswer {
             id: event_turn_id,
@@ -2801,6 +3149,7 @@ mod tests {
         let thread_watch_manager = ThreadWatchManager::new();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
         let outgoing = Arc::new(OutgoingMessageSender::new(tx));
+        let session_script_outgoing = Arc::clone(&outgoing);
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2822,6 +3171,8 @@ mod tests {
             conversation,
             thread_manager,
             outgoing,
+            SessionScriptRegistry::default(),
+            session_script_outgoing,
             thread_state,
             thread_watch_manager,
             Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),
@@ -2862,6 +3213,7 @@ mod tests {
         let thread_watch_manager = ThreadWatchManager::new();
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
         let outgoing = Arc::new(OutgoingMessageSender::new(tx));
+        let session_script_outgoing = Arc::clone(&outgoing);
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2879,6 +3231,8 @@ mod tests {
             conversation,
             thread_manager,
             outgoing,
+            SessionScriptRegistry::default(),
+            session_script_outgoing,
             thread_state,
             thread_watch_manager,
             Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),
@@ -2921,6 +3275,7 @@ mod tests {
         assert_eq!(thread_watch_manager.running_turn_count().await, 1);
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
         let outgoing = Arc::new(OutgoingMessageSender::new(tx));
+        let session_script_outgoing = Arc::clone(&outgoing);
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -2941,12 +3296,15 @@ mod tests {
                     reasoning_effort: None,
                     kind: SubAgentActivityKind::Interrupted,
                     current_activity: None,
+                    change_totals: None,
                 }),
             },
             conversation_id,
             conversation,
             thread_manager,
             outgoing,
+            SessionScriptRegistry::default(),
+            session_script_outgoing,
             new_thread_state(),
             thread_watch_manager.clone(),
             Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),
@@ -2977,6 +3335,7 @@ mod tests {
                     model: None,
                     reasoning_effort: None,
                     current_activity: None,
+                    change_totals: None,
                 },
                 thread_id: conversation_id.to_string(),
                 turn_id: "turn-1".to_string(),
@@ -3005,6 +3364,7 @@ mod tests {
         } = thread_manager.start_thread(config).await?;
         let (tx, mut rx) = mpsc::channel(CHANNEL_CAPACITY);
         let outgoing = Arc::new(OutgoingMessageSender::new(tx));
+        let session_script_outgoing = Arc::clone(&outgoing);
         let outgoing = ThreadScopedOutgoingMessageSender::new(
             outgoing,
             vec![ConnectionId(1)],
@@ -3035,6 +3395,8 @@ mod tests {
             conversation,
             thread_manager,
             outgoing,
+            SessionScriptRegistry::default(),
+            session_script_outgoing,
             new_thread_state(),
             ThreadWatchManager::new(),
             Arc::new(tokio::sync::Semaphore::new(/*permits*/ 1)),

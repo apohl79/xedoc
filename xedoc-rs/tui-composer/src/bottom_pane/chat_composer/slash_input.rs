@@ -12,9 +12,10 @@ use crate::bottom_pane::command_popup::CommandPopupFlags;
 use crate::bottom_pane::prompt_args::parse_slash_name;
 use crate::bottom_pane::slash_commands::BuiltinCommandFlags;
 use crate::bottom_pane::slash_commands::ServiceTierCommand;
+use crate::bottom_pane::slash_commands::SessionExtensionCommand;
 use crate::bottom_pane::slash_commands::SlashCommandItem;
-use crate::bottom_pane::slash_commands::find_slash_command;
-use crate::bottom_pane::slash_commands::has_slash_command_prefix;
+use crate::bottom_pane::slash_commands::find_slash_command_with_session_extensions;
+use crate::bottom_pane::slash_commands::has_slash_command_prefix_with_session_extensions;
 use crate::slash_command::SlashCommand;
 use xedoc_protocol::user_input::ByteRange;
 use xedoc_protocol::user_input::TextElement;
@@ -48,6 +49,7 @@ pub(super) struct SlashInput<'a> {
     is_bash_mode: bool,
     command_flags: BuiltinCommandFlags,
     service_tier_commands: &'a [ServiceTierCommand],
+    session_extension_commands: &'a [SessionExtensionCommand],
 }
 
 impl<'a> SlashInput<'a> {
@@ -56,12 +58,14 @@ impl<'a> SlashInput<'a> {
         is_bash_mode: bool,
         command_flags: BuiltinCommandFlags,
         service_tier_commands: &'a [ServiceTierCommand],
+        session_extension_commands: &'a [SessionExtensionCommand],
     ) -> Self {
         Self {
             enabled,
             is_bash_mode,
             command_flags,
             service_tier_commands,
+            session_extension_commands,
         }
     }
 
@@ -115,7 +119,9 @@ impl<'a> SlashInput<'a> {
         }
 
         let command = self.command(name)?;
-        command.supports_inline_args().then_some(InlineCommand {
+        (command.supports_inline_args()
+            || matches!(&command, SlashCommandItem::SessionExtension(_)))
+        .then_some(InlineCommand {
             command,
             rest,
             rest_offset,
@@ -165,11 +171,16 @@ impl<'a> SlashInput<'a> {
             return rest.is_empty();
         }
 
-        has_slash_command_prefix(name, self.command_flags, self.service_tier_commands)
+        has_slash_command_prefix_with_session_extensions(
+            name,
+            self.command_flags,
+            self.service_tier_commands,
+            self.session_extension_commands,
+        )
     }
 
     pub(super) fn command_popup(&self, filter_text: &str) -> CommandPopup {
-        let mut command_popup = CommandPopup::new(
+        let mut command_popup = CommandPopup::new_with_session_extension_commands(
             CommandPopupFlags {
                 collaboration_modes_enabled: self.command_flags.collaboration_modes_enabled,
                 plugins_command_enabled: self.command_flags.plugins_command_enabled,
@@ -179,13 +190,19 @@ impl<'a> SlashInput<'a> {
                 side_conversation_active: self.command_flags.side_conversation_active,
             },
             self.service_tier_commands.to_vec(),
+            self.session_extension_commands.to_vec(),
         );
         command_popup.on_composer_text_change(filter_text.to_string());
         command_popup
     }
 
     pub(super) fn command(&self, name: &str) -> Option<SlashCommandItem> {
-        find_slash_command(name, self.command_flags, self.service_tier_commands)
+        find_slash_command_with_session_extensions(
+            name,
+            self.command_flags,
+            self.service_tier_commands,
+            self.session_extension_commands,
+        )
     }
 }
 
@@ -348,6 +365,7 @@ impl ChatComposer {
                                 )
                             }
                             CommandItem::ServiceTier(_) => false,
+                            CommandItem::SessionExtension(_) => false,
                         };
                         if !command_is_allowed {
                             return (InputResult::ParentOwnedInputBlocked, true);
@@ -370,6 +388,9 @@ impl ChatComposer {
                             CommandItem::Builtin(cmd) => InputResult::Command(cmd),
                             CommandItem::ServiceTier(command) => {
                                 InputResult::ServiceTierCommand(command)
+                            }
+                            CommandItem::SessionExtension(command) => {
+                                InputResult::SessionExtensionCommand(command, String::new())
                             }
                         },
                         true,

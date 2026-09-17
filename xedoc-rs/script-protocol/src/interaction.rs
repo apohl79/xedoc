@@ -182,6 +182,9 @@ pub enum FormField {
         value: String,
         /// Maximum UTF-8 byte length accepted by the renderer.
         max_bytes: u32,
+        /// Whether the host should mask this field's value while rendering it.
+        #[serde(default)]
+        sensitive: bool,
     },
     /// Host-validated selection from supplied eligible model routes.
     ModelRoute {

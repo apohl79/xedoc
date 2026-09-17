@@ -6,6 +6,7 @@ use xedoc_utils_plugins::PluginSkillRoot;
 
 use crate::PluginCapabilitySummary;
 use crate::PluginHookSource;
+use crate::manifest::PluginManifestExtension;
 
 const MAX_CAPABILITY_SUMMARY_DESCRIPTION_LEN: usize = 1024;
 
@@ -16,6 +17,7 @@ pub struct LoadedPlugin<M> {
     pub manifest_name: Option<String>,
     pub plugin_namespace: Option<String>,
     pub manifest_description: Option<String>,
+    pub extensions: Vec<PluginManifestExtension<AbsolutePathBuf>>,
     pub root: AbsolutePathBuf,
     pub enabled: bool,
     pub skill_roots: Vec<AbsolutePathBuf>,
@@ -213,6 +215,7 @@ mod tests {
                     .to_string(),
             ),
             manifest_description: None,
+            extensions: Vec::new(),
             root: test_path(config_name),
             enabled: true,
             skill_roots,

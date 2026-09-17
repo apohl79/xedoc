@@ -54,6 +54,7 @@ use crate::bottom_pane::StatusSurfacePreviewData;
 use crate::bottom_pane::StatusSurfacePreviewItem;
 use crate::bottom_pane::TerminalTitleItem;
 use crate::bottom_pane::TerminalTitleSetupView;
+use crate::bottom_pane::slash_commands::SessionExtensionCommand;
 use crate::diff_model::FileChange;
 use crate::git_action_directives::parse_assistant_markdown;
 use crate::legacy_core::config::Config;
@@ -371,6 +372,7 @@ use self::review::ReviewState;
 pub use self::review_popups::show_review_commit_picker_with_entries;
 mod safety_buffering;
 mod service_tiers;
+mod session_extensions;
 mod settings;
 mod settings_popups;
 mod side;
@@ -508,6 +510,8 @@ pub struct ChatWidget {
     raw_output_mode: bool,
     /// Runtime value resolved by core. `config.service_tier` remains the explicit user choice.
     effective_service_tier: Option<String>,
+    /// Commands declared by approved extensions for the active root thread.
+    session_extension_commands: Vec<SessionExtensionCommand>,
     /// The unmasked collaboration mode settings (always Default mode).
     ///
     /// Masks are applied on top of this base mode to derive the effective mode.

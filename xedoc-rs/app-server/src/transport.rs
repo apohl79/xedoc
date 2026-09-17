@@ -19,6 +19,7 @@ pub(crate) use xedoc_app_server_transport::ConnectionId;
 pub(crate) use xedoc_app_server_transport::ConnectionOrigin;
 pub(crate) use xedoc_app_server_transport::OutgoingMessage;
 pub(crate) use xedoc_app_server_transport::QueuedOutgoingMessage;
+pub(crate) use xedoc_app_server_transport::SessionScriptConnectionScope;
 pub(crate) use xedoc_app_server_transport::TransportEvent;
 pub(crate) use xedoc_app_server_transport::acquire_app_server_startup_lock;
 pub use xedoc_app_server_transport::app_server_control_socket_path;
@@ -26,6 +27,7 @@ pub(crate) use xedoc_app_server_transport::app_server_startup_lock_path;
 pub use xedoc_app_server_transport::auth;
 pub(crate) use xedoc_app_server_transport::prepare_control_socket_path;
 pub(crate) use xedoc_app_server_transport::start_control_socket_acceptor;
+pub(crate) use xedoc_app_server_transport::start_session_script_connection;
 pub(crate) use xedoc_app_server_transport::start_stdio_connection;
 pub(crate) use xedoc_app_server_transport::start_websocket_acceptor;
 
@@ -41,6 +43,7 @@ pub(crate) struct ConnectionState {
 impl ConnectionState {
     pub(crate) fn new(
         _origin: ConnectionOrigin,
+        session_script_scope: Option<SessionScriptConnectionScope>,
         outbound_initialized: Arc<AtomicBool>,
         outbound_experimental_api_enabled: Arc<AtomicBool>,
         outbound_opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
@@ -49,7 +52,9 @@ impl ConnectionState {
             outbound_initialized,
             outbound_experimental_api_enabled,
             outbound_opted_out_notification_methods,
-            session: Arc::new(ConnectionSessionState::new()),
+            session: Arc::new(ConnectionSessionState::new_with_session_script_scope(
+                session_script_scope,
+            )),
         }
     }
 }
@@ -59,6 +64,7 @@ pub(crate) struct OutboundConnectionState {
     pub(crate) initialized: Arc<AtomicBool>,
     pub(crate) experimental_api_enabled: Arc<AtomicBool>,
     pub(crate) opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
+    pub(crate) session_script: Arc<AtomicBool>,
     pub(crate) writer: mpsc::Sender<QueuedOutgoingMessage>,
     disconnect_sender: Option<CancellationToken>,
     byte_budget: Arc<Semaphore>,
@@ -78,6 +84,7 @@ impl OutboundConnectionState {
             initialized,
             experimental_api_enabled,
             opted_out_notification_methods,
+            Arc::new(AtomicBool::new(false)),
             disconnect_sender,
         )
     }
@@ -88,6 +95,7 @@ impl OutboundConnectionState {
         initialized: Arc<AtomicBool>,
         experimental_api_enabled: Arc<AtomicBool>,
         opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
+        session_script: Arc<AtomicBool>,
         disconnect_sender: Option<CancellationToken>,
     ) -> Self {
         Self {
@@ -95,6 +103,7 @@ impl OutboundConnectionState {
             initialized,
             experimental_api_enabled,
             opted_out_notification_methods,
+            session_script,
             writer,
             disconnect_sender,
             byte_budget: Arc::new(Semaphore::new(OUTBOUND_QUEUE_BYTE_CAPACITY)),
@@ -275,6 +284,7 @@ pub(crate) async fn route_outgoing_envelope(
                 .iter()
                 .filter_map(|(connection_id, connection_state)| {
                     if connection_state.initialized.load(Ordering::Acquire)
+                        && !connection_state.session_script.load(Ordering::Acquire)
                         && !should_skip_notification_for_connection(connection_state, &message)
                     {
                         Some(*connection_id)
@@ -302,6 +312,7 @@ pub(crate) async fn route_outgoing_envelope(
                 .iter()
                 .filter_map(|(connection_id, connection_state)| {
                     (connection_state.initialized.load(Ordering::Acquire)
+                        && !connection_state.session_script.load(Ordering::Acquire)
                         && connection_state
                             .experimental_api_enabled
                             .load(Ordering::Acquire))

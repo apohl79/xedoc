@@ -491,6 +491,7 @@ mod tests {
 struct ThreadEntry {
     state: Arc<Mutex<ThreadState>>,
     connection_ids: HashSet<ConnectionId>,
+    script_connection_ids: HashSet<ConnectionId>,
     has_connections_watcher: watch::Sender<bool>,
 }
 
@@ -499,6 +500,7 @@ impl Default for ThreadEntry {
         Self {
             state: Arc::new(Mutex::new(ThreadState::default())),
             connection_ids: HashSet::new(),
+            script_connection_ids: HashSet::new(),
             has_connections_watcher: watch::channel(false).0,
         }
     }
@@ -508,7 +510,7 @@ impl ThreadEntry {
     fn update_has_connections(&self) {
         let _ = self.has_connections_watcher.send_if_modified(|current| {
             let prev = *current;
-            *current = !self.connection_ids.is_empty();
+            *current = !self.connection_ids.is_empty() || !self.script_connection_ids.is_empty();
             prev != *current
         });
     }
@@ -667,9 +669,9 @@ impl ThreadStateManager {
             }
 
             if !state
-                .thread_ids_by_connection
-                .get(&connection_id)
-                .is_some_and(|thread_ids| thread_ids.contains(&thread_id))
+                .threads
+                .get(&thread_id)
+                .is_some_and(|thread_entry| thread_entry.connection_ids.contains(&connection_id))
             {
                 return false;
             }
@@ -696,7 +698,10 @@ impl ThreadStateManager {
             .await
             .threads
             .get(&thread_id)
-            .is_some_and(|thread_entry| !thread_entry.connection_ids.is_empty())
+            .is_some_and(|thread_entry| {
+                !thread_entry.connection_ids.is_empty()
+                    || !thread_entry.script_connection_ids.is_empty()
+            })
     }
 
     pub(crate) async fn try_ensure_connection_subscribed(
@@ -749,6 +754,53 @@ impl ThreadStateManager {
         true
     }
 
+    pub(crate) async fn try_add_session_script_connection(
+        &self,
+        thread_id: ThreadId,
+        connection_id: ConnectionId,
+    ) -> Option<Arc<Mutex<ThreadState>>> {
+        let mut state = self.state.lock().await;
+        if !state.live_connections.contains(&connection_id) {
+            return None;
+        }
+        // A registration changes the whole connection into the restricted
+        // session-script role. Remove any ordinary thread subscriptions first
+        // so an initialized client cannot receive the normal broadcast stream
+        // after it registers as a script.
+        for thread_entry in state.threads.values_mut() {
+            thread_entry.connection_ids.remove(&connection_id);
+            thread_entry.update_has_connections();
+        }
+        state.thread_ids_by_connection.remove(&connection_id);
+        state
+            .thread_ids_by_connection
+            .entry(connection_id)
+            .or_default()
+            .insert(thread_id);
+        let thread_entry = state.threads.entry(thread_id).or_default();
+        thread_entry.script_connection_ids.insert(connection_id);
+        thread_entry.update_has_connections();
+        Some(thread_entry.state.clone())
+    }
+
+    pub(crate) async fn remove_session_script_connection(
+        &self,
+        thread_id: ThreadId,
+        connection_id: ConnectionId,
+    ) {
+        let mut state = self.state.lock().await;
+        if let Some(thread_entry) = state.threads.get_mut(&thread_id) {
+            thread_entry.script_connection_ids.remove(&connection_id);
+            thread_entry.update_has_connections();
+        }
+        if let Some(thread_ids) = state.thread_ids_by_connection.get_mut(&connection_id) {
+            thread_ids.remove(&thread_id);
+            if thread_ids.is_empty() {
+                state.thread_ids_by_connection.remove(&connection_id);
+            }
+        }
+    }
+
     pub(crate) async fn remove_connection(&self, connection_id: ConnectionId) -> Vec<ThreadId> {
         {
             let mut state = self.state.lock().await;
@@ -760,16 +812,17 @@ impl ThreadStateManager {
             for thread_id in &thread_ids {
                 if let Some(thread_entry) = state.threads.get_mut(thread_id) {
                     thread_entry.connection_ids.remove(&connection_id);
+                    thread_entry.script_connection_ids.remove(&connection_id);
                     thread_entry.update_has_connections();
                 }
             }
             thread_ids
                 .into_iter()
                 .filter(|thread_id| {
-                    state
-                        .threads
-                        .get(thread_id)
-                        .is_some_and(|thread_entry| thread_entry.connection_ids.is_empty())
+                    state.threads.get(thread_id).is_some_and(|thread_entry| {
+                        thread_entry.connection_ids.is_empty()
+                            && thread_entry.script_connection_ids.is_empty()
+                    })
                 })
                 .collect::<Vec<_>>()
         }

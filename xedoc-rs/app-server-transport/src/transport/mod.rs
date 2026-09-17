@@ -24,12 +24,14 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 pub const CHANNEL_CAPACITY: usize = 128;
 
 mod allocator_pressure;
+mod child_stdio;
 mod stdio;
 mod unix_socket;
 #[cfg(test)]
 mod unix_socket_tests;
 mod websocket;
 
+pub use child_stdio::start_session_script_connection;
 pub use stdio::start_stdio_connection;
 pub use unix_socket::AppServerStartupLock;
 pub use unix_socket::acquire_app_server_startup_lock;
@@ -161,6 +163,7 @@ pub enum TransportEvent {
     ConnectionOpened {
         connection_id: ConnectionId,
         origin: ConnectionOrigin,
+        session_script_scope: Option<SessionScriptConnectionScope>,
         writer: mpsc::Sender<QueuedOutgoingMessage>,
         disconnect_sender: Option<CancellationToken>,
     },
@@ -177,7 +180,32 @@ pub enum TransportEvent {
 pub enum ConnectionOrigin {
     Stdio,
     InProcess,
+    SessionScript,
     WebSocket,
+}
+
+/// Immutable host-provided identity for a SessionScript child connection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionScriptConnectionScope {
+    script_id: String,
+    thread_id: String,
+}
+
+impl SessionScriptConnectionScope {
+    pub fn new(script_id: impl Into<String>, thread_id: impl Into<String>) -> Self {
+        Self {
+            script_id: script_id.into(),
+            thread_id: thread_id.into(),
+        }
+    }
+
+    pub fn script_id(&self) -> &str {
+        &self.script_id
+    }
+
+    pub fn thread_id(&self) -> &str {
+        &self.thread_id
+    }
 }
 
 static CONNECTION_ID_COUNTER: AtomicU64 = AtomicU64::new(0);

@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "SessionScriptPromptKind": {
+      "description": "A prompt class that a session script may observe.",
+      "enum": [
+        "requestUserInput",
+        "extensionInteraction",
+        "commandExecutionApproval",
+        "fileChangeApproval",
+        "permissionsApproval",
+        "mcpElicitation"
+      ],
+      "type": "string"
+    },
+    "SessionScriptPromptRequest": {
+      "description": "Preserves the existing v2 request shape without making it actionable for observers.",
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "params": true
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "A bounded projection of a prompt that is open for this script's thread.",
+  "properties": {
+    "canRespond": {
+      "type": "boolean"
+    },
+    "itemId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "$ref": "#/definitions/SessionScriptPromptKind"
+    },
+    "promptId": {
+      "type": "string"
+    },
+    "registrationId": {
+      "type": "string"
+    },
+    "request": {
+      "$ref": "#/definitions/SessionScriptPromptRequest"
+    },
+    "responseLease": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "threadId": {
+      "type": "string"
+    },
+    "turnId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "canRespond",
+    "kind",
+    "promptId",
+    "registrationId",
+    "request",
+    "threadId"
+  ],
+  "title": "SessionScriptPromptOpenedNotification",
+  "type": "object"
+}

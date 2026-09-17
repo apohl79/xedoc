@@ -62,12 +62,19 @@ use crate::outgoing_message::OutgoingEnvelope;
 use crate::outgoing_message::OutgoingMessage;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::QueuedOutgoingMessage;
+use crate::session_script_host::SessionScriptHost;
+use crate::transport::AppServerTransport;
 use crate::transport::CHANNEL_CAPACITY;
+use crate::transport::ConnectionOrigin;
+use crate::transport::ConnectionState;
 use crate::transport::OutboundConnectionState;
+use crate::transport::TransportEvent;
 use crate::transport::route_outgoing_envelope;
+use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 use toml::Value as TomlValue;
 use tracing::warn;
 use xedoc_app_server_protocol::ClientNotification;
@@ -187,6 +194,22 @@ enum InProcessClientMessage {
 enum ProcessorCommand {
     Request(Box<ClientRequest>),
     Notification(ClientNotification),
+}
+
+enum InProcessOutboundControl {
+    Opened {
+        connection_id: ConnectionId,
+        origin: ConnectionOrigin,
+        writer: mpsc::Sender<QueuedOutgoingMessage>,
+        disconnect_sender: Option<CancellationToken>,
+        initialized: Arc<AtomicBool>,
+        experimental_api_enabled: Arc<AtomicBool>,
+        opted_out_notification_methods: Arc<RwLock<HashSet<String>>>,
+        session_script: Arc<AtomicBool>,
+    },
+    Closed {
+        connection_id: ConnectionId,
+    },
 }
 
 #[derive(Clone)]
@@ -400,9 +423,13 @@ async fn start_uninitialized(
     let installation_id = resolve_installation_id(&args.config.xedoc_home).await?;
     let (client_tx, mut client_rx) = mpsc::channel::<InProcessClientMessage>(channel_capacity);
     let (event_tx, event_rx) = mpsc::channel::<InProcessServerEvent>(channel_capacity);
+    let (transport_event_tx, mut transport_event_rx) =
+        mpsc::channel::<TransportEvent>(channel_capacity);
 
     let runtime_handle = tokio::spawn(async move {
         let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<OutgoingEnvelope>(channel_capacity);
+        let (outbound_control_tx, mut outbound_control_rx) =
+            mpsc::channel::<InProcessOutboundControl>(channel_capacity);
         let auth_manager = match auth_manager {
             Some(auth_manager) => auth_manager,
             None => {
@@ -429,8 +456,48 @@ async fn start_uninitialized(
             ),
         );
         let mut outbound_handle = tokio::spawn(async move {
-            while let Some(envelope) = outgoing_rx.recv().await {
-                route_outgoing_envelope(&mut outbound_connections, envelope).await;
+            loop {
+                tokio::select! {
+                    control = outbound_control_rx.recv() => {
+                        let Some(control) = control else {
+                            break;
+                        };
+                        match control {
+                            InProcessOutboundControl::Opened {
+                                connection_id,
+                                origin,
+                                writer,
+                                disconnect_sender,
+                                initialized,
+                                experimental_api_enabled,
+                                opted_out_notification_methods,
+                                session_script,
+                            } => {
+                                outbound_connections.insert(
+                                    connection_id,
+                                    OutboundConnectionState::new_with_origin(
+                                        origin,
+                                        writer,
+                                        initialized,
+                                        experimental_api_enabled,
+                                        opted_out_notification_methods,
+                                        session_script,
+                                        disconnect_sender,
+                                    ),
+                                );
+                            }
+                            InProcessOutboundControl::Closed { connection_id } => {
+                                outbound_connections.remove(&connection_id);
+                            }
+                        }
+                    }
+                    envelope = outgoing_rx.recv() => {
+                        let Some(envelope) = envelope else {
+                            break;
+                        };
+                        route_outgoing_envelope(&mut outbound_connections, envelope).await;
+                    }
+                }
             }
         });
 
@@ -446,6 +513,10 @@ async fn start_uninitialized(
         );
         let (processor_tx, mut processor_rx) = mpsc::channel::<ProcessorCommand>(channel_capacity);
         let mut processor_handle = tokio::spawn(async move {
+            let session_script_host = Arc::new(Mutex::new(SessionScriptHost::new(
+                args.config.session_scripts.clone(),
+                transport_event_tx.clone(),
+            )));
             let processor = Arc::new(MessageProcessor::new(MessageProcessorArgs {
                 outgoing: Arc::clone(&processor_outgoing),
                 arg0_paths: args.arg0_paths,
@@ -459,10 +530,18 @@ async fn start_uninitialized(
                 auth_manager,
                 installation_id,
                 plugin_startup_tasks: crate::PluginStartupTasks::Start,
+                session_script_host: Arc::clone(&session_script_host),
             }));
+            let session_extension_manager = processor.session_extension_manager();
             let mut thread_created_rx = processor.thread_created_receiver();
+            let mut session_script_thread_started_rx =
+                processor.session_script_thread_started_receiver();
+            let mut session_script_thread_removed_rx =
+                processor.session_script_thread_removed_receiver();
             let session = Arc::new(ConnectionSessionState::new());
             let mut listen_for_threads = true;
+            let embedded_transport = AppServerTransport::Off;
+            let mut session_script_connections = HashMap::<ConnectionId, ConnectionState>::new();
 
             loop {
                 tokio::select! {
@@ -507,6 +586,164 @@ async fn start_uninitialized(
                             }
                         }
                     }
+                    event = transport_event_rx.recv() => {
+                        let Some(event) = event else {
+                            break;
+                        };
+                        match event {
+                            TransportEvent::ConnectionOpened {
+                                connection_id,
+                                origin,
+                                session_script_scope,
+                                writer,
+                                disconnect_sender,
+                            } => {
+                                let outbound_initialized = Arc::new(AtomicBool::new(false));
+                                let outbound_experimental_api_enabled =
+                                    Arc::new(AtomicBool::new(false));
+                                let outbound_opted_out_notification_methods =
+                                    Arc::new(RwLock::new(HashSet::new()));
+                                let connection_state = ConnectionState::new(
+                                    origin,
+                                    session_script_scope,
+                                    Arc::clone(&outbound_initialized),
+                                    Arc::clone(&outbound_experimental_api_enabled),
+                                    Arc::clone(&outbound_opted_out_notification_methods),
+                                );
+                                if outbound_control_tx
+                                    .send(InProcessOutboundControl::Opened {
+                                        connection_id,
+                                        origin,
+                                        writer,
+                                        disconnect_sender,
+                                        initialized: outbound_initialized,
+                                        experimental_api_enabled:
+                                            outbound_experimental_api_enabled,
+                                        opted_out_notification_methods:
+                                            outbound_opted_out_notification_methods,
+                                        session_script: connection_state
+                                            .session
+                                            .session_script_flag(),
+                                    })
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                                session_script_connections.insert(connection_id, connection_state);
+                            }
+                            TransportEvent::ConnectionClosed { connection_id } => {
+                                let Some(connection_state) =
+                                    session_script_connections.remove(&connection_id)
+                                else {
+                                    continue;
+                                };
+                                connection_state.session.rpc_gate.close().await;
+                                let outbound_closed = outbound_control_tx
+                                    .send(InProcessOutboundControl::Closed { connection_id })
+                                    .await
+                                    .is_ok();
+                                processor
+                                    .connection_closed(connection_id, &connection_state.session)
+                                    .await;
+                                if !outbound_closed {
+                                    break;
+                                }
+                            }
+                            TransportEvent::IncomingMessage { connection_id, message } => {
+                                match message {
+                                    xedoc_app_server_protocol::JSONRPCMessage::Request(request) => {
+                                        let Some(connection_state) =
+                                            session_script_connections.get_mut(&connection_id)
+                                        else {
+                                            warn!(?connection_id, "dropping request from unknown session script");
+                                            continue;
+                                        };
+                                        let was_initialized =
+                                            connection_state.session.initialized();
+                                        processor
+                                            .process_request(
+                                                connection_id,
+                                                request,
+                                                &embedded_transport,
+                                                Arc::clone(&connection_state.session),
+                                            )
+                                            .await;
+                                        let opted_out_notification_methods_snapshot =
+                                            connection_state.session.opted_out_notification_methods();
+                                        let experimental_api_enabled =
+                                            connection_state.session.experimental_api_enabled();
+                                        let is_initialized = connection_state.session.initialized();
+                                        if let Ok(mut opted_out_notification_methods) =
+                                            connection_state
+                                                .outbound_opted_out_notification_methods
+                                                .write()
+                                        {
+                                            *opted_out_notification_methods =
+                                                opted_out_notification_methods_snapshot;
+                                        } else {
+                                            warn!("failed to update session script opted-out notifications");
+                                        }
+                                        connection_state
+                                            .outbound_experimental_api_enabled
+                                            .store(experimental_api_enabled, Ordering::Release);
+                                        if !was_initialized && is_initialized {
+                                            processor
+                                                .send_initialize_notifications_to_connection(
+                                                    connection_id,
+                                                )
+                                                .await;
+                                            processor.connection_initialized(connection_id).await;
+                                            connection_state
+                                                .outbound_initialized
+                                                .store(true, Ordering::Release);
+                                        }
+                                    }
+                                    xedoc_app_server_protocol::JSONRPCMessage::Response(response) => {
+                                        if session_script_connections.contains_key(&connection_id) {
+                                            processor.process_response(response).await;
+                                        }
+                                    }
+                                    xedoc_app_server_protocol::JSONRPCMessage::Notification(notification) => {
+                                        if session_script_connections.contains_key(&connection_id) {
+                                            processor.process_notification(notification).await;
+                                        }
+                                    }
+                                    xedoc_app_server_protocol::JSONRPCMessage::Error(error) => {
+                                        if session_script_connections.contains_key(&connection_id) {
+                                            processor.process_error(error).await;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    started = session_script_thread_started_rx.recv() => {
+                        match started {
+                            Ok(thread_id) => {
+                                if processor.is_loaded_root_thread(thread_id).await {
+                                    session_script_host.lock().await.start_for_thread(thread_id).await;
+                                    session_extension_manager.start_for_thread(thread_id).await;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                warn!("session-script thread-start receiver lagged");
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
+                    removed = session_script_thread_removed_rx.recv() => {
+                        match removed {
+                            Ok(thread_id) => {
+                                session_script_host.lock().await.stop_thread(thread_id).await;
+                                session_extension_manager.stop_thread(thread_id).await;
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                warn!("session-script thread-removal receiver lagged");
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
                     created = thread_created_rx.recv(), if listen_for_threads => {
                         match created {
                             Ok(thread_id) => {
@@ -518,6 +755,10 @@ async fn start_uninitialized(
                                 processor
                                     .try_attach_thread_listener(thread_id, connection_ids)
                                     .await;
+                                if processor.is_loaded_root_thread(thread_id).await {
+                                    session_script_host.lock().await.start_for_thread(thread_id).await;
+                                    session_extension_manager.start_for_thread(thread_id).await;
+                                }
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                                 warn!("thread_created receiver lagged; skipping resync");
@@ -531,7 +772,17 @@ async fn start_uninitialized(
             }
 
             processor.clear_runtime_references();
+            session_script_host.lock().await.shutdown().await;
             processor.cancel_active_login().await;
+            for (connection_id, connection_state) in session_script_connections {
+                connection_state.session.rpc_gate.close().await;
+                processor
+                    .connection_closed(connection_id, &connection_state.session)
+                    .await;
+                let _ = outbound_control_tx
+                    .send(InProcessOutboundControl::Closed { connection_id })
+                    .await;
+            }
             processor
                 .connection_closed(IN_PROCESS_CONNECTION_ID, &session)
                 .await;

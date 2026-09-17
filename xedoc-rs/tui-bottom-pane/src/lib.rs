@@ -94,6 +94,7 @@ mod active_agent_list;
 mod active_task_list;
 pub use active_agent_list::ActiveAgentEntry;
 use slash_commands::ServiceTierCommand;
+use slash_commands::SessionExtensionCommand;
 pub use xedoc_tui_completion::prompt_args;
 pub use xedoc_tui_completion::slash_commands;
 pub use xedoc_tui_composer::bottom_pane::ChatComposer;
@@ -455,6 +456,11 @@ impl BottomPane {
 
     pub fn set_service_tier_commands(&mut self, commands: Vec<ServiceTierCommand>) {
         self.composer.set_service_tier_commands(commands);
+        self.request_redraw();
+    }
+
+    pub fn set_session_extension_commands(&mut self, commands: Vec<SessionExtensionCommand>) {
+        self.composer.set_session_extension_commands(commands);
         self.request_redraw();
     }
 

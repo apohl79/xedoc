@@ -11,8 +11,9 @@ use super::selection_popup_common::measure_rows_height_with_col_width_mode;
 use super::selection_popup_common::render_rows_with_col_width_mode;
 use super::slash_commands::BuiltinCommandFlags;
 use super::slash_commands::ServiceTierCommand;
+use super::slash_commands::SessionExtensionCommand;
 use super::slash_commands::SlashCommandItem;
-use super::slash_commands::commands_for_input;
+use super::slash_commands::commands_for_input_with_session_extensions;
 use crate::render::Insets;
 use crate::render::RectExt;
 use crate::slash_command::SlashCommand;
@@ -31,6 +32,7 @@ const COMMAND_COLUMN_WIDTH: ColumnWidthConfig = ColumnWidthConfig::new(
 pub enum CommandItem {
     Builtin(SlashCommand),
     ServiceTier(ServiceTierCommand),
+    SessionExtension(SessionExtensionCommand),
 }
 
 pub struct CommandPopup {
@@ -64,16 +66,32 @@ impl From<CommandPopupFlags> for BuiltinCommandFlags {
 
 impl CommandPopup {
     pub fn new(flags: CommandPopupFlags, service_tier_commands: Vec<ServiceTierCommand>) -> Self {
+        Self::new_with_session_extension_commands(flags, service_tier_commands, Vec::new())
+    }
+
+    /// Construct a popup that also exposes approved session extension commands.
+    pub fn new_with_session_extension_commands(
+        flags: CommandPopupFlags,
+        service_tier_commands: Vec<ServiceTierCommand>,
+        session_extension_commands: Vec<SessionExtensionCommand>,
+    ) -> Self {
         // Keep built-in availability in sync with the composer.
-        let commands = commands_for_input(flags.into(), &service_tier_commands)
-            .into_iter()
-            .filter_map(|command| match command {
-                SlashCommandItem::Builtin(cmd) => {
-                    (!cmd.command().starts_with("debug")).then_some(CommandItem::Builtin(cmd))
-                }
-                SlashCommandItem::ServiceTier(command) => Some(CommandItem::ServiceTier(command)),
-            })
-            .collect();
+        let commands = commands_for_input_with_session_extensions(
+            flags.into(),
+            &service_tier_commands,
+            &session_extension_commands,
+        )
+        .into_iter()
+        .filter_map(|command| match command {
+            SlashCommandItem::Builtin(cmd) => {
+                (!cmd.command().starts_with("debug")).then_some(CommandItem::Builtin(cmd))
+            }
+            SlashCommandItem::ServiceTier(command) => Some(CommandItem::ServiceTier(command)),
+            SlashCommandItem::SessionExtension(command) => {
+                Some(CommandItem::SessionExtension(command))
+            }
+        })
+        .collect();
         Self {
             command_filter: String::new(),
             commands,
@@ -242,6 +260,7 @@ impl CommandItem {
         match self {
             Self::Builtin(cmd) => cmd.command(),
             Self::ServiceTier(command) => &command.name,
+            Self::SessionExtension(command) => &command.name,
         }
     }
 
@@ -249,6 +268,7 @@ impl CommandItem {
         match self {
             Self::Builtin(cmd) => cmd.description(),
             Self::ServiceTier(command) => &command.description,
+            Self::SessionExtension(command) => &command.description,
         }
     }
 }
@@ -288,6 +308,7 @@ mod tests {
         let has_init = matches.iter().any(|item| match item {
             CommandItem::Builtin(cmd) => cmd.command() == "init",
             CommandItem::ServiceTier(_) => false,
+            CommandItem::SessionExtension(_) => false,
         });
         assert!(
             has_init,
@@ -308,6 +329,9 @@ mod tests {
             Some(CommandItem::ServiceTier(command)) => {
                 panic!("expected init command, got service tier {command:?}")
             }
+            Some(CommandItem::SessionExtension(command)) => {
+                panic!("expected init command, got session extension {command:?}")
+            }
             None => panic!("expected a selected command for exact match"),
         }
     }
@@ -321,6 +345,9 @@ mod tests {
             Some(CommandItem::Builtin(cmd)) => assert_eq!(cmd.command(), "model"),
             Some(CommandItem::ServiceTier(command)) => {
                 panic!("expected model command, got service tier {command:?}")
+            }
+            Some(CommandItem::SessionExtension(command)) => {
+                panic!("expected model command, got session extension {command:?}")
             }
             None => panic!("expected at least one match for '/mo'"),
         }
@@ -370,6 +397,7 @@ mod tests {
             .map(|item| match item {
                 CommandItem::Builtin(cmd) => cmd.command().to_string(),
                 CommandItem::ServiceTier(command) => command.name,
+                CommandItem::SessionExtension(command) => command.name,
             })
             .collect();
         assert_eq!(
@@ -414,6 +442,7 @@ mod tests {
             .map(|item| match item {
                 CommandItem::Builtin(cmd) => cmd.command().to_string(),
                 CommandItem::ServiceTier(command) => command.name,
+                CommandItem::SessionExtension(command) => command.name,
             })
             .collect();
         assert!(
@@ -489,6 +518,7 @@ mod tests {
             .map(|item| match item {
                 CommandItem::Builtin(cmd) => cmd.command().to_string(),
                 CommandItem::ServiceTier(command) => command.name,
+                CommandItem::SessionExtension(command) => command.name,
             })
             .collect();
         assert!(
@@ -517,6 +547,9 @@ mod tests {
             Some(CommandItem::ServiceTier(command)) => {
                 panic!("expected plan command, got service tier {command:?}")
             }
+            Some(CommandItem::SessionExtension(command)) => {
+                panic!("expected plan command, got session extension {command:?}")
+            }
             other => panic!("expected plan to be selected for exact match, got {other:?}"),
         }
     }
@@ -542,6 +575,7 @@ mod tests {
             .map(|item| match item {
                 CommandItem::Builtin(cmd) => cmd.command().to_string(),
                 CommandItem::ServiceTier(command) => command.name,
+                CommandItem::SessionExtension(command) => command.name,
             })
             .collect();
         assert!(
@@ -570,6 +604,9 @@ mod tests {
             Some(CommandItem::ServiceTier(command)) => {
                 panic!("expected personality command, got service tier {command:?}")
             }
+            Some(CommandItem::SessionExtension(command)) => {
+                panic!("expected personality command, got session extension {command:?}")
+            }
             other => panic!("expected personality to be selected for exact match, got {other:?}"),
         }
     }
@@ -583,6 +620,7 @@ mod tests {
             .map(|item| match item {
                 CommandItem::Builtin(cmd) => cmd.command().to_string(),
                 CommandItem::ServiceTier(command) => command.name,
+                CommandItem::SessionExtension(command) => command.name,
             })
             .collect();
 
@@ -590,5 +628,25 @@ mod tests {
             !cmds.iter().any(|name| name.starts_with("debug")),
             "expected no /debug* command in popup menu, got {cmds:?}"
         );
+    }
+
+    #[test]
+    fn session_extension_command_is_visible_without_service_tier_enablement() {
+        let mut popup = CommandPopup::new_with_session_extension_commands(
+            CommandPopupFlags::default(),
+            Vec::new(),
+            vec![SessionExtensionCommand {
+                extension_id: "com.example.review".to_string(),
+                name: "extension-review".to_string(),
+                description: "Review with the session extension".to_string(),
+            }],
+        );
+        popup.on_composer_text_change("/extension-review".to_string());
+
+        assert!(matches!(
+            popup.selected_item(),
+            Some(CommandItem::SessionExtension(SessionExtensionCommand { ref name, .. }))
+                if name == "extension-review"
+        ));
     }
 }

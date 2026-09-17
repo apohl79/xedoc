@@ -8,6 +8,7 @@ use crate::HooksToml;
 use crate::model_router::ModelRouterConfigToml;
 use crate::permissions_toml::PermissionsToml;
 use crate::profile_toml::ConfigProfile;
+use crate::session_scripts::SessionScriptConfigToml;
 use crate::types::AppsConfigToml;
 use crate::types::AuthCredentialsStoreMode;
 use crate::types::History;
@@ -150,6 +151,10 @@ pub struct ConfigToml {
     /// Experimental model-router controls and policy location.
     #[serde(default)]
     pub model_router: ModelRouterConfigToml,
+
+    /// Host-managed persistent scripts allowed to observe one loaded session.
+    #[serde(default)]
+    pub session_scripts: Vec<SessionScriptConfigToml>,
 
     /// Optional override of model selection.
     pub model: Option<String>,

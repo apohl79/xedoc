@@ -193,6 +193,10 @@
               "minimum": 0.0,
               "type": "integer"
             },
+            "sensitive": {
+              "default": false,
+              "type": "boolean"
+            },
             "type": {
               "enum": [
                 "text"

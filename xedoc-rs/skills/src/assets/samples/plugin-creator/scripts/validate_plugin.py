@@ -23,6 +23,9 @@ SEMVER_RE = re.compile(
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
 HEX_COLOR_RE = re.compile(r"^#[0-9A-F]{6}$", re.IGNORECASE)
+EXTENSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+EXTENSION_CAPABILITY_RE = re.compile(r"^[^\s\x00-\x1f\x7f]{1,128}$")
+MAX_EXTENSION_DESCRIPTION_LEN = 512
 
 
 def parse_args() -> argparse.Namespace:
@@ -106,6 +109,7 @@ def validate_manifest_shape(
         "repository",
         "license",
         "keywords",
+        "extensions",
     }
     for key in sorted(set(manifest) - allowed_keys):
         errors.append(f"plugin.json field `{key}` is not accepted by plugin validation")
@@ -127,6 +131,7 @@ def validate_manifest_shape(
     validate_optional_contract_path(manifest, "skills", "skills", errors)
     validate_optional_contract_path(manifest, "apps", ".app.json", errors)
     validate_manifest_mcp_servers(plugin_root, manifest, errors)
+    validate_manifest_extensions(plugin_root, manifest, errors)
 
     if manifest.get("apps") is not None:
         validate_app_manifest(
@@ -199,6 +204,121 @@ def validate_manifest_shape(
                 f"interface.screenshots[{index}]",
                 errors,
             )
+
+
+def validate_manifest_extensions(
+    plugin_root: Path,
+    manifest: dict[str, Any],
+    errors: list[str],
+) -> None:
+    value = manifest.get("extensions")
+    if value is None:
+        return
+    if not isinstance(value, list):
+        errors.append("plugin.json field `extensions` must be an array")
+        return
+
+    seen_ids: set[str] = set()
+    for index, extension in enumerate(value):
+        prefix = f"extensions[{index}]"
+        if not isinstance(extension, dict):
+            errors.append(f"plugin.json field `{prefix}` must be an object")
+            continue
+        reject_unknown_fields(
+            extension,
+            {"id", "entrypoint", "commands", "requestedCapabilities"},
+            prefix,
+            errors,
+        )
+        extension_id = require_non_empty_string(
+            extension,
+            "id",
+            errors,
+            prefix=prefix,
+        )
+        if extension_id is not None and EXTENSION_ID_RE.fullmatch(extension_id.strip()) is None:
+            errors.append(
+                f"plugin.json field `{prefix}.id` must be an ASCII identifier "
+                "using letters, digits, `-`, or `_`"
+            )
+        if extension_id is not None:
+            normalized_extension_id = extension_id.strip()
+            if normalized_extension_id in seen_ids:
+                errors.append(f"plugin.json field `{prefix}.id` must be unique")
+            seen_ids.add(normalized_extension_id)
+
+        entrypoint = extension.get("entrypoint")
+        if not isinstance(entrypoint, str) or not entrypoint.strip():
+            errors.append(f"plugin.json field `{prefix}.entrypoint` must be a non-empty path")
+        elif not entrypoint.strip().startswith("./"):
+            errors.append(
+                f"plugin.json field `{prefix}.entrypoint` must start with `./` relative to the plugin root"
+            )
+        else:
+            validate_asset_path(
+                plugin_root,
+                plugin_root,
+                entrypoint,
+                f"{prefix}.entrypoint",
+                errors,
+                require_file=False,
+            )
+
+        commands = extension.get("commands", [])
+        if not isinstance(commands, list):
+            errors.append(f"plugin.json field `{prefix}.commands` must be an array")
+        else:
+            for command_index, command in enumerate(commands):
+                command_prefix = f"{prefix}.commands[{command_index}]"
+                if not isinstance(command, dict):
+                    errors.append(f"plugin.json field `{command_prefix}` must be an object")
+                    continue
+                reject_unknown_fields(
+                    command,
+                    {"name", "description"},
+                    command_prefix,
+                    errors,
+                )
+                name = require_non_empty_string(
+                    command,
+                    "name",
+                    errors,
+                    prefix=command_prefix,
+                )
+                if name is not None and EXTENSION_ID_RE.fullmatch(name.strip()) is None:
+                    errors.append(
+                        f"plugin.json field `{command_prefix}.name` must be an ASCII identifier "
+                        "using letters, digits, `-`, or `_`"
+                    )
+                description = require_non_empty_string(
+                    command,
+                    "description",
+                    errors,
+                    prefix=command_prefix,
+                )
+                if (
+                    description is not None
+                    and len(description.strip()) > MAX_EXTENSION_DESCRIPTION_LEN
+                ):
+                    errors.append(
+                        f"plugin.json field `{command_prefix}.description` must be at most "
+                        f"{MAX_EXTENSION_DESCRIPTION_LEN} characters"
+                    )
+
+        capabilities = extension.get("requestedCapabilities", [])
+        if not isinstance(capabilities, list):
+            errors.append(
+                f"plugin.json field `{prefix}.requestedCapabilities` must be an array of strings"
+            )
+        else:
+            for capability_index, capability in enumerate(capabilities):
+                if not isinstance(capability, str) or EXTENSION_CAPABILITY_RE.fullmatch(
+                    capability.strip()
+                ) is None:
+                    errors.append(
+                        f"plugin.json field `{prefix}.requestedCapabilities[{capability_index}]` "
+                        "must be a non-empty capability identifier"
+                    )
 
 
 def require_object(
@@ -608,6 +728,8 @@ def validate_asset_path(
     raw_path: Any,
     field: str,
     errors: list[str],
+    *,
+    require_file: bool = True,
 ) -> None:
     label = field if field.startswith("skill `") else f"plugin.json field `{field}`"
     if not isinstance(raw_path, str) or not raw_path.strip():
@@ -621,7 +743,7 @@ def validate_asset_path(
     if not resolved_path.is_relative_to(allowed_root.resolve()):
         errors.append(f"{label} must stay inside the plugin archive")
         return
-    if not resolved_path.is_file():
+    if require_file and not resolved_path.is_file():
         errors.append(f"{label} points to a missing file")
 
 

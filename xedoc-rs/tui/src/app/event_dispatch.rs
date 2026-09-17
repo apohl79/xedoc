@@ -1057,6 +1057,26 @@ impl App {
                     }
                 }
             }
+            AppEvent::InvokeSessionExtensionCommand {
+                thread_id,
+                extension_id,
+                command,
+                arguments,
+            } => {
+                if let Err(error) = crate::config_update::invoke_session_extension_command(
+                    app_server.request_handle(),
+                    thread_id,
+                    extension_id,
+                    command,
+                    arguments,
+                )
+                .await
+                {
+                    tracing::warn!(%error, "failed to invoke session extension command");
+                    self.chat_widget
+                        .add_error_message(format!("Session extension command failed: {error}"));
+                }
+            }
             AppEvent::UpdateAskForApprovalPolicy(policy) => {
                 let mut config = self.config.clone();
                 if !self.try_set_approval_policy_on_config(

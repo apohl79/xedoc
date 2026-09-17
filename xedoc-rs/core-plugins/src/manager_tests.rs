@@ -511,6 +511,7 @@ async fn load_plugins_loads_default_skills_and_mcp_servers() {
             manifest_description: Some(
                 "Plugin that includes the sample MCP server and Skills".to_string(),
             ),
+            extensions: Vec::new(),
             root: AbsolutePathBuf::try_from(plugin_root.clone()).unwrap(),
             enabled: true,
             skill_roots: vec![plugin_root.join("skills").abs()],
@@ -1298,6 +1299,7 @@ async fn load_plugin_skills_dedupes_overlapping_manifest_roots() {
         version: None,
         description: None,
         keywords: Vec::new(),
+        extensions: Vec::new(),
         paths: crate::manifest::PluginManifestPaths {
             skills: vec![
                 plugin_root.join("skills"),
@@ -1533,6 +1535,7 @@ async fn load_plugins_preserves_disabled_plugins_without_effective_contributions
             manifest_name: None,
             plugin_namespace: None,
             manifest_description: None,
+            extensions: Vec::new(),
             root: AbsolutePathBuf::try_from(plugin_root).unwrap(),
             enabled: false,
             skill_roots: Vec::new(),
@@ -1584,6 +1587,7 @@ fn capability_index_filters_inactive_and_zero_capability_plugins() {
                 .to_string(),
         ),
         manifest_description: None,
+        extensions: Vec::new(),
         root: AbsolutePathBuf::try_from(xedoc_home.path().join(dir_name)).unwrap(),
         enabled: true,
         skill_roots: Vec::new(),

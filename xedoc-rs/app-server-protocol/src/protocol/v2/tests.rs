@@ -2599,6 +2599,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
             model: None,
             reasoning_effort: None,
             current_activity: None,
+            change_totals: None,
         }
     );
 

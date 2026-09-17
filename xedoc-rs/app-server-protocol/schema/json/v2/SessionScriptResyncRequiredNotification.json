@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "registrationId": {
+      "type": "string"
+    },
+    "revision": {
+      "format": "uint64",
+      "minimum": 0.0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "registrationId",
+    "revision"
+  ],
+  "title": "SessionScriptResyncRequiredNotification",
+  "type": "object"
+}

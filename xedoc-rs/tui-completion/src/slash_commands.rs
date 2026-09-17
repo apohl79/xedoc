@@ -1,4 +1,4 @@
-//! Shared helpers for filtering and matching built-in and model service-tier slash commands.
+//! Shared helpers for filtering and matching slash commands.
 //!
 //! The same sandbox- and feature-gating rules are used by both the composer
 //! and the command popup. Centralizing them here keeps those call sites small
@@ -17,10 +17,22 @@ pub struct ServiceTierCommand {
     pub description: String,
 }
 
+/// An approved session extension command exposed through the composer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionExtensionCommand {
+    /// Stable identity of the extension that declared this command.
+    pub extension_id: String,
+    /// Slash command name without a leading slash.
+    pub name: String,
+    /// Human-readable command description.
+    pub description: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SlashCommandItem {
     Builtin(SlashCommand),
     ServiceTier(ServiceTierCommand),
+    SessionExtension(SessionExtensionCommand),
 }
 
 impl SlashCommandItem {
@@ -28,6 +40,7 @@ impl SlashCommandItem {
         match self {
             Self::Builtin(cmd) => cmd.command(),
             Self::ServiceTier(command) => &command.name,
+            Self::SessionExtension(command) => &command.name,
         }
     }
 
@@ -35,6 +48,7 @@ impl SlashCommandItem {
         match self {
             Self::Builtin(cmd) => cmd.supports_inline_args(),
             Self::ServiceTier(_) => false,
+            Self::SessionExtension(_) => true,
         }
     }
 
@@ -42,6 +56,7 @@ impl SlashCommandItem {
         match self {
             Self::Builtin(cmd) => cmd.available_in_side_conversation(),
             Self::ServiceTier(_) => false,
+            Self::SessionExtension(_) => false,
         }
     }
 
@@ -49,6 +64,7 @@ impl SlashCommandItem {
         match self {
             Self::Builtin(cmd) => cmd.available_during_task(),
             Self::ServiceTier(_) => true,
+            Self::SessionExtension(_) => true,
         }
     }
 }
@@ -79,6 +95,15 @@ pub fn commands_for_input(
     flags: BuiltinCommandFlags,
     service_tier_commands: &[ServiceTierCommand],
 ) -> Vec<SlashCommandItem> {
+    commands_for_input_with_session_extensions(flags, service_tier_commands, &[])
+}
+
+/// Return commands available to the composer, including approved session extensions.
+pub fn commands_for_input_with_session_extensions(
+    flags: BuiltinCommandFlags,
+    service_tier_commands: &[ServiceTierCommand],
+    session_extension_commands: &[SessionExtensionCommand],
+) -> Vec<SlashCommandItem> {
     let mut commands = Vec::new();
     let tiers_enabled = flags.service_tier_commands_enabled;
     for (_, cmd) in builtins_for_input(flags) {
@@ -92,6 +117,13 @@ pub fn commands_for_input(
             );
         }
     }
+    commands.extend(
+        session_extension_commands
+            .iter()
+            .filter(|command| find_builtin_command(&command.name, flags).is_none())
+            .cloned()
+            .map(SlashCommandItem::SessionExtension),
+    );
     commands
         .into_iter()
         .filter(|cmd| !flags.side_conversation_active || cmd.available_in_side_conversation())
@@ -123,20 +155,36 @@ pub fn find_slash_command(
     flags: BuiltinCommandFlags,
     service_tier_commands: &[ServiceTierCommand],
 ) -> Option<SlashCommandItem> {
+    find_slash_command_with_session_extensions(name, flags, service_tier_commands, &[])
+}
+
+/// Find a command by name, preferring built-ins over dynamic commands.
+pub fn find_slash_command_with_session_extensions(
+    name: &str,
+    flags: BuiltinCommandFlags,
+    service_tier_commands: &[ServiceTierCommand],
+    session_extension_commands: &[SessionExtensionCommand],
+) -> Option<SlashCommandItem> {
     if let Some(cmd) = find_builtin_command(name, flags) {
         return Some(SlashCommandItem::Builtin(cmd));
     }
 
     let tiers_enabled = flags.service_tier_commands_enabled;
-    tiers_enabled
-        .then(|| {
-            service_tier_commands
-                .iter()
-                .find(|command| command.name.as_str() == name)
-                .cloned()
-                .map(SlashCommandItem::ServiceTier)
-        })
-        .flatten()
+    if let Some(Some(command)) = tiers_enabled.then(|| {
+        service_tier_commands
+            .iter()
+            .find(|command| command.name.as_str() == name)
+            .cloned()
+            .map(SlashCommandItem::ServiceTier)
+    }) {
+        return Some(command);
+    }
+
+    session_extension_commands
+        .iter()
+        .find(|command| command.name.as_str() == name)
+        .cloned()
+        .map(SlashCommandItem::SessionExtension)
 }
 
 pub fn has_slash_command_prefix(
@@ -144,9 +192,23 @@ pub fn has_slash_command_prefix(
     flags: BuiltinCommandFlags,
     service_tier_commands: &[ServiceTierCommand],
 ) -> bool {
-    commands_for_input(flags, service_tier_commands)
-        .into_iter()
-        .any(|command| fuzzy_match(command.command(), name).is_some())
+    has_slash_command_prefix_with_session_extensions(name, flags, service_tier_commands, &[])
+}
+
+/// Return whether input is a prefix of a command available to the composer.
+pub fn has_slash_command_prefix_with_session_extensions(
+    name: &str,
+    flags: BuiltinCommandFlags,
+    service_tier_commands: &[ServiceTierCommand],
+    session_extension_commands: &[SessionExtensionCommand],
+) -> bool {
+    commands_for_input_with_session_extensions(
+        flags,
+        service_tier_commands,
+        session_extension_commands,
+    )
+    .into_iter()
+    .any(|command| fuzzy_match(command.command(), name).is_some())
 }
 
 #[cfg(test)]
@@ -310,6 +372,46 @@ mod tests {
         assert_eq!(
             find_slash_command("fast", flags, from_ref(&command)),
             Some(SlashCommandItem::ServiceTier(command))
+        );
+    }
+
+    #[test]
+    fn session_extension_commands_are_visible_without_service_tier_enablement() {
+        let mut flags = all_enabled_flags();
+        flags.service_tier_commands_enabled = false;
+        let command = SessionExtensionCommand {
+            extension_id: "com.example.review".to_string(),
+            name: "extension-review".to_string(),
+            description: "Review with the session extension".to_string(),
+        };
+
+        assert_eq!(
+            find_slash_command_with_session_extensions(
+                "extension-review",
+                flags,
+                &[],
+                std::slice::from_ref(&command),
+            ),
+            Some(SlashCommandItem::SessionExtension(command))
+        );
+    }
+
+    #[test]
+    fn builtins_win_over_colliding_session_extension_commands() {
+        let command = SessionExtensionCommand {
+            extension_id: "com.example.review".to_string(),
+            name: "diff".to_string(),
+            description: "A colliding extension command".to_string(),
+        };
+
+        assert_eq!(
+            find_slash_command_with_session_extensions(
+                "diff",
+                all_enabled_flags(),
+                &[],
+                std::slice::from_ref(&command),
+            ),
+            Some(SlashCommandItem::Builtin(SlashCommand::Diff))
         );
     }
 }

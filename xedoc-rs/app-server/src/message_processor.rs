@@ -38,9 +38,14 @@ use crate::request_processors::TurnRequestProcessor;
 use crate::request_serialization::QueuedInitializedRequest;
 use crate::request_serialization::RequestSerializationQueueKey;
 use crate::request_serialization::RequestSerializationQueues;
+use crate::session_extension_manager::SessionExtensionManager;
+use crate::session_script_host::SessionScriptHost;
+use crate::session_script_registry::SessionScriptRegistration;
+use crate::session_script_registry::SessionScriptRegistry;
 use crate::skills_watcher::SkillsWatcher;
 use crate::thread_state::ThreadStateManager;
 use crate::transport::AppServerTransport;
+use crate::transport::SessionScriptConnectionScope;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
 use tokio::sync::broadcast;
@@ -58,6 +63,7 @@ use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::JSONRPCNotification;
 use xedoc_app_server_protocol::JSONRPCRequest;
 use xedoc_app_server_protocol::JSONRPCResponse;
+use xedoc_app_server_protocol::SessionScriptCapability;
 use xedoc_app_server_protocol::experimental_required_message;
 use xedoc_arg0::Arg0DispatchPaths;
 use xedoc_core::ThreadManager;
@@ -88,6 +94,55 @@ fn deserialize_client_request(
         })
 }
 
+fn authorize_session_script_request(
+    request: &ClientRequest,
+    registration: &SessionScriptRegistration,
+) -> Result<(), JSONRPCErrorError> {
+    let thread_id = registration.thread_id.to_string();
+    let may_send_input = registration
+        .capabilities
+        .contains(&SessionScriptCapability::UserInputSend);
+    match request {
+        ClientRequest::ScriptRead { .. }
+        | ClientRequest::ScriptUnregister { .. }
+        | ClientRequest::ScriptRespond { .. } => Ok(()),
+        ClientRequest::TurnStart { params, .. }
+            if may_send_input
+                && params.thread_id == thread_id
+                && params.responsesapi_client_metadata.is_none()
+                && params.additional_context.is_none()
+                && params.environments.is_none()
+                && params.cwd.is_none()
+                && params.runtime_workspace_roots.is_none()
+                && params.approval_policy.is_none()
+                && params.sandbox_policy.is_none()
+                && params.permissions.is_none()
+                && params.model.is_none()
+                && params.service_tier.is_none()
+                && params.effort.is_none()
+                && params.summary.is_none()
+                && params.personality.is_none()
+                && params.output_schema.is_none()
+                && params.collaboration_mode.is_none()
+                && params.multi_agent_mode.is_none()
+                && params.model_provider.is_none() =>
+        {
+            Ok(())
+        }
+        ClientRequest::TurnSteer { params, .. }
+            if may_send_input
+                && params.thread_id == thread_id
+                && params.responsesapi_client_metadata.is_none()
+                && params.additional_context.is_none() =>
+        {
+            Ok(())
+        }
+        _ => Err(invalid_request(
+            "a session-script connection may only use its registered script methods and granted input capability",
+        )),
+    }
+}
+
 pub(crate) struct MessageProcessor {
     outgoing: Arc<OutgoingMessageSender>,
     models_refresh_worker: ModelsRefreshWorker,
@@ -112,6 +167,7 @@ pub(crate) struct MessageProcessor {
     thread_goal_processor: ThreadGoalRequestProcessor,
     thread_processor: ThreadRequestProcessor,
     turn_processor: TurnRequestProcessor,
+    session_extension_manager: SessionExtensionManager,
     request_serialization_queues: RequestSerializationQueues,
 }
 
@@ -119,6 +175,8 @@ pub(crate) struct MessageProcessor {
 pub(crate) struct ConnectionSessionState {
     pub(crate) rpc_gate: Arc<ConnectionRpcGate>,
     initialized: OnceLock<InitializedConnectionSessionState>,
+    session_script: Arc<AtomicBool>,
+    session_script_scope: Option<SessionScriptConnectionScope>,
 }
 
 #[derive(Debug)]
@@ -138,9 +196,17 @@ impl Default for ConnectionSessionState {
 
 impl ConnectionSessionState {
     pub(crate) fn new() -> Self {
+        Self::new_with_session_script_scope(None)
+    }
+
+    pub(crate) fn new_with_session_script_scope(
+        session_script_scope: Option<SessionScriptConnectionScope>,
+    ) -> Self {
         Self {
             rpc_gate: Arc::new(ConnectionRpcGate::new()),
             initialized: OnceLock::new(),
+            session_script: Arc::new(AtomicBool::new(false)),
+            session_script_scope,
         }
     }
 
@@ -178,6 +244,30 @@ impl ConnectionSessionState {
             .get()
             .is_some_and(|session| session.supports_openai_form_elicitation)
     }
+
+    pub(crate) fn mark_session_script(&self) {
+        self.session_script
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(crate) fn clear_session_script(&self) {
+        self.session_script
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+
+    pub(crate) fn is_session_script(&self) -> bool {
+        self.session_script
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub(crate) fn session_script_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.session_script)
+    }
+
+    pub(crate) fn session_script_scope(&self) -> Option<&SessionScriptConnectionScope> {
+        self.session_script_scope.as_ref()
+    }
+
     pub(crate) fn initialize(&self, session: InitializedConnectionSessionState) -> Result<(), ()> {
         self.initialized.set(session).map_err(|_| ())
     }
@@ -196,6 +286,7 @@ pub(crate) struct MessageProcessorArgs {
     pub(crate) auth_manager: Arc<AuthManager>,
     pub(crate) installation_id: String,
     pub(crate) plugin_startup_tasks: crate::PluginStartupTasks,
+    pub(crate) session_script_host: Arc<Mutex<SessionScriptHost>>,
 }
 
 impl MessageProcessor {
@@ -215,8 +306,10 @@ impl MessageProcessor {
             auth_manager,
             installation_id,
             plugin_startup_tasks,
+            session_script_host,
         } = args;
         let thread_state_manager = ThreadStateManager::new();
+        let session_script_registry = SessionScriptRegistry::new(&config.session_scripts);
         // The thread store is intentionally process-scoped. Config reloads can
         // affect per-thread behavior, but they must not move newly started,
         // resumed, or forked threads to a different persistence backend/root.
@@ -263,6 +356,13 @@ impl MessageProcessor {
                 )),
             )
         });
+        let session_extension_manager = SessionExtensionManager::new(
+            Arc::clone(&config),
+            Arc::clone(&thread_manager),
+            outgoing.clone(),
+            session_script_registry.clone(),
+            session_script_host,
+        );
         let models_manager = thread_manager.get_models_manager();
         let models_refresh_worker =
             crate::models_refresh_worker::spawn(&models_manager, config.http_client_factory());
@@ -272,6 +372,7 @@ impl MessageProcessor {
         let thread_watch_manager =
             crate::thread_status::ThreadWatchManager::new_with_outgoing(outgoing.clone());
         let thread_list_state_permit = Arc::new(Semaphore::new(/*permits*/ 1));
+        let (session_script_thread_started_tx, _) = broadcast::channel(32);
         let request_serialization_queues = RequestSerializationQueues::default();
         let config_processor = ConfigRequestProcessor::new(
             outgoing.clone(),
@@ -366,6 +467,7 @@ impl MessageProcessor {
             Arc::clone(&thread_store),
             Arc::clone(&pending_thread_unloads),
             thread_state_manager.clone(),
+            session_script_registry.clone(),
             thread_watch_manager.clone(),
             Arc::clone(&thread_list_state_permit),
             thread_goal_processor.clone(),
@@ -373,6 +475,7 @@ impl MessageProcessor {
             log_db,
             Arc::clone(&skills_watcher),
             config_warnings,
+            session_script_thread_started_tx,
         );
         let turn_processor = TurnRequestProcessor::new(
             Arc::clone(&thread_manager),
@@ -382,6 +485,7 @@ impl MessageProcessor {
             config_manager,
             pending_thread_unloads,
             thread_state_manager,
+            session_script_registry,
             thread_watch_manager,
             thread_list_state_permit,
             Arc::clone(&skills_watcher),
@@ -423,6 +527,7 @@ impl MessageProcessor {
             thread_goal_processor,
             thread_processor,
             turn_processor,
+            session_extension_manager,
             request_serialization_queues,
         }
     }
@@ -567,6 +672,20 @@ impl MessageProcessor {
         self.thread_processor.thread_created_receiver()
     }
 
+    pub(crate) fn session_script_thread_started_receiver(&self) -> broadcast::Receiver<ThreadId> {
+        self.thread_processor
+            .session_script_thread_started_receiver()
+    }
+
+    pub(crate) fn session_script_thread_removed_receiver(&self) -> broadcast::Receiver<ThreadId> {
+        self.thread_processor
+            .session_script_thread_removed_receiver()
+    }
+
+    pub(crate) fn session_extension_manager(&self) -> SessionExtensionManager {
+        self.session_extension_manager.clone()
+    }
+
     pub(crate) async fn send_initialize_notifications_to_connection(
         &self,
         connection_id: ConnectionId,
@@ -596,6 +715,10 @@ impl MessageProcessor {
         self.thread_processor
             .try_attach_thread_listener(thread_id, connection_ids)
             .await;
+    }
+
+    pub(crate) async fn is_loaded_root_thread(&self, thread_id: ThreadId) -> bool {
+        self.thread_processor.is_loaded_root_thread(thread_id).await
     }
 
     pub(crate) async fn drain_background_tasks(&self) {
@@ -726,6 +849,7 @@ impl MessageProcessor {
         let supports_openai_form_elicitation = session.supports_openai_form_elicitation();
         let error_request_id = connection_request_id.clone();
         let rpc_gate = Arc::clone(&session.rpc_gate);
+        let session_for_request = Arc::clone(&session);
         let processor = Arc::clone(self);
         let span = request_context.span();
         let request = QueuedInitializedRequest::new(
@@ -740,6 +864,7 @@ impl MessageProcessor {
                         app_server_client_name,
                         client_version,
                         supports_openai_form_elicitation,
+                        session_for_request,
                     )
                     .await;
                 if let Err(error) = result {
@@ -770,12 +895,30 @@ impl MessageProcessor {
         app_server_client_name: Option<String>,
         client_version: Option<String>,
         supports_openai_form_elicitation: bool,
+        session: Arc<ConnectionSessionState>,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
         let request_id = ConnectionRequestId {
             connection_id,
             request_id: xedoc_request.id().clone(),
         };
+
+        let registration = self
+            .thread_processor
+            .session_script_registration(connection_id)
+            .await;
+        if session.session_script_scope().is_some() || session.is_session_script() {
+            if let Some(registration) = registration.as_ref() {
+                authorize_session_script_request(&xedoc_request, registration)?;
+            } else if !matches!(
+                xedoc_request,
+                ClientRequest::ScriptRegister { .. } | ClientRequest::ScriptUnregister { .. }
+            ) {
+                return Err(invalid_request(
+                    "an unregistered session-script connection may only register or unregister a script",
+                ));
+            }
+        }
 
         let result: Result<Option<ClientResponsePayload>, JSONRPCErrorError> = match xedoc_request {
             ClientRequest::Initialize { .. } => {
@@ -909,6 +1052,16 @@ impl MessageProcessor {
                 .open()
                 .await
                 .map(|response| Some(response.into())),
+            ClientRequest::SessionExtensionList { params, .. } => self
+                .session_extension_manager
+                .list(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::SessionExtensionCommandInvoke { params, .. } => self
+                .session_extension_manager
+                .invoke(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ModelProviderApiKeySet { params, .. } => self
                 .model_manager_processor
                 .set_api_key(params)
@@ -943,6 +1096,26 @@ impl MessageProcessor {
             ClientRequest::ThreadUnsubscribe { params, .. } => {
                 self.thread_processor
                     .thread_unsubscribe(&request_id, params)
+                    .await
+            }
+            ClientRequest::ScriptRegister { params, .. } => {
+                self.thread_processor
+                    .script_register(request_id.clone(), connection_id, params, session.as_ref())
+                    .await
+            }
+            ClientRequest::ScriptUnregister { params, .. } => {
+                self.thread_processor
+                    .script_unregister(connection_id, params)
+                    .await
+            }
+            ClientRequest::ScriptRead { params, .. } => {
+                self.thread_processor
+                    .script_read(connection_id, params)
+                    .await
+            }
+            ClientRequest::ScriptRespond { params, .. } => {
+                self.thread_processor
+                    .script_respond(connection_id, params)
                     .await
             }
             ClientRequest::ThreadResume { params, .. } => {

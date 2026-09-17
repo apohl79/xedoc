@@ -31,6 +31,7 @@ pub async fn start_stdio_connection(
         .send(TransportEvent::ConnectionOpened {
             connection_id,
             origin: ConnectionOrigin::Stdio,
+            session_script_scope: None,
             writer: writer_tx,
             disconnect_sender: Some(disconnect_token.clone()),
         })

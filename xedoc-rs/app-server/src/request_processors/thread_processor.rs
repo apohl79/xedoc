@@ -418,6 +418,7 @@ pub(crate) struct ThreadRequestProcessor {
     pub(super) thread_store: Arc<dyn ThreadStore>,
     pub(super) pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
     pub(super) thread_state_manager: ThreadStateManager,
+    pub(super) session_script_registry: crate::session_script_registry::SessionScriptRegistry,
     pub(super) thread_watch_manager: ThreadWatchManager,
     pub(super) thread_list_state_permit: Arc<Semaphore>,
     pub(super) thread_goal_processor: ThreadGoalRequestProcessor,
@@ -426,6 +427,7 @@ pub(crate) struct ThreadRequestProcessor {
     pub(super) background_tasks: TaskTracker,
     pub(super) skills_watcher: Arc<SkillsWatcher>,
     pub(super) initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
+    pub(super) session_script_thread_started_tx: broadcast::Sender<ThreadId>,
 }
 
 /// Outcome of trying to satisfy a resume request from an already loaded thread.
@@ -474,6 +476,7 @@ impl ThreadRequestProcessor {
         thread_store: Arc<dyn ThreadStore>,
         pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
         thread_state_manager: ThreadStateManager,
+        session_script_registry: crate::session_script_registry::SessionScriptRegistry,
         thread_watch_manager: ThreadWatchManager,
         thread_list_state_permit: Arc<Semaphore>,
         thread_goal_processor: ThreadGoalRequestProcessor,
@@ -481,6 +484,7 @@ impl ThreadRequestProcessor {
         log_db: Option<LogDbLayer>,
         skills_watcher: Arc<SkillsWatcher>,
         initial_config_warnings: Vec<ConfigWarningNotification>,
+        session_script_thread_started_tx: broadcast::Sender<ThreadId>,
     ) -> Self {
         Self {
             auth_manager,
@@ -492,6 +496,7 @@ impl ThreadRequestProcessor {
             thread_store,
             pending_thread_unloads,
             thread_state_manager,
+            session_script_registry,
             thread_watch_manager,
             thread_list_state_permit,
             thread_goal_processor,
@@ -500,6 +505,7 @@ impl ThreadRequestProcessor {
             background_tasks: TaskTracker::new(),
             skills_watcher,
             initial_config_warnings: Arc::new(initial_config_warnings),
+            session_script_thread_started_tx,
         }
     }
 
@@ -626,8 +632,17 @@ impl ThreadRequestProcessor {
                 if let Some(notification) = notification {
                     self.outgoing
                         .send_server_notification(ServerNotification::ThreadNameUpdated(
-                            notification,
+                            notification.clone(),
                         ))
+                        .await;
+                    let thread_id = ThreadId::from_string(&notification.thread_id)
+                        .expect("thread_set_name validates the notification thread id");
+                    self.session_script_registry
+                        .publish_session_title_updated(
+                            &self.outgoing,
+                            thread_id,
+                            notification.thread_name,
+                        )
                         .await;
                 }
                 Ok(None)
@@ -862,6 +877,8 @@ impl ThreadRequestProcessor {
         self.outgoing
             .cancel_requests_for_thread(thread_id, /*error*/ None)
             .await;
+        let script_deliveries = self.session_script_registry.remove_thread(thread_id).await;
+        crate::session_script_registry::send_deliveries(&self.outgoing, script_deliveries).await;
         self.thread_state_manager
             .remove_thread_state(thread_id)
             .await;
@@ -925,6 +942,7 @@ impl ThreadRequestProcessor {
         ListenerTaskContext {
             thread_manager: Arc::clone(&self.thread_manager),
             thread_state_manager: self.thread_state_manager.clone(),
+            session_script_registry: self.session_script_registry.clone(),
             outgoing: Arc::clone(&self.outgoing),
             pending_thread_unloads: Arc::clone(&self.pending_thread_unloads),
             thread_watch_manager: self.thread_watch_manager.clone(),
@@ -946,6 +964,19 @@ impl ThreadRequestProcessor {
             conversation_id,
             connection_id,
             raw_events_enabled,
+        )
+        .await
+    }
+
+    pub(super) async fn ensure_session_script_listener(
+        &self,
+        conversation_id: ThreadId,
+        connection_id: ConnectionId,
+    ) -> Result<EnsureConversationListenerResult, JSONRPCErrorError> {
+        super::thread_lifecycle::ensure_session_script_listener(
+            self.listener_task_context(),
+            conversation_id,
+            connection_id,
         )
         .await
     }
@@ -1034,6 +1065,7 @@ impl ThreadRequestProcessor {
         let listener_task_context = ListenerTaskContext {
             thread_manager: Arc::clone(&self.thread_manager),
             thread_state_manager: self.thread_state_manager.clone(),
+            session_script_registry: self.session_script_registry.clone(),
             outgoing: Arc::clone(&self.outgoing),
             pending_thread_unloads: Arc::clone(&self.pending_thread_unloads),
             thread_watch_manager: self.thread_watch_manager.clone(),
@@ -1047,11 +1079,13 @@ impl ThreadRequestProcessor {
         let initial_config_warnings = Arc::clone(&self.initial_config_warnings);
         let outgoing = Arc::clone(&listener_task_context.outgoing);
         let error_request_id = request_id.clone();
+        let session_script_thread_started_tx = self.session_script_thread_started_tx.clone();
         let thread_start_task = async move {
             if let Err(error) = Self::thread_start_task(
                 listener_task_context,
                 config_manager,
                 request_id,
+                session_script_thread_started_tx,
                 app_server_client_name,
                 app_server_client_version,
                 supports_openai_form_elicitation,
@@ -1129,6 +1163,7 @@ impl ThreadRequestProcessor {
         listener_task_context: ListenerTaskContext,
         config_manager: ConfigManager,
         request_id: ConnectionRequestId,
+        session_script_thread_started_tx: broadcast::Sender<ThreadId>,
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
@@ -1398,6 +1433,7 @@ impl ThreadRequestProcessor {
                 otel.name = "app_server.thread_start.notify_started",
             ))
             .await;
+        let _ = session_script_thread_started_tx.send(thread_id);
         session_telemetry.record_startup_phase(
             "thread_start_total",
             thread_start_started_at.elapsed(),
@@ -2205,7 +2241,7 @@ impl ThreadRequestProcessor {
         })
     }
 
-    async fn thread_read_response_inner(
+    pub(super) async fn thread_read_response_inner(
         &self,
         params: ThreadReadParams,
     ) -> Result<ThreadReadResponse, JSONRPCErrorError> {
@@ -2951,6 +2987,21 @@ impl ThreadRequestProcessor {
         self.thread_manager.subscribe_thread_created()
     }
 
+    pub(crate) fn session_script_thread_started_receiver(&self) -> broadcast::Receiver<ThreadId> {
+        self.session_script_thread_started_tx.subscribe()
+    }
+
+    pub(crate) fn session_script_thread_removed_receiver(&self) -> broadcast::Receiver<ThreadId> {
+        self.session_script_registry.thread_removed_receiver()
+    }
+
+    pub(crate) async fn is_loaded_root_thread(&self, thread_id: ThreadId) -> bool {
+        let Ok(thread) = self.thread_manager.get_thread(thread_id).await else {
+            return false;
+        };
+        thread.config_snapshot().await.parent_thread_id.is_none()
+    }
+
     pub(crate) async fn connection_initialized(&self, connection_id: ConnectionId) {
         self.thread_state_manager
             .connection_initialized(connection_id)
@@ -2958,6 +3009,11 @@ impl ThreadRequestProcessor {
     }
 
     pub(crate) async fn connection_closed(&self, connection_id: ConnectionId) {
+        let script_deliveries = self
+            .session_script_registry
+            .remove_connection(connection_id)
+            .await;
+        crate::session_script_registry::send_deliveries(&self.outgoing, script_deliveries).await;
         let thread_ids = self
             .thread_state_manager
             .remove_connection(connection_id)

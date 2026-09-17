@@ -30,6 +30,7 @@ use xedoc_config::PluginRequirementsToml;
 use xedoc_config::ProfileV2Name;
 use xedoc_config::ResidencyRequirement;
 use xedoc_config::SandboxModeRequirement;
+use xedoc_config::SessionScriptConfigToml;
 use xedoc_config::Sourced;
 use xedoc_config::ThreadConfigLoader;
 use xedoc_config::config_toml::ConfigLockfileToml;
@@ -613,6 +614,9 @@ pub struct Config {
 
     /// Effective model-router controls.
     pub model_router: ModelRouterConfigToml,
+
+    /// Host-managed persistent scripts that may register for a loaded root thread.
+    pub session_scripts: Vec<SessionScriptConfigToml>,
 
     /// Optional fast model used for side-band tasks on custom providers.
     pub model_fast: Option<String>,
@@ -3826,6 +3830,7 @@ impl Config {
                     ..cfg.model_router.clone()
                 }
             },
+            session_scripts: cfg.session_scripts.clone(),
             model_fast,
             service_tier,
             review_model,

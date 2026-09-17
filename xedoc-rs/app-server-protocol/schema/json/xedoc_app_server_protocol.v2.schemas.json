@@ -775,6 +775,102 @@
           "type": "object"
         },
         {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "script/register"
+              ],
+              "title": "Script/registerRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptRegisterParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Script/registerRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "script/unregister"
+              ],
+              "title": "Script/unregisterRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptUnregisterParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Script/unregisterRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "script/read"
+              ],
+              "title": "Script/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Script/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "script/respond"
+              ],
+              "title": "Script/respondRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptRespondParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Script/respondRequest",
+          "type": "object"
+        },
+        {
           "description": "Increment the thread-local out-of-band elicitation counter.\n\nThis is used by external helpers to pause timeout accounting while a user approval or other elicitation is pending outside the app-server request flow.",
           "properties": {
             "id": {
@@ -2167,6 +2263,54 @@
             "params"
           ],
           "title": "ModelRouterReport/openRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "sessionExtension/list"
+              ],
+              "title": "SessionExtension/listRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionExtensionListParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "SessionExtension/listRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "sessionExtension/command/invoke"
+              ],
+              "title": "SessionExtension/command/invokeRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionExtensionCommandInvokeParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "SessionExtension/command/invokeRequest",
           "type": "object"
         },
         {
@@ -5648,6 +5792,10 @@
               "format": "uint32",
               "minimum": 0.0,
               "type": "integer"
+            },
+            "sensitive": {
+              "default": false,
+              "type": "boolean"
             },
             "type": {
               "enum": [
@@ -13134,6 +13282,106 @@
           "properties": {
             "method": {
               "enum": [
+                "script/sessionUpdated"
+              ],
+              "title": "Script/sessionUpdatedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptUpdatedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Script/sessionUpdatedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "script/promptOpened"
+              ],
+              "title": "Script/promptOpenedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptPromptOpenedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Script/promptOpenedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "script/promptClosed"
+              ],
+              "title": "Script/promptClosedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptPromptClosedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Script/promptClosedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "script/resyncRequired"
+              ],
+              "title": "Script/resyncRequiredNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptResyncRequiredNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Script/resyncRequiredNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "sessionExtension/commandsUpdated"
+              ],
+              "title": "SessionExtension/commandsUpdatedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionExtensionCommandsUpdatedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "SessionExtension/commandsUpdatedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
                 "skills/changed"
               ],
               "title": "Skills/changedNotificationMethod",
@@ -14121,6 +14369,630 @@
         "threadId"
       ],
       "title": "ServerRequestResolvedNotification",
+      "type": "object"
+    },
+    "SessionExtensionCommand": {
+      "description": "One approved plugin extension slash command.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "extensionId",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SessionExtensionCommandInvokeParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Invokes one approved session-extension slash command.",
+      "properties": {
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "type": "string"
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "command",
+        "extensionId",
+        "threadId"
+      ],
+      "title": "SessionExtensionCommandInvokeParams",
+      "type": "object"
+    },
+    "SessionExtensionCommandInvokeResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Acknowledges that an approved session-extension command was dispatched.",
+      "title": "SessionExtensionCommandInvokeResponse",
+      "type": "object"
+    },
+    "SessionExtensionCommandsUpdatedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Announces the replacement command set after approval, activation, or disabling.",
+      "properties": {
+        "commands": {
+          "items": {
+            "$ref": "#/definitions/SessionExtensionCommand"
+          },
+          "type": "array"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "commands",
+        "threadId"
+      ],
+      "title": "SessionExtensionCommandsUpdatedNotification",
+      "type": "object"
+    },
+    "SessionExtensionListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Reads the approved session-extension commands for one loaded root thread.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "SessionExtensionListParams",
+      "type": "object"
+    },
+    "SessionExtensionListResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Approved slash commands for one loaded root thread.",
+      "properties": {
+        "commands": {
+          "items": {
+            "$ref": "#/definitions/SessionExtensionCommand"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "commands"
+      ],
+      "title": "SessionExtensionListResponse",
+      "type": "object"
+    },
+    "SessionScriptCapability": {
+      "description": "A narrowly scoped action a session script may be granted for its thread.",
+      "enum": [
+        "userInput.send",
+        "prompt.requestUserInput.respond"
+      ],
+      "type": "string"
+    },
+    "SessionScriptIdentityParams": {
+      "description": "Identifies a script that is connected to one loaded root thread.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "SessionScriptPrompt": {
+      "description": "A bounded projection of a prompt that is open for this script's thread.",
+      "properties": {
+        "canRespond": {
+          "type": "boolean"
+        },
+        "itemId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/definitions/SessionScriptPromptKind"
+        },
+        "promptId": {
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/definitions/SessionScriptPromptRequest"
+        },
+        "responseLease": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canRespond",
+        "kind",
+        "promptId",
+        "request",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "SessionScriptPromptClosedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "promptId": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/definitions/SessionScriptPromptClosedReason"
+        },
+        "registrationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "promptId",
+        "reason",
+        "registrationId"
+      ],
+      "title": "SessionScriptPromptClosedNotification",
+      "type": "object"
+    },
+    "SessionScriptPromptClosedReason": {
+      "enum": [
+        "answered",
+        "cancelled",
+        "expired",
+        "turnEnded",
+        "responderDisconnected",
+        "superseded"
+      ],
+      "type": "string"
+    },
+    "SessionScriptPromptKind": {
+      "description": "A prompt class that a session script may observe.",
+      "enum": [
+        "requestUserInput",
+        "extensionInteraction",
+        "commandExecutionApproval",
+        "fileChangeApproval",
+        "permissionsApproval",
+        "mcpElicitation"
+      ],
+      "type": "string"
+    },
+    "SessionScriptPromptOpenedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "A bounded projection of a prompt that is open for this script's thread.",
+      "properties": {
+        "canRespond": {
+          "type": "boolean"
+        },
+        "itemId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/definitions/SessionScriptPromptKind"
+        },
+        "promptId": {
+          "type": "string"
+        },
+        "registrationId": {
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/definitions/SessionScriptPromptRequest"
+        },
+        "responseLease": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "canRespond",
+        "kind",
+        "promptId",
+        "registrationId",
+        "request",
+        "threadId"
+      ],
+      "title": "SessionScriptPromptOpenedNotification",
+      "type": "object"
+    },
+    "SessionScriptPromptRequest": {
+      "description": "Preserves the existing v2 request shape without making it actionable for observers.",
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "params": true
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "SessionScriptPromptResponse": {
+      "oneOf": [
+        {
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "$ref": "#/definitions/SessionScriptRequestUserInputAnswer"
+              },
+              "type": "object"
+            },
+            "kind": {
+              "enum": [
+                "requestUserInput"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "answers",
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SessionScriptReadParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "registrationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "registrationId"
+      ],
+      "title": "SessionScriptReadParams",
+      "type": "object"
+    },
+    "SessionScriptReadResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "snapshot": {
+          "$ref": "#/definitions/SessionScriptSnapshot"
+        }
+      },
+      "required": [
+        "snapshot"
+      ],
+      "title": "SessionScriptReadResponse",
+      "type": "object"
+    },
+    "SessionScriptRegisterParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Registers the initialized connection as a restricted session script.",
+      "properties": {
+        "requestedCapabilities": {
+          "items": {
+            "$ref": "#/definitions/SessionScriptCapability"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "script": {
+          "$ref": "#/definitions/SessionScriptIdentityParams"
+        },
+        "subscriptions": {
+          "$ref": "#/definitions/SessionScriptSubscriptionsParams"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "script",
+        "subscriptions",
+        "threadId"
+      ],
+      "title": "SessionScriptRegisterParams",
+      "type": "object"
+    },
+    "SessionScriptRegisterResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "grantedCapabilities": {
+          "items": {
+            "$ref": "#/definitions/SessionScriptCapability"
+          },
+          "type": "array"
+        },
+        "registrationId": {
+          "type": "string"
+        },
+        "snapshot": {
+          "$ref": "#/definitions/SessionScriptSnapshot"
+        }
+      },
+      "required": [
+        "grantedCapabilities",
+        "registrationId",
+        "snapshot"
+      ],
+      "title": "SessionScriptRegisterResponse",
+      "type": "object"
+    },
+    "SessionScriptRequestUserInputAnswer": {
+      "properties": {
+        "answers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "answers"
+      ],
+      "type": "object"
+    },
+    "SessionScriptRespondParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "promptId": {
+          "type": "string"
+        },
+        "registrationId": {
+          "type": "string"
+        },
+        "response": {
+          "$ref": "#/definitions/SessionScriptPromptResponse"
+        },
+        "responseLease": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "promptId",
+        "registrationId",
+        "response",
+        "responseLease"
+      ],
+      "title": "SessionScriptRespondParams",
+      "type": "object"
+    },
+    "SessionScriptRespondResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SessionScriptRespondResponse",
+      "type": "object"
+    },
+    "SessionScriptResyncRequiredNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "registrationId": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "registrationId",
+        "revision"
+      ],
+      "title": "SessionScriptResyncRequiredNotification",
+      "type": "object"
+    },
+    "SessionScriptSession": {
+      "description": "Stable session fields a script may cache until the next replacement update.",
+      "properties": {
+        "cwd": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "cwd",
+        "sessionId",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "SessionScriptSnapshot": {
+      "description": "Current, bounded state for a single session-script registration.",
+      "properties": {
+        "pendingPrompts": {
+          "items": {
+            "$ref": "#/definitions/SessionScriptPrompt"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "session": {
+          "$ref": "#/definitions/SessionScriptSession"
+        },
+        "thread": {
+          "$ref": "#/definitions/SessionScriptThread"
+        },
+        "turn": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Turn"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "pendingPrompts",
+        "revision",
+        "session",
+        "thread"
+      ],
+      "type": "object"
+    },
+    "SessionScriptSubscriptionsParams": {
+      "description": "Selects the bounded stream of events delivered to a session script.",
+      "properties": {
+        "modelResponseCompleted": {
+          "type": "boolean"
+        },
+        "modelResponseDeltas": {
+          "type": "boolean"
+        },
+        "prompts": {
+          "items": {
+            "$ref": "#/definitions/SessionScriptPromptKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sessionUpdates": {
+          "type": "boolean"
+        },
+        "turnCompleted": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SessionScriptThread": {
+      "properties": {
+        "canAcceptDirectInput": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/definitions/ThreadStatus"
+        }
+      },
+      "required": [
+        "canAcceptDirectInput",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SessionScriptUnregisterParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "registrationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "registrationId"
+      ],
+      "title": "SessionScriptUnregisterParams",
+      "type": "object"
+    },
+    "SessionScriptUnregisterResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SessionScriptUnregisterResponse",
+      "type": "object"
+    },
+    "SessionScriptUpdatedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "registrationId": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "session": {
+          "$ref": "#/definitions/SessionScriptSession"
+        }
+      },
+      "required": [
+        "registrationId",
+        "revision",
+        "session"
+      ],
+      "title": "SessionScriptUpdatedNotification",
       "type": "object"
     },
     "SessionSource": {

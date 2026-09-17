@@ -29,6 +29,21 @@ impl ChatWidget {
             self.restore_retry_status_header_if_present();
         }
         match notification {
+            ServerNotification::SessionExtensionCommandsUpdated(notification) => {
+                self.set_session_extension_commands(
+                    notification
+                        .commands
+                        .into_iter()
+                        .map(|command| {
+                            crate::bottom_pane::slash_commands::SessionExtensionCommand {
+                                extension_id: command.extension_id,
+                                name: command.name,
+                                description: command.description,
+                            }
+                        })
+                        .collect(),
+                );
+            }
             ServerNotification::ThreadTokenUsageUpdated(notification) => {
                 self.session_cost_usd = notification.token_usage.session_cost_usd;
                 self.set_token_optimizer_stats(notification.token_usage.token_optimizer);
@@ -187,6 +202,10 @@ impl ChatWidget {
             | ServerNotification::ThreadArchived(_)
             | ServerNotification::ThreadDeleted(_)
             | ServerNotification::ThreadUnarchived(_)
+            | ServerNotification::ScriptSessionUpdated(_)
+            | ServerNotification::ScriptPromptOpened(_)
+            | ServerNotification::ScriptPromptClosed(_)
+            | ServerNotification::ScriptResyncRequired(_)
             | ServerNotification::RawResponseItemCompleted(_)
             | ServerNotification::RawResponseCompleted(_)
             | ServerNotification::CommandExecOutputDelta(_)

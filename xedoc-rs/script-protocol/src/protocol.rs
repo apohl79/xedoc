@@ -65,6 +65,8 @@ impl RequestId {
 pub enum Extension {
     /// Scripted model routing.
     ModelRouter,
+    /// A plugin-provided session extension.
+    SessionExtension,
 }
 
 /// Supported extension method.
@@ -80,6 +82,12 @@ pub enum Method {
     /// Submits a response to an interaction.
     #[serde(rename = "interaction.respond")]
     InteractionRespond,
+    /// Requests a session extension's first-run or reconfiguration interaction.
+    #[serde(rename = "extension.setup.open")]
+    ExtensionSetupOpen,
+    /// Invokes an approved session-extension slash command.
+    #[serde(rename = "extension.command.invoke")]
+    ExtensionCommandInvoke,
 }
 
 /// One JSON document sent from the host to a script.
@@ -185,6 +193,11 @@ pub enum ScriptResult {
         /// Interaction to render.
         interaction: Interaction,
     },
+    /// A terminal bounded success result with no follow-up interaction.
+    Complete {
+        /// Safe summary suitable for the host to show to the user.
+        summary: Option<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -193,6 +206,7 @@ struct WireScriptResult {
     kind: ScriptResultKind,
     decision: Option<RouteDecision>,
     interaction: Option<Interaction>,
+    summary: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -200,6 +214,7 @@ struct WireScriptResult {
 enum ScriptResultKind {
     Route,
     Interaction,
+    Complete,
 }
 
 impl<'de> Deserialize<'de> for ScriptResult {
@@ -211,17 +226,22 @@ impl<'de> Deserialize<'de> for ScriptResult {
             kind,
             decision,
             interaction,
+            summary,
         } = WireScriptResult::deserialize(deserializer)?;
-        match (kind, decision, interaction) {
-            (ScriptResultKind::Route, Some(decision), None) => Ok(Self::Route { decision }),
-            (ScriptResultKind::Interaction, None, Some(interaction)) => {
+        match (kind, decision, interaction, summary) {
+            (ScriptResultKind::Route, Some(decision), None, None) => Ok(Self::Route { decision }),
+            (ScriptResultKind::Interaction, None, Some(interaction), None) => {
                 Ok(Self::Interaction { interaction })
             }
-            (ScriptResultKind::Route, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Complete, None, None, summary) => Ok(Self::Complete { summary }),
+            (ScriptResultKind::Route, _, _, _) => Err(serde::de::Error::custom(
                 "route result must contain only a decision",
             )),
-            (ScriptResultKind::Interaction, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Interaction, _, _, _) => Err(serde::de::Error::custom(
                 "interaction result must contain only an interaction",
+            )),
+            (ScriptResultKind::Complete, _, _, _) => Err(serde::de::Error::custom(
+                "complete result must contain only an optional summary",
             )),
         }
     }

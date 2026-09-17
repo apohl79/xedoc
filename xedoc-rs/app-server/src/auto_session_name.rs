@@ -1,4 +1,6 @@
+use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
+use crate::session_script_registry::SessionScriptRegistry;
 use crate::thread_state::MidTurnAutoSessionNameRequest;
 use crate::thread_state::ThreadState;
 use std::sync::Arc;
@@ -118,6 +120,8 @@ pub(crate) fn maybe_spawn_auto_session_name_update(
     thread: Arc<XedocThread>,
     thread_manager: Arc<ThreadManager>,
     outgoing: ThreadScopedOutgoingMessageSender,
+    session_script_registry: SessionScriptRegistry,
+    session_script_outgoing: Arc<OutgoingMessageSender>,
     thread_state: Arc<Mutex<ThreadState>>,
     thread_list_state_permit: Arc<Semaphore>,
     update: AutoSessionNameUpdate,
@@ -128,6 +132,8 @@ pub(crate) fn maybe_spawn_auto_session_name_update(
             thread,
             thread_manager,
             outgoing,
+            session_script_registry,
+            session_script_outgoing,
             thread_state,
             thread_list_state_permit,
             update,
@@ -144,6 +150,8 @@ async fn maybe_update_auto_session_name(
     thread: Arc<XedocThread>,
     thread_manager: Arc<ThreadManager>,
     outgoing: ThreadScopedOutgoingMessageSender,
+    session_script_registry: SessionScriptRegistry,
+    session_script_outgoing: Arc<OutgoingMessageSender>,
     thread_state: Arc<Mutex<ThreadState>>,
     thread_list_state_permit: Arc<Semaphore>,
     update: AutoSessionNameUpdate,
@@ -295,10 +303,13 @@ async fn maybe_update_auto_session_name(
         .send_server_notification(ServerNotification::ThreadNameUpdated(
             ThreadNameUpdatedNotification {
                 thread_id: thread_id.to_string(),
-                thread_name: Some(generated_name),
+                thread_name: Some(generated_name.clone()),
                 source: ThreadNameUpdateSource::Generated,
             },
         ))
+        .await;
+    session_script_registry
+        .publish_session_title_updated(&session_script_outgoing, thread_id, Some(generated_name))
         .await;
     Ok(())
 }

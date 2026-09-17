@@ -18,27 +18,22 @@ use xedoc_script_protocol::Extension;
 use xedoc_script_protocol::Interaction;
 use xedoc_script_protocol::InteractionResponse;
 use xedoc_script_protocol::InteractionSurface;
+use xedoc_script_protocol::MAX_SCRIPT_SUMMARY_BYTES;
 use xedoc_script_protocol::Method;
 use xedoc_script_protocol::OpaqueId;
-use xedoc_script_protocol::OutputLimits;
 use xedoc_script_protocol::RequestId;
 use xedoc_script_protocol::ResponseOutcome;
 use xedoc_script_protocol::Route;
 use xedoc_script_protocol::RouteDecision;
 use xedoc_script_protocol::RouteDisposition;
 use xedoc_script_protocol::RouteFeedback;
+use xedoc_script_protocol::ScriptInvoker;
 use xedoc_script_protocol::ScriptRequest;
 use xedoc_script_protocol::ScriptResult;
-use xedoc_script_protocol::SubprocessExecutor;
 use xedoc_script_protocol::SubprocessFailure;
-use xedoc_script_protocol::SubprocessRequest;
 
-const MAX_SCRIPT_STDIN_BYTES: usize = 1_048_576;
-const MAX_SCRIPT_STDOUT_BYTES: usize = 262_144;
-const MAX_SCRIPT_STDERR_BYTES: usize = 16_384;
 const MAX_SCRIPT_ERROR_MESSAGE_BYTES: usize = 1_024;
 const MAX_SCRIPT_FEEDBACK_TEXT_BYTES: usize = 512;
-const MAX_SCRIPT_SUMMARY_BYTES: usize = 512;
 const MAX_INTERACTION_IDENTIFIER_BYTES: usize = 128;
 const MAX_INTERACTION_CONTINUATION_BYTES: usize = 8_192;
 const MAX_INTERACTION_TEXT_BYTES: usize = 4_096;
@@ -122,6 +117,11 @@ impl ModelRouterScriptHost {
                 Ok(()) => ModelRouterScriptDecisionOutcome::Interaction(interaction),
                 Err(failure) => ModelRouterScriptDecisionOutcome::fallback(failure),
             },
+            Ok(ResponseOutcome::Result {
+                result: ScriptResult::Complete { .. },
+            }) => ModelRouterScriptDecisionOutcome::fallback(
+                ModelRouterScriptFailure::UnexpectedResult,
+            ),
             Ok(ResponseOutcome::Error { error }) => {
                 ModelRouterScriptDecisionOutcome::fallback(script_error_failure(error))
             }
@@ -159,6 +159,9 @@ impl ModelRouterScriptHost {
             }
             ResponseOutcome::Result {
                 result: ScriptResult::Route { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::Complete { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -200,6 +203,9 @@ impl ModelRouterScriptHost {
             }
             ResponseOutcome::Result {
                 result: ScriptResult::Route { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::Complete { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -253,6 +259,11 @@ impl ModelRouterScriptHost {
                     }
                 }
             }
+            Ok(ResponseOutcome::Result {
+                result: ScriptResult::Complete { .. },
+            }) => ModelRouterScriptInteractionOutcome::Failure(
+                ModelRouterScriptFailure::UnexpectedResult,
+            ),
             Ok(ResponseOutcome::Error { error }) => {
                 ModelRouterScriptInteractionOutcome::Failure(script_error_failure(error))
             }
@@ -305,18 +316,10 @@ impl ModelRouterScriptHost {
             context,
             params,
         };
-        let subprocess_request = SubprocessRequest::new(self.argv.clone())
-            .with_limits(OutputLimits::new(
-                MAX_SCRIPT_STDIN_BYTES,
-                MAX_SCRIPT_STDOUT_BYTES,
-                MAX_SCRIPT_STDERR_BYTES,
-            ))
-            .with_timeout(timeout)
-            .with_cancellation(cancellation);
-        let response = SubprocessExecutor::invoke(subprocess_request, &protocol_request)
+        ScriptInvoker::new(self.argv.clone())
+            .invoke(&protocol_request, timeout, cancellation)
             .await
-            .map_err(ModelRouterScriptFailure::Invocation)?;
-        Ok(response.outcome)
+            .map_err(ModelRouterScriptFailure::Invocation)
     }
 }
 
@@ -1042,6 +1045,7 @@ fn validate_form_field(
             label,
             description,
             value,
+            sensitive,
             max_bytes,
         } => {
             validate_opaque_identifier(id)?;
@@ -1051,6 +1055,9 @@ fn validate_form_field(
                 MAX_INTERACTION_DESCRIPTION_BYTES,
             )?;
             if *max_bytes == 0 || *max_bytes > MAX_INTERACTION_TEXT_FIELD_BYTES {
+                return Err(ModelRouterScriptFailure::InvalidInteraction);
+            }
+            if *sensitive && !value.is_empty() {
                 return Err(ModelRouterScriptFailure::InvalidInteraction);
             }
             validate_plain_text(value, usize::try_from(*max_bytes).unwrap_or(usize::MAX))

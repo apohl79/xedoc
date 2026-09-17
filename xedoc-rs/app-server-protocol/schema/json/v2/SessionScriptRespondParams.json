@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "SessionScriptPromptResponse": {
+      "oneOf": [
+        {
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "$ref": "#/definitions/SessionScriptRequestUserInputAnswer"
+              },
+              "type": "object"
+            },
+            "kind": {
+              "enum": [
+                "requestUserInput"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "answers",
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SessionScriptRequestUserInputAnswer": {
+      "properties": {
+        "answers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "answers"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "promptId": {
+      "type": "string"
+    },
+    "registrationId": {
+      "type": "string"
+    },
+    "response": {
+      "$ref": "#/definitions/SessionScriptPromptResponse"
+    },
+    "responseLease": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "promptId",
+    "registrationId",
+    "response",
+    "responseLease"
+  ],
+  "title": "SessionScriptRespondParams",
+  "type": "object"
+}

@@ -3578,6 +3578,229 @@
       ],
       "type": "object"
     },
+    "SessionExtensionCommandInvokeParams": {
+      "description": "Invokes one approved session-extension slash command.",
+      "properties": {
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "type": "string"
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "command",
+        "extensionId",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "SessionExtensionListParams": {
+      "description": "Reads the approved session-extension commands for one loaded root thread.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "SessionScriptCapability": {
+      "description": "A narrowly scoped action a session script may be granted for its thread.",
+      "enum": [
+        "userInput.send",
+        "prompt.requestUserInput.respond"
+      ],
+      "type": "string"
+    },
+    "SessionScriptIdentityParams": {
+      "description": "Identifies a script that is connected to one loaded root thread.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "SessionScriptPromptKind": {
+      "description": "A prompt class that a session script may observe.",
+      "enum": [
+        "requestUserInput",
+        "extensionInteraction",
+        "commandExecutionApproval",
+        "fileChangeApproval",
+        "permissionsApproval",
+        "mcpElicitation"
+      ],
+      "type": "string"
+    },
+    "SessionScriptPromptResponse": {
+      "oneOf": [
+        {
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "$ref": "#/definitions/SessionScriptRequestUserInputAnswer"
+              },
+              "type": "object"
+            },
+            "kind": {
+              "enum": [
+                "requestUserInput"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "answers",
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SessionScriptReadParams": {
+      "properties": {
+        "registrationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "registrationId"
+      ],
+      "type": "object"
+    },
+    "SessionScriptRegisterParams": {
+      "description": "Registers the initialized connection as a restricted session script.",
+      "properties": {
+        "requestedCapabilities": {
+          "items": {
+            "$ref": "#/definitions/SessionScriptCapability"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "script": {
+          "$ref": "#/definitions/SessionScriptIdentityParams"
+        },
+        "subscriptions": {
+          "$ref": "#/definitions/SessionScriptSubscriptionsParams"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "script",
+        "subscriptions",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "SessionScriptRequestUserInputAnswer": {
+      "properties": {
+        "answers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "answers"
+      ],
+      "type": "object"
+    },
+    "SessionScriptRespondParams": {
+      "properties": {
+        "promptId": {
+          "type": "string"
+        },
+        "registrationId": {
+          "type": "string"
+        },
+        "response": {
+          "$ref": "#/definitions/SessionScriptPromptResponse"
+        },
+        "responseLease": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "promptId",
+        "registrationId",
+        "response",
+        "responseLease"
+      ],
+      "type": "object"
+    },
+    "SessionScriptSubscriptionsParams": {
+      "description": "Selects the bounded stream of events delivered to a session script.",
+      "properties": {
+        "modelResponseCompleted": {
+          "type": "boolean"
+        },
+        "modelResponseDeltas": {
+          "type": "boolean"
+        },
+        "prompts": {
+          "items": {
+            "$ref": "#/definitions/SessionScriptPromptKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sessionUpdates": {
+          "type": "boolean"
+        },
+        "turnCompleted": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SessionScriptUnregisterParams": {
+      "properties": {
+        "registrationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "registrationId"
+      ],
+      "type": "object"
+    },
     "Settings": {
       "description": "Settings for a collaboration mode.",
       "properties": {
@@ -5757,6 +5980,102 @@
       "type": "object"
     },
     {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "script/register"
+          ],
+          "title": "Script/registerRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionScriptRegisterParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Script/registerRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "script/unregister"
+          ],
+          "title": "Script/unregisterRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionScriptUnregisterParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Script/unregisterRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "script/read"
+          ],
+          "title": "Script/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionScriptReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Script/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "script/respond"
+          ],
+          "title": "Script/respondRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionScriptRespondParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Script/respondRequest",
+      "type": "object"
+    },
+    {
       "description": "Increment the thread-local out-of-band elicitation counter.\n\nThis is used by external helpers to pause timeout accounting while a user approval or other elicitation is pending outside the app-server request flow.",
       "properties": {
         "id": {
@@ -7149,6 +7468,54 @@
         "params"
       ],
       "title": "ModelRouterReport/openRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "sessionExtension/list"
+          ],
+          "title": "SessionExtension/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionExtensionListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "SessionExtension/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "sessionExtension/command/invoke"
+          ],
+          "title": "SessionExtension/command/invokeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionExtensionCommandInvokeParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "SessionExtension/command/invokeRequest",
       "type": "object"
     },
     {

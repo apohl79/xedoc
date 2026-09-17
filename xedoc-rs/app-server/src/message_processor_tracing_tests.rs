@@ -5,6 +5,7 @@ use crate::config_manager::ConfigManager;
 use crate::outgoing_message::ConnectionId;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::transport::AppServerTransport;
+use crate::transport::TransportEvent;
 use anyhow::Result;
 use app_test_support::create_mock_responses_server_repeating_assistant;
 use app_test_support::write_mock_responses_config_toml;
@@ -242,6 +243,7 @@ async fn build_test_processor(
         Arc::new(xedoc_config::NoopThreadConfigLoader),
     );
     let outgoing = Arc::new(OutgoingMessageSender::new(outgoing_tx));
+    let (transport_event_tx, _transport_event_rx) = mpsc::channel::<TransportEvent>(1);
     let processor = Arc::new(MessageProcessor::new(MessageProcessorArgs {
         outgoing,
         arg0_paths: Arg0DispatchPaths::default(),
@@ -255,6 +257,9 @@ async fn build_test_processor(
         auth_manager,
         installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
         plugin_startup_tasks: crate::PluginStartupTasks::Start,
+        session_script_host: Arc::new(tokio::sync::Mutex::new(
+            crate::session_script_host::SessionScriptHost::new(Vec::new(), transport_event_tx),
+        )),
     }));
     (processor, outgoing_rx)
 }

@@ -72,6 +72,15 @@ pub fn server_notification_thread_target(
         ServerNotification::ThreadSettingsUpdated(notification) => {
             Some(notification.thread_id.as_str())
         }
+        ServerNotification::ScriptSessionUpdated(notification) => {
+            Some(notification.session.thread_id.as_str())
+        }
+        ServerNotification::ScriptPromptOpened(notification) => {
+            Some(notification.prompt.thread_id.as_str())
+        }
+        ServerNotification::SessionExtensionCommandsUpdated(notification) => {
+            Some(notification.thread_id.as_str())
+        }
         ServerNotification::TurnStarted(notification) => Some(notification.thread_id.as_str()),
         ServerNotification::HookStarted(notification) => Some(notification.thread_id.as_str()),
         ServerNotification::TurnCompleted(notification) => Some(notification.thread_id.as_str()),
@@ -151,6 +160,8 @@ pub fn server_notification_thread_target(
         | ServerNotification::ConfigWarning(_)
         | ServerNotification::FuzzyFileSearchSessionUpdated(_)
         | ServerNotification::FuzzyFileSearchSessionCompleted(_)
+        | ServerNotification::ScriptPromptClosed(_)
+        | ServerNotification::ScriptResyncRequired(_)
         | ServerNotification::CommandExecOutputDelta(_)
         | ServerNotification::ProcessOutputDelta(_)
         | ServerNotification::ProcessExited(_)

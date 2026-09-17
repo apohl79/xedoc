@@ -267,44 +267,6 @@ fn filter_experimental_ts(out_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn filter_experimental_ts_tree(tree: &mut BTreeMap<PathBuf, String>) -> Result<()> {
-    let registered_fields = experimental_fields();
-    let experimental_method_types = experimental_method_types();
-    for (file_name, experimental_methods) in [
-        ("ClientRequest.ts", EXPERIMENTAL_CLIENT_METHODS),
-        ("ServerRequest.ts", EXPERIMENTAL_SERVER_METHODS),
-    ] {
-        if let Some(content) = tree.get_mut(Path::new(file_name)) {
-            *content = filter_request_ts_contents(std::mem::take(content), experimental_methods);
-        }
-    }
-
-    let mut fields_by_type_name: HashMap<String, HashSet<String>> = HashMap::new();
-    for field in registered_fields {
-        fields_by_type_name
-            .entry(field.type_name.to_string())
-            .or_default()
-            .insert(field.field_name.to_string());
-    }
-
-    for (path, content) in tree.iter_mut() {
-        let Some(type_name) = path.file_stem().and_then(|stem| stem.to_str()) else {
-            continue;
-        };
-        let Some(experimental_field_names) = fields_by_type_name.get(type_name) else {
-            continue;
-        };
-        let filtered = filter_experimental_type_fields_ts_contents(
-            std::mem::take(content),
-            experimental_field_names,
-        );
-        *content = filtered;
-    }
-
-    remove_generated_type_entries(tree, &experimental_method_types, "ts");
-    Ok(())
-}
-
 /// Removes union arms from a generated request type for methods marked experimental.
 fn filter_request_ts(out_dir: &Path, file_name: &str, experimental_methods: &[&str]) -> Result<()> {
     let path = out_dir.join(file_name);
@@ -612,23 +574,6 @@ fn remove_generated_type_files(
         }
     }
     Ok(())
-}
-
-fn remove_generated_type_entries(
-    tree: &mut BTreeMap<PathBuf, String>,
-    type_names: &HashSet<String>,
-    extension: &str,
-) {
-    for type_name in type_names {
-        for subdir in ["", "v1", "v2"] {
-            let path = if subdir.is_empty() {
-                PathBuf::from(format!("{type_name}.{extension}"))
-            } else {
-                PathBuf::from(subdir).join(format!("{type_name}.{extension}"))
-            };
-            tree.remove(&path);
-        }
-    }
 }
 
 fn remove_experimental_method_type_definitions(bundle: &mut Value) {
@@ -2148,18 +2093,18 @@ mod tests {
                 .get(Path::new("ClientRequest.ts"))
                 .ok_or_else(|| anyhow::anyhow!("missing ClientRequest.ts fixture"))?,
         )?;
-        assert_eq!(client_request_ts.contains("mock/experimentalMethod"), false);
+        assert_eq!(client_request_ts.contains("mock/experimentalMethod"), true);
         assert_eq!(
             client_request_ts.contains("MockExperimentalMethodParams"),
-            false
+            true
         );
         let server_request_ts = std::str::from_utf8(
             fixture_tree
                 .get(Path::new("ServerRequest.ts"))
                 .ok_or_else(|| anyhow::anyhow!("missing ServerRequest.ts fixture"))?,
         )?;
-        assert_eq!(server_request_ts.contains("currentTime/read"), false);
-        assert_eq!(server_request_ts.contains("CurrentTimeReadParams"), false);
+        assert_eq!(server_request_ts.contains("currentTime/read"), true);
+        assert_eq!(server_request_ts.contains("CurrentTimeReadParams"), true);
         let typescript_index = std::str::from_utf8(
             fixture_tree
                 .get(Path::new("index.ts"))
@@ -2171,22 +2116,22 @@ mod tests {
                 .get(Path::new("v2/ThreadStartParams.ts"))
                 .ok_or_else(|| anyhow::anyhow!("missing v2/ThreadStartParams.ts fixture"))?,
         )?;
-        assert_eq!(thread_start_ts.contains("mockExperimentalField"), false);
+        assert_eq!(thread_start_ts.contains("mockExperimentalField"), true);
         assert_eq!(
             fixture_tree.contains_key(Path::new("v2/MockExperimentalMethodParams.ts")),
-            false
+            true
         );
         assert_eq!(
             fixture_tree.contains_key(Path::new("v2/MockExperimentalMethodResponse.ts")),
-            false
+            true
         );
         assert_eq!(
             fixture_tree.contains_key(Path::new("v2/CurrentTimeReadParams.ts")),
-            false
+            true
         );
         assert_eq!(
             fixture_tree.contains_key(Path::new("v2/CurrentTimeReadResponse.ts")),
-            false
+            true
         );
 
         let mut undefined_offenders = Vec::new();

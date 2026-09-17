@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -17,6 +18,8 @@ const MAX_THREAD_CONTEXT_CONDITION_SHELL_LEN: usize = 8_000;
 const MAX_THREAD_CONTEXT_TOTAL_LEN: usize = 32_000;
 
 pub type PluginManifest = xedoc_plugin::manifest::PluginManifest<AbsolutePathBuf>;
+pub type PluginManifestExtension = xedoc_plugin::manifest::PluginManifestExtension<AbsolutePathBuf>;
+pub type PluginManifestExtensionCommand = xedoc_plugin::manifest::PluginManifestExtensionCommand;
 pub type PluginManifestHooks = xedoc_plugin::manifest::PluginManifestHooks<AbsolutePathBuf>;
 pub type PluginManifestInterface = xedoc_plugin::manifest::PluginManifestInterface<AbsolutePathBuf>;
 pub type PluginManifestMcpServers =
@@ -24,6 +27,11 @@ pub type PluginManifestMcpServers =
 pub type PluginManifestPaths = xedoc_plugin::manifest::PluginManifestPaths<AbsolutePathBuf>;
 
 pub type UriPluginManifest = xedoc_plugin::manifest::PluginManifest<PathUri>;
+pub type UriPluginManifestExtension = xedoc_plugin::manifest::PluginManifestExtension<PathUri>;
+const MAX_EXTENSION_ID_LEN: usize = 128;
+const MAX_EXTENSION_COMMAND_NAME_LEN: usize = 128;
+const MAX_EXTENSION_DESCRIPTION_LEN: usize = 512;
+const MAX_EXTENSION_CAPABILITY_LEN: usize = 128;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +44,8 @@ struct RawPluginManifest {
     description: Option<String>,
     #[serde(default)]
     keywords: Vec<String>,
+    #[serde(default)]
+    extensions: Option<JsonValue>,
     // Keep manifest paths as raw strings so we can validate the required `./...` syntax before
     // resolving them under the plugin root.
     #[serde(default)]
@@ -211,6 +221,7 @@ pub fn parse_plugin_manifest_uri(
         version,
         description,
         keywords,
+        extensions,
         skills,
         mcp_servers,
         apps,
@@ -246,6 +257,7 @@ pub fn parse_plugin_manifest_uri(
         let version = version.trim();
         (!version.is_empty()).then(|| version.to_string())
     });
+    let extensions = resolve_manifest_extensions(plugin_root, extensions);
     let interface = interface.and_then(|interface| {
         let RawPluginManifestInterface {
             display_name,
@@ -326,6 +338,7 @@ pub fn parse_plugin_manifest_uri(
         version,
         description,
         keywords,
+        extensions,
         paths: xedoc_plugin::manifest::PluginManifestPaths {
             skills: resolve_manifest_paths(plugin_root, "skills", skills.as_ref()),
             mcp_servers: resolve_manifest_mcp_servers(plugin_root, mcp_servers),
@@ -335,6 +348,170 @@ pub fn parse_plugin_manifest_uri(
         },
         interface,
     })
+}
+
+fn resolve_manifest_extensions(
+    plugin_root: &PathUri,
+    extensions: Option<JsonValue>,
+) -> Vec<xedoc_plugin::manifest::PluginManifestExtension<PathUri>> {
+    let Some(extensions) = extensions else {
+        return Vec::new();
+    };
+    let Some(extensions) = extensions.as_array() else {
+        tracing::warn!("ignoring extensions: expected an array");
+        return Vec::new();
+    };
+
+    let mut seen_ids = HashSet::new();
+    extensions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, value)| {
+            let field = format!("extensions[{index}]");
+            let Some(extension) = value.as_object() else {
+                tracing::warn!("ignoring {field}: extension must be an object");
+                return None;
+            };
+            let id = extension.get("id").and_then(JsonValue::as_str)?.trim();
+            if !is_valid_extension_identifier(id, MAX_EXTENSION_ID_LEN) {
+                tracing::warn!("ignoring {field}: id must be a non-empty stable identifier");
+                return None;
+            }
+            if seen_ids.contains(id) {
+                tracing::warn!("ignoring {field}: id must be unique");
+                return None;
+            }
+            let entrypoint = extension
+                .get("entrypoint")
+                .and_then(JsonValue::as_str)
+                .map(str::trim);
+            let Some(entrypoint) = entrypoint else {
+                tracing::warn!("ignoring {field}: entrypoint must be a string");
+                return None;
+            };
+            let Some(entrypoint) =
+                resolve_manifest_path(plugin_root, "extensions[].entrypoint", Some(entrypoint))
+            else {
+                return None;
+            };
+            let Some(commands) = parse_manifest_extension_commands(extension, &field) else {
+                return None;
+            };
+            let Some(requested_capabilities) =
+                parse_manifest_extension_capabilities(extension, &field)
+            else {
+                return None;
+            };
+            seen_ids.insert(id.to_string());
+            Some(xedoc_plugin::manifest::PluginManifestExtension {
+                id: id.to_string(),
+                entrypoint,
+                commands,
+                requested_capabilities,
+            })
+        })
+        .collect()
+}
+
+fn parse_manifest_extension_commands(
+    extension: &serde_json::Map<String, JsonValue>,
+    field: &str,
+) -> Option<Vec<xedoc_plugin::manifest::PluginManifestExtensionCommand>> {
+    let Some(value) = extension.get("commands") else {
+        return Some(Vec::new());
+    };
+    let Some(commands) = value.as_array() else {
+        tracing::warn!("ignoring {field}: commands must be an array");
+        return None;
+    };
+    commands
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let command_field = format!("{field}.commands[{index}]");
+            let Some(command) = value.as_object() else {
+                tracing::warn!("ignoring {command_field}: command must be an object");
+                return None;
+            };
+            let Some(name) = command.get("name").and_then(JsonValue::as_str).map(str::trim)
+            else {
+                tracing::warn!("ignoring {command_field}: command name must be a string");
+                return None;
+            };
+            if !is_valid_extension_identifier(name, MAX_EXTENSION_COMMAND_NAME_LEN) {
+                tracing::warn!(
+                    "ignoring {command_field}: command name must be a non-empty slash-command identifier"
+                );
+                return None;
+            }
+            let Some(description) = command
+                .get("description")
+                .and_then(JsonValue::as_str)
+                .map(str::trim)
+            else {
+                tracing::warn!("ignoring {command_field}: command description must be a string");
+                return None;
+            };
+            if description.is_empty()
+                || description.chars().count() > MAX_EXTENSION_DESCRIPTION_LEN
+            {
+                tracing::warn!(
+                    "ignoring {command_field}: command description must be non-empty and at most {} characters",
+                    MAX_EXTENSION_DESCRIPTION_LEN
+                );
+                return None;
+            }
+            Some(xedoc_plugin::manifest::PluginManifestExtensionCommand {
+                name: name.to_string(),
+                description: description.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn parse_manifest_extension_capabilities(
+    extension: &serde_json::Map<String, JsonValue>,
+    field: &str,
+) -> Option<Vec<String>> {
+    let Some(value) = extension.get("requestedCapabilities") else {
+        return Some(Vec::new());
+    };
+    let Some(capabilities) = value.as_array() else {
+        tracing::warn!("ignoring {field}: requestedCapabilities must be an array");
+        return None;
+    };
+    capabilities
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let Some(capability) = value.as_str().map(str::trim) else {
+                tracing::warn!(
+                    "ignoring {field}: requestedCapabilities[{index}] must be a string"
+                );
+                return None;
+            };
+            if capability.is_empty()
+                || capability.chars().count() > MAX_EXTENSION_CAPABILITY_LEN
+                || capability
+                    .chars()
+                    .any(|character| character.is_whitespace() || character.is_control())
+            {
+                tracing::warn!(
+                    "ignoring {field}: requestedCapabilities[{index}] must be a non-empty identifier"
+                );
+                return None;
+            }
+            Some(capability.to_string())
+        })
+        .collect()
+}
+
+fn is_valid_extension_identifier(value: &str, max_len: usize) -> bool {
+    !value.is_empty()
+        && value.chars().count() <= max_len
+        && value.chars().enumerate().all(|(index, character)| {
+            character.is_ascii_alphanumeric() || (index > 0 && matches!(character, '-' | '_'))
+        })
 }
 
 fn convert_thread_context_entry(
@@ -1022,6 +1199,7 @@ mod tests {
                 version: None,
                 description: None,
                 keywords: Vec::new(),
+                extensions: Vec::new(),
                 paths: PluginManifestPaths {
                     skills: vec![plugin_root.join("skills").expect("skills URI")],
                     mcp_servers: Some(PluginManifestMcpServers::Path(
