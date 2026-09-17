@@ -85,6 +85,11 @@ impl ToolCallSummaryState {
             total_removed: stats
                 .total_removed
                 .saturating_sub(self.persisted_stats.total_removed),
+            file_changes: stats
+                .file_changes
+                .into_iter()
+                .skip(self.persisted_stats.file_changes.len())
+                .collect(),
             web_searches: stats
                 .web_searches
                 .saturating_sub(self.persisted_stats.web_searches),
@@ -233,6 +238,7 @@ impl ChatWidget {
                 files_edited: totals.files_edited,
                 total_added: totals.total_added,
                 total_removed: totals.total_removed,
+                file_changes: Vec::new(),
             });
         }
     }
@@ -456,6 +462,15 @@ impl ChatWidget {
                         files_edited: stats.files_edited.saturating_add(1),
                         total_added: stats.total_added.saturating_add(added),
                         total_removed: stats.total_removed.saturating_add(removed),
+                        file_changes: {
+                            let mut file_changes = stats.file_changes;
+                            file_changes.push(history_cell::FileChangeDetail {
+                                path: change.path.to_string(),
+                                added,
+                                removed,
+                            });
+                            file_changes
+                        },
                     }
                 }),
         )

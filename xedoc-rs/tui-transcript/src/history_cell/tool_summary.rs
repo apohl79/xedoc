@@ -44,12 +44,20 @@ enum ToolCallStatus {
     Failed,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 /// Aggregate changes recorded for one file-change tool call.
 pub struct FileChangeStats {
     pub files_edited: usize,
     pub total_added: usize,
     pub total_removed: usize,
+    pub file_changes: Vec<FileChangeDetail>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileChangeDetail {
+    pub path: String,
+    pub added: usize,
+    pub removed: usize,
 }
 
 /// A bounded, mutable two-row summary of the tools used during one agent turn.
@@ -88,6 +96,7 @@ impl HistoryCell for ToolCallCountSummaryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let separator = "─".repeat(width as usize).dim();
         let mut summary = Vec::new();
+        let mut file_detail_lines = Vec::new();
         if self.stats.files_edited > 0 {
             let files = if self.stats.files_edited == 1 {
                 "file"
@@ -103,6 +112,17 @@ impl HistoryCell for ToolCallCountSummaryCell {
                 summary.push(")".dim());
             }
             summary.push(".".dim());
+            let mut file_changes = self.stats.file_changes.iter().collect::<Vec<_>>();
+            file_changes.sort_by(|left, right| left.path.cmp(&right.path));
+            file_detail_lines.extend(file_changes.into_iter().map(|change| {
+                Line::from(vec![
+                    format!("  └ {}", change.path).into(),
+                    " ".into(),
+                    format!("+{}", change.added).cl_green(),
+                    " ".into(),
+                    format!("-{}", change.removed).cl_red(),
+                ])
+            }));
         }
         if self.stats.web_searches > 0 {
             let searches = if self.stats.web_searches == 1 {
@@ -120,15 +140,17 @@ impl HistoryCell for ToolCallCountSummaryCell {
             };
             summary.push(format!(" {} web {pages} fetched.", self.stats.web_pages_fetched).dim());
         }
-        vec![
-            separator.clone().into(),
+        let mut lines = vec![separator.clone().into()];
+        lines.push(
             vec!["• ".dim()]
                 .into_iter()
                 .chain(summary)
                 .collect::<Vec<_>>()
                 .into(),
-            separator.into(),
-        ]
+        );
+        lines.extend(file_detail_lines);
+        lines.push(separator.into());
+        lines
     }
 
     fn raw_lines(&self) -> Vec<Line<'static>> {
@@ -136,12 +158,13 @@ impl HistoryCell for ToolCallCountSummaryCell {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ToolCallSummaryStats {
     pub total: usize,
     pub files_edited: usize,
     pub total_added: usize,
     pub total_removed: usize,
+    pub file_changes: Vec<FileChangeDetail>,
     pub web_searches: usize,
     pub web_pages_fetched: usize,
 }
@@ -193,9 +216,14 @@ impl ToolCallSummaryCell {
                 .sum::<usize>()
                 + self.external_file_change_stats.total_added,
             total_removed: file_change_stats
+                .clone()
                 .map(|stats| stats.total_removed)
                 .sum::<usize>()
                 + self.external_file_change_stats.total_removed,
+            file_changes: file_change_stats
+                .flat_map(|stats| stats.file_changes.iter().cloned())
+                .chain(self.external_file_change_stats.file_changes.iter().cloned())
+                .collect(),
             web_searches: labels
                 .clone()
                 .filter(|label| {
@@ -220,6 +248,9 @@ impl ToolCallSummaryCell {
         self.external_file_change_stats.files_edited += stats.files_edited;
         self.external_file_change_stats.total_added += stats.total_added;
         self.external_file_change_stats.total_removed += stats.total_removed;
+        self.external_file_change_stats
+            .file_changes
+            .extend(stats.file_changes);
     }
 
     pub fn start_call_with_preview(
