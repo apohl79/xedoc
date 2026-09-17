@@ -868,7 +868,9 @@ fn validate_interaction(
         InteractionSurface::Form(form) => {
             validate_form_structure(form)?;
             validate_actions_do_not_open_nested_surfaces(
-                std::iter::once(&form.submit).chain(form.cancel.as_ref()),
+                std::iter::once(&form.submit)
+                    .chain(form.cancel.as_ref())
+                    .chain(form.fields.iter().filter_map(form_field_action)),
             )?;
             validate_form_routes(&form.fields, eligible_routes)?;
             validate_form_reachability(form)
@@ -927,7 +929,9 @@ fn validate_interaction(
             if let Some(form) = confirmation.override_form.as_ref() {
                 validate_form_structure(form)?;
                 validate_actions_do_not_open_nested_surfaces(
-                    std::iter::once(&form.submit).chain(form.cancel.as_ref()),
+                    std::iter::once(&form.submit)
+                        .chain(form.cancel.as_ref())
+                        .chain(form.fields.iter().filter_map(form_field_action)),
                 )?;
                 validate_form_routes(&form.fields, eligible_routes)?;
                 validate_form_reachability(form)?;
@@ -1062,6 +1066,20 @@ fn validate_form_field(
             }
             validate_plain_text(value, usize::try_from(*max_bytes).unwrap_or(usize::MAX))
         }
+        xedoc_script_protocol::FormField::Action {
+            id,
+            label,
+            description,
+            action,
+        } => {
+            validate_opaque_identifier(id)?;
+            validate_plain_text(label, MAX_INTERACTION_TITLE_BYTES)?;
+            validate_optional_plain_text(
+                description.as_deref(),
+                MAX_INTERACTION_DESCRIPTION_BYTES,
+            )?;
+            validate_action(action)
+        }
     }
 }
 
@@ -1159,7 +1177,8 @@ fn form_field_id(field: &xedoc_script_protocol::FormField) -> &str {
         xedoc_script_protocol::FormField::Select { id, .. }
         | xedoc_script_protocol::FormField::Boolean { id, .. }
         | xedoc_script_protocol::FormField::Text { id, .. }
-        | xedoc_script_protocol::FormField::ModelRoute { id, .. } => id.as_str(),
+        | xedoc_script_protocol::FormField::ModelRoute { id, .. }
+        | xedoc_script_protocol::FormField::Action { id, .. } => id.as_str(),
     }
 }
 
@@ -1268,6 +1287,11 @@ fn validate_form_reachability(
             .cancel
             .as_ref()
             .is_some_and(action_has_renderable_binding)
+        || form
+            .fields
+            .iter()
+            .filter_map(form_field_action)
+            .any(action_has_renderable_binding)
     {
         Ok(())
     } else {
@@ -1295,7 +1319,8 @@ fn validate_form_routes(
             } => Some((value, form_eligible_routes)),
             xedoc_script_protocol::FormField::Select { .. }
             | xedoc_script_protocol::FormField::Boolean { .. }
-            | xedoc_script_protocol::FormField::Text { .. } => None,
+            | xedoc_script_protocol::FormField::Text { .. }
+            | xedoc_script_protocol::FormField::Action { .. } => None,
         })
         .try_for_each(|(value, form_eligible_routes)| {
             if form_eligible_routes
@@ -1310,6 +1335,18 @@ fn validate_form_routes(
                 Err(ModelRouterScriptFailure::InvalidInteraction)
             }
         })
+}
+
+fn form_field_action(
+    field: &xedoc_script_protocol::FormField,
+) -> Option<&xedoc_script_protocol::Action> {
+    match field {
+        xedoc_script_protocol::FormField::Action { action, .. } => Some(action),
+        xedoc_script_protocol::FormField::Select { .. }
+        | xedoc_script_protocol::FormField::Boolean { .. }
+        | xedoc_script_protocol::FormField::Text { .. }
+        | xedoc_script_protocol::FormField::ModelRoute { .. } => None,
+    }
 }
 
 fn route_is_eligible(route: &Route, eligible_routes: &[EligibleRoute]) -> bool {

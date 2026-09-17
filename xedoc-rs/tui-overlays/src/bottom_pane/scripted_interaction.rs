@@ -48,6 +48,7 @@ enum FieldValue {
     },
     Boolean(bool),
     Text(String),
+    Action,
     ModelRoute {
         route_index: Option<usize>,
         effort_index: usize,
@@ -169,6 +170,7 @@ impl ScriptedInteractionView {
                     ExtensionInteractionField::Text {
                         value, max_bytes, ..
                     } => FieldValue::Text(truncate_utf8(value, *max_bytes)),
+                    ExtensionInteractionField::Action { .. } => FieldValue::Action,
                     ExtensionInteractionField::ModelRoute {
                         value,
                         eligible_routes,
@@ -403,6 +405,7 @@ impl ScriptedInteractionView {
                 *effort_index = 0;
             }
             (ExtensionInteractionField::Text { .. }, FieldValue::Text(_)) => {}
+            (ExtensionInteractionField::Action { .. }, FieldValue::Action) => {}
             _ => {}
         }
     }
@@ -708,6 +711,18 @@ impl ScriptedInteractionView {
                 _ => {}
             }
             return;
+        }
+        if let Some(ExtensionInteractionField::Action { action, .. }) =
+            form.fields.get(self.field_selected)
+        {
+            if action_matches_key(action, key_event) {
+                self.respond(
+                    ExtensionInteractionOutcome::Accepted,
+                    Some(action),
+                    Value::Object(Map::new()),
+                );
+                return;
+            }
         }
         if action_matches_key(&form.submit, key_event) {
             self.submit_form();
@@ -1251,6 +1266,7 @@ fn select_option_is_current(
         ExtensionInteractionField::Select { .. }
         | ExtensionInteractionField::Boolean { .. }
         | ExtensionInteractionField::Text { .. }
+        | ExtensionInteractionField::Action { .. }
         | ExtensionInteractionField::ModelRoute { .. } => "",
     }
 }
@@ -1310,6 +1326,12 @@ fn field_label_and_description<'a>(
             };
             (format!("{label}: {display_value}"), description.as_deref())
         }
+        (
+            ExtensionInteractionField::Action {
+                label, description, ..
+            },
+            FieldValue::Action,
+        ) => (label.clone(), description.as_deref()),
         (
             ExtensionInteractionField::ModelRoute {
                 label,

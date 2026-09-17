@@ -824,7 +824,14 @@ fn scripted_interaction_response_is_valid(
             }) && empty_object(&response.values)
         }
         (InteractionSurface::Form(form), ScriptedInteractionOutcome::Accepted) => {
-            action_matches(response, &form.submit) && form_values_are_valid(form, &response.values)
+            (action_matches(response, &form.submit)
+                && form_values_are_valid(form, &response.values))
+                || (form
+                    .fields
+                    .iter()
+                    .filter_map(form_field_action)
+                    .any(|action| action_matches(response, action))
+                    && empty_object(&response.values))
         }
         (InteractionSurface::Form(form), ScriptedInteractionOutcome::Cancelled) => {
             form.cancel.as_ref().is_some_and(|cancel| {
@@ -837,8 +844,14 @@ fn scripted_interaction_response_is_valid(
                     && action_matches(response, action)
                     && empty_object(&response.values)
             }) || confirmation.override_form.as_ref().is_some_and(|form| {
-                action_matches(response, &form.submit)
-                    && form_values_are_valid(form, &response.values)
+                (action_matches(response, &form.submit)
+                    && form_values_are_valid(form, &response.values))
+                    || (form
+                        .fields
+                        .iter()
+                        .filter_map(form_field_action)
+                        .any(|action| action_matches(response, action))
+                        && empty_object(&response.values))
             })
         }
         (InteractionSurface::Confirmation(confirmation), ScriptedInteractionOutcome::Cancelled) => {
@@ -886,7 +899,8 @@ fn form_field_id(field: &FormField) -> &str {
         FormField::Select { id, .. }
         | FormField::Boolean { id, .. }
         | FormField::Text { id, .. }
-        | FormField::ModelRoute { id, .. } => id.as_str(),
+        | FormField::ModelRoute { id, .. }
+        | FormField::Action { id, .. } => id.as_str(),
     }
 }
 
@@ -905,6 +919,17 @@ fn form_value_is_valid(field: &FormField, value: &Value) -> bool {
             eligible_routes, ..
         } => serde_json::from_value::<Route>(value.clone())
             .is_ok_and(|route| route_is_eligible(&route, eligible_routes)),
+        FormField::Action { .. } => false,
+    }
+}
+
+fn form_field_action(field: &FormField) -> Option<&Action> {
+    match field {
+        FormField::Action { action, .. } => Some(action),
+        FormField::Select { .. }
+        | FormField::Boolean { .. }
+        | FormField::Text { .. }
+        | FormField::ModelRoute { .. } => None,
     }
 }
 

@@ -909,6 +909,15 @@ fn validate_session_extension_interaction(interaction: &Interaction) -> Result<(
                     .cancel
                     .as_ref()
                     .is_some_and(|action| action.host_action.is_some())
+                || form.fields.iter().any(|field| {
+                    matches!(
+                        field,
+                        FormField::Action {
+                            action,
+                            ..
+                        } if action.host_action.is_some()
+                    )
+                })
             {
                 return Err("session extension requested a model-router host action".to_string());
             }
@@ -928,6 +937,15 @@ fn validate_session_extension_interaction(interaction: &Interaction) -> Result<(
                         .cancel
                         .as_ref()
                         .is_some_and(|action| action.host_action.is_some())
+                    || override_form.fields.iter().any(|field| {
+                        matches!(
+                            field,
+                            FormField::Action {
+                                action,
+                                ..
+                            } if action.host_action.is_some()
+                        )
+                    })
                 {
                     return Err(
                         "session extension requested a model-router host action".to_string()

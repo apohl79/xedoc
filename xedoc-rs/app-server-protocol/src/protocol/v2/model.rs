@@ -216,6 +216,13 @@ pub enum ExtensionInteractionField {
         value: Option<ExtensionInteractionRoute>,
         eligible_routes: Vec<ExtensionInteractionEligibleRoute>,
     },
+    #[schemars(rename_all = "camelCase")]
+    Action {
+        id: String,
+        label: String,
+        description: Option<String>,
+        action: ExtensionInteractionAction,
+    },
 }
 
 /// An opaque selectable option in an extension interaction form.

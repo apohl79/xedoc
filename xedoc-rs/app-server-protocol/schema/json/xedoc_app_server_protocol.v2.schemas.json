@@ -5864,6 +5864,40 @@
           ],
           "title": "ModelRouteExtensionInteractionField",
           "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "$ref": "#/definitions/ExtensionInteractionAction"
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "action"
+              ],
+              "title": "ActionExtensionInteractionFieldType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "id",
+            "label",
+            "type"
+          ],
+          "title": "ActionExtensionInteractionField",
+          "type": "object"
         }
       ]
     },

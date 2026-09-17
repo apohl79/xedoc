@@ -718,75 +718,114 @@ def matching_ladder_rank(policy, route):
     )
 
 
-def policy_menu(policy):
-    items = [
-        item(
-            "confidence",
-            f"Confidence: {policy['confidence'].title()}",
-            "Set minimum score and margin.",
-            "open-confidence",
-            bindings=["right"],
-        ),
-        *[
-            item(
-                f"confidence-{preset}",
-                f"  {preset.title()}",
-                "",
-                f"set-confidence:{preset}",
-                current=preset == policy["confidence"],
-            )
-            for preset in policy["confidencePresets"]
-        ],
-        item(
-            "ladder",
-            f"Model ladder: {len(ladder(policy))} ranked slots",
-            "Edit every class-ranked model route.",
-            "open-ladder",
-        ),
-        item(
-            "baseline",
-            f"Reporting baseline: {route_label(policy.get('reportingBaseline'))}",
-            "Choose a ladder route for reports.",
-            "open-baseline",
-        ),
+def policy_route_options(policy, context):
+    available = {route_key(route) for route in offered_routes(context)}
+    routes = []
+    for entry in ladder(policy):
+        route = entry_route(entry)
+        if route not in routes:
+            routes.append(route)
+    return routes, available
+
+
+def policy_route_id(route, routes):
+    return f"route-{routes.index(route)}" if route in routes else None
+
+
+def policy_select_field(identifier, label, value, options, description=None):
+    field = {
+        "type": "select",
+        "id": identifier,
+        "label": label,
+        "value": value,
+        "current": value,
+        "options": options,
+    }
+    if description is not None:
+        field["description"] = description
+    return field
+
+
+def policy_action_field(identifier, label, action_id):
+    return {
+        "type": "action",
+        "id": identifier,
+        "label": label,
+        "action": action(action_id, bindings=["right", "enter"]),
+    }
+
+
+def policy_menu(policy, context):
+    routes, available = policy_route_options(policy, context)
+    route_options = [
+        {
+            "id": f"route-{index}",
+            "label": route_label(route),
+            **({"disabled": True} if route_key(route) not in available else {}),
+        }
+        for index, route in enumerate(routes)
     ]
-    if policy.get("reportingBaseline") is not None:
-        items.append(
-            item(
-                "clear-baseline",
-                "Clear reporting baseline",
-                "Set the reporting baseline to Not set.",
-                "clear-baseline",
-            )
-        )
-    return menu(
+    baseline = policy_route_id(policy.get("reportingBaseline"), routes)
+    return form(
         policy,
         "Routing policy",
-        items,
-        continuation="settings:policy",
+        "settings:policy",
+        [
+            policy_select_field(
+                "confidence",
+                "Confidence",
+                policy["confidence"],
+                [
+                    {"id": preset, "label": preset.title()}
+                    for preset in policy["confidencePresets"]
+                ],
+            ),
+            policy_action_field(
+                "model-ladder",
+                f"Model ladder: {len(ladder(policy))} ranked slots",
+                "open-policy-ladder",
+            ),
+            policy_select_field(
+                "reporting-baseline",
+                "Reporting baseline",
+                baseline or "none",
+                [{"id": "none", "label": "Not set"}, *route_options],
+            ),
+        ],
+        "save-policy",
+        "Save policy",
+        subtitle="Choose a setting, then apply your changes.",
+        cancel_action_id="back",
     )
 
 
-def ladder_menu(policy):
-    items = [
-        item(
-            f"ladder-{entry['rank']}",
-            (
-                f"Rank {entry['rank']} · {entry['class']}: "
-                f"{route_label(entry_route(entry))}"
-            ),
-            "Choose the eligible provider, model, and reasoning effort for this slot.",
-            f"open-ladder-slot:{entry['rank']}",
-        )
-        for entry in ladder(policy)
+def policy_ladder_form(policy, context):
+    routes, available = policy_route_options(policy, context)
+    route_options = [
+        {
+            "id": f"route-{index}",
+            "label": route_label(route),
+            **({"disabled": True} if route_key(route) not in available else {}),
+        }
+        for index, route in enumerate(routes)
     ]
-    items.append(item("back", "Back", "Return to routing policy.", "open-policy"))
-    return menu(
+    return form(
         policy,
         "Model ladder",
-        items,
-        "Ordered from least to most capable within simple, smart, and intelligent classes.",
-        continuation="settings:ladder",
+        "settings:policy:ladder",
+        [
+            policy_select_field(
+                f"ladder-{entry['rank']}",
+                f"Rank {entry['rank']} · {entry['class']}",
+                policy_route_id(entry_route(entry), routes),
+                route_options,
+            )
+            for entry in ladder(policy)
+        ],
+        "save-policy-ladder",
+        "Save ladder",
+        subtitle="Choose a model route for each ranked slot.",
+        cancel_action_id="back-policy",
     )
 
 
@@ -804,74 +843,13 @@ def update(policy, **values):
     policy.update(updated)
 
 
-def route_form(policy, context, entry):
-    return form(
-        policy,
-        f"Model ladder rank {entry['rank']}",
-        f"settings:ladder:{entry['rank']}",
-        [
-            {
-                "type": "modelRoute",
-                "id": "route",
-                "label": "Model route",
-                "description": f"Class: {entry['class']}",
-                "value": valid_route(entry_route(entry), eligible(context)),
-                "eligibleRoutes": eligible(context),
-            }
-        ],
-        f"set-ladder-slot:{entry['rank']}",
-        cancel_action_id="open-ladder",
-    )
-
-
-def ladder_eligible_routes(policy, context):
-    available = {route_key(route) for route in offered_routes(context)}
-    grouped = {}
-    for entry in ladder(policy):
-        route = entry_route(entry)
-        if route_key(route) not in available:
-            continue
-        key = (route["providerId"], route["model"])
-        grouped.setdefault(key, [])
-        if route["reasoningEffort"] not in grouped[key]:
-            grouped[key].append(route["reasoningEffort"])
-    return [
-        {
-            "providerId": provider,
-            "model": model,
-            "reasoningEfforts": efforts,
-        }
-        for (provider, model), efforts in grouped.items()
-    ]
-
-
-def baseline_form(policy, context):
-    current = valid_route(policy.get("reportingBaseline"), eligible(context))
-    return form(
-        policy,
-        "Reporting baseline",
-        "settings:baseline",
-        [
-            {
-                "type": "modelRoute",
-                "id": "route",
-                "label": "Reporting baseline",
-                "value": current,
-                "eligibleRoutes": ladder_eligible_routes(policy, context),
-            }
-        ],
-        "set-baseline",
-        cancel_action_id="open-policy",
-    )
-
-
 def settings_surface(policy, context, continuation):
     if continuation == "settings:root":
         return root_menu(policy, context)
     if continuation == "settings:policy":
-        return policy_menu(policy)
-    if continuation == "settings:ladder":
-        return ladder_menu(policy)
+        return policy_menu(policy, context)
+    if continuation == "settings:policy:ladder":
+        return policy_ladder_form(policy, context)
     if continuation == "settings:mode":
         return form(
             policy,
@@ -917,13 +895,6 @@ def settings_surface(policy, context, continuation):
             "set-confidence",
             cancel_action_id="open-policy",
         )
-    if continuation == "settings:baseline":
-        return baseline_form(policy, context)
-    if isinstance(continuation, str) and continuation.startswith("settings:ladder:"):
-        rank = parse_rank(continuation, "settings:ladder:")
-        entry = ladder_entry(policy, rank)
-        if entry is not None:
-            return route_form(policy, context, entry)
     return None
 
 
@@ -944,7 +915,16 @@ def action_is_enabled(surface, params):
         )
     if kind == "form":
         if outcome == "accepted":
-            return (surface.get("submit") or {}).get("id") == action_id
+            if (surface.get("submit") or {}).get("id") == action_id:
+                return True
+            return (
+                not params.get("values")
+                and any(
+                    (field.get("action") or {}).get("id") == action_id
+                    for field in surface.get("fields", [])
+                    if field.get("type") == "action"
+                )
+            )
         if outcome == "cancelled":
             return (surface.get("cancel") or {}).get("id") == action_id
     if kind == "confirmation":
@@ -1063,44 +1043,51 @@ def settings_response(request, policy):
     if action_id in ("arm-ab", "disable-ab", "open-report"):
         return root_menu(policy, context)
     if action_id == "open-policy":
-        return policy_menu(policy)
-    if action_id == "open-confidence":
-        return policy_menu(policy)
-    if isinstance(action_id, str) and action_id.startswith("set-confidence:"):
-        confidence = action_id.removeprefix("set-confidence:")
-        if confidence not in policy["confidencePresets"]:
-            return error_notice(
-                policy, "Confidence must be one of the offered choices."
-            )
-        update(policy, confidence=confidence)
-        return policy_menu(policy)
-    if action_id == "set-confidence":
+        return policy_menu(policy, context)
+    if action_id == "open-policy-ladder":
+        return policy_ladder_form(policy, context)
+    if action_id == "save-policy":
         confidence = values.get("confidence")
         if confidence not in policy["confidencePresets"]:
             return error_notice(
                 policy, "Confidence must be one of the offered choices."
             )
-        update(policy, confidence=confidence)
-        return policy_menu(policy)
-    if action_id == "open-ladder":
-        return ladder_menu(policy)
-    if isinstance(action_id, str) and action_id.startswith("open-ladder-slot:"):
-        rank = parse_rank(action_id, "open-ladder-slot:")
-        entry = ladder_entry(policy, rank)
-        if entry is None:
-            return error_notice(policy, "Unknown model-ladder slot.")
-        return route_form(policy, context, entry)
-    if isinstance(action_id, str) and action_id.startswith("set-ladder-slot:"):
-        rank = parse_rank(action_id, "set-ladder-slot:")
-        entry = ladder_entry(policy, rank)
-        if entry is None:
-            return error_notice(policy, "Unknown model-ladder slot.")
-        route = valid_route(values.get("route"), eligible(context))
-        if route is None:
-            return error_notice(policy, "Choose an eligible model route.")
+        routes, _ = policy_route_options(policy, context)
+        route_by_id = {
+            f"route-{index}": route for index, route in enumerate(routes)
+        }
+        baseline_id = values.get("reporting-baseline")
+        if baseline_id == "none":
+            baseline = None
+        else:
+            baseline = route_by_id.get(baseline_id)
+            if baseline is None:
+                return error_notice(
+                    policy, "Choose a ladder route for the reporting baseline."
+                )
+        if baseline is not None and matching_ladder_rank(policy, baseline) is None:
+            return error_notice(
+                policy, "Choose a model-ladder route for the reporting baseline."
+            )
+        update(
+            policy,
+            confidence=confidence,
+            reportingBaseline=baseline,
+        )
+        return policy_menu(policy, context)
+    if action_id == "save-policy-ladder":
+        routes, _ = policy_route_options(policy, context)
+        route_by_id = {
+            f"route-{index}": route for index, route in enumerate(routes)
+        }
         updated_ladder = copy.deepcopy(ladder(policy))
-        updated_entry = next(item for item in updated_ladder if item["rank"] == rank)
-        updated_entry.update(route)
+        for entry in updated_ladder:
+            route = route_by_id.get(values.get(f"ladder-{entry['rank']}"))
+            if route is None:
+                return error_notice(
+                    policy, f"Choose an eligible model route for rank {entry['rank']}."
+                )
+            entry.update(route)
         update(
             policy,
             ranking={
@@ -1108,18 +1095,9 @@ def settings_response(request, policy):
                 "ladder": updated_ladder,
             },
         )
-        return ladder_menu(policy)
-    if action_id == "open-baseline":
-        return baseline_form(policy, context)
-    if action_id == "set-baseline":
-        route = valid_route(values.get("route"), eligible(context))
-        if route is None or matching_ladder_rank(policy, route) is None:
-            return error_notice(policy, "Choose an eligible model-ladder route.")
-        update(policy, reportingBaseline=route)
-        return policy_menu(policy)
-    if action_id == "clear-baseline":
-        update(policy, reportingBaseline=None)
-        return policy_menu(policy)
+        return policy_menu(policy, context)
+    if action_id == "back-policy":
+        return policy_menu(policy, context)
     if action_id == "back":
         return root_menu(policy, context)
     return error_notice(policy, "Unknown settings action.")

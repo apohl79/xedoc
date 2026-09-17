@@ -199,6 +199,17 @@ pub enum FormField {
         /// Eligible routes available to the user.
         eligible_routes: Vec<EligibleRoute>,
     },
+    /// Script-selected action row within a form.
+    Action {
+        /// Opaque field identifier.
+        id: OpaqueId,
+        /// Visible row label.
+        label: String,
+        /// Optional row description.
+        description: Option<String>,
+        /// Action submitted immediately when selected.
+        action: Action,
+    },
 }
 
 /// One opaque selection option.
