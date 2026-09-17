@@ -665,14 +665,32 @@ impl ScriptedInteractionView {
         else {
             return;
         };
-        if picker
+        let accepted = if picker
             .option_index
             .and_then(|index| options.get(index))
             .is_some_and(|option| option.disabled != Some(true))
-            && let Some(FieldValue::Select { option_index }) =
-                self.active_form_values_mut().get_mut(picker.field_index)
         {
-            *option_index = picker.option_index;
+            if let Some(FieldValue::Select { option_index }) =
+                self.active_form_values_mut().get_mut(picker.field_index)
+            {
+                *option_index = picker.option_index;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if accepted
+            && form.id == "settings:policy"
+            && form.fields.get(picker.field_index).is_some_and(|field| {
+                matches!(
+                    field,
+                    ExtensionInteractionField::Select { id, .. } if id == "confidence"
+                )
+            })
+        {
+            self.submit_form();
         }
     }
 
