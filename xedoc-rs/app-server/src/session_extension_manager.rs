@@ -93,6 +93,7 @@ struct SessionExtensionManagerInner {
 #[derive(Default)]
 struct SessionExtensionThreadState {
     extensions: HashMap<String, SessionExtensionDescriptor>,
+    approved_extension_ids: HashSet<String>,
     enabled_extension_ids: HashSet<String>,
 }
 
@@ -173,6 +174,7 @@ impl SessionExtensionManager {
                         .into_iter()
                         .map(|descriptor| (descriptor.id.clone(), descriptor))
                         .collect(),
+                    approved_extension_ids: HashSet::new(),
                     enabled_extension_ids: HashSet::new(),
                 },
             );
@@ -221,7 +223,7 @@ impl SessionExtensionManager {
                     "session extension state is not available for this thread",
                 ));
             };
-            if !state.enabled_extension_ids.contains(&params.extension_id) {
+            if !state.approved_extension_ids.contains(&params.extension_id) {
                 return Err(invalid_request(
                     "session extension is not approved for this thread",
                 ));
@@ -246,9 +248,33 @@ impl SessionExtensionManager {
         if params
             .arguments
             .first()
-            .is_some_and(|argument| argument == DISABLE_ARGUMENT)
+            .is_some_and(|argument| argument == DISABLE_ARGUMENT || argument == "off")
         {
+            self.invoke_extension_command(
+                thread_id,
+                descriptor.clone(),
+                params.command.clone(),
+                params.arguments.clone(),
+            )
+            .await
+            .ok();
             self.disable(thread_id, &descriptor.id).await;
+            return Ok(SessionExtensionCommandInvokeResponse {});
+        }
+        if params
+            .arguments
+            .first()
+            .is_some_and(|argument| argument == "on")
+        {
+            self.invoke_extension_command(
+                thread_id,
+                descriptor.clone(),
+                params.command,
+                params.arguments,
+            )
+            .await
+            .map_err(invalid_request)?;
+            self.enable(thread_id, descriptor).await?;
             return Ok(SessionExtensionCommandInvokeResponse {});
         }
 
@@ -280,6 +306,9 @@ impl SessionExtensionManager {
             };
             match decision {
                 Some(ApprovalDecision::Session | ApprovalDecision::Always) => {
+                    if let Some(state) = self.inner.threads.lock().await.get_mut(&thread_id) {
+                        state.approved_extension_ids.insert(descriptor.id.clone());
+                    }
                     if matches!(decision, Some(ApprovalDecision::Always)) {
                         self.persist_grant(&descriptor).await;
                     }
@@ -655,6 +684,26 @@ impl SessionExtensionManager {
         self.notify_commands(thread_id).await;
     }
 
+    async fn enable(
+        &self,
+        thread_id: ThreadId,
+        descriptor: SessionExtensionDescriptor,
+    ) -> Result<(), JSONRPCErrorError> {
+        let already_enabled = self
+            .inner
+            .threads
+            .lock()
+            .await
+            .get(&thread_id)
+            .is_some_and(|state| state.enabled_extension_ids.contains(&descriptor.id));
+        if !already_enabled {
+            self.activate_extension(thread_id, descriptor)
+                .await
+                .map_err(invalid_request)?;
+        }
+        Ok(())
+    }
+
     async fn stop_extension_script(&self, thread_id: ThreadId, extension_id: &str) {
         let deliveries = self
             .inner
@@ -676,7 +725,7 @@ impl SessionExtensionManager {
             return Vec::new();
         };
         let mut commands = state
-            .enabled_extension_ids
+            .approved_extension_ids
             .iter()
             .filter_map(|extension_id| state.extensions.get(extension_id))
             .flat_map(|extension| extension.commands.clone())
