@@ -1657,6 +1657,12 @@ def decision(
         )
         if reason is not None:
             summary += f" {reason}"
+        if embedding_elapsed_ms is not None and embedding_input_count is not None:
+            vector_label = "vector" if embedding_input_count == 1 else "vectors"
+            summary += (
+                f" Embedding batch {embedding_elapsed_ms} ms "
+                f"({embedding_input_count} {vector_label})."
+            )
     return {
         "kind": "route",
         "decision": {
