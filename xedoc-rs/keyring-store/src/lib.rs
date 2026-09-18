@@ -1,9 +1,12 @@
 use keyring::Entry;
 use keyring::Error as KeyringError;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::Debug;
 use tracing::trace;
+
+const DISABLE_KEYCHAIN_ENV_VAR: &str = "XEDOC_DISABLE_KEYCHAIN";
 
 #[derive(Debug)]
 pub enum CredentialStoreError {
@@ -50,6 +53,10 @@ pub struct DefaultKeyringStore;
 
 impl KeyringStore for DefaultKeyringStore {
     fn load(&self, service: &str, account: &str) -> Result<Option<String>, CredentialStoreError> {
+        if keychain_disabled() {
+            trace!("keyring.load disabled, service={service}, account={account}");
+            return Ok(None);
+        }
         trace!("keyring.load start, service={service}, account={account}");
         let entry = Entry::new(service, account).map_err(CredentialStoreError::new)?;
         match entry.get_password() {
@@ -69,6 +76,10 @@ impl KeyringStore for DefaultKeyringStore {
     }
 
     fn save(&self, service: &str, account: &str, value: &str) -> Result<(), CredentialStoreError> {
+        if keychain_disabled() {
+            trace!("keyring.save disabled, service={service}, account={account}");
+            return Err(CredentialStoreError::new(KeyringError::NoEntry));
+        }
         trace!(
             "keyring.save start, service={service}, account={account}, value_len={}",
             value.len()
@@ -87,6 +98,10 @@ impl KeyringStore for DefaultKeyringStore {
     }
 
     fn delete(&self, service: &str, account: &str) -> Result<bool, CredentialStoreError> {
+        if keychain_disabled() {
+            trace!("keyring.delete disabled, service={service}, account={account}");
+            return Ok(false);
+        }
         trace!("keyring.delete start, service={service}, account={account}");
         let entry = Entry::new(service, account).map_err(CredentialStoreError::new)?;
         match entry.delete_credential() {
@@ -104,6 +119,10 @@ impl KeyringStore for DefaultKeyringStore {
             }
         }
     }
+}
+
+fn keychain_disabled() -> bool {
+    std::env::var_os(DISABLE_KEYCHAIN_ENV_VAR).as_deref() == Some(OsStr::new("1"))
 }
 
 pub mod tests {

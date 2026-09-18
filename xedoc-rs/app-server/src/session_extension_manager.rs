@@ -250,15 +250,16 @@ impl SessionExtensionManager {
             .first()
             .is_some_and(|argument| argument == "off")
         {
-            self.invoke_extension_command(
-                thread_id,
-                descriptor.clone(),
-                params.command.clone(),
-                params.arguments.clone(),
-            )
-            .await
-            .ok();
+            let command_result = self
+                .invoke_extension_command(
+                    thread_id,
+                    descriptor.clone(),
+                    params.command.clone(),
+                    params.arguments.clone(),
+                )
+                .await;
             self.disable(thread_id, &descriptor.id).await;
+            command_result.map_err(invalid_request)?;
             return Ok(SessionExtensionCommandInvokeResponse {});
         }
         if params
@@ -277,6 +278,23 @@ impl SessionExtensionManager {
             self.enable(thread_id, descriptor).await?;
             return Ok(SessionExtensionCommandInvokeResponse {});
         }
+        if params
+            .arguments
+            .first()
+            .is_some_and(|argument| argument == "restart")
+        {
+            self.invoke_extension_command(
+                thread_id,
+                descriptor.clone(),
+                params.command,
+                params.arguments,
+            )
+            .await
+            .map_err(invalid_request)?;
+            self.disable(thread_id, &descriptor.id).await;
+            self.enable(thread_id, descriptor).await?;
+            return Ok(SessionExtensionCommandInvokeResponse {});
+        }
 
         let manager = self.clone();
         tokio::spawn(async move {
@@ -285,6 +303,14 @@ impl SessionExtensionManager {
                 .await
             {
                 warn!(thread_id = %thread_id, %error, "session extension command failed");
+                manager
+                    .inner
+                    .outgoing
+                    .send_server_notification(ServerNotification::Warning(WarningNotification {
+                        thread_id: Some(thread_id.to_string()),
+                        message: format!("Session extension command failed: {error}"),
+                    }))
+                    .await;
             }
         });
         Ok(SessionExtensionCommandInvokeResponse {})
@@ -342,37 +368,6 @@ impl SessionExtensionManager {
             .await?;
         self.drive_outcome(thread_id, descriptor.clone(), outcome)
             .await?;
-        self.inner
-            .session_script_registry
-            .grant_extension(
-                &descriptor.id,
-                thread_id,
-                &descriptor.requested_capabilities,
-            )
-            .await?;
-        if let Err(error) = self
-            .inner
-            .session_script_host
-            .lock()
-            .await
-            .start_extension(
-                thread_id,
-                descriptor.id.clone(),
-                descriptor.entrypoint.clone(),
-            )
-            .await
-        {
-            self.stop_extension_script(thread_id, &descriptor.id).await;
-            return Err(error.to_string());
-        }
-        {
-            let mut threads = self.inner.threads.lock().await;
-            let Some(state) = threads.get_mut(&thread_id) else {
-                self.stop_extension_script(thread_id, &descriptor.id).await;
-                return Ok(());
-            };
-            state.enabled_extension_ids.insert(descriptor.id);
-        }
         self.notify_commands(thread_id).await;
         Ok(())
     }
@@ -669,6 +664,13 @@ impl SessionExtensionManager {
         method: Method,
         params: serde_json::Value,
     ) -> Result<ResponseOutcome, String> {
+        let extension_enabled = self
+            .inner
+            .threads
+            .lock()
+            .await
+            .get(&thread_id)
+            .is_some_and(|state| state.enabled_extension_ids.contains(&descriptor.id));
         let cwd = match self.inner.thread_manager.get_thread(thread_id).await {
             Ok(thread) => thread
                 .config_snapshot()
@@ -691,6 +693,7 @@ impl SessionExtensionManager {
                 "session": {
                     "threadId": thread_id.to_string(),
                     "cwd": cwd,
+                    "extensionEnabled": extension_enabled,
                 },
             }),
             params,
@@ -726,9 +729,42 @@ impl SessionExtensionManager {
             .get(&thread_id)
             .is_some_and(|state| state.enabled_extension_ids.contains(&descriptor.id));
         if !already_enabled {
-            self.activate_extension(thread_id, descriptor)
+            self.inner
+                .session_script_registry
+                .grant_extension(
+                    &descriptor.id,
+                    thread_id,
+                    &descriptor.requested_capabilities,
+                )
                 .await
                 .map_err(invalid_request)?;
+            let start_result = self
+                .inner
+                .session_script_host
+                .lock()
+                .await
+                .start_extension(
+                    thread_id,
+                    descriptor.id.clone(),
+                    descriptor.entrypoint.clone(),
+                )
+                .await;
+            if let Err(error) = start_result {
+                self.stop_extension_script(thread_id, &descriptor.id).await;
+                return Err(invalid_request(error.to_string()));
+            }
+            let thread_exists = {
+                let mut threads = self.inner.threads.lock().await;
+                threads
+                    .get_mut(&thread_id)
+                    .map(|state| state.enabled_extension_ids.insert(descriptor.id.clone()))
+                    .is_some()
+            };
+            if !thread_exists {
+                self.stop_extension_script(thread_id, &descriptor.id).await;
+                return Ok(());
+            }
+            self.notify_commands(thread_id).await;
         }
         Ok(())
     }

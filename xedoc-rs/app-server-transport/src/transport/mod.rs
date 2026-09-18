@@ -208,10 +208,15 @@ impl SessionScriptConnectionScope {
     }
 }
 
-static CONNECTION_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+static CONNECTION_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 fn next_connection_id() -> ConnectionId {
-    ConnectionId(CONNECTION_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
+    loop {
+        let connection_id = CONNECTION_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        if connection_id != 0 {
+            return ConnectionId(connection_id);
+        }
+    }
 }
 
 async fn forward_incoming_message(

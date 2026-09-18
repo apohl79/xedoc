@@ -1073,8 +1073,13 @@ impl App {
                 .await
                 {
                     tracing::warn!(%error, "failed to invoke session extension command");
+                    let details = error
+                        .chain()
+                        .map(std::string::ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(": ");
                     self.chat_widget
-                        .add_error_message(format!("Session extension command failed: {error}"));
+                        .add_error_message(format!("Session extension command failed: {details}"));
                 }
             }
             AppEvent::UpdateAskForApprovalPolicy(policy) => {

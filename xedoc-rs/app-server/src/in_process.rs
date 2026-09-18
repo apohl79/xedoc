@@ -99,6 +99,7 @@ use xedoc_protocol::protocol::SessionSource;
 pub use xedoc_rollout::StateDbHandle;
 pub use xedoc_state::log_db::LogDbLayer;
 
+// The shared transport allocator reserves zero for the embedded client.
 const IN_PROCESS_CONNECTION_ID: ConnectionId = ConnectionId(0);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default bounded channel capacity for in-process runtime queues.
