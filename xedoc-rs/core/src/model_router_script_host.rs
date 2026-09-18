@@ -42,6 +42,8 @@ use xedoc_script_protocol::SubprocessFailure;
 use crate::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::responses_metadata::XedocResponsesRequestKind;
+use crate::responses_retry::ResponsesStreamRequest;
+use crate::responses_retry::handle_retryable_response_stream_error;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use xedoc_core_session_name::append_message_text;
@@ -259,20 +261,40 @@ impl ModelRouterScriptHost {
             .model_client_for_turn(&classifier_turn)
             .await
             .new_session();
-        let mut stream = client_session
-            .stream(
-                &prompt,
-                &classifier_turn.model_info,
-                &classifier_turn.session_telemetry,
-                classifier_turn.reasoning_effort.clone(),
-                classifier_turn.reasoning_summary,
-                classifier_turn.config.service_tier.clone(),
-                &responses_metadata,
-            )
-            .or_cancel(cancellation)
-            .await
-            .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?
-            .map_err(|_| ModelRouterScriptFailure::ClassifierInvocation)?;
+        let mut retries = 0;
+        let max_retries = classifier_turn.provider.info().stream_max_retries();
+        let mut stream = loop {
+            let stream = client_session
+                .stream(
+                    &prompt,
+                    &classifier_turn.model_info,
+                    &classifier_turn.session_telemetry,
+                    classifier_turn.reasoning_effort.clone(),
+                    classifier_turn.reasoning_summary,
+                    classifier_turn.config.service_tier.clone(),
+                    &responses_metadata,
+                )
+                .or_cancel(cancellation)
+                .await
+                .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?;
+            match stream {
+                Ok(stream) => break stream,
+                Err(error) if error.is_retryable() => {
+                    handle_retryable_response_stream_error(
+                        &mut retries,
+                        max_retries,
+                        error,
+                        &mut client_session,
+                        session,
+                        &classifier_turn,
+                        ResponsesStreamRequest::Sampling,
+                    )
+                    .await
+                    .map_err(|error| classifier_invocation_failure(error.to_string()))?;
+                }
+                Err(error) => return Err(classifier_invocation_failure(error.to_string())),
+            }
+        };
         let mut output = String::new();
         loop {
             let event = stream
@@ -283,13 +305,14 @@ impl ModelRouterScriptHost {
             let Some(event) = event else {
                 break;
             };
-            let event = event.map_err(|_| ModelRouterScriptFailure::ClassifierInvocation)?;
+            let event = event.map_err(|error| classifier_invocation_failure(error.to_string()))?;
             append_classifier_event_text(&mut output, &event);
             if let ResponseEvent::Completed {
-                    response_id,
-                    token_usage,
-                    ..
-                } = event {
+                response_id,
+                token_usage,
+                ..
+            } = event
+            {
                 session
                     .record_auxiliary_token_usage(
                         &classifier_turn,
@@ -301,7 +324,9 @@ impl ModelRouterScriptHost {
                 return Ok(output);
             }
         }
-        Err(ModelRouterScriptFailure::ClassifierInvocation)
+        Err(classifier_invocation_failure(
+            "classifier stream ended before completion".to_string(),
+        ))
     }
 
     /// Opens the script-owned model-router settings surface.
@@ -806,7 +831,7 @@ pub(crate) enum ModelRouterScriptFailure {
     /// The script requested a malformed or unsupported classifier invocation.
     InvalidClassifierRequest,
     /// The configured model classifier could not return a response.
-    ClassifierInvocation,
+    ClassifierInvocation { detail: String },
     /// The active turn cancelled the classifier request.
     ClassifierCancelled,
     /// The host could not encode its interaction response.
@@ -837,7 +862,9 @@ impl ModelRouterScriptFailure {
             Self::InvalidClassifierRequest => {
                 "router script returned an invalid classifier request".to_string()
             }
-            Self::ClassifierInvocation => "router classifier invocation failed".to_string(),
+            Self::ClassifierInvocation { detail } => {
+                format!("router classifier invocation failed: {detail}")
+            }
             Self::ClassifierCancelled => "router classifier invocation cancelled".to_string(),
             Self::Encode => "router interaction could not be encoded".to_string(),
         }
@@ -858,7 +885,7 @@ impl ModelRouterScriptFailure {
             | Self::InvalidFeedback
             | Self::InvalidSummary
             | Self::InvalidClassifierRequest
-            | Self::ClassifierInvocation
+            | Self::ClassifierInvocation { .. }
             | Self::ClassifierCancelled
             | Self::Encode => None,
         }
@@ -1041,6 +1068,12 @@ fn script_error_failure(error: xedoc_script_protocol::ScriptError) -> ModelRoute
     ModelRouterScriptFailure::ScriptError {
         code: error.code,
         message: safe_script_error_message(error.message),
+    }
+}
+
+fn classifier_invocation_failure(detail: String) -> ModelRouterScriptFailure {
+    ModelRouterScriptFailure::ClassifierInvocation {
+        detail: safe_script_error_message(detail),
     }
 }
 

@@ -448,6 +448,14 @@ impl SessionExtensionManager {
                             .to_string(),
                     );
                 }
+                ResponseOutcome::Result {
+                    result: ScriptResult::ClassifierRequest { .. },
+                } => {
+                    return Err(
+                        "session extension requested model classification for a non-routing method"
+                            .to_string(),
+                    );
+                }
             }
         }
     }
