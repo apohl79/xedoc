@@ -467,6 +467,7 @@ matching = [
     for request in requests
     if int(request.get("sequence", 0)) > int(minimum_sequence)
     and marker in request.get("markers", [])
+    and request.get("request_kind") != "model_router_classifier"
     and request.get("client_metadata", {}).get("thread_id") != excluded_thread_id
     and request.get("client_metadata", {}).get("turn_id") != "session-name"
 ]
@@ -476,6 +477,51 @@ reasoning = request.get("reasoning") or {}
 actual = (request["model"], reasoning.get("effort"))
 expected = (model, effort)
 assert actual == expected, f"Responses request route for {marker!r}: expected={expected}, actual={actual}"
+PY
+}
+
+assert_classifier_requests() {
+  local marker="$1"
+  local expected_count="$2"
+  python3 - "$request_log" "$marker" "$expected_count" <<'PY'
+import json
+import sys
+
+path, marker, expected_count = sys.argv[1:]
+requests = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+matching = [
+    request
+    for request in requests
+    if marker in request.get("markers", [])
+    and request.get("request_kind") == "model_router_classifier"
+]
+assert len(matching) >= int(expected_count), (marker, len(matching), expected_count)
+for request in matching:
+    route = (request.get("model"), (request.get("reasoning") or {}).get("effort"))
+    assert route == ("gpt-5.6-luna", "low"), route
+PY
+}
+
+set_classifier_route() {
+  local mode="$1"
+  python3 - "$policy_path" "$mode" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+mode = sys.argv[2]
+policy = json.load(open(path, encoding="utf-8"))
+policy["mode"] = mode
+policy["approval"] = "off"
+policy["confidence"] = "permissive"
+policy["classifierRoute"] = {
+    "providerId": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "low",
+}
+with open(path, "w", encoding="utf-8") as destination:
+    json.dump(policy, destination, indent=2)
+    destination.write("\n")
 PY
 }
 
@@ -942,7 +988,7 @@ set_feedback() {
 
 set_reporting_baseline() {
   open_settings
-  select_menu_item 6 "Routing policy"
+  select_menu_item 7 "Routing policy"
   select_menu_item 2 "Reporting baseline"
   set_baseline_terra_high
   wait_for_pane "Routing policy"
@@ -953,7 +999,7 @@ set_reporting_baseline() {
 
 clear_reporting_baseline() {
   open_settings
-  select_menu_item 6 "Routing policy"
+  select_menu_item 7 "Routing policy"
   select_menu_item 2 "Reporting baseline"
   set_select_value "Reporting baseline: Not set" 16
   wait_for_pane "Routing policy"
@@ -1190,21 +1236,21 @@ finish_host_action_thread() {
 
 exercise_policy_manager() {
   open_settings
-  select_menu_item 6 "Routing policy"
+  select_menu_item 7 "Routing policy"
 
-  select_menu_item 0 "Confidence"
+  select_menu_item 0 "Similarity"
   set_select_value "Preset: Strict" 3
-  wait_for_pane "Confidence: Strict"
+  wait_for_pane "Similarity: Strict"
   assert_policy "confidence=strict"
 
-  select_menu_item 0 "Confidence"
+  select_menu_item 0 "Similarity"
   set_select_value "Preset: Permissive" 3
-  wait_for_pane "Confidence: Permissive"
+  wait_for_pane "Similarity: Permissive"
   assert_policy "confidence=permissive"
 
-  select_menu_item 0 "Confidence"
+  select_menu_item 0 "Similarity"
   set_select_value "Preset: Balanced" 3
-  wait_for_pane "Confidence: Balanced"
+  wait_for_pane "Similarity: Balanced"
   assert_policy "confidence=balanced"
   record_scenario settings-confidence "strict, permissive, and balanced persisted"
 
@@ -1229,11 +1275,11 @@ exercise_policy_manager() {
   assert_policy "reportingBaseline.model=gpt-5.6-terra"
   assert_policy "reportingBaseline.reasoningEffort=high"
 
-  select_menu_item 3 "Routing policy"
+  select_menu_item 4 "Routing policy"
   assert_policy "reportingBaseline=null"
   record_scenario settings-baseline "baseline persisted and clear returned it to Not set"
 
-  select_menu_item 3 "Model router"
+  select_menu_item 5 "Model router"
   assert_config_unchanged
 }
 
@@ -1245,8 +1291,8 @@ exercise_settings_matrix() {
   set_mode full Full
 
   set_approval off Off
-  set_approval changes Changes
-  set_approval all All
+  set_approval changes "Confident changes"
+  set_approval all "All available routes"
 
   set_feedback false
   set_feedback true
@@ -1331,13 +1377,50 @@ run_mode_matrix() {
   run_root_mode full ROUTER_E2E_MODE_FULL applied Full
 }
 
+run_classifier_mode_matrix() {
+  local root_sequence
+  local root_thread_id
+  reset_policy
+  set_classifier_route full
+  start_tui
+  send_prompt "ROUTER_E2E_CLASSIFIER_FULL review workflow security"
+  wait_for_request_marker "ROUTER_E2E_CLASSIFIER_FULL"
+  assert_classifier_requests "ROUTER_E2E_CLASSIFIER_FULL" 1
+  await_turn
+  assert_request_route "ROUTER_E2E_CLASSIFIER_FULL" "gpt-5.6-sol" medium
+
+  set_classifier_route shadow-full
+  start_tui
+  send_prompt "ROUTER_E2E_CLASSIFIER_SHADOW review workflow security"
+  wait_for_request_marker "ROUTER_E2E_CLASSIFIER_SHADOW"
+  assert_classifier_requests "ROUTER_E2E_CLASSIFIER_SHADOW" 1
+  await_turn
+  assert_request_route "ROUTER_E2E_CLASSIFIER_SHADOW" "$initial_model" "$initial_effort"
+
+  set_classifier_route subagents
+  start_tui
+  send_prompt "ROUTER_E2E_CLASSIFIER_SUBAGENT ROUTER_E2E_SPAWN_ROOT_classifier review workflow security"
+  wait_for_request_marker "ROUTER_E2E_CLASSIFIER_SUBAGENT"
+  read -r root_sequence root_thread_id _ <<<"$(
+    request_identity "ROUTER_E2E_CLASSIFIER_SUBAGENT"
+  )"
+  wait_for_pane "router parent completed" 600
+  wait_for_child_request_marker "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence"
+  assert_classifier_requests "ROUTER_E2E_CLASSIFIER_SUBAGENT" 1
+  assert_classifier_requests "ROUTER_E2E_CHILD" 1
+  assert_request_route \
+    "ROUTER_E2E_CHILD" "gpt-5.6-sol" high "$root_thread_id" "$root_sequence"
+  record_scenario classifier-modes \
+    "LLM classification and embedding work-type similarity reached full, shadow, and subagent routing"
+}
+
 run_session_mode_override() {
   reset_policy
   start_tui
   set_mode off Off
   set_session_mode full Full
   assert_policy "mode=off"
-  set_approval all All
+  set_approval all "All available routes"
   send_key Escape
   send_prompt "ROUTER_E2E_SESSION_OVERRIDE review workflow security"
   assert_approval_details
@@ -1417,7 +1500,7 @@ run_approval_matrix() {
   set_mode full Full
   set_feedback true
 
-  set_approval changes Changes
+  set_approval changes "Confident changes"
   start_tui
   send_prompt "ROUTER_CASE_CHANGES_SAME"
   wait_for_request_marker "ROUTER_CASE_CHANGES_SAME"
@@ -1434,7 +1517,7 @@ run_approval_matrix() {
   assert_request_route "ROUTER_E2E_CHANGES_CHANGED" "gpt-5.6-sol" high
   record_scenario approval-changes-changed "changed route required and accepted confirmation"
 
-  set_approval all All
+  set_approval all "All available routes"
   start_tui
 
   send_prompt "ROUTER_CASE_ALL_SAME"
@@ -1510,7 +1593,7 @@ run_override_case() {
 run_override_matrix() {
   reset_policy
   set_mode full Full
-  set_approval all All
+  set_approval all "All available routes"
   set_feedback true
   run_override_case work_type 0 "Work type: Group2:" \
     "group2: implementation" "score 5 (bounded 5;" "gpt-5.6-luna" medium
@@ -1669,7 +1752,15 @@ scenario_path = pathlib.Path(sys.argv[2])
 artifact_dir = pathlib.Path(sys.argv[3])
 lines = request_path.read_text(encoding="utf-8").splitlines()
 assert 0 < len(lines) <= 300, len(lines)
-allowed = {"sequence", "path", "model", "reasoning", "client_metadata", "markers"}
+allowed = {
+    "sequence",
+    "path",
+    "model",
+    "reasoning",
+    "request_kind",
+    "client_metadata",
+    "markers",
+}
 for line in lines:
     assert len(line.encode()) <= 4096, len(line.encode())
     observation = json.loads(line)
@@ -1712,7 +1803,13 @@ main() {
     finish_host_action_thread
     run_feature_disabled
     run_mode_matrix
+    run_classifier_mode_matrix
     run_steering_matrix
+  elif [[ "$phase" == "classifier" ]]; then
+    run_classifier_mode_matrix
+    assert_config_unchanged
+    printf 'PASS: scripted model-router classifier tmux acceptance\n'
+    return
   elif [[ "$phase" == "session-override" ]]; then
     run_session_mode_override
     assert_config_unchanged

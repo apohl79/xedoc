@@ -81,6 +81,21 @@ def observation_metadata(request: dict[str, Any]) -> dict[str, Optional[str]]:
     }
 
 
+def request_kind(request: dict[str, Any]) -> Optional[str]:
+    metadata = request.get("client_metadata")
+    if not isinstance(metadata, dict):
+        return None
+    raw_turn_metadata = metadata.get("x-codex-turn-metadata")
+    if not isinstance(raw_turn_metadata, str):
+        return None
+    try:
+        parsed_turn_metadata = json.loads(raw_turn_metadata)
+    except json.JSONDecodeError:
+        return None
+    value = parsed_turn_metadata.get("request_kind")
+    return value if isinstance(value, str) else None
+
+
 def observation(request: dict[str, Any], sequence: int, path: str) -> dict[str, Any]:
     """Returns the bounded, prompt-free request observation asserted by the E2E."""
     return {
@@ -88,6 +103,7 @@ def observation(request: dict[str, Any], sequence: int, path: str) -> dict[str, 
         "path": path,
         "model": request.get("model"),
         "reasoning": request.get("reasoning"),
+        "request_kind": request_kind(request),
         "client_metadata": observation_metadata(request),
         "markers": sorted(set(TEST_MARKER_PATTERN.findall(json.dumps(request)))),
     }
@@ -148,6 +164,15 @@ def spawn_agent_call() -> dict[str, Any]:
 
 def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str, Any]]:
     response_id = f"router-e2e-response-{sequence}"
+    if request_kind(request) == "model_router_classifier":
+        return [
+            response_created(response_id),
+            assistant_message(
+                f"router-e2e-classifier-{sequence}",
+                ('{"complexity":"very_high","risk":"high","orchestration":"workflow"}'),
+            ),
+            completed(response_id),
+        ]
     if contains_text(request, ROOT_SPAWN_PREFIX) and not has_function_call_output(
         request, SPAWN_CALL_ID
     ):
