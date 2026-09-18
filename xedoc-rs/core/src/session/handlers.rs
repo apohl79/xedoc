@@ -472,7 +472,7 @@ pub(super) async fn user_input_or_turn_inner(
                                         ),
                                     };
                                     if sess
-                                        .request_scripted_interaction(current_context.as_ref(), request, pending)
+                                        .request_scripted_interaction(&current_context, request, pending)
                                         .await
                                     {
                                         return;
@@ -983,7 +983,13 @@ async fn resume_scripted_interaction(
                 .lock()
                 .await
                 .insert(turn.sub_id.clone(), response);
-            user_input_or_turn(sess, turn.sub_id, turn.op, turn.client_user_message_id).await;
+            Box::pin(user_input_or_turn(
+                sess,
+                turn.sub_id,
+                turn.op,
+                turn.client_user_message_id,
+            ))
+            .await;
         }
         crate::session::session::PendingScriptedInteractionContinuation::AwaitResponse(sender) => {
             let _ = sender.send(response);

@@ -22,7 +22,7 @@ pub struct SessionScriptConfigToml {
     /// Notifications that the host may deliver to this script.
     #[serde(default)]
     pub subscriptions: Vec<SessionScriptSubscriptionToml>,
-    /// Maximum time the script may exclusively hold a request-user-input prompt.
+    /// Maximum time the script may exclusively hold a prompt it can respond to.
     #[serde(default = "default_response_timeout_ms")]
     pub response_timeout_ms: u64,
 }
@@ -34,6 +34,8 @@ pub enum SessionScriptCapabilityToml {
     UserInputSend,
     #[serde(rename = "prompt.requestUserInput.respond")]
     PromptRequestUserInputRespond,
+    #[serde(rename = "prompt.approval.respond")]
+    PromptApprovalRespond,
 }
 
 /// A notification class that the host may deliver to a configured session script.

@@ -60,6 +60,9 @@ pub enum SessionScriptCapability {
     #[serde(rename = "prompt.requestUserInput.respond")]
     #[ts(rename = "prompt.requestUserInput.respond")]
     PromptRequestUserInputRespond,
+    #[serde(rename = "prompt.approval.respond")]
+    #[ts(rename = "prompt.approval.respond")]
+    PromptApprovalRespond,
 }
 
 /// Registers the initialized connection as a restricted session script.
@@ -183,6 +186,9 @@ pub struct SessionScriptRespondParams {
 pub enum SessionScriptPromptResponse {
     RequestUserInput {
         answers: HashMap<String, SessionScriptRequestUserInputAnswer>,
+    },
+    Approval {
+        response: JsonValue,
     },
 }
 

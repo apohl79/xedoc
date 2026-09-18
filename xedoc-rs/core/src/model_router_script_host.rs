@@ -195,7 +195,8 @@ impl ModelRouterScriptHost {
                         result:
                             ScriptResult::ClassifierRequest { .. }
                             | ScriptResult::State { .. }
-                            | ScriptResult::Complete { .. },
+                            | ScriptResult::Complete { .. }
+                            | ScriptResult::Message { .. },
                     }) => ModelRouterScriptDecisionOutcome::fallback(
                         ModelRouterScriptFailure::UnexpectedResult,
                     ),
@@ -206,7 +207,10 @@ impl ModelRouterScriptHost {
                 }
             }
             Ok(ResponseOutcome::Result {
-                result: ScriptResult::State { .. } | ScriptResult::Complete { .. },
+                result:
+                    ScriptResult::State { .. }
+                    | ScriptResult::Complete { .. }
+                    | ScriptResult::Message { .. },
             }) => ModelRouterScriptDecisionOutcome::fallback(
                 ModelRouterScriptFailure::UnexpectedResult,
             ),
@@ -378,6 +382,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::State { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::Message { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -428,6 +435,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::State { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::Message { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -482,7 +492,10 @@ impl ModelRouterScriptHost {
                 }
             }
             Ok(ResponseOutcome::Result {
-                result: ScriptResult::State { .. } | ScriptResult::Complete { .. },
+                result:
+                    ScriptResult::State { .. }
+                    | ScriptResult::Complete { .. }
+                    | ScriptResult::Message { .. },
             }) => ModelRouterScriptInteractionOutcome::Failure(
                 ModelRouterScriptFailure::UnexpectedResult,
             ),
@@ -522,7 +535,8 @@ impl ModelRouterScriptHost {
                     ScriptResult::Route { .. }
                     | ScriptResult::Interaction { .. }
                     | ScriptResult::ClassifierRequest { .. }
-                    | ScriptResult::Complete { .. },
+                    | ScriptResult::Complete { .. }
+                    | ScriptResult::Message { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }

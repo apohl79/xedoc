@@ -35,6 +35,11 @@ use xedoc_app_server_protocol::SessionExtensionCommandInvokeResponse;
 use xedoc_app_server_protocol::SessionExtensionCommandsUpdatedNotification;
 use xedoc_app_server_protocol::SessionExtensionListParams;
 use xedoc_app_server_protocol::SessionExtensionListResponse;
+use xedoc_app_server_protocol::SessionExtensionMessageLevel;
+use xedoc_app_server_protocol::SessionExtensionMessageNotification;
+use xedoc_app_server_protocol::SessionScriptPromptClosedReason;
+use xedoc_app_server_protocol::SessionScriptPromptKind;
+use xedoc_app_server_protocol::SessionScriptPromptRequest;
 use xedoc_app_server_protocol::WarningNotification;
 use xedoc_core::ThreadManager;
 use xedoc_core::config::Config;
@@ -52,6 +57,7 @@ use xedoc_script_protocol::ProtocolVersion;
 use xedoc_script_protocol::RequestId;
 use xedoc_script_protocol::ResponseOutcome;
 use xedoc_script_protocol::ScriptInvoker;
+use xedoc_script_protocol::ScriptMessageLevel;
 use xedoc_script_protocol::ScriptRequest;
 use xedoc_script_protocol::ScriptResult;
 
@@ -419,6 +425,25 @@ impl SessionExtensionManager {
                     return Ok(());
                 }
                 ResponseOutcome::Result {
+                    result: ScriptResult::Message { level, message },
+                } => {
+                    let level = match level {
+                        ScriptMessageLevel::Info => SessionExtensionMessageLevel::Info,
+                        ScriptMessageLevel::Error => SessionExtensionMessageLevel::Error,
+                    };
+                    self.inner
+                        .outgoing
+                        .send_server_notification(ServerNotification::SessionExtensionMessage(
+                            SessionExtensionMessageNotification {
+                                thread_id: thread_id.to_string(),
+                                level,
+                                message,
+                            },
+                        ))
+                        .await;
+                    return Ok(());
+                }
+                ResponseOutcome::Result {
                     result: ScriptResult::Interaction { interaction },
                 } => {
                     validate_session_extension_interaction(&interaction)?;
@@ -603,9 +628,56 @@ impl SessionExtensionManager {
             expires_at: i64::MAX,
             surface,
         };
+        let script_prompt = self
+            .inner
+            .session_script_registry
+            .open_approval_prompt(
+                &self.inner.outgoing,
+                thread_id,
+                SessionScriptPromptKind::ExtensionInteraction,
+                Some(params.turn_id.clone()),
+                Some(params.request_id.clone()),
+                SessionScriptPromptRequest {
+                    method: "item/extensionInteraction/request".to_string(),
+                    params: serde_json::to_value(&params).unwrap_or(serde_json::Value::Null),
+                },
+            )
+            .await;
+        if let (Some(response_receiver), Some(response_timeout)) = (
+            script_prompt.response_receiver,
+            script_prompt.response_timeout,
+        ) {
+            match timeout(response_timeout, response_receiver).await {
+                Ok(Ok(response)) => {
+                    self.inner
+                        .session_script_registry
+                        .close_prompt(
+                            &self.inner.outgoing,
+                            &script_prompt.prompt_id,
+                            SessionScriptPromptClosedReason::Answered,
+                        )
+                        .await;
+                    return serde_json::from_value(response).map_err(|error| error.to_string());
+                }
+                Ok(Err(_)) => {
+                    return Err("approval responder closed the interaction".to_string());
+                }
+                Err(_) => {
+                    self.inner
+                        .session_script_registry
+                        .close_prompt(
+                            &self.inner.outgoing,
+                            &script_prompt.prompt_id,
+                            SessionScriptPromptClosedReason::Expired,
+                        )
+                        .await;
+                }
+            }
+        }
+
         let deadline = Instant::now() + SESSION_EXTENSION_INVOCATION_TIMEOUT;
         let mut last_connection_ids = None;
-        loop {
+        let result = loop {
             let connection_ids = self
                 .inner
                 .thread_state_manager
@@ -613,7 +685,7 @@ impl SessionExtensionManager {
                 .await;
             if connection_ids.is_empty() {
                 if Instant::now() >= deadline {
-                    return Err("no client is subscribed to the extension thread".to_string());
+                    break Err("no client is subscribed to the extension thread".to_string());
                 }
                 sleep(Duration::from_millis(100)).await;
                 continue;
@@ -635,7 +707,7 @@ impl SessionExtensionManager {
             )
             .await
             {
-                Ok(result) => return result,
+                Ok(result) => break result,
                 Err(_) => {
                     self.inner.outgoing.cancel_request(&request_id).await;
                     let current_connection_ids = self
@@ -646,15 +718,24 @@ impl SessionExtensionManager {
                     if current_connection_ids == connection_ids
                         && last_connection_ids.as_ref() == Some(&connection_ids)
                     {
-                        return Err("extension interaction timed out".to_string());
+                        break Err("extension interaction timed out".to_string());
                     }
                     last_connection_ids = Some(current_connection_ids);
                     if Instant::now() >= deadline {
-                        return Err("extension interaction timed out".to_string());
+                        break Err("extension interaction timed out".to_string());
                     }
                 }
             }
-        }
+        };
+        self.inner
+            .session_script_registry
+            .close_prompt(
+                &self.inner.outgoing,
+                &script_prompt.prompt_id,
+                SessionScriptPromptClosedReason::Answered,
+            )
+            .await;
+        result
     }
 
     async fn invoke_script(

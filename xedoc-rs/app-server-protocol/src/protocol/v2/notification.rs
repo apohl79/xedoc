@@ -25,6 +25,23 @@ pub struct WarningNotification {
     pub message: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase", export_to = "v2/")]
+pub enum SessionExtensionMessageLevel {
+    Info,
+    Error,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct SessionExtensionMessageNotification {
+    pub thread_id: String,
+    pub level: SessionExtensionMessageLevel,
+    pub message: String,
+}
+
 /// Transient status update for a compaction run.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]

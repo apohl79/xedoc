@@ -214,6 +214,20 @@ pub enum ScriptResult {
         /// Safe summary suitable for the host to show to the user.
         summary: Option<String>,
     },
+    /// A bounded user-visible message emitted by a session extension.
+    Message {
+        /// Presentation level selected by the extension.
+        level: ScriptMessageLevel,
+        /// Safe message text for the user.
+        message: String,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ScriptMessageLevel {
+    Info,
+    Error,
 }
 
 #[derive(Deserialize)]
@@ -225,6 +239,8 @@ struct WireScriptResult {
     classifier: Option<ClassifierRequest>,
     state: Option<RouterState>,
     summary: Option<String>,
+    level: Option<ScriptMessageLevel>,
+    message: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -235,6 +251,7 @@ enum ScriptResultKind {
     ClassifierRequest,
     State,
     Complete,
+    Message,
 }
 
 impl<'de> Deserialize<'de> for ScriptResult {
@@ -249,37 +266,75 @@ impl<'de> Deserialize<'de> for ScriptResult {
             classifier,
             state,
             summary,
+            level,
+            message,
         } = WireScriptResult::deserialize(deserializer)?;
-        match (kind, decision, interaction, classifier, state, summary) {
-            (ScriptResultKind::Route, Some(decision), None, None, None, None) => {
+        match (
+            kind,
+            decision,
+            interaction,
+            classifier,
+            state,
+            summary,
+            level,
+            message,
+        ) {
+            (ScriptResultKind::Route, Some(decision), None, None, None, None, None, None) => {
                 Ok(Self::Route { decision })
             }
-            (ScriptResultKind::Interaction, None, Some(interaction), None, None, None) => {
-                Ok(Self::Interaction { interaction })
-            }
-            (ScriptResultKind::ClassifierRequest, None, None, Some(classifier), None, None) => {
-                Ok(Self::ClassifierRequest { classifier })
-            }
-            (ScriptResultKind::State, None, None, None, Some(state), None) => {
+            (
+                ScriptResultKind::Interaction,
+                None,
+                Some(interaction),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ) => Ok(Self::Interaction { interaction }),
+            (
+                ScriptResultKind::ClassifierRequest,
+                None,
+                None,
+                Some(classifier),
+                None,
+                None,
+                None,
+                None,
+            ) => Ok(Self::ClassifierRequest { classifier }),
+            (ScriptResultKind::State, None, None, None, Some(state), None, None, None) => {
                 Ok(Self::State { state })
             }
-            (ScriptResultKind::Complete, None, None, None, None, summary) => {
+            (ScriptResultKind::Complete, None, None, None, None, summary, None, None) => {
                 Ok(Self::Complete { summary })
             }
-            (ScriptResultKind::Route, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (
+                ScriptResultKind::Message,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(level),
+                Some(message),
+            ) => Ok(Self::Message { level, message }),
+            (ScriptResultKind::Route, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "route result must contain only a decision",
             )),
-            (ScriptResultKind::Interaction, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Interaction, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "interaction result must contain only an interaction",
             )),
-            (ScriptResultKind::ClassifierRequest, _, _, _, _, _) => Err(serde::de::Error::custom(
-                "classifier request must contain only a classifier",
-            )),
-            (ScriptResultKind::State, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::ClassifierRequest, _, _, _, _, _, _, _) => Err(
+                serde::de::Error::custom("classifier request must contain only a classifier"),
+            ),
+            (ScriptResultKind::State, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "state result must contain only state",
             )),
-            (ScriptResultKind::Complete, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Complete, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "complete result must contain only an optional summary",
+            )),
+            (ScriptResultKind::Message, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
+                "message result must contain only a level and message",
             )),
         }
     }

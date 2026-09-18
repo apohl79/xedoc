@@ -2511,6 +2511,32 @@
       ],
       "type": "object"
     },
+    "SessionExtensionMessageLevel": {
+      "enum": [
+        "info",
+        "error"
+      ],
+      "type": "string"
+    },
+    "SessionExtensionMessageNotification": {
+      "properties": {
+        "level": {
+          "$ref": "#/definitions/SessionExtensionMessageLevel"
+        },
+        "message": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "message",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "SessionScriptPromptClosedNotification": {
       "properties": {
         "promptId": {
@@ -6249,6 +6275,26 @@
         "params"
       ],
       "title": "WarningNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "sessionExtension/message"
+          ],
+          "title": "SessionExtension/messageNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionExtensionMessageNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "SessionExtension/messageNotification",
       "type": "object"
     },
     {

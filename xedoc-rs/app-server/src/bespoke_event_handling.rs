@@ -8,6 +8,7 @@ use crate::request_processors::populate_thread_turns_from_history;
 use crate::request_processors::thread_from_stored_thread;
 use crate::request_processors::thread_settings_from_core_snapshot;
 use crate::server_request_error::is_turn_transition_server_request_error;
+use crate::session_script_registry::OpenApprovalPrompt;
 use crate::session_script_registry::SessionScriptRegistry;
 use crate::thread_state::ThreadState;
 use crate::thread_state::TurnSummary;
@@ -410,8 +411,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 expires_at: event.expires_at,
                 surface,
             };
-            let script_prompt_id = session_script_registry
-                .open_observed_prompt(
+            let script_prompt = session_script_registry
+                .open_approval_prompt(
                     &session_script_outgoing,
                     conversation_id,
                     SessionScriptPromptKind::ExtensionInteraction,
@@ -423,12 +424,18 @@ pub(crate) async fn apply_bespoke_event_handling(
                     },
                 )
                 .await;
-            let (pending_request_id, receiver) = outgoing
-                .send_request(ServerRequestPayload::ExtensionInteractionRequest(params))
-                .await;
             let script_registry = session_script_registry.clone();
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
+                let script_prompt_id = script_prompt.prompt_id.clone();
+                let (pending_request_id, receiver) = session_script_or_client_response(
+                    script_prompt,
+                    ServerRequestPayload::ExtensionInteractionRequest(params),
+                    outgoing,
+                    script_registry.clone(),
+                    script_outgoing.clone(),
+                )
+                .await;
                 on_extension_interaction_response(
                     request_id,
                     extension_id,
@@ -500,8 +507,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 reason: event.reason.clone(),
                 grant_root: event.grant_root.clone(),
             };
-            let script_prompt_id = session_script_registry
-                .open_observed_prompt(
+            let script_prompt = session_script_registry
+                .open_approval_prompt(
                     &session_script_outgoing,
                     conversation_id,
                     SessionScriptPromptKind::FileChangeApproval,
@@ -513,12 +520,18 @@ pub(crate) async fn apply_bespoke_event_handling(
                     },
                 )
                 .await;
-            let (pending_request_id, rx) = outgoing
-                .send_request(ServerRequestPayload::FileChangeRequestApproval(params))
-                .await;
             let script_registry = session_script_registry.clone();
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
+                let script_prompt_id = script_prompt.prompt_id.clone();
+                let (pending_request_id, rx) = session_script_or_client_response(
+                    script_prompt,
+                    ServerRequestPayload::FileChangeRequestApproval(params),
+                    outgoing,
+                    script_registry.clone(),
+                    script_outgoing.clone(),
+                )
+                .await;
                 on_file_change_request_approval_response(
                     item_id,
                     pending_request_id,
@@ -638,8 +651,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 proposed_network_policy_amendments: proposed_network_policy_amendments_v2,
                 available_decisions: Some(available_decisions),
             };
-            let script_prompt_id = session_script_registry
-                .open_observed_prompt(
+            let script_prompt = session_script_registry
+                .open_approval_prompt(
                     &session_script_outgoing,
                     conversation_id,
                     SessionScriptPromptKind::CommandExecutionApproval,
@@ -651,14 +664,18 @@ pub(crate) async fn apply_bespoke_event_handling(
                     },
                 )
                 .await;
-            let (pending_request_id, rx) = outgoing
-                .send_request(ServerRequestPayload::CommandExecutionRequestApproval(
-                    params,
-                ))
-                .await;
             let script_registry = session_script_registry.clone();
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
+                let script_prompt_id = script_prompt.prompt_id.clone();
+                let (pending_request_id, rx) = session_script_or_client_response(
+                    script_prompt,
+                    ServerRequestPayload::CommandExecutionRequestApproval(params),
+                    outgoing.clone(),
+                    script_registry.clone(),
+                    script_outgoing.clone(),
+                )
+                .await;
                 on_command_execution_request_approval_response(
                     event_turn_id,
                     conversation_id,
@@ -859,8 +876,8 @@ pub(crate) async fn apply_bespoke_event_handling(
                 reason: request.reason,
                 permissions: request.permissions.into(),
             };
-            let script_prompt_id = session_script_registry
-                .open_observed_prompt(
+            let script_prompt = session_script_registry
+                .open_approval_prompt(
                     &session_script_outgoing,
                     conversation_id,
                     SessionScriptPromptKind::PermissionsApproval,
@@ -872,23 +889,29 @@ pub(crate) async fn apply_bespoke_event_handling(
                     },
                 )
                 .await;
-            let (pending_request_id, rx) = outgoing
-                .send_request(ServerRequestPayload::PermissionsRequestApproval(params))
-                .await;
-            let pending_response = PendingRequestPermissionsResponse {
-                call_id: request.call_id,
-                conversation_id,
-                turn_id: request.turn_id,
-                requested_permissions,
-                request_cwd,
-                pending_request_id,
-                outgoing,
-                receiver: rx,
-                request_permissions_guard: permission_guard,
-            };
             let script_registry = session_script_registry.clone();
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
+                let script_prompt_id = script_prompt.prompt_id.clone();
+                let (pending_request_id, rx) = session_script_or_client_response(
+                    script_prompt,
+                    ServerRequestPayload::PermissionsRequestApproval(params),
+                    outgoing.clone(),
+                    script_registry.clone(),
+                    script_outgoing.clone(),
+                )
+                .await;
+                let pending_response = PendingRequestPermissionsResponse {
+                    call_id: request.call_id,
+                    conversation_id,
+                    turn_id: request.turn_id,
+                    requested_permissions,
+                    request_cwd,
+                    pending_request_id,
+                    outgoing,
+                    receiver: rx,
+                    request_permissions_guard: permission_guard,
+                };
                 on_request_permissions_response(pending_response, conversation, thread_state).await;
                 script_registry
                     .close_prompt(
@@ -2010,13 +2033,56 @@ async fn submit_request_user_input_response(
     }
 }
 
+async fn session_script_or_client_response(
+    prompt: OpenApprovalPrompt,
+    request: ServerRequestPayload,
+    outgoing: ThreadScopedOutgoingMessageSender,
+    session_script_registry: SessionScriptRegistry,
+    session_script_outgoing: Arc<crate::outgoing_message::OutgoingMessageSender>,
+) -> (Option<RequestId>, oneshot::Receiver<ClientRequestResult>) {
+    if let (Some(response_receiver), Some(response_timeout)) =
+        (prompt.response_receiver, prompt.response_timeout)
+    {
+        match tokio::time::timeout(response_timeout, response_receiver).await {
+            Ok(Ok(response)) => return (None, immediate_client_response(response)),
+            Ok(Err(_)) => return (None, dropped_client_response()),
+            Err(_) => {
+                session_script_registry
+                    .close_prompt(
+                        &session_script_outgoing,
+                        &prompt.prompt_id,
+                        SessionScriptPromptClosedReason::Expired,
+                    )
+                    .await;
+            }
+        }
+    }
+
+    let (request_id, receiver) = outgoing.send_request(request).await;
+    (Some(request_id), receiver)
+}
+
+fn immediate_client_response(
+    response: serde_json::Value,
+) -> oneshot::Receiver<ClientRequestResult> {
+    let (sender, receiver) = oneshot::channel();
+    let _ = sender.send(Ok(response));
+    receiver
+}
+
+fn dropped_client_response() -> oneshot::Receiver<ClientRequestResult> {
+    let (sender, receiver) = oneshot::channel();
+    drop(sender);
+    receiver
+}
+
 async fn on_extension_interaction_response(
     request_id: String,
     extension_id: String,
     interaction_id: String,
     continuation: String,
     state_revision: Option<String>,
-    pending_request_id: RequestId,
+    pending_request_id: Option<RequestId>,
     receiver: oneshot::Receiver<ClientRequestResult>,
     conversation: Arc<XedocThread>,
     thread_state: Arc<Mutex<ThreadState>>,
@@ -2046,7 +2112,9 @@ async fn on_extension_interaction_response(
             cancelled_response
         }
     };
-    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    if let Some(pending_request_id) = pending_request_id {
+        resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    }
     let response = CoreScriptedInteractionResponse {
         extension_id: response.extension_id,
         interaction_id: response.interaction_id,
@@ -2157,7 +2225,9 @@ async fn on_request_permissions_response(
         request_permissions_guard,
     } = pending_response;
     let response = receiver.await;
-    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    if let Some(pending_request_id) = pending_request_id {
+        resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    }
     drop(request_permissions_guard);
     let response = match request_permissions_response_from_client_result(
         requested_permissions,
@@ -2206,7 +2276,7 @@ struct PendingRequestPermissionsResponse {
     turn_id: String,
     requested_permissions: CoreRequestPermissionProfile,
     request_cwd: AbsolutePathBuf,
-    pending_request_id: RequestId,
+    pending_request_id: Option<RequestId>,
     outgoing: ThreadScopedOutgoingMessageSender,
     receiver: oneshot::Receiver<ClientRequestResult>,
     request_permissions_guard: ThreadWatchActiveGuard,
@@ -2268,14 +2338,16 @@ fn map_file_change_approval_decision(decision: FileChangeApprovalDecision) -> Re
 #[allow(clippy::too_many_arguments)]
 async fn on_file_change_request_approval_response(
     item_id: String,
-    pending_request_id: RequestId,
+    pending_request_id: Option<RequestId>,
     receiver: oneshot::Receiver<ClientRequestResult>,
     xedoc: Arc<XedocThread>,
     thread_state: Arc<Mutex<ThreadState>>,
     permission_guard: ThreadWatchActiveGuard,
 ) {
     let response = receiver.await;
-    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    if let Some(pending_request_id) = pending_request_id {
+        resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    }
     drop(permission_guard);
     let decision = match response {
         Ok(Ok(value)) => match serde_json::from_value::<FileChangeRequestApprovalResponse>(value) {
@@ -2314,7 +2386,7 @@ async fn on_command_execution_request_approval_response(
     approval_id: Option<String>,
     item_id: String,
     completion_item: Option<CommandExecutionCompletionItem>,
-    pending_request_id: RequestId,
+    pending_request_id: Option<RequestId>,
     receiver: oneshot::Receiver<ClientRequestResult>,
     conversation: Arc<XedocThread>,
     outgoing: ThreadScopedOutgoingMessageSender,
@@ -2322,7 +2394,9 @@ async fn on_command_execution_request_approval_response(
     permission_guard: ThreadWatchActiveGuard,
 ) {
     let response = receiver.await;
-    resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    if let Some(pending_request_id) = pending_request_id {
+        resolve_server_request_on_thread_listener(&thread_state, pending_request_id).await;
+    }
     drop(permission_guard);
     let (decision, completion_status) = match response {
         Ok(Ok(value)) => {

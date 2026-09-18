@@ -34,6 +34,7 @@ readonly request_log="$artifact_dir/responses.jsonl"
 readonly scenario_log="$artifact_dir/scenarios.tsv"
 readonly mock_port_file="$artifact_dir/mock-port"
 readonly hold_response_file="$artifact_dir/release-held-root"
+readonly permission_hook_log="$artifact_dir/model-router-permission-hook.jsonl"
 readonly state_db="$runtime_home/state_5.sqlite"
 readonly router_runtime="${XEDOC_TMUX_ROUTER_RUNTIME:-}"
 
@@ -159,6 +160,7 @@ send_prompt() {
 
 wait_for_tui_ready() {
   local trust_confirmed=0
+  local hooks_trusted=0
   local pane=""
   for _ in $(seq 1 400); do
     pane="$(capture_viewport)"
@@ -168,6 +170,11 @@ wait_for_tui_ready() {
     if [[ "$trust_confirmed" -eq 0 && "$pane" == *"Do you trust the contents of this directory?"* ]]; then
       send_key Enter
       trust_confirmed=1
+    fi
+    if [[ "$hooks_trusted" -eq 0 && "$pane" == *"Hooks need review"* ]]; then
+      send_key Down
+      send_key Enter
+      hooks_trusted=1
     fi
     sleep 0.1
   done
@@ -885,6 +892,82 @@ cached_input_price_per_1m_tokens = 1.5
 output_price_per_1m_tokens = 6.0
 EOF
   record_config_digest
+}
+
+write_router_permission_hook() {
+  local behavior="$1"
+  python3 - "$runtime_home" "$permission_hook_log" "$behavior" <<'PY'
+import json
+import pathlib
+import sys
+
+runtime_home = pathlib.Path(sys.argv[1])
+log_path = pathlib.Path(sys.argv[2])
+behavior = sys.argv[3]
+script_path = runtime_home / "model_router_permission_hook.py"
+script_path.write_text(
+    f"""import json
+from pathlib import Path
+import sys
+
+payload = json.load(sys.stdin)
+with Path({str(log_path)!r}).open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(payload) + "\\n")
+
+print(json.dumps({{
+    "hookSpecificOutput": {{
+        "hookEventName": "PermissionRequest",
+        "decision": {{"behavior": {behavior!r}}},
+    }}
+}}))
+""",
+    encoding="utf-8",
+)
+hooks_path = runtime_home / "hooks.json"
+hooks_path.write_text(
+    json.dumps(
+        {
+            "hooks": {
+                "PermissionRequest": [
+                    {
+                        "matcher": "model_router",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"python3 {script_path}",
+                                "timeout_sec": 5,
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    ),
+    encoding="utf-8",
+)
+PY
+}
+
+assert_router_permission_hook() {
+  local expected_count="$1"
+  python3 - "$permission_hook_log" "$expected_count" <<'PY'
+import json
+import pathlib
+import sys
+
+log_path = pathlib.Path(sys.argv[1])
+expected_count = int(sys.argv[2])
+entries = [
+    json.loads(line)
+    for line in log_path.read_text(encoding="utf-8").splitlines()
+    if line
+]
+assert len(entries) == expected_count, entries
+for entry in entries:
+    assert entry["tool_name"] == "model_router", entry
+    assert entry["tool_input"]["kind"] == "route_approval", entry
+    assert entry["tool_input"]["surface"]["type"] == "confirmation", entry
+PY
 }
 
 assert_standalone_launch() {
@@ -1621,6 +1704,38 @@ run_approval_matrix() {
     "subagent confirmation rejected and current child route retained"
 }
 
+run_router_permission_hook_matrix() {
+  reset_policy
+  start_tui
+  set_mode full Full
+  set_approval all "All available routes"
+  set_feedback true
+
+  : >"$permission_hook_log"
+  write_router_permission_hook allow
+  start_tui
+  send_prompt "ROUTER_E2E_PERMISSION_HOOK_ALLOW review workflow security"
+  wait_for_request_marker "ROUTER_E2E_PERMISSION_HOOK_ALLOW"
+  await_turn
+  assert_request_route \
+    "ROUTER_E2E_PERMISSION_HOOK_ALLOW" "gpt-5.6-terra" low
+  assert_router_permission_hook 1
+  record_scenario permission-hook-allow \
+    "PermissionRequest hook accepted the model-router route without rendering confirmation"
+
+  : >"$permission_hook_log"
+  write_router_permission_hook deny
+  start_tui
+  send_prompt "ROUTER_E2E_PERMISSION_HOOK_DENY review workflow security"
+  wait_for_request_marker "ROUTER_E2E_PERMISSION_HOOK_DENY"
+  await_turn
+  assert_request_route \
+    "ROUTER_E2E_PERMISSION_HOOK_DENY" "$initial_model" "$initial_effort"
+  assert_router_permission_hook 1
+  record_scenario permission-hook-deny \
+    "PermissionRequest hook retained the current route without rendering confirmation"
+}
+
 run_override_case() {
   local axis="$1"
   local field_index="$2"
@@ -1886,6 +2001,11 @@ main() {
     run_steering_matrix
     assert_config_unchanged
     printf 'PASS: scripted model-router tmux steering acceptance\n'
+    return
+  elif [[ "$phase" == "permission-hook" ]]; then
+    run_router_permission_hook_matrix
+    assert_config_unchanged
+    printf 'PASS: scripted model-router permission-hook tmux acceptance\n'
     return
   elif [[ "$phase" == "post-modes" ]]; then
     start_tui

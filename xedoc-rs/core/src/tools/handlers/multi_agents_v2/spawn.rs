@@ -214,7 +214,7 @@ async fn handle_spawn_agent(
                             continuation: crate::session::session::PendingScriptedInteractionContinuation::AwaitResponse(sender),
                         };
                         if !session
-                            .request_scripted_interaction(turn.as_ref(), request, pending)
+                            .request_scripted_interaction(&turn, request, pending)
                             .await
                         {
                             tracing::warn!("failed to park scripted model-router interaction; retaining current route");

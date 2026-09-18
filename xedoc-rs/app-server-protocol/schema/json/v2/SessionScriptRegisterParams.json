@@ -5,7 +5,8 @@
       "description": "A narrowly scoped action a session script may be granted for its thread.",
       "enum": [
         "userInput.send",
-        "prompt.requestUserInput.respond"
+        "prompt.requestUserInput.respond",
+        "prompt.approval.respond"
       ],
       "type": "string"
     },

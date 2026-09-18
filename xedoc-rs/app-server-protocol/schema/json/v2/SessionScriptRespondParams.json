@@ -23,6 +23,22 @@
             "kind"
           ],
           "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "approval"
+              ],
+              "type": "string"
+            },
+            "response": true
+          },
+          "required": [
+            "kind",
+            "response"
+          ],
+          "type": "object"
         }
       ]
     },

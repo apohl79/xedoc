@@ -258,6 +258,7 @@ fn session_script_capability_sort_key(capability: &SessionScriptCapability) -> u
     match capability {
         SessionScriptCapability::UserInputSend => 0,
         SessionScriptCapability::PromptRequestUserInputRespond => 1,
+        SessionScriptCapability::PromptApprovalRespond => 2,
     }
 }
 

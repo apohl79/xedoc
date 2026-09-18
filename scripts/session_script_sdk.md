@@ -4,7 +4,8 @@
 app-server session scripts. A session script is a host-managed child process
 that is attached to one loaded root thread. It can observe selected activity,
 read a bounded session snapshot, optionally send ordinary user input, and,
-when exclusively granted that capability, answer `request_user_input` prompts.
+when exclusively granted the relevant capability, answer `request_user_input`
+and approval prompts.
 
 The SDK also provides a small WebSocket JSON-RPC transport for ordinary
 app-server clients. A WebSocket client cannot register as a session script:
@@ -47,6 +48,7 @@ command = ["python3", "/absolute/path/to/activity_recorder.py"]
 capabilities = [
   "userInput.send",
   "prompt.requestUserInput.respond",
+  "prompt.approval.respond",
 ]
 subscriptions = [
   "modelResponseDeltas",
@@ -71,8 +73,8 @@ The host applies the configuration as a maximum authority:
 
 - A script may request only configured subscriptions.
 - A script receives only configured capabilities that it requests.
-- `response_timeout_ms` is the maximum period for which the sole
-  `request_user_input` responder may hold an open prompt. It defaults to
+- `response_timeout_ms` is the maximum period for which a responder may hold
+  an open prompt. It defaults to
   10 seconds and is clamped to 100–60,000 ms.
 
 The child receives two host-owned environment variables:
@@ -255,10 +257,11 @@ You can configure or approve multiple scripts for the same root thread. Every
 connection has a separate registration ID, snapshot revision, subscriptions,
 and granted capabilities.
 
-There is one deliberate exception: at most one script on a thread may receive
-`prompt.requestUserInput.respond`. Registration fails when another script
-already owns the responder capability. Other scripts may still observe that
-prompt, but they receive `canRespond: false` and no lease.
+There are two deliberate exceptions: at most one script on a thread may receive
+each responder capability: `prompt.requestUserInput.respond` and
+`prompt.approval.respond`. Registration fails when another script already owns
+the same responder capability. Other scripts may still observe that prompt, but
+they receive `canRespond: false` and no lease.
 
 ## Send ordinary user input
 
@@ -328,9 +331,7 @@ Scripts that subscribe to a prompt class receive a bounded projection:
 ```
 
 The `request` field preserves the originating app-server request method and
-parameters. It is observational for every prompt class except a leased
-`requestUserInput` prompt. In particular, scripts cannot approve router,
-extension, command, file-change, permission, or MCP-elicitation prompts.
+parameters. It is observational unless the prompt includes a response lease.
 
 The prompt is terminally resolved by `script/promptClosed`. Its `reason` is
 one of `answered`, `cancelled`, `expired`, `turnEnded`,
@@ -372,6 +373,25 @@ The answer map must use the question IDs and allowed answer values supplied in
 the prompt request. Xedoc validates the answer before accepting it. A missing,
 expired, disconnected, or incorrect lease is rejected. If the response timeout
 elapses, Xedoc resumes its normal prompt handling without the script’s answer.
+
+### Answer approvals and extension interactions
+
+`prompt.approval.respond` grants an exclusive, time-bounded lease for
+`extensionInteraction`, `commandExecutionApproval`, `fileChangeApproval`, and
+`permissionsApproval` prompts. The response must be the exact JSON response
+for the prompt’s `request.method`; the host validates it with the same
+deserializers as a local client. If the script disconnects or its lease expires,
+Xedoc presents the normal local approval UI.
+
+```python
+if prompt["kind"] == "commandExecutionApproval" and prompt["canRespond"]:
+    client.respond_approval(
+        registration_id,
+        prompt["promptId"],
+        prompt["responseLease"],
+        {"decision": "accept"},
+    )
+```
 
 ## Build a plugin session extension
 
@@ -492,7 +512,8 @@ and the JSON-RPC primitive for existing app-server methods.
 | `initialize(client_name, title, version)` | Initialize the connection with experimental API support and send `initialized`. |
 | `register(thread_id, script_id, name, version, subscriptions, requested_capabilities)` | Register the host-scoped child and return `registrationId`, granted capabilities, and a snapshot. |
 | `read(registration_id)` | Return a fresh bounded snapshot. |
-| `respond(registration_id, prompt_id, response_lease, response)` | Answer a valid leased `request_user_input` prompt. |
+| `respond(registration_id, prompt_id, response_lease, response)` | Answer a valid leased prompt with its explicit response shape. |
+| `respond_approval(registration_id, prompt_id, response_lease, response)` | Answer a leased approval or extension-interaction prompt. |
 | `unregister(registration_id)` | Remove this connection’s registration. Closing the connection also removes it. |
 | `request(method, params)` | Send any permitted JSON-RPC request and return its object result. Raises `RpcError` for a JSON-RPC error. |
 | `request_error(method, params)` | Send a request expected to fail and return its error message. Useful in tests. |

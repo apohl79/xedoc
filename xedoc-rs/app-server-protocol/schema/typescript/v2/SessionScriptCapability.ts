@@ -5,4 +5,4 @@
 /**
  * A narrowly scoped action a session script may be granted for its thread.
  */
-export type SessionScriptCapability = "userInput.send" | "prompt.requestUserInput.respond";
+export type SessionScriptCapability = "userInput.send" | "prompt.requestUserInput.respond" | "prompt.approval.respond";

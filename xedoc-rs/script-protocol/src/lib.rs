@@ -42,6 +42,7 @@ pub use protocol::RouteFeedback;
 pub use protocol::RouterState;
 pub use protocol::SCRIPT_PROTOCOL_V1;
 pub use protocol::ScriptError;
+pub use protocol::ScriptMessageLevel;
 pub use protocol::ScriptRequest;
 pub use protocol::ScriptResponse;
 pub use protocol::ScriptResult;

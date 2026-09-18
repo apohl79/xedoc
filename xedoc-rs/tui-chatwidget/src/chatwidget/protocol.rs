@@ -177,6 +177,17 @@ impl ChatWidget {
                 self.on_compaction_progress(&notification.stage)
             }
             ServerNotification::Warning(notification) => self.on_warning(notification.message),
+            ServerNotification::SessionExtensionMessage(notification) => {
+                match notification.level {
+                    xedoc_app_server_protocol::SessionExtensionMessageLevel::Info => self
+                        .add_to_history(crate::history_cell::new_info_event(
+                            notification.message,
+                            /*details*/ None,
+                        )),
+                    xedoc_app_server_protocol::SessionExtensionMessageLevel::Error => self
+                        .add_to_history(crate::history_cell::new_error_event(notification.message)),
+                }
+            }
             ServerNotification::DeprecationNotice(notification) => {
                 self.on_deprecation_notice(notification.summary, notification.details)
             }

@@ -81,6 +81,7 @@ use xedoc_features::Feature;
 use xedoc_features::unstable_features_warning_event;
 use xedoc_hooks::Hooks;
 use xedoc_hooks::HooksConfig;
+use xedoc_hooks::PermissionRequestDecision;
 use xedoc_login::AuthManager;
 use xedoc_login::XedocAuth;
 use xedoc_login::auth_env_telemetry::collect_auth_env_telemetry;
@@ -175,6 +176,9 @@ use crate::config::PermissionProfileState;
 use crate::config::StartedNetworkProxy;
 use crate::config::resolve_web_search_mode_for_turn;
 use crate::context_manager::ContextManager;
+use crate::hook_runtime::run_permission_request_hooks;
+use crate::tools::hook_names::HookToolName;
+use crate::tools::sandboxing::PermissionRequestPayload;
 use crate::xedoc_thread::ThreadConfigSnapshot;
 use xedoc_config::CONFIG_TOML_FILE;
 use xedoc_config::ConfigLayerSource;
@@ -2335,7 +2339,7 @@ impl Session {
     /// does not describe the same pending interaction.
     pub(crate) async fn request_scripted_interaction(
         self: &Arc<Self>,
-        turn_context: &TurnContext,
+        turn_context: &Arc<TurnContext>,
         request: xedoc_protocol::protocol::ScriptedInteractionRequestEvent,
         pending: crate::session::session::PendingScriptedInteraction,
     ) -> bool {
@@ -2354,6 +2358,59 @@ impl Session {
             || serde_json::to_value(&pending.surface).ok().as_ref() != Some(&request.surface)
         {
             return false;
+        }
+        if pending.extension_id == "model-router"
+            && let InteractionSurface::Confirmation(confirmation) = &pending.surface
+        {
+            let hook_action = match run_permission_request_hooks(
+                self,
+                turn_context,
+                &request.request_id,
+                PermissionRequestPayload {
+                    tool_name: HookToolName::new("model_router"),
+                    tool_input: serde_json::json!({
+                        "kind": "route_approval",
+                        "surface": request.surface.clone(),
+                    }),
+                },
+            )
+            .await
+            {
+                Some(PermissionRequestDecision::Allow) => Some("approve"),
+                Some(PermissionRequestDecision::Deny { .. }) => Some("keep-current"),
+                None => None,
+            };
+            let hook_response = hook_action.and_then(|expected_action| {
+                confirmation
+                    .actions
+                    .iter()
+                    .find(|action| action.id.as_str() == expected_action && action.opens.is_none())
+                    .map(
+                        |action| xedoc_protocol::protocol::ScriptedInteractionResponse {
+                            extension_id: request.extension_id.clone(),
+                            interaction_id: request.interaction_id.clone(),
+                            continuation: request.continuation.clone(),
+                            state_revision: request.state_revision.clone(),
+                            outcome: xedoc_protocol::protocol::ScriptedInteractionOutcome::Accepted,
+                            action: Some(
+                                xedoc_protocol::protocol::ScriptedInteractionSelectedAction {
+                                    id: action.id.as_str().to_string(),
+                                },
+                            ),
+                            values: serde_json::json!({}),
+                        },
+                    )
+            });
+            if let Some(response) = hook_response {
+                let request_id = request.request_id.clone();
+                self.pending_scripted_interactions
+                    .lock()
+                    .await
+                    .insert(request_id.clone(), pending);
+                crate::session::handlers::scripted_interaction_response(self, request_id, response)
+                    .await;
+                return true;
+            }
         }
         let mut pending_interactions = self.pending_scripted_interactions.lock().await;
         if pending_interactions.contains_key(&request.request_id) {

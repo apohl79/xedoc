@@ -2771,7 +2771,8 @@
       "description": "A capability that the host may grant to a configured session script.",
       "enum": [
         "userInput.send",
-        "prompt.requestUserInput.respond"
+        "prompt.requestUserInput.respond",
+        "prompt.approval.respond"
       ],
       "type": "string"
     },
@@ -2800,7 +2801,7 @@
         },
         "response_timeout_ms": {
           "default": 10000,
-          "description": "Maximum time the script may exclusively hold a request-user-input prompt.",
+          "description": "Maximum time the script may exclusively hold a prompt it can respond to.",
           "format": "uint64",
           "minimum": 0.0,
           "type": "integer"

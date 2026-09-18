@@ -1628,6 +1628,7 @@ server_notification_definitions! {
     ModelSafetyBufferingUpdated => "model/safetyBuffering/updated" (v2::ModelSafetyBufferingUpdatedNotification),
     CompactionProgress => "compaction/progress" (v2::CompactionProgressNotification),
     Warning => "warning" (v2::WarningNotification),
+    SessionExtensionMessage => "sessionExtension/message" (v2::SessionExtensionMessageNotification),
     DeprecationNotice => "deprecationNotice" (v2::DeprecationNoticeNotification),
     ConfigWarning => "configWarning" (v2::ConfigWarningNotification),
     FuzzyFileSearchSessionUpdated => "fuzzyFileSearch/sessionUpdated" (FuzzyFileSearchSessionUpdatedNotification),

@@ -259,6 +259,21 @@ class SessionScriptClient:
             },
         )
 
+    def respond_approval(
+        self,
+        registration_id: str,
+        prompt_id: str,
+        response_lease: str,
+        response: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Answer a leased approval or extension-interaction prompt."""
+        return self.respond(
+            registration_id,
+            prompt_id,
+            response_lease,
+            {"kind": "approval", "response": response},
+        )
+
     def unregister(self, registration_id: str) -> dict[str, Any]:
         return self.request("script/unregister", {"registrationId": registration_id})
 

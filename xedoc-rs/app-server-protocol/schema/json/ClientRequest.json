@@ -3621,7 +3621,8 @@
       "description": "A narrowly scoped action a session script may be granted for its thread.",
       "enum": [
         "userInput.send",
-        "prompt.requestUserInput.respond"
+        "prompt.requestUserInput.respond",
+        "prompt.approval.respond"
       ],
       "type": "string"
     },
@@ -3681,6 +3682,22 @@
           "required": [
             "answers",
             "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "approval"
+              ],
+              "type": "string"
+            },
+            "response": true
+          },
+          "required": [
+            "kind",
+            "response"
           ],
           "type": "object"
         }

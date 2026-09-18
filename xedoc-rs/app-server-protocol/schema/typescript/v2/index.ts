@@ -355,6 +355,8 @@ export type { SessionExtensionCommandInvokeResponse } from "./SessionExtensionCo
 export type { SessionExtensionCommandsUpdatedNotification } from "./SessionExtensionCommandsUpdatedNotification";
 export type { SessionExtensionListParams } from "./SessionExtensionListParams";
 export type { SessionExtensionListResponse } from "./SessionExtensionListResponse";
+export type { SessionExtensionMessageLevel } from "./SessionExtensionMessageLevel";
+export type { SessionExtensionMessageNotification } from "./SessionExtensionMessageNotification";
 export type { SessionScriptCapability } from "./SessionScriptCapability";
 export type { SessionScriptIdentityParams } from "./SessionScriptIdentityParams";
 export type { SessionScriptPrompt } from "./SessionScriptPrompt";

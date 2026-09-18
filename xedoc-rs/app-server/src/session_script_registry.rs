@@ -53,6 +53,7 @@ struct SessionScriptRegistryState {
     registrations_by_connection: HashMap<ConnectionId, SessionScriptRegistration>,
     connections_by_thread: HashMap<ThreadId, HashSet<ConnectionId>>,
     request_user_input_responder_by_thread: HashMap<ThreadId, ConnectionId>,
+    approval_responder_by_thread: HashMap<ThreadId, ConnectionId>,
     prompts_by_id: HashMap<String, SessionScriptPromptState>,
 }
 
@@ -96,13 +97,24 @@ struct SessionScriptPromptState {
     request: SessionScriptPromptRequest,
     responder_connection_id: Option<ConnectionId>,
     response_lease: Option<String>,
-    response_tx: Option<oneshot::Sender<ToolRequestUserInputResponse>>,
+    response_tx: Option<SessionScriptPromptResponseSender>,
     request_user_input_params: Option<ToolRequestUserInputParams>,
+}
+
+enum SessionScriptPromptResponseSender {
+    RequestUserInput(oneshot::Sender<ToolRequestUserInputResponse>),
+    Approval(oneshot::Sender<serde_json::Value>),
 }
 
 pub(crate) struct OpenRequestUserInputPrompt {
     pub(crate) prompt_id: String,
     pub(crate) response_receiver: Option<oneshot::Receiver<ToolRequestUserInputResponse>>,
+    pub(crate) response_timeout: Option<Duration>,
+}
+
+pub(crate) struct OpenApprovalPrompt {
+    pub(crate) prompt_id: String,
+    pub(crate) response_receiver: Option<oneshot::Receiver<serde_json::Value>>,
     pub(crate) response_timeout: Option<Duration>,
 }
 
@@ -312,6 +324,14 @@ impl SessionScriptRegistry {
                     .to_string(),
             );
         }
+        if capabilities.contains(&SessionScriptCapability::PromptApprovalRespond)
+            && state.approval_responder_by_thread.contains_key(&thread_id)
+        {
+            return Err(
+                "another registered script already owns approval response rights for this thread"
+                    .to_string(),
+            );
+        }
 
         let registration = SessionScriptRegistration {
             registration_id: Uuid::now_v7().to_string(),
@@ -331,6 +351,14 @@ impl SessionScriptRegistry {
         {
             state
                 .request_user_input_responder_by_thread
+                .insert(thread_id, connection_id);
+        }
+        if registration
+            .capabilities
+            .contains(&SessionScriptCapability::PromptApprovalRespond)
+        {
+            state
+                .approval_responder_by_thread
                 .insert(thread_id, connection_id);
         }
         state
@@ -624,7 +652,7 @@ impl SessionScriptRegistry {
                 },
                 responder_connection_id,
                 response_lease,
-                response_tx,
+                response_tx: response_tx.map(SessionScriptPromptResponseSender::RequestUserInput),
                 request_user_input_params: Some(params),
             };
             let deliveries = prompt_open_deliveries(&mut state, &prompt);
@@ -671,6 +699,62 @@ impl SessionScriptRegistry {
         prompt_id
     }
 
+    pub(crate) async fn open_approval_prompt(
+        &self,
+        outgoing: &Arc<OutgoingMessageSender>,
+        thread_id: ThreadId,
+        kind: SessionScriptPromptKind,
+        turn_id: Option<String>,
+        item_id: Option<String>,
+        request: SessionScriptPromptRequest,
+    ) -> OpenApprovalPrompt {
+        assert!(is_approval_prompt_kind(kind));
+        let (prompt_id, response_receiver, response_timeout, deliveries) = {
+            let mut state = self.state.lock().await;
+            let responder_connection_id =
+                state.approval_responder_by_thread.get(&thread_id).copied();
+            let response_timeout = responder_connection_id.and_then(|connection_id| {
+                state
+                    .registrations_by_connection
+                    .get(&connection_id)
+                    .map(|registration| registration.response_timeout)
+            });
+            let (response_tx, response_receiver, response_lease) =
+                if responder_connection_id.is_some() {
+                    let (response_tx, response_receiver) = oneshot::channel();
+                    (
+                        Some(SessionScriptPromptResponseSender::Approval(response_tx)),
+                        Some(response_receiver),
+                        Some(Uuid::now_v7().to_string()),
+                    )
+                } else {
+                    (None, None, None)
+                };
+            let prompt_id = Uuid::now_v7().to_string();
+            let prompt = SessionScriptPromptState {
+                prompt_id: prompt_id.clone(),
+                kind,
+                thread_id,
+                turn_id,
+                item_id,
+                request,
+                responder_connection_id,
+                response_lease,
+                response_tx,
+                request_user_input_params: None,
+            };
+            let deliveries = prompt_open_deliveries(&mut state, &prompt);
+            state.prompts_by_id.insert(prompt_id.clone(), prompt);
+            (prompt_id, response_receiver, response_timeout, deliveries)
+        };
+        send_deliveries(outgoing, deliveries).await;
+        OpenApprovalPrompt {
+            prompt_id,
+            response_receiver,
+            response_timeout,
+        }
+    }
+
     pub(crate) async fn respond(
         &self,
         connection_id: ConnectionId,
@@ -694,30 +778,25 @@ impl SessionScriptRegistry {
         {
             return Err("response lease is not valid for this prompt".to_string());
         }
-        if prompt.kind != SessionScriptPromptKind::RequestUserInput {
-            return Err("this prompt does not accept a session-script response".to_string());
+        match (prompt.kind, &params.response, &prompt.response_tx) {
+            (
+                SessionScriptPromptKind::RequestUserInput,
+                SessionScriptPromptResponse::RequestUserInput { answers },
+                Some(SessionScriptPromptResponseSender::RequestUserInput(_)),
+            ) => {
+                let request_user_input_params = prompt
+                    .request_user_input_params
+                    .as_ref()
+                    .ok_or_else(|| "prompt is missing requestUserInput metadata".to_string())?;
+                validate_request_user_input_answers(request_user_input_params, answers)?;
+            }
+            (
+                kind,
+                SessionScriptPromptResponse::Approval { .. },
+                Some(SessionScriptPromptResponseSender::Approval(_)),
+            ) if is_approval_prompt_kind(kind) => {}
+            _ => return Err("response kind does not match the prompt".to_string()),
         }
-        let SessionScriptPromptResponse::RequestUserInput { answers } = &params.response;
-        let request_user_input_params = prompt
-            .request_user_input_params
-            .as_ref()
-            .ok_or_else(|| "prompt is missing requestUserInput metadata".to_string())?;
-        validate_request_user_input_answers(request_user_input_params, answers)?;
-
-        let SessionScriptPromptResponse::RequestUserInput { answers } = params.response;
-        let response = ToolRequestUserInputResponse {
-            answers: answers
-                .into_iter()
-                .map(|(id, answer)| {
-                    (
-                        id,
-                        ToolRequestUserInputAnswer {
-                            answers: answer.answers,
-                        },
-                    )
-                })
-                .collect(),
-        };
         let mut prompt = state
             .prompts_by_id
             .remove(&params.prompt_id)
@@ -726,9 +805,40 @@ impl SessionScriptRegistry {
             .response_tx
             .take()
             .ok_or_else(|| "prompt is not delegated to a session script".to_string())?;
-        response_tx
-            .send(response)
-            .map_err(|_| "requestUserInput is no longer waiting for a response".to_string())?;
+        match (prompt.kind, params.response, response_tx) {
+            (
+                SessionScriptPromptKind::RequestUserInput,
+                SessionScriptPromptResponse::RequestUserInput { answers },
+                SessionScriptPromptResponseSender::RequestUserInput(response_tx),
+            ) => {
+                let response = ToolRequestUserInputResponse {
+                    answers: answers
+                        .into_iter()
+                        .map(|(id, answer)| {
+                            (
+                                id,
+                                ToolRequestUserInputAnswer {
+                                    answers: answer.answers,
+                                },
+                            )
+                        })
+                        .collect(),
+                };
+                response_tx.send(response).map_err(|_| {
+                    "requestUserInput is no longer waiting for a response".to_string()
+                })?;
+            }
+            (
+                kind,
+                SessionScriptPromptResponse::Approval { response },
+                SessionScriptPromptResponseSender::Approval(response_tx),
+            ) if is_approval_prompt_kind(kind) => {
+                response_tx.send(response).map_err(|_| {
+                    "approval prompt is no longer waiting for a response".to_string()
+                })?;
+            }
+            _ => return Err("response kind does not match the prompt".to_string()),
+        }
         Ok(prompt_closed_deliveries(
             &mut state,
             &prompt,
@@ -876,6 +986,9 @@ fn session_script_capability_from_config(
         SessionScriptCapabilityToml::PromptRequestUserInputRespond => {
             SessionScriptCapability::PromptRequestUserInputRespond
         }
+        SessionScriptCapabilityToml::PromptApprovalRespond => {
+            SessionScriptCapability::PromptApprovalRespond
+        }
     }
 }
 
@@ -908,6 +1021,17 @@ fn extension_policy_from_requested_capabilities(
                     .subscriptions
                     .prompts
                     .insert(SessionScriptPromptKind::RequestUserInput);
+            }
+            "prompt.approval.respond" => {
+                policy
+                    .capabilities
+                    .insert(SessionScriptCapability::PromptApprovalRespond);
+                policy.subscriptions.prompts.extend([
+                    SessionScriptPromptKind::ExtensionInteraction,
+                    SessionScriptPromptKind::CommandExecutionApproval,
+                    SessionScriptPromptKind::FileChangeApproval,
+                    SessionScriptPromptKind::PermissionsApproval,
+                ]);
             }
             _ => {}
         }
@@ -1003,6 +1127,15 @@ fn remove_registration(
             .request_user_input_responder_by_thread
             .remove(&registration.thread_id);
     }
+    if state
+        .approval_responder_by_thread
+        .get(&registration.thread_id)
+        == Some(&connection_id)
+    {
+        state
+            .approval_responder_by_thread
+            .remove(&registration.thread_id);
+    }
     if let Some(connection_ids) = state.connections_by_thread.get_mut(&registration.thread_id) {
         connection_ids.remove(&connection_id);
         if connection_ids.is_empty() {
@@ -1024,6 +1157,16 @@ fn remove_registration(
         }
     }
     deliveries
+}
+
+fn is_approval_prompt_kind(kind: SessionScriptPromptKind) -> bool {
+    matches!(
+        kind,
+        SessionScriptPromptKind::ExtensionInteraction
+            | SessionScriptPromptKind::CommandExecutionApproval
+            | SessionScriptPromptKind::FileChangeApproval
+            | SessionScriptPromptKind::PermissionsApproval
+    )
 }
 
 fn should_receive_prompt(
