@@ -251,6 +251,7 @@ expected_axes = {
         ("low", 1, "simple", "smart"),
         ("medium", 3, "simple", "intelligent"),
         ("high", 10, "smart", "intelligent"),
+        ("very_high", 14, "intelligent", "intelligent"),
     ],
 }
 actual_axes = {
@@ -1277,26 +1278,43 @@ exercise_policy_manager() {
   open_settings
   select_menu_item 7 "Routing policy"
 
-  select_menu_item 0 "Similarity"
-  set_select_value "Preset: Strict" 3
-  wait_for_pane "Similarity: Strict"
+  send_key Home
+  send_key Right
+  wait_for_pane "Strict ("
+  set_select_value "Confidence preset: Strict" 3
+  wait_for_pane "Confidence: Strict"
   assert_policy "confidence=strict"
 
-  select_menu_item 0 "Similarity"
-  set_select_value "Preset: Permissive" 3
-  wait_for_pane "Similarity: Permissive"
+  send_key Home
+  send_key Right
+  wait_for_pane "Permissive ("
+  set_select_value "Confidence preset: Permissive" 3
+  wait_for_pane "Confidence: Permissive"
   assert_policy "confidence=permissive"
 
-  select_menu_item 0 "Similarity"
-  set_select_value "Preset: Balanced" 3
-  wait_for_pane "Similarity: Balanced"
+  send_key Home
+  send_key Right
+  wait_for_pane "Balanced ("
+  set_select_value "Confidence preset: Balanced" 3
+  wait_for_pane "Confidence: Balanced"
   assert_policy "confidence=balanced"
   record_scenario settings-confidence "strict, permissive, and balanced persisted"
 
-  select_menu_item 1 "Model ladder"
+  send_key Home
+  send_key Down
+  send_key Right
+  wait_for_pane "Rank 1 ·"
   local rank
   for rank in $(seq 1 15); do
-    select_menu_item "$((rank - 1))" "Model route:"
+    local field_index=$((rank - 1))
+    local count=0
+    send_key Home
+    while (( count < field_index )); do
+      send_key Down
+      count=$((count + 1))
+    done
+    send_key Right
+    wait_for_pane "> openai/"
     set_select_value "Model route: openai/gpt-5.6-terra/high" 40
     wait_for_pane "Model ladder"
     assert_policy "ranking.ladder.$((rank - 1)).providerId=openai"
@@ -1627,7 +1645,7 @@ run_override_case() {
   set_select_value "$expected_form" 8
   wait_for_pane "Use openai/"
   wait_for_pane "$expected_classification"
-  wait_for_pane "1.00 / margin 1.00"
+  wait_for_pane "similarity 100% / margin 100%"
   wait_for_pane "$expected_calculation"
   wait_for_pane "openai/$expected_model/$expected_effort"
   send_key Enter

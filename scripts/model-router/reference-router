@@ -39,7 +39,7 @@ WORK_TYPES = (
 )
 COMPLEXITIES = ("low", "medium", "high", "very_high")
 ORCHESTRATIONS = ("none", "delegate", "coordination", "workflow")
-RISKS = ("low", "medium", "high")
+RISKS = ("low", "medium", "high", "very_high")
 MODEL_CLASSES = ("simple", "smart", "intelligent")
 CLASS_ORDER = {model_class: index for index, model_class in enumerate(MODEL_CLASSES)}
 AXIS_VALUES = {
@@ -83,6 +83,12 @@ def load_policy():
     if "classifierRoute" not in policy:
         policy["classifierRoute"] = None
         save_policy(policy)
+    if "approvalCalibration" not in policy:
+        policy["approvalCalibration"] = {"minimumSamples": 10, "buckets": {}}
+        save_policy(policy)
+    elif "minimumSamples" not in policy["approvalCalibration"]:
+        policy["approvalCalibration"]["minimumSamples"] = 10
+        save_policy(policy)
     validate_policy(policy)
     return policy
 
@@ -107,6 +113,34 @@ def validate_policy(policy):
             raise ValueError(
                 "policy confidence thresholds must be finite values from zero to one"
             )
+    calibration = policy.get("approvalCalibration")
+    if not isinstance(calibration, dict) or set(calibration) != {
+        "minimumSamples",
+        "buckets",
+    }:
+        raise ValueError("policy approval calibration is invalid")
+    minimum_samples = calibration["minimumSamples"]
+    buckets = calibration["buckets"]
+    if (
+        not isinstance(minimum_samples, int)
+        or isinstance(minimum_samples, bool)
+        or minimum_samples < 1
+        or not isinstance(buckets, dict)
+        or len(buckets) > 10
+    ):
+        raise ValueError("policy approval calibration buckets are invalid")
+    for bucket, outcomes in buckets.items():
+        if (
+            not isinstance(bucket, str)
+            or bucket not in {str(index) for index in range(10)}
+            or not isinstance(outcomes, dict)
+            or set(outcomes) != {"approved", "rejected", "override"}
+            or any(
+                not isinstance(count, int) or isinstance(count, bool) or count < 0
+                for count in outcomes.values()
+            )
+        ):
+            raise ValueError("policy approval calibration bucket is invalid")
     axes = policy.get("axes")
     if not isinstance(axes, list) or {axis.get("id") for axis in axes} != set(
         AXIS_VALUES
@@ -377,13 +411,16 @@ def record_routing_decision(
     policy,
     context,
     axes,
-    confidence,
+    similarity,
     margin,
     selection,
     mode,
     active,
     steering,
     disposition,
+    llm_confidence=None,
+    llm_elapsed_ms=None,
+    calibrated_confidence=None,
 ):
     route = selection["route"]
     conversation = context.get("conversation") or {}
@@ -409,7 +446,14 @@ def record_routing_decision(
         },
         "classification": axes,
         "classifier": "arctic-embed-xs",
-        "confidence": {"score": confidence, "margin": margin},
+        "confidence": {
+            "score": similarity,
+            "similarity": similarity,
+            "margin": margin,
+            "llmSelfRating": llm_confidence,
+            "calibratedOverall": calibrated_confidence,
+        },
+        "timing": {"llmClassificationElapsedMs": llm_elapsed_ms},
         "selection": {
             "score": selection["score"],
             "selectedRank": selection["selectedRank"],
@@ -640,8 +684,8 @@ def confidence_preset_options(policy):
             "id": preset,
             "label": (
                 f"{preset.title()} "
-                f"({percentage(thresholds['minimumScore'])} similarity, "
-                f"{percentage(thresholds['minimumMargin'])} margin)"
+                f"({percentage(thresholds['minimumScore'])} calibrated confidence, "
+                f"{percentage(thresholds['minimumMargin'])} similarity margin)"
             ),
         }
         for preset, thresholds in policy["confidencePresets"].items()
@@ -812,7 +856,7 @@ def policy_menu(policy, context):
         [
             policy_select_field(
                 "confidence",
-                "Similarity",
+                "Confidence",
                 policy["confidence"],
                 confidence_preset_options(policy),
             ),
@@ -1007,12 +1051,12 @@ def settings_surface(policy, context, continuation):
     if continuation == "settings:confidence":
         return form(
             policy,
-            "Similarity",
+            "Confidence",
             continuation,
             [
                 select_field(
                     "confidence",
-                    "Similarity preset",
+                    "Confidence preset",
                     policy["confidence"],
                     confidence_preset_options(policy),
                 )
@@ -1186,7 +1230,7 @@ def settings_response(request, policy):
         confidence = values.get("confidence")
         if confidence not in policy["confidencePresets"]:
             return error_notice(
-                policy, "Similarity must be one of the offered choices."
+                policy, "Confidence must be one of the offered choices."
             )
         update(policy, confidence=confidence)
         return policy_menu(policy, context)
@@ -1594,7 +1638,7 @@ def classify(
             "risk": "low",
         }
         evidence = {axis: (1.0, 1.0) for axis in axes}
-        return axes, evidence, True, None, None
+        return axes, evidence, True, None, None, None
     inputs = [prompt]
     if has_prior_messages:
         inputs.append(steering_context(prompt, recent_messages))
@@ -1613,9 +1657,23 @@ def classify(
         )
     axes = {axis: result[0] for axis, result in classification.items()}
     evidence = {axis: result[1:] for axis, result in classification.items()}
+    llm_confidence = None
     if llm_classification is not None:
-        axes.update(llm_classification)
-    return axes, evidence, steering, embedding_elapsed_ms, len(inputs)
+        axes.update(
+            {
+                axis: llm_classification[axis]
+                for axis in ("complexity", "orchestration", "risk")
+            }
+        )
+        llm_confidence = llm_classification["confidence"]
+    return (
+        axes,
+        evidence,
+        steering,
+        embedding_elapsed_ms,
+        len(inputs),
+        llm_confidence,
+    )
 
 
 def classification_label(axes):
@@ -1627,6 +1685,30 @@ def classification_label(axes):
 
 def classification_confidence(evidence):
     return evidence["work_type"]
+
+
+def combined_confidence(policy, similarity, llm_confidence):
+    raw = min(similarity, llm_confidence) if llm_confidence is not None else similarity
+    calibration = policy["approvalCalibration"]
+    outcomes = calibration["buckets"].get(str(min(9, int(raw * 10))))
+    if outcomes is None:
+        return None, raw
+    total = sum(outcomes.values())
+    if total < calibration["minimumSamples"]:
+        return None, raw
+    correct = outcomes["approved"]
+    calibrated = (correct + 1) / (total + 2)
+    return min(raw, calibrated), raw
+
+
+def record_approval_outcome(policy, raw_confidence, outcome):
+    bucket = str(min(9, int(raw_confidence * 10)))
+    calibration = copy.deepcopy(policy["approvalCalibration"])
+    outcomes = calibration["buckets"].setdefault(
+        bucket, {"approved": 0, "rejected": 0, "override": 0}
+    )
+    outcomes[outcome] += 1
+    update(policy, approvalCalibration=calibration)
 
 
 def offered_routes(context):
@@ -1734,10 +1816,13 @@ def confidence_passes(policy, score, margin):
 def routing_calculation(
     policy,
     selection,
-    score,
+    similarity,
     margin,
     embedding_elapsed_ms=None,
     embedding_input_count=None,
+    llm_confidence=None,
+    llm_elapsed_ms=None,
+    calibrated_confidence=None,
 ):
     ranking = policy["ranking"]
     if selection["route"] is None:
@@ -1757,9 +1842,15 @@ def routing_calculation(
             f"selected {selection['selectedRank']}"
         )
     thresholds = confidence_thresholds(policy)
+    calibration_detail = (
+        f"calibrated confidence {percentage(calibrated_confidence)} "
+        f"(minimum {percentage(thresholds['minimumScore'])})"
+        if calibrated_confidence is not None
+        else "confidence uncalibrated; using similarity thresholds"
+    )
     calculation = (
-        f"{ranking_detail} · similarity {percentage(score)} "
-        f"(margin {percentage(margin)}; minimum "
+        f"{ranking_detail} · {calibration_detail} · similarity "
+        f"{percentage(similarity)} (margin {percentage(margin)}; minimum "
         f"{percentage(thresholds['minimumScore'])}/"
         f"{percentage(thresholds['minimumMargin'])})"
     )
@@ -1769,6 +1860,10 @@ def routing_calculation(
             f" · embedding batch {embedding_elapsed_ms} ms "
             f"({embedding_input_count} {vector_label})"
         )
+    if llm_elapsed_ms is not None:
+        calculation += f" · LLM classification {llm_elapsed_ms / 1000:.2f} s"
+    if llm_confidence is not None:
+        calculation += f" · LLM self-rating {percentage(llm_confidence)}"
     return calculation
 
 
@@ -1785,23 +1880,46 @@ def decision(
     feedback_enabled=None,
     embedding_elapsed_ms=None,
     embedding_input_count=None,
+    llm_confidence=None,
+    llm_elapsed_ms=None,
+    calibrated_confidence=None,
+    decision_status=None,
+    used_route=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
-    chosen = route_label(route)
-    if summary is None:
-        summary = (
-            f"{category} classified at {percentage(confidence)} similarity "
-            f"(margin {percentage(margin)}); {chosen}."
-        )
-        if reason is not None:
-            summary += f" {reason}"
-    if embedding_elapsed_ms is not None and embedding_input_count is not None:
-        vector_label = "vector" if embedding_input_count == 1 else "vectors"
-        summary += (
-            f" Embedding batch {embedding_elapsed_ms} ms "
-            f"({embedding_input_count} {vector_label})."
-        )
+    status = decision_status or {
+        "apply": "approved",
+        "keepCurrent": "rejected",
+        "shadow": "shadow",
+    }[disposition]
+    target = route_label(route)
+    used = route_label(used_route if used_route is not None else route)
+    embedding_stat = (
+        f"{embedding_elapsed_ms} ms"
+        if embedding_elapsed_ms is not None
+        else "not run"
+    )
+    llm_stat = (
+        f"{llm_elapsed_ms / 1000:.2f} s" if llm_elapsed_ms is not None else "not run"
+    )
+    llm_score = (
+        percentage(llm_confidence) if llm_confidence is not None else "not available"
+    )
+    overall = (
+        f"{percentage(calibrated_confidence)} calibrated overall"
+        if calibrated_confidence is not None
+        else "uncalibrated"
+    )
+    summary = (
+        f"Decision: {status}; Target model: {target}; Used model: {used};\n"
+        f"└ Classifications: Work type({axes['work_type']}); "
+        f"Complexity({axes['complexity']}); Risk({axes['risk']}); "
+        f"Coordination({axes['orchestration']});\n"
+        f"  Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});\n"
+        f"  Confidence: {overall}; LLM self-rating({llm_score}); "
+        f"similarity({percentage(confidence)}, margin {percentage(margin)})."
+    )
     return {
         "kind": "route",
         "decision": {
@@ -1825,6 +1943,9 @@ def decision(
                     margin,
                     embedding_elapsed_ms,
                     embedding_input_count,
+                    llm_confidence,
+                    llm_elapsed_ms,
+                    calibrated_confidence,
                 ),
                 "rankingScore": selection["score"],
                 "rankingMinimumClass": selection["minimumClass"],
@@ -1848,6 +1969,11 @@ def approval_continuation(
     recalibrated=False,
     embedding_elapsed_ms=None,
     embedding_input_count=None,
+    llm_confidence=None,
+    llm_elapsed_ms=None,
+    calibrated_confidence=None,
+    raw_confidence=None,
+    was_override=False,
 ):
     turn = context.get("turn") or {}
     state = {
@@ -1860,6 +1986,11 @@ def approval_continuation(
         "scope": turn.get("scope", "root"),
         "policyRevision": str(policy["revision"]),
         "recalibrated": recalibrated,
+        "llmConfidence": llm_confidence,
+        "llmElapsedMs": llm_elapsed_ms,
+        "calibratedConfidence": calibrated_confidence,
+        "rawConfidence": raw_confidence,
+        "wasOverride": was_override,
     }
     if embedding_elapsed_ms is not None and embedding_input_count is not None:
         state["embeddingElapsedMs"] = embedding_elapsed_ms
@@ -1881,6 +2012,11 @@ def approval(
     recalibrated=False,
     embedding_elapsed_ms=None,
     embedding_input_count=None,
+    llm_confidence=None,
+    llm_elapsed_ms=None,
+    calibrated_confidence=None,
+    raw_confidence=None,
+    was_override=False,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -1896,6 +2032,11 @@ def approval(
         recalibrated,
         embedding_elapsed_ms,
         embedding_input_count,
+        llm_confidence,
+        llm_elapsed_ms,
+        calibrated_confidence,
+        raw_confidence,
+        was_override,
     )
     sections = [
         {
@@ -1917,12 +2058,25 @@ def approval(
             ],
         },
         {
-            "title": None,
+            "title": "Stats:",
             "rows": [
                 {
+                    "text": f"└ Embedding: {embedding_elapsed_ms} ms"
+                    if embedding_elapsed_ms is not None
+                    else "└ Embedding: not run",
+                },
+                {
+                    "text": f"LLM Classification: {llm_elapsed_ms / 1000:.2f} s"
+                    if llm_elapsed_ms is not None
+                    else "LLM Classification: not run",
+                },
+                {
                     "text": (
-                        f"Similarity: {percentage(confidence)} "
-                        f"/ margin {percentage(margin)}"
+                        f"Confidence: "
+                        f"{f'{percentage(calibrated_confidence)} calibrated overall' if calibrated_confidence is not None else 'uncalibrated'}; "
+                        f"LLM self-rating "
+                        f"{percentage(llm_confidence) if llm_confidence is not None else 'not available'}; "
+                        f"similarity {percentage(confidence)} / margin {percentage(margin)}"
                     )
                 },
             ],
@@ -1999,7 +2153,8 @@ def classifier_prompt(context, prompt):
     return (
         "Classify the candidate task for a model router. Return JSON only with "
         "exactly these fields: complexity (low, medium, high, very_high), risk "
-        "(low, medium, high), orchestration (none, delegate, coordination, workflow). "
+        "(low, medium, high, very_high), orchestration (none, delegate, coordination, workflow), "
+        "confidence (number from 0 through 1 for your complexity, risk, and orchestration classification). "
         "For a subagent, choose orchestration none unless the candidate explicitly "
         "asks it to delegate, spawn, coordinate, or split work.\n"
         f"Scope: {scope}\n"
@@ -2030,12 +2185,18 @@ def parse_classifier_output(output):
         axis: value.get(axis)
         for axis in ("complexity", "risk", "orchestration")
     }
+    confidence = value.get("confidence")
     if (
         result["complexity"] not in COMPLEXITIES
         or result["risk"] not in RISKS
         or result["orchestration"] not in ORCHESTRATIONS
+        or not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not math.isfinite(confidence)
+        or not 0.0 <= confidence <= 1.0
     ):
         return None
+    result["confidence"] = confidence
     return result
 
 
@@ -2053,6 +2214,16 @@ def routing_classifier_response(request, policy):
         raise ValueError("invalid classifier continuation") from None
     if not isinstance(prompt, str):
         raise ValueError("invalid classifier continuation")
+    llm_elapsed_ms = params.get("elapsedMs")
+    if (
+        llm_elapsed_ms is not None
+        and (
+            not isinstance(llm_elapsed_ms, int)
+            or isinstance(llm_elapsed_ms, bool)
+            or llm_elapsed_ms < 0
+        )
+    ):
+        raise ValueError("invalid classifier elapsed time")
     classifier_output = parse_classifier_output(params.get("output"))
     if classifier_output is None:
         record_diagnostic(
@@ -2072,10 +2243,11 @@ def routing_classifier_response(request, policy):
         },
         policy,
         classifier_output,
+        llm_elapsed_ms,
     )
 
 
-def routing_decide(request, policy, llm_classification=None):
+def routing_decide(request, policy, llm_classification=None, llm_elapsed_ms=None):
     context = request.get("context", {})
     turn = context.get("turn", {})
     prompt = (request.get("params") or {}).get("prompt", "")
@@ -2101,7 +2273,14 @@ def routing_decide(request, policy, llm_classification=None):
                 "input": classifier_prompt(context, prompt),
             },
         }
-    axes, evidence, steering, embedding_elapsed_ms, embedding_input_count = classify(
+    (
+        axes,
+        evidence,
+        steering,
+        embedding_elapsed_ms,
+        embedding_input_count,
+        llm_confidence,
+    ) = classify(
         policy,
         prompt,
         has_prior_messages,
@@ -2109,10 +2288,19 @@ def routing_decide(request, policy, llm_classification=None):
         scope,
         llm_classification,
     )
-    confidence, margin = classification_confidence(evidence)
+    similarity, margin = classification_confidence(evidence)
+    calibrated_confidence, raw_confidence = combined_confidence(
+        policy, similarity, llm_confidence
+    )
     selection = choose_route(policy, context, axes)
     route = selection["route"]
-    confident = confidence_passes(policy, confidence, margin)
+    confident = confidence_passes(
+        policy,
+        calibrated_confidence
+        if calibrated_confidence is not None
+        else similarity,
+        margin,
+    )
     scope = turn.get("scope")
     active = turn.get("active", False)
     mode = effective_mode(policy, context)
@@ -2139,13 +2327,16 @@ def routing_decide(request, policy, llm_classification=None):
             policy,
             context,
             axes,
-            confidence,
+            similarity,
             margin,
             selection,
             mode,
             active,
             steering,
             "approval",
+            llm_confidence,
+            llm_elapsed_ms,
+            calibrated_confidence,
         )
         context = {
             **context,
@@ -2154,12 +2345,16 @@ def routing_decide(request, policy, llm_classification=None):
         return approval(
             policy,
             axes,
-            confidence,
+            similarity,
             margin,
             selection,
             context,
             embedding_elapsed_ms=embedding_elapsed_ms,
             embedding_input_count=embedding_input_count,
+            llm_confidence=llm_confidence,
+            llm_elapsed_ms=llm_elapsed_ms,
+            calibrated_confidence=calibrated_confidence,
+            raw_confidence=raw_confidence,
         )
     disposition = (
         "apply"
@@ -2179,19 +2374,22 @@ def routing_decide(request, policy, llm_classification=None):
         policy,
         context,
         axes,
-        confidence,
+        similarity,
         margin,
         selection,
         mode,
         active,
         steering,
         disposition,
+        llm_confidence,
+        llm_elapsed_ms,
+        calibrated_confidence,
     )
     result = decision(
         policy,
         request["requestId"],
         axes,
-        confidence,
+        similarity,
         margin,
         selection,
         disposition,
@@ -2199,9 +2397,11 @@ def routing_decide(request, policy, llm_classification=None):
         feedback_enabled=policy["feedback"] and mode != "off",
         embedding_elapsed_ms=embedding_elapsed_ms,
         embedding_input_count=embedding_input_count,
+        llm_confidence=llm_confidence,
+        llm_elapsed_ms=llm_elapsed_ms,
+        calibrated_confidence=calibrated_confidence,
+        used_route=route if disposition == "apply" else current,
     )
-    if should_shadow:
-        result["decision"]["summary"] += " Shadow decision retained current route."
     return result
 
 
@@ -2214,6 +2414,11 @@ def approval_state(continuation):
         margin = float(state["margin"])
         embedding_elapsed_ms = state.get("embeddingElapsedMs")
         embedding_input_count = state.get("embeddingInputCount")
+        llm_confidence = state.get("llmConfidence")
+        llm_elapsed_ms = state.get("llmElapsedMs")
+        calibrated_confidence = state.get("calibratedConfidence")
+        raw_confidence = state.get("rawConfidence")
+        was_override = state.get("wasOverride", False)
         scope = state.get("scope", "root")
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
@@ -2226,6 +2431,7 @@ def approval_state(continuation):
         if (
             not isinstance(policy_revision, str)
             or not isinstance(recalibrated, bool)
+            or not isinstance(was_override, bool)
             or scope not in ("root", "subagent")
             or embedding_elapsed_ms is not None
             and (
@@ -2240,6 +2446,33 @@ def approval_state(continuation):
                 or embedding_input_count < 1
             )
             or (embedding_elapsed_ms is None) != (embedding_input_count is None)
+            or llm_confidence is not None
+            and (
+                not isinstance(llm_confidence, (int, float))
+                or isinstance(llm_confidence, bool)
+                or not math.isfinite(llm_confidence)
+                or not 0.0 <= llm_confidence <= 1.0
+            )
+            or llm_elapsed_ms is not None
+            and (
+                not isinstance(llm_elapsed_ms, int)
+                or isinstance(llm_elapsed_ms, bool)
+                or llm_elapsed_ms < 0
+            )
+            or calibrated_confidence is not None
+            and (
+                not isinstance(calibrated_confidence, (int, float))
+                or isinstance(calibrated_confidence, bool)
+                or not math.isfinite(calibrated_confidence)
+                or not 0.0 <= calibrated_confidence <= 1.0
+            )
+            or raw_confidence is not None
+            and (
+                not isinstance(raw_confidence, (int, float))
+                or isinstance(raw_confidence, bool)
+                or not math.isfinite(raw_confidence)
+                or not 0.0 <= raw_confidence <= 1.0
+            )
             or axes["work_type"] not in WORK_TYPES
             or axes["complexity"] not in COMPLEXITIES
             or axes["orchestration"] not in ORCHESTRATIONS
@@ -2257,6 +2490,11 @@ def approval_state(continuation):
         recalibrated,
         embedding_elapsed_ms,
         embedding_input_count,
+        llm_confidence,
+        llm_elapsed_ms,
+        calibrated_confidence,
+        raw_confidence,
+        was_override,
     )
 
 
@@ -2270,6 +2508,11 @@ def fresh_approval(
     recalibrated=False,
     embedding_elapsed_ms=None,
     embedding_input_count=None,
+    llm_confidence=None,
+    llm_elapsed_ms=None,
+    calibrated_confidence=None,
+    raw_confidence=None,
+    was_override=False,
 ):
     selection = choose_route(policy, context, axes)
     return approval(
@@ -2283,6 +2526,11 @@ def fresh_approval(
         recalibrated=recalibrated,
         embedding_elapsed_ms=embedding_elapsed_ms,
         embedding_input_count=embedding_input_count,
+        llm_confidence=llm_confidence,
+        llm_elapsed_ms=llm_elapsed_ms,
+        calibrated_confidence=calibrated_confidence,
+        raw_confidence=raw_confidence,
+        was_override=was_override,
     )
 
 
@@ -2301,6 +2549,11 @@ def approval_response(request, policy):
         recalibrated,
         embedding_elapsed_ms,
         embedding_input_count,
+        llm_confidence,
+        llm_elapsed_ms,
+        calibrated_confidence,
+        raw_confidence,
+        was_override,
     ) = decoded
     current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
@@ -2316,6 +2569,11 @@ def approval_response(request, policy):
             recalibrated,
             embedding_elapsed_ms,
             embedding_input_count,
+            llm_confidence,
+            llm_elapsed_ms,
+            calibrated_confidence,
+            raw_confidence,
+            was_override,
         )
     selection = choose_route(policy, rendered_context, axes)
     rendered = approval(
@@ -2327,6 +2585,11 @@ def approval_response(request, policy):
         rendered_context,
         embedding_elapsed_ms=embedding_elapsed_ms,
         embedding_input_count=embedding_input_count,
+        llm_confidence=llm_confidence,
+        llm_elapsed_ms=llm_elapsed_ms,
+        calibrated_confidence=calibrated_confidence,
+        raw_confidence=raw_confidence,
+        was_override=was_override,
     )["interaction"]
     if (
         params.get("interactionId") != rendered["id"]
@@ -2343,9 +2606,20 @@ def approval_response(request, policy):
             recalibrated,
             embedding_elapsed_ms,
             embedding_input_count,
+            llm_confidence,
+            llm_elapsed_ms,
+            calibrated_confidence,
+            raw_confidence,
+            was_override,
         )
     selected = (params.get("action") or {}).get("id")
     if selected == "keep-current" or params.get("outcome") != "accepted":
+        if raw_confidence is not None:
+            record_approval_outcome(
+                policy,
+                raw_confidence,
+                "override" if was_override else "rejected",
+            )
         if recalibrated:
             record_recalibration(
                 policy,
@@ -2362,12 +2636,13 @@ def approval_response(request, policy):
             margin,
             selection,
             "keepCurrent",
-            summary=(
-                "User rejected proposed route; "
-                f"kept {route_label(current_context.get('currentRoute'))}."
-            ),
             embedding_elapsed_ms=embedding_elapsed_ms,
             embedding_input_count=embedding_input_count,
+            llm_confidence=llm_confidence,
+            llm_elapsed_ms=llm_elapsed_ms,
+            calibrated_confidence=calibrated_confidence,
+            decision_status="override" if was_override else "rejected",
+            used_route=current_context.get("currentRoute"),
         )
     values = params.get("values") or {}
     if selected == "submit-override":
@@ -2433,6 +2708,11 @@ def approval_response(request, policy):
                 "No eligible ranked route was available.",
                 embedding_elapsed_ms=embedding_elapsed_ms,
                 embedding_input_count=embedding_input_count,
+                llm_confidence=llm_confidence,
+                llm_elapsed_ms=llm_elapsed_ms,
+                calibrated_confidence=calibrated_confidence,
+                decision_status="override",
+                used_route=current_context.get("currentRoute"),
             )
         return approval(
             policy,
@@ -2444,6 +2724,11 @@ def approval_response(request, policy):
             recalibrated=True,
             embedding_elapsed_ms=embedding_elapsed_ms,
             embedding_input_count=embedding_input_count,
+            llm_confidence=llm_confidence,
+            llm_elapsed_ms=llm_elapsed_ms,
+            calibrated_confidence=calibrated_confidence,
+            raw_confidence=raw_confidence,
+            was_override=True,
         )
     if recalibrated:
         record_recalibration(
@@ -2452,6 +2737,12 @@ def approval_response(request, policy):
             axes,
             axes,
             selection,
+        )
+    if raw_confidence is not None:
+        record_approval_outcome(
+            policy,
+            raw_confidence,
+            "override" if was_override else "approved",
         )
     return decision(
         policy,
@@ -2463,6 +2754,11 @@ def approval_response(request, policy):
         "apply",
         embedding_elapsed_ms=embedding_elapsed_ms,
         embedding_input_count=embedding_input_count,
+        llm_confidence=llm_confidence,
+        llm_elapsed_ms=llm_elapsed_ms,
+        calibrated_confidence=calibrated_confidence,
+        decision_status="override" if was_override else "approved",
+        used_route=selection["route"],
     )
 
 

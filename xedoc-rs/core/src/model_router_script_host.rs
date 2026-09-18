@@ -6,6 +6,7 @@ use std::ffi::OsString;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::Duration;
+use std::time::Instant;
 
 use dirs::home_dir;
 use futures::StreamExt;
@@ -145,6 +146,7 @@ impl ModelRouterScriptHost {
             Ok(ResponseOutcome::Result {
                 result: ScriptResult::ClassifierRequest { classifier },
             }) => {
+                let classifier_started_at = Instant::now();
                 let output = self
                     .run_classifier(
                         session,
@@ -155,9 +157,12 @@ impl ModelRouterScriptHost {
                         &cancellation,
                     )
                     .await;
+                let classifier_elapsed_ms =
+                    u64::try_from(classifier_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let params = match classifier_continuation_params(
                     classifier.continuation.as_str(),
                     output,
+                    classifier_elapsed_ms,
                     cancellation.is_cancelled(),
                 ) {
                     Ok(params) => params,
@@ -578,6 +583,7 @@ impl ModelRouterScriptHost {
 fn classifier_continuation_params(
     continuation: &str,
     output: Result<String, ModelRouterScriptFailure>,
+    elapsed_ms: u64,
     cancelled: bool,
 ) -> Result<Value, ModelRouterScriptFailure> {
     if cancelled {
@@ -587,6 +593,7 @@ fn classifier_continuation_params(
         Ok(output) => Ok(serde_json::json!({
             "continuation": continuation,
             "output": output,
+            "elapsedMs": elapsed_ms,
         })),
         Err(ModelRouterScriptFailure::ClassifierCancelled) => {
             Err(ModelRouterScriptFailure::ClassifierCancelled)
@@ -594,6 +601,7 @@ fn classifier_continuation_params(
         Err(failure) => Ok(serde_json::json!({
             "continuation": continuation,
             "error": failure.diagnostic(),
+            "elapsedMs": elapsed_ms,
         })),
     }
 }

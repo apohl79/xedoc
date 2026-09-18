@@ -52,6 +52,7 @@ fn cancelled_classifier_does_not_create_a_continuation_request() {
     let params = classifier_continuation_params(
         "classifier:state",
         Err(ModelRouterScriptFailure::ClassifierCancelled),
+        /*elapsed_ms*/ 0,
         /*cancelled*/ true,
     );
 

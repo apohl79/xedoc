@@ -1,6 +1,9 @@
 {
   "approval": "changes",
-  "classifierRoute": null,
+  "approvalCalibration": {
+    "minimumSamples": 10,
+    "buckets": {}
+  },
   "axes": [
     {
       "classes": [
@@ -102,11 +105,18 @@
           "maximumModelClass": "intelligent",
           "minimumModelClass": "smart",
           "points": 10
+        },
+        {
+          "id": "very_high",
+          "maximumModelClass": "intelligent",
+          "minimumModelClass": "intelligent",
+          "points": 14
         }
       ],
       "id": "risk"
     }
   ],
+  "classifierRoute": null,
   "confidence": "balanced",
   "confidencePresets": {
     "balanced": {
@@ -10936,9 +10946,6 @@
     "dimensions": 384,
     "minimumMargin": 0.01,
     "minimumScore": 0.2,
-    "subagentOrchestration": {
-      "explicitPromptRequired": true
-    },
     "scopeAxes": {
       "root": {
         "complexity": [
@@ -32740,6 +32747,9 @@
         -0.01577296066584308,
         0.02711075524064355
       ]
+    },
+    "subagentOrchestration": {
+      "explicitPromptRequired": true
     }
   }
 }

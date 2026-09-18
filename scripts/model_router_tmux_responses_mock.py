@@ -166,13 +166,11 @@ def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str,
     response_id = f"router-e2e-response-{sequence}"
     if request_kind(request) == "model_router_classifier":
         if contains_text(request, CHILD_MARKER):
-            classification = '{"complexity":"low","risk":"low","orchestration":"none"}'
+            classification = '{"complexity":"low","risk":"low","orchestration":"none","confidence":0.8}'
         elif contains_text(request, "ROUTER_E2E_CLASSIFIER_SHADOW"):
-            classification = (
-                '{"complexity":"very_high","risk":"medium","orchestration":"delegate"}'
-            )
+            classification = '{"complexity":"very_high","risk":"medium","orchestration":"delegate","confidence":0.8}'
         else:
-            classification = '{"complexity":"high","risk":"low","orchestration":"none"}'
+            classification = '{"complexity":"high","risk":"low","orchestration":"none","confidence":0.8}'
         return [
             response_created(response_id),
             assistant_message(
