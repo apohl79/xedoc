@@ -495,10 +495,49 @@ matching = [
     if marker in request.get("markers", [])
     and request.get("request_kind") == "model_router_classifier"
 ]
-assert len(matching) >= int(expected_count), (marker, len(matching), expected_count)
+assert len(matching) == int(expected_count), (marker, len(matching), expected_count)
 for request in matching:
     route = (request.get("model"), (request.get("reasoning") or {}).get("effort"))
     assert route == ("gpt-5.6-luna", "low"), route
+PY
+}
+
+assert_latest_hybrid_decision() {
+  local scope="$1"
+  local mode="$2"
+  local work_type="$3"
+  local complexity="$4"
+  local risk="$5"
+  local orchestration="$6"
+  local disposition="$7"
+  python3 - "$router_diagnostics" "$scope" "$mode" "$work_type" "$complexity" "$risk" \
+    "$orchestration" "$disposition" <<'PY'
+import json
+import sys
+
+(path, scope, mode, work_type, complexity, risk, orchestration, disposition) = sys.argv[1:]
+records = [
+    json.loads(line)
+    for line in open(path, encoding="utf-8")
+    if line.strip()
+]
+decisions = [
+    record
+    for record in records
+    if record.get("event") == "routing_decision"
+    and record.get("turn", {}).get("scope") == scope
+    and record.get("mode", {}).get("effective") == mode
+]
+assert decisions, (scope, mode)
+decision = decisions[-1]
+assert decision["classification"] == {
+    "work_type": work_type,
+    "complexity": complexity,
+    "risk": risk,
+    "orchestration": orchestration,
+}, decision
+assert decision.get("classifier") == "arctic-embed-xs", decision
+assert decision.get("disposition") == disposition, decision
 PY
 }
 
@@ -1387,7 +1426,10 @@ run_classifier_mode_matrix() {
   wait_for_request_marker "ROUTER_E2E_CLASSIFIER_FULL"
   assert_classifier_requests "ROUTER_E2E_CLASSIFIER_FULL" 1
   await_turn
-  assert_request_route "ROUTER_E2E_CLASSIFIER_FULL" "gpt-5.6-sol" medium
+  assert_latest_hybrid_decision \
+    root full \
+    "group1: question, docs_analysis, packaging, operational, testing" \
+    high low none apply
 
   set_classifier_route shadow-full
   start_tui
@@ -1396,6 +1438,10 @@ run_classifier_mode_matrix() {
   assert_classifier_requests "ROUTER_E2E_CLASSIFIER_SHADOW" 1
   await_turn
   assert_request_route "ROUTER_E2E_CLASSIFIER_SHADOW" "$initial_model" "$initial_effort"
+  assert_latest_hybrid_decision \
+    root shadow-full \
+    "group1: question, docs_analysis, packaging, operational, testing" \
+    very_high medium delegate shadow
 
   set_classifier_route subagents
   start_tui
@@ -1406,10 +1452,12 @@ run_classifier_mode_matrix() {
   )"
   wait_for_pane "router parent completed" 600
   wait_for_child_request_marker "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence"
-  assert_classifier_requests "ROUTER_E2E_CLASSIFIER_SUBAGENT" 1
+  assert_classifier_requests "ROUTER_E2E_CLASSIFIER_SUBAGENT" 2
   assert_classifier_requests "ROUTER_E2E_CHILD" 1
-  assert_request_route \
-    "ROUTER_E2E_CHILD" "gpt-5.6-sol" high "$root_thread_id" "$root_sequence"
+  assert_latest_hybrid_decision \
+    subagent subagents \
+    "group3: research, review, diagnosis, design" \
+    low low none apply
   record_scenario classifier-modes \
     "LLM classification and embedding work-type similarity reached full, shadow, and subagent routing"
 }

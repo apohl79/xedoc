@@ -165,11 +165,19 @@ def spawn_agent_call() -> dict[str, Any]:
 def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str, Any]]:
     response_id = f"router-e2e-response-{sequence}"
     if request_kind(request) == "model_router_classifier":
+        if contains_text(request, CHILD_MARKER):
+            classification = '{"complexity":"low","risk":"low","orchestration":"none"}'
+        elif contains_text(request, "ROUTER_E2E_CLASSIFIER_SHADOW"):
+            classification = (
+                '{"complexity":"very_high","risk":"medium","orchestration":"delegate"}'
+            )
+        else:
+            classification = '{"complexity":"high","risk":"low","orchestration":"none"}'
         return [
             response_created(response_id),
             assistant_message(
                 f"router-e2e-classifier-{sequence}",
-                ('{"complexity":"very_high","risk":"high","orchestration":"workflow"}'),
+                classification,
             ),
             completed(response_id),
         ]
