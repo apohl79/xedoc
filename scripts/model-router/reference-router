@@ -1200,36 +1200,41 @@ def semantic_embeddings(texts):
     if not python.is_file():
         raise RuntimeError("semantic router Python runtime is missing")
     state_path = RUNTIME_DIR.resolve().parent / "embedder-daemon.json"
-    try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-        port = state["port"]
-        if not isinstance(port, int):
-            raise ValueError("invalid semantic embedder port")
-        with socket.create_connection(("127.0.0.1", port), timeout=1) as connection:
-            connection.sendall(
-                (json.dumps({"texts": texts}, separators=(",", ":")) + "\n").encode()
+    for attempt in range(2):
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            port = state["port"]
+            if not isinstance(port, int):
+                raise ValueError("invalid semantic embedder port")
+            started_at = time.perf_counter()
+            with socket.create_connection(("127.0.0.1", port), timeout=1) as connection:
+                connection.sendall(
+                    (json.dumps({"texts": texts}, separators=(",", ":")) + "\n").encode()
+                )
+                with connection.makefile(encoding="utf-8") as response:
+                    result = json.loads(response.readline(1024 * 1024))
+            embedding_elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+            break
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            if attempt:
+                raise
+            state_path.unlink(missing_ok=True)
+            result = subprocess.run(
+                [
+                    str(python),
+                    str(EMBEDDER_PATH),
+                    str(RUNTIME_DIR),
+                    "--start-daemon",
+                    str(state_path),
+                ],
+                text=True,
+                capture_output=True,
+                timeout=12,
+                check=False,
             )
-            with connection.makefile(encoding="utf-8") as response:
-                result = json.loads(response.readline(1024 * 1024))
-    except (OSError, ValueError, KeyError, json.JSONDecodeError):
-        state_path.unlink(missing_ok=True)
-        result = subprocess.run(
-            [
-                str(python),
-                str(EMBEDDER_PATH),
-                str(RUNTIME_DIR),
-                "--start-daemon",
-                str(state_path),
-            ],
-            text=True,
-            capture_output=True,
-            timeout=12,
-            check=False,
-        )
-        if result.returncode != 0:
-            detail = result.stderr.strip().splitlines()[-1:] or ["unknown error"]
-            raise RuntimeError(f"semantic embedder failed: {detail[0]}")
-        return semantic_embeddings(texts)
+            if result.returncode != 0:
+                detail = result.stderr.strip().splitlines()[-1:] or ["unknown error"]
+                raise RuntimeError(f"semantic embedder failed: {detail[0]}")
     try:
         embeddings = result["embeddings"]
     except (KeyError, TypeError) as error:
@@ -1248,11 +1253,11 @@ def semantic_embeddings(texts):
             )
         ):
             raise RuntimeError("semantic embedder returned an invalid embedding")
-    return embeddings
+    return embeddings, embedding_elapsed_ms
 
 
 def semantic_embedding(prompt):
-    return semantic_embeddings([prompt])[0]
+    return semantic_embeddings([prompt])[0][0]
 
 
 def work_type_group(class_id):
@@ -1377,11 +1382,11 @@ def classify(policy, prompt, has_prior_messages, recent_messages, scope):
             "risk": "low",
         }
         evidence = {axis: (1.0, 1.0) for axis in axes}
-        return axes, evidence, True
+        return axes, evidence, True, None, None
     inputs = [prompt]
     if has_prior_messages:
         inputs.append(steering_context(prompt, recent_messages))
-    embeddings = semantic_embeddings(inputs)
+    embeddings, embedding_elapsed_ms = semantic_embeddings(inputs)
     embedding = embeddings[0]
     steering = has_prior_messages and semantic_steering(policy, embeddings[1])
     classification = {
@@ -1389,7 +1394,7 @@ def classify(policy, prompt, has_prior_messages, recent_messages, scope):
     }
     axes = {axis: result[0] for axis, result in classification.items()}
     evidence = {axis: result[1:] for axis, result in classification.items()}
-    return axes, evidence, steering
+    return axes, evidence, steering, embedding_elapsed_ms, len(inputs)
 
 
 def classification_label(axes):
@@ -1501,7 +1506,14 @@ def confidence_passes(policy, score, margin):
     return score >= thresholds["minimumScore"] and margin >= thresholds["minimumMargin"]
 
 
-def routing_calculation(policy, selection, score, margin):
+def routing_calculation(
+    policy,
+    selection,
+    score,
+    margin,
+    embedding_elapsed_ms=None,
+    embedding_input_count=None,
+):
     ranking = policy["ranking"]
     if selection["route"] is None:
         ranking_detail = (
@@ -1520,11 +1532,18 @@ def routing_calculation(policy, selection, score, margin):
             f"selected {selection['selectedRank']}"
         )
     thresholds = confidence_thresholds(policy)
-    return (
+    calculation = (
         f"{ranking_detail} · confidence {score:.2f}/{margin:.2f} "
         f"(minimum {thresholds['minimumScore']:.2f}/"
         f"{thresholds['minimumMargin']:.2f})"
     )
+    if embedding_elapsed_ms is not None and embedding_input_count is not None:
+        vector_label = "vector" if embedding_input_count == 1 else "vectors"
+        calculation += (
+            f" · embedding batch {embedding_elapsed_ms} ms "
+            f"({embedding_input_count} {vector_label})"
+        )
+    return calculation
 
 
 def decision(
@@ -1538,6 +1557,8 @@ def decision(
     reason=None,
     summary=None,
     feedback_enabled=None,
+    embedding_elapsed_ms=None,
+    embedding_input_count=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -1567,6 +1588,8 @@ def decision(
                     selection,
                     confidence,
                     margin,
+                    embedding_elapsed_ms,
+                    embedding_input_count,
                 ),
                 "rankingScore": selection["score"],
                 "rankingMinimumClass": selection["minimumClass"],
@@ -1701,7 +1724,7 @@ def routing_decide(request, policy):
     recent_messages = (context.get("conversation") or {}).get("recentMessages", [])
     has_prior_messages = isinstance(recent_messages, list) and bool(recent_messages)
     scope = turn.get("scope", "root")
-    axes, evidence, steering = classify(
+    axes, evidence, steering, embedding_elapsed_ms, embedding_input_count = classify(
         policy,
         prompt,
         has_prior_messages,
@@ -1787,6 +1810,8 @@ def routing_decide(request, policy):
         disposition,
         reason,
         feedback_enabled=policy["feedback"] and mode != "off",
+        embedding_elapsed_ms=embedding_elapsed_ms,
+        embedding_input_count=embedding_input_count,
     )
     if should_shadow:
         result["decision"]["summary"] += " Shadow decision retained current route."
