@@ -1998,8 +1998,6 @@ def approval_response(request, policy):
             return error_notice(
                 policy, "Override values must be chosen from the offered choices."
             )
-        confidence = 1.0
-        margin = 1.0
         selection = choose_route(policy, rendered_context, axes)
         updates = recalibrate_semantic_policy(
             policy,
