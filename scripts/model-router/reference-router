@@ -795,16 +795,6 @@ def policy_action_field(identifier, label, action_id):
 
 
 def policy_menu(policy, context):
-    routes, available = policy_route_options(policy, context)
-    route_options = [
-        {
-            "id": f"route-{index}",
-            "label": route_label(route),
-            **({"disabled": True} if route_key(route) not in available else {}),
-        }
-        for index, route in enumerate(routes)
-    ]
-    baseline = policy_route_id(policy.get("reportingBaseline"), routes)
     return form(
         policy,
         "Routing policy",
@@ -821,11 +811,10 @@ def policy_menu(policy, context):
                 f"Model ladder: {len(ladder(policy))} ranked slots",
                 "open-policy-ladder",
             ),
-            policy_select_field(
+            policy_action_field(
                 "reporting-baseline",
-                "Reporting baseline",
-                baseline or "none",
-                [{"id": "none", "label": "Not set"}, *route_options],
+                f"Reporting baseline: {route_label(policy.get('reportingBaseline'))}",
+                "open-reporting-baseline",
             ),
         ],
         "save-policy",
@@ -886,6 +875,31 @@ def settings_surface(policy, context, continuation):
         return policy_menu(policy, context)
     if continuation == "settings:policy:ladder":
         return policy_ladder_form(policy, context)
+    if continuation == "settings:policy:reporting-baseline":
+        routes, available = policy_route_options(policy, context)
+        route_options = [
+            {
+                "id": f"route-{index}",
+                "label": route_label(route),
+                **({"disabled": True} if route_key(route) not in available else {}),
+            }
+            for index, route in enumerate(routes)
+        ]
+        return form(
+            policy,
+            "Reporting baseline",
+            continuation,
+            [
+                policy_select_field(
+                    "reporting-baseline",
+                    "Reporting baseline",
+                    policy_route_id(policy.get("reportingBaseline"), routes) or "none",
+                    [{"id": "none", "label": "Not set"}, *route_options],
+                )
+            ],
+            "set-reporting-baseline",
+            cancel_action_id="back-policy",
+        )
     if continuation == "settings:mode":
         return form(
             policy,
@@ -1088,12 +1102,19 @@ def settings_response(request, policy):
         return policy_menu(policy, context)
     if action_id == "open-policy-ladder":
         return policy_ladder_form(policy, context)
+    if action_id == "open-reporting-baseline":
+        return settings_surface(
+            policy, context, "settings:policy:reporting-baseline"
+        )
     if action_id == "save-policy":
         confidence = values.get("confidence")
         if confidence not in policy["confidencePresets"]:
             return error_notice(
                 policy, "Similarity must be one of the offered choices."
             )
+        update(policy, confidence=confidence)
+        return policy_menu(policy, context)
+    if action_id == "set-reporting-baseline":
         routes, _ = policy_route_options(policy, context)
         route_by_id = {
             f"route-{index}": route for index, route in enumerate(routes)
@@ -1111,11 +1132,7 @@ def settings_response(request, policy):
             return error_notice(
                 policy, "Choose a model-ladder route for the reporting baseline."
             )
-        update(
-            policy,
-            confidence=confidence,
-            reportingBaseline=baseline,
-        )
+        update(policy, reportingBaseline=baseline)
         return policy_menu(policy, context)
     if action_id == "save-policy-ladder":
         routes, _ = policy_route_options(policy, context)

@@ -890,25 +890,7 @@ set_select_value() {
 }
 
 set_baseline_terra_high() {
-  local pane
-  for _ in $(seq 0 8); do
-    pane="$(capture_viewport)"
-    if [[ "$pane" == *"Reporting baseline: openai/gpt-5.6-terra/"* ]]; then
-      break
-    fi
-    send_key Right
-  done
-  [[ "$pane" == *"Reporting baseline: openai/gpt-5.6-terra/"* ]] ||
-    fail "could not select Terra reporting baseline"
-  for _ in $(seq 0 6); do
-    pane="$(capture_viewport)"
-    if [[ "$pane" == *"Reporting baseline: openai/gpt-5.6-terra/high"* ]]; then
-      send_key Enter
-      return
-    fi
-    send_key "]"
-  done
-  fail "could not select high effort for Terra reporting baseline"
+  set_select_value "Reporting baseline: openai/gpt-5.6-terra/high" 15
 }
 
 set_mode() {
@@ -972,7 +954,9 @@ set_reporting_baseline() {
 clear_reporting_baseline() {
   open_settings
   select_menu_item 6 "Routing policy"
-  select_menu_item 3 "Routing policy"
+  select_menu_item 2 "Reporting baseline"
+  set_select_value "Reporting baseline: Not set" 16
+  wait_for_pane "Routing policy"
   assert_policy "reportingBaseline=null"
 }
 
