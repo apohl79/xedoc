@@ -82,6 +82,9 @@ pub enum Method {
     /// Submits a response to an interaction.
     #[serde(rename = "interaction.respond")]
     InteractionRespond,
+    /// Submits the host-executed classifier result to the router.
+    #[serde(rename = "routing.classifier.respond")]
+    RoutingClassifierRespond,
     /// Requests a session extension's first-run or reconfiguration interaction.
     #[serde(rename = "extension.setup.open")]
     ExtensionSetupOpen,
@@ -193,6 +196,11 @@ pub enum ScriptResult {
         /// Interaction to render.
         interaction: Interaction,
     },
+    /// A bounded classifier request the host must execute through Xedoc.
+    ClassifierRequest {
+        /// Requested classifier invocation.
+        classifier: ClassifierRequest,
+    },
     /// A terminal bounded success result with no follow-up interaction.
     Complete {
         /// Safe summary suitable for the host to show to the user.
@@ -206,6 +214,7 @@ struct WireScriptResult {
     kind: ScriptResultKind,
     decision: Option<RouteDecision>,
     interaction: Option<Interaction>,
+    classifier: Option<ClassifierRequest>,
     summary: Option<String>,
 }
 
@@ -214,6 +223,7 @@ struct WireScriptResult {
 enum ScriptResultKind {
     Route,
     Interaction,
+    ClassifierRequest,
     Complete,
 }
 
@@ -226,21 +236,32 @@ impl<'de> Deserialize<'de> for ScriptResult {
             kind,
             decision,
             interaction,
+            classifier,
             summary,
         } = WireScriptResult::deserialize(deserializer)?;
-        match (kind, decision, interaction, summary) {
-            (ScriptResultKind::Route, Some(decision), None, None) => Ok(Self::Route { decision }),
-            (ScriptResultKind::Interaction, None, Some(interaction), None) => {
+        match (kind, decision, interaction, classifier, summary) {
+            (ScriptResultKind::Route, Some(decision), None, None, None) => {
+                Ok(Self::Route { decision })
+            }
+            (ScriptResultKind::Interaction, None, Some(interaction), None, None) => {
                 Ok(Self::Interaction { interaction })
             }
-            (ScriptResultKind::Complete, None, None, summary) => Ok(Self::Complete { summary }),
-            (ScriptResultKind::Route, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::ClassifierRequest, None, None, Some(classifier), None) => {
+                Ok(Self::ClassifierRequest { classifier })
+            }
+            (ScriptResultKind::Complete, None, None, None, summary) => {
+                Ok(Self::Complete { summary })
+            }
+            (ScriptResultKind::Route, _, _, _, _) => Err(serde::de::Error::custom(
                 "route result must contain only a decision",
             )),
-            (ScriptResultKind::Interaction, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Interaction, _, _, _, _) => Err(serde::de::Error::custom(
                 "interaction result must contain only an interaction",
             )),
-            (ScriptResultKind::Complete, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::ClassifierRequest, _, _, _, _) => Err(serde::de::Error::custom(
+                "classifier request must contain only a classifier",
+            )),
+            (ScriptResultKind::Complete, _, _, _, _) => Err(serde::de::Error::custom(
                 "complete result must contain only an optional summary",
             )),
         }
@@ -323,6 +344,18 @@ pub struct Route {
     pub model: ModelId,
     /// Reasoning-effort identifier.
     pub reasoning_effort: ReasoningEffort,
+}
+
+/// One bounded model-classifier request returned by a router script.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClassifierRequest {
+    /// Opaque continuation returned to the script with the classifier output.
+    pub continuation: OpaqueId,
+    /// Eligible Xedoc model route used for the classifier call.
+    pub route: Route,
+    /// Bounded classifier prompt authored by the router script.
+    pub input: String,
 }
 
 /// One model route eligible for a script to select.

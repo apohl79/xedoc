@@ -128,6 +128,9 @@ async fn handle_spawn_agent(
             });
             let mut outcome = match script_host
                 .decide(
+                    session.as_ref(),
+                    turn.as_ref(),
+                    &config,
                     context.clone(),
                     params,
                     &eligible_routes,

@@ -150,6 +150,7 @@ pub enum XedocResponsesRequestKind {
     Prewarm,
     Compaction(CompactionTurnMetadata),
     SessionName,
+    ModelRouterClassifier,
 }
 
 impl XedocResponsesRequestKind {
@@ -159,6 +160,7 @@ impl XedocResponsesRequestKind {
             XedocResponsesRequestKind::Prewarm => ("prewarm", None),
             XedocResponsesRequestKind::Compaction(metadata) => ("compaction", Some(metadata)),
             XedocResponsesRequestKind::SessionName => ("session_name", None),
+            XedocResponsesRequestKind::ModelRouterClassifier => ("model_router_classifier", None),
         }
     }
 

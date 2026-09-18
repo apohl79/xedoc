@@ -97,6 +97,11 @@ pub(crate) async fn build(input: RoutingContextInput<'_>) -> Value {
         },
         "currentRoute": input.current_route,
         "eligibleRoutes": input.eligible_routes,
+        "eligibleClassifierRoutes": input
+            .eligible_routes
+            .iter()
+            .filter(|route| route.provider_id == input.current_route.provider_id)
+            .collect::<Vec<_>>(),
         "thread": thread,
         "session": {
             "routerMode": session_mode,

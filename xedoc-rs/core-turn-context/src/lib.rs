@@ -22,6 +22,7 @@ use xedoc_features::Feature;
 use xedoc_file_system::FileSystemSandboxContext;
 use xedoc_login::AuthManager;
 use xedoc_model_provider::SharedModelProvider;
+use xedoc_model_provider::create_model_provider_for_configured_id;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_network_proxy::NetworkProxy;
@@ -311,6 +312,91 @@ impl TurnContext {
                 self.model_verification_emitted.load(Ordering::Relaxed),
             ),
         }
+    }
+
+    /// Clones this turn with an explicitly selected supported reasoning effort.
+    #[must_use]
+    pub fn with_reasoning_effort(&self, reasoning_effort: ReasoningEffortConfig) -> Self {
+        let mut config = (*self.config).clone();
+        config.model_reasoning_effort = Some(reasoning_effort.clone());
+        Self {
+            sub_id: self.sub_id.clone(),
+            trace_id: self.trace_id.clone(),
+            config: Arc::new(config),
+            auth_manager: self.auth_manager.clone(),
+            model_info: self.model_info.clone(),
+            session_telemetry: self.session_telemetry.clone(),
+            provider: self.provider.clone(),
+            reasoning_effort: Some(reasoning_effort),
+            reasoning_summary: self.reasoning_summary,
+            session_source: self.session_source.clone(),
+            history_mode: self.history_mode,
+            parent_thread_id: self.parent_thread_id,
+            originator: self.originator.clone(),
+            environments: self.environments.clone(),
+            #[allow(deprecated)]
+            cwd: self.cwd.clone(),
+            current_date: self.current_date.clone(),
+            timezone: self.timezone.clone(),
+            app_server_client_name: self.app_server_client_name.clone(),
+            developer_instructions: self.developer_instructions.clone(),
+            mode: self.mode,
+            collaboration_mode_developer_instructions: self
+                .collaboration_mode_developer_instructions
+                .clone(),
+            multi_agent_version: self.multi_agent_version,
+            personality: self.personality,
+            approval_policy: self.approval_policy.clone(),
+            permission_profile: self.permission_profile.clone(),
+            network: self.network.clone(),
+            available_models: self.available_models.clone(),
+            unified_exec_shell_mode: self.unified_exec_shell_mode.clone(),
+            final_output_json_schema: self.final_output_json_schema.clone(),
+            dynamic_tools: self.dynamic_tools.clone(),
+            turn_metadata_state: self.turn_metadata_state.clone(),
+            extension_data: Arc::clone(&self.extension_data),
+            turn_skills: self.turn_skills.clone(),
+            turn_timing_state: Arc::clone(&self.turn_timing_state),
+            terminal_error: Arc::clone(&self.terminal_error),
+            server_model_warning_emitted: AtomicBool::new(
+                self.server_model_warning_emitted.load(Ordering::Relaxed),
+            ),
+            model_verification_emitted: AtomicBool::new(
+                self.model_verification_emitted.load(Ordering::Relaxed),
+            ),
+        }
+    }
+
+    /// Clones this turn with a caller-validated configured provider, model, and effort.
+    pub async fn with_configured_route(
+        &self,
+        mut config: Config,
+        model: String,
+        reasoning_effort: ReasoningEffortConfig,
+        models_manager: &SharedModelsManager,
+    ) -> Self {
+        config.model = Some(model.clone());
+        config.model_reasoning_effort = Some(reasoning_effort.clone());
+        let model_info = models_manager
+            .get_model_info_for_provider(
+                model.as_str(),
+                config.model_provider_id.as_str(),
+                &config.to_models_manager_config(),
+            )
+            .await;
+        let mut routed = self.with_reasoning_effort(reasoning_effort);
+        routed.config = Arc::new(config);
+        routed.model_info = model_info.clone();
+        routed.session_telemetry = self
+            .session_telemetry
+            .clone()
+            .with_model(model.as_str(), model_info.slug.as_str());
+        routed.provider = create_model_provider_for_configured_id(
+            routed.config.model_provider_id.clone(),
+            routed.config.model_provider.clone(),
+            routed.auth_manager.clone(),
+        );
+        routed
     }
 
     /// Builds filesystem sandbox input for a selected turn environment.

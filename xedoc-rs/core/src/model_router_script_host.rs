@@ -8,11 +8,18 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use dirs::home_dir;
+use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
+use xedoc_async_utils::OrCancelExt;
 use xedoc_features::Feature;
 use xedoc_install_context::InstallContext;
+use xedoc_protocol::models::BaseInstructions;
+use xedoc_protocol::models::ContentItem;
+use xedoc_protocol::models::ResponseItem;
+use xedoc_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
+use xedoc_script_protocol::ClassifierRequest;
 use xedoc_script_protocol::EligibleRoute;
 use xedoc_script_protocol::Extension;
 use xedoc_script_protocol::Interaction;
@@ -31,6 +38,13 @@ use xedoc_script_protocol::ScriptInvoker;
 use xedoc_script_protocol::ScriptRequest;
 use xedoc_script_protocol::ScriptResult;
 use xedoc_script_protocol::SubprocessFailure;
+
+use crate::Prompt;
+use crate::client_common::ResponseEvent;
+use crate::responses_metadata::XedocResponsesRequestKind;
+use crate::session::session::Session;
+use crate::session::turn_context::TurnContext;
+use xedoc_core_session_name::append_message_text;
 
 const MAX_SCRIPT_ERROR_MESSAGE_BYTES: usize = 1_024;
 const MAX_SCRIPT_FEEDBACK_TEXT_BYTES: usize = 512;
@@ -55,6 +69,9 @@ const MAX_INTERACTION_ACTION_VALUE_BYTES: usize = 4_096;
 const MAX_INTERACTION_TEXT_FIELD_BYTES: u32 = 4_096;
 const MAX_INTERACTION_JSON_DEPTH: usize = 8;
 const MAX_MODEL_ROUTE_REASONING_EFFORTS: usize = 16;
+const MAX_CLASSIFIER_CONTINUATION_BYTES: usize = 8_192;
+const MAX_CLASSIFIER_INPUT_BYTES: usize = 8_192;
+const MAX_CLASSIFIER_OUTPUT_BYTES: usize = 4_096;
 const BUNDLED_ROUTER_SCRIPT_PATH: &str = "model-router/reference-router";
 static SCRIPT_REPORTING_BASELINES: OnceLock<Mutex<HashMap<Vec<OsString>, Option<Route>>>> =
     OnceLock::new();
@@ -88,6 +105,9 @@ impl ModelRouterScriptHost {
     /// Requests a route decision, retaining the caller's current route on failure.
     pub(crate) async fn decide(
         &self,
+        session: &Session,
+        turn_context: &TurnContext,
+        classifier_config: &crate::config::Config,
         context: Value,
         params: Value,
         eligible_routes: &[EligibleRoute],
@@ -97,10 +117,10 @@ impl ModelRouterScriptHost {
         let response = self
             .invoke(
                 Method::RoutingDecide,
-                context,
+                context.clone(),
                 params,
                 self.decision_timeout,
-                cancellation,
+                cancellation.clone(),
             )
             .await;
         match response {
@@ -118,6 +138,62 @@ impl ModelRouterScriptHost {
                 Err(failure) => ModelRouterScriptDecisionOutcome::fallback(failure),
             },
             Ok(ResponseOutcome::Result {
+                result: ScriptResult::ClassifierRequest { classifier },
+            }) => {
+                let output = self
+                    .run_classifier(
+                        session,
+                        turn_context,
+                        classifier_config,
+                        &classifier,
+                        eligible_routes,
+                        &cancellation,
+                    )
+                    .await;
+                let params = match classifier_continuation_params(
+                    classifier.continuation.as_str(),
+                    output,
+                    cancellation.is_cancelled(),
+                ) {
+                    Ok(params) => params,
+                    Err(failure) => return ModelRouterScriptDecisionOutcome::fallback(failure),
+                };
+                match self
+                    .invoke(
+                        Method::RoutingClassifierRespond,
+                        context,
+                        params,
+                        self.decision_timeout,
+                        cancellation,
+                    )
+                    .await
+                {
+                    Ok(ResponseOutcome::Result {
+                        result: ScriptResult::Route { decision },
+                    }) => {
+                        let outcome = validate_decision(decision, eligible_routes, route_mutable);
+                        self.remember_reporting_baseline(&outcome);
+                        outcome
+                    }
+                    Ok(ResponseOutcome::Result {
+                        result: ScriptResult::Interaction { interaction },
+                    }) => match validate_interaction(&interaction, eligible_routes) {
+                        Ok(()) => ModelRouterScriptDecisionOutcome::Interaction(interaction),
+                        Err(failure) => ModelRouterScriptDecisionOutcome::fallback(failure),
+                    },
+                    Ok(ResponseOutcome::Result {
+                        result:
+                            ScriptResult::ClassifierRequest { .. } | ScriptResult::Complete { .. },
+                    }) => ModelRouterScriptDecisionOutcome::fallback(
+                        ModelRouterScriptFailure::UnexpectedResult,
+                    ),
+                    Ok(ResponseOutcome::Error { error }) => {
+                        ModelRouterScriptDecisionOutcome::fallback(script_error_failure(error))
+                    }
+                    Err(failure) => ModelRouterScriptDecisionOutcome::fallback(failure),
+                }
+            }
+            Ok(ResponseOutcome::Result {
                 result: ScriptResult::Complete { .. },
             }) => ModelRouterScriptDecisionOutcome::fallback(
                 ModelRouterScriptFailure::UnexpectedResult,
@@ -127,6 +203,105 @@ impl ModelRouterScriptHost {
             }
             Err(failure) => ModelRouterScriptDecisionOutcome::fallback(failure),
         }
+    }
+
+    async fn run_classifier(
+        &self,
+        session: &Session,
+        turn_context: &TurnContext,
+        classifier_config: &crate::config::Config,
+        classifier: &ClassifierRequest,
+        eligible_routes: &[EligibleRoute],
+        cancellation: &CancellationToken,
+    ) -> Result<String, ModelRouterScriptFailure> {
+        if classifier.continuation.as_str().len() > MAX_CLASSIFIER_CONTINUATION_BYTES
+            || classifier.input.is_empty()
+            || classifier.input.len() > MAX_CLASSIFIER_INPUT_BYTES
+            || classifier.route.provider_id.as_str() != classifier_config.model_provider_id
+            || !route_is_eligible(&classifier.route, eligible_routes)
+        {
+            return Err(ModelRouterScriptFailure::InvalidClassifierRequest);
+        }
+        let reasoning_effort = classifier
+            .route
+            .reasoning_effort
+            .as_str()
+            .parse::<ReasoningEffortConfig>()
+            .map_err(|_| ModelRouterScriptFailure::InvalidClassifierRequest)?;
+        let classifier_turn = turn_context
+            .with_configured_route(
+                classifier_config.clone(),
+                classifier.route.model.as_str().to_string(),
+                reasoning_effort,
+                &session.services.models_manager,
+            )
+            .await;
+        let prompt = Prompt {
+            input: vec![ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: classifier.input.clone(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            }],
+            base_instructions: BaseInstructions::default(),
+            ..Default::default()
+        };
+        let window_id = session.current_window_id().await;
+        let responses_metadata = classifier_turn.turn_metadata_state.to_responses_metadata(
+            session.installation_id.clone(),
+            window_id,
+            XedocResponsesRequestKind::ModelRouterClassifier,
+        );
+        let mut client_session = session
+            .model_client_for_turn(&classifier_turn)
+            .await
+            .new_session();
+        let mut stream = client_session
+            .stream(
+                &prompt,
+                &classifier_turn.model_info,
+                &classifier_turn.session_telemetry,
+                classifier_turn.reasoning_effort.clone(),
+                classifier_turn.reasoning_summary,
+                classifier_turn.config.service_tier.clone(),
+                &responses_metadata,
+            )
+            .or_cancel(cancellation)
+            .await
+            .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?
+            .map_err(|_| ModelRouterScriptFailure::ClassifierInvocation)?;
+        let mut output = String::new();
+        loop {
+            let event = stream
+                .next()
+                .or_cancel(cancellation)
+                .await
+                .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?;
+            let Some(event) = event else {
+                break;
+            };
+            let event = event.map_err(|_| ModelRouterScriptFailure::ClassifierInvocation)?;
+            append_classifier_event_text(&mut output, &event);
+            if let ResponseEvent::Completed {
+                    response_id,
+                    token_usage,
+                    ..
+                } = event {
+                session
+                    .record_auxiliary_token_usage(
+                        &classifier_turn,
+                        Some(response_id.as_str()),
+                        token_usage.as_ref(),
+                        "model_router_classifier",
+                    )
+                    .await;
+                return Ok(output);
+            }
+        }
+        Err(ModelRouterScriptFailure::ClassifierInvocation)
     }
 
     /// Opens the script-owned model-router settings surface.
@@ -162,6 +337,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::Complete { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::ClassifierRequest { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -206,6 +384,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::Complete { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::ClassifierRequest { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -261,6 +442,11 @@ impl ModelRouterScriptHost {
             }
             Ok(ResponseOutcome::Result {
                 result: ScriptResult::Complete { .. },
+            }) => ModelRouterScriptInteractionOutcome::Failure(
+                ModelRouterScriptFailure::UnexpectedResult,
+            ),
+            Ok(ResponseOutcome::Result {
+                result: ScriptResult::ClassifierRequest { .. },
             }) => ModelRouterScriptInteractionOutcome::Failure(
                 ModelRouterScriptFailure::UnexpectedResult,
             ),
@@ -320,6 +506,44 @@ impl ModelRouterScriptHost {
             .invoke(&protocol_request, timeout, cancellation)
             .await
             .map_err(ModelRouterScriptFailure::Invocation)
+    }
+}
+
+fn classifier_continuation_params(
+    continuation: &str,
+    output: Result<String, ModelRouterScriptFailure>,
+    cancelled: bool,
+) -> Result<Value, ModelRouterScriptFailure> {
+    if cancelled {
+        return Err(ModelRouterScriptFailure::ClassifierCancelled);
+    }
+    match output {
+        Ok(output) => Ok(serde_json::json!({
+            "continuation": continuation,
+            "output": output,
+        })),
+        Err(ModelRouterScriptFailure::ClassifierCancelled) => {
+            Err(ModelRouterScriptFailure::ClassifierCancelled)
+        }
+        Err(failure) => Ok(serde_json::json!({
+            "continuation": continuation,
+            "error": failure.diagnostic(),
+        })),
+    }
+}
+
+fn append_classifier_event_text(output: &mut String, event: &ResponseEvent) {
+    match event {
+        ResponseEvent::OutputTextDelta(delta)
+            if output.len().saturating_add(delta.len()) <= MAX_CLASSIFIER_OUTPUT_BYTES =>
+        {
+            output.push_str(delta);
+        }
+        ResponseEvent::OutputItemDone(item) if output.is_empty() => {
+            append_message_text(output, item);
+            truncate_utf8(output, MAX_CLASSIFIER_OUTPUT_BYTES);
+        }
+        _ => {}
     }
 }
 
@@ -579,6 +803,12 @@ pub(crate) enum ModelRouterScriptFailure {
     InvalidFeedback,
     /// The script returned an invalid prompt-free decision summary.
     InvalidSummary,
+    /// The script requested a malformed or unsupported classifier invocation.
+    InvalidClassifierRequest,
+    /// The configured model classifier could not return a response.
+    ClassifierInvocation,
+    /// The active turn cancelled the classifier request.
+    ClassifierCancelled,
     /// The host could not encode its interaction response.
     Encode,
 }
@@ -604,6 +834,11 @@ impl ModelRouterScriptFailure {
             Self::InvalidSummary => {
                 "router script returned an invalid decision summary".to_string()
             }
+            Self::InvalidClassifierRequest => {
+                "router script returned an invalid classifier request".to_string()
+            }
+            Self::ClassifierInvocation => "router classifier invocation failed".to_string(),
+            Self::ClassifierCancelled => "router classifier invocation cancelled".to_string(),
             Self::Encode => "router interaction could not be encoded".to_string(),
         }
     }
@@ -622,6 +857,9 @@ impl ModelRouterScriptFailure {
             | Self::InvalidInteraction
             | Self::InvalidFeedback
             | Self::InvalidSummary
+            | Self::InvalidClassifierRequest
+            | Self::ClassifierInvocation
+            | Self::ClassifierCancelled
             | Self::Encode => None,
         }
     }
@@ -829,6 +1067,10 @@ fn truncate_utf8(value: &mut String, max_bytes: usize) {
     }
     value.truncate(end);
 }
+
+#[cfg(test)]
+#[path = "model_router_script_host_tests.rs"]
+mod tests;
 
 fn validate_interaction(
     interaction: &Interaction,

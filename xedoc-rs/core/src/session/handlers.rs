@@ -266,6 +266,9 @@ pub(super) async fn user_input_or_turn_inner(
                 .await;
                 let outcome = script_host
                     .decide(
+                        sess,
+                        turn_context.as_ref(),
+                        turn_context.config.as_ref(),
                         context,
                         serde_json::json!({
                             "prompt": crate::agent::control::render_input_preview(&items),
@@ -351,6 +354,9 @@ pub(super) async fn user_input_or_turn_inner(
                     }
                     None => match script_host
                         .decide(
+                            sess,
+                            current_context.as_ref(),
+                            current_context.config.as_ref(),
                             context,
                             serde_json::json!({
                                 "prompt": crate::agent::control::render_input_preview(&items),

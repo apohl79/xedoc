@@ -24,6 +24,7 @@ pub use interaction::SelectedAction;
 pub use interaction::SessionUpdate;
 pub use invoker::MAX_SCRIPT_SUMMARY_BYTES;
 pub use invoker::ScriptInvoker;
+pub use protocol::ClassifierRequest;
 pub use protocol::EligibleRoute;
 pub use protocol::Extension;
 pub use protocol::Method;
@@ -50,3 +51,7 @@ pub use subprocess::SubprocessExecutor;
 pub use subprocess::SubprocessFailure;
 pub use subprocess::SubprocessFailureKind;
 pub use subprocess::SubprocessRequest;
+
+#[cfg(test)]
+#[path = "protocol_tests.rs"]
+mod tests;
