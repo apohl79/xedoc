@@ -76,6 +76,10 @@ def load_policy():
         if isinstance(semantic_policy.get("calibration"), dict):
             policy["semanticClassifier"]["calibration"] = semantic_policy["calibration"]
         save_policy(policy)
+    semantic = policy["semanticClassifier"]
+    if "subagentOrchestration" not in semantic:
+        semantic["subagentOrchestration"] = {"explicitPromptRequired": True}
+        save_policy(policy)
     validate_policy(policy)
     return policy
 
@@ -195,6 +199,14 @@ def validate_policy(policy):
             )
         ):
             raise ValueError("policy semantic classifier has invalid steering axes")
+    subagent_orchestration = semantic.get("subagentOrchestration")
+    if subagent_orchestration is not None and (
+        not isinstance(subagent_orchestration, dict)
+        or not isinstance(
+            subagent_orchestration.get("explicitPromptRequired"), bool
+        )
+    ):
+        raise ValueError("policy subagent orchestration gate is invalid")
     ranking = policy.get("ranking")
     if (
         not isinstance(ranking, dict)
@@ -1309,7 +1321,26 @@ def work_type_group(class_id):
     raise ValueError(f"unknown semantic work type {class_id}")
 
 
-def semantic_axis(policy, axis_id, embedding, scope):
+def explicit_subagent_delegation_prompt(prompt):
+    normalized = prompt.lower()
+    if re.search(
+        r"\b(?:do not|don't|never|avoid|without)\b.{0,48}"
+        r"\b(?:delegate|delegation|sub-?agents?|spawn)\b",
+        normalized,
+    ):
+        return False
+    return re.search(
+        r"\bdelegate\b.{0,48}\b(?:work|task|investigation|implementation|review)\b"
+        r"|\b(?:spawn|launch|create|use)\b.{0,48}\bsub-?agents?\b"
+        r"|\b(?:coordinate|orchestrate)\b.{0,48}"
+        r"\b(?:sub-?agents?|agents?|workers?)\b"
+        r"|\b(?:split|divide|parallelize)\b.{0,48}"
+        r"\b(?:work|task|investigation)\b",
+        normalized,
+    ) is not None
+
+
+def semantic_axis(policy, axis_id, embedding, scope, prompt):
     semantic_axis = next(
         axis for axis in policy["semanticClassifier"]["axes"] if axis["id"] == axis_id
     )
@@ -1353,8 +1384,28 @@ def semantic_axis(policy, axis_id, embedding, scope):
         ((score, class_id) for class_id, score in grouped.items()), reverse=True
     )
     score, class_id = ranked[0]
-    raw_margin = score - ranked[1][0] if len(ranked) > 1 else score
-    margin = min(1.0, raw_margin * 10)
+    subagent_orchestration = policy["semanticClassifier"].get(
+        "subagentOrchestration", {}
+    )
+    if (
+        axis_id == "orchestration"
+        and scope == "subagent"
+        and subagent_orchestration.get("explicitPromptRequired", True)
+    ):
+        none_score = grouped["none"]
+        if not explicit_subagent_delegation_prompt(prompt):
+            score, class_id = none_score, "none"
+    raw_margin = (
+        score
+        - max(
+            candidate_score
+            for candidate_score, candidate_class in ranked
+            if candidate_class != class_id
+        )
+        if len(ranked) > 1
+        else score
+    )
+    margin = min(1.0, max(0.0, raw_margin * 10))
     return class_id, score, margin
 
 
@@ -1420,7 +1471,8 @@ def classify(policy, prompt, has_prior_messages, recent_messages, scope):
     embedding = embeddings[0]
     steering = has_prior_messages and semantic_steering(policy, embeddings[1])
     classification = {
-        axis: semantic_axis(policy, axis, embedding, scope) for axis in AXIS_VALUES
+        axis: semantic_axis(policy, axis, embedding, scope, prompt)
+        for axis in AXIS_VALUES
     }
     axes = {axis: result[0] for axis, result in classification.items()}
     evidence = {axis: result[1:] for axis, result in classification.items()}

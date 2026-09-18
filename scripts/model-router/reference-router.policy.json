@@ -10935,6 +10935,9 @@
     "dimensions": 384,
     "minimumMargin": 0.01,
     "minimumScore": 0.2,
+    "subagentOrchestration": {
+      "explicitPromptRequired": true
+    },
     "scopeAxes": {
       "root": {
         "complexity": [
