@@ -1,5 +1,6 @@
 use crate::agent::exceeds_thread_spawn_depth_limit;
 use crate::agent::next_thread_spawn_depth;
+use crate::model_router_script_host::ModelRouterScriptHost;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use crate::tools::context::ToolInvocation;
@@ -9,6 +10,7 @@ use crate::tools::handlers::DynamicToolHandler;
 use crate::tools::handlers::ExecCommandHandler;
 use crate::tools::handlers::ExecCommandHandlerOptions;
 use crate::tools::handlers::GetContextRemainingHandler;
+use crate::tools::handlers::GetModelRouterStateHandler;
 use crate::tools::handlers::ListMcpResourceTemplatesHandler;
 use crate::tools::handlers::ListMcpResourcesHandler;
 use crate::tools::handlers::ModelLookupHandler;
@@ -382,6 +384,7 @@ fn add_tool_sources(context: &CoreToolPlanContext<'_>, planned_tools: &mut Plann
     add_shell_tools(context, planned_tools);
     add_mcp_resource_tools(context, planned_tools);
     add_core_utility_tools(context, planned_tools);
+    add_model_router_state_tool(context, planned_tools);
     add_collaboration_tools(context, planned_tools);
     for runtime in context.tool_runtimes {
         planned_tools.add_arc(Arc::clone(runtime));
@@ -535,6 +538,16 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
             ),
             include_environment_id,
         }));
+    }
+}
+
+#[instrument(level = "trace", skip_all)]
+fn add_model_router_state_tool(
+    context: &CoreToolPlanContext<'_>,
+    planned_tools: &mut PlannedTools,
+) {
+    if ModelRouterScriptHost::from_config(&context.step_context.turn.config).is_some() {
+        planned_tools.add(GetModelRouterStateHandler);
     }
 }
 

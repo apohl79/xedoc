@@ -76,6 +76,9 @@ pub enum Method {
     /// Requests a model route for a pending turn.
     #[serde(rename = "routing.decide")]
     RoutingDecide,
+    /// Requests the configured router policy state.
+    #[serde(rename = "routing.state")]
+    RoutingState,
     /// Requests the initial settings interaction.
     #[serde(rename = "settings.open")]
     SettingsOpen,
@@ -201,6 +204,11 @@ pub enum ScriptResult {
         /// Requested classifier invocation.
         classifier: ClassifierRequest,
     },
+    /// A bounded router policy snapshot.
+    State {
+        /// Current script-owned policy state.
+        state: RouterState,
+    },
     /// A terminal bounded success result with no follow-up interaction.
     Complete {
         /// Safe summary suitable for the host to show to the user.
@@ -215,6 +223,7 @@ struct WireScriptResult {
     decision: Option<RouteDecision>,
     interaction: Option<Interaction>,
     classifier: Option<ClassifierRequest>,
+    state: Option<RouterState>,
     summary: Option<String>,
 }
 
@@ -224,6 +233,7 @@ enum ScriptResultKind {
     Route,
     Interaction,
     ClassifierRequest,
+    State,
     Complete,
 }
 
@@ -237,31 +247,38 @@ impl<'de> Deserialize<'de> for ScriptResult {
             decision,
             interaction,
             classifier,
+            state,
             summary,
         } = WireScriptResult::deserialize(deserializer)?;
-        match (kind, decision, interaction, classifier, summary) {
-            (ScriptResultKind::Route, Some(decision), None, None, None) => {
+        match (kind, decision, interaction, classifier, state, summary) {
+            (ScriptResultKind::Route, Some(decision), None, None, None, None) => {
                 Ok(Self::Route { decision })
             }
-            (ScriptResultKind::Interaction, None, Some(interaction), None, None) => {
+            (ScriptResultKind::Interaction, None, Some(interaction), None, None, None) => {
                 Ok(Self::Interaction { interaction })
             }
-            (ScriptResultKind::ClassifierRequest, None, None, Some(classifier), None) => {
+            (ScriptResultKind::ClassifierRequest, None, None, Some(classifier), None, None) => {
                 Ok(Self::ClassifierRequest { classifier })
             }
-            (ScriptResultKind::Complete, None, None, None, summary) => {
+            (ScriptResultKind::State, None, None, None, Some(state), None) => {
+                Ok(Self::State { state })
+            }
+            (ScriptResultKind::Complete, None, None, None, None, summary) => {
                 Ok(Self::Complete { summary })
             }
-            (ScriptResultKind::Route, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Route, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "route result must contain only a decision",
             )),
-            (ScriptResultKind::Interaction, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Interaction, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "interaction result must contain only an interaction",
             )),
-            (ScriptResultKind::ClassifierRequest, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::ClassifierRequest, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "classifier request must contain only a classifier",
             )),
-            (ScriptResultKind::Complete, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::State, _, _, _, _, _) => Err(serde::de::Error::custom(
+                "state result must contain only state",
+            )),
+            (ScriptResultKind::Complete, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "complete result must contain only an optional summary",
             )),
         }
@@ -356,6 +373,26 @@ pub struct ClassifierRequest {
     pub route: Route,
     /// Bounded classifier prompt authored by the router script.
     pub input: String,
+}
+
+/// Script-owned policy state used by the model router.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RouterState {
+    /// Shared routing mode selected by the script policy.
+    pub mode: String,
+    /// Shared approval mode selected by the script policy.
+    pub approval: String,
+    /// Whether router feedback is enabled by the script policy.
+    pub feedback: bool,
+    /// Shared similarity preset selected by the script policy.
+    pub similarity_preset: String,
+    /// Xedoc route used for the router's LLM classifier, when configured.
+    pub classifier_route: Option<Route>,
+    /// Xedoc route used to normalize reporting, when configured.
+    pub reporting_baseline: Option<Route>,
+    /// Script-owned policy revision.
+    pub policy_revision: String,
 }
 
 /// One model route eligible for a script to select.

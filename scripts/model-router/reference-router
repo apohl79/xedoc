@@ -873,6 +873,21 @@ def settings_open(request, policy):
     return root_menu(policy, request.get("context") or {})
 
 
+def routing_state(policy):
+    return {
+        "kind": "state",
+        "state": {
+            "mode": policy["mode"],
+            "approval": policy["approval"],
+            "feedback": policy["feedback"],
+            "similarityPreset": policy["confidence"],
+            "classifierRoute": policy["classifierRoute"],
+            "reportingBaseline": policy["reportingBaseline"],
+            "policyRevision": str(policy["revision"]),
+        },
+    }
+
+
 def update(policy, **values):
     updated = copy.deepcopy(policy)
     updated.update(values)
@@ -2472,6 +2487,8 @@ def main():
             )
         elif method == "routing.decide":
             result = routing_decide(request, policy)
+        elif method == "routing.state":
+            result = routing_state(policy)
         elif method == "routing.classifier.respond":
             result = routing_classifier_response(request, policy)
         else:

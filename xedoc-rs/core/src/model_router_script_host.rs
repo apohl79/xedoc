@@ -34,6 +34,7 @@ use xedoc_script_protocol::Route;
 use xedoc_script_protocol::RouteDecision;
 use xedoc_script_protocol::RouteDisposition;
 use xedoc_script_protocol::RouteFeedback;
+use xedoc_script_protocol::RouterState;
 use xedoc_script_protocol::ScriptInvoker;
 use xedoc_script_protocol::ScriptRequest;
 use xedoc_script_protocol::ScriptResult;
@@ -74,6 +75,8 @@ const MAX_MODEL_ROUTE_REASONING_EFFORTS: usize = 16;
 const MAX_CLASSIFIER_CONTINUATION_BYTES: usize = 8_192;
 const MAX_CLASSIFIER_INPUT_BYTES: usize = 8_192;
 const MAX_CLASSIFIER_OUTPUT_BYTES: usize = 4_096;
+const MAX_ROUTER_STATE_IDENTIFIER_BYTES: usize = 128;
+const MAX_ROUTER_STATE_REVISION_BYTES: usize = 128;
 const BUNDLED_ROUTER_SCRIPT_PATH: &str = "model-router/reference-router";
 static SCRIPT_REPORTING_BASELINES: OnceLock<Mutex<HashMap<Vec<OsString>, Option<Route>>>> =
     OnceLock::new();
@@ -185,7 +188,9 @@ impl ModelRouterScriptHost {
                     },
                     Ok(ResponseOutcome::Result {
                         result:
-                            ScriptResult::ClassifierRequest { .. } | ScriptResult::Complete { .. },
+                            ScriptResult::ClassifierRequest { .. }
+                            | ScriptResult::State { .. }
+                            | ScriptResult::Complete { .. },
                     }) => ModelRouterScriptDecisionOutcome::fallback(
                         ModelRouterScriptFailure::UnexpectedResult,
                     ),
@@ -196,7 +201,7 @@ impl ModelRouterScriptHost {
                 }
             }
             Ok(ResponseOutcome::Result {
-                result: ScriptResult::Complete { .. },
+                result: ScriptResult::State { .. } | ScriptResult::Complete { .. },
             }) => ModelRouterScriptDecisionOutcome::fallback(
                 ModelRouterScriptFailure::UnexpectedResult,
             ),
@@ -365,6 +370,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::ClassifierRequest { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::State { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -412,6 +420,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::ClassifierRequest { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::State { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -466,7 +477,7 @@ impl ModelRouterScriptHost {
                 }
             }
             Ok(ResponseOutcome::Result {
-                result: ScriptResult::Complete { .. },
+                result: ScriptResult::State { .. } | ScriptResult::Complete { .. },
             }) => ModelRouterScriptInteractionOutcome::Failure(
                 ModelRouterScriptFailure::UnexpectedResult,
             ),
@@ -479,6 +490,36 @@ impl ModelRouterScriptHost {
                 ModelRouterScriptInteractionOutcome::Failure(script_error_failure(error))
             }
             Err(failure) => ModelRouterScriptInteractionOutcome::Failure(failure),
+        }
+    }
+
+    /// Returns a validated snapshot of the script-owned router policy.
+    pub(crate) async fn state(
+        &self,
+        context: Value,
+        cancellation: CancellationToken,
+    ) -> Result<RouterState, ModelRouterScriptFailure> {
+        let outcome = self
+            .invoke(
+                Method::RoutingState,
+                context,
+                Value::Object(Default::default()),
+                self.decision_timeout,
+                cancellation,
+            )
+            .await?;
+        match outcome {
+            ResponseOutcome::Result {
+                result: ScriptResult::State { state },
+            } => validate_router_state(state),
+            ResponseOutcome::Result {
+                result:
+                    ScriptResult::Route { .. }
+                    | ScriptResult::Interaction { .. }
+                    | ScriptResult::ClassifierRequest { .. }
+                    | ScriptResult::Complete { .. },
+            } => Err(ModelRouterScriptFailure::UnexpectedResult),
+            ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
     }
 
@@ -826,6 +867,8 @@ pub(crate) enum ModelRouterScriptFailure {
     InvalidInteraction,
     /// The script returned invalid prompt-free routing feedback.
     InvalidFeedback,
+    /// The script returned an invalid router policy snapshot.
+    InvalidState,
     /// The script returned an invalid prompt-free decision summary.
     InvalidSummary,
     /// The script requested a malformed or unsupported classifier invocation.
@@ -856,6 +899,7 @@ impl ModelRouterScriptFailure {
             }
             Self::InvalidInteraction => "router script returned an invalid interaction".to_string(),
             Self::InvalidFeedback => "router script returned invalid routing feedback".to_string(),
+            Self::InvalidState => "router script returned invalid router state".to_string(),
             Self::InvalidSummary => {
                 "router script returned an invalid decision summary".to_string()
             }
@@ -883,6 +927,7 @@ impl ModelRouterScriptFailure {
             | Self::ImmutableRoute
             | Self::InvalidInteraction
             | Self::InvalidFeedback
+            | Self::InvalidState
             | Self::InvalidSummary
             | Self::InvalidClassifierRequest
             | Self::ClassifierInvocation { .. }
@@ -1028,6 +1073,45 @@ fn validate_feedback(
         truncate_utf8(class, MAX_SCRIPT_FEEDBACK_TEXT_BYTES);
     }
     Ok(feedback)
+}
+
+fn validate_router_state(state: RouterState) -> Result<RouterState, ModelRouterScriptFailure> {
+    if !matches!(
+        state.mode.as_str(),
+        "off" | "shadow-subagents" | "shadow-full" | "subagents" | "full"
+    ) || !matches!(
+        state.approval.as_str(),
+        "off" | "changes" | "all" | "not-confident"
+    ) || !matches!(
+        state.similarity_preset.as_str(),
+        "strict" | "balanced" | "permissive"
+    ) || !valid_router_state_text(&state.policy_revision, MAX_ROUTER_STATE_REVISION_BYTES)
+        || !state
+            .classifier_route
+            .as_ref()
+            .is_none_or(valid_router_state_route)
+        || !state
+            .reporting_baseline
+            .as_ref()
+            .is_none_or(valid_router_state_route)
+    {
+        return Err(ModelRouterScriptFailure::InvalidState);
+    }
+    Ok(state)
+}
+
+fn valid_router_state_route(route: &Route) -> bool {
+    [
+        route.provider_id.as_str(),
+        route.model.as_str(),
+        route.reasoning_effort.as_str(),
+    ]
+    .into_iter()
+    .all(|value| valid_router_state_text(value, MAX_ROUTER_STATE_IDENTIFIER_BYTES))
+}
+
+fn valid_router_state_text(value: &str, maximum_bytes: usize) -> bool {
+    !value.is_empty() && value.len() <= maximum_bytes && !value.chars().any(char::is_control)
 }
 
 fn direct_exec_argv(argv: Vec<String>) -> Vec<OsString> {

@@ -456,6 +456,14 @@ impl SessionExtensionManager {
                             .to_string(),
                     );
                 }
+                ResponseOutcome::Result {
+                    result: ScriptResult::State { .. },
+                } => {
+                    return Err(
+                        "session extension returned router state for a non-routing method"
+                            .to_string(),
+                    );
+                }
             }
         }
     }
