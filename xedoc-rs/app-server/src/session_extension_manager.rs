@@ -67,7 +67,6 @@ const SESSION_EXTENSION_REQUEST_ATTEMPT_TIMEOUT: Duration = SESSION_EXTENSION_IN
 const APPROVAL_ACTION_SESSION: &str = "approve-session";
 const APPROVAL_ACTION_ALWAYS: &str = "approve-always";
 const APPROVAL_ACTION_DENY: &str = "deny";
-const DISABLE_ARGUMENT: &str = "disable";
 const SESSION_EXTENSION_INTERACTION_TURN_PREFIX: &str = "session-extension:";
 const PERSISTENT_GRANTS_FILE: &str = "session-extension-grants.json";
 const MAX_PLUGIN_MANIFEST_EVIDENCE_BYTES: u64 = 64 * 1024;
@@ -248,7 +247,7 @@ impl SessionExtensionManager {
         if params
             .arguments
             .first()
-            .is_some_and(|argument| argument == DISABLE_ARGUMENT || argument == "off")
+            .is_some_and(|argument| argument == "off")
         {
             self.invoke_extension_command(
                 thread_id,

@@ -450,9 +450,9 @@ Controllers receive `sessionExtension/commandsUpdated` whenever the enabled
 command set is replaced after activation or disablement.
 
 To disable an enabled extension for the current thread, invoke one of its
-declared commands with `--disable` as the first argument. Xedoc stops the
-persistent child and publishes a replacement command set; it does not dispatch
-that invocation to the extension entrypoint.
+declared commands with `off` as the first argument. Xedoc stops the persistent
+child while keeping the approved command available so the extension can be
+enabled again with `on`.
 
 ### One-shot extension protocol
 
