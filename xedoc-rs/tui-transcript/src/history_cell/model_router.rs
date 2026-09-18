@@ -100,6 +100,9 @@ pub fn model_router_decision_lines(
 ) -> Vec<Line<'static>> {
     if let Some(summary) = summary {
         let mut lines = vec![vec!["  model router ".magenta(), summary.dim()].into()];
+        if let Some(routing_calculation) = classifications.get("routing calculation") {
+            lines.push(format!("  {routing_calculation}").dim().into());
+        }
         if let Some(diagnostic) = diagnostic {
             lines.push(format!("  {diagnostic}").dim().into());
         }
