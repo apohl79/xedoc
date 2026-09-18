@@ -100,7 +100,10 @@ impl ChatWidget {
                 command: command.name,
                 arguments: arguments.split_whitespace().map(str::to_string).collect(),
             });
+        self.bottom_pane.drain_pending_submission_state();
         self.bottom_pane.record_pending_slash_command_history();
+        self.bottom_pane
+            .set_composer_text(String::new(), Vec::new(), Vec::new());
     }
 
     /// Dispatch an inline slash command and record its staged local-history entry.

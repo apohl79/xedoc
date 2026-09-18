@@ -35,6 +35,7 @@ use xedoc_app_server_protocol::SessionExtensionCommandInvokeResponse;
 use xedoc_app_server_protocol::SessionExtensionCommandsUpdatedNotification;
 use xedoc_app_server_protocol::SessionExtensionListParams;
 use xedoc_app_server_protocol::SessionExtensionListResponse;
+use xedoc_app_server_protocol::WarningNotification;
 use xedoc_core::ThreadManager;
 use xedoc_core::config::Config;
 use xedoc_plugin::LoadedPlugin;
@@ -407,8 +408,21 @@ impl SessionExtensionManager {
             match outcome {
                 ResponseOutcome::Error { error } => return Err(error.message),
                 ResponseOutcome::Result {
-                    result: ScriptResult::Complete { .. },
-                } => return Ok(()),
+                    result: ScriptResult::Complete { summary },
+                } => {
+                    if let Some(message) = summary {
+                        self.inner
+                            .outgoing
+                            .send_server_notification(ServerNotification::Warning(
+                                WarningNotification {
+                                    thread_id: Some(thread_id.to_string()),
+                                    message,
+                                },
+                            ))
+                            .await;
+                    }
+                    return Ok(());
+                }
                 ResponseOutcome::Result {
                     result: ScriptResult::Interaction { interaction },
                 } => {
