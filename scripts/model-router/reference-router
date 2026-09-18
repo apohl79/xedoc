@@ -31,7 +31,7 @@ DIAGNOSTICS_PATH = Path(__file__).with_name("reference-router.diagnostics.jsonl"
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MAX_PROMPT_PREVIEW_BYTES = 508
 MODES = ("off", "shadow-subagents", "shadow-full", "subagents", "full")
-APPROVALS = ("off", "changes", "all")
+APPROVALS = ("off", "changes", "all", "not-confident")
 WORK_TYPES = (
     "group1: question, docs_analysis, packaging, operational, testing",
     "group2: implementation, bug_fix, refactor, docs_authoring, orchestration, calibration",
@@ -603,13 +603,40 @@ def select_field(identifier, label, selected, options):
         "value": select_option_id(selected),
         "current": select_option_id(selected),
         "options": [
-            {
-                "id": select_option_id(option),
-                "label": option.replace("-", " ").title(),
-            }
+            (
+                option
+                if isinstance(option, dict)
+                else {
+                    "id": select_option_id(option),
+                    "label": option.replace("-", " ").title(),
+                }
+            )
             for option in options
         ],
     }
+
+
+def confidence_preset_options(policy):
+    return [
+        {
+            "id": preset,
+            "label": (
+                f"{preset.title()} "
+                f"({percentage(thresholds['minimumScore'])} confidence, "
+                f"{percentage(thresholds['minimumMargin'])} margin)"
+            ),
+        }
+        for preset, thresholds in policy["confidencePresets"].items()
+    ]
+
+
+def approval_options():
+    return [
+        {"id": "off", "label": "Off"},
+        {"id": "changes", "label": "Confident changes"},
+        {"id": "all", "label": "All available routes"},
+        {"id": "not-confident", "label": "Not confident"},
+    ]
 
 
 def session_mode_field(policy, context):
@@ -775,10 +802,7 @@ def policy_menu(policy, context):
                 "confidence",
                 "Confidence",
                 policy["confidence"],
-                [
-                    {"id": preset, "label": preset.title()}
-                    for preset in policy["confidencePresets"]
-                ],
+                confidence_preset_options(policy),
             ),
             policy_action_field(
                 "model-ladder",
@@ -874,7 +898,10 @@ def settings_surface(policy, context, continuation):
             continuation,
             [
                 select_field(
-                    "approval", "Approval prompts", policy["approval"], APPROVALS
+                    "approval",
+                    "Approval prompts",
+                    policy["approval"],
+                    approval_options(),
                 )
             ],
             "set-approval",
@@ -889,7 +916,7 @@ def settings_surface(policy, context, continuation):
                     "confidence",
                     "Preset",
                     policy["confidence"],
-                    tuple(policy["confidencePresets"]),
+                    confidence_preset_options(policy),
                 )
             ],
             "set-confidence",
@@ -1026,7 +1053,10 @@ def settings_response(request, policy):
             "settings:approval",
             [
                 select_field(
-                    "approval", "Approval prompts", policy["approval"], APPROVALS
+                    "approval",
+                    "Approval prompts",
+                    policy["approval"],
+                    approval_options(),
                 )
             ],
             "set-approval",
@@ -1501,6 +1531,10 @@ def confidence_thresholds(policy):
     return policy["confidencePresets"][policy["confidence"]]
 
 
+def percentage(value):
+    return f"{value:.0%}"
+
+
 def confidence_passes(policy, score, margin):
     thresholds = confidence_thresholds(policy)
     return score >= thresholds["minimumScore"] and margin >= thresholds["minimumMargin"]
@@ -1533,9 +1567,10 @@ def routing_calculation(
         )
     thresholds = confidence_thresholds(policy)
     calculation = (
-        f"{ranking_detail} · confidence {score:.2f}/{margin:.2f} "
-        f"(minimum {thresholds['minimumScore']:.2f}/"
-        f"{thresholds['minimumMargin']:.2f})"
+        f"{ranking_detail} · confidence {percentage(score)} "
+        f"(margin {percentage(margin)}; minimum "
+        f"{percentage(thresholds['minimumScore'])}/"
+        f"{percentage(thresholds['minimumMargin'])})"
     )
     if embedding_elapsed_ms is not None and embedding_input_count is not None:
         vector_label = "vector" if embedding_input_count == 1 else "vectors"
@@ -1564,7 +1599,10 @@ def decision(
     route = selection["route"]
     chosen = route_label(route)
     if summary is None:
-        summary = f"{category} classified at {confidence:.2f}/{margin:.2f}; {chosen}."
+        summary = (
+            f"{category} classified at {percentage(confidence)} confidence "
+            f"(margin {percentage(margin)}); {chosen}."
+        )
         if reason is not None:
             summary += f" {reason}"
     return {
@@ -1663,7 +1701,12 @@ def approval(
         {
             "title": None,
             "rows": [
-                {"text": f"Confidence: {confidence:.2f} / margin {margin:.2f}"},
+                {
+                    "text": (
+                        f"Confidence: {percentage(confidence)} "
+                        f"/ margin {percentage(margin)}"
+                    )
+                },
             ],
         },
     ]
@@ -1742,7 +1785,7 @@ def routing_decide(request, policy):
     shadow = mode == "shadow-full" or (
         mode == "shadow-subagents" and scope == "subagent"
     )
-    should_apply = (
+    route_can_be_applied = (
         enabled and not active and not steering and route is not None and confident
     )
     should_shadow = (
@@ -1750,8 +1793,11 @@ def routing_decide(request, policy):
     )
     current = context.get("currentRoute")
     changed = route != current
-    needs_approval = should_apply and (
-        policy["approval"] == "all" or (policy["approval"] == "changes" and changed)
+    route_can_be_approved = enabled and not active and not steering and route is not None
+    needs_approval = route_can_be_approved and (
+        policy["approval"] == "all"
+        or (policy["approval"] == "changes" and confident and changed)
+        or (policy["approval"] == "not-confident" and not confident)
     )
     if needs_approval:
         record_routing_decision(
@@ -1779,7 +1825,11 @@ def routing_decide(request, policy):
             context,
         )
     disposition = (
-        "apply" if should_apply else "shadow" if should_shadow else "keepCurrent"
+        "apply"
+        if route_can_be_applied
+        else "shadow"
+        if should_shadow
+        else "keepCurrent"
     )
     reason = None
     if steering:
