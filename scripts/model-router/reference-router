@@ -80,6 +80,9 @@ def load_policy():
     if "subagentOrchestration" not in semantic:
         semantic["subagentOrchestration"] = {"explicitPromptRequired": True}
         save_policy(policy)
+    if "classifierRoute" not in policy:
+        policy["classifierRoute"] = None
+        save_policy(policy)
     validate_policy(policy)
     return policy
 
@@ -215,6 +218,9 @@ def validate_policy(policy):
         or ranking["minimumScore"] > ranking["maximumScore"]
     ):
         raise ValueError("policy ranking score domain is invalid")
+    classifier_route = policy.get("classifierRoute")
+    if classifier_route is not None and valid_route_shape(classifier_route) is None:
+        raise ValueError("policy classifier route is invalid")
     ladder = ranking.get("ladder")
     if not isinstance(ladder, list) or not ladder:
         raise ValueError("policy ranking ladder must not be empty")
@@ -726,6 +732,10 @@ def eligible(context):
     return context.get("eligibleRoutes", [])
 
 
+def eligible_classifier_routes(context):
+    return context.get("eligibleClassifierRoutes", [])
+
+
 def route_label(route):
     if not route:
         return "Not set"
@@ -816,6 +826,11 @@ def policy_menu(policy, context):
                 f"Reporting baseline: {route_label(policy.get('reportingBaseline'))}",
                 "open-reporting-baseline",
             ),
+            policy_action_field(
+                "classifier-model",
+                f"Classifier model: {route_label(policy.get('classifierRoute'))}",
+                "open-classifier-model",
+            ),
         ],
         "save-policy",
         "Save policy",
@@ -898,6 +913,48 @@ def settings_surface(policy, context, continuation):
                 )
             ],
             "set-reporting-baseline",
+            cancel_action_id="back-policy",
+        )
+    if continuation == "settings:policy:classifier-model":
+        routes = []
+        for offered in eligible_classifier_routes(context):
+            for effort in offered.get("reasoningEfforts", []):
+                route = valid_route(
+                    {
+                        "providerId": offered.get("providerId"),
+                        "model": offered.get("model"),
+                        "reasoningEffort": effort,
+                    },
+                    eligible_classifier_routes(context),
+                )
+                if route:
+                    routes.append(route)
+        route_options = [
+            {"id": f"route-{index}", "label": route_label(route)}
+            for index, route in enumerate(routes)
+        ]
+        selected = next(
+            (
+                f"route-{index}"
+                for index, route in enumerate(routes)
+                if route == policy.get("classifierRoute")
+            ),
+            "none",
+        )
+        return form(
+            policy,
+            "Classifier model",
+            continuation,
+            [
+                policy_select_field(
+                    "classifier-model",
+                    "Classifier model",
+                    selected,
+                    [{"id": "none", "label": "Not set"}, *route_options],
+                    "Classifies complexity, risk, and orchestration through Xedoc.",
+                )
+            ],
+            "set-classifier-model",
             cancel_action_id="back-policy",
         )
     if continuation == "settings:mode":
@@ -1106,6 +1163,10 @@ def settings_response(request, policy):
         return settings_surface(
             policy, context, "settings:policy:reporting-baseline"
         )
+    if action_id == "open-classifier-model":
+        return settings_surface(
+            policy, context, "settings:policy:classifier-model"
+        )
     if action_id == "save-policy":
         confidence = values.get("confidence")
         if confidence not in policy["confidencePresets"]:
@@ -1133,6 +1194,37 @@ def settings_response(request, policy):
                 policy, "Choose a model-ladder route for the reporting baseline."
             )
         update(policy, reportingBaseline=baseline)
+        return policy_menu(policy, context)
+    if action_id == "set-classifier-model":
+        routes = []
+        for offered in eligible_classifier_routes(context):
+            for effort in offered.get("reasoningEfforts", []):
+                route = valid_route(
+                    {
+                        "providerId": offered.get("providerId"),
+                        "model": offered.get("model"),
+                        "reasoningEffort": effort,
+                    },
+                    eligible_classifier_routes(context),
+                )
+                if route:
+                    routes.append(route)
+        selected = values.get("classifier-model")
+        if selected == "none":
+            classifier_route = None
+        elif isinstance(selected, str) and selected.startswith("route-"):
+            try:
+                classifier_route = routes[int(selected.removeprefix("route-"))]
+            except (ValueError, IndexError):
+                classifier_route = None
+                return error_notice(
+                    policy, "Choose a currently supported classifier model."
+                )
+        else:
+            return error_notice(
+                policy, "Choose a currently supported classifier model."
+            )
+        update(policy, classifierRoute=classifier_route)
         return policy_menu(policy, context)
     if action_id == "save-policy-ladder":
         routes, _ = policy_route_options(policy, context)
@@ -1469,7 +1561,14 @@ def semantic_steering(policy, embedding):
     return steering_score >= 0.84 and steering_score - task_score >= 0.08
 
 
-def classify(policy, prompt, has_prior_messages, recent_messages, scope):
+def classify(
+    policy,
+    prompt,
+    has_prior_messages,
+    recent_messages,
+    scope,
+    llm_classification=None,
+):
     if has_prior_messages and (
         steering_prompt(prompt) or explicit_continuation_prompt(prompt)
     ):
@@ -1488,11 +1587,19 @@ def classify(policy, prompt, has_prior_messages, recent_messages, scope):
     embedding = embeddings[0]
     steering = has_prior_messages and semantic_steering(policy, embeddings[1])
     classification = {
-        axis: semantic_axis(policy, axis, embedding, scope, prompt)
-        for axis in AXIS_VALUES
+        "work_type": semantic_axis(policy, "work_type", embedding, scope, prompt)
     }
+    if llm_classification is None:
+        classification.update(
+            {
+                axis: semantic_axis(policy, axis, embedding, scope, prompt)
+                for axis in ("complexity", "orchestration", "risk")
+            }
+        )
     axes = {axis: result[0] for axis, result in classification.items()}
     evidence = {axis: result[1:] for axis, result in classification.items()}
+    if llm_classification is not None:
+        axes.update(llm_classification)
     return axes, evidence, steering, embedding_elapsed_ms, len(inputs)
 
 
@@ -1856,19 +1963,136 @@ def approval(
     )
 
 
-def routing_decide(request, policy):
+def classifier_continuation(prompt):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps({"prompt": prompt}, separators=(",", ":")).encode()
+    ).decode()
+    return f"classifier:{encoded}"
+
+
+def classifier_prompt(context, prompt):
+    conversation = (context.get("conversation") or {}).get("recentMessages", [])
+    messages = []
+    for message in conversation[-8:]:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        text = message.get("text")
+        if role in ("user", "assistant") and isinstance(text, str):
+            messages.append(f"{role}: {text[:768]}")
+    scope = ((context.get("turn") or {}).get("scope") or "root")
+    return (
+        "Classify the candidate task for a model router. Return JSON only with "
+        "exactly these fields: complexity (low, medium, high, very_high), risk "
+        "(low, medium, high), orchestration (none, delegate, coordination, workflow). "
+        "For a subagent, choose orchestration none unless the candidate explicitly "
+        "asks it to delegate, spawn, coordinate, or split work.\n"
+        f"Scope: {scope}\n"
+        f"Recent session context:\n{chr(10).join(messages)[:6000]}\n"
+        f"Candidate task:\n{prompt[:1500]}"
+    )
+
+
+def parse_classifier_output(output):
+    if not isinstance(output, str):
+        return None
+    candidate = output.strip()
+    if candidate.startswith("```"):
+        candidate = re.sub(r"^```(?:json)?\s*|\s*```$", "", candidate)
+    try:
+        value = json.loads(candidate)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", candidate, re.DOTALL)
+        if match is None:
+            return None
+        try:
+            value = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(value, dict):
+        return None
+    result = {
+        axis: value.get(axis)
+        for axis in ("complexity", "risk", "orchestration")
+    }
+    if (
+        result["complexity"] not in COMPLEXITIES
+        or result["risk"] not in RISKS
+        or result["orchestration"] not in ORCHESTRATIONS
+    ):
+        return None
+    return result
+
+
+def routing_classifier_response(request, policy):
+    params = request.get("params") or {}
+    continuation = params.get("continuation")
+    if not isinstance(continuation, str) or not continuation.startswith("classifier:"):
+        raise ValueError("invalid classifier continuation")
+    try:
+        state = json.loads(
+            base64.urlsafe_b64decode(continuation.split(":", 1)[1].encode())
+        )
+        prompt = state["prompt"]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise ValueError("invalid classifier continuation") from None
+    if not isinstance(prompt, str):
+        raise ValueError("invalid classifier continuation")
+    classifier_output = parse_classifier_output(params.get("output"))
+    if classifier_output is None:
+        record_diagnostic(
+            {
+                "event": "model_classifier_fallback",
+                "recordedAtUnixSeconds": int(time.time()),
+                "reason": params.get("error", "invalid classifier output"),
+            }
+        )
+    return routing_decide(
+        {
+            **request,
+            "params": {
+                **params,
+                "prompt": prompt,
+            },
+        },
+        policy,
+        classifier_output,
+    )
+
+
+def routing_decide(request, policy, llm_classification=None):
     context = request.get("context", {})
     turn = context.get("turn", {})
     prompt = (request.get("params") or {}).get("prompt", "")
     recent_messages = (context.get("conversation") or {}).get("recentMessages", [])
     has_prior_messages = isinstance(recent_messages, list) and bool(recent_messages)
     scope = turn.get("scope", "root")
+    configured_classifier = valid_route(
+        policy.get("classifierRoute"), eligible_classifier_routes(context)
+    )
+    if (
+        llm_classification is None
+        and configured_classifier is not None
+        and not (
+            has_prior_messages
+            and (steering_prompt(prompt) or explicit_continuation_prompt(prompt))
+        )
+    ):
+        return {
+            "kind": "classifierRequest",
+            "classifier": {
+                "continuation": classifier_continuation(prompt),
+                "route": configured_classifier,
+                "input": classifier_prompt(context, prompt),
+            },
+        }
     axes, evidence, steering, embedding_elapsed_ms, embedding_input_count = classify(
         policy,
         prompt,
         has_prior_messages,
         recent_messages,
         scope,
+        llm_classification,
     )
     confidence, margin = classification_confidence(evidence)
     selection = choose_route(policy, context, axes)
@@ -2248,6 +2472,8 @@ def main():
             )
         elif method == "routing.decide":
             result = routing_decide(request, policy)
+        elif method == "routing.classifier.respond":
+            result = routing_classifier_response(request, policy)
         else:
             raise ValueError("unsupported method")
         response(request, result=result)
