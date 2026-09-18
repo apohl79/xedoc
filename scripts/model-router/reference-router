@@ -1674,12 +1674,12 @@ def decision(
         )
         if reason is not None:
             summary += f" {reason}"
-        if embedding_elapsed_ms is not None and embedding_input_count is not None:
-            vector_label = "vector" if embedding_input_count == 1 else "vectors"
-            summary += (
-                f" Embedding batch {embedding_elapsed_ms} ms "
-                f"({embedding_input_count} {vector_label})."
-            )
+    if embedding_elapsed_ms is not None and embedding_input_count is not None:
+        vector_label = "vector" if embedding_input_count == 1 else "vectors"
+        summary += (
+            f" Embedding batch {embedding_elapsed_ms} ms "
+            f"({embedding_input_count} {vector_label})."
+        )
     return {
         "kind": "route",
         "decision": {
@@ -1717,7 +1717,16 @@ def decision(
     }
 
 
-def approval_continuation(policy, axes, confidence, margin, context, recalibrated=False):
+def approval_continuation(
+    policy,
+    axes,
+    confidence,
+    margin,
+    context,
+    recalibrated=False,
+    embedding_elapsed_ms=None,
+    embedding_input_count=None,
+):
     turn = context.get("turn") or {}
     state = {
         "axes": axes,
@@ -1730,6 +1739,9 @@ def approval_continuation(policy, axes, confidence, margin, context, recalibrate
         "policyRevision": str(policy["revision"]),
         "recalibrated": recalibrated,
     }
+    if embedding_elapsed_ms is not None and embedding_input_count is not None:
+        state["embeddingElapsedMs"] = embedding_elapsed_ms
+        state["embeddingInputCount"] = embedding_input_count
     encoded = base64.urlsafe_b64encode(
         json.dumps(state, separators=(",", ":"), sort_keys=True).encode()
     ).decode()
@@ -1745,6 +1757,8 @@ def approval(
     context,
     notice_text=None,
     recalibrated=False,
+    embedding_elapsed_ms=None,
+    embedding_input_count=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -1752,7 +1766,14 @@ def approval(
     scope = (context.get("turn") or {}).get("scope", "root")
     prompt = prompt_preview(context.get("routerPrompt"))
     continuation = approval_continuation(
-        policy, axes, confidence, margin, context, recalibrated
+        policy,
+        axes,
+        confidence,
+        margin,
+        context,
+        recalibrated,
+        embedding_elapsed_ms,
+        embedding_input_count,
     )
     sections = [
         {
@@ -1898,6 +1919,8 @@ def routing_decide(request, policy):
             margin,
             selection,
             context,
+            embedding_elapsed_ms=embedding_elapsed_ms,
+            embedding_input_count=embedding_input_count,
         )
     disposition = (
         "apply"
@@ -1950,6 +1973,8 @@ def approval_state(continuation):
         axes = state["axes"]
         confidence = float(state["confidence"])
         margin = float(state["margin"])
+        embedding_elapsed_ms = state.get("embeddingElapsedMs")
+        embedding_input_count = state.get("embeddingInputCount")
         scope = state.get("scope", "root")
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
@@ -1963,6 +1988,19 @@ def approval_state(continuation):
             not isinstance(policy_revision, str)
             or not isinstance(recalibrated, bool)
             or scope not in ("root", "subagent")
+            or embedding_elapsed_ms is not None
+            and (
+                not isinstance(embedding_elapsed_ms, int)
+                or isinstance(embedding_elapsed_ms, bool)
+                or embedding_elapsed_ms < 0
+            )
+            or embedding_input_count is not None
+            and (
+                not isinstance(embedding_input_count, int)
+                or isinstance(embedding_input_count, bool)
+                or embedding_input_count < 1
+            )
+            or (embedding_elapsed_ms is None) != (embedding_input_count is None)
             or axes["work_type"] not in WORK_TYPES
             or axes["complexity"] not in COMPLEXITIES
             or axes["orchestration"] not in ORCHESTRATIONS
@@ -1971,11 +2009,28 @@ def approval_state(continuation):
             raise ValueError("invalid approval state")
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
-    return axes, confidence, margin, context, policy_revision, recalibrated
+    return (
+        axes,
+        confidence,
+        margin,
+        context,
+        policy_revision,
+        recalibrated,
+        embedding_elapsed_ms,
+        embedding_input_count,
+    )
 
 
 def fresh_approval(
-    policy, axes, confidence, margin, context, notice_text, recalibrated=False
+    policy,
+    axes,
+    confidence,
+    margin,
+    context,
+    notice_text,
+    recalibrated=False,
+    embedding_elapsed_ms=None,
+    embedding_input_count=None,
 ):
     selection = choose_route(policy, context, axes)
     return approval(
@@ -1987,6 +2042,8 @@ def fresh_approval(
         context,
         notice_text=notice_text,
         recalibrated=recalibrated,
+        embedding_elapsed_ms=embedding_elapsed_ms,
+        embedding_input_count=embedding_input_count,
     )
 
 
@@ -1996,7 +2053,16 @@ def approval_response(request, policy):
     decoded = approval_state(continuation)
     if decoded is None:
         return error_notice(policy, "Invalid approval continuation.")
-    axes, confidence, margin, rendered_context, policy_revision, recalibrated = decoded
+    (
+        axes,
+        confidence,
+        margin,
+        rendered_context,
+        policy_revision,
+        recalibrated,
+        embedding_elapsed_ms,
+        embedding_input_count,
+    ) = decoded
     current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
         current_context = rendered_context
@@ -2009,11 +2075,20 @@ def approval_response(request, policy):
             current_context,
             "This approval preview is stale. Review the updated route before applying it.",
             recalibrated,
+            embedding_elapsed_ms,
+            embedding_input_count,
         )
     selection = choose_route(policy, rendered_context, axes)
-    rendered = approval(policy, axes, confidence, margin, selection, rendered_context)[
-        "interaction"
-    ]
+    rendered = approval(
+        policy,
+        axes,
+        confidence,
+        margin,
+        selection,
+        rendered_context,
+        embedding_elapsed_ms=embedding_elapsed_ms,
+        embedding_input_count=embedding_input_count,
+    )["interaction"]
     if (
         params.get("interactionId") != rendered["id"]
         or params.get("stateRevision") != rendered["stateRevision"]
@@ -2027,6 +2102,8 @@ def approval_response(request, policy):
             current_context,
             "This approval preview is no longer valid. Review the updated route before applying it.",
             recalibrated,
+            embedding_elapsed_ms,
+            embedding_input_count,
         )
     selected = (params.get("action") or {}).get("id")
     if selected == "keep-current" or params.get("outcome") != "accepted":
@@ -2050,6 +2127,8 @@ def approval_response(request, policy):
                 "User rejected proposed route; "
                 f"kept {route_label(current_context.get('currentRoute'))}."
             ),
+            embedding_elapsed_ms=embedding_elapsed_ms,
+            embedding_input_count=embedding_input_count,
         )
     values = params.get("values") or {}
     if selected == "submit-override":
@@ -2113,6 +2192,8 @@ def approval_response(request, policy):
                 selection,
                 "keepCurrent",
                 "No eligible ranked route was available.",
+                embedding_elapsed_ms=embedding_elapsed_ms,
+                embedding_input_count=embedding_input_count,
             )
         return approval(
             policy,
@@ -2122,6 +2203,8 @@ def approval_response(request, policy):
             selection,
             rendered_context,
             recalibrated=True,
+            embedding_elapsed_ms=embedding_elapsed_ms,
+            embedding_input_count=embedding_input_count,
         )
     if recalibrated:
         record_recalibration(
@@ -2139,6 +2222,8 @@ def approval_response(request, policy):
         margin,
         selection,
         "apply",
+        embedding_elapsed_ms=embedding_elapsed_ms,
+        embedding_input_count=embedding_input_count,
     )
 
 
