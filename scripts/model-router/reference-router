@@ -1977,6 +1977,7 @@ def decision(
     calibrated_confidence=None,
     decision_status=None,
     used_route=None,
+    classifier_notice=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -2012,6 +2013,8 @@ def decision(
         f"  Confidence: {overall}; LLM self-rating({llm_score}); "
         f"similarity({percentage(confidence)}, margin {percentage(margin)})."
     )
+    if classifier_notice is not None:
+        summary += f"\n  Error: {classifier_notice}"
     return {
         "kind": "route",
         "decision": {
@@ -2066,6 +2069,7 @@ def approval_continuation(
     calibrated_confidence=None,
     raw_confidence=None,
     was_override=False,
+    classifier_notice=None,
 ):
     turn = context.get("turn") or {}
     state = {
@@ -2083,6 +2087,7 @@ def approval_continuation(
         "calibratedConfidence": calibrated_confidence,
         "rawConfidence": raw_confidence,
         "wasOverride": was_override,
+        "classifierNotice": classifier_notice,
     }
     if embedding_elapsed_ms is not None and embedding_input_count is not None:
         state["embeddingElapsedMs"] = embedding_elapsed_ms
@@ -2109,6 +2114,7 @@ def approval(
     calibrated_confidence=None,
     raw_confidence=None,
     was_override=False,
+    classifier_notice=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -2129,6 +2135,7 @@ def approval(
         calibrated_confidence,
         raw_confidence,
         was_override,
+        classifier_notice,
     )
     sections = [
         {
@@ -2319,7 +2326,12 @@ def routing_classifier_response(request, policy):
     ):
         raise ValueError("invalid classifier elapsed time")
     classifier_output = parse_classifier_output(params.get("output"))
+    classifier_notice = None
     if classifier_output is None:
+        classifier_notice = (
+            "LLM classifier unavailable; used the embedder fallback. "
+            "See model-router diagnostics for details."
+        )
         record_diagnostic(
             {
                 "event": "model_classifier_fallback",
@@ -2338,10 +2350,19 @@ def routing_classifier_response(request, policy):
         policy,
         classifier_output,
         llm_elapsed_ms,
+        classifier_failed=classifier_notice is not None,
+        classifier_notice=classifier_notice,
     )
 
 
-def routing_decide(request, policy, llm_classification=None, llm_elapsed_ms=None):
+def routing_decide(
+    request,
+    policy,
+    llm_classification=None,
+    llm_elapsed_ms=None,
+    classifier_failed=False,
+    classifier_notice=None,
+):
     context = request.get("context", {})
     turn = context.get("turn", {})
     prompt = (request.get("params") or {}).get("prompt", "")
@@ -2353,6 +2374,7 @@ def routing_decide(request, policy, llm_classification=None, llm_elapsed_ms=None
     )
     if (
         llm_classification is None
+        and not classifier_failed
         and configured_classifier is not None
         and not (
             has_prior_messages
@@ -2388,6 +2410,7 @@ def routing_decide(request, policy, llm_classification=None, llm_elapsed_ms=None
     )
     selection = choose_route(policy, context, axes)
     route = selection["route"]
+    current = context.get("currentRoute")
     confident = confidence_passes(
         policy,
         calibrated_confidence
@@ -2457,6 +2480,8 @@ def routing_decide(request, policy, llm_classification=None, llm_elapsed_ms=None
             llm_elapsed_ms=llm_elapsed_ms,
             calibrated_confidence=calibrated_confidence,
             raw_confidence=raw_confidence,
+            notice_text=classifier_notice,
+            classifier_notice=classifier_notice,
         )
     disposition = (
         "apply"
@@ -2503,6 +2528,7 @@ def routing_decide(request, policy, llm_classification=None, llm_elapsed_ms=None
         llm_elapsed_ms=llm_elapsed_ms,
         calibrated_confidence=calibrated_confidence,
         used_route=route if disposition == "apply" else current,
+        classifier_notice=classifier_notice,
     )
     return result
 
@@ -2521,6 +2547,7 @@ def approval_state(continuation):
         calibrated_confidence = state.get("calibratedConfidence")
         raw_confidence = state.get("rawConfidence")
         was_override = state.get("wasOverride", False)
+        classifier_notice = state.get("classifierNotice")
         scope = state.get("scope", "root")
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
@@ -2534,6 +2561,11 @@ def approval_state(continuation):
             not isinstance(policy_revision, str)
             or not isinstance(recalibrated, bool)
             or not isinstance(was_override, bool)
+            or classifier_notice is not None
+            and (
+                not isinstance(classifier_notice, str)
+                or len(classifier_notice.encode()) > 256
+            )
             or scope not in ("root", "subagent")
             or embedding_elapsed_ms is not None
             and (
@@ -2597,6 +2629,7 @@ def approval_state(continuation):
         calibrated_confidence,
         raw_confidence,
         was_override,
+        classifier_notice,
     )
 
 
@@ -2615,6 +2648,7 @@ def fresh_approval(
     calibrated_confidence=None,
     raw_confidence=None,
     was_override=False,
+    classifier_notice=None,
 ):
     selection = choose_route(policy, context, axes)
     return approval(
@@ -2624,7 +2658,7 @@ def fresh_approval(
         margin,
         selection,
         context,
-        notice_text=notice_text,
+        notice_text=classifier_notice or notice_text,
         recalibrated=recalibrated,
         embedding_elapsed_ms=embedding_elapsed_ms,
         embedding_input_count=embedding_input_count,
@@ -2633,6 +2667,7 @@ def fresh_approval(
         calibrated_confidence=calibrated_confidence,
         raw_confidence=raw_confidence,
         was_override=was_override,
+        classifier_notice=classifier_notice,
     )
 
 
@@ -2656,6 +2691,7 @@ def approval_response(request, policy):
         calibrated_confidence,
         raw_confidence,
         was_override,
+        classifier_notice,
     ) = decoded
     current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
@@ -2676,6 +2712,7 @@ def approval_response(request, policy):
             calibrated_confidence,
             raw_confidence,
             was_override,
+            classifier_notice,
         )
     selection = choose_route(policy, rendered_context, axes)
     rendered = approval(
@@ -2692,6 +2729,8 @@ def approval_response(request, policy):
         calibrated_confidence=calibrated_confidence,
         raw_confidence=raw_confidence,
         was_override=was_override,
+        notice_text=classifier_notice,
+        classifier_notice=classifier_notice,
     )["interaction"]
     if (
         params.get("interactionId") != rendered["id"]
@@ -2713,6 +2752,7 @@ def approval_response(request, policy):
             calibrated_confidence,
             raw_confidence,
             was_override,
+            classifier_notice,
         )
     selected = (params.get("action") or {}).get("id")
     if selected == "keep-current" or params.get("outcome") != "accepted":
@@ -2745,6 +2785,7 @@ def approval_response(request, policy):
             calibrated_confidence=calibrated_confidence,
             decision_status="override" if was_override else "rejected",
             used_route=current_context.get("currentRoute"),
+            classifier_notice=classifier_notice,
         )
     values = params.get("values") or {}
     if selected == "submit-override":
@@ -2815,6 +2856,7 @@ def approval_response(request, policy):
                 calibrated_confidence=calibrated_confidence,
                 decision_status="override",
                 used_route=current_context.get("currentRoute"),
+                classifier_notice=classifier_notice,
             )
         return approval(
             policy,
@@ -2831,6 +2873,8 @@ def approval_response(request, policy):
             calibrated_confidence=calibrated_confidence,
             raw_confidence=raw_confidence,
             was_override=True,
+            notice_text=classifier_notice,
+            classifier_notice=classifier_notice,
         )
     if recalibrated:
         record_recalibration(
@@ -2861,6 +2905,7 @@ def approval_response(request, policy):
         calibrated_confidence=calibrated_confidence,
         decision_status="override" if was_override else "approved",
         used_route=selection["route"],
+        classifier_notice=classifier_notice,
     )
 
 

@@ -471,6 +471,76 @@ subagent_refreshed, subagent_surface = interaction(
 )
 assert subagent_refreshed["id"] == "route-approval", subagent_refreshed
 assert subagent_surface["sections"][0]["rows"] == [{"text": "└ Scope: subagent"}]
+
+classifier_route = {
+    "providerId": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "low",
+}
+policy = json.load(open(policy_path, encoding="utf-8"))
+policy["classifierRoute"] = classifier_route
+with open(policy_path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+classifier_context = {
+    **router_context(),
+    "eligibleClassifierRoutes": [
+        {
+            "providerId": "openai",
+            "model": "gpt-5.6-luna",
+            "reasoningEfforts": ["low"],
+        }
+    ],
+}
+classifier_request = call(
+    "routing.decide",
+    {"prompt": "review workflow security"},
+    classifier_context,
+)
+assert classifier_request["kind"] == "classifierRequest", classifier_request
+classifier_fallback, fallback_surface = interaction(
+    call(
+        "routing.classifier.respond",
+        {
+            "continuation": classifier_request["classifier"]["continuation"],
+            "error": "router classifier invocation failed: unsupported model",
+            "elapsedMs": 42,
+        },
+        classifier_context,
+    )
+)
+assert classifier_fallback["id"] == "route-approval", fallback_surface
+assert any(
+    "Notice: LLM classifier unavailable" in row["text"]
+    for section in fallback_surface["sections"]
+    for row in section["rows"]
+), fallback_surface
+accepted = respond(classifier_fallback, "approve")
+assert accepted["kind"] == "route", accepted
+assert "Error: LLM classifier unavailable" in accepted["decision"]["summary"], accepted
+
+policy = json.load(open(policy_path, encoding="utf-8"))
+policy["approval"] = "off"
+policy["feedback"] = True
+policy["mode"] = "shadow-full"
+with open(policy_path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+classifier_request = call(
+    "routing.decide",
+    {"prompt": "review workflow security"},
+    classifier_context,
+)
+fallback = call(
+    "routing.classifier.respond",
+    {
+        "continuation": classifier_request["classifier"]["continuation"],
+        "error": "router classifier invocation failed: unsupported model",
+        "elapsedMs": 42,
+    },
+    classifier_context,
+)
+assert fallback["kind"] == "route", fallback
+assert fallback["decision"]["disposition"] == "shadow", fallback
+assert "Error: LLM classifier unavailable" in fallback["decision"]["summary"], fallback
 PY
   reset_policy
   record_scenario interaction-conflicts \
