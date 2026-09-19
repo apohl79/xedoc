@@ -317,13 +317,13 @@ interaction_timeout_ms = 10000
 id = "session-script-responder"
 command = ["$python_bin", "$extension", "--log", "$responder_log", "child", "--role", "responder", "--start-file", "$start_file", "--primary-thread-file", "$primary_thread_file"]
 capabilities = ["userInput.send", "prompt.requestUserInput.respond"]
-subscriptions = ["modelResponseDeltas", "modelResponseCompleted", "turnCompleted", "sessionUpdates", "prompts.requestUserInput", "prompts.extensionInteraction", "prompts.commandExecutionApproval", "prompts.fileChangeApproval", "prompts.permissionsApproval", "prompts.mcpElicitation"]
+subscriptions = ["modelResponseDeltas", "modelResponseCompleted", "userMessages", "turnCompleted", "sessionUpdates", "prompts.requestUserInput", "prompts.extensionInteraction", "prompts.commandExecutionApproval", "prompts.fileChangeApproval", "prompts.permissionsApproval", "prompts.mcpElicitation"]
 response_timeout_ms = 500
 
 [[session_scripts]]
 id = "session-script-observer"
 command = ["$python_bin", "$extension", "--log", "$observer_log", "child", "--role", "observer", "--primary-thread-file", "$primary_thread_file"]
-subscriptions = ["modelResponseDeltas", "modelResponseCompleted", "turnCompleted", "sessionUpdates", "prompts.requestUserInput", "prompts.extensionInteraction", "prompts.commandExecutionApproval", "prompts.fileChangeApproval", "prompts.permissionsApproval", "prompts.mcpElicitation"]
+subscriptions = ["modelResponseDeltas", "modelResponseCompleted", "userMessages", "turnCompleted", "sessionUpdates", "prompts.requestUserInput", "prompts.extensionInteraction", "prompts.commandExecutionApproval", "prompts.fileChangeApproval", "prompts.permissionsApproval", "prompts.mcpElicitation"]
 EOF
 }
 
@@ -439,7 +439,9 @@ expected_command = {
     "name": "signal",
     "description": "Exercise session extension lifecycle.",
 }
-assert [expected_command] in primary_lists and [] in primary_lists, primary_lists
+assert primary_lists and all(
+    commands == [expected_command] for commands in primary_lists
+), primary_lists
 assert secondary_lists and all(
     commands == [expected_command] for commands in secondary_lists
 ), secondary_lists
@@ -452,7 +454,7 @@ assert any(
 assert any(
     entry["event"] == "extensionInvoked"
     and entry["threadId"] == primary_thread
-    and entry["arguments"] == ["disable"]
+    and entry["arguments"] == ["off"]
     for entry in controller
 ), controller
 assert any(entry["event"] == "mcpToolCalled" for entry in controller), controller
@@ -540,7 +542,27 @@ for name, stream, responder_expected in (
     assert deltas == ["session-script partial ", "answer"], deltas
     completed = [entry for entry in stream if entry["event"] == "completed"]
     assert completed == [
-        {"event": "completed", "itemType": "agentMessage", "text": "session-script answer"}
+        {
+            "event": "completed",
+            "itemType": "userMessage",
+            "text": None,
+            "clientId": "session-script-e2e",
+            "content": [{"type": "text", "text": "SESSION_SCRIPT_E2E_PROMPT", "text_elements": []}],
+        },
+        {
+            "event": "completed",
+            "itemType": "userMessage",
+            "text": None,
+            "clientId": "session-script-e2e-steer",
+            "content": [{"type": "text", "text": "SESSION_SCRIPT_E2E_STEER", "text_elements": []}],
+        },
+        {
+            "event": "completed",
+            "itemType": "agentMessage",
+            "text": "session-script answer",
+            "clientId": None,
+            "content": None,
+        },
     ], completed
     assert any(
         entry["event"] == "turnStartedNotification"
@@ -625,6 +647,22 @@ assert any(
     for entry in session_extension
 ), session_extension
 assert any(
+    entry["event"] == "persistentUserMessage"
+    and entry["threadId"] == primary_thread
+    and entry["clientId"] == "session-script-e2e"
+    and entry["content"]
+    == [{"type": "text", "text": "SESSION_SCRIPT_E2E_PROMPT", "text_elements": []}]
+    for entry in session_extension
+), session_extension
+assert any(
+    entry["event"] == "persistentUserMessage"
+    and entry["threadId"] == primary_thread
+    and entry["clientId"] == "session-script-e2e-steer"
+    and entry["content"]
+    == [{"type": "text", "text": "SESSION_SCRIPT_E2E_STEER", "text_elements": []}]
+    for entry in session_extension
+), session_extension
+assert any(
     entry["event"] == "persistentTurnCompleted"
     and entry["threadId"] == primary_thread
     for entry in session_extension
@@ -684,6 +722,9 @@ PY
   )"
   wait_for_log_event "$responder_log" registered
   wait_for_log_event "$observer_log" registered
+  "$python_bin" "$extension" --endpoint "$endpoint" --log "$controller_log" extension-invoke \
+    --thread-id "$thread_id" --extension-id "$extension_id" \
+    --extension-command signal on
   wait_for_log_event_count "$session_extension_log" persistentRegistered 1
   "$python_bin" "$extension" --endpoint "$endpoint" --log "$controller_log" extension-list \
     --thread-id "$thread_id"
@@ -700,6 +741,9 @@ PY
 )"
   wait_for_log_event_count "$responder_log" secondaryHostSkipped 1
   wait_for_log_event_count "$observer_log" secondaryHostSkipped 1
+  "$python_bin" "$extension" --endpoint "$endpoint" --log "$controller_log" extension-invoke \
+    --thread-id "$secondary_thread_id" --extension-id "$extension_id" \
+    --extension-command signal on
   wait_for_log_event_count "$session_extension_log" persistentRegistered 2
   "$python_bin" "$extension" --endpoint "$endpoint" --log "$controller_log" extension-list \
     --thread-id "$secondary_thread_id"
@@ -774,7 +818,7 @@ PY
   wait_for_process_exit "$observer_pid"
   "$python_bin" "$extension" --endpoint "$endpoint" --log "$controller_log" extension-invoke \
     --thread-id "$thread_id" --extension-id "$extension_id" \
-    --extension-command signal disable
+    --extension-command signal off
   wait_for_process_exit "$primary_extension_pid"
   "$python_bin" "$extension" --endpoint "$endpoint" --log "$controller_log" extension-list \
     --thread-id "$thread_id"

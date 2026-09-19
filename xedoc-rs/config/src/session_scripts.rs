@@ -45,6 +45,8 @@ pub enum SessionScriptSubscriptionToml {
     ModelResponseDeltas,
     #[serde(rename = "modelResponseCompleted")]
     ModelResponseCompleted,
+    #[serde(rename = "userMessages")]
+    UserMessages,
     #[serde(rename = "turnCompleted")]
     TurnCompleted,
     #[serde(rename = "sessionUpdates")]

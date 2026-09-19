@@ -29,6 +29,8 @@ pub struct SessionScriptSubscriptionsParams {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub model_response_completed: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub user_messages: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub turn_completed: bool,
     #[ts(optional = nullable)]
     pub prompts: Option<Vec<SessionScriptPromptKind>>,

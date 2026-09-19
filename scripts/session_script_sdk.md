@@ -53,6 +53,7 @@ capabilities = [
 subscriptions = [
   "modelResponseDeltas",
   "modelResponseCompleted",
+  "userMessages",
   "turnCompleted",
   "sessionUpdates",
   "prompts.requestUserInput",
@@ -143,6 +144,7 @@ def main() -> int:
             subscriptions={
                 "modelResponseDeltas": True,
                 "modelResponseCompleted": False,
+                "userMessages": True,
                 "turnCompleted": True,
                 "prompts": [],
                 "sessionUpdates": True,
@@ -238,6 +240,7 @@ prompt kind must also be allowed by the host configuration or plugin grant.
 | --- | --- |
 | `modelResponseDeltas: true` | `item/agentMessage/delta` while a model message streams. |
 | `modelResponseCompleted: true` | `item/completed` for a completed `agentMessage` item. |
+| `userMessages: true` | `item/completed` for each native completed `userMessage` item, including `clientId` and typed `content`. |
 | `turnCompleted: true` | `turn/completed` when a turn reaches a terminal state. |
 | `sessionUpdates: true` | `script/sessionUpdated` when the session projection changes. |
 | `prompts: ["requestUserInput"]` | `script/promptOpened` and `script/promptClosed` for a `request_user_input` tool prompt. |

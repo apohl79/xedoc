@@ -2826,6 +2826,7 @@
       "enum": [
         "modelResponseDeltas",
         "modelResponseCompleted",
+        "userMessages",
         "turnCompleted",
         "sessionUpdates",
         "prompts.requestUserInput",

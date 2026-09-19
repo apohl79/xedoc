@@ -68,6 +68,7 @@ struct SessionScriptPolicy {
 struct SessionScriptSubscriptionPolicy {
     model_response_deltas: bool,
     model_response_completed: bool,
+    user_messages: bool,
     turn_completed: bool,
     session_updates: bool,
     prompts: HashSet<SessionScriptPromptKind>,
@@ -146,6 +147,9 @@ impl SessionScriptRegistry {
                             }
                             SessionScriptSubscriptionToml::ModelResponseCompleted => {
                                 policy.model_response_completed = true;
+                            }
+                            SessionScriptSubscriptionToml::UserMessages => {
+                                policy.user_messages = true;
                             }
                             SessionScriptSubscriptionToml::TurnCompleted => {
                                 policy.turn_completed = true;
@@ -298,6 +302,7 @@ impl SessionScriptRegistry {
         if (subscriptions.model_response_deltas && !policy.subscriptions.model_response_deltas)
             || (subscriptions.model_response_completed
                 && !policy.subscriptions.model_response_completed)
+            || (subscriptions.user_messages && !policy.subscriptions.user_messages)
             || (subscriptions.turn_completed && !policy.subscriptions.turn_completed)
             || (subscriptions.session_updates && !policy.subscriptions.session_updates)
             || subscriptions.prompts.as_ref().is_some_and(|prompts| {
@@ -499,6 +504,18 @@ impl SessionScriptRegistry {
     ) {
         self.publish(outgoing, thread_id, notification, |subscriptions| {
             subscriptions.model_response_completed
+        })
+        .await;
+    }
+
+    pub(crate) async fn publish_user_message(
+        &self,
+        outgoing: &Arc<OutgoingMessageSender>,
+        thread_id: ThreadId,
+        notification: ServerNotification,
+    ) {
+        self.publish(outgoing, thread_id, notification, |subscriptions| {
+            subscriptions.user_messages
         })
         .await;
     }
@@ -1005,6 +1022,7 @@ fn extension_policy_from_requested_capabilities(
             "session.observe" => {
                 policy.subscriptions.model_response_deltas = true;
                 policy.subscriptions.model_response_completed = true;
+                policy.subscriptions.user_messages = true;
                 policy.subscriptions.turn_completed = true;
                 policy.subscriptions.session_updates = true;
             }

@@ -1164,6 +1164,7 @@ pub(crate) async fn apply_bespoke_event_handling(
         }
         EventMsg::ItemCompleted(event) => {
             let is_agent_message = matches!(&event.item, CoreTurnItem::AgentMessage(_));
+            let is_user_message = matches!(&event.item, CoreTurnItem::UserMessage(_));
             if let CoreTurnItem::AgentMessage(agent_message) = &event.item {
                 let message = agent_message
                     .content
@@ -1212,6 +1213,10 @@ pub(crate) async fn apply_bespoke_event_handling(
                         conversation_id,
                         notification,
                     )
+                    .await;
+            } else if is_user_message {
+                session_script_registry
+                    .publish_user_message(&session_script_outgoing, conversation_id, notification)
                     .await;
             }
         }

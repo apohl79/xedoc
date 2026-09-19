@@ -128,20 +128,23 @@ def run_one_shot(recorder: Recorder) -> int:
             command=params.get("command"),
             arguments=arguments,
         )
-        response = interaction_result(
-            request,
-            "session-extension-command-confirmation",
-            COMMAND_CONTINUATION,
-            {
-                "type": "confirmation",
-                "title": "Continue signal command?",
-                "body": "Exercise command interaction continuation.",
-                "details": [],
-                "sections": [],
-                "actions": [action("continue-command", "Continue")],
-                "override": None,
-            },
-        )
+        if arguments and arguments[0] in {"on", "off", "restart"}:
+            response = complete(request, f"signal extension {arguments[0]}")
+        else:
+            response = interaction_result(
+                request,
+                "session-extension-command-confirmation",
+                COMMAND_CONTINUATION,
+                {
+                    "type": "confirmation",
+                    "title": "Continue signal command?",
+                    "body": "Exercise command interaction continuation.",
+                    "details": [],
+                    "sections": [],
+                    "actions": [action("continue-command", "Continue")],
+                    "override": None,
+                },
+            )
     elif method == "interaction.respond":
         continuation = params.get("continuation")
         if continuation == SETUP_CONTINUATION:
@@ -203,12 +206,20 @@ def run_persistent(recorder: Recorder, script_id: str, thread_id: str) -> int:
             )
         elif method == "item/completed":
             item = params.get("item")
-            if isinstance(item, dict) and item.get("type") == "agentMessage":
-                recorder.add(
-                    "persistentCompleted",
-                    threadId=thread_id,
-                    text=item.get("text"),
-                )
+            if isinstance(item, dict):
+                if item.get("type") == "agentMessage":
+                    recorder.add(
+                        "persistentCompleted",
+                        threadId=thread_id,
+                        text=item.get("text"),
+                    )
+                elif item.get("type") == "userMessage":
+                    recorder.add(
+                        "persistentUserMessage",
+                        threadId=thread_id,
+                        clientId=item.get("clientId"),
+                        content=item.get("content"),
+                    )
         elif method == "turn/completed":
             recorder.add("persistentTurnCompleted", threadId=thread_id)
 
@@ -227,6 +238,7 @@ def run_persistent(recorder: Recorder, script_id: str, thread_id: str) -> int:
             {
                 "modelResponseDeltas": True,
                 "modelResponseCompleted": True,
+                "userMessages": True,
                 "turnCompleted": True,
                 "prompts": [],
                 "sessionUpdates": True,

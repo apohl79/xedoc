@@ -69,6 +69,9 @@
         },
         "turnCompleted": {
           "type": "boolean"
+        },
+        "userMessages": {
+          "type": "boolean"
         }
       },
       "type": "object"

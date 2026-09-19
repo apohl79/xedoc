@@ -210,7 +210,11 @@ class Client:
             item = params.get("item")
             if isinstance(item, dict):
                 self.recorder.add(
-                    "completed", itemType=item.get("type"), text=item.get("text")
+                    "completed",
+                    itemType=item.get("type"),
+                    text=item.get("text"),
+                    clientId=item.get("clientId"),
+                    content=item.get("content"),
                 )
         elif method == "turn/started":
             turn = params.get("turn")
@@ -384,6 +388,7 @@ def register(client: Client, args: argparse.Namespace, thread_id: str) -> None:
         {
             "modelResponseDeltas": True,
             "modelResponseCompleted": True,
+            "userMessages": True,
             "turnCompleted": True,
             "prompts": prompt_kinds,
             "sessionUpdates": True,
