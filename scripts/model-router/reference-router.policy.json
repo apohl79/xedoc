@@ -1,5 +1,5 @@
 {
-  "approval": "changes",
+  "approval": "policy",
   "approvalCalibration": {
     "minimumSamples": 10,
     "buckets": {}
@@ -120,20 +120,24 @@
   "confidence": "balanced",
   "confidencePresets": {
     "balanced": {
+      "minimumConfidence": 0.75,
       "minimumMargin": 0.08,
       "minimumScore": 0.35
     },
     "permissive": {
+      "minimumConfidence": 0.5,
       "minimumMargin": 0.04,
       "minimumScore": 0.2
     },
     "strict": {
+      "minimumConfidence": 0.9,
       "minimumMargin": 0.15,
       "minimumScore": 0.5
     }
   },
   "feedback": true,
   "mode": "off",
+  "notConfidentPolicy": "balanced",
   "ranking": {
     "ladder": [
       {

@@ -291,10 +291,23 @@ assert [entry["model"] for entry in ladder] == expected_models
 assert [entry["reasoningEffort"] for entry in ladder] == expected_efforts
 assert all(entry["providerId"] == "openai" for entry in ladder)
 assert policy["confidencePresets"] == {
-    "strict": {"minimumScore": 0.50, "minimumMargin": 0.15},
-    "balanced": {"minimumScore": 0.35, "minimumMargin": 0.08},
-    "permissive": {"minimumScore": 0.20, "minimumMargin": 0.04},
+    "strict": {
+        "minimumConfidence": 0.90,
+        "minimumScore": 0.50,
+        "minimumMargin": 0.15,
+    },
+    "balanced": {
+        "minimumConfidence": 0.75,
+        "minimumScore": 0.35,
+        "minimumMargin": 0.08,
+    },
+    "permissive": {
+        "minimumConfidence": 0.50,
+        "minimumScore": 0.20,
+        "minimumMargin": 0.04,
+    },
 }
+assert policy["notConfidentPolicy"] == "balanced"
 PY
   record_scenario reference-policy-contract \
     "all axis mappings, 15 ranked slots, score domain, and confidence thresholds exact"
@@ -412,7 +425,16 @@ root, _ = interaction(call("settings.open", context=router_context()))
 root, _ = interaction(respond(root, "open-mode"))
 root, _ = interaction(respond(root, "set-mode", {"mode": "full"}))
 approval_form, _ = interaction(respond(root, "open-approval"))
-root, _ = interaction(respond(approval_form, "set-approval", {"approval": "all"}))
+root, _ = interaction(
+    respond(
+        approval_form,
+        "set-approval",
+        {"approval": "all", "not-confident-policy": "strict"},
+    )
+)
+policy = json.load(open(policy_path, encoding="utf-8"))
+assert policy["approval"] == "all", policy
+assert policy["notConfidentPolicy"] == "strict", policy
 approval, surface = interaction(
     call(
         "routing.decide",
@@ -1094,6 +1116,7 @@ set_select_value() {
   local options="$2"
   local option="${expected#*: }"
   local pane
+  send_key Right
   for _ in $(seq 0 "$options"); do
     pane="$(capture_viewport)"
     if [[ "$pane" == *"> $option"* ]]; then
@@ -1126,6 +1149,7 @@ set_approval() {
   open_settings
   select_menu_item 2 "Choose a setting, then apply your changes."
   set_select_value "Approval prompts: $label" 3
+  send_key Enter
   wait_for_pane "Approval prompts: $approval"
   assert_policy "approval=$approval"
   assert_config_unchanged
@@ -1485,7 +1509,7 @@ exercise_settings_matrix() {
   set_mode full Full
 
   set_approval off Off
-  set_approval changes "Confident changes"
+  set_approval policy "By policy (not confident)"
   set_approval all "All available routes"
 
   set_feedback false
@@ -1705,13 +1729,15 @@ run_approval_matrix() {
   set_mode full Full
   set_feedback true
 
-  set_approval changes "Confident changes"
   start_tui
   send_prompt "ROUTER_CASE_CHANGES_SAME"
+  assert_approval_details
+  send_key Enter
   wait_for_request_marker "ROUTER_CASE_CHANGES_SAME"
   await_turn
-  assert_request_route "ROUTER_CASE_CHANGES_SAME" "$initial_model" "$initial_effort"
-  record_scenario approval-changes-same "unchanged route bypassed confirmation"
+  assert_request_route "ROUTER_CASE_CHANGES_SAME" "gpt-5.6-terra" low
+  record_scenario approval-policy-uncalibrated-same \
+    "uncalibrated unchanged route required confirmation"
 
   start_tui
   send_prompt "ROUTER_E2E_CHANGES_CHANGED review workflow security"
@@ -1719,8 +1745,9 @@ run_approval_matrix() {
   send_key Enter
   wait_for_request_marker "ROUTER_E2E_CHANGES_CHANGED"
   await_turn
-  assert_request_route "ROUTER_E2E_CHANGES_CHANGED" "gpt-5.6-sol" high
-  record_scenario approval-changes-changed "changed route required and accepted confirmation"
+  assert_request_route "ROUTER_E2E_CHANGES_CHANGED" "gpt-5.6-terra" low
+  record_scenario approval-policy-uncalibrated-changed \
+    "uncalibrated changed route required and accepted confirmation"
 
   set_approval all "All available routes"
   start_tui
@@ -1730,7 +1757,7 @@ run_approval_matrix() {
   send_key Enter
   wait_for_request_marker "ROUTER_CASE_ALL_SAME"
   await_turn
-  assert_request_route "ROUTER_CASE_ALL_SAME" "$initial_model" "$initial_effort"
+  assert_request_route "ROUTER_CASE_ALL_SAME" "gpt-5.6-terra" low
   record_scenario approval-all-same "unchanged route still required confirmation"
 
   send_prompt "ROUTER_E2E_REJECT review workflow security"
@@ -1755,7 +1782,7 @@ run_approval_matrix() {
   wait_for_pane "router parent completed" 600
   wait_for_child_request_marker "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence"
   assert_request_route \
-    "ROUTER_E2E_CHILD" "gpt-5.6-sol" high "$root_thread_id" "$root_sequence"
+    "ROUTER_E2E_CHILD" "gpt-5.6-sol" low "$root_thread_id" "$root_sequence"
   record_scenario approval-subagent-reject \
     "subagent confirmation rejected and current child route retained"
 }
@@ -2094,6 +2121,12 @@ main() {
     run_shadow_feedback_matrix
     assert_config_unchanged
     printf 'PASS: scripted model-router shadow-feedback tmux acceptance\n'
+    return
+  elif [[ "$phase" == "approval" ]]; then
+    start_tui
+    run_approval_matrix
+    assert_config_unchanged
+    printf 'PASS: scripted model-router approval tmux acceptance\n'
     return
   elif [[ "$phase" == "post-modes" ]]; then
     start_tui

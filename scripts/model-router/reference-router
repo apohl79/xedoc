@@ -35,7 +35,7 @@ DIAGNOSTICS_PATH = STATE_DIR / "reference-router.diagnostics.jsonl"
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MAX_PROMPT_PREVIEW_BYTES = 508
 MODES = ("off", "shadow-subagents", "shadow-full", "subagents", "full")
-APPROVALS = ("off", "changes", "all", "not-confident")
+APPROVALS = ("off", "policy", "all")
 WORK_TYPES = (
     "group1: question, docs_analysis, packaging, operational, testing",
     "group2: implementation, bug_fix, refactor, docs_authoring, orchestration, calibration",
@@ -51,6 +51,11 @@ AXIS_VALUES = {
     "complexity": COMPLEXITIES,
     "orchestration": ORCHESTRATIONS,
     "risk": RISKS,
+}
+NOT_CONFIDENT_POLICY_THRESHOLDS = {
+    "permissive": 0.50,
+    "balanced": 0.75,
+    "strict": 0.90,
 }
 
 
@@ -85,6 +90,14 @@ def legacy_policy_path():
 
 def upgrade_policy(policy):
     changed = False
+    presets = policy.get("confidencePresets")
+    if isinstance(presets, dict):
+        for name, thresholds in presets.items():
+            if isinstance(thresholds, dict) and "minimumConfidence" not in thresholds:
+                thresholds["minimumConfidence"] = NOT_CONFIDENT_POLICY_THRESHOLDS.get(
+                    name, 0.75
+                )
+                changed = True
     if "semanticClassifier" not in policy:
         semantic_policy_path = (
             RUNTIME_SEMANTIC_POLICY_PATH
@@ -121,6 +134,12 @@ def upgrade_policy(policy):
     elif "minimumSamples" not in policy["approvalCalibration"]:
         policy["approvalCalibration"]["minimumSamples"] = 10
         changed = True
+    if "notConfidentPolicy" not in policy:
+        policy["notConfidentPolicy"] = policy.get("confidence")
+        changed = True
+    if policy.get("approval") in ("changes", "not-confident"):
+        policy["approval"] = "policy"
+        changed = True
     return changed
 
 
@@ -144,6 +163,7 @@ def validate_policy(policy):
     for preset in presets.values():
         score = preset.get("minimumScore")
         margin = preset.get("minimumMargin")
+        confidence = preset.get("minimumConfidence")
         if (
             not isinstance(score, (int, float))
             or isinstance(score, bool)
@@ -153,10 +173,16 @@ def validate_policy(policy):
             or isinstance(margin, bool)
             or not math.isfinite(margin)
             or not 0.0 <= margin <= 1.0
+            or not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not math.isfinite(confidence)
+            or not 0.0 <= confidence <= 1.0
         ):
             raise ValueError(
                 "policy confidence thresholds must be finite values from zero to one"
             )
+    if policy.get("notConfidentPolicy") not in presets:
+        raise ValueError("policy selects an unknown not-confident policy")
     calibration = policy.get("approvalCalibration")
     if not isinstance(calibration, dict) or set(calibration) != {
         "minimumSamples",
@@ -728,8 +754,9 @@ def confidence_preset_options(policy):
             "id": preset,
             "label": (
                 f"{preset.title()} "
-                f"({percentage(thresholds['minimumScore'])} calibrated confidence, "
-                f"{percentage(thresholds['minimumMargin'])} similarity margin)"
+                f"({percentage(thresholds['minimumConfidence'])} confidence; "
+                f"{percentage(thresholds['minimumScore'])} similarity, "
+                f"{percentage(thresholds['minimumMargin'])} margin)"
             ),
         }
         for preset, thresholds in policy["confidencePresets"].items()
@@ -739,9 +766,8 @@ def confidence_preset_options(policy):
 def approval_options():
     return [
         {"id": "off", "label": "Off"},
-        {"id": "changes", "label": "Confident changes"},
+        {"id": "policy", "label": "By policy (not confident)"},
         {"id": "all", "label": "All available routes"},
-        {"id": "not-confident", "label": "Not confident"},
     ]
 
 
@@ -869,7 +895,9 @@ def policy_route_id(route, routes):
     return f"route-{routes.index(route)}" if route in routes else None
 
 
-def policy_select_field(identifier, label, value, options, description=None):
+def policy_select_field(
+    identifier, label, value, options, description=None, search_placeholder=None
+):
     field = {
         "type": "select",
         "id": identifier,
@@ -880,6 +908,8 @@ def policy_select_field(identifier, label, value, options, description=None):
     }
     if description is not None:
         field["description"] = description
+    if search_placeholder is not None:
+        field["search"] = {"placeholder": search_placeholder}
     return field
 
 
@@ -1055,6 +1085,7 @@ def settings_surface(policy, context, continuation):
                     selected,
                     [{"id": "none", "label": "Not set"}, *route_options],
                     "Classifies complexity, risk, and orchestration through Xedoc.",
+                    "Filter classifier models",
                 )
             ],
             "set-classifier-model",
@@ -1243,7 +1274,13 @@ def settings_response(request, policy):
                     "Approval prompts",
                     policy["approval"],
                     approval_options(),
-                )
+                ),
+                select_field(
+                    "not-confident-policy",
+                    "Confidence threshold",
+                    policy["notConfidentPolicy"],
+                    confidence_preset_options(policy),
+                ),
             ],
             "set-approval",
         )
@@ -1251,7 +1288,16 @@ def settings_response(request, policy):
         approval = values.get("approval")
         if approval not in APPROVALS:
             return error_notice(policy, "Approval must be one of the offered choices.")
-        update(policy, approval=approval)
+        not_confident_policy = values.get("not-confident-policy")
+        if not_confident_policy not in policy["confidencePresets"]:
+            return error_notice(
+                policy, "Confidence threshold must be one of the offered choices."
+            )
+        update(
+            policy,
+            approval=approval,
+            notConfidentPolicy=not_confident_policy,
+        )
         return root_menu(policy, context)
     if action_id == "toggle-feedback":
         update(policy, feedback=not policy["feedback"])
@@ -2113,6 +2159,7 @@ def approval(
                     "text": f"LLM Classification: {llm_elapsed_ms / 1000:.2f} s"
                     if llm_elapsed_ms is not None
                     else "LLM Classification: not run",
+                    "indent": 1,
                 },
                 {
                     "text": (
@@ -2121,7 +2168,8 @@ def approval(
                         f"LLM self-rating "
                         f"{percentage(llm_confidence) if llm_confidence is not None else 'not available'}; "
                         f"similarity {percentage(confidence)} / margin {percentage(margin)}"
-                    )
+                    ),
+                    "indent": 1,
                 },
             ],
         },
@@ -2358,13 +2406,21 @@ def routing_decide(request, policy, llm_classification=None, llm_elapsed_ms=None
     should_shadow = (
         shadow and not active and not steering and route is not None and confident
     )
-    current = context.get("currentRoute")
-    changed = route != current
     route_can_be_approved = enabled and not active and not steering and route is not None
+    needs_calibration = calibrated_confidence is None
+    below_not_confident_threshold = (
+        not needs_calibration
+        and calibrated_confidence
+        < policy["confidencePresets"][policy["notConfidentPolicy"]][
+            "minimumConfidence"
+        ]
+    )
     needs_approval = route_can_be_approved and (
         policy["approval"] == "all"
-        or (policy["approval"] == "changes" and confident and changed)
-        or (policy["approval"] == "not-confident" and not confident)
+        or (
+            policy["approval"] == "policy"
+            and (needs_calibration or below_not_confident_threshold)
+        )
     )
     if needs_approval:
         record_routing_decision(
