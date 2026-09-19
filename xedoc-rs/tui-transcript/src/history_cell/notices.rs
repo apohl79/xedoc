@@ -216,8 +216,15 @@ pub fn new_session_extension_info_event(
     extension_name: String,
     message: String,
 ) -> PlainHistoryCell {
-    let lines: Vec<Line<'static>> =
-        vec![vec![extension_name.into(), " ".into(), message.dim()].into()];
+    let lines: Vec<Line<'static>> = vec![
+        vec![
+            "  ".into(),
+            extension_name.into(),
+            " ".into(),
+            message.dim(),
+        ]
+        .into(),
+    ];
     PlainHistoryCell { lines }
 }
 
