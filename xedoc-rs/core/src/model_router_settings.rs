@@ -47,6 +47,7 @@ pub async fn open(
             "surfaces": ["menu", "form", "confirmation"],
         },
         "eligibleRoutes": eligible_routes,
+        "eligibleClassifierRoutes": eligible_routes,
         "currentRoute": current_script_route(config),
         "session": {
             "routerMode": session_mode,
@@ -92,6 +93,7 @@ pub async fn respond(
             "surfaces": ["menu", "form", "confirmation"],
         },
         "eligibleRoutes": eligible_routes,
+        "eligibleClassifierRoutes": eligible_routes,
         "currentRoute": current_script_route(config),
         "session": {
             "routerMode": session_mode,

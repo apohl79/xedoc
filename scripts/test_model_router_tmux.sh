@@ -1129,6 +1129,13 @@ clear_reporting_baseline() {
   assert_policy "reportingBaseline=null"
 }
 
+assert_classifier_model_picker() {
+  open_settings
+  select_menu_item 7 "Routing policy"
+  select_menu_item 3 "Classifier model"
+  wait_for_pane "openai/gpt-5.6-luna/low"
+}
+
 exercise_host_action() {
   local index="$1"
   local name="$2"
@@ -1521,6 +1528,8 @@ run_classifier_mode_matrix() {
   local root_sequence
   local root_thread_id
   reset_policy
+  start_tui
+  assert_classifier_model_picker
   set_classifier_route full
   start_tui
   send_prompt "ROUTER_E2E_CLASSIFIER_FULL review workflow security"
@@ -1558,7 +1567,7 @@ run_classifier_mode_matrix() {
   assert_latest_hybrid_decision \
     subagent subagents \
     "group3: research, review, diagnosis, design" \
-    low low none apply
+    low low none keepCurrent
   record_scenario classifier-modes \
     "LLM classification and embedding work-type similarity reached full, shadow, and subagent routing"
 }
@@ -1834,9 +1843,9 @@ run_shadow_feedback_matrix() {
   wait_for_pane "Used model: openai/$initial_model/$initial_effort;"
   wait_for_pane "Classifications: Work type("
   wait_for_pane "Stats: Embedding("
-  wait_for_pane "embedding batch "
+  wait_for_pane_absent "embedding batch "
   record_scenario shadow-feedback \
-    "script-owned shadow summary and routing calculation visible while route is retained"
+    "script-owned shadow summary visible without duplicate routing calculation"
 }
 
 run_baseline_report_matrix() {

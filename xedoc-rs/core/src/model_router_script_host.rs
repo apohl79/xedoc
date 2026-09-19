@@ -233,7 +233,6 @@ impl ModelRouterScriptHost {
         if classifier.continuation.as_str().len() > MAX_CLASSIFIER_CONTINUATION_BYTES
             || classifier.input.is_empty()
             || classifier.input.len() > MAX_CLASSIFIER_INPUT_BYTES
-            || classifier.route.provider_id.as_str() != classifier_config.model_provider_id
             || !route_is_eligible(&classifier.route, eligible_routes)
         {
             return Err(ModelRouterScriptFailure::InvalidClassifierRequest);
@@ -244,9 +243,19 @@ impl ModelRouterScriptHost {
             .as_str()
             .parse::<ReasoningEffortConfig>()
             .map_err(|_| ModelRouterScriptFailure::InvalidClassifierRequest)?;
+        let mut classifier_config = classifier_config.clone();
+        if !crate::model_router::apply_script_route_to_config(
+            &mut classifier_config,
+            &session.services.models_manager,
+            &classifier.route,
+        )
+        .await
+        {
+            return Err(ModelRouterScriptFailure::InvalidClassifierRequest);
+        }
         let classifier_turn = turn_context
             .with_configured_route(
-                classifier_config.clone(),
+                classifier_config,
                 classifier.route.model.as_str().to_string(),
                 reasoning_effort,
                 &session.services.models_manager,
