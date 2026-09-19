@@ -20,6 +20,7 @@ pub use interaction::ModelRouterSettingsHostAction;
 pub use interaction::NoticeLevel;
 pub use interaction::NoticeSurface;
 pub use interaction::SelectOption;
+pub use interaction::SelectSearch;
 pub use interaction::SelectedAction;
 pub use interaction::SessionUpdate;
 pub use invoker::MAX_SCRIPT_SUMMARY_BYTES;

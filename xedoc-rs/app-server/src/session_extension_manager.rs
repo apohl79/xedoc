@@ -250,6 +250,16 @@ impl SessionExtensionManager {
             }
             descriptor.clone()
         };
+        let descriptor = self.refresh_descriptor(thread_id, descriptor).await?;
+        if !descriptor
+            .commands
+            .iter()
+            .any(|command| command.name == params.command)
+        {
+            return Err(invalid_request(
+                "session extension command is not declared by the current plugin version",
+            ));
+        }
 
         if params
             .arguments
@@ -320,6 +330,58 @@ impl SessionExtensionManager {
             }
         });
         Ok(SessionExtensionCommandInvokeResponse {})
+    }
+
+    async fn refresh_descriptor(
+        &self,
+        thread_id: ThreadId,
+        descriptor: SessionExtensionDescriptor,
+    ) -> Result<SessionExtensionDescriptor, JSONRPCErrorError> {
+        if !descriptor.entrypoint.is_file() {
+            self.inner.thread_manager.plugins_manager().clear_cache();
+        }
+        let Some(current) = self
+            .discover_extensions()
+            .await
+            .into_iter()
+            .find(|candidate| candidate.id == descriptor.id)
+        else {
+            return Err(invalid_request(
+                "session extension is no longer declared by an active plugin",
+            ));
+        };
+        if current.declaration_digest == descriptor.declaration_digest {
+            return Ok(current);
+        }
+
+        self.disable(thread_id, &descriptor.id).await;
+        let Some(decision) = self.request_approval(thread_id, &current).await else {
+            return Err(invalid_request(
+                "session extension update approval was not answered",
+            ));
+        };
+        if matches!(decision, ApprovalDecision::Deny) {
+            if let Some(state) = self.inner.threads.lock().await.get_mut(&thread_id) {
+                state.approved_extension_ids.remove(&descriptor.id);
+                state.extensions.insert(descriptor.id.clone(), current);
+            }
+            self.notify_commands(thread_id).await;
+            return Err(invalid_request("session extension update was not approved"));
+        }
+
+        if let Some(state) = self.inner.threads.lock().await.get_mut(&thread_id) {
+            state.approved_extension_ids.insert(descriptor.id.clone());
+            state
+                .extensions
+                .insert(descriptor.id.clone(), current.clone());
+        }
+        if matches!(decision, ApprovalDecision::Always) {
+            self.persist_grant(&current).await;
+        }
+        self.activate_extension(thread_id, current.clone())
+            .await
+            .map_err(invalid_request)?;
+        Ok(current)
     }
 
     async fn activate_discovered_extensions(&self, thread_id: ThreadId) {

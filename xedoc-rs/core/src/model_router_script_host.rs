@@ -1385,6 +1385,7 @@ fn validate_form_field(
             value,
             current,
             options,
+            search,
         } => {
             validate_opaque_identifier(id)?;
             validate_plain_text(label, MAX_INTERACTION_TITLE_BYTES)?;
@@ -1399,6 +1400,12 @@ fn validate_form_field(
             validate_collection_len(options.len(), MAX_INTERACTION_OPTIONS)?;
             options.iter().try_for_each(validate_select_option)?;
             validate_unique_identifiers(options.iter().map(|option| option.id.as_str()))?;
+            validate_optional_plain_text(
+                search
+                    .as_ref()
+                    .and_then(|search| search.placeholder.as_deref()),
+                MAX_INTERACTION_DESCRIPTION_BYTES,
+            )?;
             if current
                 .as_ref()
                 .is_none_or(|current| options.iter().any(|option| option.id == *current))

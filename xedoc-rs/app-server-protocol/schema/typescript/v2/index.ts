@@ -111,6 +111,7 @@ export type { ExtensionInteractionRequestResponse } from "./ExtensionInteraction
 export type { ExtensionInteractionRoute } from "./ExtensionInteractionRoute";
 export type { ExtensionInteractionRow } from "./ExtensionInteractionRow";
 export type { ExtensionInteractionSection } from "./ExtensionInteractionSection";
+export type { ExtensionInteractionSelectSearch } from "./ExtensionInteractionSelectSearch";
 export type { ExtensionInteractionSelectedAction } from "./ExtensionInteractionSelectedAction";
 export type { ExtensionInteractionSurface } from "./ExtensionInteractionSurface";
 export type { FileChangeApprovalDecision } from "./FileChangeApprovalDecision";

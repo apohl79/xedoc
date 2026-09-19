@@ -5,8 +5,9 @@ import type { ExtensionInteractionAction } from "./ExtensionInteractionAction";
 import type { ExtensionInteractionEligibleRoute } from "./ExtensionInteractionEligibleRoute";
 import type { ExtensionInteractionOption } from "./ExtensionInteractionOption";
 import type { ExtensionInteractionRoute } from "./ExtensionInteractionRoute";
+import type { ExtensionInteractionSelectSearch } from "./ExtensionInteractionSelectSearch";
 
 /**
  * A field in an extension interaction form.
  */
-export type ExtensionInteractionField = { "type": "select", id: string, label: string, description: string | null, value: string | null, current: string | null, options: Array<ExtensionInteractionOption>, } | { "type": "boolean", id: string, label: string, description: string | null, value: boolean, } | { "type": "text", id: string, label: string, description: string | null, value: string, maxBytes: number, sensitive: boolean, } | { "type": "modelRoute", id: string, label: string, description: string | null, value: ExtensionInteractionRoute | null, eligibleRoutes: Array<ExtensionInteractionEligibleRoute>, } | { "type": "action", id: string, label: string, description: string | null, action: ExtensionInteractionAction, };
+export type ExtensionInteractionField = { "type": "select", id: string, label: string, description: string | null, value: string | null, current: string | null, options: Array<ExtensionInteractionOption>, search: ExtensionInteractionSelectSearch | null, } | { "type": "boolean", id: string, label: string, description: string | null, value: boolean, } | { "type": "text", id: string, label: string, description: string | null, value: string, maxBytes: number, sensitive: boolean, } | { "type": "modelRoute", id: string, label: string, description: string | null, value: ExtensionInteractionRoute | null, eligibleRoutes: Array<ExtensionInteractionEligibleRoute>, } | { "type": "action", id: string, label: string, description: string | null, action: ExtensionInteractionAction, };

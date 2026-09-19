@@ -158,6 +158,8 @@ pub enum FormField {
         current: Option<OpaqueId>,
         /// Selectable options.
         options: Vec<SelectOption>,
+        /// Optional host-rendered option filter.
+        search: Option<SelectSearch>,
     },
     /// Boolean value.
     Boolean {
@@ -224,6 +226,14 @@ pub struct SelectOption {
     pub description: Option<String>,
     /// Whether the option is unavailable.
     pub disabled: Option<bool>,
+}
+
+/// Script-controlled filtering for a select field.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectSearch {
+    /// Optional placeholder rendered while the filter is empty.
+    pub placeholder: Option<String>,
 }
 
 /// Confirmation surface that may include an override form.

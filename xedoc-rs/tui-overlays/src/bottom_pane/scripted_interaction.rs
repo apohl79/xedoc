@@ -58,6 +58,7 @@ enum FieldValue {
 struct SelectPickerState {
     field_index: usize,
     option_index: Option<usize>,
+    search_query: String,
 }
 
 pub struct ScriptedInteractionView {
@@ -71,6 +72,7 @@ pub struct ScriptedInteractionView {
     action_selected: usize,
     field_selected: usize,
     select_picker: Option<SelectPickerState>,
+    single_select_search_query: String,
     form_values: Vec<FieldValue>,
     override_values: Vec<FieldValue>,
     completion: Option<ViewCompletion>,
@@ -118,6 +120,7 @@ impl ScriptedInteractionView {
             action_selected: 0,
             field_selected: 0,
             select_picker: None,
+            single_select_search_query: String::new(),
             form_values,
             override_values,
             completion: None,
@@ -438,12 +441,19 @@ impl ScriptedInteractionView {
         let Some(form) = self.active_form() else {
             return;
         };
-        let Some(ExtensionInteractionField::Select { options, .. }) = form.fields.first() else {
+        let Some(ExtensionInteractionField::Select {
+            options, search, ..
+        }) = form.fields.first()
+        else {
             return;
         };
+        let search_query = self.single_select_search_query.clone();
+        let visible_indices =
+            select_option_indices(options, search.as_ref().map(|_| search_query.as_str()));
         if let Some(FieldValue::Select { option_index }) = self.active_form_values_mut().first_mut()
         {
-            *option_index = cycle_enabled_index(*option_index, options, direction);
+            *option_index =
+                cycle_enabled_option_index(*option_index, options, &visible_indices, direction);
         }
     }
 
@@ -485,6 +495,31 @@ impl ScriptedInteractionView {
             }
             _ => false,
         }
+    }
+
+    fn edit_single_select_search(&mut self, key_event: KeyEvent) -> bool {
+        let Some(form) = self.active_form() else {
+            return false;
+        };
+        let Some(ExtensionInteractionField::Select {
+            options,
+            search: Some(_),
+            ..
+        }) = form.fields.first()
+        else {
+            return false;
+        };
+        let changed = edit_search_query(&mut self.single_select_search_query, key_event);
+        if changed {
+            let visible_indices =
+                select_option_indices(options, Some(&self.single_select_search_query));
+            if let Some(FieldValue::Select { option_index }) =
+                self.active_form_values_mut().first_mut()
+            {
+                *option_index = first_enabled_option_index(options, &visible_indices);
+            }
+        }
+        changed
     }
 
     fn select_menu_action(&mut self, key_event: KeyEvent) {
@@ -633,12 +668,17 @@ impl ScriptedInteractionView {
                     .iter()
                     .position(|option| option.disabled != Some(true))
             }),
+            search_query: String::new(),
         });
         true
     }
 
     fn cycle_select_picker_option(&mut self, direction: i8) {
-        let Some(field_index) = self.select_picker.as_ref().map(|picker| picker.field_index) else {
+        let Some((field_index, search_query)) = self
+            .select_picker
+            .as_ref()
+            .map(|picker| (picker.field_index, picker.search_query.clone()))
+        else {
             return;
         };
         let Some(form) = self.active_form() else {
@@ -648,9 +688,93 @@ impl ScriptedInteractionView {
         else {
             return;
         };
+        let visible_indices = select_option_indices(options, Some(&search_query));
         if let Some(picker) = &mut self.select_picker {
-            picker.option_index = cycle_enabled_index(picker.option_index, options, direction);
+            picker.option_index = cycle_enabled_option_index(
+                picker.option_index,
+                options,
+                &visible_indices,
+                direction,
+            );
         }
+    }
+
+    fn edit_select_picker_search(&mut self, key_event: KeyEvent) -> bool {
+        let Some(field_index) = self.select_picker.as_ref().map(|picker| picker.field_index) else {
+            return false;
+        };
+        let Some(form) = self.active_form() else {
+            return false;
+        };
+        let Some(ExtensionInteractionField::Select {
+            options,
+            search: Some(_),
+            ..
+        }) = form.fields.get(field_index)
+        else {
+            return false;
+        };
+        let Some(picker) = &mut self.select_picker else {
+            return false;
+        };
+        if !edit_search_query(&mut picker.search_query, key_event) {
+            return false;
+        }
+        let visible_indices = select_option_indices(options, Some(&picker.search_query));
+        picker.option_index = first_enabled_option_index(options, &visible_indices);
+        true
+    }
+
+    fn paste_single_select_search(&mut self, pasted: &str) -> bool {
+        let Some(form) = self.active_form() else {
+            return false;
+        };
+        let Some(ExtensionInteractionField::Select {
+            options,
+            search: Some(_),
+            ..
+        }) = form.fields.first()
+        else {
+            return false;
+        };
+        if pasted.is_empty() {
+            return false;
+        }
+        self.single_select_search_query.push_str(pasted);
+        let visible_indices =
+            select_option_indices(options, Some(&self.single_select_search_query));
+        if let Some(FieldValue::Select { option_index }) = self.active_form_values_mut().first_mut()
+        {
+            *option_index = first_enabled_option_index(options, &visible_indices);
+        }
+        true
+    }
+
+    fn paste_select_picker_search(&mut self, pasted: &str) -> bool {
+        let Some(field_index) = self.select_picker.as_ref().map(|picker| picker.field_index) else {
+            return false;
+        };
+        let Some(form) = self.active_form() else {
+            return false;
+        };
+        let Some(ExtensionInteractionField::Select {
+            options,
+            search: Some(_),
+            ..
+        }) = form.fields.get(field_index)
+        else {
+            return false;
+        };
+        if pasted.is_empty() {
+            return false;
+        }
+        let Some(picker) = &mut self.select_picker else {
+            return false;
+        };
+        picker.search_query.push_str(pasted);
+        let visible_indices = select_option_indices(options, Some(&picker.search_query));
+        picker.option_index = first_enabled_option_index(options, &visible_indices);
+        true
     }
 
     fn choose_select_picker_option(&mut self) {
@@ -700,6 +824,9 @@ impl ScriptedInteractionView {
 
     fn handle_form_key_event(&mut self, key_event: KeyEvent) {
         if self.select_picker.is_some() {
+            if self.edit_select_picker_search(key_event) {
+                return;
+            }
             match key_event.code {
                 KeyCode::Up => self.cycle_select_picker_option(-1),
                 KeyCode::Down | KeyCode::Tab => self.cycle_select_picker_option(1),
@@ -722,6 +849,9 @@ impl ScriptedInteractionView {
             return;
         };
         if self.has_single_select_field() {
+            if self.edit_single_select_search(key_event) {
+                return;
+            }
             match key_event.code {
                 KeyCode::Up => self.cycle_single_select_field(-1),
                 KeyCode::Down | KeyCode::Tab => self.cycle_single_select_field(1),
@@ -849,6 +979,12 @@ impl BottomPaneView for ScriptedInteractionView {
     }
 
     fn handle_paste(&mut self, pasted: String) -> bool {
+        if self.select_picker.is_some() {
+            return self.paste_select_picker_search(&pasted);
+        }
+        if self.has_single_select_field() {
+            return self.paste_single_select_search(&pasted);
+        }
         let Some(form) = self.active_form() else {
             return false;
         };
@@ -919,13 +1055,14 @@ impl BottomPaneView for ScriptedInteractionView {
 
 impl Renderable for ScriptedInteractionView {
     fn desired_height(&self, width: u16) -> u16 {
-        u16::try_from(self.content_lines(width.saturating_sub(4)).len())
+        u16::try_from(self.content_lines(width.saturating_sub(4), u16::MAX).len())
             .unwrap_or(u16::MAX)
             .saturating_add(3)
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        let content_lines = self.content_lines(area.width.saturating_sub(4));
+        let content_lines =
+            self.content_lines(area.width.saturating_sub(4), area.height.saturating_sub(3));
         let menu_height = u16::try_from(content_lines.len())
             .unwrap_or(u16::MAX)
             .saturating_add(2)
@@ -947,7 +1084,7 @@ impl Renderable for ScriptedInteractionView {
 }
 
 impl ScriptedInteractionView {
-    fn content_lines(&self, width: u16) -> Vec<Line<'static>> {
+    fn content_lines(&self, width: u16, max_height: u16) -> Vec<Line<'static>> {
         let mut lines = match (&self.request.surface, &self.mode) {
             (
                 ExtensionInteractionSurface::Menu {
@@ -1004,7 +1141,7 @@ impl ScriptedInteractionView {
                     ..
                 },
                 RenderMode::Override,
-            ) => self.form_lines(width),
+            ) => self.form_lines(width, max_height),
             (
                 ExtensionInteractionSurface::Confirmation {
                     title,
@@ -1079,12 +1216,12 @@ impl ScriptedInteractionView {
         lines
     }
 
-    fn form_lines(&self, width: u16) -> Vec<Line<'static>> {
+    fn form_lines(&self, width: u16, max_height: u16) -> Vec<Line<'static>> {
         let Some(form) = self.active_form() else {
             return Vec::new();
         };
         if self.has_single_select_field() {
-            return self.single_select_form_lines(&form, width);
+            return self.single_select_form_lines(&form, width, max_height);
         }
         let mut lines = titled_lines(
             &form.title,
@@ -1094,42 +1231,77 @@ impl ScriptedInteractionView {
             width,
         );
         lines.push(Line::default());
-        lines.extend(
-            form.fields
-                .iter()
-                .zip(self.active_form_values())
-                .enumerate()
-                .flat_map(|(index, (field, value))| {
-                    let marker = if index == self.field_selected {
-                        ">"
-                    } else {
-                        " "
-                    };
-                    let (label, description) = field_label_and_description(field, value);
-                    let field_line = format!("{marker} {label}");
-                    let mut field_lines = vec![if index == self.field_selected {
-                        field_line.cyan().into()
-                    } else {
-                        field_line.into()
-                    }];
-                    if let Some(description) = description {
-                        field_lines.extend(wrapped_lines(description, width, "  "));
-                    }
-                    if self
-                        .select_picker
-                        .as_ref()
-                        .is_some_and(|picker| picker.field_index == index)
-                        && let (ExtensionInteractionField::Select { options, .. }, Some(picker)) =
-                            (field, self.select_picker.as_ref())
-                    {
-                        field_lines.extend(options.iter().enumerate().map(
-                            |(option_index, option)| {
-                                let marker = if picker.option_index == Some(option_index) {
+        for (index, (field, value)) in form
+            .fields
+            .iter()
+            .zip(self.active_form_values())
+            .enumerate()
+        {
+            let marker = if index == self.field_selected {
+                ">"
+            } else {
+                " "
+            };
+            let (label, description) = field_label_and_description(field, value);
+            let field_line = format!("{marker} {label}");
+            let mut field_lines = vec![if index == self.field_selected {
+                field_line.cyan().into()
+            } else {
+                field_line.into()
+            }];
+            if let Some(description) = description {
+                field_lines.extend(wrapped_lines(description, width, "  "));
+            }
+            if self
+                .select_picker
+                .as_ref()
+                .is_some_and(|picker| picker.field_index == index)
+                && let (
+                    ExtensionInteractionField::Select {
+                        options, search, ..
+                    },
+                    Some(picker),
+                ) = (field, self.select_picker.as_ref())
+            {
+                if let Some(search) = search {
+                    field_lines.push(search_line(
+                        &picker.search_query,
+                        search.placeholder.as_deref(),
+                    ));
+                }
+                let visible_indices = select_option_indices(
+                    options,
+                    search.as_ref().map(|_| picker.search_query.as_str()),
+                );
+                if visible_indices.is_empty() {
+                    field_lines.push("    No matching options".dim().into());
+                } else {
+                    let visible_rows = usize::from(max_height)
+                        .saturating_sub(lines.len() + field_lines.len())
+                        .max(1);
+                    let selected_visible_index = picker
+                        .option_index
+                        .and_then(|option_index| {
+                            visible_indices
+                                .iter()
+                                .position(|visible| *visible == option_index)
+                        })
+                        .unwrap_or_default();
+                    let scroll_top =
+                        scroll_top(selected_visible_index, visible_indices.len(), visible_rows);
+                    field_lines.extend(
+                        visible_indices
+                            .iter()
+                            .skip(scroll_top)
+                            .take(visible_rows)
+                            .map(|option_index| {
+                                let option = &options[*option_index];
+                                let marker = if picker.option_index == Some(*option_index) {
                                     ">"
                                 } else {
                                     " "
                                 };
-                                let current = select_option_is_current(field, option_index);
+                                let current = select_option_is_current(field, *option_index);
                                 let unavailable = if option.disabled == Some(true) {
                                     " (unavailable)"
                                 } else {
@@ -1137,19 +1309,19 @@ impl ScriptedInteractionView {
                                 };
                                 let option_line =
                                     format!("    {marker} {}{current}{unavailable}", option.label);
-                                if picker.option_index == Some(option_index) {
+                                if picker.option_index == Some(*option_index) {
                                     option_line.cyan().into()
                                 } else if option.disabled == Some(true) {
                                     option_line.dim().into()
                                 } else {
                                     option_line.into()
                                 }
-                            },
-                        ));
-                    }
-                    field_lines
-                }),
-        );
+                            }),
+                    );
+                }
+            }
+            lines.extend(field_lines);
+        }
         lines
     }
 
@@ -1157,6 +1329,7 @@ impl ScriptedInteractionView {
         &self,
         form: &ExtensionInteractionForm,
         width: u16,
+        max_height: u16,
     ) -> Vec<Line<'static>> {
         let mut lines = titled_lines(
             &form.title,
@@ -1167,33 +1340,63 @@ impl ScriptedInteractionView {
         );
         lines.push(Line::default());
         let (
-            field @ ExtensionInteractionField::Select { options, .. },
+            field @ ExtensionInteractionField::Select {
+                options, search, ..
+            },
             FieldValue::Select { option_index },
         ) = (&form.fields[0], &self.active_form_values()[0])
         else {
             return lines;
         };
-        lines.extend(options.iter().enumerate().map(|(index, option)| {
-            let marker = if *option_index == Some(index) {
-                ">"
-            } else {
-                " "
-            };
-            let current = select_option_is_current(field, index);
-            let unavailable = if option.disabled == Some(true) {
-                " (unavailable)"
-            } else {
-                ""
-            };
-            let option_line = format!("{marker} {}{current}{unavailable}", option.label);
-            if *option_index == Some(index) {
-                option_line.cyan().into()
-            } else if option.disabled == Some(true) {
-                option_line.dim().into()
-            } else {
-                option_line.into()
-            }
-        }));
+        if let Some(search) = search {
+            lines.push(search_line(
+                &self.single_select_search_query,
+                search.placeholder.as_deref(),
+            ));
+        }
+        let visible_indices = select_option_indices(
+            options,
+            search
+                .as_ref()
+                .map(|_| self.single_select_search_query.as_str()),
+        );
+        if visible_indices.is_empty() {
+            lines.push(" No matching options".dim().into());
+            return lines;
+        }
+        let visible_rows = usize::from(max_height).saturating_sub(lines.len()).max(1);
+        let selected_visible_index = option_index
+            .and_then(|index| visible_indices.iter().position(|visible| *visible == index))
+            .unwrap_or_default();
+        let scroll_top = scroll_top(selected_visible_index, visible_indices.len(), visible_rows);
+        lines.extend(
+            visible_indices
+                .iter()
+                .skip(scroll_top)
+                .take(visible_rows)
+                .map(|index| {
+                    let option = &options[*index];
+                    let marker = if *option_index == Some(*index) {
+                        ">"
+                    } else {
+                        " "
+                    };
+                    let current = select_option_is_current(field, *index);
+                    let unavailable = if option.disabled == Some(true) {
+                        " (unavailable)"
+                    } else {
+                        ""
+                    };
+                    let option_line = format!("{marker} {}{current}{unavailable}", option.label);
+                    if *option_index == Some(*index) {
+                        option_line.cyan().into()
+                    } else if option.disabled == Some(true) {
+                        option_line.dim().into()
+                    } else {
+                        option_line.into()
+                    }
+                }),
+        );
         lines
     }
 
@@ -1203,6 +1406,20 @@ impl ScriptedInteractionView {
             ExtensionInteractionSurface::Notice { .. }
         ) {
             "Press enter or esc to dismiss".dim().into()
+        } else if self.has_single_select_field()
+            && self.active_form().is_some_and(|form| {
+                matches!(
+                    form.fields.first(),
+                    Some(ExtensionInteractionField::Select {
+                        search: Some(_),
+                        ..
+                    })
+                )
+            })
+        {
+            "Type to filter · ↑/↓ select · enter confirm · esc go back"
+                .dim()
+                .into()
         } else if self.active_form().is_some_and(|form| {
             form.fields.len() > 1
                 && form
@@ -1404,22 +1621,85 @@ fn field_label_and_description<'a>(
     }
 }
 
-fn cycle_enabled_index(
+fn cycle_enabled_option_index(
     selected: Option<usize>,
     options: &[xedoc_app_server_protocol::ExtensionInteractionOption],
+    visible_indices: &[usize],
     direction: i8,
 ) -> Option<usize> {
-    if options.is_empty() || options.iter().all(|option| option.disabled == Some(true)) {
+    if visible_indices.is_empty()
+        || visible_indices
+            .iter()
+            .all(|index| options[*index].disabled == Some(true))
+    {
         return None;
     }
-    let mut index = selected.unwrap_or_default();
-    for _ in 0..options.len() {
-        index = cycle_index(index, options.len(), direction);
-        if options[index].disabled != Some(true) {
-            return Some(index);
+    let selected_visible_index = selected
+        .and_then(|index| visible_indices.iter().position(|visible| *visible == index))
+        .unwrap_or_default();
+    let mut index = selected_visible_index;
+    for _ in 0..visible_indices.len() {
+        index = cycle_index(index, visible_indices.len(), direction);
+        let option_index = visible_indices[index];
+        if options[option_index].disabled != Some(true) {
+            return Some(option_index);
         }
     }
     None
+}
+
+fn edit_search_query(query: &mut String, key_event: KeyEvent) -> bool {
+    match key_event.code {
+        KeyCode::Char(character) if key_event.modifiers == KeyModifiers::NONE => {
+            query.push(character);
+            true
+        }
+        KeyCode::Backspace => {
+            query.pop();
+            true
+        }
+        _ => false,
+    }
+}
+
+fn first_enabled_option_index(
+    options: &[xedoc_app_server_protocol::ExtensionInteractionOption],
+    visible_indices: &[usize],
+) -> Option<usize> {
+    visible_indices
+        .iter()
+        .copied()
+        .find(|index| options[*index].disabled != Some(true))
+}
+
+fn search_line(query: &str, placeholder: Option<&str>) -> Line<'static> {
+    let value = if query.is_empty() {
+        placeholder.unwrap_or("Filter options").to_string().dim()
+    } else {
+        query.to_string().into()
+    };
+    Line::from(vec!["Search: ".into(), value])
+}
+
+fn select_option_indices(
+    options: &[xedoc_app_server_protocol::ExtensionInteractionOption],
+    query: Option<&str>,
+) -> Vec<usize> {
+    let query = query.unwrap_or_default().to_lowercase();
+    options
+        .iter()
+        .enumerate()
+        .filter(|(_, option)| query.is_empty() || option.label.to_lowercase().contains(&query))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+fn scroll_top(selected: usize, len: usize, visible_rows: usize) -> usize {
+    if len <= visible_rows {
+        0
+    } else {
+        selected.saturating_sub(visible_rows.saturating_sub(1))
+    }
 }
 
 fn cycle_route_index(

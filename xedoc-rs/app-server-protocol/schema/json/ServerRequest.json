@@ -671,6 +671,16 @@
               },
               "type": "array"
             },
+            "search": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ExtensionInteractionSelectSearch"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "enum": [
                 "select"
@@ -1078,6 +1088,18 @@
       "required": [
         "rows"
       ],
+      "type": "object"
+    },
+    "ExtensionInteractionSelectSearch": {
+      "description": "Script-controlled filtering for a select field.",
+      "properties": {
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "ExtensionInteractionSurface": {

@@ -124,6 +124,14 @@ pub struct ExtensionInteractionMenuItem {
     pub disabled: Option<bool>,
 }
 
+/// Script-controlled filtering for a select field.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExtensionInteractionSelectSearch {
+    pub placeholder: Option<String>,
+}
+
 /// An opaque action supplied by an extension interaction.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
@@ -190,6 +198,7 @@ pub enum ExtensionInteractionField {
         value: Option<String>,
         current: Option<String>,
         options: Vec<ExtensionInteractionOption>,
+        search: Option<ExtensionInteractionSelectSearch>,
     },
     #[schemars(rename_all = "camelCase")]
     Boolean {
