@@ -977,6 +977,7 @@ def policy_ladder_form(policy, context):
                 f"Rank {entry['rank']} · {entry['class']}",
                 policy_route_id(entry_route(entry), routes),
                 route_options,
+                search_placeholder="Filter model routes",
             )
             for entry in ladder(policy)
         ],
@@ -1043,6 +1044,7 @@ def settings_surface(policy, context, continuation):
                     "Reporting baseline",
                     policy_route_id(policy.get("reportingBaseline"), routes) or "none",
                     [{"id": "none", "label": "Not set"}, *route_options],
+                    search_placeholder="Filter model routes",
                 )
             ],
             "set-reporting-baseline",
