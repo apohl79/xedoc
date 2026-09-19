@@ -674,22 +674,38 @@ assert any(
     for entry in session_extension
 ), session_extension
 assert {
-    (
-        entry["threadId"],
-        entry["level"],
-        entry["message"],
-    )
-    for entry in controller
-    if entry["event"] == "sessionExtensionMessage"
-} == {
     (thread_id, level, f"persistent {level} message")
     for thread_id in (primary_thread, secondary_thread)
     for level in ("info", "warning", "error")
-}, controller
+}.issubset(
+    {
+        (
+            entry["threadId"],
+            entry["level"],
+            entry["message"],
+        )
+        for entry in controller
+        if entry["event"] == "sessionExtensionMessage"
+    }
+), controller
 assert all(
     entry["extensionName"] == "signal"
     for entry in controller
     if entry["event"] == "sessionExtensionMessage"
+), controller
+assert {
+    "signal extension configured",
+    "signal extension on",
+    "signal command completed",
+    "signal extension off",
+}.issubset(
+    {
+        entry["message"]
+        for entry in controller
+        if entry["event"] == "sessionExtensionMessage"
+        and entry["extensionName"] == "signal"
+        and entry["level"] == "info"
+    }
 ), controller
 
 assert any(entry["event"] == "toolCalled" for entry in mcp), mcp

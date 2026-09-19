@@ -414,9 +414,11 @@ impl SessionExtensionManager {
                     if let Some(message) = summary {
                         self.inner
                             .outgoing
-                            .send_server_notification(ServerNotification::Warning(
-                                WarningNotification {
-                                    thread_id: Some(thread_id.to_string()),
+                            .send_server_notification(ServerNotification::SessionExtensionMessage(
+                                SessionExtensionMessageNotification {
+                                    thread_id: thread_id.to_string(),
+                                    extension_name: descriptor.manifest_extension_id.clone(),
+                                    level: SessionExtensionMessageLevel::Info,
                                     message,
                                 },
                             ))
