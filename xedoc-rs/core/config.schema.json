@@ -2828,6 +2828,7 @@
         "modelResponseCompleted",
         "userMessages",
         "turnCompleted",
+        "fileChanges",
         "sessionUpdates",
         "prompts.requestUserInput",
         "prompts.extensionInteraction",

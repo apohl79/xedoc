@@ -73,6 +73,7 @@ struct SessionScriptSubscriptionPolicy {
     model_response_completed: bool,
     user_messages: bool,
     turn_completed: bool,
+    file_changes: bool,
     session_updates: bool,
     prompts: HashSet<SessionScriptPromptKind>,
 }
@@ -156,6 +157,9 @@ impl SessionScriptRegistry {
                             }
                             SessionScriptSubscriptionToml::TurnCompleted => {
                                 policy.turn_completed = true;
+                            }
+                            SessionScriptSubscriptionToml::FileChanges => {
+                                policy.file_changes = true;
                             }
                             SessionScriptSubscriptionToml::SessionUpdates => {
                                 policy.session_updates = true;
@@ -312,6 +316,7 @@ impl SessionScriptRegistry {
                 && !policy.subscriptions.model_response_completed)
             || (subscriptions.user_messages && !policy.subscriptions.user_messages)
             || (subscriptions.turn_completed && !policy.subscriptions.turn_completed)
+            || (subscriptions.file_changes && !policy.subscriptions.file_changes)
             || (subscriptions.session_updates && !policy.subscriptions.session_updates)
             || subscriptions.prompts.as_ref().is_some_and(|prompts| {
                 prompts
@@ -571,6 +576,18 @@ impl SessionScriptRegistry {
     ) {
         self.publish(outgoing, thread_id, notification, |subscriptions| {
             subscriptions.turn_completed
+        })
+        .await;
+    }
+
+    pub(crate) async fn publish_file_change(
+        &self,
+        outgoing: &Arc<OutgoingMessageSender>,
+        thread_id: ThreadId,
+        notification: ServerNotification,
+    ) {
+        self.publish(outgoing, thread_id, notification, |subscriptions| {
+            subscriptions.file_changes
         })
         .await;
     }
@@ -1059,6 +1076,7 @@ fn extension_policy_from_requested_capabilities(
                 policy.subscriptions.model_response_completed = true;
                 policy.subscriptions.user_messages = true;
                 policy.subscriptions.turn_completed = true;
+                policy.subscriptions.file_changes = true;
                 policy.subscriptions.session_updates = true;
             }
             "userInput.send" => {

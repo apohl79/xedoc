@@ -49,6 +49,8 @@ pub enum SessionScriptSubscriptionToml {
     UserMessages,
     #[serde(rename = "turnCompleted")]
     TurnCompleted,
+    #[serde(rename = "fileChanges")]
+    FileChanges,
     #[serde(rename = "sessionUpdates")]
     SessionUpdates,
     #[serde(rename = "prompts.requestUserInput")]

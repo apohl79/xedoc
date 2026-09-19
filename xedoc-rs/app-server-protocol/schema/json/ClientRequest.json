@@ -3811,6 +3811,9 @@
     "SessionScriptSubscriptionsParams": {
       "description": "Selects the bounded stream of events delivered to a session script.",
       "properties": {
+        "fileChanges": {
+          "type": "boolean"
+        },
         "modelResponseCompleted": {
           "type": "boolean"
         },

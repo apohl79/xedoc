@@ -6,4 +6,4 @@ import type { SessionScriptPromptKind } from "./SessionScriptPromptKind";
 /**
  * Selects the bounded stream of events delivered to a session script.
  */
-export type SessionScriptSubscriptionsParams = { modelResponseDeltas?: boolean, modelResponseCompleted?: boolean, userMessages?: boolean, turnCompleted?: boolean, prompts?: Array<SessionScriptPromptKind> | null, sessionUpdates?: boolean, };
+export type SessionScriptSubscriptionsParams = { modelResponseDeltas?: boolean, modelResponseCompleted?: boolean, userMessages?: boolean, turnCompleted?: boolean, fileChanges?: boolean, prompts?: Array<SessionScriptPromptKind> | null, sessionUpdates?: boolean, };
