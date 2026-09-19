@@ -28,8 +28,8 @@ readonly tmp_dir
 readonly package_dir="$tmp_dir/package"
 readonly runtime_home="$tmp_dir/runtime-home"
 readonly artifact_dir="$tmp_dir/artifacts"
-readonly policy_path="$package_dir/xedoc-resources/model-router/reference-router.policy.json"
-readonly router_diagnostics="$package_dir/xedoc-resources/model-router/reference-router.diagnostics.jsonl"
+readonly policy_path="$runtime_home/model-router/reference-router.policy.json"
+readonly router_diagnostics="$runtime_home/model-router/reference-router.diagnostics.jsonl"
 readonly request_log="$artifact_dir/responses.jsonl"
 readonly scenario_log="$artifact_dir/scenarios.tsv"
 readonly mock_port_file="$artifact_dir/mock-port"
@@ -212,6 +212,7 @@ PY
 }
 
 reset_policy() {
+  mkdir -p "$(dirname "$policy_path")"
   cp "$source_policy" "$policy_path"
 }
 
@@ -304,6 +305,7 @@ assert_script_conflict_protocol() {
     "$policy_path" "$router_runtime" <<'PY'
 import json
 import os
+import pathlib
 import subprocess
 import sys
 
@@ -328,7 +330,11 @@ def call(method, params=None, context=None):
         text=True,
         capture_output=True,
         check=True,
-        env={**os.environ, "XEDOC_ROUTER_RUNTIME": runtime},
+        env={
+            **os.environ,
+            "XEDOC_HOME": str(pathlib.Path(policy_path).parent.parent),
+            "XEDOC_ROUTER_RUNTIME": runtime,
+        },
     )
     response = json.loads(completed.stdout)
     assert "error" not in response, response
@@ -377,6 +383,7 @@ def router_context():
     }
 
 
+call("settings.open")
 root, _ = interaction(call("settings.open", context=router_context()))
 result = respond(root, "open-mode", interactionId="wrong-settings-id")
 conflict, surface = interaction(result)
@@ -807,7 +814,8 @@ prepare_package() {
   cp "$source_router" "$package_dir/xedoc-resources/model-router/reference-router"
   cp "$source_embedder" "$package_dir/xedoc-resources/model-router/reference-router-embedder.py"
   cp "$source_semantic_policy" "$package_dir/xedoc-resources/model-router/reference-router.semantic-policy.json"
-  cp "$source_policy" "$policy_path"
+  cp "$source_policy" "$package_dir/xedoc-resources/model-router/reference-router.policy.json"
+  [[ ! -e "$policy_path" ]] || fail "router state unexpectedly exists before bootstrap"
   chmod +x \
     "$package_dir/bin/xedoc" \
     "$package_dir/xedoc-resources/model-router/reference-router" \
@@ -825,6 +833,45 @@ prepare_package() {
   "pathDir": "xedoc-path"
 }
 JSON
+}
+
+seed_legacy_policy() {
+  local legacy_policy_path="$runtime_home/packages/standalone/releases/legacy/xedoc-resources/model-router/reference-router.policy.json"
+  local invalid_legacy_policy_path="$runtime_home/packages/standalone/releases/corrupt/xedoc-resources/model-router/reference-router.policy.json"
+  mkdir -p "$(dirname "$legacy_policy_path")"
+  mkdir -p "$(dirname "$invalid_legacy_policy_path")"
+  python3 - "$source_policy" "$legacy_policy_path" "$invalid_legacy_policy_path" <<'PY'
+import json
+import os
+import sys
+import time
+
+source_path, destination_path, invalid_destination_path = sys.argv[1:]
+policy = json.load(open(source_path, encoding="utf-8"))
+policy["reportingBaseline"] = {
+    "providerId": "openai",
+    "model": "gpt-5.6-terra",
+    "reasoningEffort": "high",
+}
+with open(destination_path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+with open(invalid_destination_path, "w", encoding="utf-8") as output:
+    json.dump({"semanticClassifier": None}, output)
+now = time.time()
+os.utime(destination_path, (now - 1, now - 1))
+os.utime(invalid_destination_path, (now, now))
+PY
+}
+
+assert_legacy_policy_migration() {
+  start_tui
+  open_settings
+  assert_policy "reportingBaseline.providerId=openai"
+  assert_policy "reportingBaseline.model=gpt-5.6-terra"
+  assert_policy "reportingBaseline.reasoningEffort=high"
+  reset_policy
+  record_scenario legacy-policy-migration \
+    "first TUI launch skips a newer corrupt release policy and migrates the prior release policy into XEDOC_HOME state"
 }
 
 write_runtime_config() {
@@ -1567,7 +1614,7 @@ run_classifier_mode_matrix() {
   assert_latest_hybrid_decision \
     subagent subagents \
     "group3: research, review, diagnosis, design" \
-    low low none keepCurrent
+    low low none apply
   record_scenario classifier-modes \
     "LLM classification and embedding work-type similarity reached full, shadow, and subagent routing"
 }
@@ -1860,7 +1907,7 @@ run_baseline_report_matrix() {
   send_prompt "ROUTER_E2E_BASELINE_SET review workflow security"
   wait_for_request_marker "ROUTER_E2E_BASELINE_SET"
   await_turn
-  assert_request_route "ROUTER_E2E_BASELINE_SET" "gpt-5.6-sol" high
+  assert_request_route "ROUTER_E2E_BASELINE_SET" "gpt-5.6-terra" medium
   assert_invocation_baseline \
     "ROUTER_E2E_BASELINE_SET" "gpt-5.6-terra" high
   record_scenario baseline-set \
@@ -1872,7 +1919,7 @@ run_baseline_report_matrix() {
   send_prompt "ROUTER_E2E_BASELINE_CLEAR review workflow security"
   wait_for_request_marker "ROUTER_E2E_BASELINE_CLEAR"
   await_turn
-  assert_request_route "ROUTER_E2E_BASELINE_CLEAR" "gpt-5.6-sol" high
+  assert_request_route "ROUTER_E2E_BASELINE_CLEAR" "gpt-5.6-terra" medium
   assert_invocation_baseline "ROUTER_E2E_BASELINE_CLEAR" null null
   record_scenario baseline-clear \
     "cleared baseline reached persisted invocation as Not set"
@@ -2002,7 +2049,9 @@ main() {
   start_mock
   prepare_package
   write_runtime_config
+  seed_legacy_policy
   assert_reference_policy_contract
+  assert_legacy_policy_migration
   assert_script_conflict_protocol
 
   local phase="${XEDOC_TMUX_TEST_PHASE:-full}"
