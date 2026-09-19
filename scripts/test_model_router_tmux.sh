@@ -307,7 +307,8 @@ assert policy["confidencePresets"] == {
         "minimumMargin": 0.04,
     },
 }
-assert policy["notConfidentPolicy"] == "balanced"
+assert policy["confidence"] == "balanced"
+assert "notConfidentPolicy" not in policy
 PY
   record_scenario reference-policy-contract \
     "all axis mappings, 15 ranked slots, score domain, and confidence thresholds exact"
@@ -425,16 +426,26 @@ root, _ = interaction(call("settings.open", context=router_context()))
 root, _ = interaction(respond(root, "open-mode"))
 root, _ = interaction(respond(root, "set-mode", {"mode": "full"}))
 approval_form, _ = interaction(respond(root, "open-approval"))
+assert [
+    field["id"] for field in approval_form["surface"]["fields"]
+] == ["approval"], approval_form
 root, _ = interaction(
     respond(
         approval_form,
         "set-approval",
-        {"approval": "all", "not-confident-policy": "strict"},
+        {"approval": "all"},
     )
 )
 policy = json.load(open(policy_path, encoding="utf-8"))
 assert policy["approval"] == "all", policy
-assert policy["notConfidentPolicy"] == "strict", policy
+assert policy["confidence"] == "balanced", policy
+policy_form, _ = interaction(respond(root, "open-policy"))
+root, _ = interaction(
+    respond(policy_form, "save-policy", {"confidence": "strict"})
+)
+policy = json.load(open(policy_path, encoding="utf-8"))
+assert policy["confidence"] == "strict", policy
+settings_root, _ = interaction(respond(root, "back"))
 approval, surface = interaction(
     call(
         "routing.decide",
@@ -443,7 +454,7 @@ approval, surface = interaction(
     )
 )
 assert approval["id"] == "route-approval", surface
-root, _ = interaction(respond(root, "toggle-feedback"))
+settings_root, _ = interaction(respond(settings_root, "toggle-feedback"))
 result = respond(approval, "approve")
 fresh, surface = interaction(result)
 assert fresh["id"] == "route-approval", fresh

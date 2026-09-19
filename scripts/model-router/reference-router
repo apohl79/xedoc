@@ -134,8 +134,16 @@ def upgrade_policy(policy):
     elif "minimumSamples" not in policy["approvalCalibration"]:
         policy["approvalCalibration"]["minimumSamples"] = 10
         changed = True
-    if "notConfidentPolicy" not in policy:
-        policy["notConfidentPolicy"] = policy.get("confidence")
+    had_legacy_not_confident_policy = "notConfidentPolicy" in policy
+    legacy_not_confident_policy = policy.pop("notConfidentPolicy", None)
+    if (
+        isinstance(presets, dict)
+        and policy.get("confidence") not in presets
+        and legacy_not_confident_policy in presets
+    ):
+        policy["confidence"] = legacy_not_confident_policy
+        changed = True
+    elif had_legacy_not_confident_policy:
         changed = True
     if policy.get("approval") in ("changes", "not-confident"):
         policy["approval"] = "policy"
@@ -181,8 +189,6 @@ def validate_policy(policy):
             raise ValueError(
                 "policy confidence thresholds must be finite values from zero to one"
             )
-    if policy.get("notConfidentPolicy") not in presets:
-        raise ValueError("policy selects an unknown not-confident policy")
     calibration = policy.get("approvalCalibration")
     if not isinstance(calibration, dict) or set(calibration) != {
         "minimumSamples",
@@ -1125,22 +1131,6 @@ def settings_surface(policy, context, continuation):
             ],
             "set-approval",
         )
-    if continuation == "settings:confidence":
-        return form(
-            policy,
-            "Confidence",
-            continuation,
-            [
-                select_field(
-                    "confidence",
-                    "Confidence preset",
-                    policy["confidence"],
-                    confidence_preset_options(policy),
-                )
-            ],
-            "set-confidence",
-            cancel_action_id="open-policy",
-        )
     return None
 
 
@@ -1277,12 +1267,6 @@ def settings_response(request, policy):
                     policy["approval"],
                     approval_options(),
                 ),
-                select_field(
-                    "not-confident-policy",
-                    "Confidence threshold",
-                    policy["notConfidentPolicy"],
-                    confidence_preset_options(policy),
-                ),
             ],
             "set-approval",
         )
@@ -1290,16 +1274,7 @@ def settings_response(request, policy):
         approval = values.get("approval")
         if approval not in APPROVALS:
             return error_notice(policy, "Approval must be one of the offered choices.")
-        not_confident_policy = values.get("not-confident-policy")
-        if not_confident_policy not in policy["confidencePresets"]:
-            return error_notice(
-                policy, "Confidence threshold must be one of the offered choices."
-            )
-        update(
-            policy,
-            approval=approval,
-            notConfidentPolicy=not_confident_policy,
-        )
+        update(policy, approval=approval)
         return root_menu(policy, context)
     if action_id == "toggle-feedback":
         update(policy, feedback=not policy["feedback"])
@@ -2436,9 +2411,7 @@ def routing_decide(
     below_not_confident_threshold = (
         not needs_calibration
         and calibrated_confidence
-        < policy["confidencePresets"][policy["notConfidentPolicy"]][
-            "minimumConfidence"
-        ]
+        < policy["confidencePresets"][policy["confidence"]]["minimumConfidence"]
     )
     needs_approval = route_can_be_approved and (
         policy["approval"] == "all"

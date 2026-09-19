@@ -137,7 +137,6 @@
   },
   "feedback": true,
   "mode": "off",
-  "notConfidentPolicy": "balanced",
   "ranking": {
     "ladder": [
       {
