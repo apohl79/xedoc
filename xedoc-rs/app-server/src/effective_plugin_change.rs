@@ -7,6 +7,7 @@ use xedoc_core::ThreadManager;
 use crate::config_manager::ConfigManager;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::request_processors::ConfigRequestProcessor;
+use crate::session_extension_manager::SessionExtensionManager;
 
 pub(crate) type EffectivePluginsChangedCallback = Arc<dyn Fn() + Send + Sync + 'static>;
 
@@ -16,6 +17,7 @@ pub(crate) fn effective_plugins_changed_callback(
     outgoing: Arc<OutgoingMessageSender>,
     config_manager: ConfigManager,
     config_processor: ConfigRequestProcessor,
+    session_extension_manager: SessionExtensionManager,
 ) -> EffectivePluginsChangedCallback {
     Arc::new(move || {
         thread_manager.plugins_manager().clear_cache();
@@ -25,6 +27,7 @@ pub(crate) fn effective_plugins_changed_callback(
         let refresh_outgoing = Arc::clone(&outgoing);
         let refresh_config_manager = config_manager.clone();
         let refresh_config_processor = config_processor.clone();
+        let refresh_session_extension_manager = session_extension_manager.clone();
         tokio::spawn(async move {
             if !refresh_thread_manager.list_thread_ids().await.is_empty() {
                 refresh_config_processor.reload_user_config().await;
@@ -34,6 +37,9 @@ pub(crate) fn effective_plugins_changed_callback(
                 )
                 .await;
             }
+            refresh_session_extension_manager
+                .refresh_loaded_threads()
+                .await;
             refresh_outgoing
                 .send_server_notification(ServerNotification::SkillsChanged(
                     SkillsChangedNotification {},

@@ -388,6 +388,7 @@ impl MessageProcessor {
                 outgoing.clone(),
                 config_manager.clone(),
                 config_processor.clone(),
+                session_extension_manager.clone(),
             );
         let plugin_watcher = PluginWatcher::new(
             config.xedoc_home.as_path(),

@@ -160,11 +160,14 @@ impl SessionExtensionManager {
 
     /// Discovers manifest declarations and begins the approval flow for one root thread.
     pub(crate) async fn start_for_thread(&self, thread_id: ThreadId) {
-        {
+        let thread_exists = {
             let threads = self.inner.threads.lock().await;
-            if threads.contains_key(&thread_id) {
-                return;
-            }
+            threads.contains_key(&thread_id)
+        };
+        if thread_exists {
+            self.inner.thread_manager.plugins_manager().clear_cache();
+            self.refresh_thread(thread_id).await;
+            return;
         }
 
         let descriptors = self.discover_extensions().await;
@@ -204,6 +207,22 @@ impl SessionExtensionManager {
             .unwrap_or_default();
         for extension_id in enabled_extensions {
             self.stop_extension_script(thread_id, &extension_id).await;
+        }
+    }
+
+    /// Reconciles plugin-declared extensions for root threads that were already running.
+    pub(crate) async fn refresh_loaded_threads(&self) {
+        self.inner.thread_manager.plugins_manager().clear_cache();
+        let thread_ids = self
+            .inner
+            .threads
+            .lock()
+            .await
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for thread_id in thread_ids {
+            self.refresh_thread(thread_id).await;
         }
     }
 
@@ -384,6 +403,61 @@ impl SessionExtensionManager {
         Ok(current)
     }
 
+    async fn refresh_thread(&self, thread_id: ThreadId) {
+        let discovered = self
+            .discover_extensions()
+            .await
+            .into_iter()
+            .map(|descriptor| (descriptor.id.clone(), descriptor))
+            .collect::<HashMap<_, _>>();
+        let (descriptors_to_activate, extensions_to_stop) = {
+            let mut threads = self.inner.threads.lock().await;
+            let Some(state) = threads.get_mut(&thread_id) else {
+                return;
+            };
+            let extensions_to_stop = state
+                .extensions
+                .iter()
+                .filter_map(|(extension_id, descriptor)| {
+                    let changed = discovered.get(extension_id).is_none_or(|current| {
+                        current.declaration_digest != descriptor.declaration_digest
+                    });
+                    (changed && state.enabled_extension_ids.contains(extension_id))
+                        .then(|| extension_id.clone())
+                })
+                .collect::<Vec<_>>();
+            let descriptors_to_activate = discovered
+                .iter()
+                .filter_map(|(extension_id, descriptor)| {
+                    state
+                        .extensions
+                        .get(extension_id)
+                        .is_none_or(|previous| {
+                            previous.declaration_digest != descriptor.declaration_digest
+                        })
+                        .then(|| descriptor.clone())
+                })
+                .collect::<Vec<_>>();
+
+            state.extensions = discovered;
+            state.approved_extension_ids.retain(|extension_id| {
+                !descriptors_to_activate
+                    .iter()
+                    .any(|descriptor| &descriptor.id == extension_id)
+            });
+            state
+                .enabled_extension_ids
+                .retain(|extension_id| !extensions_to_stop.contains(extension_id));
+            (descriptors_to_activate, extensions_to_stop)
+        };
+        for extension_id in extensions_to_stop {
+            self.stop_extension_script(thread_id, &extension_id).await;
+        }
+        self.notify_commands(thread_id).await;
+        self.activate_extensions(thread_id, descriptors_to_activate)
+            .await;
+    }
+
     async fn activate_discovered_extensions(&self, thread_id: ThreadId) {
         let descriptors = {
             let threads = self.inner.threads.lock().await;
@@ -392,6 +466,14 @@ impl SessionExtensionManager {
                 .map(|state| state.extensions.values().cloned().collect::<Vec<_>>())
                 .unwrap_or_default()
         };
+        self.activate_extensions(thread_id, descriptors).await;
+    }
+
+    async fn activate_extensions(
+        &self,
+        thread_id: ThreadId,
+        descriptors: Vec<SessionExtensionDescriptor>,
+    ) {
         for descriptor in descriptors {
             let decision = if self.has_persistent_grant(&descriptor).await {
                 Some(ApprovalDecision::Always)

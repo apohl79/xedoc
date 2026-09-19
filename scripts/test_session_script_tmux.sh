@@ -20,6 +20,7 @@ readonly mock="$script_dir/test_session_script_responses_mock.py"
 readonly source_router="$script_dir/model-router/reference-router"
 readonly source_router_policy="$script_dir/model-router/reference-router.policy.json"
 readonly keep_tmp_dir="${XEDOC_SESSION_SCRIPT_TEST_KEEP_DIR:-0}"
+readonly install_plugin_after_thread_start="${XEDOC_SESSION_SCRIPT_TEST_PLUGIN_INSTALL_AFTER_THREAD_START:-0}"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/xedoc-session-script.XXXXXX")"
 readonly tmp_dir
 readonly runtime_home="$tmp_dir/home"
@@ -41,6 +42,7 @@ readonly start_file="$artifacts/start"
 readonly primary_thread_file="$artifacts/primary-thread.json"
 readonly plugin_root="$runtime_home/plugins/cache/local-test/session-script-e2e/local"
 readonly plugin_entrypoint="$plugin_root/extensions/signal-bridge"
+readonly deferred_plugin_root="$tmp_dir/deferred-plugin"
 readonly extension_id="session-script-e2e:signal"
 python_bin="${XEDOC_SESSION_SCRIPT_TEST_PYTHON:-python3}"
 if ! command -v "$python_bin" >/dev/null 2>&1 ||
@@ -734,6 +736,9 @@ main() {
   mock_pid="$!"
   wait_for_file "$mock_port_file"
   write_config
+  if [[ "$install_plugin_after_thread_start" == 1 ]]; then
+    mv "$plugin_root" "$deferred_plugin_root"
+  fi
 
   tmux_session="xedoc-session-script-$RANDOM-$$"
   tmux new-session -d -x 220 -y 50 -s "$tmux_session" \
@@ -746,6 +751,11 @@ main() {
     >"$artifacts/controller.stdout.log" 2>"$artifacts/controller.stderr.log" &
   controller_pid="$!"
   wait_for_file "$controller_ready"
+  if [[ "$install_plugin_after_thread_start" == 1 ]]; then
+    sleep 1
+    mv "$deferred_plugin_root" "$plugin_root"
+    wait_for_log_event_count "$controller_log" extensionInteractionResponse 1
+  fi
   local thread_id
   thread_id="$("$python_bin" - "$controller_ready" <<'PY'
 import json
