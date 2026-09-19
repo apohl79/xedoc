@@ -508,6 +508,69 @@ classifier_request = call(
     classifier_context,
 )
 assert classifier_request["kind"] == "classifierRequest", classifier_request
+classifier_input = classifier_request["classifier"]["input"]
+assert "group1 = question, docs_analysis, packaging, operational, testing" in (
+    classifier_input
+), classifier_input
+assert "group2 = implementation, bug_fix, refactor, docs_authoring, orchestration, calibration" in (
+    classifier_input
+), classifier_input
+assert "group3 = research, review, diagnosis, design" in classifier_input, classifier_input
+assert "Embedder work-type candidate:" in classifier_input, classifier_input
+long_classifier_request = call(
+    "routing.decide",
+    {"prompt": "x" * 5800},
+    classifier_context,
+)
+assert long_classifier_request["kind"] == "classifierRequest", long_classifier_request
+assert (
+    len(long_classifier_request["classifier"]["continuation"].encode()) <= 8192
+), len(long_classifier_request["classifier"]["continuation"].encode())
+classifier_result, classifier_surface = interaction(
+    call(
+        "routing.classifier.respond",
+        {
+            "continuation": classifier_request["classifier"]["continuation"],
+            "output": json.dumps(
+                {
+                    "work_type": "group3",
+                    "complexity": "high",
+                    "risk": "medium",
+                    "orchestration": "none",
+                    "confidence": 0.82,
+                }
+            ),
+            "elapsedMs": 42,
+        },
+        classifier_context,
+    )
+)
+assert any(
+    "Work type validation:" in row["text"]
+    and "LLM(group3" in row["text"]
+    for section in classifier_surface["sections"]
+    for row in section["rows"]
+), classifier_surface
+accepted = respond(classifier_result, "approve")
+assert accepted["kind"] == "route", accepted
+assert "Work type validation:" in accepted["decision"]["summary"], accepted
+feedback_path = os.path.join(
+    os.path.dirname(policy_path), "classifier-feedback.jsonl"
+)
+feedback = [
+    json.loads(line)
+    for line in open(feedback_path, encoding="utf-8")
+    if line.strip()
+]
+assert any(record["outcome"] == "approved" for record in feedback), feedback
+learning_request = call(
+    "routing.decide",
+    {"prompt": "review workflow security follow-up"},
+    classifier_context,
+)
+assert "Local feedback examples" in learning_request["classifier"]["input"], (
+    learning_request
+)
 classifier_fallback, fallback_surface = interaction(
     call(
         "routing.classifier.respond",

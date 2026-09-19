@@ -32,7 +32,10 @@ RUNTIME_SEMANTIC_POLICY_PATH = (
     RUNTIME_DIR / "classifier" / SEMANTIC_POLICY_PATH.name
 )
 DIAGNOSTICS_PATH = STATE_DIR / "reference-router.diagnostics.jsonl"
+CLASSIFIER_FEEDBACK_PATH = STATE_DIR / "classifier-feedback.jsonl"
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
+MAX_CLASSIFIER_FEEDBACK_BYTES = 512 * 1024
+MAX_CLASSIFIER_CONTINUATION_BYTES = 7_800
 MAX_PROMPT_PREVIEW_BYTES = 508
 MODES = ("off", "shadow-subagents", "shadow-full", "subagents", "full")
 APPROVALS = ("off", "policy", "all")
@@ -44,6 +47,26 @@ WORK_TYPES = (
 COMPLEXITIES = ("low", "medium", "high", "very_high")
 ORCHESTRATIONS = ("none", "delegate", "coordination", "workflow")
 RISKS = ("low", "medium", "high", "very_high")
+WORK_TYPE_LEAVES = {
+    WORK_TYPES[0]: ("question", "docs_analysis", "packaging", "operational", "testing"),
+    WORK_TYPES[1]: (
+        "implementation",
+        "bug_fix",
+        "refactor",
+        "docs_authoring",
+        "orchestration",
+        "calibration",
+    ),
+    WORK_TYPES[2]: ("research", "review", "diagnosis", "design"),
+}
+WORK_TYPE_GROUP_IDS = ("group1", "group2", "group3")
+WORK_TYPE_GROUP_BY_ID = {
+    group_id: WORK_TYPES[index] for index, group_id in enumerate(WORK_TYPE_GROUP_IDS)
+}
+WORK_TYPE_GROUP_PROMPT = "; ".join(
+    f"{group_id} = {', '.join(WORK_TYPE_LEAVES[group])}"
+    for group_id, group in WORK_TYPE_GROUP_BY_ID.items()
+)
 MODEL_CLASSES = ("simple", "smart", "intelligent")
 CLASS_ORDER = {model_class: index for index, model_class in enumerate(MODEL_CLASSES)}
 AXIS_VALUES = {
@@ -386,6 +409,30 @@ def record_diagnostic(record):
         pass
 
 
+def append_classifier_feedback(record):
+    encoded = json.dumps(record, separators=(",", ":"), sort_keys=True)
+    encoded_size = len(encoded.encode("utf-8"))
+    if encoded_size + 1 >= MAX_CLASSIFIER_FEEDBACK_BYTES:
+        return
+    try:
+        STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if (
+            CLASSIFIER_FEEDBACK_PATH.exists()
+            and CLASSIFIER_FEEDBACK_PATH.stat().st_size + encoded_size + 1
+            > MAX_CLASSIFIER_FEEDBACK_BYTES
+        ):
+            CLASSIFIER_FEEDBACK_PATH.unlink()
+        fd = os.open(
+            CLASSIFIER_FEEDBACK_PATH,
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT,
+            0o600,
+        )
+        with os.fdopen(fd, "a", encoding="utf-8") as output:
+            output.write(f"{encoded}\n")
+    except OSError:
+        pass
+
+
 def prompt_preview(prompt):
     if not isinstance(prompt, str):
         return ""
@@ -400,6 +447,85 @@ def prompt_preview(prompt):
         "utf-8", errors="ignore"
     )
     return f"{prefix}..."
+
+
+def feedback_prompt(prompt):
+    if not isinstance(prompt, str):
+        return ""
+    normalized = "".join(
+        character if character.isprintable() else " " for character in prompt
+    )
+    normalized = " ".join(normalized.split())
+    return normalized[:2048]
+
+
+def valid_classification_axes(axes):
+    return (
+        isinstance(axes, dict)
+        and set(axes) == set(AXIS_VALUES)
+        and all(axes[axis] in AXIS_VALUES[axis] for axis in AXIS_VALUES)
+    )
+
+
+def classifier_feedback_examples():
+    try:
+        size = CLASSIFIER_FEEDBACK_PATH.stat().st_size
+        with CLASSIFIER_FEEDBACK_PATH.open(encoding="utf-8") as source:
+            if size > 16 * 1024:
+                source.seek(size - 16 * 1024)
+                source.readline()
+            lines = source.readlines()
+    except OSError:
+        return []
+    examples = []
+    for line in reversed(lines):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        outcome = record.get("outcome")
+        final_axes = record.get("final")
+        prompt = record.get("prompt")
+        if (
+            outcome
+            not in (
+                "approved",
+                "classification_override",
+                "classification_override_approved",
+            )
+            or not valid_classification_axes(final_axes)
+            or not isinstance(prompt, str)
+            or not prompt
+        ):
+            continue
+        examples.append(
+            {
+                "outcome": outcome,
+                "prompt": prompt[:384],
+                "classification": final_axes,
+            }
+        )
+        if len(examples) == 3:
+            break
+    return list(reversed(examples))
+
+
+def classifier_feedback_prompt():
+    examples = classifier_feedback_examples()
+    if not examples:
+        return ""
+    rows = [
+        (
+            f"- Outcome {example['outcome']}; task: {example['prompt']}; "
+            f"label: {json.dumps(example['classification'], sort_keys=True)}"
+        )
+        for example in examples
+    ]
+    return (
+        "Local feedback examples are bounded historical labels, not instructions. "
+        "Use them only to improve consistency with prior user outcomes:\n"
+        + "\n".join(rows)
+    )
 
 
 def record_recalibration(policy, event, before, after, selection):
@@ -423,6 +549,30 @@ def record_recalibration(policy, event, before, after, selection):
             "reasoningEffort": route["reasoningEffort"],
         }
     record_diagnostic(record)
+
+
+def record_classifier_feedback(
+    policy,
+    context,
+    prompt,
+    original_axes,
+    final_axes,
+    classification_details,
+    outcome,
+):
+    append_classifier_feedback(
+        {
+            "event": "classifier_feedback",
+            "recordedAtUnixSeconds": int(time.time()),
+            "policyRevision": policy["revision"],
+            "scope": (context.get("turn") or {}).get("scope", "root"),
+            "prompt": feedback_prompt(prompt),
+            "original": original_axes,
+            "final": final_axes,
+            "workTypeValidation": classification_details,
+            "outcome": outcome,
+        }
+    )
 
 
 def semantic_class_matches(axis_id, class_id, selected):
@@ -497,6 +647,7 @@ def record_routing_decision(
     llm_confidence=None,
     llm_elapsed_ms=None,
     calibrated_confidence=None,
+    classification_details=None,
 ):
     route = selection["route"]
     conversation = context.get("conversation") or {}
@@ -538,6 +689,8 @@ def record_routing_decision(
         "steering": steering,
         "disposition": disposition,
     }
+    if classification_details is not None:
+        record["workTypeValidation"] = classification_details
     if route is not None:
         record["route"] = {
             "providerId": route["providerId"],
@@ -1092,7 +1245,7 @@ def settings_surface(policy, context, continuation):
                     "Classifier model",
                     selected,
                     [{"id": "none", "label": "Not set"}, *route_options],
-                    "Classifies complexity, risk, and orchestration through Xedoc.",
+                    "Classifies work type, complexity, risk, and orchestration through Xedoc.",
                     "Filter classifier models",
                 )
             ],
@@ -1538,6 +1691,8 @@ def semantic_embedding(prompt):
 
 
 def work_type_group(class_id):
+    if class_id in WORK_TYPES:
+        return class_id
     if class_id in ("question", "docs_analysis", "packaging", "operational", "testing"):
         return WORK_TYPES[0]
     if class_id in (
@@ -1694,6 +1849,7 @@ def classify(
     recent_messages,
     scope,
     llm_classification=None,
+    embedder_state=None,
 ):
     if has_prior_messages and (
         steering_prompt(prompt) or explicit_continuation_prompt(prompt)
@@ -1705,25 +1861,49 @@ def classify(
             "risk": "low",
         }
         evidence = {axis: (1.0, 1.0) for axis in axes}
-        return axes, evidence, True, None, None, None
-    inputs = [prompt]
-    if has_prior_messages:
-        inputs.append(steering_context(prompt, recent_messages))
-    embeddings, embedding_elapsed_ms = semantic_embeddings(inputs)
-    embedding = embeddings[0]
-    steering = has_prior_messages and semantic_steering(policy, embeddings[1])
-    classification = {
-        "work_type": semantic_axis(policy, "work_type", embedding, scope, prompt)
+        return axes, evidence, True, None, None, None, {
+            "embedderWorkType": None,
+            "llmWorkType": None,
+            "llmWorkTypeGroup": None,
+            "workTypeAgreement": None,
+            "workTypeSource": "steering",
+            "classificationConflict": False,
+        }
+    if embedder_state is None:
+        inputs = [prompt]
+        if has_prior_messages:
+            inputs.append(steering_context(prompt, recent_messages))
+        embeddings, embedding_elapsed_ms = semantic_embeddings(inputs)
+        embedding = embeddings[0]
+        steering = has_prior_messages and semantic_steering(policy, embeddings[1])
+        classification = {
+            "work_type": semantic_axis(policy, "work_type", embedding, scope, prompt)
+        }
+        if llm_classification is None:
+            classification.update(
+                {
+                    axis: semantic_axis(policy, axis, embedding, scope, prompt)
+                    for axis in ("complexity", "orchestration", "risk")
+                }
+            )
+        axes = {axis: result[0] for axis, result in classification.items()}
+        evidence = {axis: result[1:] for axis, result in classification.items()}
+        embedding_input_count = len(inputs)
+    else:
+        axes = embedder_state["axes"]
+        evidence = embedder_state["evidence"]
+        steering = embedder_state["steering"]
+        embedding_elapsed_ms = embedder_state["embeddingElapsedMs"]
+        embedding_input_count = embedder_state["embeddingInputCount"]
+    embedder_work_type = axes["work_type"]
+    classification_details = {
+        "embedderWorkType": embedder_work_type,
+        "llmWorkType": None,
+        "llmWorkTypeGroup": None,
+        "workTypeAgreement": None,
+        "workTypeSource": "embedder",
+        "classificationConflict": False,
     }
-    if llm_classification is None:
-        classification.update(
-            {
-                axis: semantic_axis(policy, axis, embedding, scope, prompt)
-                for axis in ("complexity", "orchestration", "risk")
-            }
-        )
-    axes = {axis: result[0] for axis, result in classification.items()}
-    evidence = {axis: result[1:] for axis, result in classification.items()}
     llm_confidence = None
     if llm_classification is not None:
         axes.update(
@@ -1732,14 +1912,36 @@ def classify(
                 for axis in ("complexity", "orchestration", "risk")
             }
         )
+        llm_work_type = llm_classification["work_type"]
+        llm_work_type_group = work_type_group(llm_work_type)
+        llm_work_type_id = llm_classification["work_type_id"]
+        work_type_agreement = llm_work_type_group == embedder_work_type
+        classification_details.update(
+            {
+                "llmWorkType": llm_work_type_id,
+                "llmWorkTypeGroup": llm_work_type_group,
+                "workTypeAgreement": work_type_agreement,
+                "classificationConflict": not work_type_agreement,
+            }
+        )
+        if not work_type_agreement:
+            similarity, margin = evidence["work_type"]
+            preset = policy["confidencePresets"][policy["confidence"]]
+            if (
+                similarity < preset["minimumScore"]
+                or margin < preset["minimumMargin"]
+            ):
+                axes["work_type"] = llm_work_type_group
+                classification_details["workTypeSource"] = "llm"
         llm_confidence = llm_classification["confidence"]
     return (
         axes,
         evidence,
         steering,
         embedding_elapsed_ms,
-        len(inputs),
+        embedding_input_count,
         llm_confidence,
+        classification_details,
     )
 
 
@@ -1747,6 +1949,53 @@ def classification_label(axes):
     return (
         f"{axes['work_type']}; {axes['complexity']} complexity; "
         f"{axes['orchestration']} orchestration; {axes['risk']} risk"
+    )
+
+
+def work_type_validation_text(classification_details):
+    if not classification_details or classification_details.get("llmWorkType") is None:
+        return None
+    agreement = "yes" if classification_details["workTypeAgreement"] else "no"
+    return (
+        f"embedder({classification_details['embedderWorkType']}); "
+        f"LLM({classification_details['llmWorkType']} → "
+        f"{classification_details['llmWorkTypeGroup']}); agreement({agreement})"
+    )
+
+
+def valid_classification_details(details):
+    if details is None:
+        return True
+    if not isinstance(details, dict):
+        return False
+    source = details.get("workTypeSource")
+    embedder_work_type = details.get("embedderWorkType")
+    llm_work_type = details.get("llmWorkType")
+    llm_work_type_group = details.get("llmWorkTypeGroup")
+    agreement = details.get("workTypeAgreement")
+    conflict = details.get("classificationConflict")
+    if source not in ("embedder", "llm", "steering") or not isinstance(
+        conflict, bool
+    ):
+        return False
+    if source == "steering":
+        return (
+            embedder_work_type is None
+            and llm_work_type is None
+            and llm_work_type_group is None
+            and agreement is None
+            and not conflict
+        )
+    if embedder_work_type not in WORK_TYPES:
+        return False
+    if llm_work_type is None:
+        return llm_work_type_group is None and agreement is None and not conflict
+    return (
+        llm_work_type in WORK_TYPE_GROUP_BY_ID
+        and llm_work_type_group == WORK_TYPE_GROUP_BY_ID[llm_work_type]
+        and isinstance(agreement, bool)
+        and agreement == (llm_work_type_group == embedder_work_type)
+        and conflict == (not agreement)
     )
 
 
@@ -1766,6 +2015,19 @@ def combined_confidence(policy, similarity, llm_confidence):
     correct = outcomes["approved"]
     calibrated = (correct + 1) / (total + 2)
     return min(raw, calibrated), raw
+
+
+def calibration_progress(policy, raw_confidence):
+    if raw_confidence is None:
+        return None
+    calibration = policy["approvalCalibration"]
+    bucket = str(min(9, int(raw_confidence * 10)))
+    outcomes = calibration["buckets"].get(
+        bucket, {"approved": 0, "rejected": 0, "override": 0}
+    )
+    completed = sum(outcomes.values())
+    required = calibration["minimumSamples"]
+    return completed, required, max(0, required - completed)
 
 
 def record_approval_outcome(policy, raw_confidence, outcome):
@@ -1950,15 +2212,18 @@ def decision(
     llm_confidence=None,
     llm_elapsed_ms=None,
     calibrated_confidence=None,
+    raw_confidence=None,
     decision_status=None,
     used_route=None,
     classifier_notice=None,
+    steering=False,
+    classification_details=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
     status = decision_status or {
         "apply": "approved",
-        "keepCurrent": "rejected",
+        "keepCurrent": "retained" if steering else "rejected",
         "shadow": "shadow",
     }[disposition]
     target = route_label(route)
@@ -1974,10 +2239,25 @@ def decision(
     llm_score = (
         percentage(llm_confidence) if llm_confidence is not None else "not available"
     )
+    progress = None if steering else calibration_progress(policy, raw_confidence)
     overall = (
-        f"{percentage(calibrated_confidence)} calibrated overall"
-        if calibrated_confidence is not None
-        else "uncalibrated"
+        "not applicable (steering)"
+        if steering
+        else (
+            f"{percentage(calibrated_confidence)} calibrated overall"
+            if calibrated_confidence is not None
+            else (
+                f"uncalibrated; {progress[0]}/{progress[1]} human outcomes "
+                f"({progress[2]} more needed)"
+                if progress is not None
+                else "uncalibrated"
+            )
+        )
+    )
+    similarity_detail = (
+        "not applicable (steering)"
+        if steering
+        else f"{percentage(confidence)}, margin {percentage(margin)}"
     )
     summary = (
         f"\n└ Decision: {status}; Target model: {target}; Used model: {used};\n"
@@ -1986,8 +2266,11 @@ def decision(
         f"Coordination({axes['orchestration']});\n"
         f"  Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});\n"
         f"  Confidence: {overall}; LLM self-rating({llm_score}); "
-        f"similarity({percentage(confidence)}, margin {percentage(margin)})."
+        f"similarity({similarity_detail})."
     )
+    work_type_validation = work_type_validation_text(classification_details)
+    if work_type_validation is not None:
+        summary += f"\n  Work type validation: {work_type_validation}."
     if classifier_notice is not None:
         summary += f"\n  Error: {classifier_notice}"
     return {
@@ -2024,6 +2307,7 @@ def decision(
                 "rankingMaximumRank": selection["maximumRank"],
                 "rankingTargetRank": selection["targetRank"],
                 "rankingSelectedRank": selection["selectedRank"],
+                "workTypeValidation": classification_details,
             },
             "reportingBaseline": policy.get("reportingBaseline"),
         },
@@ -2045,6 +2329,7 @@ def approval_continuation(
     raw_confidence=None,
     was_override=False,
     classifier_notice=None,
+    classification_details=None,
 ):
     turn = context.get("turn") or {}
     state = {
@@ -2063,6 +2348,7 @@ def approval_continuation(
         "rawConfidence": raw_confidence,
         "wasOverride": was_override,
         "classifierNotice": classifier_notice,
+        "classificationDetails": classification_details,
     }
     if embedding_elapsed_ms is not None and embedding_input_count is not None:
         state["embeddingElapsedMs"] = embedding_elapsed_ms
@@ -2090,6 +2376,7 @@ def approval(
     raw_confidence=None,
     was_override=False,
     classifier_notice=None,
+    classification_details=None,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -2111,6 +2398,18 @@ def approval(
         raw_confidence,
         was_override,
         classifier_notice,
+        classification_details,
+    )
+    progress = calibration_progress(policy, raw_confidence)
+    confidence_detail = (
+        f"{percentage(calibrated_confidence)} calibrated overall"
+        if calibrated_confidence is not None
+        else (
+            f"uncalibrated; {progress[0]}/{progress[1]} human outcomes "
+            f"({progress[2]} more needed)"
+            if progress is not None
+            else "uncalibrated"
+        )
     )
     sections = [
         {
@@ -2148,7 +2447,7 @@ def approval(
                 {
                     "text": (
                         f"Confidence: "
-                        f"{f'{percentage(calibrated_confidence)} calibrated overall' if calibrated_confidence is not None else 'uncalibrated'}; "
+                        f"{confidence_detail}; "
                         f"LLM self-rating "
                         f"{percentage(llm_confidence) if llm_confidence is not None else 'not available'}; "
                         f"similarity {percentage(confidence)} / margin {percentage(margin)}"
@@ -2158,6 +2457,14 @@ def approval(
             ],
         },
     ]
+    work_type_validation = work_type_validation_text(classification_details)
+    if work_type_validation is not None:
+        classification_section = next(
+            section for section in sections if section["title"] == "Classification:"
+        )
+        classification_section["rows"].append(
+            {"text": f"Work type validation: {work_type_validation}", "indent": 1}
+        )
     if notice_text is not None:
         sections[-2]["rows"].append({"text": f"Notice: {notice_text}"})
     override = form(
@@ -2208,14 +2515,93 @@ def approval(
     )
 
 
-def classifier_continuation(prompt):
-    encoded = base64.urlsafe_b64encode(
-        json.dumps({"prompt": prompt}, separators=(",", ":")).encode()
-    ).decode()
-    return f"classifier:{encoded}"
+def embedder_state_from_result(
+    axes,
+    evidence,
+    steering,
+    embedding_elapsed_ms,
+    embedding_input_count,
+):
+    return {
+        "axes": axes,
+        "evidence": evidence,
+        "steering": steering,
+        "embeddingElapsedMs": embedding_elapsed_ms,
+        "embeddingInputCount": embedding_input_count,
+    }
 
 
-def classifier_prompt(context, prompt):
+def valid_embedder_state(state):
+    if not isinstance(state, dict):
+        return False
+    axes = state.get("axes")
+    evidence = state.get("evidence")
+    if (
+        not isinstance(axes, dict)
+        or set(axes) != set(AXIS_VALUES)
+        or any(axes[axis] not in AXIS_VALUES[axis] for axis in AXIS_VALUES)
+        or not isinstance(evidence, dict)
+        or set(evidence) != set(AXIS_VALUES)
+        or not isinstance(state.get("steering"), bool)
+    ):
+        return False
+    for axis in AXIS_VALUES:
+        pair = evidence[axis]
+        if (
+            not isinstance(pair, (list, tuple))
+            or len(pair) != 2
+            or any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+                or not 0.0 <= value <= 1.0
+                for value in pair
+            )
+        ):
+            return False
+    elapsed = state.get("embeddingElapsedMs")
+    count = state.get("embeddingInputCount")
+    return (
+        elapsed is None
+        or (
+            isinstance(elapsed, int)
+            and not isinstance(elapsed, bool)
+            and elapsed >= 0
+        )
+    ) and (
+        count is None
+        or (
+            isinstance(count, int) and not isinstance(count, bool) and count >= 1
+        )
+    )
+
+
+def classifier_continuation(prompt, embedder_state):
+    def encode(candidate):
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(
+                {"prompt": candidate, "embedder": embedder_state},
+                separators=(",", ":"),
+            ).encode()
+        ).decode()
+        return f"classifier:{encoded}"
+
+    continuation = encode(prompt)
+    if len(continuation.encode()) <= MAX_CLASSIFIER_CONTINUATION_BYTES:
+        return continuation
+    low = 0
+    high = len(prompt)
+    while low < high:
+        midpoint = (low + high + 1) // 2
+        candidate = encode(prompt[:midpoint])
+        if len(candidate.encode()) <= MAX_CLASSIFIER_CONTINUATION_BYTES:
+            low = midpoint
+        else:
+            high = midpoint - 1
+    return encode(prompt[:low])
+
+
+def classifier_prompt(context, prompt, embedder_state):
     conversation = (context.get("conversation") or {}).get("recentMessages", [])
     messages = []
     for message in conversation[-8:]:
@@ -2226,17 +2612,29 @@ def classifier_prompt(context, prompt):
         if role in ("user", "assistant") and isinstance(text, str):
             messages.append(f"{role}: {text[:768]}")
     scope = ((context.get("turn") or {}).get("scope") or "root")
-    return (
+    embedder_work_type = embedder_state["axes"]["work_type"]
+    embedder_similarity, embedder_margin = embedder_state["evidence"]["work_type"]
+    feedback = classifier_feedback_prompt()
+    prompt_text = (
         "Classify the candidate task for a model router. Return JSON only with "
-        "exactly these fields: complexity (low, medium, high, very_high), risk "
-        "(low, medium, high, very_high), orchestration (none, delegate, coordination, workflow), "
-        "confidence (number from 0 through 1 for your complexity, risk, and orchestration classification). "
+        "exactly these fields: work_type (group1, group2, or group3), "
+        "complexity (low, medium, high, very_high), risk (low, medium, high, very_high), "
+        "orchestration (none, delegate, coordination, workflow), confidence "
+        "(number from 0 through 1 for the complete classification). "
+        f"Work type groups and their leaf values: {WORK_TYPE_GROUP_PROMPT}. "
+        "Use the leaf types to choose the best group, then return only the group ID. "
+        "The embedder candidate below is advisory and may be wrong; classify independently. "
         "For a subagent, choose orchestration none unless the candidate explicitly "
         "asks it to delegate, spawn, coordinate, or split work.\n"
         f"Scope: {scope}\n"
-        f"Recent session context:\n{chr(10).join(messages)[:6000]}\n"
-        f"Candidate task:\n{prompt[:1500]}"
+        f"Embedder work-type candidate: {embedder_work_type}; "
+        f"similarity {percentage(embedder_similarity)}; "
+        f"margin {percentage(embedder_margin)}\n"
+        f"{feedback + chr(10) if feedback else ''}"
+        f"Recent session context:\n{chr(10).join(messages)[:3500]}\n"
+        f"Candidate task:\n{prompt[:1200]}"
     )
+    return prompt_text.encode("utf-8")[:7600].decode("utf-8", "ignore")
 
 
 def parse_classifier_output(output):
@@ -2257,13 +2655,14 @@ def parse_classifier_output(output):
             return None
     if not isinstance(value, dict):
         return None
+    work_type_id = value.get("work_type")
     result = {
-        axis: value.get(axis)
-        for axis in ("complexity", "risk", "orchestration")
+        axis: value.get(axis) for axis in ("complexity", "risk", "orchestration")
     }
     confidence = value.get("confidence")
     if (
-        result["complexity"] not in COMPLEXITIES
+        work_type_id not in WORK_TYPE_GROUP_IDS
+        or result["complexity"] not in COMPLEXITIES
         or result["risk"] not in RISKS
         or result["orchestration"] not in ORCHESTRATIONS
         or not isinstance(confidence, (int, float))
@@ -2272,6 +2671,8 @@ def parse_classifier_output(output):
         or not 0.0 <= confidence <= 1.0
     ):
         return None
+    result["work_type"] = WORK_TYPE_GROUP_BY_ID[work_type_id]
+    result["work_type_id"] = work_type_id
     result["confidence"] = confidence
     return result
 
@@ -2286,9 +2687,10 @@ def routing_classifier_response(request, policy):
             base64.urlsafe_b64decode(continuation.split(":", 1)[1].encode())
         )
         prompt = state["prompt"]
+        embedder_state = state["embedder"]
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         raise ValueError("invalid classifier continuation") from None
-    if not isinstance(prompt, str):
+    if not isinstance(prompt, str) or not valid_embedder_state(embedder_state):
         raise ValueError("invalid classifier continuation")
     llm_elapsed_ms = params.get("elapsedMs")
     if (
@@ -2327,6 +2729,7 @@ def routing_classifier_response(request, policy):
         llm_elapsed_ms,
         classifier_failed=classifier_notice is not None,
         classifier_notice=classifier_notice,
+        embedder_state=embedder_state,
     )
 
 
@@ -2337,6 +2740,7 @@ def routing_decide(
     llm_elapsed_ms=None,
     classifier_failed=False,
     classifier_notice=None,
+    embedder_state=None,
 ):
     context = request.get("context", {})
     turn = context.get("turn", {})
@@ -2347,7 +2751,7 @@ def routing_decide(
     configured_classifier = valid_route(
         policy.get("classifierRoute"), eligible_classifier_routes(context)
     )
-    if (
+    should_request_classifier = (
         llm_classification is None
         and not classifier_failed
         and configured_classifier is not None
@@ -2355,15 +2759,40 @@ def routing_decide(
             has_prior_messages
             and (steering_prompt(prompt) or explicit_continuation_prompt(prompt))
         )
-    ):
-        return {
-            "kind": "classifierRequest",
-            "classifier": {
-                "continuation": classifier_continuation(prompt),
-                "route": configured_classifier,
-                "input": classifier_prompt(context, prompt),
-            },
-        }
+    )
+    if should_request_classifier:
+        if embedder_state is None:
+            (
+                embedder_axes,
+                embedder_evidence,
+                embedder_steering,
+                embedder_elapsed_ms,
+                embedder_input_count,
+                _,
+                _,
+            ) = classify(
+                policy,
+                prompt,
+                has_prior_messages,
+                recent_messages,
+                scope,
+            )
+            embedder_state = embedder_state_from_result(
+                embedder_axes,
+                embedder_evidence,
+                embedder_steering,
+                embedder_elapsed_ms,
+                embedder_input_count,
+            )
+        if not embedder_state["steering"]:
+            return {
+                "kind": "classifierRequest",
+                "classifier": {
+                    "continuation": classifier_continuation(prompt, embedder_state),
+                    "route": configured_classifier,
+                    "input": classifier_prompt(context, prompt, embedder_state),
+                },
+            }
     (
         axes,
         evidence,
@@ -2371,6 +2800,7 @@ def routing_decide(
         embedding_elapsed_ms,
         embedding_input_count,
         llm_confidence,
+        classification_details,
     ) = classify(
         policy,
         prompt,
@@ -2378,6 +2808,7 @@ def routing_decide(
         recent_messages,
         scope,
         llm_classification,
+        embedder_state,
     )
     similarity, margin = classification_confidence(evidence)
     calibrated_confidence, raw_confidence = combined_confidence(
@@ -2386,7 +2817,8 @@ def routing_decide(
     selection = choose_route(policy, context, axes)
     route = selection["route"]
     current = context.get("currentRoute")
-    confident = confidence_passes(
+    classification_conflict = classification_details["classificationConflict"]
+    confident = not classification_conflict and confidence_passes(
         policy,
         calibrated_confidence
         if calibrated_confidence is not None
@@ -2414,11 +2846,15 @@ def routing_decide(
         < policy["confidencePresets"][policy["confidence"]]["minimumConfidence"]
     )
     needs_approval = route_can_be_approved and (
-        policy["approval"] == "all"
-        or (
-            policy["approval"] == "policy"
-            and (needs_calibration or below_not_confident_threshold)
-        )
+            policy["approval"] == "all"
+            or (
+                policy["approval"] == "policy"
+                and (
+                    needs_calibration
+                    or below_not_confident_threshold
+                    or classification_conflict
+                )
+            )
     )
     if needs_approval:
         record_routing_decision(
@@ -2435,6 +2871,7 @@ def routing_decide(
             llm_confidence,
             llm_elapsed_ms,
             calibrated_confidence,
+            classification_details,
         )
         context = {
             **context,
@@ -2455,6 +2892,7 @@ def routing_decide(
             raw_confidence=raw_confidence,
             notice_text=classifier_notice,
             classifier_notice=classifier_notice,
+            classification_details=classification_details,
         )
     disposition = (
         "apply"
@@ -2466,6 +2904,8 @@ def routing_decide(
     reason = None
     if steering:
         reason = "Steering input retained the current route."
+    elif classification_conflict:
+        reason = "Embedder and LLM work-type classifications disagree."
     elif not confident:
         reason = "Similarity thresholds retained the current route."
     elif route is None:
@@ -2484,6 +2924,7 @@ def routing_decide(
         llm_confidence,
         llm_elapsed_ms,
         calibrated_confidence,
+        classification_details,
     )
     result = decision(
         policy,
@@ -2500,8 +2941,11 @@ def routing_decide(
         llm_confidence=llm_confidence,
         llm_elapsed_ms=llm_elapsed_ms,
         calibrated_confidence=calibrated_confidence,
+        raw_confidence=raw_confidence,
         used_route=route if disposition == "apply" else current,
         classifier_notice=classifier_notice,
+        steering=steering,
+        classification_details=classification_details,
     )
     return result
 
@@ -2521,6 +2965,7 @@ def approval_state(continuation):
         raw_confidence = state.get("rawConfidence")
         was_override = state.get("wasOverride", False)
         classifier_notice = state.get("classifierNotice")
+        classification_details = state.get("classificationDetails")
         scope = state.get("scope", "root")
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
@@ -2580,6 +3025,7 @@ def approval_state(continuation):
                 or not math.isfinite(raw_confidence)
                 or not 0.0 <= raw_confidence <= 1.0
             )
+            or not valid_classification_details(classification_details)
             or axes["work_type"] not in WORK_TYPES
             or axes["complexity"] not in COMPLEXITIES
             or axes["orchestration"] not in ORCHESTRATIONS
@@ -2603,6 +3049,7 @@ def approval_state(continuation):
         raw_confidence,
         was_override,
         classifier_notice,
+        classification_details,
     )
 
 
@@ -2622,6 +3069,7 @@ def fresh_approval(
     raw_confidence=None,
     was_override=False,
     classifier_notice=None,
+    classification_details=None,
 ):
     selection = choose_route(policy, context, axes)
     return approval(
@@ -2641,6 +3089,7 @@ def fresh_approval(
         raw_confidence=raw_confidence,
         was_override=was_override,
         classifier_notice=classifier_notice,
+        classification_details=classification_details,
     )
 
 
@@ -2665,6 +3114,7 @@ def approval_response(request, policy):
         raw_confidence,
         was_override,
         classifier_notice,
+        classification_details,
     ) = decoded
     current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
@@ -2686,6 +3136,7 @@ def approval_response(request, policy):
             raw_confidence,
             was_override,
             classifier_notice,
+            classification_details,
         )
     selection = choose_route(policy, rendered_context, axes)
     rendered = approval(
@@ -2704,6 +3155,7 @@ def approval_response(request, policy):
         was_override=was_override,
         notice_text=classifier_notice,
         classifier_notice=classifier_notice,
+        classification_details=classification_details,
     )["interaction"]
     if (
         params.get("interactionId") != rendered["id"]
@@ -2726,6 +3178,7 @@ def approval_response(request, policy):
             raw_confidence,
             was_override,
             classifier_notice,
+            classification_details,
         )
     selected = (params.get("action") or {}).get("id")
     if selected == "keep-current" or params.get("outcome") != "accepted":
@@ -2735,6 +3188,15 @@ def approval_response(request, policy):
                 raw_confidence,
                 "override" if was_override else "rejected",
             )
+        record_classifier_feedback(
+            policy,
+            rendered_context,
+            rendered_context.get("routerPrompt", ""),
+            axes,
+            axes,
+            classification_details,
+            "classification_override_rejected" if was_override else "rejected",
+        )
         if recalibrated:
             record_recalibration(
                 policy,
@@ -2756,9 +3218,11 @@ def approval_response(request, policy):
             llm_confidence=llm_confidence,
             llm_elapsed_ms=llm_elapsed_ms,
             calibrated_confidence=calibrated_confidence,
+            raw_confidence=raw_confidence,
             decision_status="override" if was_override else "rejected",
             used_route=current_context.get("currentRoute"),
             classifier_notice=classifier_notice,
+            classification_details=classification_details,
         )
     values = params.get("values") or {}
     if selected == "submit-override":
@@ -2805,6 +3269,15 @@ def approval_response(request, policy):
                 "updatedHeads": updates,
             }
         )
+        record_classifier_feedback(
+            policy,
+            rendered_context,
+            rendered_context.get("routerPrompt", ""),
+            original_axes,
+            axes,
+            classification_details,
+            "classification_override",
+        )
         if selection["route"] is None:
             record_recalibration(
                 policy,
@@ -2827,9 +3300,11 @@ def approval_response(request, policy):
                 llm_confidence=llm_confidence,
                 llm_elapsed_ms=llm_elapsed_ms,
                 calibrated_confidence=calibrated_confidence,
+                raw_confidence=raw_confidence,
                 decision_status="override",
                 used_route=current_context.get("currentRoute"),
                 classifier_notice=classifier_notice,
+                classification_details=classification_details,
             )
         return approval(
             policy,
@@ -2848,6 +3323,7 @@ def approval_response(request, policy):
             was_override=True,
             notice_text=classifier_notice,
             classifier_notice=classifier_notice,
+            classification_details=classification_details,
         )
     if recalibrated:
         record_recalibration(
@@ -2863,6 +3339,15 @@ def approval_response(request, policy):
             raw_confidence,
             "override" if was_override else "approved",
         )
+    record_classifier_feedback(
+        policy,
+        rendered_context,
+        rendered_context.get("routerPrompt", ""),
+        axes,
+        axes,
+        classification_details,
+        "classification_override_approved" if was_override else "approved",
+    )
     return decision(
         policy,
         request["requestId"],
@@ -2876,9 +3361,11 @@ def approval_response(request, policy):
         llm_confidence=llm_confidence,
         llm_elapsed_ms=llm_elapsed_ms,
         calibrated_confidence=calibrated_confidence,
+        raw_confidence=raw_confidence,
         decision_status="override" if was_override else "approved",
         used_route=selection["route"],
         classifier_notice=classifier_notice,
+        classification_details=classification_details,
     )
 
 
