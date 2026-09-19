@@ -10,27 +10,23 @@
       "type": "string"
     }
   },
+  "description": "Posts a user-visible message from a registered session script.",
   "properties": {
-    "extensionName": {
-      "description": "Host-controlled extension identifier used for user-facing attribution.",
-      "type": "string"
-    },
     "level": {
       "$ref": "#/definitions/SessionExtensionMessageLevel"
     },
     "message": {
       "type": "string"
     },
-    "threadId": {
+    "registrationId": {
       "type": "string"
     }
   },
   "required": [
-    "extensionName",
     "level",
     "message",
-    "threadId"
+    "registrationId"
   ],
-  "title": "SessionExtensionMessageNotification",
+  "title": "SessionScriptMessageParams",
   "type": "object"
 }

@@ -227,6 +227,7 @@ pub enum ScriptResult {
 #[serde(rename_all = "camelCase")]
 pub enum ScriptMessageLevel {
     Info,
+    Warning,
     Error,
 }
 

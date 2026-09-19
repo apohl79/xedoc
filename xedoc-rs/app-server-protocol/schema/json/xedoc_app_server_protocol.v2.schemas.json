@@ -871,6 +871,30 @@
           "type": "object"
         },
         {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "script/message"
+              ],
+              "title": "Script/messageRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionScriptMessageParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Script/messageRequest",
+          "type": "object"
+        },
+        {
           "description": "Increment the thread-local out-of-band elicitation counter.\n\nThis is used by external helpers to pause timeout accounting while a user approval or other elicitation is pending outside the app-server request flow.",
           "properties": {
             "id": {
@@ -14535,6 +14559,7 @@
     "SessionExtensionMessageLevel": {
       "enum": [
         "info",
+        "warning",
         "error"
       ],
       "type": "string"
@@ -14542,6 +14567,10 @@
     "SessionExtensionMessageNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "extensionName": {
+          "description": "Host-controlled extension identifier used for user-facing attribution.",
+          "type": "string"
+        },
         "level": {
           "$ref": "#/definitions/SessionExtensionMessageLevel"
         },
@@ -14553,6 +14582,7 @@
         }
       },
       "required": [
+        "extensionName",
         "level",
         "message",
         "threadId"
@@ -14591,6 +14621,33 @@
       "required": [
         "id"
       ],
+      "type": "object"
+    },
+    "SessionScriptMessageParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Posts a user-visible message from a registered session script.",
+      "properties": {
+        "level": {
+          "$ref": "#/definitions/SessionExtensionMessageLevel"
+        },
+        "message": {
+          "type": "string"
+        },
+        "registrationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "message",
+        "registrationId"
+      ],
+      "title": "SessionScriptMessageParams",
+      "type": "object"
+    },
+    "SessionScriptMessageResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SessionScriptMessageResponse",
       "type": "object"
     },
     "SessionScriptPrompt": {

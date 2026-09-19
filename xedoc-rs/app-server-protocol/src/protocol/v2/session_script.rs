@@ -1,3 +1,4 @@
+use super::SessionExtensionMessageLevel;
 use super::ThreadStatus;
 use super::Turn;
 use schemars::JsonSchema;
@@ -205,6 +206,21 @@ pub struct SessionScriptRequestUserInputAnswer {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct SessionScriptRespondResponse {}
+
+/// Posts a user-visible message from a registered session script.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct SessionScriptMessageParams {
+    pub registration_id: String,
+    pub level: SessionExtensionMessageLevel,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct SessionScriptMessageResponse {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]

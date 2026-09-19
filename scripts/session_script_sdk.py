@@ -274,6 +274,19 @@ class SessionScriptClient:
             {"kind": "approval", "response": response},
         )
 
+    def post_message(
+        self, registration_id: str, level: str, message: str
+    ) -> dict[str, Any]:
+        """Post an info, warning, or error message to the registered TUI thread."""
+        return self.request(
+            "script/message",
+            {
+                "registrationId": registration_id,
+                "level": level,
+                "message": message,
+            },
+        )
+
     def unregister(self, registration_id: str) -> dict[str, Any]:
         return self.request("script/unregister", {"registrationId": registration_id})
 

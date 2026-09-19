@@ -230,6 +230,14 @@ class Client:
                 "turnCompleted",
                 status=turn.get("status") if isinstance(turn, dict) else None,
             )
+        elif method == "sessionExtension/message":
+            self.recorder.add(
+                "sessionExtensionMessage",
+                threadId=params.get("threadId"),
+                extensionName=params.get("extensionName"),
+                level=params.get("level"),
+                message=params.get("message"),
+            )
         elif method == "script/sessionUpdated":
             session = params.get("session")
             self.recorder.add(

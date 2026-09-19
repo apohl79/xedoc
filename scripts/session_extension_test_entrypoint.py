@@ -253,6 +253,20 @@ def run_persistent(recorder: Recorder, script_id: str, thread_id: str) -> int:
             grantedCapabilities=result.get("grantedCapabilities"),
             hasSnapshot=isinstance(result.get("snapshot"), dict),
         )
+        registration_id = result.get("registrationId")
+        if not isinstance(registration_id, str):
+            raise RuntimeError("persistent registration did not return registrationId")
+        for level in ("info", "warning", "error"):
+            client.post_message(
+                registration_id,
+                level,
+                f"persistent {level} message",
+            )
+            recorder.add(
+                "persistentMessagePosted",
+                threadId=thread_id,
+                level=level,
+            )
         while True:
             client.handle_message(client.receive_message())
     except RpcError as error:

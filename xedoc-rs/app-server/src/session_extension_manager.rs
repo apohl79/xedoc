@@ -429,6 +429,7 @@ impl SessionExtensionManager {
                 } => {
                     let level = match level {
                         ScriptMessageLevel::Info => SessionExtensionMessageLevel::Info,
+                        ScriptMessageLevel::Warning => SessionExtensionMessageLevel::Warning,
                         ScriptMessageLevel::Error => SessionExtensionMessageLevel::Error,
                     };
                     self.inner
@@ -436,6 +437,7 @@ impl SessionExtensionManager {
                         .send_server_notification(ServerNotification::SessionExtensionMessage(
                             SessionExtensionMessageNotification {
                                 thread_id: thread_id.to_string(),
+                                extension_name: descriptor.manifest_extension_id.clone(),
                                 level,
                                 message,
                             },
@@ -815,6 +817,7 @@ impl SessionExtensionManager {
                 .grant_extension(
                     &descriptor.id,
                     thread_id,
+                    &descriptor.manifest_extension_id,
                     &descriptor.requested_capabilities,
                 )
                 .await

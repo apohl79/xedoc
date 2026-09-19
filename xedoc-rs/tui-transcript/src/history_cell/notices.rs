@@ -212,6 +212,15 @@ pub fn new_info_event(message: String, hint: Option<String>) -> PlainHistoryCell
     PlainHistoryCell { lines }
 }
 
+pub fn new_session_extension_info_event(
+    extension_name: String,
+    message: String,
+) -> PlainHistoryCell {
+    let lines: Vec<Line<'static>> =
+        vec![vec![extension_name.into(), " ".into(), message.dim()].into()];
+    PlainHistoryCell { lines }
+}
+
 pub fn new_error_event(message: String) -> PlainHistoryCell {
     // Use a hair space (U+200A) to create a subtle, near-invisible separation
     // before the text. VS16 is intentionally omitted to keep spacing tighter

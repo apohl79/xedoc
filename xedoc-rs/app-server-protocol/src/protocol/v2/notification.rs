@@ -25,11 +25,12 @@ pub struct WarningNotification {
     pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase", export_to = "v2/")]
 pub enum SessionExtensionMessageLevel {
     Info,
+    Warning,
     Error,
 }
 
@@ -38,6 +39,8 @@ pub enum SessionExtensionMessageLevel {
 #[ts(export_to = "v2/")]
 pub struct SessionExtensionMessageNotification {
     pub thread_id: String,
+    /// Host-controlled extension identifier used for user-facing attribution.
+    pub extension_name: String,
     pub level: SessionExtensionMessageLevel,
     pub message: String,
 }

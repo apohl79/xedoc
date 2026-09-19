@@ -2514,12 +2514,17 @@
     "SessionExtensionMessageLevel": {
       "enum": [
         "info",
+        "warning",
         "error"
       ],
       "type": "string"
     },
     "SessionExtensionMessageNotification": {
       "properties": {
+        "extensionName": {
+          "description": "Host-controlled extension identifier used for user-facing attribution.",
+          "type": "string"
+        },
         "level": {
           "$ref": "#/definitions/SessionExtensionMessageLevel"
         },
@@ -2531,6 +2536,7 @@
         }
       },
       "required": [
+        "extensionName",
         "level",
         "message",
         "threadId"

@@ -3617,6 +3617,14 @@
       ],
       "type": "object"
     },
+    "SessionExtensionMessageLevel": {
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
     "SessionScriptCapability": {
       "description": "A narrowly scoped action a session script may be granted for its thread.",
       "enum": [
@@ -3647,6 +3655,26 @@
       },
       "required": [
         "id"
+      ],
+      "type": "object"
+    },
+    "SessionScriptMessageParams": {
+      "description": "Posts a user-visible message from a registered session script.",
+      "properties": {
+        "level": {
+          "$ref": "#/definitions/SessionExtensionMessageLevel"
+        },
+        "message": {
+          "type": "string"
+        },
+        "registrationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "message",
+        "registrationId"
       ],
       "type": "object"
     },
@@ -6093,6 +6121,30 @@
         "params"
       ],
       "title": "Script/respondRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "script/message"
+          ],
+          "title": "Script/messageRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionScriptMessageParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Script/messageRequest",
       "type": "object"
     },
     {

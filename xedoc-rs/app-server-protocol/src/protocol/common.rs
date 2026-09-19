@@ -536,6 +536,12 @@ client_request_definitions! {
         serialization: None,
         response: v2::SessionScriptRespondResponse,
     },
+    #[experimental("script/message")]
+    ScriptMessage => "script/message" {
+        params: v2::SessionScriptMessageParams,
+        serialization: None,
+        response: v2::SessionScriptMessageResponse,
+    },
     #[experimental("thread/increment_elicitation")]
     /// Increment the thread-local out-of-band elicitation counter.
     ///

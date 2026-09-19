@@ -517,6 +517,7 @@ and the JSON-RPC primitive for existing app-server methods.
 | `read(registration_id)` | Return a fresh bounded snapshot. |
 | `respond(registration_id, prompt_id, response_lease, response)` | Answer a valid leased prompt with its explicit response shape. |
 | `respond_approval(registration_id, prompt_id, response_lease, response)` | Answer a leased approval or extension-interaction prompt. |
+| `post_message(registration_id, level, message)` | Post an `info`, `warning`, or `error` message to the registered thread. |
 | `unregister(registration_id)` | Remove this connection’s registration. Closing the connection also removes it. |
 | `request(method, params)` | Send any permitted JSON-RPC request and return its object result. Raises `RpcError` for a JSON-RPC error. |
 | `request_error(method, params)` | Send a request expected to fail and return its error message. Useful in tests. |
@@ -536,6 +537,8 @@ from `request`, and an unexpected closed transport.
 - A child may register only once, and only with the host-provided script ID and
   thread ID.
 - Registration exposes a bounded snapshot, not arbitrary thread history.
+- A registered script may post user-visible messages only to its own thread. The
+  host supplies the extension label shown in the TUI.
 - The response lease makes `request_user_input` answering exclusive and
   time-bounded; all other prompt projections are observe-only.
 - A registered script has no general app-server authority. Apart from its

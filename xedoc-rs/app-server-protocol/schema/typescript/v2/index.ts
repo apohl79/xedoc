@@ -359,6 +359,8 @@ export type { SessionExtensionMessageLevel } from "./SessionExtensionMessageLeve
 export type { SessionExtensionMessageNotification } from "./SessionExtensionMessageNotification";
 export type { SessionScriptCapability } from "./SessionScriptCapability";
 export type { SessionScriptIdentityParams } from "./SessionScriptIdentityParams";
+export type { SessionScriptMessageParams } from "./SessionScriptMessageParams";
+export type { SessionScriptMessageResponse } from "./SessionScriptMessageResponse";
 export type { SessionScriptPrompt } from "./SessionScriptPrompt";
 export type { SessionScriptPromptClosedNotification } from "./SessionScriptPromptClosedNotification";
 export type { SessionScriptPromptClosedReason } from "./SessionScriptPromptClosedReason";

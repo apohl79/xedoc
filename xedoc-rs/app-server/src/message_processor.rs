@@ -105,7 +105,8 @@ fn authorize_session_script_request(
     match request {
         ClientRequest::ScriptRead { .. }
         | ClientRequest::ScriptUnregister { .. }
-        | ClientRequest::ScriptRespond { .. } => Ok(()),
+        | ClientRequest::ScriptRespond { .. }
+        | ClientRequest::ScriptMessage { .. } => Ok(()),
         ClientRequest::TurnStart { params, .. }
             if may_send_input
                 && params.thread_id == thread_id
@@ -1117,6 +1118,11 @@ impl MessageProcessor {
             ClientRequest::ScriptRespond { params, .. } => {
                 self.thread_processor
                     .script_respond(connection_id, params)
+                    .await
+            }
+            ClientRequest::ScriptMessage { params, .. } => {
+                self.thread_processor
+                    .script_message(connection_id, params)
                     .await
             }
             ClientRequest::ThreadResume { params, .. } => {

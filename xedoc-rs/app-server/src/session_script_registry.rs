@@ -9,8 +9,10 @@ use tokio::sync::broadcast;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 use xedoc_app_server_protocol::ServerNotification;
+use xedoc_app_server_protocol::SessionExtensionMessageNotification;
 use xedoc_app_server_protocol::SessionScriptCapability;
 use xedoc_app_server_protocol::SessionScriptIdentityParams;
+use xedoc_app_server_protocol::SessionScriptMessageParams;
 use xedoc_app_server_protocol::SessionScriptPrompt;
 use xedoc_app_server_protocol::SessionScriptPromptClosedNotification;
 use xedoc_app_server_protocol::SessionScriptPromptClosedReason;
@@ -59,6 +61,7 @@ struct SessionScriptRegistryState {
 
 #[derive(Clone)]
 struct SessionScriptPolicy {
+    extension_name: String,
     capabilities: HashSet<SessionScriptCapability>,
     subscriptions: SessionScriptSubscriptionPolicy,
     response_timeout: Duration,
@@ -78,6 +81,7 @@ struct SessionScriptSubscriptionPolicy {
 pub(crate) struct SessionScriptRegistration {
     pub(crate) registration_id: String,
     pub(crate) thread_id: ThreadId,
+    extension_name: String,
     pub(crate) subscriptions: SessionScriptSubscriptionsParams,
     pub(crate) capabilities: HashSet<SessionScriptCapability>,
     revision: u64,
@@ -85,7 +89,6 @@ pub(crate) struct SessionScriptRegistration {
     resync_required: bool,
     session: Option<SessionScriptSession>,
     response_timeout: Duration,
-    #[allow(dead_code)]
     identity: SessionScriptIdentityParams,
 }
 
@@ -194,6 +197,7 @@ impl SessionScriptRegistry {
                 (
                     script.id.clone(),
                     SessionScriptPolicy {
+                        extension_name: script.id.clone(),
                         capabilities: script
                             .capabilities
                             .iter()
@@ -219,6 +223,7 @@ impl SessionScriptRegistry {
         &self,
         extension_id: &str,
         thread_id: ThreadId,
+        extension_name: &str,
         requested_capabilities: &[String],
     ) -> Result<(), String> {
         if self.policies_by_script_id.contains_key(extension_id) {
@@ -233,7 +238,10 @@ impl SessionScriptRegistry {
             .or_default()
             .insert(
                 thread_id,
-                extension_policy_from_requested_capabilities(requested_capabilities),
+                extension_policy_from_requested_capabilities(
+                    extension_name,
+                    requested_capabilities,
+                ),
             );
         Ok(())
     }
@@ -341,6 +349,7 @@ impl SessionScriptRegistry {
         let registration = SessionScriptRegistration {
             registration_id: Uuid::now_v7().to_string(),
             thread_id,
+            extension_name: policy.extension_name,
             subscriptions: params.subscriptions,
             capabilities,
             revision: 0,
@@ -424,6 +433,30 @@ impl SessionScriptRegistry {
             .registrations_by_connection
             .get(&connection_id)
             .cloned()
+    }
+
+    pub(crate) async fn message(
+        &self,
+        connection_id: ConnectionId,
+        params: SessionScriptMessageParams,
+    ) -> Result<SessionExtensionMessageNotification, String> {
+        if params.message.trim().is_empty() {
+            return Err("session script message must not be empty".to_string());
+        }
+        let state = self.state.lock().await;
+        let registration = state
+            .registrations_by_connection
+            .get(&connection_id)
+            .ok_or_else(|| "no session script is registered on this connection".to_string())?;
+        if registration.registration_id != params.registration_id {
+            return Err("registration does not belong to this connection".to_string());
+        }
+        Ok(SessionExtensionMessageNotification {
+            thread_id: registration.thread_id.to_string(),
+            extension_name: registration.extension_name.clone(),
+            level: params.level,
+            message: params.message,
+        })
     }
 
     pub(crate) async fn snapshot_for(
@@ -1010,9 +1043,11 @@ fn session_script_capability_from_config(
 }
 
 fn extension_policy_from_requested_capabilities(
+    extension_name: &str,
     requested_capabilities: &[String],
 ) -> SessionScriptPolicy {
     let mut policy = SessionScriptPolicy {
+        extension_name: extension_name.to_string(),
         capabilities: HashSet::new(),
         subscriptions: SessionScriptSubscriptionPolicy::default(),
         response_timeout: Duration::from_secs(/*secs*/ 10),

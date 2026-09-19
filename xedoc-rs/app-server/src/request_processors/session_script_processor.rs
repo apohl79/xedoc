@@ -13,7 +13,10 @@ use crate::session_script_registry::send_deliveries;
 use std::path::Path;
 use std::path::PathBuf;
 use xedoc_app_server_protocol::ClientResponsePayload;
+use xedoc_app_server_protocol::ServerNotification;
 use xedoc_app_server_protocol::SessionScriptCapability;
+use xedoc_app_server_protocol::SessionScriptMessageParams;
+use xedoc_app_server_protocol::SessionScriptMessageResponse;
 use xedoc_app_server_protocol::SessionScriptReadParams;
 use xedoc_app_server_protocol::SessionScriptReadResponse;
 use xedoc_app_server_protocol::SessionScriptRegisterParams;
@@ -203,6 +206,22 @@ impl ThreadRequestProcessor {
             .map_err(invalid_request)?;
         send_deliveries(&self.outgoing, deliveries).await;
         Ok(Some(SessionScriptRespondResponse {}.into()))
+    }
+
+    pub(crate) async fn script_message(
+        &self,
+        connection_id: ConnectionId,
+        params: SessionScriptMessageParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let notification = self
+            .session_script_registry
+            .message(connection_id, params)
+            .await
+            .map_err(invalid_request)?;
+        self.outgoing
+            .send_server_notification(ServerNotification::SessionExtensionMessage(notification))
+            .await;
+        Ok(Some(SessionScriptMessageResponse {}.into()))
     }
 
     async fn session_script_snapshot(
