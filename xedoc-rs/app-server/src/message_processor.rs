@@ -1127,7 +1127,8 @@ impl MessageProcessor {
                     .await
             }
             ClientRequest::ThreadResume { params, .. } => {
-                self.thread_processor
+                let (result, resumed_thread_id) = self
+                    .thread_processor
                     .thread_resume(
                         request_id.clone(),
                         params,
@@ -1136,7 +1137,15 @@ impl MessageProcessor {
                         /*supports_openai_form_elicitation*/
                         supports_openai_form_elicitation,
                     )
-                    .await
+                    .await?;
+                if let Some(thread_id) = resumed_thread_id
+                    && self.is_loaded_root_thread(thread_id).await
+                {
+                    self.session_extension_manager
+                        .start_for_thread(thread_id)
+                        .await;
+                }
+                Ok(result)
             }
             ClientRequest::ThreadFork { params, .. } => {
                 self.thread_processor

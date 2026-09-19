@@ -433,7 +433,7 @@ pub(crate) struct ThreadRequestProcessor {
 /// Outcome of trying to satisfy a resume request from an already loaded thread.
 enum RunningThreadResumeResult {
     /// The request was delegated to the loaded thread.
-    Handled,
+    Handled(ThreadId),
     /// No loaded thread handled the request.
     ///
     /// The optional stored thread contains the history-bearing probe that cold
@@ -547,7 +547,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
-    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+    ) -> Result<(Option<ClientResponsePayload>, Option<ThreadId>), JSONRPCErrorError> {
         self.thread_resume_inner(
             request_id,
             params,
@@ -556,7 +556,7 @@ impl ThreadRequestProcessor {
             supports_openai_form_elicitation,
         )
         .await
-        .map(|()| None)
+        .map(|thread_id| (None, thread_id))
     }
 
     pub(crate) async fn thread_fork(
@@ -3070,7 +3070,7 @@ impl ThreadRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
-    ) -> Result<(), JSONRPCErrorError> {
+    ) -> Result<Option<ThreadId>, JSONRPCErrorError> {
         if let Ok(thread_id) = ThreadId::from_string(&params.thread_id)
             && self
                 .pending_thread_unloads
@@ -3086,7 +3086,7 @@ impl ThreadRequestProcessor {
                     )),
                 )
                 .await;
-            return Ok(());
+            return Ok(None);
         }
 
         if params.sandbox.is_some() && params.permissions.is_some() {
@@ -3096,7 +3096,7 @@ impl ThreadRequestProcessor {
                     invalid_request("`permissions` cannot be combined with `sandbox`"),
                 )
                 .await;
-            return Ok(());
+            return Ok(None);
         }
         let redact_resume_payloads =
             should_redact_thread_resume_payloads(app_server_client_name.as_deref());
@@ -3105,7 +3105,7 @@ impl ThreadRequestProcessor {
             Ok(permit) => permit,
             Err(error) => {
                 self.outgoing.send_error(request_id, error).await;
-                return Ok(());
+                return Ok(None);
             }
         };
         let stored_thread_from_running_probe = match self
@@ -3117,11 +3117,11 @@ impl ThreadRequestProcessor {
             )
             .await
         {
-            Ok(RunningThreadResumeResult::Handled) => return Ok(()),
+            Ok(RunningThreadResumeResult::Handled(thread_id)) => return Ok(Some(thread_id)),
             Ok(RunningThreadResumeResult::NotRunning(stored_thread)) => stored_thread,
             Err(error) => {
                 self.outgoing.send_error(request_id, error).await;
-                return Ok(());
+                return Ok(None);
             }
         };
 
@@ -3174,7 +3174,7 @@ impl ThreadRequestProcessor {
             Ok(value) => value,
             Err(error) => {
                 self.outgoing.send_error(request_id, error).await;
-                return Ok(());
+                return Ok(None);
             }
         };
         let paginated_thread_id = resume_source_thread.as_ref().and_then(|thread| {
@@ -3219,7 +3219,7 @@ impl ThreadRequestProcessor {
             Err(err) => {
                 let error = config_load_error(&err);
                 self.outgoing.send_error(request_id, error).await;
-                return Ok(());
+                return Ok(None);
             }
         };
         if !has_explicit_model_resume_override
@@ -3257,7 +3257,7 @@ impl ThreadRequestProcessor {
                 .await
                 {
                     self.outgoing.send_error(request_id, err).await;
-                    return Ok(());
+                    return Ok(None);
                 }
                 let instruction_sources = xedoc_thread.legacy_instruction_sources().await;
                 let SessionConfiguredEvent { rollout_path, .. } = session_configured;
@@ -3265,7 +3265,7 @@ impl ThreadRequestProcessor {
                     let error =
                         internal_error(format!("rollout path missing for thread {thread_id}"));
                     self.outgoing.send_error(request_id, error).await;
-                    return Ok(());
+                    return Ok(None);
                 };
                 // Paginated JSONL is canonical, but its SQLite projection can lag after a
                 // previous write failure. Persist after reopening the live writer so legacy
@@ -3278,14 +3278,14 @@ impl ThreadRequestProcessor {
                         .map_err(thread_store_resume_read_error)
                 {
                     self.outgoing.send_error(request_id, error).await;
-                    return Ok(());
+                    return Ok(None);
                 }
                 let materialized_turns = if paginated_resume && include_turns {
                     match self.paginated_thread_full_turns(thread_id).await {
                         Ok(turns) => Some(turns),
                         Err(error) => {
                             self.outgoing.send_error(request_id, error).await;
-                            return Ok(());
+                            return Ok(None);
                         }
                     }
                 } else {
@@ -3320,7 +3320,7 @@ impl ThreadRequestProcessor {
                         self.outgoing
                             .send_error(request_id, internal_error(message))
                             .await;
-                        return Ok(());
+                        return Ok(None);
                     }
                 };
                 thread.thread_source = xedoc_thread
@@ -3357,7 +3357,7 @@ impl ThreadRequestProcessor {
                             Ok(cursors) => cursors,
                             Err(error) => {
                                 self.outgoing.send_error(request_id, error).await;
-                                return Ok(());
+                                return Ok(None);
                             }
                         }
                     } else {
@@ -3385,7 +3385,7 @@ impl ThreadRequestProcessor {
                         Ok(page) => Some(page),
                         Err(error) => {
                             self.outgoing.send_error(request_id, error).await;
-                            return Ok(());
+                            return Ok(None);
                         }
                     }
                 } else {
@@ -3435,13 +3435,14 @@ impl ThreadRequestProcessor {
                 self.thread_goal_processor
                     .emit_resume_goal_snapshot_and_continue(thread_id, xedoc_thread.as_ref())
                     .await;
+                return Ok(Some(thread_id));
             }
             Err(err) => {
                 let error = internal_error(format!("error resuming thread: {err}"));
                 self.outgoing.send_error(request_id, error).await;
+                return Ok(None);
             }
         }
-        Ok(())
     }
 
     async fn load_and_apply_persisted_resume_metadata(
@@ -3731,7 +3732,7 @@ impl ThreadRequestProcessor {
                     "failed to enqueue running thread resume for thread {existing_thread_id}: thread listener command channel is closed"
                 )));
             }
-            return Ok(RunningThreadResumeResult::Handled);
+            return Ok(RunningThreadResumeResult::Handled(existing_thread_id));
         }
         Ok(RunningThreadResumeResult::NotRunning(None))
     }
