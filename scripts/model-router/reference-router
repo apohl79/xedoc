@@ -1956,8 +1956,8 @@ def decision(
         else "uncalibrated"
     )
     summary = (
-        f"Decision: {status}; Target model: {target}; Used model: {used};\n"
-        f"└ Classifications: Work type({axes['work_type']}); "
+        f"\n└ Decision: {status}; Target model: {target}; Used model: {used};\n"
+        f"  Classifications: Work type({axes['work_type']}); "
         f"Complexity({axes['complexity']}); Risk({axes['risk']}); "
         f"Coordination({axes['orchestration']});\n"
         f"  Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});\n"

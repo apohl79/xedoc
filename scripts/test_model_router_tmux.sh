@@ -1890,6 +1890,10 @@ run_shadow_feedback_matrix() {
   wait_for_pane "Used model: openai/$initial_model/$initial_effort;"
   wait_for_pane "Classifications: Work type("
   wait_for_pane "Stats: Embedding("
+  local pane
+  pane="$(capture_viewport)"
+  [[ "$pane" == *$'model router\n  └ Decision: shadow; Target model: openai/'* ]] ||
+    fail "shadow feedback did not render the router heading separately"
   wait_for_pane_absent "embedding batch "
   record_scenario shadow-feedback \
     "script-owned shadow summary visible without duplicate routing calculation"
