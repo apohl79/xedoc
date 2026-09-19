@@ -1819,6 +1819,26 @@ run_feedback_matrix() {
     "classification, confidence, ranking calculation, and exact model choice visible"
 }
 
+run_shadow_feedback_matrix() {
+  reset_policy
+  set_mode shadow-full "Shadow Full"
+  set_approval off Off
+  set_feedback true
+  start_tui
+  send_prompt "ROUTER_E2E_SHADOW_FEEDBACK review workflow security"
+  wait_for_request_marker "ROUTER_E2E_SHADOW_FEEDBACK"
+  await_turn
+  assert_request_route \
+    "ROUTER_E2E_SHADOW_FEEDBACK" "$initial_model" "$initial_effort"
+  wait_for_pane "Decision: shadow; Target model: openai/"
+  wait_for_pane "Used model: openai/$initial_model/$initial_effort;"
+  wait_for_pane "Classifications: Work type("
+  wait_for_pane "Stats: Embedding("
+  wait_for_pane "embedding batch "
+  record_scenario shadow-feedback \
+    "script-owned shadow summary and routing calculation visible while route is retained"
+}
+
 run_baseline_report_matrix() {
   reset_policy
   start_tui
@@ -2006,6 +2026,12 @@ main() {
     run_router_permission_hook_matrix
     assert_config_unchanged
     printf 'PASS: scripted model-router permission-hook tmux acceptance\n'
+    return
+  elif [[ "$phase" == "shadow-feedback" ]]; then
+    start_tui
+    run_shadow_feedback_matrix
+    assert_config_unchanged
+    printf 'PASS: scripted model-router shadow-feedback tmux acceptance\n'
     return
   elif [[ "$phase" == "post-modes" ]]; then
     start_tui

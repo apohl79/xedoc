@@ -1056,10 +1056,16 @@ fn validate_summary(summary: Option<String>) -> Result<Option<String>, ModelRout
     let Some(mut summary) = summary else {
         return Ok(None);
     };
-    if summary.chars().any(char::is_control) || summary.trim().is_empty() {
+    if summary
+        .chars()
+        .any(|character| character.is_control() && character != '\n')
+    {
         return Err(ModelRouterScriptFailure::InvalidSummary);
     }
     truncate_utf8(&mut summary, MAX_SCRIPT_SUMMARY_BYTES);
+    if summary.trim().is_empty() {
+        return Err(ModelRouterScriptFailure::InvalidSummary);
+    }
     Ok(Some(summary))
 }
 
