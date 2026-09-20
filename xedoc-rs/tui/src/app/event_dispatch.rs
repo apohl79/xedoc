@@ -225,10 +225,7 @@ impl App {
                 self.refresh_in_memory_config_from_disk_best_effort("forking the thread")
                     .await;
                 let config = self.fresh_session_config();
-                let started = match app_server
-                    .thread_read(thread_id, /*include_turns*/ true)
-                    .await
-                {
+                let started = match app_server.thread_read_all_turns(thread_id).await {
                     Ok(thread) => match crate::app_backtrack::backtrack_fork_before_turn_id(
                         &thread.turns,
                         nth_user_message,

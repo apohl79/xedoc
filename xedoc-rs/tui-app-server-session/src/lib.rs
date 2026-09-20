@@ -780,6 +780,41 @@ impl AppServerSession {
         Ok(thread)
     }
 
+    /// Reads thread metadata and every full turn, paging paginated history as needed.
+    pub async fn thread_read_all_turns(&mut self, thread_id: ThreadId) -> Result<Thread> {
+        let mut thread = self.thread_read(thread_id, /*include_turns*/ false).await?;
+        if !matches!(thread.history_mode, ThreadHistoryMode::Paginated) {
+            return self.thread_read(thread_id, /*include_turns*/ true).await;
+        }
+
+        let mut cursor = None;
+        let mut turns = Vec::new();
+        loop {
+            let request_id = self.next_request_id();
+            let response: ThreadTurnsListResponse = self
+                .client
+                .request_typed(ClientRequest::ThreadTurnsList {
+                    request_id,
+                    params: ThreadTurnsListParams {
+                        thread_id: thread_id.to_string(),
+                        cursor: cursor.clone(),
+                        limit: None,
+                        sort_direction: Some(SortDirection::Asc),
+                        items_view: Some(TurnItemsView::Full),
+                    },
+                })
+                .await
+                .wrap_err("thread/turns/list failed during TUI session lookup")?;
+            turns.extend(response.data);
+            let Some(next_cursor) = response.next_cursor else {
+                break;
+            };
+            cursor = Some(next_cursor);
+        }
+        thread.turns = turns;
+        Ok(thread)
+    }
+
     pub async fn thread_archive(&mut self, thread_id: ThreadId) -> Result<()> {
         let request_id = self.next_request_id();
         let _: ThreadArchiveResponse = self
