@@ -2109,14 +2109,8 @@ def classify(
             }
         )
         if not work_type_agreement:
-            similarity, margin = evidence["work_type"]
-            preset = policy["confidencePresets"][policy["confidence"]]
-            if (
-                similarity < preset["minimumScore"]
-                or margin < preset["minimumMargin"]
-            ):
-                axes["work_type"] = llm_work_type_group
-                classification_details["workTypeSource"] = "llm"
+            axes["work_type"] = llm_work_type_group
+            classification_details["workTypeSource"] = "llm"
         llm_confidence = llm_classification["confidence"]
     return (
         axes,
@@ -2491,7 +2485,6 @@ def decision(
                 "rankingMaximumRank": selection["maximumRank"],
                 "rankingTargetRank": selection["targetRank"],
                 "rankingSelectedRank": selection["selectedRank"],
-                "workTypeValidation": classification_details,
             },
             "reportingBaseline": policy.get("reportingBaseline"),
         },
@@ -2972,7 +2965,6 @@ def routing_decide(
                     "rankingMaximumRank": None,
                     "rankingTargetRank": None,
                     "rankingSelectedRank": None,
-                    "workTypeValidation": None,
                 },
                 "reportingBaseline": None,
             },
@@ -3563,6 +3555,48 @@ def approval_response(request, policy):
             axes,
             selection,
         )
+    elif (
+        classification_details is not None
+        and classification_details["llmWorkType"] is not None
+    ):
+        try:
+            updates = recalibrate_semantic_policy(
+                policy,
+                rendered_context.get("routerPrompt", ""),
+                rendered_context["turn"]["scope"],
+                axes,
+            )
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+            subprocess.TimeoutExpired,
+        ) as error:
+            record_diagnostic(
+                {
+                    "event": "semantic_classifier_recalibration_failed",
+                    "recordedAtUnixSeconds": int(time.time()),
+                    "policyRevision": policy["revision"],
+                    "error": str(error)[:256],
+                }
+            )
+        else:
+            record_recalibration(
+                policy,
+                "classification_approved",
+                axes,
+                axes,
+                selection,
+            )
+            record_diagnostic(
+                {
+                    "event": "semantic_classifier_recalibrated",
+                    "recordedAtUnixSeconds": int(time.time()),
+                    "policyRevision": policy["revision"],
+                    "scope": rendered_context["turn"]["scope"],
+                    "updatedHeads": updates,
+                }
+            )
     if raw_confidence is not None:
         record_approval_outcome(
             policy,

@@ -136,12 +136,9 @@ wait_for_pane_absent() {
 
 send_key() {
   local key="$1"
-  if [[ "$key" == "Enter" ]]; then
-    key="C-m"
-  fi
   sleep 0.2
   tmux send-keys -t "$tmux_session":0.0 "$key"
-  sleep 0.12
+  sleep 0.5
 }
 
 send_keys() {
@@ -1260,7 +1257,6 @@ set_select_value() {
   local options="$2"
   local option="${expected#*: }"
   local pane
-  send_key Right
   for _ in $(seq 0 "$options"); do
     pane="$(capture_viewport)"
     if [[ "$pane" == *"> $option"* ]]; then
@@ -2048,9 +2044,16 @@ run_feedback_matrix() {
 
 run_shadow_feedback_matrix() {
   reset_policy
-  set_mode shadow-full "Shadow Full"
-  set_approval off Off
-  set_feedback true
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy.update({"mode": "shadow-full", "approval": "off", "feedback": True})
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
   start_tui
   send_prompt "ROUTER_E2E_SHADOW_FEEDBACK review workflow security"
   wait_for_request_marker "ROUTER_E2E_SHADOW_FEEDBACK"
