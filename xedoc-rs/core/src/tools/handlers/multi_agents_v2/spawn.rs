@@ -126,7 +126,14 @@ async fn handle_spawn_agent(
                     || turn.config.agent_default_subagent_model.is_some()
                     || turn.config.agent_default_subagent_reasoning_effort.is_some(),
             });
-            let mut outcome = match script_host
+            session
+                .emit_model_router_activity(
+                    turn.as_ref(),
+                    xedoc_protocol::protocol::ModelRouterScope::Subagent,
+                    xedoc_protocol::protocol::ModelRouterActivityState::Started,
+                )
+                .await;
+            let decision_outcome = script_host
                 .decide(
                     session.as_ref(),
                     turn.as_ref(),
@@ -137,8 +144,15 @@ async fn handle_spawn_agent(
                     /*route_mutable*/ true,
                     cancellation_token.child_token(),
                 )
-                .await
-            {
+                .await;
+            session
+                .emit_model_router_activity(
+                    turn.as_ref(),
+                    xedoc_protocol::protocol::ModelRouterScope::Subagent,
+                    xedoc_protocol::protocol::ModelRouterActivityState::Finished,
+                )
+                .await;
+            let mut outcome = match decision_outcome {
                 crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Apply {
                     decision,
                     route,

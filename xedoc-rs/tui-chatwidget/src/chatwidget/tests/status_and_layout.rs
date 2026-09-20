@@ -2029,6 +2029,35 @@ async fn compaction_progress_notification_updates_status_without_warning_history
 }
 
 #[tokio::test]
+async fn router_activity_finish_restores_working_status_for_active_turn() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    for state in [
+        xedoc_app_server_protocol::ModelRouterActivityState::Started,
+        xedoc_app_server_protocol::ModelRouterActivityState::Finished,
+    ] {
+        chat.handle_server_notification(
+            ServerNotification::ModelRouterActivity(
+                xedoc_app_server_protocol::ModelRouterActivityNotification {
+                    thread_id: "thread-1".to_string(),
+                    turn_id: "turn-1".to_string(),
+                    scope: xedoc_app_server_protocol::ModelRouterScope::Root,
+                    state,
+                },
+            ),
+            /*replay_kind*/ None,
+        );
+    }
+
+    let status = chat
+        .bottom_pane
+        .status_widget()
+        .expect("status indicator should be visible");
+    assert_eq!(status.header(), "Working");
+}
+
+#[tokio::test]
 async fn single_part_compaction_progress_omits_part_label() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);

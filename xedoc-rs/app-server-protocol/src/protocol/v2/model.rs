@@ -9,6 +9,7 @@ use xedoc_protocol::openai_models::ModelAvailabilityNux as CoreModelAvailability
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::openai_models::default_input_modalities;
 use xedoc_protocol::protocol::ModelRerouteReason as CoreModelRerouteReason;
+use xedoc_protocol::protocol::ModelRouterActivityState as CoreModelRouterActivityState;
 use xedoc_protocol::protocol::ModelRouterDecisionReason as CoreModelRouterDecisionReason;
 use xedoc_protocol::protocol::ModelRouterDisposition as CoreModelRouterDisposition;
 use xedoc_protocol::protocol::ModelRouterEffectiveRoute as CoreModelRouterEffectiveRoute;
@@ -350,6 +351,13 @@ v2_enum_from_core!(
 );
 
 v2_enum_from_core!(
+    pub enum ModelRouterActivityState from CoreModelRouterActivityState {
+        Started,
+        Finished
+    }
+);
+
+v2_enum_from_core!(
     pub enum ModelRouterDisposition from CoreModelRouterDisposition {
         Applied,
         Shadow,
@@ -677,6 +685,17 @@ pub struct ModelReroutedNotification {
     pub from_model: String,
     pub to_model: String,
     pub reason: ModelRerouteReason,
+}
+
+/// Transient local model-router classification lifecycle update.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelRouterActivityNotification {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub scope: ModelRouterScope,
+    pub state: ModelRouterActivityState,
 }
 
 /// Experimental metadata-only record of one local model-router decision.

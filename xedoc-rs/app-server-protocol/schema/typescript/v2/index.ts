@@ -257,6 +257,8 @@ export type { ModelReroutedNotification } from "./ModelReroutedNotification";
 export type { ModelRouterAbControlAction } from "./ModelRouterAbControlAction";
 export type { ModelRouterAbControlParams } from "./ModelRouterAbControlParams";
 export type { ModelRouterAbControlResponse } from "./ModelRouterAbControlResponse";
+export type { ModelRouterActivityNotification } from "./ModelRouterActivityNotification";
+export type { ModelRouterActivityState } from "./ModelRouterActivityState";
 export type { ModelRouterDecisionNotification } from "./ModelRouterDecisionNotification";
 export type { ModelRouterDecisionReason } from "./ModelRouterDecisionReason";
 export type { ModelRouterDisposition } from "./ModelRouterDisposition";

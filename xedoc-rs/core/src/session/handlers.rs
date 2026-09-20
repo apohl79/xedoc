@@ -264,6 +264,12 @@ pub(super) async fn user_input_or_turn_inner(
                     },
                 )
                 .await;
+                sess.emit_model_router_activity(
+                    turn_context.as_ref(),
+                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                    xedoc_protocol::protocol::ModelRouterActivityState::Started,
+                )
+                .await;
                 let outcome = script_host
                     .decide(
                         sess,
@@ -279,6 +285,12 @@ pub(super) async fn user_input_or_turn_inner(
                         cancellation.child_token(),
                     )
                     .await;
+                sess.emit_model_router_activity(
+                    turn_context.as_ref(),
+                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                    xedoc_protocol::protocol::ModelRouterActivityState::Finished,
+                )
+                .await;
                 if let crate::model_router_script_host::ModelRouterScriptDecisionOutcome::KeepCurrent {
                     decision: Some(decision),
                     failure,
@@ -352,40 +364,54 @@ pub(super) async fn user_input_or_turn_inner(
                             )
                             .await
                     }
-                    None => match script_host
-                        .decide(
-                            sess,
+                    None => {
+                        sess.emit_model_router_activity(
                             current_context.as_ref(),
-                            current_context.config.as_ref(),
-                            context,
-                            serde_json::json!({
-                                "prompt": crate::agent::control::render_input_preview(&items),
-                                "explicitRouteOverride": explicit_route_override,
-                            }),
-                            &eligible_routes,
-                            /*route_mutable*/ true,
-                            cancellation.child_token(),
+                            xedoc_protocol::protocol::ModelRouterScope::Root,
+                            xedoc_protocol::protocol::ModelRouterActivityState::Started,
                         )
-                        .await
-                    {
-                        crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Apply {
-                            decision,
-                            route,
-                        } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
-                            decision,
-                            route,
-                        },
-                        crate::model_router_script_host::ModelRouterScriptDecisionOutcome::KeepCurrent {
-                            decision,
-                            failure,
-                        } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
-                            decision,
-                            failure,
-                        },
-                        crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Interaction(
-                            interaction,
-                        ) => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(interaction),
-                    },
+                        .await;
+                        let outcome = script_host
+                            .decide(
+                                sess,
+                                current_context.as_ref(),
+                                current_context.config.as_ref(),
+                                context,
+                                serde_json::json!({
+                                    "prompt": crate::agent::control::render_input_preview(&items),
+                                    "explicitRouteOverride": explicit_route_override,
+                                }),
+                                &eligible_routes,
+                                /*route_mutable*/ true,
+                                cancellation.child_token(),
+                            )
+                            .await;
+                        sess.emit_model_router_activity(
+                            current_context.as_ref(),
+                            xedoc_protocol::protocol::ModelRouterScope::Root,
+                            xedoc_protocol::protocol::ModelRouterActivityState::Finished,
+                        )
+                        .await;
+                        match outcome {
+                            crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Apply {
+                                decision,
+                                route,
+                            } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
+                                decision,
+                                route,
+                            },
+                            crate::model_router_script_host::ModelRouterScriptDecisionOutcome::KeepCurrent {
+                                decision,
+                                failure,
+                            } => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
+                                decision,
+                                failure,
+                            },
+                            crate::model_router_script_host::ModelRouterScriptDecisionOutcome::Interaction(
+                                interaction,
+                            ) => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(interaction),
+                        }
+                    }
                 };
                 match outcome {
                     crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {

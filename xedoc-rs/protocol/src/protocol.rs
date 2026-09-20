@@ -1045,6 +1045,9 @@ pub enum EventMsg {
     /// Model routing changed from the requested model to a different model.
     ModelReroute(ModelRerouteEvent),
 
+    /// Model-router classification has started or finished.
+    ModelRouterActivity(ModelRouterActivityEvent),
+
     /// Model-router decision for a newly accepted root or subagent task.
     ModelRouterDecision(ModelRouterDecisionEvent),
 
@@ -1655,6 +1658,23 @@ pub struct ModelRerouteEvent {
     pub reason: ModelRerouteReason,
 }
 
+/// Transient lifecycle metadata for local model-router classification.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ModelRouterActivityEvent {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub scope: ModelRouterScope,
+    pub state: ModelRouterActivityState,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum ModelRouterActivityState {
+    Started,
+    Finished,
+}
+
 /// Bounded, transcript-visible model-router decision metadata.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
 pub struct ModelRouterDecisionEvent {
@@ -1810,6 +1830,12 @@ pub enum ModelRouterDecisionReason {
 impl From<ModelRouterDecisionEvent> for EventMsg {
     fn from(event: ModelRouterDecisionEvent) -> Self {
         Self::ModelRouterDecision(event)
+    }
+}
+
+impl From<ModelRouterActivityEvent> for EventMsg {
+    fn from(event: ModelRouterActivityEvent) -> Self {
+        Self::ModelRouterActivity(event)
     }
 }
 

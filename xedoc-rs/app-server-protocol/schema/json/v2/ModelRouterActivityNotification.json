@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ModelRouterActivityState": {
+      "enum": [
+        "started",
+        "finished"
+      ],
+      "type": "string"
+    },
+    "ModelRouterScope": {
+      "enum": [
+        "root",
+        "subagent"
+      ],
+      "type": "string"
+    }
+  },
+  "description": "Transient local model-router classification lifecycle update.",
+  "properties": {
+    "scope": {
+      "$ref": "#/definitions/ModelRouterScope"
+    },
+    "state": {
+      "$ref": "#/definitions/ModelRouterActivityState"
+    },
+    "threadId": {
+      "type": "string"
+    },
+    "turnId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "scope",
+    "state",
+    "threadId",
+    "turnId"
+  ],
+  "title": "ModelRouterActivityNotification",
+  "type": "object"
+}

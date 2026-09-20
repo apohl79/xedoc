@@ -375,6 +375,7 @@ impl ThreadHistoryBuilder {
             EventMsg::ItemStarted(payload) => self.handle_item_started(payload),
             EventMsg::ItemCompleted(payload) => self.handle_item_completed(payload),
             EventMsg::ModelRouterDecision(payload) => self.handle_model_router_decision(payload),
+            EventMsg::ModelRouterActivity(_) => {}
             EventMsg::HookStarted(_) | EventMsg::HookCompleted(_) => {}
             EventMsg::Error(payload) => self.handle_error(payload),
             EventMsg::TokenCount(_) => {}

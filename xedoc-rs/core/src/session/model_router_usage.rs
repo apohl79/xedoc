@@ -2,7 +2,10 @@
 
 use xedoc_model_provider_info::ModelTokenPrices;
 use xedoc_protocol::protocol::EventMsg;
+use xedoc_protocol::protocol::ModelRouterActivityEvent;
+use xedoc_protocol::protocol::ModelRouterActivityState;
 use xedoc_protocol::protocol::ModelRouterDecisionEvent;
+use xedoc_protocol::protocol::ModelRouterScope;
 use xedoc_protocol::protocol::TokenUsage;
 use xedoc_state::ModelRouterDecisionRecord;
 use xedoc_state::ModelRouterInvocationRecord;
@@ -11,6 +14,24 @@ use super::Session;
 use super::turn_context::TurnContext;
 
 impl Session {
+    pub(crate) async fn emit_model_router_activity(
+        &self,
+        turn_context: &TurnContext,
+        scope: ModelRouterScope,
+        state: ModelRouterActivityState,
+    ) {
+        self.send_event(
+            turn_context,
+            EventMsg::ModelRouterActivity(ModelRouterActivityEvent {
+                thread_id: self.thread_id.to_string(),
+                turn_id: turn_context.sub_id.clone(),
+                scope,
+                state,
+            }),
+        )
+        .await;
+    }
+
     pub(crate) async fn emit_model_router_decision(
         &self,
         turn_context: &TurnContext,

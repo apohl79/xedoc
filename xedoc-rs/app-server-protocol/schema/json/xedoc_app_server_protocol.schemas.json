@@ -6196,6 +6196,26 @@
           "properties": {
             "method": {
               "enum": [
+                "modelRouter/activity"
+              ],
+              "title": "ModelRouter/activityNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ModelRouterActivityNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "ModelRouter/activityNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
                 "modelRouter/decision"
               ],
               "title": "ModelRouter/decisionNotificationMethod",
@@ -13320,6 +13340,39 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "title": "ModelRouterAbControlResponse",
         "type": "object"
+      },
+      "ModelRouterActivityNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Transient local model-router classification lifecycle update.",
+        "properties": {
+          "scope": {
+            "$ref": "#/definitions/v2/ModelRouterScope"
+          },
+          "state": {
+            "$ref": "#/definitions/v2/ModelRouterActivityState"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "state",
+          "threadId",
+          "turnId"
+        ],
+        "title": "ModelRouterActivityNotification",
+        "type": "object"
+      },
+      "ModelRouterActivityState": {
+        "enum": [
+          "started",
+          "finished"
+        ],
+        "type": "string"
       },
       "ModelRouterDecisionNotification": {
         "$schema": "http://json-schema.org/draft-07/schema#",

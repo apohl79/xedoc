@@ -55,6 +55,7 @@ use xedoc_app_server_protocol::McpServerElicitationRequestResponse;
 use xedoc_app_server_protocol::McpServerStartupState;
 use xedoc_app_server_protocol::McpServerStatusUpdatedNotification;
 use xedoc_app_server_protocol::ModelReroutedNotification;
+use xedoc_app_server_protocol::ModelRouterActivityNotification;
 use xedoc_app_server_protocol::ModelRouterDecisionNotification;
 use xedoc_app_server_protocol::ModelSafetyBufferingUpdatedNotification;
 use xedoc_app_server_protocol::ModelVerificationNotification;
@@ -332,6 +333,17 @@ pub(crate) async fn apply_bespoke_event_handling(
             };
             outgoing
                 .send_server_notification(ServerNotification::ModelRerouted(notification))
+                .await;
+        }
+        EventMsg::ModelRouterActivity(event) => {
+            let notification = ModelRouterActivityNotification {
+                thread_id: event.thread_id,
+                turn_id: event.turn_id,
+                scope: event.scope.into(),
+                state: event.state.into(),
+            };
+            outgoing
+                .send_server_notification(ServerNotification::ModelRouterActivity(notification))
                 .await;
         }
         EventMsg::ModelRouterDecision(event) => {

@@ -1626,6 +1626,8 @@ server_notification_definitions! {
     /// Deprecated: Use `ContextCompaction` item type instead.
     ContextCompacted => "thread/compacted" (v2::ContextCompactedNotification),
     ModelRerouted => "model/rerouted" (v2::ModelReroutedNotification),
+    #[experimental("modelRouter/activity")]
+    ModelRouterActivity => "modelRouter/activity" (v2::ModelRouterActivityNotification),
     #[experimental("modelRouter/decision")]
     ModelRouterDecision => "modelRouter/decision" (v2::ModelRouterDecisionNotification),
     ModelVerification => "model/verification" (v2::ModelVerificationNotification),
