@@ -288,20 +288,30 @@ assert [entry["model"] for entry in ladder] == expected_models
 assert [entry["reasoningEffort"] for entry in ladder] == expected_efforts
 assert all(entry["providerId"] == "openai" for entry in ladder)
 assert policy["confidencePresets"] == {
-    "strict": {
-        "minimumConfidence": 0.90,
-        "minimumScore": 0.50,
-        "minimumMargin": 0.15,
-    },
-    "balanced": {
-        "minimumConfidence": 0.75,
-        "minimumScore": 0.35,
-        "minimumMargin": 0.08,
-    },
     "permissive": {
         "minimumConfidence": 0.50,
         "minimumScore": 0.20,
         "minimumMargin": 0.04,
+    },
+    "relaxed": {
+        "minimumConfidence": 0.60,
+        "minimumScore": 0.28,
+        "minimumMargin": 0.06,
+    },
+    "balanced": {
+        "minimumConfidence": 0.70,
+        "minimumScore": 0.35,
+        "minimumMargin": 0.08,
+    },
+    "cautious": {
+        "minimumConfidence": 0.80,
+        "minimumScore": 0.43,
+        "minimumMargin": 0.11,
+    },
+    "strict": {
+        "minimumConfidence": 0.90,
+        "minimumScore": 0.50,
+        "minimumMargin": 0.15,
     },
 }
 assert policy["confidence"] == "balanced"
@@ -1582,21 +1592,21 @@ exercise_policy_manager() {
   send_key Home
   send_key Right
   wait_for_pane "Strict ("
-  set_select_value "Confidence preset: Strict" 3
+  set_select_value "Confidence preset: Strict" 5
   wait_for_pane "Confidence: Strict"
   assert_policy "confidence=strict"
 
   send_key Home
   send_key Right
   wait_for_pane "Permissive ("
-  set_select_value "Confidence preset: Permissive" 3
+  set_select_value "Confidence preset: Permissive" 5
   wait_for_pane "Confidence: Permissive"
   assert_policy "confidence=permissive"
 
   send_key Home
   send_key Right
   wait_for_pane "Balanced ("
-  set_select_value "Confidence preset: Balanced" 3
+  set_select_value "Confidence preset: Balanced" 5
   wait_for_pane "Confidence: Balanced"
   assert_policy "confidence=balanced"
   record_scenario settings-confidence "strict, permissive, and balanced persisted"

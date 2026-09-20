@@ -85,10 +85,32 @@ AXIS_VALUES = {
     "orchestration": ORCHESTRATIONS,
     "risk": RISKS,
 }
-NOT_CONFIDENT_POLICY_THRESHOLDS = {
-    "permissive": 0.50,
-    "balanced": 0.75,
-    "strict": 0.90,
+CONFIDENCE_PRESETS = {
+    "permissive": {
+        "minimumConfidence": 0.50,
+        "minimumScore": 0.20,
+        "minimumMargin": 0.04,
+    },
+    "relaxed": {
+        "minimumConfidence": 0.60,
+        "minimumScore": 0.28,
+        "minimumMargin": 0.06,
+    },
+    "balanced": {
+        "minimumConfidence": 0.70,
+        "minimumScore": 0.35,
+        "minimumMargin": 0.08,
+    },
+    "cautious": {
+        "minimumConfidence": 0.80,
+        "minimumScore": 0.43,
+        "minimumMargin": 0.11,
+    },
+    "strict": {
+        "minimumConfidence": 0.90,
+        "minimumScore": 0.50,
+        "minimumMargin": 0.15,
+    },
 }
 
 
@@ -124,13 +146,10 @@ def legacy_policy_path():
 def upgrade_policy(policy):
     changed = False
     presets = policy.get("confidencePresets")
-    if isinstance(presets, dict):
-        for name, thresholds in presets.items():
-            if isinstance(thresholds, dict) and "minimumConfidence" not in thresholds:
-                thresholds["minimumConfidence"] = NOT_CONFIDENT_POLICY_THRESHOLDS.get(
-                    name, 0.75
-                )
-                changed = True
+    if presets != CONFIDENCE_PRESETS:
+        policy["confidencePresets"] = copy.deepcopy(CONFIDENCE_PRESETS)
+        presets = policy["confidencePresets"]
+        changed = True
     if "semanticClassifier" not in policy:
         semantic_policy_path = (
             RUNTIME_SEMANTIC_POLICY_PATH

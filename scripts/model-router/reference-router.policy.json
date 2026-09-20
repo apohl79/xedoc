@@ -119,15 +119,25 @@
   "classifierRoute": null,
   "confidence": "balanced",
   "confidencePresets": {
-    "balanced": {
-      "minimumConfidence": 0.75,
-      "minimumMargin": 0.08,
-      "minimumScore": 0.35
-    },
     "permissive": {
       "minimumConfidence": 0.5,
       "minimumMargin": 0.04,
       "minimumScore": 0.2
+    },
+    "relaxed": {
+      "minimumConfidence": 0.6,
+      "minimumMargin": 0.06,
+      "minimumScore": 0.28
+    },
+    "balanced": {
+      "minimumConfidence": 0.7,
+      "minimumMargin": 0.08,
+      "minimumScore": 0.35
+    },
+    "cautious": {
+      "minimumConfidence": 0.8,
+      "minimumMargin": 0.11,
+      "minimumScore": 0.43
     },
     "strict": {
       "minimumConfidence": 0.9,
