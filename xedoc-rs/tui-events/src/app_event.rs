@@ -674,6 +674,11 @@ pub enum AppEvent {
         arguments: Vec<String>,
     },
 
+    /// Deliver the result of an asynchronous session-extension command.
+    SessionExtensionCommandCompleted {
+        result: Result<(), String>,
+    },
+
     /// Open the reasoning selection popup after picking a model.
     OpenReasoningPopup {
         model: ModelPreset,

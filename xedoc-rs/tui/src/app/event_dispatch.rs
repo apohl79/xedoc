@@ -1063,21 +1063,34 @@ impl App {
                 command,
                 arguments,
             } => {
-                if let Err(error) = crate::config_update::invoke_session_extension_command(
-                    app_server.request_handle(),
-                    thread_id,
-                    extension_id,
-                    command,
-                    arguments,
-                )
-                .await
-                {
-                    tracing::warn!(%error, "failed to invoke session extension command");
-                    let details = error
-                        .chain()
-                        .map(std::string::ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(": ");
+                let request_handle = app_server.request_handle();
+                let app_event_tx = self.app_event_tx.clone();
+                tokio::spawn(async move {
+                    let result = crate::config_update::invoke_session_extension_command(
+                        request_handle,
+                        thread_id,
+                        extension_id,
+                        command,
+                        arguments,
+                    )
+                    .await
+                    .map(|_| ())
+                    .map_err(|error| {
+                        tracing::warn!(
+                            %error,
+                            "failed to invoke session extension command"
+                        );
+                        error
+                            .chain()
+                            .map(std::string::ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(": ")
+                    });
+                    app_event_tx.send(AppEvent::SessionExtensionCommandCompleted { result });
+                });
+            }
+            AppEvent::SessionExtensionCommandCompleted { result } => {
+                if let Err(details) = result {
                     self.chat_widget
                         .add_error_message(format!("Session extension command failed: {details}"));
                 }
