@@ -371,6 +371,7 @@ async fn run_xedoc_tool_session_inner(
                     | EventMsg::DynamicToolCallResponse(_)
                     | EventMsg::ContextCompacted(_)
                     | EventMsg::ModelReroute(_)
+                    | EventMsg::ModelRouterActivity(_)
                     | EventMsg::ModelRouterDecision(_)
                     | EventMsg::ScriptedInteractionRequest(_)
                     | EventMsg::ThreadRolledBack(_)
