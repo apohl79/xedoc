@@ -2946,6 +2946,37 @@ def routing_decide(
     recent_messages = (context.get("conversation") or {}).get("recentMessages", [])
     has_prior_messages = isinstance(recent_messages, list) and bool(recent_messages)
     scope = turn.get("scope", "root")
+    mode = effective_mode(policy, context)
+    enabled = mode == "full" or (mode == "subagents" and scope == "subagent")
+    shadow = mode == "shadow-full" or (
+        mode == "shadow-subagents" and scope == "subagent"
+    )
+    if not (enabled or shadow):
+        return {
+            "kind": "route",
+            "decision": {
+                "id": f"reference-{request['requestId']}-{policy['revision']}",
+                "disposition": "keepCurrent",
+                "route": None,
+                "summary": None,
+                "feedback": {
+                    "enabled": False,
+                    "classification": "router inactive",
+                    "confidence": 0.0,
+                    "confidenceMargin": 0.0,
+                    "routingCalculation": "router inactive for this turn",
+                    "rankingScore": None,
+                    "rankingMinimumClass": None,
+                    "rankingMaximumClass": None,
+                    "rankingMinimumRank": None,
+                    "rankingMaximumRank": None,
+                    "rankingTargetRank": None,
+                    "rankingSelectedRank": None,
+                    "workTypeValidation": None,
+                },
+                "reportingBaseline": None,
+            },
+        }
     configured_classifier = valid_route(
         policy.get("classifierRoute"), eligible_classifier_routes(context)
     )
@@ -3030,13 +3061,7 @@ def routing_decide(
         else similarity,
         margin,
     )
-    scope = turn.get("scope")
     active = turn.get("active", False)
-    mode = effective_mode(policy, context)
-    enabled = mode == "full" or (mode == "subagents" and scope == "subagent")
-    shadow = mode == "shadow-full" or (
-        mode == "shadow-subagents" and scope == "subagent"
-    )
     route_can_be_applied = (
         enabled and not active and not steering and route is not None and confident
     )
@@ -3140,7 +3165,7 @@ def routing_decide(
         selection,
         disposition,
         reason,
-        feedback_enabled=policy["feedback"],
+        feedback_enabled=policy["feedback"] and (enabled or shadow),
         embedding_elapsed_ms=embedding_elapsed_ms,
         embedding_input_count=embedding_input_count,
         llm_confidence=llm_confidence,
