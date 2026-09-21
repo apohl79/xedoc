@@ -136,13 +136,9 @@ pub fn model_router_decision_lines(
             ModelRouterScope::Root => "root",
             ModelRouterScope::Subagent => "subagent",
         };
-        let mut lines = vec![
-            vec![
-                format!("  model router ({scope}) ").magenta(),
-                summary.dim(),
-            ]
-            .into(),
-        ];
+        let summary = summary.strip_prefix('\n').unwrap_or(&summary);
+        let mut lines = vec![format!("  model router ({scope})").magenta().into()];
+        lines.extend(summary.lines().map(|line| line.to_string().dim().into()));
         if let Some(diagnostic) = diagnostic {
             lines.push(format!("  {diagnostic}").dim().into());
         }
