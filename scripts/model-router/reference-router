@@ -112,6 +112,8 @@ CONFIDENCE_PRESETS = {
         "minimumMargin": 0.15,
     },
 }
+LLM_CONFIDENCE_WEIGHT = 0.85
+EMBEDDER_CONFIDENCE_WEIGHT = 0.15
 
 
 def legacy_policy_path():
@@ -2194,7 +2196,14 @@ def classification_confidence(evidence):
 
 
 def combined_confidence(policy, similarity, llm_confidence):
-    raw = min(similarity, llm_confidence) if llm_confidence is not None else similarity
+    raw = (
+        similarity
+        if llm_confidence is None
+        else (
+            LLM_CONFIDENCE_WEIGHT * llm_confidence
+            + EMBEDDER_CONFIDENCE_WEIGHT * similarity
+        )
+    )
     calibration = policy["approvalCalibration"]
     outcomes = calibration["buckets"].get(str(min(9, int(raw * 10))))
     if outcomes is None:
