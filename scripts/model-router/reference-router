@@ -1114,14 +1114,13 @@ def confidence_preset_options(policy):
     return [
         {
             "id": preset,
-            "label": (
-                f"{preset.title()} "
-                f"({percentage(thresholds['minimumConfidence'])} confidence; "
-                f"{percentage(thresholds['minimumScore'])} similarity, "
-                f"{percentage(thresholds['minimumMargin'])} margin)"
-            ),
+            "label": f"{preset.title()} "
+            f"({percentage(thresholds['minimumConfidence'])} confidence)",
         }
-        for preset, thresholds in policy["confidencePresets"].items()
+        for preset, thresholds in sorted(
+            policy["confidencePresets"].items(),
+            key=lambda item: item[1]["minimumConfidence"],
+        )
     ]
 
 
@@ -2125,11 +2124,10 @@ def classify(
                 "llmWorkTypeGroup": llm_work_type_group,
                 "workTypeAgreement": work_type_agreement,
                 "classificationConflict": not work_type_agreement,
+                "workTypeSource": "llm",
             }
         )
-        if not work_type_agreement:
-            axes["work_type"] = llm_work_type_group
-            classification_details["workTypeSource"] = "llm"
+        axes["work_type"] = llm_work_type_group
         llm_confidence = llm_classification["confidence"]
     return (
         axes,
@@ -2152,12 +2150,7 @@ def classification_label(axes):
 def work_type_validation_text(classification_details):
     if not classification_details or classification_details.get("llmWorkType") is None:
         return None
-    agreement = "yes" if classification_details["workTypeAgreement"] else "no"
-    return (
-        f"embedder({classification_details['embedderWorkType']}); "
-        f"LLM({classification_details['llmWorkType']} → "
-        f"{classification_details['llmWorkTypeGroup']}); agreement({agreement})"
-    )
+    return f"embedder({classification_details['embedderWorkType']})"
 
 
 def valid_classification_details(details):
@@ -2334,9 +2327,9 @@ def percentage(value):
     return f"{value:.0%}"
 
 
-def confidence_passes(policy, score, margin):
+def confidence_passes(policy, confidence):
     thresholds = confidence_thresholds(policy)
-    return score >= thresholds["minimumScore"] and margin >= thresholds["minimumMargin"]
+    return confidence >= thresholds["minimumConfidence"]
 
 
 def routing_calculation(
@@ -2370,15 +2363,13 @@ def routing_calculation(
     thresholds = confidence_thresholds(policy)
     calibration_detail = (
         f"calibrated confidence {percentage(calibrated_confidence)} "
-        f"(minimum {percentage(thresholds['minimumScore'])})"
+        f"(minimum {percentage(thresholds['minimumConfidence'])})"
         if calibrated_confidence is not None
-        else "confidence uncalibrated; using similarity thresholds"
+        else "confidence uncalibrated; human approval required"
     )
     calculation = (
         f"{ranking_detail} · {calibration_detail} · similarity "
-        f"{percentage(similarity)} (margin {percentage(margin)}; minimum "
-        f"{percentage(thresholds['minimumScore'])}/"
-        f"{percentage(thresholds['minimumMargin'])})"
+        f"{percentage(similarity)} (margin {percentage(margin)})"
     )
     if embedding_elapsed_ms is not None and embedding_input_count is not None:
         vector_label = "vector" if embedding_input_count == 1 else "vectors"
@@ -2423,6 +2414,7 @@ def decision(
         "keepCurrent": "retained" if steering else "rejected",
         "shadow": "shadow",
     }[disposition]
+    status_detail = f"{status} ({reason.rstrip('.')})" if reason else status
     target = route_label(route)
     used = route_label(used_route if used_route is not None else route)
     embedding_stat = (
@@ -2456,18 +2448,22 @@ def decision(
         if steering
         else f"{percentage(confidence)}, margin {percentage(margin)}"
     )
+    work_type_validation = work_type_validation_text(classification_details)
+    validation_line = (
+        f"  Work type validation: {work_type_validation};\n"
+        if work_type_validation is not None
+        else ""
+    )
     summary = (
-        f"\n└ Decision: {status}; Target model: {target}; Used model: {used};\n"
+        f"\n└ Decision: {status_detail}; Target model: {target}; Used model: {used};\n"
         f"  Classifications: Work type({axes['work_type']}); "
         f"Complexity({axes['complexity']}); Risk({axes['risk']}); "
         f"Coordination({axes['orchestration']});\n"
+        f"{validation_line}"
         f"  Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});\n"
         f"  Confidence: {overall}; LLM self-rating({llm_score}); "
         f"similarity({similarity_detail})."
     )
-    work_type_validation = work_type_validation_text(classification_details)
-    if work_type_validation is not None:
-        summary += f"\n  Work type validation: {work_type_validation}."
     if classifier_notice is not None:
         summary += f"\n  Error: {classifier_notice}"
     return {
@@ -3065,12 +3061,8 @@ def routing_decide(
     route = selection["route"]
     current = context.get("currentRoute")
     classification_conflict = classification_details["classificationConflict"]
-    confident = not classification_conflict and confidence_passes(
-        policy,
-        calibrated_confidence
-        if calibrated_confidence is not None
-        else similarity,
-        margin,
+    confident = calibrated_confidence is not None and confidence_passes(
+        policy, calibrated_confidence
     )
     active = turn.get("active", False)
     route_can_be_applied = (
@@ -3087,15 +3079,11 @@ def routing_decide(
         < policy["confidencePresets"][policy["confidence"]]["minimumConfidence"]
     )
     needs_approval = route_can_be_approved and (
-            policy["approval"] == "all"
-            or (
-                policy["approval"] == "policy"
-                and (
-                    needs_calibration
-                    or below_not_confident_threshold
-                    or classification_conflict
-                )
-            )
+        policy["approval"] == "all"
+        or (
+            policy["approval"] == "policy"
+            and (needs_calibration or below_not_confident_threshold)
+        )
     )
     if needs_approval:
         record_routing_decision(
@@ -3145,10 +3133,15 @@ def routing_decide(
     reason = None
     if steering:
         reason = "Steering input retained the current route."
-    elif classification_conflict:
-        reason = "Embedder and LLM work-type classifications disagree."
     elif not confident:
-        reason = "Similarity thresholds retained the current route."
+        if calibrated_confidence is None:
+            reason = "Overall confidence is uncalibrated; human approval is required."
+        else:
+            reason = (
+                f"Overall confidence {percentage(calibrated_confidence)} is below the "
+                f"{policy['confidence'].title()} minimum "
+                f"{percentage(confidence_thresholds(policy)['minimumConfidence'])}."
+            )
     elif route is None:
         reason = "No eligible ranked route was available."
     record_routing_decision(
@@ -3454,6 +3447,7 @@ def approval_response(request, policy):
             margin,
             selection,
             "keepCurrent",
+            "User declined the proposed route.",
             embedding_elapsed_ms=embedding_elapsed_ms,
             embedding_input_count=embedding_input_count,
             llm_confidence=llm_confidence,
