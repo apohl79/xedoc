@@ -32,6 +32,9 @@ const MAX_EXTENSION_ID_LEN: usize = 128;
 const MAX_EXTENSION_COMMAND_NAME_LEN: usize = 128;
 const MAX_EXTENSION_DESCRIPTION_LEN: usize = 512;
 const MAX_EXTENSION_CAPABILITY_LEN: usize = 128;
+const DEFAULT_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS: u64 = 10_000;
+const MIN_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS: u64 = 1_000;
+const MAX_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS: u64 = 60_000;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -402,12 +405,18 @@ fn resolve_manifest_extensions(
             else {
                 return None;
             };
+            let Some(approval_response_timeout_ms) =
+                parse_manifest_extension_approval_response_timeout(extension, &field)
+            else {
+                return None;
+            };
             seen_ids.insert(id.to_string());
             Some(xedoc_plugin::manifest::PluginManifestExtension {
                 id: id.to_string(),
                 entrypoint,
                 commands,
                 requested_capabilities,
+                approval_response_timeout_ms,
             })
         })
         .collect()
@@ -504,6 +513,30 @@ fn parse_manifest_extension_capabilities(
             Some(capability.to_string())
         })
         .collect()
+}
+
+fn parse_manifest_extension_approval_response_timeout(
+    extension: &serde_json::Map<String, JsonValue>,
+    field: &str,
+) -> Option<u64> {
+    let Some(value) = extension.get("approvalResponseTimeoutMs") else {
+        return Some(DEFAULT_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS);
+    };
+    let Some(timeout_ms) = value.as_u64() else {
+        tracing::warn!("ignoring {field}: approvalResponseTimeoutMs must be an integer");
+        return None;
+    };
+    if !(MIN_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS..=MAX_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS)
+        .contains(&timeout_ms)
+    {
+        tracing::warn!(
+            "ignoring {field}: approvalResponseTimeoutMs must be between {} and {}",
+            MIN_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS,
+            MAX_EXTENSION_APPROVAL_RESPONSE_TIMEOUT_MS
+        );
+        return None;
+    }
+    Some(timeout_ms)
 }
 
 fn is_valid_extension_identifier(value: &str, max_len: usize) -> bool {

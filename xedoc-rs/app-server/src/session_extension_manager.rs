@@ -111,6 +111,7 @@ struct SessionExtensionDescriptor {
     plugin_display_name: String,
     entrypoint: PathBuf,
     requested_capabilities: Vec<String>,
+    approval_response_timeout_ms: u64,
     commands: Vec<SessionExtensionCommand>,
     declaration_digest: String,
 }
@@ -676,6 +677,13 @@ impl SessionExtensionManager {
                             label: "Requested access".to_string(),
                             value: requested_access_summary(&descriptor.requested_capabilities),
                         },
+                        ExtensionInteractionDetail {
+                            label: "Approval reply window".to_string(),
+                            value: format!(
+                                "{} seconds",
+                                descriptor.approval_response_timeout_ms / 1_000
+                            ),
+                        },
                     ],
                     sections: Vec::new(),
                     actions: vec![
@@ -965,6 +973,7 @@ impl SessionExtensionManager {
                     thread_id,
                     &descriptor.manifest_extension_id,
                     &descriptor.requested_capabilities,
+                    descriptor.approval_response_timeout_ms,
                 )
                 .await
                 .map_err(invalid_request)?;
@@ -1177,6 +1186,7 @@ fn descriptor_from_manifest(
             json!({"name": command.name, "description": command.description})
         }).collect::<Vec<_>>(),
         "requestedCapabilities": extension.requested_capabilities,
+        "approvalResponseTimeoutMs": extension.approval_response_timeout_ms,
         "manifestEvidence": manifest_evidence,
     });
     let declaration_digest = format!(
@@ -1190,6 +1200,7 @@ fn descriptor_from_manifest(
         plugin_display_name: plugin.display_name().to_string(),
         entrypoint: extension.entrypoint.as_path().to_path_buf(),
         requested_capabilities: extension.requested_capabilities.clone(),
+        approval_response_timeout_ms: extension.approval_response_timeout_ms,
         commands,
         declaration_digest,
     })

@@ -70,6 +70,8 @@ pub struct PluginManifestExtension<Resource> {
     pub commands: Vec<PluginManifestExtensionCommand>,
     /// Capabilities requested by the extension for host approval.
     pub requested_capabilities: Vec<String>,
+    /// Maximum approval response wait time, in milliseconds.
+    pub approval_response_timeout_ms: u64,
 }
 
 /// Describes one slash command declared by a plugin extension.
@@ -254,12 +256,14 @@ impl<Resource> PluginManifest<Resource> {
                         entrypoint,
                         commands,
                         requested_capabilities,
+                        approval_response_timeout_ms,
                     } = extension;
                     Ok(PluginManifestExtension {
                         id,
                         entrypoint: map(entrypoint)?,
                         commands,
                         requested_capabilities,
+                        approval_response_timeout_ms,
                     })
                 })
                 .collect::<Result<Vec<_>, Error>>()?,

@@ -65,6 +65,7 @@ struct SessionScriptPolicy {
     capabilities: HashSet<SessionScriptCapability>,
     subscriptions: SessionScriptSubscriptionPolicy,
     response_timeout: Duration,
+    approval_response_timeout: Duration,
 }
 
 #[derive(Clone, Default)]
@@ -90,6 +91,7 @@ pub(crate) struct SessionScriptRegistration {
     resync_required: bool,
     session: Option<SessionScriptSession>,
     response_timeout: Duration,
+    approval_response_timeout: Duration,
     identity: SessionScriptIdentityParams,
 }
 
@@ -210,6 +212,7 @@ impl SessionScriptRegistry {
                             .collect(),
                         subscriptions,
                         response_timeout: script.response_timeout(),
+                        approval_response_timeout: script.response_timeout(),
                     },
                 )
             })
@@ -229,6 +232,7 @@ impl SessionScriptRegistry {
         thread_id: ThreadId,
         extension_name: &str,
         requested_capabilities: &[String],
+        approval_response_timeout_ms: u64,
     ) -> Result<(), String> {
         if self.policies_by_script_id.contains_key(extension_id) {
             return Err(
@@ -245,6 +249,7 @@ impl SessionScriptRegistry {
                 extension_policy_from_requested_capabilities(
                     extension_name,
                     requested_capabilities,
+                    approval_response_timeout_ms,
                 ),
             );
         Ok(())
@@ -362,6 +367,7 @@ impl SessionScriptRegistry {
             resync_required: false,
             session: None,
             response_timeout: policy.response_timeout,
+            approval_response_timeout: policy.approval_response_timeout,
             identity: params.script,
         };
         if registration
@@ -784,7 +790,7 @@ impl SessionScriptRegistry {
                 state
                     .registrations_by_connection
                     .get(&connection_id)
-                    .map(|registration| registration.response_timeout)
+                    .map(|registration| registration.approval_response_timeout)
             });
             let (response_tx, response_receiver, response_lease) =
                 if responder_connection_id.is_some() {
@@ -1062,12 +1068,16 @@ fn session_script_capability_from_config(
 fn extension_policy_from_requested_capabilities(
     extension_name: &str,
     requested_capabilities: &[String],
+    approval_response_timeout_ms: u64,
 ) -> SessionScriptPolicy {
     let mut policy = SessionScriptPolicy {
         extension_name: extension_name.to_string(),
         capabilities: HashSet::new(),
         subscriptions: SessionScriptSubscriptionPolicy::default(),
         response_timeout: Duration::from_secs(/*secs*/ 10),
+        approval_response_timeout: Duration::from_millis(
+            approval_response_timeout_ms.clamp(1_000, 60_000),
+        ),
     };
     for capability in requested_capabilities {
         match capability.as_str() {
