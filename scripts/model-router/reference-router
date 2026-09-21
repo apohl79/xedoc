@@ -3516,8 +3516,9 @@ def approval_response(request, policy):
             steering,
         )
     selected = (params.get("action") or {}).get("id")
+    automated = params.get("automated") is True
     if selected == "keep-current" or params.get("outcome") != "accepted":
-        if raw_confidence is not None and not steering:
+        if raw_confidence is not None and not steering and not automated:
             record_approval_outcome(
                 policy,
                 raw_confidence,
@@ -3781,7 +3782,7 @@ def approval_response(request, policy):
                     "updatedHeads": updates,
                 }
             )
-    if raw_confidence is not None and not steering:
+    if raw_confidence is not None and not steering and not automated:
         record_approval_outcome(
             policy,
             raw_confidence,

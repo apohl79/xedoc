@@ -246,9 +246,12 @@ async fn handle_spawn_agent(
                         outcome = script_host
                             .respond(
                                 context.clone(),
-                                crate::model_router_script_host::interaction_response(response),
+                                crate::model_router_script_host::interaction_response(
+                                    response.response,
+                                ),
                                 &eligible_routes,
                                 /*route_mutable*/ true,
+                                response.automated,
                                 cancellation_token.child_token(),
                             )
                             .await;

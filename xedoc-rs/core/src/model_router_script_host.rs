@@ -461,9 +461,17 @@ impl ModelRouterScriptHost {
         response: InteractionResponse,
         eligible_routes: &[EligibleRoute],
         route_mutable: bool,
+        automated: bool,
         cancellation: CancellationToken,
     ) -> ModelRouterScriptInteractionOutcome {
-        let params = serde_json::to_value(response).map_err(|_| ModelRouterScriptFailure::Encode);
+        let params = serde_json::to_value(response)
+            .map(|mut params| {
+                if let Value::Object(fields) = &mut params {
+                    fields.insert("automated".to_string(), Value::Bool(automated));
+                }
+                params
+            })
+            .map_err(|_| ModelRouterScriptFailure::Encode);
         let Ok(params) = params else {
             return ModelRouterScriptInteractionOutcome::Failure(ModelRouterScriptFailure::Encode);
         };

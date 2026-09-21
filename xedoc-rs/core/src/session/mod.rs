@@ -2410,8 +2410,10 @@ impl Session {
                     .lock()
                     .await
                     .insert(request_id.clone(), pending);
-                crate::session::handlers::scripted_interaction_response(self, request_id, response)
-                    .await;
+                crate::session::handlers::scripted_interaction_response_automated(
+                    self, request_id, response,
+                )
+                .await;
                 return true;
             }
         }
@@ -2450,7 +2452,7 @@ impl Session {
     pub(crate) async fn take_scripted_interaction_response(
         &self,
         sub_id: &str,
-    ) -> Option<xedoc_protocol::protocol::ScriptedInteractionResponse> {
+    ) -> Option<crate::session::session::PendingScriptedInteractionResponse> {
         self.scripted_interaction_responses
             .lock()
             .await

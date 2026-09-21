@@ -53,7 +53,7 @@ pub(crate) struct Session {
     pub(crate) model_router_decision_ids: Mutex<HashMap<String, String>>,
     pub(crate) pending_scripted_interactions: Mutex<HashMap<String, PendingScriptedInteraction>>,
     pub(crate) scripted_interaction_responses:
-        Mutex<HashMap<String, xedoc_protocol::protocol::ScriptedInteractionResponse>>,
+        Mutex<HashMap<String, PendingScriptedInteractionResponse>>,
     pub(crate) sub_agent_change_totals: Mutex<xedoc_protocol::protocol::SubAgentChangeTotals>,
     pub(crate) services: SessionServices,
     pub(super) next_internal_sub_id: AtomicU64,
@@ -70,6 +70,13 @@ pub(crate) struct PendingScriptedInteraction {
     pub(crate) surface: xedoc_script_protocol::InteractionSurface,
 }
 
+/// A validated scripted interaction response and whether it came from an
+/// automated permission hook instead of a user.
+pub(crate) struct PendingScriptedInteractionResponse {
+    pub(crate) response: xedoc_protocol::protocol::ScriptedInteractionResponse,
+    pub(crate) automated: bool,
+}
+
 /// A user-input turn waiting for a scripted interaction to conclude.
 pub(crate) struct PendingScriptedInteractionTurn {
     pub(crate) sub_id: String,
@@ -84,9 +91,7 @@ pub(crate) enum PendingScriptedInteractionContinuation {
     /// Deliver a response to an in-flight caller that has not yet spawned its
     /// subagent. The caller retains its pre-spawn state and decides whether the
     /// response permits spawning.
-    AwaitResponse(
-        tokio::sync::oneshot::Sender<xedoc_protocol::protocol::ScriptedInteractionResponse>,
-    ),
+    AwaitResponse(tokio::sync::oneshot::Sender<PendingScriptedInteractionResponse>),
 }
 
 #[derive(Clone)]

@@ -357,9 +357,12 @@ pub(super) async fn user_input_or_turn_inner(
                         script_host
                             .respond(
                                 context,
-                                crate::model_router_script_host::interaction_response(response),
+                                crate::model_router_script_host::interaction_response(
+                                    response.response,
+                                ),
                                 &eligible_routes,
                                 /*route_mutable*/ true,
+                                response.automated,
                                 cancellation.child_token(),
                             )
                             .await
@@ -816,6 +819,23 @@ pub async fn scripted_interaction_response(
     request_id: String,
     response: xedoc_protocol::protocol::ScriptedInteractionResponse,
 ) {
+    scripted_interaction_response_with_source(sess, request_id, response, false).await;
+}
+
+pub(crate) async fn scripted_interaction_response_automated(
+    sess: &Arc<Session>,
+    request_id: String,
+    response: xedoc_protocol::protocol::ScriptedInteractionResponse,
+) {
+    scripted_interaction_response_with_source(sess, request_id, response, true).await;
+}
+
+async fn scripted_interaction_response_with_source(
+    sess: &Arc<Session>,
+    request_id: String,
+    response: xedoc_protocol::protocol::ScriptedInteractionResponse,
+    automated: bool,
+) {
     let now = crate::turn_timing::now_unix_timestamp_ms() / 1_000;
     let pending = {
         let mut pending_interactions = sess.pending_scripted_interactions.lock().await;
@@ -838,7 +858,7 @@ pub async fn scripted_interaction_response(
         warn!("discarding invalid scripted interaction response: {request_id}");
         return;
     };
-    resume_scripted_interaction(sess, pending, response).await;
+    resume_scripted_interaction(sess, pending, response, automated).await;
 }
 
 fn scripted_interaction_response_is_valid(
@@ -995,14 +1015,19 @@ pub(crate) async fn expire_scripted_interaction(sess: &Arc<Session>, request_id:
         action: None,
         values: Value::Null,
     };
-    resume_scripted_interaction(sess, pending, response).await;
+    resume_scripted_interaction(sess, pending, response, false).await;
 }
 
 async fn resume_scripted_interaction(
     sess: &Arc<Session>,
     pending: crate::session::session::PendingScriptedInteraction,
     response: xedoc_protocol::protocol::ScriptedInteractionResponse,
+    automated: bool,
 ) {
+    let response = crate::session::session::PendingScriptedInteractionResponse {
+        response,
+        automated,
+    };
     match pending.continuation {
         crate::session::session::PendingScriptedInteractionContinuation::Root(turn) => {
             sess.scripted_interaction_responses
