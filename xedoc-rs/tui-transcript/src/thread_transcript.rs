@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::git_action_directives::parse_assistant_markdown;
 use crate::history_cell::AgentMarkdownCell;
 use crate::history_cell::HistoryCell;
+use crate::history_cell::ModelRouterHistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::ReasoningSummaryCell;
 use crate::history_cell::UserHistoryCell;
@@ -112,7 +113,7 @@ pub fn thread_to_transcript_cells(
             }
             other => {
                 if let Some(cell) = fallback_transcript_cell(&other) {
-                    cells.push(Arc::new(cell));
+                    cells.push(Arc::from(cell));
                 }
             }
         }
@@ -125,7 +126,7 @@ pub fn thread_to_transcript_cells(
     cells
 }
 
-fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
+fn fallback_transcript_cell(item: &ThreadItem) -> Option<Box<dyn HistoryCell>> {
     let lines = match item {
         ThreadItem::HookPrompt { fragments, .. } => fragments
             .iter()
@@ -258,38 +259,38 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {
             proposed_reasoning_effort,
             effective_route,
             ..
-        } => feedback_visible
-            .then(|| {
-                crate::history_cell::model_router_decision_lines(
-                    scope.clone(),
-                    disposition.clone(),
-                    reason.clone(),
-                    summary.clone(),
-                    diagnostic.clone(),
-                    classifications.clone(),
-                    *confidence_score,
-                    *confidence_margin,
-                    *ranking_score,
-                    ranking_minimum_class.clone(),
-                    ranking_maximum_class.clone(),
-                    *ranking_minimum_rank,
-                    *ranking_maximum_rank,
-                    *ranking_target_rank,
-                    *ranking_selected_rank,
-                    proposed_provider_id.clone(),
-                    proposed_model_slug.clone(),
-                    proposed_reasoning_effort.clone(),
-                    effective_route.clone(),
-                )
-            })
-            .unwrap_or_default(),
+        } => {
+            let lines = crate::history_cell::model_router_decision_lines(
+                scope.clone(),
+                disposition.clone(),
+                reason.clone(),
+                summary.clone(),
+                diagnostic.clone(),
+                classifications.clone(),
+                *confidence_score,
+                *confidence_margin,
+                *ranking_score,
+                ranking_minimum_class.clone(),
+                ranking_maximum_class.clone(),
+                *ranking_minimum_rank,
+                *ranking_maximum_rank,
+                *ranking_target_rank,
+                *ranking_selected_rank,
+                proposed_provider_id.clone(),
+                proposed_model_slug.clone(),
+                proposed_reasoning_effort.clone(),
+                effective_route.clone(),
+            );
+            return feedback_visible
+                .then(|| Box::new(ModelRouterHistoryCell::new(lines)) as Box<dyn HistoryCell>);
+        }
         ThreadItem::UserMessage { .. }
         | ThreadItem::AgentMessage { .. }
         | ThreadItem::Plan { .. }
         | ThreadItem::Reasoning { .. }
         | ThreadItem::Sleep(_) => return None,
     };
-    (!lines.is_empty()).then(|| PlainHistoryCell::new(lines))
+    (!lines.is_empty()).then(|| Box::new(PlainHistoryCell::new(lines)) as Box<dyn HistoryCell>)
 }
 
 pub fn sub_agent_activity_summary(kind: SubAgentActivityKind, agent_path: &str) -> String {

@@ -9,7 +9,7 @@ use xedoc_app_server_protocol::ModelRouterScope;
 
 pub fn new_model_router_decision(
     notification: ModelRouterDecisionNotification,
-) -> PlainHistoryCell {
+) -> ModelRouterHistoryCell {
     new_model_router_decision_item(
         notification.scope,
         notification.disposition,
@@ -53,8 +53,8 @@ pub fn new_model_router_decision_item(
     proposed_model_slug: String,
     proposed_reasoning_effort: String,
     effective_route: ModelRouterEffectiveRoute,
-) -> PlainHistoryCell {
-    PlainHistoryCell::new(model_router_decision_lines(
+) -> ModelRouterHistoryCell {
+    ModelRouterHistoryCell::new(model_router_decision_lines(
         scope,
         disposition,
         reason,
@@ -75,6 +75,39 @@ pub fn new_model_router_decision_item(
         proposed_reasoning_effort,
         effective_route,
     ))
+}
+
+#[derive(Debug)]
+pub struct ModelRouterHistoryCell {
+    lines: Vec<Line<'static>>,
+}
+
+impl ModelRouterHistoryCell {
+    pub(crate) fn new(lines: Vec<Line<'static>>) -> Self {
+        Self { lines }
+    }
+}
+
+impl HistoryCell for ModelRouterHistoryCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let wrap_width = usize::from(width.max(1));
+        self.lines
+            .iter()
+            .flat_map(|line| {
+                crate::wrapping::adaptive_wrap_line(
+                    line,
+                    crate::wrapping::RtOptions::new(wrap_width)
+                        .subsequent_indent(crate::insert_history::leading_whitespace_prefix(line)),
+                )
+                .into_iter()
+                .map(|line| crate::render::line_utils::line_to_static(&line))
+            })
+            .collect()
+    }
+
+    fn raw_lines(&self) -> Vec<Line<'static>> {
+        plain_lines(self.lines.clone())
+    }
 }
 
 pub fn model_router_decision_lines(
