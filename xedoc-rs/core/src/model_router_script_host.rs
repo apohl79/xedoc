@@ -79,6 +79,8 @@ const MAX_CLASSIFIER_OUTPUT_BYTES: usize = 4_096;
 const MAX_ROUTER_STATE_IDENTIFIER_BYTES: usize = 128;
 const MAX_ROUTER_STATE_REVISION_BYTES: usize = 128;
 const BUNDLED_ROUTER_SCRIPT_PATH: &str = "model-router/reference-router";
+/// Sentinel used for router approval prompts that remain valid until answered.
+pub(crate) const MODEL_ROUTER_INTERACTION_NEVER_EXPIRES: i64 = i64::MAX;
 static SCRIPT_REPORTING_BASELINES: OnceLock<Mutex<HashMap<Vec<OsString>, Option<Route>>>> =
     OnceLock::new();
 
@@ -673,6 +675,11 @@ pub(crate) fn interaction_request(
 > {
     let surface =
         serde_json::to_value(&interaction.surface).map_err(|_| ModelRouterScriptFailure::Encode)?;
+    let expires_at = if matches!(&interaction.surface, InteractionSurface::Confirmation(_)) {
+        MODEL_ROUTER_INTERACTION_NEVER_EXPIRES
+    } else {
+        crate::turn_timing::now_unix_timestamp_ms() / 1_000 + 5 * 60
+    };
     Ok((
         xedoc_protocol::protocol::ScriptedInteractionRequestEvent {
             request_id: Uuid::now_v7().to_string(),
@@ -683,7 +690,7 @@ pub(crate) fn interaction_request(
                 .state_revision
                 .as_ref()
                 .map(|revision| revision.as_str().to_string()),
-            expires_at: crate::turn_timing::now_unix_timestamp_ms() / 1_000 + 5 * 60,
+            expires_at,
             surface,
         },
         "model-router".to_string(),

@@ -2348,8 +2348,11 @@ impl Session {
         else {
             return false;
         };
+        let never_expires = request.expires_at
+            == crate::model_router_script_host::MODEL_ROUTER_INTERACTION_NEVER_EXPIRES;
         if request.expires_at <= now
-            || request.expires_at > now + SCRIPTED_INTERACTION_MAX_LIFETIME_SECONDS
+            || (!never_expires
+                && request.expires_at > now + SCRIPTED_INTERACTION_MAX_LIFETIME_SECONDS)
             || request.extension_id != pending.extension_id
             || request.interaction_id != pending.interaction_id
             || request.continuation != pending.script_continuation
@@ -2426,18 +2429,20 @@ impl Session {
         drop(pending_interactions);
         self.send_event(turn_context, EventMsg::ScriptedInteractionRequest(request))
             .await;
-        let tx_sub = self.tx_sub.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(expires_in_seconds)).await;
-            let _ = tx_sub
-                .send(xedoc_protocol::protocol::Submission {
-                    id: uuid::Uuid::now_v7().to_string(),
-                    op: xedoc_protocol::protocol::Op::ExpireScriptedInteraction { request_id },
-                    client_user_message_id: None,
-                    trace: None,
-                })
-                .await;
-        });
+        if !never_expires {
+            let tx_sub = self.tx_sub.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(expires_in_seconds)).await;
+                let _ = tx_sub
+                    .send(xedoc_protocol::protocol::Submission {
+                        id: uuid::Uuid::now_v7().to_string(),
+                        op: xedoc_protocol::protocol::Op::ExpireScriptedInteraction { request_id },
+                        client_user_message_id: None,
+                        trace: None,
+                    })
+                    .await;
+            });
+        }
         true
     }
 

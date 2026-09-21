@@ -2894,13 +2894,14 @@ def classifier_prompt(context, prompt, embedder_state):
     )
     prefix = (
         "Classify the candidate task for a model router. Return JSON only with "
-        "exactly these fields: work_type (group1, group2, or group3), "
+        "exactly these fields: work_type (an object with group (group1, group2, "
+        "or group3) and steering (boolean)), "
         "complexity (low, medium, high, very_high), risk (low, medium, high, very_high), "
         "orchestration (none, delegate, coordination, workflow), confidence "
-        "(number from 0 through 1 for the complete classification), steering "
-        "(boolean). "
+        "(number from 0 through 1 for the complete classification). "
         f"Work type groups and their leaf values: {WORK_TYPE_GROUP_PROMPT}. "
-        "Use the leaf types to choose the best group, then return only the group ID. "
+        "Use the leaf types to choose the best group, then put only the group ID "
+        "in work_type.group. Put the steering boolean in work_type.steering. "
         "The embedder candidate below is advisory and may be wrong; classify independently. "
         "Set steering true when the candidate is a reply, answer, correction, or "
         "additional information that continues the preceding assistant/user exchange "
@@ -2950,12 +2951,15 @@ def parse_classifier_output(output):
             return None
     if not isinstance(value, dict):
         return None
-    work_type_id = value.get("work_type")
+    work_type = value.get("work_type")
+    if not isinstance(work_type, dict):
+        return None
+    work_type_id = work_type.get("group")
+    steering = work_type.get("steering")
     result = {
         axis: value.get(axis) for axis in ("complexity", "risk", "orchestration")
     }
     confidence = value.get("confidence")
-    steering = value.get("steering", False)
     if (
         work_type_id not in WORK_TYPE_GROUP_IDS
         or result["complexity"] not in COMPLEXITIES
