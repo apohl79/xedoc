@@ -100,6 +100,7 @@ async fn handle_spawn_agent(
     let orchestrator_config = config.clone();
     let mut router_event = None;
     let mut router_decision_id = None;
+    let mut router_event_emitted = false;
     if let Some(script_host) =
         crate::model_router_script_host::ModelRouterScriptHost::from_config(&config)
     {
@@ -199,6 +200,10 @@ async fn handle_spawn_agent(
                             None,
                         );
                         router_decision_id = Some(event.decision_id.clone());
+                        session
+                            .emit_model_router_decision(turn.as_ref(), event.clone())
+                            .await;
+                        router_event_emitted = true;
                         router_event = Some(event);
                         break;
                     }
@@ -302,6 +307,7 @@ async fn handle_spawn_agent(
         &config,
         &orchestrator_config,
         router_event.as_ref(),
+        router_event_emitted,
     )
     .await?
     {
@@ -357,7 +363,7 @@ async fn handle_spawn_agent(
     .await
     .map_err(collab_spawn_error)?;
     let new_thread_id = spawned_agent.thread_id;
-    if let Some(router_event) = router_event {
+    if !router_event_emitted && let Some(router_event) = router_event {
         session
             .emit_model_router_decision(&turn, router_event)
             .await;
@@ -429,6 +435,7 @@ async fn try_spawn_ab_pair(
     routed_config: &crate::config::Config,
     orchestrator_config: &crate::config::Config,
     router_event: Option<&xedoc_protocol::protocol::ModelRouterDecisionEvent>,
+    router_event_emitted: bool,
 ) -> Result<Option<SpawnAgentResult>, FunctionCallError> {
     if turn.session_source.is_non_root_agent()
         || is_operations_or_deployment_task(message)
@@ -637,7 +644,9 @@ async fn try_spawn_ab_pair(
     }
     if let Some(router_event) = router_event.cloned() {
         let router_decision_id = router_event.decision_id.clone();
-        session.emit_model_router_decision(turn, router_event).await;
+        if !router_event_emitted {
+            session.emit_model_router_decision(turn, router_event).await;
+        }
         session
             .set_model_router_ab_decision_id(&active_pair.pair_id, router_decision_id.clone())
             .await;

@@ -132,7 +132,17 @@ pub fn model_router_decision_lines(
     effective_route: ModelRouterEffectiveRoute,
 ) -> Vec<Line<'static>> {
     if let Some(summary) = summary {
-        let mut lines = vec![vec!["  model router ".magenta(), summary.dim()].into()];
+        let scope = match scope {
+            ModelRouterScope::Root => "root",
+            ModelRouterScope::Subagent => "subagent",
+        };
+        let mut lines = vec![
+            vec![
+                format!("  model router ({scope}) ").magenta(),
+                summary.dim(),
+            ]
+            .into(),
+        ];
         if let Some(diagnostic) = diagnostic {
             lines.push(format!("  {diagnostic}").dim().into());
         }

@@ -626,6 +626,7 @@ def classifier_feedback_candidates():
                 "outcome": outcome,
                 "prompt": prompt,
                 "classification": final_axes,
+                "steering": bool(record.get("steering", False)),
                 "embedding": decode_feedback_embedding(record.get("embedding"))
                 or cache.get(embedding_key),
                 "embeddingKey": embedding_key,
@@ -711,6 +712,7 @@ def classifier_feedback_prompt(prompt):
         (
             f"- Similarity {percentage(example.get('similarity', 0.0))}; "
             f"outcome {example['outcome']}; task: {example['prompt'][:256]}; "
+            f"steering: {'true' if example['steering'] else 'false'}; "
             f"label: {json.dumps(example['classification'], sort_keys=True)}"
         )
         for example in examples
@@ -755,6 +757,8 @@ def record_classifier_feedback(
     original_axes,
     final_axes,
     classification_details,
+    original_steering,
+    final_steering,
     outcome,
 ):
     stored_prompt = feedback_prompt(prompt)
@@ -774,6 +778,8 @@ def record_classifier_feedback(
             "original": original_axes,
             "final": final_axes,
             "workTypeValidation": classification_details,
+            "originalSteering": original_steering,
+            "steering": final_steering,
             "outcome": outcome,
             "embedding": embedding,
         }
@@ -795,6 +801,18 @@ def blend_semantic_weights(weights, embedding, prior_weight=64):
     ]
 
 
+def update_steering_weights(semantic, embedding, steering):
+    steering_axes = semantic.get("steeringAxes")
+    if not isinstance(steering_axes, dict):
+        return 0
+    steering_head = "steering" if steering else "task"
+    weights = steering_axes.get(steering_head)
+    if not isinstance(weights, list):
+        return 0
+    steering_axes[steering_head] = blend_semantic_weights(weights, embedding)
+    return 1
+
+
 def next_policy_revision(revision):
     if isinstance(revision, int) and not isinstance(revision, bool):
         return revision + 1
@@ -803,7 +821,7 @@ def next_policy_revision(revision):
     raise ValueError("policy revision must be a non-empty string or integer")
 
 
-def recalibrate_semantic_policy(policy, prompt, scope, axes):
+def recalibrate_semantic_policy(policy, prompt, scope, axes, steering=None):
     embedding = semantic_embedding(prompt)
     semantic = policy["semanticClassifier"]
     updates = 0
@@ -815,6 +833,8 @@ def recalibrate_semantic_policy(policy, prompt, scope, axes):
                     candidate["weights"], embedding
                 )
                 updates += 1
+    if isinstance(steering, bool):
+        updates += update_steering_weights(semantic, embedding, steering)
     scope_axes = semantic.setdefault("scopeAxes", {})
     scoped = scope_axes.setdefault(scope, {})
     for axis in semantic["axes"]:
@@ -835,6 +855,17 @@ def recalibrate_semantic_policy(policy, prompt, scope, axes):
     semantic["feedbackUpdates"] = semantic.get("feedbackUpdates", 0) + updates
     policy["revision"] = next_policy_revision(policy["revision"])
     save_policy(policy)
+    return updates
+
+
+def recalibrate_steering_policy(policy, prompt, steering):
+    embedding = semantic_embedding(prompt)
+    semantic = policy["semanticClassifier"]
+    updates = update_steering_weights(semantic, embedding, steering)
+    if updates:
+        semantic["feedbackUpdates"] = semantic.get("feedbackUpdates", 0) + updates
+        policy["revision"] = next_policy_revision(policy["revision"])
+        save_policy(policy)
     return updates
 
 
@@ -2055,31 +2086,17 @@ def classify(
     llm_classification=None,
     embedder_state=None,
 ):
-    if has_prior_messages and (
-        steering_prompt(prompt) or explicit_continuation_prompt(prompt)
-    ):
-        axes = {
-            "work_type": WORK_TYPES[0],
-            "complexity": "low",
-            "orchestration": "none",
-            "risk": "low",
-        }
-        evidence = {axis: (1.0, 1.0) for axis in axes}
-        return axes, evidence, True, None, None, None, {
-            "embedderWorkType": None,
-            "llmWorkType": None,
-            "llmWorkTypeGroup": None,
-            "workTypeAgreement": None,
-            "workTypeSource": "steering",
-            "classificationConflict": False,
-        }
     if embedder_state is None:
         inputs = [prompt]
         if has_prior_messages:
             inputs.append(steering_context(prompt, recent_messages))
         embeddings, embedding_elapsed_ms = semantic_embeddings(inputs)
         embedding = embeddings[0]
-        steering = has_prior_messages and semantic_steering(policy, embeddings[1])
+        steering = has_prior_messages and (
+            steering_prompt(prompt)
+            or explicit_continuation_prompt(prompt)
+            or semantic_steering(policy, embeddings[1])
+        )
         classification = {
             "work_type": semantic_axis(policy, "work_type", embedding, scope, prompt)
         }
@@ -2107,6 +2124,10 @@ def classify(
         "workTypeAgreement": None,
         "workTypeSource": "embedder",
         "classificationConflict": False,
+        "embedderSteering": steering,
+        "llmSteering": None,
+        "steeringAgreement": None,
+        "steeringSource": "embedder" if steering else None,
     }
     llm_confidence = None
     if llm_classification is not None:
@@ -2131,6 +2152,16 @@ def classify(
         )
         axes["work_type"] = llm_work_type_group
         llm_confidence = llm_classification["confidence"]
+        llm_steering = llm_classification.get("steering")
+        if isinstance(llm_steering, bool):
+            classification_details.update(
+                {
+                    "llmSteering": llm_steering,
+                    "steeringAgreement": llm_steering == steering,
+                    "steeringSource": "llm",
+                }
+            )
+            steering = llm_steering
     return (
         axes,
         evidence,
@@ -2166,8 +2197,26 @@ def valid_classification_details(details):
     llm_work_type_group = details.get("llmWorkTypeGroup")
     agreement = details.get("workTypeAgreement")
     conflict = details.get("classificationConflict")
+    embedder_steering = details.get("embedderSteering")
+    llm_steering = details.get("llmSteering")
+    steering_agreement = details.get("steeringAgreement")
+    steering_source = details.get("steeringSource")
     if source not in ("embedder", "llm", "steering") or not isinstance(
         conflict, bool
+    ):
+        return False
+    if embedder_steering is not None and not isinstance(embedder_steering, bool):
+        return False
+    if llm_steering is not None and not isinstance(llm_steering, bool):
+        return False
+    if steering_agreement is not None and not isinstance(steering_agreement, bool):
+        return False
+    if steering_source not in (None, "embedder", "llm", "steering"):
+        return False
+    if (
+        llm_steering is not None
+        and embedder_steering is not None
+        and steering_agreement != (llm_steering == embedder_steering)
     ):
         return False
     if source == "steering":
@@ -2177,6 +2226,7 @@ def valid_classification_details(details):
             and llm_work_type_group is None
             and agreement is None
             and not conflict
+            and (embedder_steering is None or embedder_steering)
         )
     if embedder_work_type not in WORK_TYPES:
         return False
@@ -2467,7 +2517,8 @@ def decision(
         f"\n└ Decision: {status_detail}; Target model: {target}; Used model: {used};\n"
         f"  Classifications: Work type({axes['work_type']}); "
         f"Complexity({axes['complexity']}); Risk({axes['risk']}); "
-        f"Coordination({axes['orchestration']});\n"
+        f"Coordination({axes['orchestration']});"
+        f"{' Steering(yes);' if steering else ''}\n"
         f"{validation_line}"
         f"  Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});\n"
         f"  Confidence: {overall}; LLM self-rating({llm_score}); "
@@ -2531,6 +2582,7 @@ def approval_continuation(
     was_override=False,
     classifier_notice=None,
     classification_details=None,
+    steering=False,
 ):
     turn = context.get("turn") or {}
     state = {
@@ -2550,6 +2602,7 @@ def approval_continuation(
         "wasOverride": was_override,
         "classifierNotice": classifier_notice,
         "classificationDetails": classification_details,
+        "steering": steering,
     }
     if embedding_elapsed_ms is not None and embedding_input_count is not None:
         state["embeddingElapsedMs"] = embedding_elapsed_ms
@@ -2578,6 +2631,7 @@ def approval(
     was_override=False,
     classifier_notice=None,
     classification_details=None,
+    steering=False,
 ):
     category = classification_label(axes)
     route = selection["route"]
@@ -2600,6 +2654,7 @@ def approval(
         was_override,
         classifier_notice,
         classification_details,
+        steering,
     )
     progress = calibration_progress(policy, raw_confidence)
     confidence_detail = (
@@ -2629,6 +2684,7 @@ def approval(
                 {"text": f"Complexity: {axes['complexity']}", "indent": 1},
                 {"text": f"Orchestration: {axes['orchestration']}", "indent": 1},
                 {"text": f"Risk: {axes['risk']}", "indent": 1},
+                {"text": f"Steering: {'yes' if steering else 'no'}", "indent": 1},
             ],
         },
         {
@@ -2679,6 +2735,7 @@ def approval(
                 "orchestration", "Orchestration", axes["orchestration"], ORCHESTRATIONS
             ),
             select_field("risk", "Risk", axes["risk"], RISKS),
+            select_field("steering", "Steering", "yes" if steering else "no", ("no", "yes")),
         ],
         "submit-override",
         "Apply override",
@@ -2691,15 +2748,28 @@ def approval(
         policy,
         {
             "type": "confirmation",
-            "title": f"Use {route_label(route)}?",
-            "body": "The reference router requests confirmation for this decision.",
+            "title": (
+                "Treat this input as steering?"
+                if steering
+                else f"Use {route_label(route)}?"
+            ),
+            "body": (
+                "The reference router classified this as a response to the "
+                "preceding conversation."
+                if steering
+                else "The reference router requests confirmation for this decision."
+            ),
             "details": [],
             "sections": sections,
             "actions": [
-                action("approve", "Accept this route", bindings=["enter"]),
+                action(
+                    "approve",
+                    "Accept steering" if steering else "Accept this route",
+                    bindings=["enter"],
+                ),
                 action(
                     "keep-current",
-                    "Keep current route",
+                    "Reject steering" if steering else "Keep current route",
                     bindings=["escape"],
                     context=current_route,
                 ),
@@ -2708,7 +2778,11 @@ def approval(
                     "Change classification",
                     opens="classification-override",
                     bindings=["o"],
-                    context="Update the classification and tune the router",
+                    context=(
+                        "Override steering or classification and tune the router"
+                        if steering
+                        else "Update the classification and tune the router"
+                    ),
                 ),
             ],
             "override": override,
@@ -2823,10 +2897,16 @@ def classifier_prompt(context, prompt, embedder_state):
         "exactly these fields: work_type (group1, group2, or group3), "
         "complexity (low, medium, high, very_high), risk (low, medium, high, very_high), "
         "orchestration (none, delegate, coordination, workflow), confidence "
-        "(number from 0 through 1 for the complete classification). "
+        "(number from 0 through 1 for the complete classification), steering "
+        "(boolean). "
         f"Work type groups and their leaf values: {WORK_TYPE_GROUP_PROMPT}. "
         "Use the leaf types to choose the best group, then return only the group ID. "
         "The embedder candidate below is advisory and may be wrong; classify independently. "
+        "Set steering true when the candidate is a reply, answer, correction, or "
+        "additional information that continues the preceding assistant/user exchange "
+        "rather than a new task. A prior assistant request for a missing input followed "
+        "by that input is steering. Set steering false for a new task, even when prior "
+        "conversation exists. "
         "For a subagent, choose orchestration none unless the candidate explicitly "
         "asks it to delegate, spawn, coordinate, or split work.\n"
         f"Scope: {scope}\n"
@@ -2875,11 +2955,13 @@ def parse_classifier_output(output):
         axis: value.get(axis) for axis in ("complexity", "risk", "orchestration")
     }
     confidence = value.get("confidence")
+    steering = value.get("steering", False)
     if (
         work_type_id not in WORK_TYPE_GROUP_IDS
         or result["complexity"] not in COMPLEXITIES
         or result["risk"] not in RISKS
         or result["orchestration"] not in ORCHESTRATIONS
+        or not isinstance(steering, bool)
         or not isinstance(confidence, (int, float))
         or isinstance(confidence, bool)
         or not math.isfinite(confidence)
@@ -2889,6 +2971,7 @@ def parse_classifier_output(output):
     result["work_type"] = WORK_TYPE_GROUP_BY_ID[work_type_id]
     result["work_type_id"] = work_type_id
     result["confidence"] = confidence
+    result["steering"] = steering
     return result
 
 
@@ -3000,10 +3083,6 @@ def routing_decide(
         llm_classification is None
         and not classifier_failed
         and configured_classifier is not None
-        and not (
-            has_prior_messages
-            and (steering_prompt(prompt) or explicit_continuation_prompt(prompt))
-        )
     )
     if should_request_classifier:
         if embedder_state is None:
@@ -3029,7 +3108,6 @@ def routing_decide(
                 embedder_elapsed_ms,
                 embedder_input_count,
             )
-        if not embedder_state["steering"]:
             classifier_input, feedback_elapsed_ms, feedback_input_count = classifier_prompt(
                 context, prompt, embedder_state
             )
@@ -3080,7 +3158,7 @@ def routing_decide(
     should_shadow = (
         shadow and not active and not steering and route is not None and confident
     )
-    route_can_be_approved = enabled and not active and not steering and route is not None
+    route_can_be_approved = enabled and not active and route is not None
     needs_calibration = calibrated_confidence is None
     below_not_confident_threshold = (
         not needs_calibration
@@ -3131,6 +3209,7 @@ def routing_decide(
             notice_text=classifier_notice,
             classifier_notice=classifier_notice,
             classification_details=classification_details,
+            steering=steering,
         )
     disposition = (
         "apply"
@@ -3209,6 +3288,7 @@ def approval_state(continuation):
         was_override = state.get("wasOverride", False)
         classifier_notice = state.get("classifierNotice")
         classification_details = state.get("classificationDetails")
+        steering = state.get("steering", False)
         scope = state.get("scope", "root")
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
@@ -3222,6 +3302,7 @@ def approval_state(continuation):
             not isinstance(policy_revision, str)
             or not isinstance(recalibrated, bool)
             or not isinstance(was_override, bool)
+            or not isinstance(steering, bool)
             or classifier_notice is not None
             and (
                 not isinstance(classifier_notice, str)
@@ -3293,6 +3374,7 @@ def approval_state(continuation):
         was_override,
         classifier_notice,
         classification_details,
+        steering,
     )
 
 
@@ -3313,6 +3395,7 @@ def fresh_approval(
     was_override=False,
     classifier_notice=None,
     classification_details=None,
+    steering=False,
 ):
     selection = choose_route(policy, context, axes)
     return approval(
@@ -3333,6 +3416,7 @@ def fresh_approval(
         was_override=was_override,
         classifier_notice=classifier_notice,
         classification_details=classification_details,
+        steering=steering,
     )
 
 
@@ -3358,6 +3442,7 @@ def approval_response(request, policy):
         was_override,
         classifier_notice,
         classification_details,
+        steering,
     ) = decoded
     current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
@@ -3380,6 +3465,7 @@ def approval_response(request, policy):
             was_override,
             classifier_notice,
             classification_details,
+            steering,
         )
     selection = choose_route(policy, rendered_context, axes)
     rendered = approval(
@@ -3399,6 +3485,7 @@ def approval_response(request, policy):
         notice_text=classifier_notice,
         classifier_notice=classifier_notice,
         classification_details=classification_details,
+        steering=steering,
     )["interaction"]
     if (
         params.get("interactionId") != rendered["id"]
@@ -3422,15 +3509,54 @@ def approval_response(request, policy):
             was_override,
             classifier_notice,
             classification_details,
+            steering,
         )
     selected = (params.get("action") or {}).get("id")
     if selected == "keep-current" or params.get("outcome") != "accepted":
-        if raw_confidence is not None:
+        if raw_confidence is not None and not steering:
             record_approval_outcome(
                 policy,
                 raw_confidence,
                 "override" if was_override else "rejected",
             )
+        if steering:
+            try:
+                updates = recalibrate_steering_policy(
+                    policy,
+                    rendered_context.get("routerPrompt", ""),
+                    False,
+                )
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+                subprocess.TimeoutExpired,
+            ) as error:
+                record_diagnostic(
+                    {
+                        "event": "semantic_classifier_recalibration_failed",
+                        "recordedAtUnixSeconds": int(time.time()),
+                        "policyRevision": policy["revision"],
+                        "error": str(error)[:256],
+                    }
+                )
+            else:
+                record_recalibration(
+                    policy,
+                    "steering_rejected",
+                    axes,
+                    axes,
+                    selection,
+                )
+                record_diagnostic(
+                    {
+                        "event": "semantic_classifier_recalibrated",
+                        "recordedAtUnixSeconds": int(time.time()),
+                        "policyRevision": policy["revision"],
+                        "scope": rendered_context["turn"]["scope"],
+                        "updatedHeads": updates,
+                    }
+                )
         record_classifier_feedback(
             policy,
             rendered_context,
@@ -3438,6 +3564,8 @@ def approval_response(request, policy):
             axes,
             axes,
             classification_details,
+            steering,
+            steering,
             "classification_override_rejected" if was_override else "rejected",
         )
         if recalibrated:
@@ -3448,6 +3576,11 @@ def approval_response(request, policy):
                 axes,
                 selection,
             )
+        rejection_reason = (
+            "User rejected the steering classification; current route retained."
+            if steering
+            else "User declined the proposed route."
+        )
         return decision(
             policy,
             request["requestId"],
@@ -3456,7 +3589,7 @@ def approval_response(request, policy):
             margin,
             selection,
             "keepCurrent",
-            "User declined the proposed route.",
+            rejection_reason,
             embedding_elapsed_ms=embedding_elapsed_ms,
             embedding_input_count=embedding_input_count,
             llm_confidence=llm_confidence,
@@ -3467,10 +3600,12 @@ def approval_response(request, policy):
             used_route=current_context.get("currentRoute"),
             classifier_notice=classifier_notice,
             classification_details=classification_details,
+            steering=steering,
         )
     values = params.get("values") or {}
     if selected == "submit-override":
         original_axes = axes
+        original_steering = steering
         axes = {
             "work_type": selected_option(
                 values.get("work_type"),
@@ -3481,6 +3616,12 @@ def approval_response(request, policy):
             "orchestration": values.get("orchestration", axes["orchestration"]),
             "risk": values.get("risk", axes["risk"]),
         }
+        steering_value = values.get("steering")
+        if steering_value is not None and steering_value not in ("no", "yes"):
+            return error_notice(
+                policy, "Override steering must be chosen from the offered choices."
+            )
+        steering = steering_value == "yes" if steering_value is not None else steering
         if (
             axes["work_type"] not in WORK_TYPES
             or axes["complexity"] not in COMPLEXITIES
@@ -3496,6 +3637,7 @@ def approval_response(request, policy):
             rendered_context.get("routerPrompt", ""),
             rendered_context["turn"]["scope"],
             axes,
+            steering,
         )
         record_recalibration(
             policy,
@@ -3520,6 +3662,8 @@ def approval_response(request, policy):
             original_axes,
             axes,
             classification_details,
+            original_steering,
+            steering,
             "classification_override",
         )
         if selection["route"] is None:
@@ -3549,6 +3693,7 @@ def approval_response(request, policy):
                 used_route=current_context.get("currentRoute"),
                 classifier_notice=classifier_notice,
                 classification_details=classification_details,
+                steering=steering,
             )
         return approval(
             policy,
@@ -3568,6 +3713,7 @@ def approval_response(request, policy):
             notice_text=classifier_notice,
             classifier_notice=classifier_notice,
             classification_details=classification_details,
+            steering=steering,
         )
     if recalibrated:
         record_recalibration(
@@ -3579,15 +3725,27 @@ def approval_response(request, policy):
         )
     elif (
         classification_details is not None
-        and classification_details["llmWorkType"] is not None
+        and (
+            classification_details["llmWorkType"] is not None
+            or classification_details.get("llmSteering") is not None
+            or steering
+        )
     ):
         try:
-            updates = recalibrate_semantic_policy(
-                policy,
-                rendered_context.get("routerPrompt", ""),
-                rendered_context["turn"]["scope"],
-                axes,
-            )
+            if steering and not was_override:
+                updates = recalibrate_steering_policy(
+                    policy,
+                    rendered_context.get("routerPrompt", ""),
+                    steering,
+                )
+            else:
+                updates = recalibrate_semantic_policy(
+                    policy,
+                    rendered_context.get("routerPrompt", ""),
+                    rendered_context["turn"]["scope"],
+                    axes,
+                    steering,
+                )
         except (
             OSError,
             RuntimeError,
@@ -3619,7 +3777,7 @@ def approval_response(request, policy):
                     "updatedHeads": updates,
                 }
             )
-    if raw_confidence is not None:
+    if raw_confidence is not None and not steering:
         record_approval_outcome(
             policy,
             raw_confidence,
@@ -3632,8 +3790,32 @@ def approval_response(request, policy):
         axes,
         axes,
         classification_details,
+        steering,
+        steering,
         "classification_override_approved" if was_override else "approved",
     )
+    if steering:
+        return decision(
+            policy,
+            request["requestId"],
+            axes,
+            confidence,
+            margin,
+            selection,
+            "keepCurrent",
+            "Input classified as steering; current route retained.",
+            embedding_elapsed_ms=embedding_elapsed_ms,
+            embedding_input_count=embedding_input_count,
+            llm_confidence=llm_confidence,
+            llm_elapsed_ms=llm_elapsed_ms,
+            calibrated_confidence=calibrated_confidence,
+            raw_confidence=raw_confidence,
+            decision_status="override" if was_override else "approved",
+            used_route=current_context.get("currentRoute"),
+            classifier_notice=classifier_notice,
+            steering=True,
+            classification_details=classification_details,
+        )
     return decision(
         policy,
         request["requestId"],
@@ -3652,6 +3834,7 @@ def approval_response(request, policy):
         used_route=selection["route"],
         classifier_notice=classifier_notice,
         classification_details=classification_details,
+        steering=steering,
     )
 
 
