@@ -26,7 +26,6 @@ use xedoc_script_protocol::Extension;
 use xedoc_script_protocol::Interaction;
 use xedoc_script_protocol::InteractionResponse;
 use xedoc_script_protocol::InteractionSurface;
-use xedoc_script_protocol::MAX_SCRIPT_SUMMARY_BYTES;
 use xedoc_script_protocol::Method;
 use xedoc_script_protocol::OpaqueId;
 use xedoc_script_protocol::RequestId;
@@ -52,6 +51,7 @@ use xedoc_core_session_name::append_message_text;
 
 const MAX_SCRIPT_ERROR_MESSAGE_BYTES: usize = 1_024;
 const MAX_SCRIPT_FEEDBACK_TEXT_BYTES: usize = 512;
+const MAX_MODEL_ROUTER_SUMMARY_BYTES: usize = 8 * 1024;
 const MAX_INTERACTION_IDENTIFIER_BYTES: usize = 128;
 const MAX_INTERACTION_CONTINUATION_BYTES: usize = 8_192;
 const MAX_INTERACTION_TEXT_BYTES: usize = 4_096;
@@ -1086,7 +1086,7 @@ fn validate_summary(summary: Option<String>) -> Result<Option<String>, ModelRout
     {
         return Err(ModelRouterScriptFailure::InvalidSummary);
     }
-    truncate_utf8(&mut summary, MAX_SCRIPT_SUMMARY_BYTES);
+    truncate_utf8(&mut summary, MAX_MODEL_ROUTER_SUMMARY_BYTES);
     if summary.trim().is_empty() {
         return Err(ModelRouterScriptFailure::InvalidSummary);
     }

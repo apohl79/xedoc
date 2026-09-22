@@ -2508,24 +2508,25 @@ def decision(
         else f"{percentage(confidence)}, margin {percentage(margin)}"
     )
     work_type_validation = work_type_validation_text(classification_details)
-    validation_line = (
-        f"  Work type validation: {work_type_validation};\n"
-        if work_type_validation is not None
-        else ""
-    )
-    summary = (
-        f"\n└ Decision: {status_detail}; Target model: {target}; Used model: {used};\n"
-        f"  Classifications: Work type({axes['work_type']}); "
+    summary_lines = [
+        f"  └ Decision: {status_detail}; Target model: {target}; Used model: {used};",
+        f"    Classifications: Work type({axes['work_type']}); "
         f"Complexity({axes['complexity']}); Risk({axes['risk']}); "
         f"Coordination({axes['orchestration']});"
-        f"{' Steering(yes);' if steering else ''}\n"
-        f"{validation_line}"
-        f"  Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});\n"
-        f"  Confidence: {overall}; LLM self-rating({llm_score}); "
-        f"similarity({similarity_detail})."
+        f"{' Steering(yes);' if steering else ''}",
+    ]
+    if work_type_validation is not None:
+        summary_lines.append(f"    Work type validation: {work_type_validation};")
+    summary_lines.extend(
+        [
+            f"    Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});",
+            f"    Confidence: {overall}; LLM self-rating({llm_score}); "
+            f"similarity({similarity_detail}).",
+        ]
     )
+    summary = "\n".join(summary_lines)
     if classifier_notice is not None:
-        summary += f"\n  Error: {classifier_notice}"
+        summary += f"\n    Error: {classifier_notice}"
     return {
         "kind": "route",
         "decision": {

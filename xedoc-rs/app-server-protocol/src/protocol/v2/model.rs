@@ -716,7 +716,7 @@ pub struct ModelRouterDecisionNotification {
     pub feedback_visible: bool,
     /// Prompt-free diagnostic retained when a local router dependency fails.
     pub diagnostic: Option<String>,
-    /// Compact prompt-free decision summary supplied by the router.
+    /// Prompt-free multiline decision summary supplied by the router.
     pub summary: Option<String>,
     pub policy_revision: String,
     pub classifications: std::collections::BTreeMap<String, String>,

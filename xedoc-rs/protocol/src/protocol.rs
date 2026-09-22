@@ -1689,7 +1689,7 @@ pub struct ModelRouterDecisionEvent {
     pub feedback_visible: bool,
     /// Prompt-free diagnostic retained when a local router dependency fails.
     pub diagnostic: Option<String>,
-    /// Compact prompt-free decision summary supplied by the router.
+    /// Prompt-free multiline decision summary supplied by the router.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub summary: Option<String>,

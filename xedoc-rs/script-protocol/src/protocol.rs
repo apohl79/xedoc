@@ -211,7 +211,7 @@ pub enum ScriptResult {
     },
     /// A terminal bounded success result with no follow-up interaction.
     Complete {
-        /// Safe summary suitable for the host to show to the user.
+        /// Safe, possibly multiline summary suitable for the host to show to the user.
         summary: Option<String>,
     },
     /// A bounded user-visible message emitted by a session extension.

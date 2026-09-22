@@ -17,7 +17,7 @@ const MAX_SCRIPT_STDIN_BYTES: usize = 1_048_576;
 const MAX_SCRIPT_STDOUT_BYTES: usize = 262_144;
 const MAX_SCRIPT_STDERR_BYTES: usize = 16_384;
 
-/// Maximum UTF-8 byte length retained for a script result summary.
+/// Maximum UTF-8 byte length retained for a generic script result summary.
 pub const MAX_SCRIPT_SUMMARY_BYTES: usize = 512;
 
 /// Executes one bounded shell-free extension script request.
