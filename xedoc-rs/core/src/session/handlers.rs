@@ -421,11 +421,13 @@ pub(super) async fn user_input_or_turn_inner(
                         decision,
                         route,
                     } => {
+                        let model_instructions = decision.model_instructions.as_deref();
                         let routed_context = sess
                             .new_script_routed_turn_from_current_settings_with_sub_id(
                                 sub_id.clone(),
                                 final_output_json_schema.clone(),
                                 &route,
+                                model_instructions,
                             )
                             .await;
                         if let Some(routed_context) = routed_context {

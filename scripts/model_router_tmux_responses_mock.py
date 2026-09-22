@@ -144,7 +144,13 @@ def assistant_message(message_id: str, text: str) -> dict[str, Any]:
 def spawn_agent_call() -> dict[str, Any]:
     arguments = json.dumps(
         {
-            "message": ROOT_SPAWN_MARKER + " " + CHILD_MARKER,
+            "message": (
+                ROOT_SPAWN_MARKER
+                + " "
+                + CHILD_MARKER
+                + " "
+                + HOLD_RESPONSE_MARKER
+            ),
             "task_name": "router_e2e_child",
             "fork_turns": "none",
         },
@@ -167,17 +173,26 @@ def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str,
     if request_kind(request) == "model_router_classifier":
         if contains_text(request, CHILD_MARKER):
             classification = (
-                '{"work_type":"group3","complexity":"low","risk":"low",'
+                '{"work_type":{"group":"group3","steering":false},'
+                '"complexity":"low","risk":"low",'
                 '"orchestration":"none","confidence":0.8}'
             )
         elif contains_text(request, "ROUTER_E2E_CLASSIFIER_SHADOW"):
             classification = (
-                '{"work_type":"group1","complexity":"very_high",'
+                '{"work_type":{"group":"group1","steering":false},'
+                '"complexity":"very_high",'
                 '"risk":"medium","orchestration":"delegate","confidence":0.8}'
+            )
+        elif contains_text(request, "ROUTER_E2E_CLASSIFIER_FULL"):
+            classification = (
+                '{"work_type":{"group":"group1","steering":false},'
+                '"complexity":"high","risk":"low",'
+                '"orchestration":"delegate","confidence":0.8}'
             )
         else:
             classification = (
-                '{"work_type":"group1","complexity":"high","risk":"low",'
+                '{"work_type":{"group":"group1","steering":false},'
+                '"complexity":"high","risk":"low",'
                 '"orchestration":"none","confidence":0.8}'
             )
         return [

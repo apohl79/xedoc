@@ -492,6 +492,9 @@ pub struct RouteDecision {
     pub summary: Option<String>,
     /// Compact prompt-free routing feedback rendered when the user enables it.
     pub feedback: RouteFeedback,
+    /// Optional bounded model-facing guidance selected by the router.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_instructions: Option<String>,
 }
 
 /// Bounded prompt-free routing details supplied by a model-router script.

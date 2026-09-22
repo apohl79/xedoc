@@ -360,6 +360,9 @@ The fork adds opt-in API tracing for debugging inter-agent request and stream
 payload shape without writing full sensitive payloads by default.
 
 - Setting `XEDOC_INTER_AGENT_TRACE` to a file path enables JSONL trace output.
+- Setting `XEDOC_INTER_AGENT_TRACE_FULL=1` alongside the trace path records
+  complete Responses sampling request bodies as `sampling_request` entries.
+  This is opt-in because the bodies include the full prompt and context.
 - The trace records request, websocket request, and stream-event summaries.
 - Trace entries include request method/path, top-level body keys, input length,
   agent-message summaries, encrypted-content summaries, item identifiers, and

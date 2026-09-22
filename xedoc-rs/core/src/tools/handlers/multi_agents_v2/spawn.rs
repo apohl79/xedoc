@@ -178,12 +178,19 @@ async fn handle_spawn_agent(
                         decision,
                         route,
                     } => {
+                        let model_instructions = decision.model_instructions.as_deref();
                         let applied = crate::model_router::apply_script_route_to_config(
                             &mut config,
                             &session.services.models_manager,
                             &route,
                         )
                         .await;
+                        if applied {
+                            crate::model_router::append_script_model_instructions(
+                                &mut config.developer_instructions,
+                                model_instructions,
+                            );
+                        }
                         if !applied {
                             tracing::warn!(
                                 decision_id = %decision.id.as_str(),
@@ -279,6 +286,8 @@ async fn handle_spawn_agent(
                                 failure.as_ref(),
                             );
                             router_decision_id = Some(event.decision_id.clone());
+                            router_event = Some(event.clone());
+                            router_event_emitted = true;
                             session
                                 .emit_model_router_decision(turn.as_ref(), event)
                                 .await;
@@ -345,6 +354,14 @@ async fn handle_spawn_agent(
     } else {
         context
     };
+    // The child config is the source of truth for the route selected above.
+    // A post-spawn snapshot can race child initialization and reports the
+    // collaboration-mode model rather than an explicitly routed child model.
+    // Capture these values before handing ownership to agent-control so the
+    // initial activity event is deterministic.
+    let activity_model_provider = config.model_provider_id.clone();
+    let activity_model = config.model.clone();
+    let activity_reasoning_effort = config.model_reasoning_effort.clone();
     let spawned_agent = Box::pin(
         session
             .services
@@ -388,15 +405,9 @@ async fn handle_spawn_agent(
                 occurred_at_ms: now_unix_timestamp_ms(),
                 agent_thread_id: new_thread_id,
                 agent_path: new_agent_path.clone(),
-                model_provider: agent_snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.model_provider_id.clone()),
-                model: agent_snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.model.clone()),
-                reasoning_effort: agent_snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.reasoning_effort.clone()),
+                model_provider: Some(activity_model_provider),
+                model: activity_model,
+                reasoning_effort: activity_reasoning_effort,
                 kind: SubAgentActivityKind::Started,
                 change_totals: None,
                 current_activity: Some("Working".to_string()),

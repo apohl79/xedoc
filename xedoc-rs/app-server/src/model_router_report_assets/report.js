@@ -52,8 +52,11 @@ if (!capability) {
       const invocations = total(report.days, "invocations");
       const unknownUsage = total(report.days, "missingUsageInvocations");
       const unknownPrice = total(report.days, "unknownPriceInvocations");
+      const unknownBaselinePrice = total(report.days, "unknownBaselinePriceInvocations");
       document.querySelector("#coverage").textContent =
-        `${number.format(invocations)} invocations; ${number.format(unknownUsage)} missing usage and ${number.format(unknownPrice)} with unknown pricing.`;
+        `${number.format(invocations)} invocations; ${number.format(unknownUsage)} missing usage, ` +
+        `${number.format(unknownPrice)} with unknown actual pricing, and ` +
+        `${number.format(unknownBaselinePrice)} without baseline pricing.`;
       if (report.daysTruncated) {
         const truncated = document.querySelector("#truncated");
         truncated.hidden = false;

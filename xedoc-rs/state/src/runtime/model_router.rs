@@ -189,7 +189,8 @@ INSERT INTO model_router_daily (
     input_tokens, cached_input_tokens, output_tokens, total_cost_usd,
     normalized_baseline_usd, estimated_savings_usd, ab_experiment_overhead_usd,
     attributed_invocations, unattributed_invocations, missing_usage_invocations,
-    unknown_price_invocations, classified_decisions, fallback_decisions,
+    unknown_price_invocations, unknown_baseline_price_invocations,
+    classified_decisions, fallback_decisions,
     average_score, average_margin
 )
 SELECT
@@ -198,7 +199,8 @@ SELECT
     SUM(input_tokens), SUM(cached_input_tokens), SUM(output_tokens), SUM(total_cost_usd),
     SUM(normalized_baseline_usd), SUM(estimated_savings_usd), SUM(ab_experiment_overhead_usd),
     SUM(attributed_invocations), SUM(unattributed_invocations), SUM(missing_usage_invocations),
-    SUM(unknown_price_invocations), SUM(classified_decisions), SUM(fallback_decisions),
+    SUM(unknown_price_invocations), SUM(unknown_baseline_price_invocations),
+    SUM(classified_decisions), SUM(fallback_decisions),
     AVG(average_score), AVG(average_margin)
 FROM (
     SELECT
@@ -220,6 +222,7 @@ FROM (
         0 AS unattributed_invocations,
         0 AS missing_usage_invocations,
         0 AS unknown_price_invocations,
+        0 AS unknown_baseline_price_invocations,
         SUM(CASE WHEN reason = 'classified' THEN 1 ELSE 0 END) AS classified_decisions,
         SUM(CASE WHEN disposition = 'fallback' THEN 1 ELSE 0 END) AS fallback_decisions,
         AVG(score) AS average_score,
@@ -255,6 +258,15 @@ FROM (
             ELSE 0
         END) AS missing_usage_invocations,
         SUM(CASE WHEN i.total_cost_usd IS NULL THEN 1 ELSE 0 END) AS unknown_price_invocations,
+        SUM(CASE
+            WHEN i.input_tokens IS NOT NULL
+              AND i.cached_input_tokens IS NOT NULL
+              AND i.output_tokens IS NOT NULL
+              AND i.normalized_baseline_usd IS NULL
+            THEN 1
+            ELSE 0
+        END)
+            AS unknown_baseline_price_invocations,
         0 AS classified_decisions,
         0 AS fallback_decisions,
         NULL AS average_score,
@@ -300,7 +312,8 @@ SELECT
     input_tokens, cached_input_tokens, output_tokens, total_cost_usd,
     normalized_baseline_usd, estimated_savings_usd, ab_experiment_overhead_usd,
     attributed_invocations, unattributed_invocations, missing_usage_invocations,
-    unknown_price_invocations, classified_decisions, fallback_decisions,
+    unknown_price_invocations, unknown_baseline_price_invocations,
+    classified_decisions, fallback_decisions,
     average_score, average_margin
 FROM model_router_daily
 WHERE day >= ? AND day <= ?

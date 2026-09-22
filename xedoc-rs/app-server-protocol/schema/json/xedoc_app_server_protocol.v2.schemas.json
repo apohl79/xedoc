@@ -9778,6 +9778,10 @@
         "unknownPriceInvocations": {
           "format": "int64",
           "type": "integer"
+        },
+        "unknownBaselinePriceInvocations": {
+          "format": "int64",
+          "type": "integer"
         }
       },
       "required": [
@@ -9792,7 +9796,8 @@
         "providerId",
         "scope",
         "unattributedInvocations",
-        "unknownPriceInvocations"
+        "unknownPriceInvocations",
+        "unknownBaselinePriceInvocations"
       ],
       "type": "object"
     },

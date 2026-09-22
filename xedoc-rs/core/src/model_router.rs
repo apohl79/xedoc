@@ -14,6 +14,26 @@ use xedoc_script_protocol::ProviderId as ScriptProviderId;
 use xedoc_script_protocol::ReasoningEffort as ScriptReasoningEffort;
 use xedoc_script_protocol::Route as ScriptRoute;
 
+/// Appends bounded router guidance to the model-facing developer instructions for one turn.
+pub(crate) fn append_script_model_instructions(
+    developer_instructions: &mut Option<String>,
+    model_instructions: Option<&str>,
+) {
+    let Some(model_instructions) = model_instructions else {
+        return;
+    };
+    if model_instructions.trim().is_empty() {
+        return;
+    }
+    let next = match developer_instructions.take() {
+        Some(existing) if !existing.trim().is_empty() => {
+            format!("{existing}\n\n{model_instructions}")
+        }
+        _ => model_instructions.to_string(),
+    };
+    *developer_instructions = Some(next);
+}
+
 /// Applies a script-selected route after validating it against current models.
 pub(crate) async fn apply_script_route_to_config(
     config: &mut Config,

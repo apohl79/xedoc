@@ -799,6 +799,8 @@ pub struct ModelRouterReportDay {
     #[ts(type = "number")]
     pub unknown_price_invocations: i64,
     #[ts(type = "number")]
+    pub unknown_baseline_price_invocations: i64,
+    #[ts(type = "number")]
     pub classified_decisions: i64,
     #[ts(type = "number")]
     pub fallback_decisions: i64,

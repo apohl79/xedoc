@@ -56,6 +56,25 @@ WORK_TYPES = (
 )
 COMPLEXITIES = ("low", "medium", "high", "very_high")
 ORCHESTRATIONS = ("none", "delegate", "coordination", "workflow")
+ORCHESTRATION_MODEL_INSTRUCTIONS = {
+    "delegate": (
+        "The router classified this task as delegation-oriented. This task can be delegated "
+        "when subagent execution would be more efficient. Identify bounded, independent "
+        "sub-tasks and delegate suitable pieces to subagents when that improves coverage or "
+        "speed. Keep the parent responsible for integrating and verifying the results."
+    ),
+    "coordination": (
+        "The router classified this task as coordination-oriented. Act as the orchestrator: "
+        "decompose the task into independent sub-tasks, and expect execution to happen via "
+        "subagents. Coordinate their outputs and keep ownership of integration and "
+        "verification."
+    ),
+    "workflow": (
+        "The router classified this task as workflow-oriented. Break the work into explicit "
+        "phases, delegate suitable phases to subagents, and keep ownership of sequencing, "
+        "integration, and final verification."
+    ),
+}
 RISKS = ("low", "medium", "high", "very_high")
 WORK_TYPE_LEAVES = {
     WORK_TYPES[0]: ("question", "docs_analysis", "packaging", "operational", "testing"),
@@ -2512,7 +2531,7 @@ def decision(
         f"  └ Decision: {status_detail}; Target model: {target}; Used model: {used};",
         f"    Classifications: Work type({axes['work_type']}); "
         f"Complexity({axes['complexity']}); Risk({axes['risk']}); "
-        f"Coordination({axes['orchestration']});"
+        f"Orchestration({axes['orchestration']});"
         f"{' Steering(yes);' if steering else ''}",
     ]
     if work_type_validation is not None:
@@ -2563,6 +2582,11 @@ def decision(
                 "rankingSelectedRank": selection["selectedRank"],
             },
             "reportingBaseline": policy.get("reportingBaseline"),
+            "modelInstructions": (
+                ORCHESTRATION_MODEL_INSTRUCTIONS.get(axes["orchestration"])
+                if disposition == "apply"
+                else None
+            ),
         },
     }
 
@@ -3161,7 +3185,7 @@ def routing_decide(
         enabled and not active and not steering and route is not None and confident
     )
     should_shadow = (
-        shadow and not active and not steering and route is not None and confident
+        shadow and not active and not steering and route is not None
     )
     route_can_be_approved = enabled and not active and route is not None
     needs_calibration = calibrated_confidence is None

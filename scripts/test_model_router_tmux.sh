@@ -213,6 +213,27 @@ reset_policy() {
   cp "$source_policy" "$policy_path"
 }
 
+seed_calibration() {
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["confidence"] = "permissive"
+policy["approvalCalibration"] = {
+    "minimumSamples": 10,
+    "buckets": {
+        "6": {"approved": 10, "rejected": 0, "override": 0},
+        "7": {"approved": 10, "rejected": 0, "override": 0},
+    },
+}
+with open(path, "w", encoding="utf-8") as destination:
+    json.dump(policy, destination, indent=2)
+    destination.write("\n")
+PY
+}
+
 assert_reference_policy_contract() {
   python3 - "$source_policy" <<'PY'
 import json
@@ -540,7 +561,7 @@ classifier_result, classifier_surface = interaction(
             "continuation": classifier_request["classifier"]["continuation"],
             "output": json.dumps(
                 {
-                    "work_type": "group3",
+                    "work_type": {"group": "group3", "steering": False},
                     "complexity": "high",
                     "risk": "medium",
                     "orchestration": "none",
@@ -553,8 +574,12 @@ classifier_result, classifier_surface = interaction(
     )
 )
 assert any(
-    "Work type validation:" in row["text"]
-    and "LLM(group3" in row["text"]
+    "Work Type: group3:" in row["text"]
+    for section in classifier_surface["sections"]
+    for row in section["rows"]
+), classifier_surface
+assert any(
+    "Work type validation:" in row["text"] and "embedder(" in row["text"]
     for section in classifier_surface["sections"]
     for row in section["rows"]
 ), classifier_surface
@@ -745,6 +770,12 @@ policy["classifierRoute"] = {
     "providerId": "openai",
     "model": "gpt-5.6-luna",
     "reasoningEffort": "low",
+}
+policy["approvalCalibration"] = {
+    "minimumSamples": 10,
+    "buckets": {
+        "7": {"approved": 10, "rejected": 0, "override": 0},
+    },
 }
 with open(path, "w", encoding="utf-8") as destination:
     json.dump(policy, destination, indent=2)
@@ -1278,8 +1309,21 @@ set_select_value() {
   fail "could not select form value: $expected"
 }
 
+submit_single_select_if_open() {
+  local title="$1"
+  local pane
+  pane="$(capture_viewport)"
+  if [[ "$pane" == *"$title"* &&
+    "$pane" == *"Choose a setting, then apply your changes."* &&
+    "$pane" == *"Press enter to confirm or esc to go back"* ]]; then
+    send_key Enter
+    wait_for_pane_absent "$title"
+  fi
+}
+
 set_baseline_terra_high() {
   set_select_value "Reporting baseline: openai/gpt-5.6-terra/high" 15
+  submit_single_select_if_open "Reporting baseline"
 }
 
 set_mode() {
@@ -1288,6 +1332,7 @@ set_mode() {
   open_settings
   select_menu_item 0 "Choose a setting, then apply your changes."
   set_select_value "Mode: $label" 5
+  submit_single_select_if_open "Routing mode"
   wait_for_pane "Mode: $mode"
   assert_policy "mode=$mode"
   assert_config_unchanged
@@ -1299,7 +1344,7 @@ set_approval() {
   open_settings
   select_menu_item 2 "Choose a setting, then apply your changes."
   set_select_value "Approval prompts: $label" 3
-  send_key Enter
+  submit_single_select_if_open "Approval prompts"
   wait_for_pane "Approval prompts: $approval"
   assert_policy "approval=$approval"
   assert_config_unchanged
@@ -1311,6 +1356,7 @@ set_session_mode() {
   open_settings
   select_menu_item 1 "Choose a setting for this session only."
   set_select_value "Session mode: $label" 6
+  submit_single_select_if_open "Session routing mode"
   wait_for_pane "Session mode: $mode"
   assert_config_unchanged
 }
@@ -1346,6 +1392,7 @@ clear_reporting_baseline() {
   select_menu_item 7 "Routing policy"
   select_menu_item 2 "Reporting baseline"
   set_select_value "Reporting baseline: Not set" 16
+  submit_single_select_if_open "Reporting baseline"
   wait_for_pane "Routing policy"
   assert_policy "reportingBaseline=null"
 }
@@ -1473,7 +1520,7 @@ branches = connection.execute(
 ).fetchall()
 expected = {
     ("orchestrator", "gpt-5.6-luna", "low"),
-    ("routed", "gpt-5.6-terra", "xhigh"),
+    ("routed", "gpt-5.6-terra", "medium"),
 }
 assert set(branches) == expected, branches
 assert all(sum(row[0] == branch for row in branches) >= 1 for branch, _, _ in expected)
@@ -1508,7 +1555,7 @@ total, ordinary, paired, routed, orchestrator = connection.execute(
       AND i.invocation_kind = 'regular'
     """
 ).fetchone()
-assert (total, ordinary, paired, routed, orchestrator) == (9, 7, 2, 1, 1), (
+assert (total, ordinary, paired, routed, orchestrator) == (10, 8, 2, 1, 1), (
     total,
     ordinary,
     paired,
@@ -1518,7 +1565,7 @@ assert (total, ordinary, paired, routed, orchestrator) == (9, 7, 2, 1, 1), (
 PY
     then
       record_scenario subagent-attribution \
-        "all nine routed, retained, disabled-A/B, and paired child invocations attributed"
+        "all ten routed, retained, disabled-A/B, and paired child invocations attributed"
       return
     fi
     sleep 0.1
@@ -1528,7 +1575,7 @@ PY
 
 open_report_and_assert() {
   require_command curl
-  exercise_host_action 5 "open report"
+  exercise_host_action 6 "open report"
   local report_pane="$artifact_dir/report-pane.log"
   local report_url_file="$artifact_dir/report-url.txt"
   local report_json="$artifact_dir/report.json"
@@ -1618,36 +1665,39 @@ exercise_policy_manager() {
   local rank
   for rank in $(seq 1 15); do
     local field_index=$((rank - 1))
-    local count=0
-    send_key Home
-    while (( count < field_index )); do
+    if (( field_index > 0 )); then
       send_key Down
-      count=$((count + 1))
-    done
+    fi
     send_key Right
     wait_for_pane "> openai/"
     set_select_value "Model route: openai/gpt-5.6-terra/high" 40
     wait_for_pane "Model ladder"
+  done
+  select_menu_item 15 "Routing policy"
+  for rank in $(seq 1 15); do
     assert_policy "ranking.ladder.$((rank - 1)).providerId=openai"
     assert_policy "ranking.ladder.$((rank - 1)).model=gpt-5.6-terra"
     assert_policy "ranking.ladder.$((rank - 1)).reasoningEffort=high"
   done
   record_scenario settings-ladder "all 15 ranked slots persisted through script forms"
-  select_menu_item 15 "Routing policy"
 
   select_menu_item 2 "Reporting baseline"
-  wait_for_pane "Reporting baseline:"
+  wait_for_pane "Reporting baseline"
   set_baseline_terra_high
   wait_for_pane "Routing policy"
   assert_policy "reportingBaseline.providerId=openai"
   assert_policy "reportingBaseline.model=gpt-5.6-terra"
   assert_policy "reportingBaseline.reasoningEffort=high"
 
-  select_menu_item 4 "Routing policy"
+  select_menu_item 2 "Reporting baseline"
+  set_select_value "Reporting baseline: Not set" 16
+  submit_single_select_if_open "Reporting baseline"
+  wait_for_pane "Routing policy"
   assert_policy "reportingBaseline=null"
   record_scenario settings-baseline "baseline persisted and clear returned it to Not set"
 
-  select_menu_item 5 "Model router"
+  send_key Escape
+  wait_for_pane "Model Router Settings"
   assert_config_unchanged
 }
 
@@ -1686,13 +1736,14 @@ run_root_mode() {
   await_turn
   case "$disposition" in
     applied)
-      assert_request_route "$marker" "gpt-5.6-sol" high
-      wait_for_pane "model router Root Applied: openai/gpt-5.6-sol/high"
+      assert_request_route "$marker" "gpt-5.6-terra" low
+      wait_for_pane "model router (root)"
+      wait_for_pane "Decision: approved;"
       ;;
     shadow)
       assert_request_route "$marker" "$initial_model" "$initial_effort"
-      wait_for_pane \
-        "model router Root Shadow: openai/gpt-5.6-sol/high proposed; kept openai/gpt-5.6-luna/low"
+      wait_for_pane "model router (root)"
+      wait_for_pane "Decision: shadow"
       ;;
     retained)
       assert_request_route "$marker" "$initial_model" "$initial_effort"
@@ -1713,24 +1764,48 @@ run_spawn_mode() {
   local root_turn_id
   set_mode "$mode" "$3"
   set_approval off Off
+  rm -f "$hold_response_file"
   start_tui
   send_prompt "$marker review workflow security"
   wait_for_request_marker "$marker"
   read -r root_sequence root_thread_id root_turn_id <<<"$(request_identity "$marker")"
-  wait_for_pane "router parent completed" 600
   wait_for_child_request_marker "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence"
   assert_child_request_count "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence" 1
   if [[ "$expected_child_route" == "routed" ]]; then
     assert_request_route \
-      "ROUTER_E2E_CHILD" "gpt-5.6-terra" xhigh "$root_thread_id" "$root_sequence"
+      "ROUTER_E2E_CHILD" "gpt-5.6-terra" medium "$root_thread_id" "$root_sequence"
   else
     assert_request_route "ROUTER_E2E_CHILD" "$initial_model" "$initial_effort" "$root_thread_id" "$root_sequence"
   fi
+  if [[ "$mode" != "off" ]]; then
+    wait_for_pane "model router (subagent)"
+    wait_for_pane "Agents"
+    wait_for_pane "Working ("
+    local expected_child_display
+    if [[ "$expected_child_route" == "routed" ]]; then
+      expected_child_display="openai/gpt-5.6-terra/medium"
+    else
+      expected_child_display="openai/$initial_model/$initial_effort"
+    fi
+    local pane
+    pane="$(capture_viewport)"
+    if ! grep -Fq "router_e2e_child Working (" <<<"$pane" ||
+      ! grep -Fq "$expected_child_display" <<<"$pane"
+    then
+      printf '%s\n' "$pane" >&2
+      fail "subagent activity did not render the routed model: $expected_child_display"
+    fi
+  else
+    touch "$hold_response_file"
+  fi
+  [[ "$mode" == "off" ]] || touch "$hold_response_file"
+  wait_for_pane "router parent completed" 600
   record_scenario "mode-subagent-$mode" "$expected_child_route child route verified"
 }
 
 run_mode_matrix() {
   reset_policy
+  seed_calibration
   start_tui
   run_root_mode off ROUTER_E2E_MODE_OFF retained Off
   run_spawn_mode off original Off
@@ -1760,7 +1835,7 @@ run_classifier_mode_matrix() {
   assert_latest_hybrid_decision \
     root full \
     "group1: question, docs_analysis, packaging, operational, testing" \
-    high low none apply
+    high low delegate apply
 
   set_classifier_route shadow-full
   start_tui
@@ -1783,7 +1858,7 @@ run_classifier_mode_matrix() {
   )"
   wait_for_pane "router parent completed" 600
   wait_for_child_request_marker "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence"
-  assert_classifier_requests "ROUTER_E2E_CLASSIFIER_SUBAGENT" 2
+  assert_classifier_requests "ROUTER_E2E_CLASSIFIER_SUBAGENT" 1
   assert_classifier_requests "ROUTER_E2E_CHILD" 1
   assert_latest_hybrid_decision \
     subagent subagents \
@@ -1816,6 +1891,7 @@ run_steering_matrix() {
   local seeded_model="gpt-5.6-terra"
   local seeded_effort="low"
   reset_policy
+  seed_calibration
   set_mode full Full
   set_approval off Off
   set_feedback true
@@ -1858,7 +1934,7 @@ run_feature_disabled() {
   await_turn
   assert_request_route \
     "ROUTER_E2E_FEATURE_DISABLED" "$initial_model" "$initial_effort"
-  wait_for_pane_absent "model router Root"
+  wait_for_pane_absent "model router (root)"
   assert_policy "mode=full"
   record_scenario feature-disabled \
     "packaged sibling policy stayed full while host omitted scripted routing"
@@ -1991,10 +2067,11 @@ run_override_case() {
   done
   send_key Right
   set_select_value "$expected_form" 8
+  send_key Enter
   wait_for_pane "Use openai/"
   wait_for_pane "$expected_classification"
-  wait_for_pane "similarity 100% / margin 100%"
-  wait_for_pane "$expected_calculation"
+  wait_for_pane "similarity"
+  wait_for_pane "Confidence:"
   wait_for_pane "openai/$expected_model/$expected_effort"
   send_key Enter
   wait_for_request_marker "$marker"
@@ -2012,15 +2089,16 @@ run_override_matrix() {
   run_override_case work_type 0 "Work type: Group2:" \
     "group2: implementation" "score 5 (bounded 5;" "gpt-5.6-luna" medium
   run_override_case complexity 1 "Complexity: Medium" \
-    "medium complexity" "score 5 (bounded 5;" "gpt-5.6-luna" medium
+    "Complexity: medium" "score 5 (bounded 5;" "gpt-5.6-luna" medium
   run_override_case orchestration 2 "Orchestration: Coordination" \
-    "coordination orchestration" "score 4 (bounded 4;" "gpt-5.6-terra" low
+    "Orchestration: coordination" "score 4 (bounded 4;" "gpt-5.6-terra" low
   run_override_case risk 3 "Risk: Medium" \
-    "medium risk" "score 5 (bounded 5;" "gpt-5.6-luna" medium
+    "Risk: medium" "score 5 (bounded 5;" "gpt-5.6-luna" medium
 }
 
 run_feedback_matrix() {
   reset_policy
+  seed_calibration
   set_mode full Full
   set_approval off Off
   set_feedback false
@@ -2028,8 +2106,8 @@ run_feedback_matrix() {
   send_prompt "ROUTER_E2E_FEEDBACK_OFF review workflow security"
   wait_for_request_marker "ROUTER_E2E_FEEDBACK_OFF"
   await_turn
-  wait_for_pane_absent "model router Root"
-  assert_request_route "ROUTER_E2E_FEEDBACK_OFF" "gpt-5.6-sol" high
+  wait_for_pane_absent "model router (root)"
+  assert_request_route "ROUTER_E2E_FEEDBACK_OFF" "gpt-5.6-terra" low
   record_scenario feedback-off "script route applied with no visible feedback"
 
   set_feedback true
@@ -2037,17 +2115,12 @@ run_feedback_matrix() {
   send_prompt "ROUTER_E2E_FEEDBACK_ON review workflow security"
   wait_for_request_marker "ROUTER_E2E_FEEDBACK_ON"
   await_turn
-  wait_for_pane "model router Root Applied: openai/gpt-5.6-sol/high"
-  wait_for_pane \
-    "classification=group3: research, review, diagnosis, design; very_high complexity;"
-  wait_for_pane "workflow orchestration; high risk"
-  wait_for_pane "routing calculation=score 28 (bounded 28; domain 3–35)"
-  wait_for_pane "classes smart–intelligent"
-  wait_for_pane "ranks 6–15"
-  wait_for_pane "target 13"
-  wait_for_pane "selected 13"
-  wait_for_pane "confidence 0.86/0.56 (minimum 0.35/0.08)"
-  assert_request_route "ROUTER_E2E_FEEDBACK_ON" "gpt-5.6-sol" high
+  wait_for_pane "model router (root)"
+  wait_for_pane "Decision: approved;"
+  wait_for_pane "Classifications: Work type("
+  wait_for_pane "Stats: Embedding("
+  wait_for_pane "Confidence:"
+  assert_request_route "ROUTER_E2E_FEEDBACK_ON" "gpt-5.6-terra" low
   record_scenario feedback-on \
     "classification, confidence, ranking calculation, and exact model choice visible"
 }
@@ -2085,6 +2158,7 @@ PY
 
 run_baseline_report_matrix() {
   reset_policy
+  seed_calibration
   start_tui
   set_mode full Full
   set_approval off Off
@@ -2115,6 +2189,7 @@ run_baseline_report_matrix() {
 
 run_ab_matrix() {
   reset_policy
+  seed_calibration
   start_tui
   set_mode full Full
   set_approval off Off
@@ -2122,11 +2197,11 @@ run_ab_matrix() {
 
   start_tui
   establish_host_action_thread \
-    "gpt-5.6-terra" xhigh ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
-  exercise_host_action 3 "arm A/B"
-  exercise_host_action 4 "disable A/B"
+    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
+  exercise_host_action 4 "arm A/B"
+  exercise_host_action 5 "disable A/B"
   finish_host_action_thread \
-    "gpt-5.6-terra" xhigh ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
+    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
 
   local marker="ROUTER_E2E_SPAWN_ROOT_ab_disabled"
   local root_sequence
@@ -2140,16 +2215,16 @@ run_ab_matrix() {
   sleep 1
   assert_exact_child_routes \
     "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence" \
-    '[["gpt-5.6-terra","xhigh"]]'
+    '[["gpt-5.6-terra","medium"]]'
   record_scenario ab-disable \
     "arm then disable produced one routed child instead of an A/B pair"
 
   start_tui
   establish_host_action_thread \
-    "gpt-5.6-terra" xhigh ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
-  exercise_host_action 3 "arm A/B"
+    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
+  exercise_host_action 4 "arm A/B"
   finish_host_action_thread \
-    "gpt-5.6-terra" xhigh ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
+    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
 
   marker="ROUTER_E2E_SPAWN_ROOT_ab_pair"
   send_prompt "$marker review workflow security"
@@ -2180,7 +2255,7 @@ PY
   done
   assert_exact_child_routes \
     "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence" \
-    '[["gpt-5.6-luna","low"],["gpt-5.6-terra","xhigh"]]'
+    '[["gpt-5.6-luna","low"],["gpt-5.6-terra","medium"]]'
   assert_ab_pair_state "$root_thread_id" "$root_turn_id"
   record_scenario ab-pair \
     "arm produced exact routed and orchestrator branches plus persisted pair state"

@@ -450,6 +450,7 @@ impl Session {
         sub_id: String,
         final_output_json_schema: Option<serde_json::Value>,
         route: &xedoc_script_protocol::Route,
+        model_instructions: Option<&str>,
     ) -> Option<Arc<TurnContext>> {
         let mut session_configuration = self.default_turn_configuration().await;
         let service_tier = session_configuration.service_tier.clone();
@@ -464,6 +465,14 @@ impl Session {
         {
             return None;
         }
+        crate::model_router::append_script_model_instructions(
+            &mut config.developer_instructions,
+            model_instructions,
+        );
+        crate::model_router::append_script_model_instructions(
+            &mut session_configuration.developer_instructions,
+            model_instructions,
+        );
         session_configuration.provider = config.model_provider.clone();
         session_configuration.collaboration_mode =
             session_configuration.collaboration_mode.with_updates(

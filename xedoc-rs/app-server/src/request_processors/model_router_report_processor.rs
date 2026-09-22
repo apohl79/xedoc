@@ -99,6 +99,7 @@ impl ModelRouterReportRequestProcessor {
                     unattributed_invocations: day.unattributed_invocations,
                     missing_usage_invocations: day.missing_usage_invocations,
                     unknown_price_invocations: day.unknown_price_invocations,
+                    unknown_baseline_price_invocations: day.unknown_baseline_price_invocations,
                     classified_decisions: day.classified_decisions,
                     fallback_decisions: day.fallback_decisions,
                     average_score: day.average_score,

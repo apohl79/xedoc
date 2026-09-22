@@ -679,7 +679,8 @@ The first UI should contain:
 - confidence, abstention, fallback, override, cache-share, and route-switch views;
 - a bounded recent-decision table with class, proposed/effective route, disposition,
   cost, and fallback reason;
-- unknown-price/usage coverage so incomplete accounting cannot look like free inference.
+- unknown actual-price, baseline-price, and usage coverage so incomplete accounting
+  cannot look like free inference.
 
 All filtering and pagination are server-bounded. Raw prompts and model outputs are not
 available through the report API.

@@ -1,4 +1,8 @@
 //! Env-gated request and stream trace summaries.
+//!
+//! Set `XEDOC_INTER_AGENT_TRACE` to a JSONL path to enable summaries. Set
+//! `XEDOC_INTER_AGENT_TRACE_FULL=1` as well to record complete Responses
+//! sampling request bodies at that path.
 
 use http::Method;
 use serde_json::Map;
@@ -12,10 +16,22 @@ use std::time::UNIX_EPOCH;
 use xedoc_client::RequestBody;
 
 const TRACE_ENV: &str = "XEDOC_INTER_AGENT_TRACE";
+const FULL_TRACE_ENV: &str = "XEDOC_INTER_AGENT_TRACE_FULL";
 const MAX_ENCRYPTED_VALUES: usize = 8;
 
 pub(crate) fn log_request(method: &Method, path: &str, body: Option<&RequestBody>) {
     if !trace_enabled() {
+        return;
+    }
+
+    if full_trace_enabled() && is_sampling_path(path) {
+        append_trace(json!({
+            "event": "sampling_request",
+            "transport": "http",
+            "method": method.as_str(),
+            "path": path,
+            "body": body.map(full_request_body).unwrap_or(Value::Null),
+        }));
         return;
     }
 
@@ -38,6 +54,21 @@ pub(crate) fn log_request(method: &Method, path: &str, body: Option<&RequestBody
 
 pub(crate) fn log_websocket_request_text(request_text: &str) {
     if !trace_enabled() {
+        return;
+    }
+
+    if full_trace_enabled() {
+        let body = serde_json::from_str::<Value>(request_text).unwrap_or_else(|_| {
+            json!({
+                "unparsed_body": request_text,
+            })
+        });
+        append_trace(json!({
+            "event": "sampling_request",
+            "transport": "websocket",
+            "path": "responses",
+            "body": body,
+        }));
         return;
     }
 
@@ -72,6 +103,21 @@ pub(crate) fn log_stream_event(transport: &str, data: &str) {
         });
 
     append_trace(event);
+}
+
+fn full_request_body(body: &RequestBody) -> Value {
+    match body {
+        RequestBody::Json(value) => value.clone(),
+        RequestBody::EncodedJson(body) => serde_json::from_slice::<Value>(body.as_bytes())
+            .unwrap_or_else(|_| {
+                json!({
+                    "unparsed_body": String::from_utf8_lossy(body.as_bytes()),
+                })
+            }),
+        RequestBody::Raw(raw) => json!({
+            "unparsed_body": String::from_utf8_lossy(raw),
+        }),
+    }
 }
 
 fn summarize_request_body(body: &RequestBody) -> Option<Value> {
@@ -301,6 +347,14 @@ fn append_trace(mut event: Value) {
 
 fn trace_enabled() -> bool {
     env::var_os(TRACE_ENV).is_some()
+}
+
+fn full_trace_enabled() -> bool {
+    env::var_os(FULL_TRACE_ENV).is_some()
+}
+
+fn is_sampling_path(path: &str) -> bool {
+    path.trim_matches('/') == "responses"
 }
 
 fn timestamp_ms() -> u128 {

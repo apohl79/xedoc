@@ -52,6 +52,7 @@ use xedoc_core_session_name::append_message_text;
 const MAX_SCRIPT_ERROR_MESSAGE_BYTES: usize = 1_024;
 const MAX_SCRIPT_FEEDBACK_TEXT_BYTES: usize = 512;
 const MAX_MODEL_ROUTER_SUMMARY_BYTES: usize = 8 * 1024;
+const MAX_MODEL_ROUTER_INSTRUCTIONS_BYTES: usize = 4 * 1024;
 const MAX_INTERACTION_IDENTIFIER_BYTES: usize = 128;
 const MAX_INTERACTION_CONTINUATION_BYTES: usize = 8_192;
 const MAX_INTERACTION_TEXT_BYTES: usize = 4_096;
@@ -868,6 +869,8 @@ pub(crate) struct ModelRouterScriptDecision {
     pub(crate) disposition: ModelRouterScriptDecisionDisposition,
     /// Bounded prompt-free script summary.
     pub(crate) summary: Option<String>,
+    /// Optional bounded model-facing guidance selected by the router.
+    pub(crate) model_instructions: Option<String>,
     /// Prompt-free script-provided feedback details.
     pub(crate) feedback: RouteFeedback,
     /// Script-owned route used to normalize cost reporting.
@@ -917,6 +920,8 @@ pub(crate) enum ModelRouterScriptFailure {
     InvalidState,
     /// The script returned an invalid prompt-free decision summary.
     InvalidSummary,
+    /// The script returned invalid model-facing routing instructions.
+    InvalidModelInstructions,
     /// The script requested a malformed or unsupported classifier invocation.
     InvalidClassifierRequest,
     /// The configured model classifier could not return a response.
@@ -949,6 +954,9 @@ impl ModelRouterScriptFailure {
             Self::InvalidSummary => {
                 "router script returned an invalid decision summary".to_string()
             }
+            Self::InvalidModelInstructions => {
+                "router script returned invalid model instructions".to_string()
+            }
             Self::InvalidClassifierRequest => {
                 "router script returned an invalid classifier request".to_string()
             }
@@ -975,6 +983,7 @@ impl ModelRouterScriptFailure {
             | Self::InvalidFeedback
             | Self::InvalidState
             | Self::InvalidSummary
+            | Self::InvalidModelInstructions
             | Self::InvalidClassifierRequest
             | Self::ClassifierInvocation { .. }
             | Self::ClassifierCancelled
@@ -991,6 +1000,7 @@ fn validate_decision(
         reporting_baseline,
         summary,
         feedback,
+        model_instructions,
     }: RouteDecision,
     eligible_routes: &[EligibleRoute],
     route_mutable: bool,
@@ -1001,6 +1011,10 @@ fn validate_decision(
     };
     let summary = match validate_summary(summary) {
         Ok(summary) => summary,
+        Err(failure) => return ModelRouterScriptDecisionOutcome::fallback(failure),
+    };
+    let model_instructions = match validate_model_instructions(model_instructions) {
+        Ok(model_instructions) => model_instructions,
         Err(failure) => return ModelRouterScriptDecisionOutcome::fallback(failure),
     };
     if reporting_baseline
@@ -1017,6 +1031,7 @@ fn validate_decision(
                 id,
                 disposition: ModelRouterScriptDecisionDisposition::KeepCurrent,
                 summary,
+                model_instructions,
                 feedback,
                 reporting_baseline,
                 proposed_route: None,
@@ -1037,6 +1052,7 @@ fn validate_decision(
                 id,
                 disposition: ModelRouterScriptDecisionDisposition::Shadow,
                 summary,
+                model_instructions,
                 feedback,
                 reporting_baseline,
                 proposed_route: Some(route),
@@ -1052,6 +1068,7 @@ fn validate_decision(
                     id,
                     disposition: ModelRouterScriptDecisionDisposition::Apply,
                     summary,
+                    model_instructions,
                     feedback,
                     reporting_baseline,
                     proposed_route: Some(route),
@@ -1067,6 +1084,7 @@ fn validate_decision(
                 id,
                 disposition: ModelRouterScriptDecisionDisposition::Apply,
                 summary,
+                model_instructions,
                 feedback,
                 reporting_baseline,
                 proposed_route: Some(route.clone()),
@@ -1091,6 +1109,25 @@ fn validate_summary(summary: Option<String>) -> Result<Option<String>, ModelRout
         return Err(ModelRouterScriptFailure::InvalidSummary);
     }
     Ok(Some(summary))
+}
+
+fn validate_model_instructions(
+    model_instructions: Option<String>,
+) -> Result<Option<String>, ModelRouterScriptFailure> {
+    let Some(mut model_instructions) = model_instructions else {
+        return Ok(None);
+    };
+    if model_instructions
+        .chars()
+        .any(|character| character.is_control() && character != '\n')
+    {
+        return Err(ModelRouterScriptFailure::InvalidModelInstructions);
+    }
+    truncate_utf8(&mut model_instructions, MAX_MODEL_ROUTER_INSTRUCTIONS_BYTES);
+    if model_instructions.trim().is_empty() {
+        return Err(ModelRouterScriptFailure::InvalidModelInstructions);
+    }
+    Ok(Some(model_instructions))
 }
 
 fn validate_feedback(

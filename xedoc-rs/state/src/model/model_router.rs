@@ -160,6 +160,7 @@ pub struct ModelRouterDailyRecord {
     pub unattributed_invocations: i64,
     pub missing_usage_invocations: i64,
     pub unknown_price_invocations: i64,
+    pub unknown_baseline_price_invocations: i64,
     pub classified_decisions: i64,
     pub fallback_decisions: i64,
     pub average_score: Option<f64>,
