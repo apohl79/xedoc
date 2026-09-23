@@ -2520,24 +2520,16 @@ def decision(
     )
     progress = None if steering else calibration_progress(policy, raw_confidence)
     overall = (
-        "not applicable (steering)"
-        if steering
+        f"{percentage(calibrated_confidence)} calibrated overall"
+        if calibrated_confidence is not None
         else (
-            f"{percentage(calibrated_confidence)} calibrated overall"
-            if calibrated_confidence is not None
-            else (
-                f"uncalibrated; {progress[0]}/{progress[1]} human outcomes "
-                f"({progress[2]} more needed)"
-                if progress is not None
-                else "uncalibrated"
-            )
+            f"uncalibrated; {progress[0]}/{progress[1]} human outcomes "
+            f"({progress[2]} more needed)"
+            if progress is not None
+            else "uncalibrated"
         )
     )
-    similarity_detail = (
-        "not applicable (steering)"
-        if steering
-        else f"{percentage(confidence)}, margin {percentage(margin)}"
-    )
+    similarity_detail = f"{percentage(confidence)}, margin {percentage(margin)}"
     work_type_validation = work_type_validation_text(classification_details)
     summary_lines = [
         f"  └ Decision: {status_detail}; Target model: {target}; Used model: {used};",
