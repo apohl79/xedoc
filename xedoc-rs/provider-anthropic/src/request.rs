@@ -206,6 +206,7 @@ fn supports_adaptive_thinking(model: &str) -> bool {
             | "claude-opus-4-7"
             | "claude-opus-4-8"
             | "claude-opus-5"
+            | "claude-opus-5-5"
             | "claude-sonnet-4-6"
             | "claude-sonnet-5"
             | "claude-fable-5-1"
@@ -214,7 +215,7 @@ fn supports_adaptive_thinking(model: &str) -> bool {
 
 fn supports_prefix_locked_thinking(model: &str) -> bool {
     let model = model.to_ascii_lowercase();
-    model.starts_with("claude-fable-")
+    model.starts_with("claude-fable-") || model == "claude-opus-5-5"
 }
 
 fn fixed_thinking_budget(effort: &ReasoningEffort) -> u32 {
