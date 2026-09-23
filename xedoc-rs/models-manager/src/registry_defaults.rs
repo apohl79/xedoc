@@ -94,8 +94,8 @@ fn openai_defaults() -> io::Result<ProviderModelConfig> {
         .collect();
     Ok(ProviderModelConfig {
         display_name: "OpenAI".to_string(),
-        default_model: "gpt-5.6-sol".to_string(),
-        fast_model: "gpt-5.6-luna".to_string(),
+        default_model: "gpt-6-sol".to_string(),
+        fast_model: "gpt-6-luna".to_string(),
         default_reasoning_effort: ReasoningEffort::Medium,
         template: provider_template("OpenAI", /*supports_max*/ true),
         models,
@@ -248,6 +248,14 @@ fn deepseek_prices() -> BTreeMap<String, ModelTokenPrices> {
 
 fn openai_prices() -> BTreeMap<String, ModelTokenPrices> {
     [
+        (
+            "gpt-6-sol",
+            tiered_price(2.0, Some(0.2), 10.0, 4.0, Some(0.4), 15.0),
+        ),
+        (
+            "gpt-6-luna",
+            tiered_price(0.1, Some(0.01), 0.5, 0.2, Some(0.02), 0.75),
+        ),
         (
             "gpt-5.6-sol",
             tiered_price(5.0, Some(0.5), 30.0, 10.0, Some(1.0), 45.0),
