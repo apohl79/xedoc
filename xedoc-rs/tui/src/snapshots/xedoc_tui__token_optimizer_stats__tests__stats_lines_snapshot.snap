@@ -8,7 +8,7 @@ Token optimizer stats
   Retrieval    0.0% (0 / 0)
 
 By kind        prose 616 · diff 32 · json 19
-By model       gpt-5.6-sol 512 (~$0.09)
+By model       test-model 512 (~$0.09)
 
 Top reductions
   shell   prose call_vaP…9ni9  34,536 → 10,897  (~5,900 tok, cost n/a)
