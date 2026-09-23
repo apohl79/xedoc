@@ -65,7 +65,6 @@ struct SessionScriptPolicy {
     capabilities: HashSet<SessionScriptCapability>,
     subscriptions: SessionScriptSubscriptionPolicy,
     response_timeout: Duration,
-    approval_response_timeout: Duration,
 }
 
 #[derive(Clone, Default)]
@@ -91,7 +90,6 @@ pub(crate) struct SessionScriptRegistration {
     resync_required: bool,
     session: Option<SessionScriptSession>,
     response_timeout: Duration,
-    approval_response_timeout: Duration,
     identity: SessionScriptIdentityParams,
 }
 
@@ -122,7 +120,6 @@ pub(crate) struct OpenRequestUserInputPrompt {
 pub(crate) struct OpenApprovalPrompt {
     pub(crate) prompt_id: String,
     pub(crate) response_receiver: Option<oneshot::Receiver<serde_json::Value>>,
-    pub(crate) response_timeout: Option<Duration>,
 }
 
 impl Default for SessionScriptRegistry {
@@ -212,7 +209,6 @@ impl SessionScriptRegistry {
                             .collect(),
                         subscriptions,
                         response_timeout: script.response_timeout(),
-                        approval_response_timeout: script.response_timeout(),
                     },
                 )
             })
@@ -232,7 +228,6 @@ impl SessionScriptRegistry {
         thread_id: ThreadId,
         extension_name: &str,
         requested_capabilities: &[String],
-        approval_response_timeout_ms: u64,
     ) -> Result<(), String> {
         if self.policies_by_script_id.contains_key(extension_id) {
             return Err(
@@ -249,7 +244,6 @@ impl SessionScriptRegistry {
                 extension_policy_from_requested_capabilities(
                     extension_name,
                     requested_capabilities,
-                    approval_response_timeout_ms,
                 ),
             );
         Ok(())
@@ -367,7 +361,6 @@ impl SessionScriptRegistry {
             resync_required: false,
             session: None,
             response_timeout: policy.response_timeout,
-            approval_response_timeout: policy.approval_response_timeout,
             identity: params.script,
         };
         if registration
@@ -782,16 +775,10 @@ impl SessionScriptRegistry {
         request: SessionScriptPromptRequest,
     ) -> OpenApprovalPrompt {
         assert!(is_approval_prompt_kind(kind));
-        let (prompt_id, response_receiver, response_timeout, deliveries) = {
+        let (prompt_id, response_receiver, deliveries) = {
             let mut state = self.state.lock().await;
             let responder_connection_id =
                 state.approval_responder_by_thread.get(&thread_id).copied();
-            let response_timeout = responder_connection_id.and_then(|connection_id| {
-                state
-                    .registrations_by_connection
-                    .get(&connection_id)
-                    .map(|registration| registration.approval_response_timeout)
-            });
             let (response_tx, response_receiver, response_lease) =
                 if responder_connection_id.is_some() {
                     let (response_tx, response_receiver) = oneshot::channel();
@@ -818,13 +805,12 @@ impl SessionScriptRegistry {
             };
             let deliveries = prompt_open_deliveries(&mut state, &prompt);
             state.prompts_by_id.insert(prompt_id.clone(), prompt);
-            (prompt_id, response_receiver, response_timeout, deliveries)
+            (prompt_id, response_receiver, deliveries)
         };
         send_deliveries(outgoing, deliveries).await;
         OpenApprovalPrompt {
             prompt_id,
             response_receiver,
-            response_timeout,
         }
     }
 
@@ -1068,16 +1054,12 @@ fn session_script_capability_from_config(
 fn extension_policy_from_requested_capabilities(
     extension_name: &str,
     requested_capabilities: &[String],
-    approval_response_timeout_ms: u64,
 ) -> SessionScriptPolicy {
     let mut policy = SessionScriptPolicy {
         extension_name: extension_name.to_string(),
         capabilities: HashSet::new(),
         subscriptions: SessionScriptSubscriptionPolicy::default(),
         response_timeout: Duration::from_secs(/*secs*/ 10),
-        approval_response_timeout: Duration::from_millis(
-            approval_response_timeout_ms.clamp(1_000, 60_000),
-        ),
     };
     for capability in requested_capabilities {
         match capability.as_str() {

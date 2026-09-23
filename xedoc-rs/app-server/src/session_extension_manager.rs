@@ -7,7 +7,6 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::Instant;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -16,7 +15,6 @@ use sha2::Digest;
 use sha2::Sha256;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
-use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
@@ -70,7 +68,6 @@ use crate::session_script_registry::send_deliveries;
 use crate::thread_state::ThreadStateManager;
 
 const SESSION_EXTENSION_INVOCATION_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 300);
-const SESSION_EXTENSION_REQUEST_ATTEMPT_TIMEOUT: Duration = SESSION_EXTENSION_INVOCATION_TIMEOUT;
 const APPROVAL_ACTION_SESSION: &str = "approve-session";
 const APPROVAL_ACTION_ALWAYS: &str = "approve-always";
 const APPROVAL_ACTION_DENY: &str = "deny";
@@ -111,7 +108,6 @@ struct SessionExtensionDescriptor {
     plugin_display_name: String,
     entrypoint: PathBuf,
     requested_capabilities: Vec<String>,
-    approval_response_timeout_ms: u64,
     commands: Vec<SessionExtensionCommand>,
     declaration_digest: String,
 }
@@ -677,13 +673,6 @@ impl SessionExtensionManager {
                             label: "Requested access".to_string(),
                             value: requested_access_summary(&descriptor.requested_capabilities),
                         },
-                        ExtensionInteractionDetail {
-                            label: "Approval reply window".to_string(),
-                            value: format!(
-                                "{} seconds",
-                                descriptor.approval_response_timeout_ms / 1_000
-                            ),
-                        },
                     ],
                     sections: Vec::new(),
                     actions: vec![
@@ -799,99 +788,51 @@ impl SessionExtensionManager {
                 },
             )
             .await;
-        if let (Some(response_receiver), Some(response_timeout)) = (
-            script_prompt.response_receiver,
-            script_prompt.response_timeout,
-        ) {
-            match timeout(response_timeout, response_receiver).await {
-                Ok(Ok(response)) => {
-                    self.inner
-                        .session_script_registry
-                        .close_prompt(
-                            &self.inner.outgoing,
-                            &script_prompt.prompt_id,
-                            SessionScriptPromptClosedReason::Answered,
-                        )
-                        .await;
-                    return serde_json::from_value(response).map_err(|error| error.to_string());
-                }
-                Ok(Err(_)) => {
-                    return Err("approval responder closed the interaction".to_string());
-                }
-                Err(_) => {
-                    self.inner
-                        .session_script_registry
-                        .close_prompt(
-                            &self.inner.outgoing,
-                            &script_prompt.prompt_id,
-                            SessionScriptPromptClosedReason::Expired,
-                        )
-                        .await;
-                }
-            }
+        if let Some(response_receiver) = script_prompt.response_receiver {
+            let response = response_receiver
+                .await
+                .map_err(|_| "approval responder closed the interaction".to_string())?;
+            self.inner
+                .session_script_registry
+                .close_prompt(
+                    &self.inner.outgoing,
+                    &script_prompt.prompt_id,
+                    SessionScriptPromptClosedReason::Answered,
+                )
+                .await;
+            return serde_json::from_value(response).map_err(|error| error.to_string());
         }
 
-        let deadline = Instant::now() + SESSION_EXTENSION_INVOCATION_TIMEOUT;
-        let mut last_connection_ids = None;
-        let result = loop {
+        loop {
             let connection_ids = self
                 .inner
                 .thread_state_manager
                 .subscribed_connection_ids(thread_id)
                 .await;
-            if connection_ids.is_empty() {
-                if Instant::now() >= deadline {
-                    break Err("no client is subscribed to the extension thread".to_string());
-                }
-                sleep(Duration::from_millis(100)).await;
+            let Some(target_connection_id) = connection_ids.first() else {
+                sleep(Duration::from_millis(/*millis*/ 100)).await;
                 continue;
-            }
-            let target_connection_id = connection_ids[0];
-            let (request_id, receiver) = self
+            };
+            let (_request_id, receiver) = self
                 .inner
                 .outgoing
                 .send_request_to_connections(
-                    Some(std::slice::from_ref(&target_connection_id)),
+                    Some(std::slice::from_ref(target_connection_id)),
                     ServerRequestPayload::ExtensionInteractionRequest(params.clone()),
                     Some(thread_id),
                 )
                 .await;
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            match timeout(
-                SESSION_EXTENSION_REQUEST_ATTEMPT_TIMEOUT.min(remaining),
-                deserialize_interaction_response(receiver),
-            )
-            .await
-            {
-                Ok(result) => break result,
-                Err(_) => {
-                    self.inner.outgoing.cancel_request(&request_id).await;
-                    let current_connection_ids = self
-                        .inner
-                        .thread_state_manager
-                        .subscribed_connection_ids(thread_id)
-                        .await;
-                    if current_connection_ids == connection_ids
-                        && last_connection_ids.as_ref() == Some(&connection_ids)
-                    {
-                        break Err("extension interaction timed out".to_string());
-                    }
-                    last_connection_ids = Some(current_connection_ids);
-                    if Instant::now() >= deadline {
-                        break Err("extension interaction timed out".to_string());
-                    }
-                }
-            }
-        };
-        self.inner
-            .session_script_registry
-            .close_prompt(
-                &self.inner.outgoing,
-                &script_prompt.prompt_id,
-                SessionScriptPromptClosedReason::Answered,
-            )
-            .await;
-        result
+            let result = deserialize_interaction_response(receiver).await;
+            self.inner
+                .session_script_registry
+                .close_prompt(
+                    &self.inner.outgoing,
+                    &script_prompt.prompt_id,
+                    SessionScriptPromptClosedReason::Answered,
+                )
+                .await;
+            return result;
+        }
     }
 
     async fn invoke_script(
@@ -973,7 +914,6 @@ impl SessionExtensionManager {
                     thread_id,
                     &descriptor.manifest_extension_id,
                     &descriptor.requested_capabilities,
-                    descriptor.approval_response_timeout_ms,
                 )
                 .await
                 .map_err(invalid_request)?;
@@ -1200,7 +1140,6 @@ fn descriptor_from_manifest(
         plugin_display_name: plugin.display_name().to_string(),
         entrypoint: extension.entrypoint.as_path().to_path_buf(),
         requested_capabilities: extension.requested_capabilities.clone(),
-        approval_response_timeout_ms: extension.approval_response_timeout_ms,
         commands,
         declaration_digest,
     })

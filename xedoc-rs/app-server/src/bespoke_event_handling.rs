@@ -444,8 +444,6 @@ pub(crate) async fn apply_bespoke_event_handling(
                     script_prompt,
                     ServerRequestPayload::ExtensionInteractionRequest(params),
                     outgoing,
-                    script_registry.clone(),
-                    script_outgoing.clone(),
                 )
                 .await;
                 on_extension_interaction_response(
@@ -540,8 +538,6 @@ pub(crate) async fn apply_bespoke_event_handling(
                     script_prompt,
                     ServerRequestPayload::FileChangeRequestApproval(params),
                     outgoing,
-                    script_registry.clone(),
-                    script_outgoing.clone(),
                 )
                 .await;
                 on_file_change_request_approval_response(
@@ -684,8 +680,6 @@ pub(crate) async fn apply_bespoke_event_handling(
                     script_prompt,
                     ServerRequestPayload::CommandExecutionRequestApproval(params),
                     outgoing.clone(),
-                    script_registry.clone(),
-                    script_outgoing.clone(),
                 )
                 .await;
                 on_command_execution_request_approval_response(
@@ -909,8 +903,6 @@ pub(crate) async fn apply_bespoke_event_handling(
                     script_prompt,
                     ServerRequestPayload::PermissionsRequestApproval(params),
                     outgoing.clone(),
-                    script_registry.clone(),
-                    script_outgoing.clone(),
                 )
                 .await;
                 let pending_response = PendingRequestPermissionsResponse {
@@ -2059,25 +2051,12 @@ async fn session_script_or_client_response(
     prompt: OpenApprovalPrompt,
     request: ServerRequestPayload,
     outgoing: ThreadScopedOutgoingMessageSender,
-    session_script_registry: SessionScriptRegistry,
-    session_script_outgoing: Arc<crate::outgoing_message::OutgoingMessageSender>,
 ) -> (Option<RequestId>, oneshot::Receiver<ClientRequestResult>) {
-    if let (Some(response_receiver), Some(response_timeout)) =
-        (prompt.response_receiver, prompt.response_timeout)
-    {
-        match tokio::time::timeout(response_timeout, response_receiver).await {
-            Ok(Ok(response)) => return (None, immediate_client_response(response)),
-            Ok(Err(_)) => return (None, dropped_client_response()),
-            Err(_) => {
-                session_script_registry
-                    .close_prompt(
-                        &session_script_outgoing,
-                        &prompt.prompt_id,
-                        SessionScriptPromptClosedReason::Expired,
-                    )
-                    .await;
-            }
-        }
+    if let Some(response_receiver) = prompt.response_receiver {
+        return match response_receiver.await {
+            Ok(response) => (None, immediate_client_response(response)),
+            Err(_) => (None, dropped_client_response()),
+        };
     }
 
     let (request_id, receiver) = outgoing.send_request(request).await;
