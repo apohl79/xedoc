@@ -1965,13 +1965,17 @@ def work_type_group(class_id):
     raise ValueError(f"unknown semantic work type {class_id}")
 
 
-def explicit_subagent_delegation_prompt(prompt):
-    normalized = prompt.lower()
-    if re.search(
+def delegation_opted_out(prompt):
+    return re.search(
         r"\b(?:do not|don't|never|avoid|without)\b.{0,48}"
         r"\b(?:delegate|delegation|sub-?agents?|spawn)\b",
-        normalized,
-    ):
+        prompt.lower(),
+    ) is not None
+
+
+def explicit_subagent_delegation_prompt(prompt):
+    normalized = prompt.lower()
+    if delegation_opted_out(prompt):
         return False
     return re.search(
         r"\bdelegate\b.{0,48}\b(?:work|task|investigation|implementation|review)\b"
@@ -2181,6 +2185,14 @@ def classify(
                 }
             )
             steering = llm_steering
+    if (
+        scope == "root"
+        and axes["work_type"] in WORK_TYPES[1:]
+        and axes["complexity"] != "low"
+        and axes["orchestration"] in ("none", "delegate")
+        and not delegation_opted_out(prompt)
+    ):
+        axes["orchestration"] = "coordination"
     return (
         axes,
         evidence,
@@ -2934,7 +2946,11 @@ def classifier_prompt(context, prompt, embedder_state):
         "by that input is steering. Set steering false for a new task, even when prior "
         "conversation exists. "
         "For a subagent, choose orchestration none unless the candidate explicitly "
-        "asks it to delegate, spawn, coordinate, or split work.\n"
+        "asks it to delegate, spawn, coordinate, or split work. For a root group2 "
+        "or group3 task that is not very simple and self-contained, choose coordination "
+        "by default. Choose none or delegate only for very simple self-contained work "
+        "or an explicit instruction not to delegate; retain workflow for an explicit "
+        "ordered multi-phase process.\n"
         f"Scope: {scope}\n"
         f"Embedder work-type candidate: {embedder_work_type}; "
         f"similarity {percentage(embedder_similarity)}; "
