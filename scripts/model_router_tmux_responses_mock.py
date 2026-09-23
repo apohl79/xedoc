@@ -145,11 +145,7 @@ def spawn_agent_call() -> dict[str, Any]:
     arguments = json.dumps(
         {
             "message": (
-                ROOT_SPAWN_MARKER
-                + " "
-                + CHILD_MARKER
-                + " "
-                + HOLD_RESPONSE_MARKER
+                ROOT_SPAWN_MARKER + " " + CHILD_MARKER + " " + HOLD_RESPONSE_MARKER
             ),
             "task_name": "router_e2e_child",
             "fork_turns": "none",
