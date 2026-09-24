@@ -21,6 +21,7 @@ readonly source_catalog="$repo_root/xedoc-rs/models-manager/models.json"
 readonly mock_server="$script_dir/model_router_tmux_responses_mock.py"
 readonly initial_model="gpt-5.6-luna"
 readonly initial_effort="low"
+readonly jev_api_key="${XEDOC_TMUX_JEV_API_KEY:-}"
 readonly keep_tmp_dir="${XEDOC_TMUX_TEST_KEEP_DIR:-0}"
 readonly binary="${XEDOC_TMUX_TEST_BIN:-$repo_root/bazel-bin/xedoc-rs/cli/xedoc}"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/xedoc-model-router-tmux.XXXXXX")"
@@ -158,6 +159,7 @@ send_prompt() {
 wait_for_tui_ready() {
   local trust_confirmed=0
   local hooks_trusted=0
+  local model_migration_dismissed=0
   local pane=""
   for _ in $(seq 1 400); do
     pane="$(capture_viewport)"
@@ -172,6 +174,11 @@ wait_for_tui_ready() {
       send_key Down
       send_key Enter
       hooks_trusted=1
+    fi
+    if [[ "$model_migration_dismissed" -eq 0 && "$pane" == *"Meet GPT-6 Luna"* ]]; then
+      send_key Down
+      send_key Enter
+      model_migration_dismissed=1
     fi
     sleep 0.1
   done
@@ -353,6 +360,10 @@ import sys
 
 router, policy_path, runtime = sys.argv[1:]
 request_number = 0
+policy = json.load(open(policy_path, encoding="utf-8"))
+policy["externalClassifier"] = {"backend": "embedder", "model": None}
+with open(policy_path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
 
 
 def call(method, params=None, context=None):
@@ -518,6 +529,7 @@ classifier_route = {
 }
 policy = json.load(open(policy_path, encoding="utf-8"))
 policy["classifierRoute"] = classifier_route
+policy["externalClassifier"] = {"backend": "xedoc-llm", "model": None}
 with open(policy_path, "w", encoding="utf-8") as output:
     json.dump(policy, output)
 classifier_context = {
@@ -771,6 +783,7 @@ policy["classifierRoute"] = {
     "model": "gpt-5.6-luna",
     "reasoningEffort": "low",
 }
+policy["externalClassifier"] = {"backend": "xedoc-llm", "model": None}
 policy["approvalCalibration"] = {
     "minimumSamples": 10,
     "buckets": {
@@ -1245,6 +1258,8 @@ start_tui() {
   tmux_session="xedoc-router-e2e-$RANDOM-$$"
   local args=(
     env
+    -u
+    XEDOC_TMUX_JEV_API_KEY
     "XEDOC_HOME=$runtime_home"
     "XEDOC_ROUTER_RUNTIME=$router_runtime"
     OPENAI_API_KEY=router-e2e-key
@@ -1400,8 +1415,63 @@ clear_reporting_baseline() {
 assert_classifier_model_picker() {
   open_settings
   select_menu_item 7 "Routing policy"
-  select_menu_item 3 "Classifier model"
+  select_menu_item 4 "Classifier model"
   wait_for_pane "openai/gpt-5.6-luna/low"
+}
+
+set_jev_api_key() {
+  [[ -n "$jev_api_key" ]] || fail "XEDOC_TMUX_JEV_API_KEY is required for the live Jev scenario"
+  open_settings
+  select_menu_item 7 "Routing policy"
+  select_menu_item 6 "Set Jev API key"
+  wait_for_pane "Stored by Xedoc's encrypted local secret store."
+  tmux send-keys -t "$tmux_session":0.0 -l -- "$jev_api_key"
+  sleep 0.3
+  send_key Enter
+  wait_for_pane "Routing policy"
+  assert_policy "externalClassifier.backend=jev"
+  assert_policy "externalClassifier.model=jev-latest"
+}
+
+assert_jev_classifier_completed() {
+  local marker="$1"
+  python3 - "$router_diagnostics" "$marker" <<'PY'
+import json
+import sys
+
+path, marker = sys.argv[1:]
+records = [
+    json.loads(line)
+    for line in open(path, encoding="utf-8")
+    if line.strip()
+]
+completed = [record for record in records if record.get("event") == "jev_classifier_completed"]
+assert completed, records
+latest = completed[-1]
+assert isinstance(latest.get("elapsedMs"), int) and latest["elapsedMs"] >= 0, latest
+assert isinstance(latest.get("model"), str) and latest["model"].startswith("jev-"), latest
+assert not any(
+    marker in str(record)
+    for record in completed
+), completed
+PY
+}
+
+run_jev_setup_and_classification() {
+  reset_policy
+  seed_calibration
+  start_tui
+  set_jev_api_key
+  set_mode full Full
+  set_approval off Off
+  local marker="ROUTER_E2E_JEV_LIVE"
+  send_prompt "$marker classify this implementation and coordinate the verification"
+  wait_for_request_marker "$marker"
+  await_turn
+  assert_classifier_requests "$marker" 0
+  assert_jev_classifier_completed "$marker"
+  record_scenario jev-live \
+    "tmux stored the Jev key through /model-router and completed a direct Jev classification"
 }
 
 exercise_host_action() {
@@ -2376,6 +2446,9 @@ main() {
     run_baseline_report_matrix
   fi
   run_ab_matrix
+  if [[ "${XEDOC_TMUX_REQUIRE_JEV_LIVE:-0}" == "1" ]]; then
+    run_jev_setup_and_classification
+  fi
 
   assert_config_unchanged
   if [[ "$phase" == "full" ]]; then

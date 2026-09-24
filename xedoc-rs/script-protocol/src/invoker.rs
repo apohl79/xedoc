@@ -43,6 +43,20 @@ impl ScriptInvoker {
         timeout: Duration,
         cancellation: CancellationToken,
     ) -> Result<ResponseOutcome, SubprocessError> {
+        self.invoke_with_environment(protocol_request, timeout, cancellation, [])
+            .await
+    }
+
+    /// Exchanges one bounded request with variables scoped to the script process.
+    ///
+    /// Environment values are never included in subprocess diagnostics.
+    pub async fn invoke_with_environment(
+        self,
+        protocol_request: &ScriptRequest,
+        timeout: Duration,
+        cancellation: CancellationToken,
+        environment: impl IntoIterator<Item = (OsString, OsString)>,
+    ) -> Result<ResponseOutcome, SubprocessError> {
         let subprocess_request = SubprocessRequest::new(self.argv)
             .with_limits(OutputLimits::new(
                 MAX_SCRIPT_STDIN_BYTES,
@@ -50,7 +64,8 @@ impl ScriptInvoker {
                 MAX_SCRIPT_STDERR_BYTES,
             ))
             .with_timeout(timeout)
-            .with_cancellation(cancellation);
+            .with_cancellation(cancellation)
+            .with_environment(environment);
         let mut outcome = SubprocessExecutor::invoke(subprocess_request, protocol_request)
             .await?
             .outcome;

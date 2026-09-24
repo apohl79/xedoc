@@ -741,6 +741,7 @@ pub enum AppEvent {
     },
     ModelRouterSettingsResponse {
         response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
+        jev_api_key: Option<ProviderApiKey>,
         host_action: Option<ModelRouterSettingsHostAction>,
         thread_id: Option<ThreadId>,
     },

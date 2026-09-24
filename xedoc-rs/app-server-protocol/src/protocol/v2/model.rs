@@ -58,13 +58,29 @@ pub struct ModelRouterSettingsOpenResponse {
     pub error: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ModelRouterSettingsRespondParams {
     #[ts(optional = nullable)]
     pub thread_id: Option<String>,
     pub response: ExtensionInteractionRequestResponse,
+    #[ts(optional = nullable)]
+    pub jev_api_key: Option<String>,
+}
+
+impl std::fmt::Debug for ModelRouterSettingsRespondParams {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ModelRouterSettingsRespondParams")
+            .field("thread_id", &self.thread_id)
+            .field("response", &self.response)
+            .field(
+                "jev_api_key",
+                &self.jev_api_key.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -300,7 +316,7 @@ pub enum ExtensionInteractionNoticeLevel {
 }
 
 /// A response to a generic scripted extension interaction.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ExtensionInteractionRequestResponse {
@@ -311,6 +327,21 @@ pub struct ExtensionInteractionRequestResponse {
     pub outcome: ExtensionInteractionOutcome,
     pub action: Option<ExtensionInteractionSelectedAction>,
     pub values: JsonValue,
+}
+
+impl std::fmt::Debug for ExtensionInteractionRequestResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ExtensionInteractionRequestResponse")
+            .field("extension_id", &self.extension_id)
+            .field("interaction_id", &self.interaction_id)
+            .field("continuation", &self.continuation)
+            .field("state_revision", &self.state_revision)
+            .field("outcome", &self.outcome)
+            .field("action", &self.action)
+            .field("values", &"<redacted>")
+            .finish()
+    }
 }
 
 /// An opaque action selected by the client.

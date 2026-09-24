@@ -9559,7 +9559,7 @@
           "$ref": "#/definitions/ModelRouterScope"
         },
         "summary": {
-          "description": "Compact prompt-free decision summary supplied by the router.",
+          "description": "Prompt-free multiline decision summary supplied by the router.",
           "type": [
             "string",
             "null"
@@ -9775,11 +9775,11 @@
           "format": "int64",
           "type": "integer"
         },
-        "unknownPriceInvocations": {
+        "unknownBaselinePriceInvocations": {
           "format": "int64",
           "type": "integer"
         },
-        "unknownBaselinePriceInvocations": {
+        "unknownPriceInvocations": {
           "format": "int64",
           "type": "integer"
         }
@@ -9796,8 +9796,8 @@
         "providerId",
         "scope",
         "unattributedInvocations",
-        "unknownPriceInvocations",
-        "unknownBaselinePriceInvocations"
+        "unknownBaselinePriceInvocations",
+        "unknownPriceInvocations"
       ],
       "type": "object"
     },
@@ -10068,6 +10068,12 @@
     "ModelRouterSettingsRespondParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "jevApiKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "response": {
           "$ref": "#/definitions/ExtensionInteractionRequestResponse"
         },

@@ -28,6 +28,7 @@ use xedoc_features::FEATURES;
 use xedoc_protocol::ThreadId;
 use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use xedoc_protocol::config_types::TrustLevel;
+use xedoc_tui_events::ProviderApiKey;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 pub(crate) fn replace_config_value(key_path: impl Into<String>, value: JsonValue) -> ConfigEdit {
@@ -240,6 +241,7 @@ pub(crate) async fn open_model_router_settings(
 pub(crate) async fn respond_model_router_settings(
     request_handle: AppServerRequestHandle,
     response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
+    jev_api_key: Option<ProviderApiKey>,
     thread_id: Option<ThreadId>,
 ) -> Result<xedoc_app_server_protocol::ModelRouterSettingsRespondResponse> {
     request_handle
@@ -251,6 +253,7 @@ pub(crate) async fn respond_model_router_settings(
             params: xedoc_app_server_protocol::ModelRouterSettingsRespondParams {
                 thread_id: thread_id.map(|thread_id| thread_id.to_string()),
                 response,
+                jev_api_key: jev_api_key.map(ProviderApiKey::into_inner),
             },
         })
         .await

@@ -117,6 +117,10 @@
     }
   ],
   "classifierRoute": null,
+  "externalClassifier": {
+    "backend": "jev",
+    "model": "jev-latest"
+  },
   "confidence": "balanced",
   "confidencePresets": {
     "permissive": {

@@ -3,13 +3,18 @@
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use xedoc_models_manager::manager::SharedModelsManager;
+use xedoc_protocol::protocol::ScriptedInteractionOutcome;
+use xedoc_protocol::protocol::ScriptedInteractionResponse;
 
 use crate::config::Config;
 use crate::model_router::current_script_route;
 use crate::model_router::eligible_script_routes;
+use crate::model_router_credentials::store_jev_api_key;
 use crate::model_router_script_host::ModelRouterScriptFailure;
 use crate::model_router_script_host::ModelRouterScriptHost;
 use crate::model_router_script_host::interaction_response;
+
+const MAX_JEV_API_KEY_BYTES: usize = 4_096;
 
 /// A script-requested update to the live session's router state.
 pub struct ModelRouterSettingsSessionUpdate {
@@ -78,14 +83,16 @@ pub async fn respond(
     config: &Config,
     models_manager: &SharedModelsManager,
     response: Value,
+    jev_api_key: Option<String>,
     session_mode: Option<&str>,
     supports_session_mode: bool,
 ) -> Result<ModelRouterSettingsResult, String> {
     let Some(host) = ModelRouterScriptHost::from_config(config) else {
         return Err("model-router script is not configured".to_string());
     };
-    let response = serde_json::from_value(response)
+    let response: ScriptedInteractionResponse = serde_json::from_value(response)
         .map_err(|_| "invalid model-router settings response".to_string())?;
+    let jev_api_key = validated_jev_api_key(&response, jev_api_key)?;
     let eligible_routes = eligible_script_routes(config, models_manager).await;
     let context = serde_json::json!({
         "client": {
@@ -111,6 +118,10 @@ pub async fn respond(
         )
         .await
         .map_err(settings_error)?;
+    if let Some(api_key) = jev_api_key {
+        store_jev_api_key(config.xedoc_home.as_path(), &api_key)
+            .map_err(|_| "could not store the Jev API key".to_string())?;
+    }
     let session_update =
         interaction
             .session_update
@@ -123,6 +134,34 @@ pub async fn respond(
             session_update,
         })
         .map_err(|_| "model-router script returned an invalid settings surface".to_string())
+}
+
+fn validated_jev_api_key(
+    response: &ScriptedInteractionResponse,
+    api_key: Option<String>,
+) -> Result<Option<String>, String> {
+    let is_jev_setup = response.continuation == "settings:policy:jev-api-key"
+        && response.outcome == ScriptedInteractionOutcome::Accepted
+        && response
+            .action
+            .as_ref()
+            .is_some_and(|action| action.id == "set-jev-api-key");
+    if !is_jev_setup {
+        return if api_key.is_some() {
+            Err("invalid Jev API-key setup response".to_string())
+        } else {
+            Ok(None)
+        };
+    }
+    let api_key = api_key.ok_or_else(|| "a Jev API key is required".to_string())?;
+    let api_key = api_key.trim();
+    if api_key.is_empty()
+        || api_key.len() > MAX_JEV_API_KEY_BYTES
+        || api_key.chars().any(char::is_control)
+    {
+        return Err("invalid Jev API key".to_string());
+    }
+    Ok(Some(api_key.to_string()))
 }
 
 fn settings_error(error: ModelRouterScriptFailure) -> String {

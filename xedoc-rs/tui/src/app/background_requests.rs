@@ -99,6 +99,7 @@ impl App {
         &mut self,
         app_server: &AppServerSession,
         response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,
+        jev_api_key: Option<crate::app_event::ProviderApiKey>,
         host_action: Option<xedoc_app_server_protocol::ModelRouterSettingsHostAction>,
         thread_id: Option<xedoc_protocol::ThreadId>,
     ) {
@@ -109,6 +110,7 @@ impl App {
                 result: crate::config_update::respond_model_router_settings(
                     request_handle,
                     response,
+                    jev_api_key,
                     thread_id,
                 )
                 .await

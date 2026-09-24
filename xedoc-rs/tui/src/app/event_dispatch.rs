@@ -1163,10 +1163,17 @@ impl App {
             }
             AppEvent::ModelRouterSettingsResponse {
                 response,
+                jev_api_key,
                 host_action,
                 thread_id,
             } => {
-                self.respond_model_router_settings(app_server, response, host_action, thread_id);
+                self.respond_model_router_settings(
+                    app_server,
+                    response,
+                    jev_api_key,
+                    host_action,
+                    thread_id,
+                );
             }
             AppEvent::ModelRouterSettingsResponded {
                 result,

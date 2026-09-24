@@ -66,6 +66,12 @@
     }
   },
   "properties": {
+    "jevApiKey": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "response": {
       "$ref": "#/definitions/ExtensionInteractionRequestResponse"
     },

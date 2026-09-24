@@ -15,6 +15,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -47,6 +49,11 @@ MAX_CLASSIFIER_FEEDBACK_CANDIDATES = 48
 MAX_CLASSIFIER_FEEDBACK_EXAMPLES = 6
 CLASSIFIER_FEEDBACK_EMBEDDING_DIMENSIONS = 384
 MAX_CLASSIFIER_PROMPT_BYTES = 7_600
+MAX_JEV_RESPONSE_BYTES = 64 * 1024
+JEV_API_URL = "https://api.typesafe.ai/v1/systemone"
+JEV_HTTP_TIMEOUT_SECONDS = 2
+JEV_BACKENDS = ("jev", "xedoc-llm", "embedder")
+JEV_MODEL_OPTIONS = ("jev-latest", "jev-1.13.0")
 MODES = ("off", "shadow-subagents", "shadow-full", "subagents", "full")
 APPROVALS = ("off", "policy", "all")
 WORK_TYPES = (
@@ -206,6 +213,17 @@ def upgrade_policy(policy):
         changed = True
     elif "minimumSamples" not in policy["approvalCalibration"]:
         policy["approvalCalibration"]["minimumSamples"] = 10
+        changed = True
+    if "externalClassifier" not in policy:
+        policy["externalClassifier"] = {
+            "backend": (
+                "xedoc-llm" if policy["classifierRoute"] is not None else "jev"
+            ),
+            "model": (
+                None if policy["classifierRoute"] is not None else JEV_MODEL_OPTIONS[0]
+            ),
+        }
+        policy["approvalCalibration"]["buckets"] = {}
         changed = True
     had_legacy_not_confident_policy = "notConfidentPolicy" in policy
     legacy_not_confident_policy = policy.pop("notConfidentPolicy", None)
@@ -404,6 +422,21 @@ def validate_policy(policy):
     classifier_route = policy.get("classifierRoute")
     if classifier_route is not None and valid_route_shape(classifier_route) is None:
         raise ValueError("policy classifier route is invalid")
+    external_classifier = policy.get("externalClassifier")
+    if (
+        not isinstance(external_classifier, dict)
+        or set(external_classifier) != {"backend", "model"}
+        or external_classifier.get("backend") not in JEV_BACKENDS
+        or (
+            external_classifier["backend"] == "jev"
+            and external_classifier.get("model") not in JEV_MODEL_OPTIONS
+        )
+        or (
+            external_classifier["backend"] != "jev"
+            and external_classifier.get("model") is not None
+        )
+    ):
+        raise ValueError("policy external classifier is invalid")
     ladder = ranking.get("ladder")
     if not isinstance(ladder, list) or not ladder:
         raise ValueError("policy ranking ladder must not be empty")
@@ -1335,6 +1368,28 @@ def policy_action_field(identifier, label, action_id):
     }
 
 
+def text_field(identifier, label, description, max_bytes, *, sensitive=False):
+    return {
+        "type": "text",
+        "id": identifier,
+        "label": label,
+        "description": description,
+        "value": "",
+        "maxBytes": max_bytes,
+        "sensitive": sensitive,
+    }
+
+
+def external_classifier_label(policy):
+    classifier = policy["externalClassifier"]
+    backend = classifier["backend"]
+    if backend == "jev":
+        return f"Jev ({classifier['model']})"
+    if backend == "xedoc-llm":
+        return "Xedoc LLM"
+    return "Embedder only"
+
+
 def policy_menu(policy, context):
     return form(
         policy,
@@ -1358,9 +1413,24 @@ def policy_menu(policy, context):
                 "open-reporting-baseline",
             ),
             policy_action_field(
+                "classifier-backend",
+                f"Classifier: {external_classifier_label(policy)}",
+                "open-classifier-backend",
+            ),
+            policy_action_field(
                 "classifier-model",
-                f"Classifier model: {route_label(policy.get('classifierRoute'))}",
+                f"Xedoc LLM model: {route_label(policy.get('classifierRoute'))}",
                 "open-classifier-model",
+            ),
+            policy_action_field(
+                "jev-model",
+                f"Jev model: {policy['externalClassifier'].get('model') or 'Not set'}",
+                "open-jev-model",
+            ),
+            policy_action_field(
+                "jev-api-key",
+                "Set Jev API key",
+                "open-jev-api-key",
             ),
         ],
         "save-policy",
@@ -1504,6 +1574,73 @@ def settings_surface(policy, context, continuation):
                 )
             ],
             "set-classifier-model",
+            cancel_action_id="back-policy",
+        )
+    if continuation == "settings:policy:classifier-backend":
+        return form(
+            policy,
+            "Classifier",
+            continuation,
+            [
+                policy_select_field(
+                    "classifier-backend",
+                    "Classifier",
+                    policy["externalClassifier"]["backend"],
+                    [
+                        {
+                            "id": "jev",
+                            "label": "Jev",
+                        },
+                        {
+                            "id": "xedoc-llm",
+                            "label": "Xedoc LLM",
+                        },
+                        {
+                            "id": "embedder",
+                            "label": "Embedder only",
+                        },
+                    ],
+                    "Jev classifies directly in the router. Xedoc LLM uses an eligible Xedoc model.",
+                )
+            ],
+            "set-classifier-backend",
+            cancel_action_id="back-policy",
+        )
+    if continuation == "settings:policy:jev-model":
+        return form(
+            policy,
+            "Jev model",
+            continuation,
+            [
+                policy_select_field(
+                    "jev-model",
+                    "Jev model",
+                    policy["externalClassifier"].get("model") or JEV_MODEL_OPTIONS[0],
+                    [
+                        {"id": model, "label": model}
+                        for model in JEV_MODEL_OPTIONS
+                    ],
+                    "Use a pinned model after calibration; latest follows Typesafe's stable release.",
+                )
+            ],
+            "set-jev-model",
+            cancel_action_id="back-policy",
+        )
+    if continuation == "settings:policy:jev-api-key":
+        return form(
+            policy,
+            "Set Jev API key",
+            continuation,
+            [
+                text_field(
+                    "jev-api-key",
+                    "API key",
+                    "Stored by Xedoc's encrypted local secret store. It is never sent to the router script.",
+                    4096,
+                    sensitive=True,
+                )
+            ],
+            "set-jev-api-key",
             cancel_action_id="back-policy",
         )
     if continuation == "settings:mode":
@@ -1700,6 +1837,14 @@ def settings_response(request, policy):
         return settings_surface(
             policy, context, "settings:policy:classifier-model"
         )
+    if action_id == "open-classifier-backend":
+        return settings_surface(
+            policy, context, "settings:policy:classifier-backend"
+        )
+    if action_id == "open-jev-model":
+        return settings_surface(policy, context, "settings:policy:jev-model")
+    if action_id == "open-jev-api-key":
+        return settings_surface(policy, context, "settings:policy:jev-api-key")
     if action_id == "save-policy":
         confidence = values.get("confidence")
         if confidence not in policy["confidencePresets"]:
@@ -1758,6 +1903,44 @@ def settings_response(request, policy):
                 policy, "Choose a currently supported classifier model."
             )
         update(policy, classifierRoute=classifier_route)
+        return policy_menu(policy, context)
+    if action_id == "set-classifier-backend":
+        backend = values.get("classifier-backend")
+        if backend not in JEV_BACKENDS:
+            return error_notice(policy, "Choose one of the offered classifiers.")
+        update(
+            policy,
+            externalClassifier={
+                "backend": backend,
+                "model": (
+                    policy["externalClassifier"]["model"]
+                    if backend == "jev"
+                    else None
+                ),
+            },
+            approvalCalibration={
+                **policy["approvalCalibration"],
+                "buckets": {},
+            },
+        )
+        return policy_menu(policy, context)
+    if action_id == "set-jev-model":
+        model = values.get("jev-model")
+        if model not in JEV_MODEL_OPTIONS:
+            return error_notice(policy, "Choose one of the offered Jev models.")
+        update(
+            policy,
+            externalClassifier={
+                "backend": "jev",
+                "model": model,
+            },
+            approvalCalibration={
+                **policy["approvalCalibration"],
+                "buckets": {},
+            },
+        )
+        return policy_menu(policy, context)
+    if action_id == "set-jev-api-key":
         return policy_menu(policy, context)
     if action_id == "save-policy-ladder":
         routes, _ = policy_route_options(policy, context)
@@ -2468,9 +2651,9 @@ def routing_calculation(
             f"({embedding_input_count} {vector_label})"
         )
     if llm_elapsed_ms is not None:
-        calculation += f" · LLM classification {llm_elapsed_ms / 1000:.2f} s"
+        calculation += f" · external classification {llm_elapsed_ms / 1000:.2f} s"
     if llm_confidence is not None:
-        calculation += f" · LLM self-rating {percentage(llm_confidence)}"
+        calculation += f" · external confidence {percentage(llm_confidence)}"
     return calculation
 
 
@@ -2542,8 +2725,8 @@ def decision(
         summary_lines.append(f"    Work type validation: {work_type_validation};")
     summary_lines.extend(
         [
-            f"    Stats: Embedding({embedding_stat}); LLM Classification({llm_stat});",
-            f"    Confidence: {overall}; LLM self-rating({llm_score}); "
+            f"    Stats: Embedding({embedding_stat}); External classification({llm_stat});",
+            f"    Confidence: {overall}; External confidence({llm_score}); "
             f"similarity({similarity_detail}).",
         ]
     )
@@ -2725,16 +2908,16 @@ def approval(
                     else "└ Embedding: not run",
                 },
                 {
-                    "text": f"LLM Classification: {llm_elapsed_ms / 1000:.2f} s"
+                    "text": f"External classification: {llm_elapsed_ms / 1000:.2f} s"
                     if llm_elapsed_ms is not None
-                    else "LLM Classification: not run",
+                    else "External classification: not run",
                     "indent": 1,
                 },
                 {
                     "text": (
                         f"Confidence: "
                         f"{confidence_detail}; "
-                        f"LLM self-rating "
+                        f"External confidence "
                         f"{percentage(llm_confidence) if llm_confidence is not None else 'not available'}; "
                         f"similarity {percentage(confidence)} / margin {percentage(margin)}"
                     ),
@@ -2880,6 +3063,33 @@ def valid_embedder_state(state):
     )
 
 
+def embedder_state_for_classifier(
+    policy, prompt, has_prior_messages, recent_messages, scope
+):
+    (
+        embedder_axes,
+        embedder_evidence,
+        embedder_steering,
+        embedder_elapsed_ms,
+        embedder_input_count,
+        _,
+        _,
+    ) = classify(
+        policy,
+        prompt,
+        has_prior_messages,
+        recent_messages,
+        scope,
+    )
+    return embedder_state_from_result(
+        embedder_axes,
+        embedder_evidence,
+        embedder_steering,
+        embedder_elapsed_ms,
+        embedder_input_count,
+    )
+
+
 def classifier_continuation(prompt, embedder_state):
     def encode(candidate):
         encoded = base64.urlsafe_b64encode(
@@ -3012,6 +3222,211 @@ def parse_classifier_output(output):
     return result
 
 
+class JevClassifierError(Exception):
+    pass
+
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def jev_state(context, prompt, embedder_state):
+    messages = []
+    for message in ((context.get("conversation") or {}).get("recentMessages") or [])[
+        -4:
+    ]:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        text = message.get("text")
+        if role in ("user", "assistant") and isinstance(text, str):
+            messages.append({"role": role, "text": text[:512]})
+    similarity, margin = embedder_state["evidence"]["work_type"]
+    return {
+        "task": prompt[:1200],
+        "scope": ((context.get("turn") or {}).get("scope") or "root"),
+        "recentMessages": messages,
+        "embedder": {
+            "workType": embedder_state["axes"]["work_type"],
+            "similarity": round(similarity, 4),
+            "margin": round(margin, 4),
+        },
+    }
+
+
+def jev_questions():
+    return {
+        "work_type": {
+            "type": "choice",
+            "instructions": (
+                "Classify the task into one router work-type group. Use the task and "
+                "conversation, not the embedder suggestion."
+            ),
+            "criteria": {
+                "group1": "A question, documentation analysis, packaging, operational work, or testing.",
+                "group2": "Implementation, bug fix, refactor, documentation authoring, orchestration, or calibration.",
+                "group3": "Research, review, diagnosis, or design.",
+            },
+        },
+        "complexity": {
+            "type": "choice",
+            "instructions": "Classify the task complexity.",
+            "criteria": {
+                "low": "A simple, narrow task.",
+                "medium": "A bounded task with some judgment or multiple steps.",
+                "high": "A complex task with substantial reasoning or coordination.",
+                "very_high": "An unusually broad, risky, or difficult task.",
+            },
+        },
+        "risk": {
+            "type": "choice",
+            "instructions": "Classify the execution risk.",
+            "criteria": {
+                "low": "Little chance of harmful or hard-to-reverse impact.",
+                "medium": "Some meaningful impact that needs ordinary care.",
+                "high": "Potentially consequential impact, security, or sensitive changes.",
+                "very_high": "High-stakes, destructive, or exceptionally sensitive impact.",
+            },
+        },
+        "orchestration": {
+            "type": "choice",
+            "instructions": "Classify the level of task orchestration needed.",
+            "criteria": {
+                "none": "No delegation or coordination is needed.",
+                "delegate": "One bounded independent subtask can be delegated.",
+                "coordination": "Several independent subtasks need coordinated integration.",
+                "workflow": "An ordered multi-phase workflow is required.",
+            },
+        },
+        "steering": {
+            "type": "noul",
+            "instructions": (
+                "Decide whether this is steering input that continues the preceding "
+                "conversation instead of a new task."
+            ),
+            "criteria": {
+                "true": "A reply, correction, answer, or additional information for the prior exchange.",
+                "false": "A new task or request.",
+            },
+        },
+    }
+
+
+def jev_choice(answers, identifier, options):
+    answer = answers.get(identifier)
+    if not isinstance(answer, dict) or answer.get("type") != "choice":
+        return None
+    choice = answer.get("choice")
+    confidence = answer.get("confidence")
+    if (
+        choice not in options
+        or not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not math.isfinite(confidence)
+        or not 0.0 <= confidence <= 1.0
+    ):
+        return None
+    return choice, confidence
+
+
+def parse_jev_response(payload):
+    if not isinstance(payload, dict):
+        return None
+    answers = payload.get("answers")
+    if not isinstance(answers, dict):
+        return None
+    work_type = jev_choice(answers, "work_type", WORK_TYPE_GROUP_IDS)
+    complexity = jev_choice(answers, "complexity", COMPLEXITIES)
+    risk = jev_choice(answers, "risk", RISKS)
+    orchestration = jev_choice(answers, "orchestration", ORCHESTRATIONS)
+    steering_answer = answers.get("steering")
+    steering = steering_answer.get("noul") if isinstance(steering_answer, dict) else None
+    if (
+        work_type is None
+        or complexity is None
+        or risk is None
+        or orchestration is None
+        or not isinstance(steering, (int, float))
+        or isinstance(steering, bool)
+        or not math.isfinite(steering)
+        or not 0.0 <= steering <= 1.0
+    ):
+        return None
+    return {
+        "work_type": WORK_TYPE_GROUP_BY_ID[work_type[0]],
+        "work_type_id": work_type[0],
+        "complexity": complexity[0],
+        "risk": risk[0],
+        "orchestration": orchestration[0],
+        "confidence": min(
+            work_type[1], complexity[1], risk[1], orchestration[1]
+        ),
+        "steering": steering >= 0.5,
+    }
+
+
+def jev_model_identifier(payload):
+    model = payload.get("model") if isinstance(payload, dict) else None
+    if (
+        isinstance(model, str)
+        and len(model) <= 64
+        and re.fullmatch(r"[A-Za-z0-9._-]+", model)
+    ):
+        return model
+    return None
+
+
+def classify_with_jev(context, prompt, embedder_state, model):
+    api_key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+    if not api_key:
+        raise JevClassifierError("credential_unavailable")
+    payload = {
+        "state": jev_state(context, prompt, embedder_state),
+        "model": model,
+        "questions": jev_questions(),
+    }
+    started = time.monotonic()
+    try:
+        request = urllib.request.Request(
+            JEV_API_URL,
+            data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.build_opener(NoRedirectHandler()).open(
+            request, timeout=JEV_HTTP_TIMEOUT_SECONDS
+        ) as response:
+            raw = response.read(MAX_JEV_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        categories = {
+            401: "authentication_failed",
+            422: "invalid_request",
+            429: "rate_limited",
+            529: "service_unavailable",
+        }
+        raise JevClassifierError(categories.get(error.code, "request_failed")) from None
+    except (OSError, TimeoutError, urllib.error.URLError):
+        raise JevClassifierError("request_failed") from None
+    if len(raw) > MAX_JEV_RESPONSE_BYTES:
+        raise JevClassifierError("response_too_large")
+    try:
+        response = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise JevClassifierError("invalid_response") from None
+    classification = parse_jev_response(response)
+    if classification is None:
+        raise JevClassifierError("invalid_response")
+    return (
+        classification,
+        int((time.monotonic() - started) * 1000),
+        jev_model_identifier(response),
+    )
+
+
 def routing_classifier_response(request, policy):
     params = request.get("params") or {}
     continuation = params.get("continuation")
@@ -3113,37 +3528,72 @@ def routing_decide(
                 "reportingBaseline": None,
             },
         }
+    external_classifier = policy["externalClassifier"]
     configured_classifier = valid_route(
         policy.get("classifierRoute"), eligible_classifier_routes(context)
     )
+    should_classify_with_jev = (
+        llm_classification is None
+        and not classifier_failed
+        and external_classifier["backend"] == "jev"
+    )
+    if should_classify_with_jev:
+        if embedder_state is None:
+            embedder_state = embedder_state_for_classifier(
+                policy, prompt, has_prior_messages, recent_messages, scope
+            )
+        try:
+            classifier_output, classifier_elapsed_ms, resolved_model = (
+                classify_with_jev(
+                    context,
+                    prompt,
+                    embedder_state,
+                    external_classifier["model"],
+                )
+            )
+        except JevClassifierError as error:
+            record_diagnostic(
+                {
+                    "event": "jev_classifier_fallback",
+                    "recordedAtUnixSeconds": int(time.time()),
+                    "reason": str(error),
+                }
+            )
+            return routing_decide(
+                request,
+                policy,
+                classifier_failed=True,
+                classifier_notice=(
+                    "Jev classifier unavailable; used the embedder fallback. "
+                    "See model-router diagnostics for details."
+                ),
+                embedder_state=embedder_state,
+            )
+        record_diagnostic(
+            {
+                "event": "jev_classifier_completed",
+                "recordedAtUnixSeconds": int(time.time()),
+                "elapsedMs": classifier_elapsed_ms,
+                **({"model": resolved_model} if resolved_model is not None else {}),
+            }
+        )
+        return routing_decide(
+            request,
+            policy,
+            classifier_output,
+            classifier_elapsed_ms,
+            embedder_state=embedder_state,
+        )
     should_request_classifier = (
         llm_classification is None
         and not classifier_failed
+        and external_classifier["backend"] == "xedoc-llm"
         and configured_classifier is not None
     )
     if should_request_classifier:
         if embedder_state is None:
-            (
-                embedder_axes,
-                embedder_evidence,
-                embedder_steering,
-                embedder_elapsed_ms,
-                embedder_input_count,
-                _,
-                _,
-            ) = classify(
-                policy,
-                prompt,
-                has_prior_messages,
-                recent_messages,
-                scope,
-            )
-            embedder_state = embedder_state_from_result(
-                embedder_axes,
-                embedder_evidence,
-                embedder_steering,
-                embedder_elapsed_ms,
-                embedder_input_count,
+            embedder_state = embedder_state_for_classifier(
+                policy, prompt, has_prior_messages, recent_messages, scope
             )
             classifier_input, feedback_elapsed_ms, feedback_input_count = classifier_prompt(
                 context, prompt, embedder_state

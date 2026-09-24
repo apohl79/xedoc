@@ -43,12 +43,30 @@ impl OutputLimits {
 }
 
 /// Shell-free script invocation request.
-#[derive(Debug)]
 pub struct SubprocessRequest {
     argv: Vec<OsString>,
+    environment: Vec<(OsString, OsString)>,
     limits: OutputLimits,
     timeout: Duration,
     cancellation: CancellationToken,
+}
+
+impl std::fmt::Debug for SubprocessRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let environment_names = self
+            .environment
+            .iter()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>();
+        formatter
+            .debug_struct("SubprocessRequest")
+            .field("argv", &self.argv)
+            .field("environment", &environment_names)
+            .field("limits", &self.limits)
+            .field("timeout", &self.timeout)
+            .field("cancellation", &self.cancellation)
+            .finish()
+    }
 }
 
 impl SubprocessRequest {
@@ -57,6 +75,7 @@ impl SubprocessRequest {
     pub fn new(argv: Vec<OsString>) -> Self {
         Self {
             argv,
+            environment: Vec::new(),
             limits: OutputLimits::new(64 * 1024, 64 * 1024, 8 * 1024),
             timeout: Duration::from_secs(10),
             cancellation: CancellationToken::new(),
@@ -67,6 +86,16 @@ impl SubprocessRequest {
     #[must_use]
     pub fn with_limits(mut self, limits: OutputLimits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Adds sensitive environment variables for this one child process.
+    #[must_use]
+    pub fn with_environment(
+        mut self,
+        environment: impl IntoIterator<Item = (OsString, OsString)>,
+    ) -> Self {
+        self.environment.extend(environment);
         self
     }
 
@@ -300,6 +329,7 @@ impl SubprocessExecutor {
     ) -> Result<SubprocessOutput, SubprocessError> {
         let SubprocessRequest {
             argv,
+            environment,
             limits,
             timeout,
             cancellation,
@@ -316,7 +346,7 @@ impl SubprocessExecutor {
         let SpawnedChild {
             mut child,
             process_group_id,
-        } = spawn(&argv).map_err(|source| {
+        } = spawn(&argv, &environment).map_err(|source| {
             failure_with_executable(SubprocessFailureKind::Spawn(source), executable)
         })?;
         let mut process_group_cleanup = ProcessGroupCleanup::new(process_group_id);
@@ -440,7 +470,10 @@ impl Drop for ProcessGroupCleanup {
     }
 }
 
-fn spawn(argv: &[OsString]) -> Result<SpawnedChild, io::Error> {
+fn spawn(
+    argv: &[OsString],
+    environment: &[(OsString, OsString)],
+) -> Result<SpawnedChild, io::Error> {
     let (program, args) = argv.split_first().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -450,6 +483,7 @@ fn spawn(argv: &[OsString]) -> Result<SpawnedChild, io::Error> {
     let mut command = Command::new(program);
     command
         .args(args)
+        .envs(environment.iter().map(|(name, value)| (name, value)))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

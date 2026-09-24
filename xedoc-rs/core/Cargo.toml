@@ -74,6 +74,7 @@ xedoc-mcp = { workspace = true }
 xedoc-model-provider-info = { workspace = true }
 xedoc-models-manager = { workspace = true }
 xedoc-shell-command = { workspace = true }
+xedoc-secrets = { workspace = true }
 xedoc-execpolicy = { workspace = true }
 xedoc-git-utils = { workspace = true }
 xedoc-hooks = { workspace = true }

@@ -28,6 +28,7 @@ use xedoc_app_server_protocol::ExtensionInteractionRequestResponse;
 use xedoc_app_server_protocol::ExtensionInteractionSelectedAction;
 use xedoc_app_server_protocol::ExtensionInteractionSurface;
 use xedoc_protocol::ThreadId;
+use xedoc_tui_events::ProviderApiKey;
 use xedoc_tui_events::ResolvedAppServerRequest;
 
 use crate::app_event_sender::AppEventSender;
@@ -246,6 +247,24 @@ impl ScriptedInteractionView {
         action: Option<&ExtensionInteractionAction>,
         values: Value,
     ) {
+        let is_jev_api_key_submission = self.model_router_settings
+            && self.request.continuation == "settings:policy:jev-api-key"
+            && action.is_some_and(|action| action.id == "set-jev-api-key")
+            && outcome == ExtensionInteractionOutcome::Accepted;
+        let jev_api_key = is_jev_api_key_submission
+            .then(|| {
+                values
+                    .get("jev-api-key")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                    .map(ProviderApiKey::new)
+            })
+            .flatten();
+        let values = if is_jev_api_key_submission {
+            Value::Object(Map::new())
+        } else {
+            values
+        };
         let response = ExtensionInteractionRequestResponse {
             extension_id: self.request.extension_id.clone(),
             interaction_id: self.request.interaction_id.clone(),
@@ -261,6 +280,7 @@ impl ScriptedInteractionView {
             self.app_event_tx
                 .send(xedoc_tui_events::AppEvent::ModelRouterSettingsResponse {
                     response,
+                    jev_api_key,
                     host_action: (outcome == ExtensionInteractionOutcome::Accepted)
                         .then(|| action.and_then(|action| action.host_action))
                         .flatten(),

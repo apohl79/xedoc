@@ -87,6 +87,7 @@ impl AppEventSender {
     pub fn model_router_settings_response(&self, response: ExtensionInteractionRequestResponse) {
         self.send(AppEvent::ModelRouterSettingsResponse {
             response,
+            jev_api_key: None,
             host_action: None,
             thread_id: None,
         });

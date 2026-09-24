@@ -360,6 +360,7 @@ impl ConfigRequestProcessor {
             &config,
             &self.thread_manager.get_models_manager(),
             response,
+            params.jev_api_key,
             session_mode.as_deref(),
             thread.is_some(),
         )

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -42,6 +43,7 @@ use xedoc_script_protocol::SubprocessFailure;
 
 use crate::Prompt;
 use crate::client_common::ResponseEvent;
+use crate::model_router_credentials::load_jev_api_key;
 use crate::responses_metadata::XedocResponsesRequestKind;
 use crate::responses_retry::ResponsesStreamRequest;
 use crate::responses_retry::handle_retryable_response_stream_error;
@@ -88,6 +90,7 @@ static SCRIPT_REPORTING_BASELINES: OnceLock<Mutex<HashMap<Vec<OsString>, Option<
 /// Configured host for one-shot model-router script invocations.
 pub(crate) struct ModelRouterScriptHost {
     argv: Vec<OsString>,
+    xedoc_home: PathBuf,
     decision_timeout: Duration,
     interaction_timeout: Duration,
 }
@@ -106,6 +109,7 @@ impl ModelRouterScriptHost {
             .or_else(bundled_router_argv)?;
         Some(Self {
             argv,
+            xedoc_home: config.xedoc_home.to_path_buf(),
             decision_timeout: router_config.decision_timeout(),
             interaction_timeout: router_config.interaction_timeout(),
         })
@@ -599,6 +603,7 @@ impl ModelRouterScriptHost {
         timeout: Duration,
         cancellation: CancellationToken,
     ) -> Result<ResponseOutcome, ModelRouterScriptFailure> {
+        let is_routing_decision = matches!(&method, Method::RoutingDecide);
         let protocol_request = ScriptRequest {
             protocol: xedoc_script_protocol::ProtocolVersion::v1(),
             request_id: RequestId::new(OpaqueId::new(Uuid::now_v7().to_string())),
@@ -607,8 +612,16 @@ impl ModelRouterScriptHost {
             context,
             params,
         };
+        let jev_api_key = is_routing_decision
+            .then(|| load_jev_api_key(&self.xedoc_home))
+            .flatten()
+            .unwrap_or_default();
+        let environment = [(
+            OsString::from("TYPESAFE_API_KEY"),
+            OsString::from(jev_api_key),
+        )];
         ScriptInvoker::new(self.argv.clone())
-            .invoke(&protocol_request, timeout, cancellation)
+            .invoke_with_environment(&protocol_request, timeout, cancellation, environment)
             .await
             .map_err(ModelRouterScriptFailure::Invocation)
     }

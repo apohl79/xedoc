@@ -205,7 +205,7 @@
       "$ref": "#/definitions/ModelRouterScope"
     },
     "summary": {
-      "description": "Compact prompt-free decision summary supplied by the router.",
+      "description": "Prompt-free multiline decision summary supplied by the router.",
       "type": [
         "string",
         "null"

@@ -21,7 +21,7 @@ feedbackVisible: boolean,
  */
 diagnostic: string | null,
 /**
- * Compact prompt-free decision summary supplied by the router.
+ * Prompt-free multiline decision summary supplied by the router.
  */
 summary: string | null, policyRevision: string, classifications: { [key in string]?: string },
 /**

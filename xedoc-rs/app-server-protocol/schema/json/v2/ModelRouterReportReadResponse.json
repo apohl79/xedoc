@@ -115,11 +115,11 @@
           "format": "int64",
           "type": "integer"
         },
-        "unknownPriceInvocations": {
+        "unknownBaselinePriceInvocations": {
           "format": "int64",
           "type": "integer"
         },
-        "unknownBaselinePriceInvocations": {
+        "unknownPriceInvocations": {
           "format": "int64",
           "type": "integer"
         }
@@ -136,8 +136,8 @@
         "providerId",
         "scope",
         "unattributedInvocations",
-        "unknownPriceInvocations",
-        "unknownBaselinePriceInvocations"
+        "unknownBaselinePriceInvocations",
+        "unknownPriceInvocations"
       ],
       "type": "object"
     },
