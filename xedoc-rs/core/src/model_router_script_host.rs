@@ -1788,7 +1788,11 @@ fn validate_form_field(
             if *sensitive && !value.is_empty() {
                 return Err(ModelRouterScriptFailure::InvalidInteraction);
             }
-            validate_plain_text(value, usize::try_from(*max_bytes).unwrap_or(usize::MAX))
+            if value.is_empty() {
+                Ok(())
+            } else {
+                validate_plain_text(value, usize::try_from(*max_bytes).unwrap_or(usize::MAX))
+            }
         }
         xedoc_script_protocol::FormField::Action {
             id,

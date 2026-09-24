@@ -190,6 +190,15 @@ impl LocalSecretsBackend {
     }
 
     fn load_or_create_passphrase(&self) -> Result<SecretString> {
+        // Isolated tmux acceptance runs disable OS keychain access and supply a
+        // process-scoped passphrase so they can still exercise encrypted storage.
+        if std::env::var_os("XEDOC_DISABLE_KEYCHAIN").as_deref() == Some(std::ffi::OsStr::new("1"))
+            && let Some(passphrase) = std::env::var_os("XEDOC_TEST_SECRETS_PASSPHRASE")
+        {
+            return Ok(SecretString::from(
+                passphrase.to_string_lossy().into_owned(),
+            ));
+        }
         let account = compute_keyring_account(&self.xedoc_home);
         let loaded = self
             .keyring_store

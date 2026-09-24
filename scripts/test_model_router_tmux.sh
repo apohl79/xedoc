@@ -1338,6 +1338,11 @@ open_settings() {
   [[ -n "$tmux_session" ]] || fail "cannot open settings before starting the isolated TUI"
   local pane
   pane="$(capture_viewport)"
+  if [[ "$pane" == *"Routing policy"* && "$pane" == *"Press enter to confirm"* ]]; then
+    send_key Escape
+    wait_for_pane_absent "Routing policy"
+    pane="$(capture_viewport)"
+  fi
   if [[ "$pane" == *"Model Router Settings"* && "$pane" == *"Press enter to confirm"* ]]; then
     send_key Escape
     wait_for_pane_absent "Model Router Settings"
@@ -1482,6 +1487,10 @@ set_jev_api_key() {
   wait_for_pane "Routing policy"
   assert_policy "externalClassifier.backend=jev"
   assert_policy "externalClassifier.model=jev-latest"
+  [[ -s "$runtime_home/secrets/local.age" ]] ||
+    fail "Jev API key secret file was not created"
+  ! grep -F "$jev_api_key" "$runtime_home/secrets/local.age" >/dev/null ||
+    fail "Jev API key was written in plaintext"
 }
 
 assert_jev_classifier_completed() {
@@ -1511,10 +1520,21 @@ PY
 run_jev_setup_and_classification() {
   reset_policy
   seed_calibration
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["mode"] = "full"
+policy["approval"] = "off"
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
   start_tui
   set_jev_api_key
-  set_mode full Full
-  set_approval off Off
+  send_key Escape
+  wait_for_pane_absent "Routing policy"
   local marker="ROUTER_E2E_JEV_LIVE"
   send_prompt "$marker classify this implementation and coordinate the verification"
   wait_for_request_marker "$marker"
@@ -1523,6 +1543,14 @@ run_jev_setup_and_classification() {
   assert_jev_classifier_completed "$marker"
   record_scenario jev-live \
     "tmux stored the Jev key through /model-router and completed a direct Jev classification"
+}
+
+run_jev_setup_only() {
+  [[ -n "$jev_api_key" ]] || fail "XEDOC_TMUX_JEV_API_KEY is required for the Jev setup scenario"
+  reset_policy
+  start_tui
+  set_jev_api_key
+  record_scenario jev-setup "tmux opened the Jev API-key form and saved a fixture key"
 }
 
 exercise_host_action() {
@@ -2435,6 +2463,7 @@ PY
 
 main() {
   export XEDOC_DISABLE_KEYCHAIN=1
+  export XEDOC_TEST_SECRETS_PASSPHRASE="tmux-test-secrets-passphrase"
   require_command tmux
   require_command python3
   require_command shasum
@@ -2506,6 +2535,16 @@ main() {
     run_report_probe
     assert_config_unchanged
     printf 'PASS: scripted model-router report tmux acceptance\n'
+    return
+  elif [[ "$phase" == "jev-setup" ]]; then
+    run_jev_setup_only
+    printf 'PASS: scripted model-router Jev setup tmux acceptance\n'
+    return
+  elif [[ "$phase" == "jev-live" ]]; then
+    [[ "${XEDOC_TMUX_REQUIRE_JEV_LIVE:-0}" == "1" ]] ||
+      fail "XEDOC_TMUX_REQUIRE_JEV_LIVE=1 is required for the Jev live scenario"
+    run_jev_setup_and_classification
+    printf 'PASS: scripted model-router Jev live tmux acceptance\n'
     return
   elif [[ "$phase" == "post-modes" ]]; then
     start_tui
