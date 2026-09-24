@@ -367,18 +367,32 @@ download_file() {
 
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$token" ]; then
-      curl -fL --progress-bar -H "Authorization: Bearer $token" "$url" -o "$output"
+      curl -fL --progress-bar \
+        -H "Accept: application/octet-stream" \
+        -H "Authorization: Bearer $token" \
+        "$url" \
+        -o "$output"
     else
-      curl -fL --progress-bar "$url" -o "$output"
+      curl -fL --progress-bar \
+        -H "Accept: application/octet-stream" \
+        "$url" \
+        -o "$output"
     fi
     return
   fi
 
   if command -v wget >/dev/null 2>&1; then
     if [ -n "$token" ]; then
-      wget -q --header="Authorization: Bearer $token" -O "$output" "$url"
+      wget -q \
+        --header="Accept: application/octet-stream" \
+        --header="Authorization: Bearer $token" \
+        -O "$output" \
+        "$url"
     else
-      wget -q -O "$output" "$url"
+      wget -q \
+        --header="Accept: application/octet-stream" \
+        -O "$output" \
+        "$url"
     fi
     return
   fi
@@ -604,7 +618,43 @@ prepare_local_package() {
 release_url_for_asset() {
   tag="$1"
   asset="$2"
-  printf 'https://github.com/%s/releases/download/%s/%s\n' "$RELEASE_REPO" "$tag" "$asset"
+  release_json="$(download_text "$(release_metadata_url "$tag")")"
+
+  asset_url="$(printf '%s\n' "$release_json" | awk -v asset="$asset" '
+    /"url":[[:space:]]*"[^"]+"/ {
+      candidate_url = $0
+      sub(/^.*"url":[[:space:]]*"/, "", candidate_url)
+      sub(/".*$/, "", candidate_url)
+    }
+
+    /"name":[[:space:]]*"[^"]+"/ {
+      name = $0
+      sub(/^.*"name":[[:space:]]*"/, "", name)
+      sub(/".*$/, "", name)
+      if (name == asset) {
+        url = candidate_url
+      }
+    }
+
+    END {
+      if (url != "") {
+        print url
+      }
+    }
+  ')"
+
+  asset_api_prefix="https://api.github.com/repos/$RELEASE_REPO/releases/assets/"
+  case "$asset_url" in
+    "$asset_api_prefix"*) ;;
+    *) die "Could not find release asset $asset for tag $tag in $RELEASE_REPO." ;;
+  esac
+  asset_id="${asset_url#"$asset_api_prefix"}"
+  case "$asset_id" in
+    "" | *[!0-9]*)
+      die "Could not find release asset $asset for tag $tag in $RELEASE_REPO."
+      ;;
+  esac
+  printf '%s\n' "$asset_url"
 }
 
 release_asset_digest() {
