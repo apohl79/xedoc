@@ -19,6 +19,7 @@ use xedoc_app_server_protocol::ServerNotification;
 use xedoc_app_server_protocol::ServerNotificationEnvelope;
 use xedoc_app_server_protocol::ServerRequest;
 use xedoc_app_server_protocol::ServerRequestPayload;
+use xedoc_app_server_protocol::ServerRequestResolvedNotification;
 use xedoc_otel::span_w3c_trace_context;
 use xedoc_protocol::ThreadId;
 use xedoc_protocol::protocol::W3cTraceContext;
@@ -151,6 +152,26 @@ impl ThreadScopedOutgoingMessageSender {
         self.outgoing
             .send_server_notification_to_connections(self.connection_ids.as_slice(), notification)
             .await;
+    }
+
+    pub async fn try_notify_client_response(
+        &self,
+        request_id: &RequestId,
+        result: ClientRequestResult,
+    ) -> bool {
+        self.outgoing
+            .try_notify_client_response(request_id, result)
+            .await
+    }
+
+    pub async fn notify_request_resolved(&self, request_id: RequestId) {
+        self.send_server_notification(ServerNotification::ServerRequestResolved(
+            ServerRequestResolvedNotification {
+                thread_id: self.thread_id.to_string(),
+                request_id,
+            },
+        ))
+        .await;
     }
 
     pub async fn send_global_server_notification(&self, notification: ServerNotification) {
@@ -372,18 +393,23 @@ impl OutgoingMessageSender {
     }
 
     pub async fn notify_client_response(&self, id: RequestId, result: Result) {
-        let entry = self.take_request_callback(&id).await;
-
-        match entry {
-            Some((id, entry)) => {
-                if let Err(err) = entry.callback.send(Ok(result)) {
-                    warn!("could not notify callback for {id:?} due to: {err:?}");
-                }
-            }
-            None => {
-                warn!("could not find callback for {id:?}");
-            }
+        if !self.try_notify_client_response(&id, Ok(result)).await {
+            warn!("could not find callback for {id:?}");
         }
+    }
+
+    pub async fn try_notify_client_response(
+        &self,
+        id: &RequestId,
+        result: ClientRequestResult,
+    ) -> bool {
+        let Some((id, entry)) = self.take_request_callback(id).await else {
+            return false;
+        };
+        if let Err(err) = entry.callback.send(result) {
+            warn!("could not notify callback for {id:?} due to: {err:?}");
+        }
+        true
     }
 
     pub async fn notify_client_error(&self, id: RequestId, error: JSONRPCErrorError) {

@@ -62,6 +62,8 @@ use xedoc_script_protocol::ScriptResult;
 use crate::error_code::invalid_request;
 use crate::outgoing_message::ClientRequestResult;
 use crate::outgoing_message::OutgoingMessageSender;
+use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
+use crate::parallel_approval;
 use crate::session_script_host::SessionScriptHost;
 use crate::session_script_registry::SessionScriptRegistry;
 use crate::session_script_registry::send_deliveries;
@@ -796,21 +798,7 @@ impl SessionExtensionManager {
                 },
             )
             .await;
-        if let Some(response_receiver) = script_prompt.response_receiver {
-            let response = response_receiver
-                .await
-                .map_err(|_| "approval responder closed the interaction".to_string())?;
-            self.inner
-                .session_script_registry
-                .close_prompt(
-                    &self.inner.outgoing,
-                    &script_prompt.prompt_id,
-                    SessionScriptPromptClosedReason::Answered,
-                )
-                .await;
-            return serde_json::from_value(response).map_err(|error| error.to_string());
-        }
-
+        let script_prompt_id = script_prompt.prompt_id.clone();
         loop {
             let connection_ids = self
                 .inner
@@ -821,21 +809,26 @@ impl SessionExtensionManager {
                 sleep(Duration::from_millis(/*millis*/ 100)).await;
                 continue;
             };
-            let (_request_id, receiver) = self
-                .inner
-                .outgoing
-                .send_request_to_connections(
-                    Some(std::slice::from_ref(target_connection_id)),
-                    ServerRequestPayload::ExtensionInteractionRequest(params.clone()),
-                    Some(thread_id),
-                )
-                .await;
+            let outgoing = ThreadScopedOutgoingMessageSender::new(
+                self.inner.outgoing.clone(),
+                vec![*target_connection_id],
+                thread_id,
+            );
+            let (request_id, receiver) = parallel_approval::await_response(
+                script_prompt,
+                ServerRequestPayload::ExtensionInteractionRequest(params.clone()),
+                outgoing.clone(),
+            )
+            .await;
             let result = deserialize_interaction_response(receiver).await;
+            if let Some(request_id) = request_id {
+                outgoing.notify_request_resolved(request_id).await;
+            }
             self.inner
                 .session_script_registry
                 .close_prompt(
                     &self.inner.outgoing,
-                    &script_prompt.prompt_id,
+                    &script_prompt_id,
                     SessionScriptPromptClosedReason::Answered,
                 )
                 .await;

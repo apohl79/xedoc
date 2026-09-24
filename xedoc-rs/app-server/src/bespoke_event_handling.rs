@@ -4,11 +4,11 @@ use crate::error_code::internal_error;
 use crate::error_code::invalid_request;
 use crate::outgoing_message::ClientRequestResult;
 use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
+use crate::parallel_approval;
 use crate::request_processors::populate_thread_turns_from_history;
 use crate::request_processors::thread_from_stored_thread;
 use crate::request_processors::thread_settings_from_core_snapshot;
 use crate::server_request_error::is_turn_transition_server_request_error;
-use crate::session_script_registry::OpenApprovalPrompt;
 use crate::session_script_registry::SessionScriptRegistry;
 use crate::thread_state::ThreadState;
 use crate::thread_state::TurnSummary;
@@ -440,7 +440,7 @@ pub(crate) async fn apply_bespoke_event_handling(
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 let script_prompt_id = script_prompt.prompt_id.clone();
-                let (pending_request_id, receiver) = session_script_or_client_response(
+                let (pending_request_id, receiver) = parallel_approval::await_response(
                     script_prompt,
                     ServerRequestPayload::ExtensionInteractionRequest(params),
                     outgoing,
@@ -534,7 +534,7 @@ pub(crate) async fn apply_bespoke_event_handling(
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 let script_prompt_id = script_prompt.prompt_id.clone();
-                let (pending_request_id, rx) = session_script_or_client_response(
+                let (pending_request_id, rx) = parallel_approval::await_response(
                     script_prompt,
                     ServerRequestPayload::FileChangeRequestApproval(params),
                     outgoing,
@@ -676,7 +676,7 @@ pub(crate) async fn apply_bespoke_event_handling(
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 let script_prompt_id = script_prompt.prompt_id.clone();
-                let (pending_request_id, rx) = session_script_or_client_response(
+                let (pending_request_id, rx) = parallel_approval::await_response(
                     script_prompt,
                     ServerRequestPayload::CommandExecutionRequestApproval(params),
                     outgoing.clone(),
@@ -899,7 +899,7 @@ pub(crate) async fn apply_bespoke_event_handling(
             let script_outgoing = session_script_outgoing.clone();
             tokio::spawn(async move {
                 let script_prompt_id = script_prompt.prompt_id.clone();
-                let (pending_request_id, rx) = session_script_or_client_response(
+                let (pending_request_id, rx) = parallel_approval::await_response(
                     script_prompt,
                     ServerRequestPayload::PermissionsRequestApproval(params),
                     outgoing.clone(),
@@ -2045,36 +2045,6 @@ async fn submit_request_user_input_response(
     {
         error!("failed to submit UserInputAnswer: {err}");
     }
-}
-
-async fn session_script_or_client_response(
-    prompt: OpenApprovalPrompt,
-    request: ServerRequestPayload,
-    outgoing: ThreadScopedOutgoingMessageSender,
-) -> (Option<RequestId>, oneshot::Receiver<ClientRequestResult>) {
-    if let Some(response_receiver) = prompt.response_receiver {
-        return match response_receiver.await {
-            Ok(response) => (None, immediate_client_response(response)),
-            Err(_) => (None, dropped_client_response()),
-        };
-    }
-
-    let (request_id, receiver) = outgoing.send_request(request).await;
-    (Some(request_id), receiver)
-}
-
-fn immediate_client_response(
-    response: serde_json::Value,
-) -> oneshot::Receiver<ClientRequestResult> {
-    let (sender, receiver) = oneshot::channel();
-    let _ = sender.send(Ok(response));
-    receiver
-}
-
-fn dropped_client_response() -> oneshot::Receiver<ClientRequestResult> {
-    let (sender, receiver) = oneshot::channel();
-    drop(sender);
-    receiver
 }
 
 async fn on_extension_interaction_response(

@@ -98,6 +98,7 @@ mod message_processor;
 mod model_router_report_server;
 mod models;
 mod models_refresh_worker;
+mod parallel_approval;
 mod plugin_watcher;
 mod request_processors;
 mod session_extension_manager;
