@@ -23,6 +23,7 @@ readonly initial_model="gpt-5.6-luna"
 readonly initial_effort="low"
 readonly jev_api_key="${XEDOC_TMUX_JEV_API_KEY:-}"
 readonly keep_tmp_dir="${XEDOC_TMUX_TEST_KEEP_DIR:-0}"
+readonly attach_delay_seconds="${XEDOC_TMUX_TEST_ATTACH_DELAY_SECONDS:-0}"
 readonly binary="${XEDOC_TMUX_TEST_BIN:-$repo_root/bazel-bin/xedoc-rs/cli/xedoc}"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/xedoc-model-router-tmux.XXXXXX")"
 readonly tmp_dir
@@ -1287,6 +1288,11 @@ start_tui() {
   wait_for_tui_ready
   record_config_digest
   assert_standalone_launch
+  if [[ "$attach_delay_seconds" =~ ^[0-9]+$ ]] && ((attach_delay_seconds > 0)); then
+    printf 'tmux session ready: %s (continuing in %ss)\n' \
+      "$tmux_session" "$attach_delay_seconds"
+    sleep "$attach_delay_seconds"
+  fi
 }
 
 run_report_probe() {
@@ -1535,14 +1541,17 @@ PY
   set_jev_api_key
   send_key Escape
   wait_for_pane_absent "Routing policy"
+  send_key Escape
+  wait_for_pane_absent "Model Router Settings"
   local marker="ROUTER_E2E_JEV_LIVE"
   send_prompt "$marker classify this implementation and coordinate the verification"
   wait_for_request_marker "$marker"
   await_turn
   assert_classifier_requests "$marker" 0
   assert_jev_classifier_completed "$marker"
+  assert_latest_router_decision false no
   record_scenario jev-live \
-    "tmux stored the Jev key through /model-router and completed a direct Jev classification"
+    "tmux stored the Jev key and Jev classified a new task as non-steering"
 }
 
 run_jev_setup_only() {

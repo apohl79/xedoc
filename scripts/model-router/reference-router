@@ -3361,13 +3361,28 @@ def jev_questions():
         },
         "steering": {
             "type": "noul",
-            "instructions": (
-                "Decide whether this is steering input that continues the preceding "
-                "conversation instead of a new task."
-            ),
+            "instructions": {
+                "question": (
+                    "Does state.task answer, correct, clarify, or supply information "
+                    "specifically requested in the immediately preceding conversation?"
+                ),
+                "decision_rule": (
+                    "Judge the relationship between state.task and state.recentMessages. "
+                    "The mere presence of recent messages does not make a task steering. "
+                    "A request to perform work is a new task even when it discusses the "
+                    "same project or follows prior work."
+                ),
+            },
             "criteria": {
-                "true": "A reply, correction, answer, or additional information for the prior exchange.",
-                "false": "A new task or request.",
+                "true": (
+                    "The task is a direct reply, correction, requested choice, missing "
+                    "input, or clarification whose meaning depends on the immediately "
+                    "preceding exchange."
+                ),
+                "false": (
+                    "The task asks for work, investigation, implementation, review, or "
+                    "another independently actionable result."
+                ),
             },
         },
     }
@@ -3413,16 +3428,21 @@ def parse_jev_response(payload):
         or not 0.0 <= steering <= 1.0
     ):
         return None
+    choice_confidences = (
+        work_type[1],
+        complexity[1],
+        risk[1],
+        orchestration[1],
+    )
+    choice_confidence = sum(choice_confidences) / len(choice_confidences)
     return {
         "work_type": WORK_TYPE_GROUP_BY_ID[work_type[0]],
         "work_type_id": work_type[0],
         "complexity": complexity[0],
         "risk": risk[0],
         "orchestration": orchestration[0],
-        "confidence": min(
-            work_type[1], complexity[1], risk[1], orchestration[1]
-        ),
-        "steering": steering >= 0.5,
+        "confidence": choice_confidence,
+        "steering": steering >= 0.8,
         "orchestration_reason": {
             "none": "No explicit delegation or coordination request was present.",
             "delegate": "Jev identified a bounded independent subtask suitable for delegation.",
