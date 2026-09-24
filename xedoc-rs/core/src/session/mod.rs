@@ -2054,16 +2054,14 @@ impl Session {
         };
         let context =
             AgentCommunicationContext::new(AgentCommunicationKind::Result, self.thread_id);
-        if let Err(err) = self
+        let completion_result = self
             .services
             .agent_control
             .send_v2_inter_agent_communication(config, parent_thread_id, communication, context)
-            .await
+            .await;
+        if completion_result.is_ok()
+            && let Some(child_cost) = child_cost
         {
-            debug!("failed to notify parent thread {parent_thread_id}: {err}");
-            return;
-        }
-        if let Some(child_cost) = child_cost {
             let mut state = self.state.lock().await;
             state.cost_tracker.mark_cost_reported_to_parent(child_cost);
         }
@@ -2087,6 +2085,9 @@ impl Session {
                 },
             )
             .await;
+        if let Err(err) = completion_result {
+            debug!("failed to notify parent thread {parent_thread_id}: {err}");
+        }
     }
 
     pub(crate) async fn send_event_raw(&self, event: Event) {
