@@ -2335,6 +2335,11 @@ def classify(
         "llmSteering": None,
         "steeringAgreement": None,
         "steeringSource": "embedder" if steering else None,
+        "orchestrationReason": (
+            llm_classification.get("orchestration_reason")
+            if llm_classification is not None
+            else None
+        ),
     }
     llm_confidence = None
     if llm_classification is not None:
@@ -2369,6 +2374,20 @@ def classify(
                 }
             )
             steering = llm_steering
+    subagent_orchestration = policy["semanticClassifier"].get(
+        "subagentOrchestration", {}
+    )
+    if (
+        scope == "subagent"
+        and subagent_orchestration.get("explicitPromptRequired", True)
+        and axes["orchestration"] != "none"
+        and not explicit_subagent_delegation_prompt(prompt)
+    ):
+        axes["orchestration"] = "none"
+        classification_details["orchestrationReason"] = (
+            "Subagent orchestration was suppressed because the prompt did not "
+            "explicitly request delegation or coordination."
+        )
     if (
         scope == "root"
         and axes["work_type"] in WORK_TYPES[1:]
@@ -2377,6 +2396,15 @@ def classify(
         and not delegation_opted_out(prompt)
     ):
         axes["orchestration"] = "coordination"
+        classification_details["orchestrationReason"] = (
+            "Root-scope work is non-trivial and requires coordination by router policy."
+        )
+    elif axes["orchestration"] != "none" and not classification_details.get(
+        "orchestrationReason"
+    ):
+        classification_details["orchestrationReason"] = (
+            "The classifier selected orchestration based on the task request."
+        )
     return (
         axes,
         evidence,
@@ -2416,6 +2444,13 @@ def valid_classification_details(details):
     llm_steering = details.get("llmSteering")
     steering_agreement = details.get("steeringAgreement")
     steering_source = details.get("steeringSource")
+    orchestration_reason = details.get("orchestrationReason")
+    if orchestration_reason is not None and (
+        not isinstance(orchestration_reason, str)
+        or not orchestration_reason.strip()
+        or len(orchestration_reason.encode("utf-8")) > 512
+    ):
+        return False
     if source not in ("embedder", "llm", "steering") or not isinstance(
         conflict, bool
     ):
@@ -2715,6 +2750,7 @@ def decision(
     )
     similarity_detail = f"{percentage(confidence)}, margin {percentage(margin)}"
     work_type_validation = work_type_validation_text(classification_details)
+    feedback_active = policy["feedback"] if feedback_enabled is None else feedback_enabled
     summary_lines = [
         f"  └ Decision: {status_detail}; Target model: {target}; Used model: {used};",
         f"    Classifications: Work type({axes['work_type']}); "
@@ -2724,6 +2760,16 @@ def decision(
     ]
     if work_type_validation is not None:
         summary_lines.append(f"    Work type validation: {work_type_validation};")
+    if (
+        feedback_active
+        and axes["orchestration"] != "none"
+        and classification_details is not None
+        and classification_details.get("orchestrationReason")
+    ):
+        summary_lines.append(
+            "    Orchestration reason: "
+            f"{classification_details['orchestrationReason']};"
+        )
     summary_lines.extend(
         [
             f"    Stats: Embedding({embedding_stat}); External classification({llm_stat});",
@@ -3137,8 +3183,10 @@ def classifier_prompt(context, prompt, embedder_state):
         "exactly these fields: work_type (an object with group (group1, group2, "
         "or group3) and steering (boolean)), "
         "complexity (low, medium, high, very_high), risk (low, medium, high, very_high), "
-        "orchestration (none, delegate, coordination, workflow), confidence "
-        "(number from 0 through 1 for the complete classification). "
+        "orchestration (none, delegate, coordination, workflow), "
+        "orchestration_reason (a concise string explaining the evidence for the "
+        "orchestration choice), confidence (number from 0 through 1 for the complete "
+        "classification). "
         f"Work type groups and their leaf values: {WORK_TYPE_GROUP_PROMPT}. "
         "Use the leaf types to choose the best group, then put only the group ID "
         "in work_type.group. Put the steering boolean in work_type.steering. "
@@ -3153,7 +3201,9 @@ def classifier_prompt(context, prompt, embedder_state):
         "or group3 task that is not very simple and self-contained, choose coordination "
         "by default. Choose none or delegate only for very simple self-contained work "
         "or an explicit instruction not to delegate; retain workflow for an explicit "
-        "ordered multi-phase process.\n"
+        "ordered multi-phase process. Always explain the concrete trigger in "
+        "orchestration_reason; for subagents, a non-none value requires an explicit "
+        "delegation, spawning, coordination, or work-splitting request in the candidate.\n"
         f"Scope: {scope}\n"
         f"Embedder work-type candidate: {embedder_work_type}; "
         f"similarity {percentage(embedder_similarity)}; "
@@ -3200,6 +3250,7 @@ def parse_classifier_output(output):
         return None
     work_type_id = work_type.get("group")
     steering = work_type.get("steering")
+    orchestration_reason = value.get("orchestration_reason")
     result = {
         axis: value.get(axis) for axis in ("complexity", "risk", "orchestration")
     }
@@ -3209,6 +3260,9 @@ def parse_classifier_output(output):
         or result["complexity"] not in COMPLEXITIES
         or result["risk"] not in RISKS
         or result["orchestration"] not in ORCHESTRATIONS
+        or not isinstance(orchestration_reason, str)
+        or not orchestration_reason.strip()
+        or len(orchestration_reason.encode("utf-8")) > 512
         or not isinstance(steering, bool)
         or not isinstance(confidence, (int, float))
         or isinstance(confidence, bool)
@@ -3220,6 +3274,7 @@ def parse_classifier_output(output):
     result["work_type_id"] = work_type_id
     result["confidence"] = confidence
     result["steering"] = steering
+    result["orchestration_reason"] = orchestration_reason.strip()
     return result
 
 
@@ -3364,6 +3419,12 @@ def parse_jev_response(payload):
             work_type[1], complexity[1], risk[1], orchestration[1]
         ),
         "steering": steering >= 0.5,
+        "orchestration_reason": {
+            "none": "No explicit delegation or coordination request was present.",
+            "delegate": "Jev identified a bounded independent subtask suitable for delegation.",
+            "coordination": "Jev identified multiple workstreams requiring coordinated integration.",
+            "workflow": "Jev identified an explicit ordered multi-phase process.",
+        }[orchestration[0]],
     }
 
 

@@ -577,6 +577,7 @@ classifier_result, classifier_surface = interaction(
                     "complexity": "high",
                     "risk": "medium",
                     "orchestration": "none",
+                    "orchestration_reason": "No explicit delegation or coordination request was present.",
                     "confidence": 0.82,
                 }
             ),
@@ -1927,6 +1928,7 @@ run_classifier_mode_matrix() {
     root full \
     "group1: question, docs_analysis, packaging, operational, testing" \
     high low delegate apply
+  wait_for_pane "Orchestration reason: The task explicitly requests a bounded delegation." 600
 
   set_classifier_route shadow-full
   start_tui
@@ -1939,6 +1941,7 @@ run_classifier_mode_matrix() {
     root shadow-full \
     "group1: question, docs_analysis, packaging, operational, testing" \
     very_high medium delegate shadow
+  wait_for_pane "Orchestration reason: The task contains one bounded independent subtask to delegate." 600
 
   set_classifier_route subagents
   start_tui

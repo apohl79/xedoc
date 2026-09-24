@@ -171,25 +171,33 @@ def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str,
             classification = (
                 '{"work_type":{"group":"group3","steering":false},'
                 '"complexity":"low","risk":"low",'
-                '"orchestration":"none","confidence":0.8}'
+                '"orchestration":"none",'
+                '"orchestration_reason":"No explicit delegation or coordination request was present.",'
+                '"confidence":0.8}'
             )
         elif contains_text(request, "ROUTER_E2E_CLASSIFIER_SHADOW"):
             classification = (
                 '{"work_type":{"group":"group1","steering":false},'
                 '"complexity":"very_high",'
-                '"risk":"medium","orchestration":"delegate","confidence":0.8}'
+                '"risk":"medium","orchestration":"delegate",'
+                '"orchestration_reason":"The task contains one bounded independent subtask to delegate.",'
+                '"confidence":0.8}'
             )
         elif contains_text(request, "ROUTER_E2E_CLASSIFIER_FULL"):
             classification = (
                 '{"work_type":{"group":"group1","steering":false},'
                 '"complexity":"high","risk":"low",'
-                '"orchestration":"delegate","confidence":0.8}'
+                '"orchestration":"delegate",'
+                '"orchestration_reason":"The task explicitly requests a bounded delegation.",'
+                '"confidence":0.8}'
             )
         else:
             classification = (
                 '{"work_type":{"group":"group1","steering":false},'
                 '"complexity":"high","risk":"low",'
-                '"orchestration":"none","confidence":0.8}'
+                '"orchestration":"none",'
+                '"orchestration_reason":"No explicit delegation or coordination request was present.",'
+                '"confidence":0.8}'
             )
         return [
             response_created(response_id),
