@@ -837,9 +837,7 @@ impl Tui {
                     .scroll_region_up(0..area.top(), scroll_by)?;
             }
             area.y = size.height - area.height;
-        } else if viewport_was_bottom_aligned
-            && (terminal_height_grew || area.height != previous_area.height)
-        {
+        } else if terminal_height_grew && viewport_was_bottom_aligned {
             area.y = size.height - area.height;
         }
 

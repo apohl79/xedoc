@@ -12291,7 +12291,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-cli"
-version = "1.36.0"
+version = "1.36.1"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -14508,7 +14508,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui"
-version = "1.36.0"
+version = "1.36.1"
 dependencies = [
  "anyhow",
  "app_test_support",
