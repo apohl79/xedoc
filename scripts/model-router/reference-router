@@ -2445,12 +2445,15 @@ def valid_classification_details(details):
     steering_agreement = details.get("steeringAgreement")
     steering_source = details.get("steeringSource")
     orchestration_reason = details.get("orchestrationReason")
-    if orchestration_reason is not None and (
-        not isinstance(orchestration_reason, str)
-        or not orchestration_reason.strip()
-        or len(orchestration_reason.encode("utf-8")) > 512
-    ):
-        return False
+    if orchestration_reason is not None:
+        if not isinstance(orchestration_reason, str) or not orchestration_reason.strip():
+            return False
+        try:
+            reason_bytes = len(orchestration_reason.encode("utf-8"))
+        except UnicodeEncodeError:
+            return False
+        if reason_bytes > 512:
+            return False
     if source not in ("embedder", "llm", "steering") or not isinstance(
         conflict, bool
     ):
@@ -3262,13 +3265,18 @@ def parse_classifier_output(output):
         or result["orchestration"] not in ORCHESTRATIONS
         or not isinstance(orchestration_reason, str)
         or not orchestration_reason.strip()
-        or len(orchestration_reason.encode("utf-8")) > 512
         or not isinstance(steering, bool)
         or not isinstance(confidence, (int, float))
         or isinstance(confidence, bool)
         or not math.isfinite(confidence)
         or not 0.0 <= confidence <= 1.0
     ):
+        return None
+    try:
+        reason_bytes = len(orchestration_reason.encode("utf-8"))
+    except UnicodeEncodeError:
+        return None
+    if reason_bytes > 512:
         return None
     result["work_type"] = WORK_TYPE_GROUP_BY_ID[work_type_id]
     result["work_type_id"] = work_type_id
