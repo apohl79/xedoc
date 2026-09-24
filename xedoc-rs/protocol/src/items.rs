@@ -288,6 +288,15 @@ pub struct SubAgentActivityItem {
     pub kind: SubAgentActivityKind,
     pub agent_thread_id: ThreadId,
     pub agent_path: AgentPath,
+    /// Provider selected for the sub-agent, when known.
+    #[serde(default)]
+    pub model_provider: Option<String>,
+    /// Model selected for the sub-agent, when known.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Reasoning effort selected for the sub-agent, when known.
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffortConfig>,
     /// Human-readable summary of what the sub-agent is currently doing.
     /// Max 64 characters.
     #[serde(default)]

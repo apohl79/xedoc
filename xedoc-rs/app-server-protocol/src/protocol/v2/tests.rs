@@ -2585,6 +2585,9 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
         agent_path: xedoc_protocol::AgentPath::root()
             .join("worker")
             .expect("worker path"),
+        model_provider: None,
+        model: None,
+        reasoning_effort: None,
         current_activity: None,
     });
 
