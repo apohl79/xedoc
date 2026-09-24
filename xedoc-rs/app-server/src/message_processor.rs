@@ -442,7 +442,7 @@ impl MessageProcessor {
             ModelRouterReportRequestProcessor::new(state_db.clone());
         let model_router_report_server = ModelRouterReportServer::new(
             model_router_report_processor.clone(),
-            config.model_router.report_url.clone(),
+            Arc::clone(&config),
         );
         let plugin_processor = PluginRequestProcessor::new(
             auth_manager.clone(),

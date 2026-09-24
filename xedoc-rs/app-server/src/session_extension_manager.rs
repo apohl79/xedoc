@@ -629,6 +629,14 @@ impl SessionExtensionManager {
                             .to_string(),
                     );
                 }
+                ResponseOutcome::Result {
+                    result: ScriptResult::Report { .. },
+                } => {
+                    return Err(
+                        "session extension returned a report document for a non-report method"
+                            .to_string(),
+                    );
+                }
             }
         }
     }

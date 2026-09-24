@@ -637,9 +637,13 @@ reported tokens do not use a tilde.
 
 ### 14.4 App-server-hosted web UI
 
-The app-server owns the reporting backend and static web application. This keeps
-report definitions, database access, and cost calculations in one process instead of
-reimplementing them in the TUI.
+The model-router script owns report calculations, labels, section ordering, tables,
+and chart series. It returns a bounded declarative report document containing only
+metric grids, line charts, tables, and notices. The app-server owns authenticated
+access to the bounded raw report data, invokes the script, validates its document, and
+serves a content-neutral renderer. The renderer translates the typed document to
+ordinary DOM and programmatic SVG without accepting HTML, URLs, styles, classes, or
+SVG paths from the script.
 
 Opening flow:
 
@@ -648,7 +652,7 @@ Opening flow:
   └─► modelRouterReport/open
         └─► app-server starts/reuses listener and returns capability URL
               └─► TUI OpenUrlInBrowser
-                    └─► static UI + authenticated bounded JSON queries
+                    └─► generic UI + authenticated script-owned document
 ```
 
 The report HTTP server is lazy and independent of the app-server's JSON-RPC transport.
@@ -664,23 +668,9 @@ Proposed experimental app-server v2 methods:
 - `modelRouterReport/read`: return the same versioned, bounded aggregate DTO for
   non-browser clients.
 
-The web application is shipped with Xedoc and served without a CDN or runtime package
-manager. Prefer a small static HTML/CSS/JavaScript application with inline SVG charts.
-If assets are read at compile time, add them to the app-server Bazel target's
-`compile_data`.
-
-The first UI should contain:
-
-- summary cards for actual cost, price-normalized baseline, estimated savings, A/B
-  overhead, and net spend impact;
-- daily actual-versus-baseline and token-consumption charts, with breakdowns by task
-  class, route, and root/subagent scope;
-- A/B outcome, cost-delta, and latency tables;
-- confidence, abstention, fallback, override, cache-share, and route-switch views;
-- a bounded recent-decision table with class, proposed/effective route, disposition,
-  cost, and fallback reason;
-- unknown actual-price, baseline-price, and usage coverage so incomplete accounting
-  cannot look like free inference.
+The content-neutral web application is shipped with Xedoc and served without a CDN or
+runtime package manager. Report content changes belong in the router script, not in
+the app-server assets.
 
 All filtering and pagination are server-bounded. Raw prompts and model outputs are not
 available through the report API.
@@ -691,9 +681,10 @@ for data requests. Tokens are random, short-lived, report-read-only, and scoped 
 app-server process. Responses disable caching and restrictive CSP/referrer headers
 prevent token or data leakage.
 
-For a remote app-server, return an explicitly configured browser-reachable HTTPS base
-URL, never the server's `127.0.0.1`. Without one, the slash command reports the
-limitation while `modelRouterReport/read` remains available to remote clients.
+The listener remains process-local and capability protected. The external
+`modelRouterReport/read` method continues to expose the unchanged bounded aggregate
+DTO to authenticated JSON-RPC clients; it does not expose the private browser
+document endpoint.
 
 ## 15. Failure, privacy, and safety
 
@@ -706,9 +697,6 @@ limitation while `modelRouterReport/read` remains available to remote clients.
 - The report listener binds to loopback by default, uses short-lived read-only
   capabilities, rejects cross-origin data requests, and never exposes raw prompts or
   outputs.
-- Non-loopback report hosting requires an explicit HTTPS public URL and the
-  app-server's authenticated deployment boundary; it is never inferred from a
-  WebSocket bind address.
 - Prototype count, task input, decision events, reports, and TUI history are hard
   capped.
 - Explicit user choices and safety policy outrank cost optimization.

@@ -1,6 +1,7 @@
 //! JSON request and response shapes for extension scripts.
 
 use crate::Interaction;
+use crate::ReportDocument;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -94,6 +95,9 @@ pub enum Method {
     /// Invokes an approved session-extension slash command.
     #[serde(rename = "extension.command.invoke")]
     ExtensionCommandInvoke,
+    /// Requests a script-authored report document.
+    #[serde(rename = "report.render")]
+    ReportRender,
 }
 
 /// One JSON document sent from the host to a script.
@@ -221,6 +225,11 @@ pub enum ScriptResult {
         /// Safe message text for the user.
         message: String,
     },
+    /// A constrained report document the host may render.
+    Report {
+        /// Declarative report to render.
+        report: ReportDocument,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -242,6 +251,7 @@ struct WireScriptResult {
     summary: Option<String>,
     level: Option<ScriptMessageLevel>,
     message: Option<String>,
+    report: Option<ReportDocument>,
 }
 
 #[derive(Deserialize)]
@@ -253,6 +263,7 @@ enum ScriptResultKind {
     State,
     Complete,
     Message,
+    Report,
 }
 
 impl<'de> Deserialize<'de> for ScriptResult {
@@ -269,6 +280,7 @@ impl<'de> Deserialize<'de> for ScriptResult {
             summary,
             level,
             message,
+            report,
         } = WireScriptResult::deserialize(deserializer)?;
         match (
             kind,
@@ -279,14 +291,16 @@ impl<'de> Deserialize<'de> for ScriptResult {
             summary,
             level,
             message,
+            report,
         ) {
-            (ScriptResultKind::Route, Some(decision), None, None, None, None, None, None) => {
+            (ScriptResultKind::Route, Some(decision), None, None, None, None, None, None, None) => {
                 Ok(Self::Route { decision })
             }
             (
                 ScriptResultKind::Interaction,
                 None,
                 Some(interaction),
+                None,
                 None,
                 None,
                 None,
@@ -302,11 +316,12 @@ impl<'de> Deserialize<'de> for ScriptResult {
                 None,
                 None,
                 None,
+                None,
             ) => Ok(Self::ClassifierRequest { classifier }),
-            (ScriptResultKind::State, None, None, None, Some(state), None, None, None) => {
+            (ScriptResultKind::State, None, None, None, Some(state), None, None, None, None) => {
                 Ok(Self::State { state })
             }
-            (ScriptResultKind::Complete, None, None, None, None, summary, None, None) => {
+            (ScriptResultKind::Complete, None, None, None, None, summary, None, None, None) => {
                 Ok(Self::Complete { summary })
             }
             (
@@ -318,24 +333,31 @@ impl<'de> Deserialize<'de> for ScriptResult {
                 None,
                 Some(level),
                 Some(message),
+                None,
             ) => Ok(Self::Message { level, message }),
-            (ScriptResultKind::Route, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Report, None, None, None, None, None, None, None, Some(report)) => {
+                Ok(Self::Report { report })
+            }
+            (ScriptResultKind::Route, _, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "route result must contain only a decision",
             )),
-            (ScriptResultKind::Interaction, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
-                "interaction result must contain only an interaction",
-            )),
-            (ScriptResultKind::ClassifierRequest, _, _, _, _, _, _, _) => Err(
+            (ScriptResultKind::Interaction, _, _, _, _, _, _, _, _) => Err(
+                serde::de::Error::custom("interaction result must contain only an interaction"),
+            ),
+            (ScriptResultKind::ClassifierRequest, _, _, _, _, _, _, _, _) => Err(
                 serde::de::Error::custom("classifier request must contain only a classifier"),
             ),
-            (ScriptResultKind::State, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::State, _, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "state result must contain only state",
             )),
-            (ScriptResultKind::Complete, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Complete, _, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "complete result must contain only an optional summary",
             )),
-            (ScriptResultKind::Message, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
+            (ScriptResultKind::Message, _, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
                 "message result must contain only a level and message",
+            )),
+            (ScriptResultKind::Report, _, _, _, _, _, _, _, _) => Err(serde::de::Error::custom(
+                "report result must contain only a report",
             )),
         }
     }

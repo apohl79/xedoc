@@ -23,6 +23,7 @@ use uuid::Uuid;
 use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ModelRouterReportOpenResponse;
 use xedoc_app_server_protocol::ModelRouterReportReadParams;
+use xedoc_core::config::Config;
 
 use crate::error_code::internal_error;
 use crate::request_processors::ModelRouterReportRequestProcessor;
@@ -37,7 +38,7 @@ const REFERRER_POLICY: HeaderValue = HeaderValue::from_static("no-referrer");
 
 pub(crate) struct ModelRouterReportServer {
     processor: ModelRouterReportRequestProcessor,
-    public_url: Option<String>,
+    config: Arc<Config>,
     running: Mutex<Option<RunningReportServer>>,
     shutdown: CancellationToken,
 }
@@ -57,6 +58,7 @@ struct ReportServerState {
     capability: Arc<Mutex<Capability>>,
     origin: HeaderValue,
     processor: ModelRouterReportRequestProcessor,
+    config: Arc<Config>,
 }
 
 struct ReportQuery {
@@ -66,13 +68,10 @@ struct ReportQuery {
 }
 
 impl ModelRouterReportServer {
-    pub(crate) fn new(
-        processor: ModelRouterReportRequestProcessor,
-        public_url: Option<String>,
-    ) -> Self {
+    pub(crate) fn new(processor: ModelRouterReportRequestProcessor, config: Arc<Config>) -> Self {
         Self {
             processor,
-            public_url,
+            config,
             running: Mutex::new(None),
             shutdown: CancellationToken::new(),
         }
@@ -80,11 +79,6 @@ impl ModelRouterReportServer {
 
     pub(crate) async fn open(&self) -> Result<ModelRouterReportOpenResponse, JSONRPCErrorError> {
         let capability = Uuid::now_v7().to_string();
-        if let Some(public_url) = &self.public_url {
-            return Ok(ModelRouterReportOpenResponse {
-                url: report_url(public_url, &capability),
-            });
-        }
         if self.shutdown.is_cancelled() {
             return Err(internal_error(
                 "model-router report server is shutting down",
@@ -108,6 +102,7 @@ impl ModelRouterReportServer {
                     Arc::clone(&capability_state),
                     address,
                     self.processor.clone(),
+                    Arc::clone(&self.config),
                 );
                 let shutdown_for_server = self.shutdown.clone();
                 tokio::spawn(async move {
@@ -139,17 +134,11 @@ impl ModelRouterReportServer {
     }
 }
 
-fn report_url(public_url: &str, capability: &str) -> String {
-    let base_url = public_url
-        .split_once('#')
-        .map_or(public_url, |(base_url, _)| base_url);
-    format!("{base_url}#capability={capability}")
-}
-
 fn report_router(
     capability: Arc<Mutex<Capability>>,
     address: SocketAddr,
     processor: ModelRouterReportRequestProcessor,
+    config: Arc<Config>,
 ) -> Router {
     Router::new()
         .route("/", get(report_page))
@@ -161,6 +150,7 @@ fn report_router(
             origin: HeaderValue::from_str(&format!("http://{address}"))
                 .unwrap_or_else(|_| HeaderValue::from_static("http://127.0.0.1")),
             processor,
+            config,
         })
 }
 
@@ -196,7 +186,7 @@ async fn read_report(
     let Some(query) = parse_report_query(uri.query()) else {
         return secured_response(StatusCode::BAD_REQUEST.into_response());
     };
-    match state
+    let report = match state
         .processor
         .read(ModelRouterReportReadParams {
             from_day: query.from_day,
@@ -205,7 +195,17 @@ async fn read_report(
         })
         .await
     {
-        Ok(report) => secured_response(Json(report).into_response()),
+        Ok(report) => report,
+        Err(_) => return secured_response(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+    };
+    let report = match serde_json::to_value(report) {
+        Ok(report) => report,
+        Err(_) => return secured_response(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+    };
+    match xedoc_core::model_router_report::render(&state.config, report).await {
+        Ok(document) => {
+            secured_response(Json(serde_json::json!({ "document": document })).into_response())
+        }
         Err(_) => secured_response(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
     }
 }

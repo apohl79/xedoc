@@ -1672,12 +1672,33 @@ PY
 import json
 import sys
 
-report = json.load(open(sys.argv[1], encoding="utf-8"))
-assert report["days"], report
-assert sum(day["invocations"] for day in report["days"]) > 0, report
-assert sum(day["decisions"] for day in report["days"]) > 0, report
-assert sum(day["attributedInvocations"] for day in report["days"]) > 0, report
-assert report["recentDecisions"], report
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+document = payload["document"]
+assert document["title"].strip(), payload
+assert document["sections"], document
+
+tables = {
+    section["title"]: section
+    for section in document["sections"]
+    if section["kind"] == "table"
+}
+assert len(tables) >= 2, document
+daily = tables["Daily activity"]
+decisions = tables["Recent decisions"]
+assert daily["rows"], daily
+assert decisions["rows"], decisions
+
+notices = [
+    section["text"]
+    for section in document["sections"]
+    if section["kind"] == "notice"
+]
+assert any(
+    text.split(" ", 1)[0].replace(",", "").isdigit()
+    and int(text.split(" ", 1)[0].replace(",", "")) > 0
+    and "invocations" in text
+    for text in notices
+), notices
 PY
   record_scenario report \
     "capability-authenticated report returned decisions and attributed invocations"

@@ -3,6 +3,7 @@
 mod interaction;
 mod invoker;
 mod protocol;
+mod report;
 mod subprocess;
 
 pub use interaction::Action;
@@ -47,6 +48,13 @@ pub use protocol::ScriptMessageLevel;
 pub use protocol::ScriptRequest;
 pub use protocol::ScriptResponse;
 pub use protocol::ScriptResult;
+pub use report::ReportColor;
+pub use report::ReportDocument;
+pub use report::ReportLinePoint;
+pub use report::ReportLineSeries;
+pub use report::ReportMetric;
+pub use report::ReportNoticeLevel;
+pub use report::ReportSection;
 pub use subprocess::OutputLimits;
 pub use subprocess::OutputStream;
 pub use subprocess::SubprocessError;

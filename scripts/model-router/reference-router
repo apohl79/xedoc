@@ -3,6 +3,7 @@
 
 import base64
 import copy
+import datetime
 import hashlib
 import json
 import math
@@ -3483,6 +3484,285 @@ def routing_classifier_response(request, policy):
     )
 
 
+def report_total(days, key):
+    return sum(day.get(key) or 0 for day in days)
+
+
+def report_complete_total(report, key):
+    if report.get("daysTruncated") or any(
+        day.get("invocations", 0) > 0 and day.get(key) is None
+        for day in report["days"]
+    ):
+        return None
+    return report_total(report["days"], key)
+
+
+def report_money(value):
+    return "unknown" if value is None else f"${value:,.2f}"
+
+
+def report_savings_rate(savings, baseline):
+    if savings is None or baseline is None or baseline == 0:
+        return "unknown"
+    return f"{savings / baseline:.1%}"
+
+
+def report_number(value):
+    return f"{value:,}"
+
+
+def report_day(timestamp):
+    return datetime.datetime.fromtimestamp(
+        timestamp, datetime.timezone.utc
+    ).strftime("%Y-%m-%d")
+
+
+def report_timestamp(timestamp):
+    return (
+        datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def report_route(item):
+    return "/".join(
+        str(value)
+        for value in (
+            item.get("providerId"),
+            item.get("modelSlug"),
+            item.get("reasoningEffort"),
+        )
+        if value
+    )
+
+
+def report_decision_route(decision):
+    route = "/".join(
+        str(value)
+        for value in (
+            decision.get("effectiveProviderId"),
+            decision.get("effectiveModelSlug"),
+            decision.get("effectiveReasoningEffort"),
+        )
+        if value
+    )
+    return route or "not routed"
+
+
+def report_confidence(decision):
+    class_id = decision.get("classId")
+    if not class_id:
+        return "not classified"
+    score = decision.get("score")
+    margin = decision.get("margin")
+    score_text = "unknown" if score is None else f"{score:.2f}"
+    margin_text = "unknown" if margin is None else f"+{margin:.2f}"
+    return f"{class_id} {score_text} ({margin_text})"
+
+
+def report_chart_series(report):
+    metrics = (
+        ("Actual cost", "totalCostUsd", "blue"),
+        (
+            "Estimated baseline (price-normalized)",
+            "normalizedBaselineUsd",
+            "orange",
+        ),
+        ("Estimated savings", "estimatedSavingsUsd", "green"),
+    )
+    incomplete_from_day = (
+        report["days"][-1]["day"]
+        if report.get("daysTruncated") and report["days"]
+        else None
+    )
+    grouped = {}
+    day = report["fromDay"]
+    while day <= report["throughDay"]:
+        grouped[day] = {
+            key: {
+                "complete": incomplete_from_day is None or day < incomplete_from_day,
+                "value": 0.0,
+            }
+            for _, key, _ in metrics
+        }
+        day += 86_400
+    for record in report["days"]:
+        costs = grouped.get(record["day"])
+        if costs is None or record.get("invocations", 0) == 0:
+            continue
+        for _, key, _ in metrics:
+            value = record.get(key)
+            if value is None:
+                costs[key]["complete"] = False
+            else:
+                costs[key]["value"] += value
+    return [
+        {
+            "label": label,
+            "color": color,
+            "points": [
+                {
+                    "x": report_day(day),
+                    "value": (
+                        costs[key]["value"] if costs[key]["complete"] else None
+                    ),
+                }
+                for day, costs in grouped.items()
+            ],
+        }
+        for label, key, color in metrics
+    ]
+
+
+def report_render(request):
+    context = request.get("context")
+    if context != {
+        "client": {"kind": "browser", "surfaces": ["reportDocument"]},
+        "renderer": {"version": 1},
+    }:
+        raise ValueError("unsupported report renderer")
+    report = (request.get("params") or {}).get("report")
+    if not isinstance(report, dict):
+        raise ValueError("missing report")
+    required = ("fromDay", "throughDay", "days", "daysTruncated", "recentDecisions")
+    if any(key not in report for key in required):
+        raise ValueError("invalid report")
+    days = report["days"]
+    decisions = report["recentDecisions"]
+    if not isinstance(days, list) or not isinstance(decisions, list):
+        raise ValueError("invalid report rows")
+
+    actual = report_total(days, "totalCostUsd")
+    baseline = report_total(days, "normalizedBaselineUsd")
+    savings = report_total(days, "estimatedSavingsUsd")
+    complete_baseline = report_complete_total(report, "normalizedBaselineUsd")
+    complete_savings = report_complete_total(report, "estimatedSavingsUsd")
+    overhead = report_total(days, "abExperimentOverheadUsd")
+    tokens = sum(
+        report_total(days, key)
+        for key in ("inputTokens", "cachedInputTokens", "outputTokens")
+    )
+    invocations = report_total(days, "invocations")
+    unknown_usage = report_total(days, "missingUsageInvocations")
+    unknown_price = report_total(days, "unknownPriceInvocations")
+    unknown_baseline_price = report_total(days, "unknownBaselinePriceInvocations")
+
+    sections = [
+        {
+            "kind": "metricGrid",
+            "metrics": [
+                {"label": "Actual cost", "value": report_money(actual)},
+                {"label": "Baseline cost", "value": report_money(baseline)},
+                {"label": "Estimated savings", "value": report_money(savings)},
+                {
+                    "label": "Estimated savings rate",
+                    "value": report_savings_rate(
+                        complete_savings, complete_baseline
+                    ),
+                },
+                {"label": "A/B overhead", "value": report_money(overhead)},
+                {"label": "Observed tokens", "value": report_number(tokens)},
+            ],
+        },
+        {
+            "kind": "notice",
+            "level": "info",
+            "text": (
+                f"{report_number(invocations)} invocations; "
+                f"{report_number(unknown_usage)} missing usage, "
+                f"{report_number(unknown_price)} with unknown actual pricing, and "
+                f"{report_number(unknown_baseline_price)} without baseline pricing."
+            ),
+        },
+    ]
+    if report["daysTruncated"]:
+        sections.append(
+            {
+                "kind": "notice",
+                "level": "warning",
+                "text": "Daily rows were truncated to the report limit.",
+            }
+        )
+    sections.extend(
+        [
+            {
+                "kind": "lineChart",
+                "title": "Costs over time",
+                "xAxis": "Time (days)",
+                "yAxis": "Cost (USD)",
+                "series": report_chart_series(report),
+            },
+            {
+                "kind": "table",
+                "title": "Daily activity",
+                "columns": [
+                    "Day",
+                    "Route",
+                    "Scope",
+                    "Tokens",
+                    "Actual",
+                    "Baseline",
+                    "Savings",
+                    "Savings rate",
+                    "A/B overhead",
+                ],
+                "rows": [
+                    [
+                        report_day(day["day"]),
+                        report_route(day),
+                        str(day["scope"]),
+                        report_number(
+                            (day.get("inputTokens") or 0)
+                            + (day.get("cachedInputTokens") or 0)
+                            + (day.get("outputTokens") or 0)
+                        ),
+                        report_money(day.get("totalCostUsd")),
+                        report_money(day.get("normalizedBaselineUsd")),
+                        report_money(day.get("estimatedSavingsUsd")),
+                        report_savings_rate(
+                            day.get("estimatedSavingsUsd"),
+                            day.get("normalizedBaselineUsd"),
+                        ),
+                        report_money(day.get("abExperimentOverheadUsd")),
+                    ]
+                    for day in days
+                ],
+            },
+            {
+                "kind": "table",
+                "title": "Recent decisions",
+                "columns": [
+                    "When",
+                    "Scope",
+                    "Route",
+                    "Class / confidence",
+                    "Fallback",
+                    "Reason",
+                ],
+                "rows": [
+                    [
+                        report_timestamp(decision["createdAt"]),
+                        str(decision["scope"]),
+                        report_decision_route(decision),
+                        report_confidence(decision),
+                        "yes" if decision.get("fallback") else "no",
+                        str(decision["reason"]),
+                    ]
+                    for decision in decisions
+                ],
+            },
+        ]
+    )
+    return {
+        "kind": "report",
+        "report": {
+            "title": "Model router report",
+            "sections": sections,
+        },
+    }
+
+
 def routing_decide(
     request,
     policy,
@@ -4334,8 +4614,11 @@ def main():
             or request.get("extension") != "model-router"
         ):
             raise ValueError("unsupported protocol or extension")
-        policy = load_policy()
         method = request.get("method")
+        if method == "report.render":
+            result = report_render(request)
+        else:
+            policy = load_policy()
         if method == "settings.open":
             result = settings_open(request, policy)
         elif method == "interaction.respond":
@@ -4351,6 +4634,8 @@ def main():
             result = routing_state(policy)
         elif method == "routing.classifier.respond":
             result = routing_classifier_response(request, policy)
+        elif method == "report.render":
+            pass
         else:
             raise ValueError("unsupported method")
         response(request, result=result)

@@ -29,6 +29,8 @@ use xedoc_script_protocol::InteractionResponse;
 use xedoc_script_protocol::InteractionSurface;
 use xedoc_script_protocol::Method;
 use xedoc_script_protocol::OpaqueId;
+use xedoc_script_protocol::ReportDocument;
+use xedoc_script_protocol::ReportSection;
 use xedoc_script_protocol::RequestId;
 use xedoc_script_protocol::ResponseOutcome;
 use xedoc_script_protocol::Route;
@@ -81,6 +83,22 @@ const MAX_CLASSIFIER_INPUT_BYTES: usize = 8_192;
 const MAX_CLASSIFIER_OUTPUT_BYTES: usize = 4_096;
 const MAX_ROUTER_STATE_IDENTIFIER_BYTES: usize = 128;
 const MAX_ROUTER_STATE_REVISION_BYTES: usize = 128;
+const MAX_REPORT_INPUT_BYTES: usize = 512 * 1024;
+const MAX_REPORT_INPUT_DEPTH: usize = 16;
+const MAX_REPORT_INPUT_NODES: usize = 65_536;
+const MAX_REPORT_INPUT_COLLECTION_ITEMS: usize = 16_384;
+const MAX_REPORT_INPUT_STRING_BYTES: usize = 16 * 1024;
+const MAX_REPORT_DOCUMENT_BYTES: usize = 256 * 1024;
+const MAX_REPORT_SECTIONS: usize = 32;
+const MAX_REPORT_METRICS: usize = 64;
+const MAX_REPORT_SERIES: usize = 8;
+const MAX_REPORT_POINTS: usize = 2_048;
+const MAX_REPORT_COLUMNS: usize = 32;
+const MAX_REPORT_ROWS: usize = 4_096;
+const MAX_REPORT_CELLS: usize = 32_768;
+const MAX_REPORT_TITLE_BYTES: usize = 256;
+const MAX_REPORT_LABEL_BYTES: usize = 256;
+const MAX_REPORT_TEXT_BYTES: usize = 4_096;
 const BUNDLED_ROUTER_SCRIPT_PATH: &str = "model-router/reference-router";
 /// Sentinel used for router approval prompts that remain valid until answered.
 pub(crate) const MODEL_ROUTER_INTERACTION_NEVER_EXPIRES: i64 = i64::MAX;
@@ -203,7 +221,8 @@ impl ModelRouterScriptHost {
                             ScriptResult::ClassifierRequest { .. }
                             | ScriptResult::State { .. }
                             | ScriptResult::Complete { .. }
-                            | ScriptResult::Message { .. },
+                            | ScriptResult::Message { .. }
+                            | ScriptResult::Report { .. },
                     }) => ModelRouterScriptDecisionOutcome::fallback(
                         ModelRouterScriptFailure::UnexpectedResult,
                     ),
@@ -217,7 +236,8 @@ impl ModelRouterScriptHost {
                 result:
                     ScriptResult::State { .. }
                     | ScriptResult::Complete { .. }
-                    | ScriptResult::Message { .. },
+                    | ScriptResult::Message { .. }
+                    | ScriptResult::Report { .. },
             }) => ModelRouterScriptDecisionOutcome::fallback(
                 ModelRouterScriptFailure::UnexpectedResult,
             ),
@@ -401,6 +421,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::Message { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::Report { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -454,6 +477,9 @@ impl ModelRouterScriptHost {
             }
             | ResponseOutcome::Result {
                 result: ScriptResult::Message { .. },
+            }
+            | ResponseOutcome::Result {
+                result: ScriptResult::Report { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
             ResponseOutcome::Error { error } => Err(script_error_failure(error)),
         }
@@ -519,7 +545,8 @@ impl ModelRouterScriptHost {
                 result:
                     ScriptResult::State { .. }
                     | ScriptResult::Complete { .. }
-                    | ScriptResult::Message { .. },
+                    | ScriptResult::Message { .. }
+                    | ScriptResult::Report { .. },
             }) => ModelRouterScriptInteractionOutcome::Failure(
                 ModelRouterScriptFailure::UnexpectedResult,
             ),
@@ -559,6 +586,49 @@ impl ModelRouterScriptHost {
                     ScriptResult::Route { .. }
                     | ScriptResult::Interaction { .. }
                     | ScriptResult::ClassifierRequest { .. }
+                    | ScriptResult::Complete { .. }
+                    | ScriptResult::Message { .. }
+                    | ScriptResult::Report { .. },
+            } => Err(ModelRouterScriptFailure::UnexpectedResult),
+            ResponseOutcome::Error { error } => Err(script_error_failure(error)),
+        }
+    }
+
+    /// Requests and validates a script-owned report document.
+    pub(crate) async fn render_report(
+        &self,
+        report: Value,
+        cancellation: CancellationToken,
+    ) -> Result<ReportDocument, ModelRouterScriptFailure> {
+        validate_report_input(&report)?;
+        let context = serde_json::json!({
+            "client": {
+                "kind": "browser",
+                "surfaces": ["reportDocument"],
+            },
+            "renderer": {
+                "version": 1,
+            },
+        });
+        let outcome = self
+            .invoke(
+                Method::ReportRender,
+                context,
+                serde_json::json!({ "report": report }),
+                self.interaction_timeout,
+                cancellation,
+            )
+            .await?;
+        match outcome {
+            ResponseOutcome::Result {
+                result: ScriptResult::Report { report },
+            } => validate_report_document(report),
+            ResponseOutcome::Result {
+                result:
+                    ScriptResult::Route { .. }
+                    | ScriptResult::Interaction { .. }
+                    | ScriptResult::ClassifierRequest { .. }
+                    | ScriptResult::State { .. }
                     | ScriptResult::Complete { .. }
                     | ScriptResult::Message { .. },
             } => Err(ModelRouterScriptFailure::UnexpectedResult),
@@ -616,14 +686,190 @@ impl ModelRouterScriptHost {
             .then(|| load_jev_api_key(&self.xedoc_home))
             .flatten()
             .unwrap_or_default();
-        let environment = [(
-            OsString::from("TYPESAFE_API_KEY"),
-            OsString::from(jev_api_key),
-        )];
-        ScriptInvoker::new(self.argv.clone())
-            .invoke_with_environment(&protocol_request, timeout, cancellation, environment)
-            .await
-            .map_err(ModelRouterScriptFailure::Invocation)
+        let invoker = ScriptInvoker::new(self.argv.clone());
+        let outcome = if matches!(&protocol_request.method, Method::ReportRender) {
+            invoker
+                .invoke(&protocol_request, timeout, cancellation)
+                .await
+        } else {
+            let environment = [(
+                OsString::from("TYPESAFE_API_KEY"),
+                OsString::from(jev_api_key),
+            )];
+            invoker
+                .invoke_with_environment(&protocol_request, timeout, cancellation, environment)
+                .await
+        };
+        outcome.map_err(ModelRouterScriptFailure::Invocation)
+    }
+}
+
+fn validate_report_input(report: &Value) -> Result<(), ModelRouterScriptFailure> {
+    if serde_json::to_vec(report)
+        .map_err(|_| ModelRouterScriptFailure::Encode)?
+        .len()
+        > MAX_REPORT_INPUT_BYTES
+    {
+        return Err(ModelRouterScriptFailure::InvalidReportInput);
+    }
+    let mut remaining_nodes = MAX_REPORT_INPUT_NODES;
+    validate_report_input_value(report, /*depth*/ 0, &mut remaining_nodes)
+}
+
+fn validate_report_input_value(
+    value: &Value,
+    depth: usize,
+    remaining_nodes: &mut usize,
+) -> Result<(), ModelRouterScriptFailure> {
+    if depth > MAX_REPORT_INPUT_DEPTH || *remaining_nodes == 0 {
+        return Err(ModelRouterScriptFailure::InvalidReportInput);
+    }
+    *remaining_nodes -= 1;
+    match value {
+        Value::Null | Value::Bool(_) | Value::Number(_) => Ok(()),
+        Value::String(value) if value.len() <= MAX_REPORT_INPUT_STRING_BYTES => Ok(()),
+        Value::String(_) => Err(ModelRouterScriptFailure::InvalidReportInput),
+        Value::Array(values) if values.len() <= MAX_REPORT_INPUT_COLLECTION_ITEMS => values
+            .iter()
+            .try_for_each(|value| validate_report_input_value(value, depth + 1, remaining_nodes)),
+        Value::Array(_) => Err(ModelRouterScriptFailure::InvalidReportInput),
+        Value::Object(values) if values.len() <= MAX_REPORT_INPUT_COLLECTION_ITEMS => {
+            values.iter().try_for_each(|(key, value)| {
+                if key.len() > MAX_REPORT_INPUT_STRING_BYTES {
+                    return Err(ModelRouterScriptFailure::InvalidReportInput);
+                }
+                validate_report_input_value(value, depth + 1, remaining_nodes)
+            })
+        }
+        Value::Object(_) => Err(ModelRouterScriptFailure::InvalidReportInput),
+    }
+}
+
+fn validate_report_document(
+    report: ReportDocument,
+) -> Result<ReportDocument, ModelRouterScriptFailure> {
+    if report.title.trim().is_empty()
+        || report.title.len() > MAX_REPORT_TITLE_BYTES
+        || report.sections.is_empty()
+        || report.sections.len() > MAX_REPORT_SECTIONS
+        || serde_json::to_vec(&report)
+            .map_err(|_| ModelRouterScriptFailure::InvalidReport)?
+            .len()
+            > MAX_REPORT_DOCUMENT_BYTES
+    {
+        return Err(ModelRouterScriptFailure::InvalidReport);
+    }
+    report
+        .sections
+        .iter()
+        .try_for_each(validate_report_section)?;
+    Ok(report)
+}
+
+fn validate_report_section(section: &ReportSection) -> Result<(), ModelRouterScriptFailure> {
+    match section {
+        ReportSection::MetricGrid { metrics } => {
+            if metrics.is_empty() || metrics.len() > MAX_REPORT_METRICS {
+                return Err(ModelRouterScriptFailure::InvalidReport);
+            }
+            metrics.iter().try_for_each(|metric| {
+                validate_report_label(&metric.label)?;
+                validate_report_text(&metric.value)
+            })
+        }
+        ReportSection::LineChart {
+            title,
+            x_axis,
+            y_axis,
+            series,
+        } => {
+            validate_report_title(title)?;
+            validate_report_label(x_axis)?;
+            validate_report_label(y_axis)?;
+            if series.is_empty() || series.len() > MAX_REPORT_SERIES {
+                return Err(ModelRouterScriptFailure::InvalidReport);
+            }
+            let expected_points = series[0].points.len();
+            if expected_points == 0 || expected_points > MAX_REPORT_POINTS {
+                return Err(ModelRouterScriptFailure::InvalidReport);
+            }
+            let expected_x = series[0]
+                .points
+                .iter()
+                .map(|point| point.x.as_str())
+                .collect::<Vec<_>>();
+            series.iter().try_for_each(|line| {
+                validate_report_label(&line.label)?;
+                if line.points.len() != expected_points {
+                    return Err(ModelRouterScriptFailure::InvalidReport);
+                }
+                line.points
+                    .iter()
+                    .zip(&expected_x)
+                    .try_for_each(|(point, expected_x)| {
+                        validate_report_label(&point.x)?;
+                        if point.x != *expected_x
+                            || point.value.is_some_and(|value| !value.is_finite())
+                        {
+                            return Err(ModelRouterScriptFailure::InvalidReport);
+                        }
+                        Ok(())
+                    })
+            })
+        }
+        ReportSection::Table {
+            title,
+            columns,
+            rows,
+        } => {
+            validate_report_title(title)?;
+            if columns.is_empty()
+                || columns.len() > MAX_REPORT_COLUMNS
+                || rows.len() > MAX_REPORT_ROWS
+                || rows.len().saturating_mul(columns.len()) > MAX_REPORT_CELLS
+            {
+                return Err(ModelRouterScriptFailure::InvalidReport);
+            }
+            columns
+                .iter()
+                .try_for_each(|column| validate_report_label(column))?;
+            rows.iter().try_for_each(|row| {
+                if row.len() != columns.len() {
+                    return Err(ModelRouterScriptFailure::InvalidReport);
+                }
+                row.iter().try_for_each(|cell| validate_report_text(cell))
+            })
+        }
+        ReportSection::Notice { text, .. } => {
+            if text.trim().is_empty() {
+                return Err(ModelRouterScriptFailure::InvalidReport);
+            }
+            validate_report_text(text)
+        }
+    }
+}
+
+fn validate_report_title(value: &str) -> Result<(), ModelRouterScriptFailure> {
+    if value.trim().is_empty() || value.len() > MAX_REPORT_TITLE_BYTES {
+        Err(ModelRouterScriptFailure::InvalidReport)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_report_label(value: &str) -> Result<(), ModelRouterScriptFailure> {
+    if value.trim().is_empty() || value.len() > MAX_REPORT_LABEL_BYTES {
+        Err(ModelRouterScriptFailure::InvalidReport)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_report_text(value: &str) -> Result<(), ModelRouterScriptFailure> {
+    if value.len() > MAX_REPORT_TEXT_BYTES {
+        Err(ModelRouterScriptFailure::InvalidReport)
+    } else {
+        Ok(())
     }
 }
 
@@ -931,6 +1177,10 @@ pub(crate) enum ModelRouterScriptFailure {
     InvalidFeedback,
     /// The script returned an invalid router policy snapshot.
     InvalidState,
+    /// The host input exceeded the bounded report request contract.
+    InvalidReportInput,
+    /// The script returned an invalid declarative report document.
+    InvalidReport,
     /// The script returned an invalid prompt-free decision summary.
     InvalidSummary,
     /// The script returned invalid model-facing routing instructions.
@@ -964,6 +1214,10 @@ impl ModelRouterScriptFailure {
             Self::InvalidInteraction => "router script returned an invalid interaction".to_string(),
             Self::InvalidFeedback => "router script returned invalid routing feedback".to_string(),
             Self::InvalidState => "router script returned invalid router state".to_string(),
+            Self::InvalidReportInput => {
+                "router report input exceeded the script contract".to_string()
+            }
+            Self::InvalidReport => "router script returned an invalid report".to_string(),
             Self::InvalidSummary => {
                 "router script returned an invalid decision summary".to_string()
             }
@@ -995,6 +1249,8 @@ impl ModelRouterScriptFailure {
             | Self::InvalidInteraction
             | Self::InvalidFeedback
             | Self::InvalidState
+            | Self::InvalidReportInput
+            | Self::InvalidReport
             | Self::InvalidSummary
             | Self::InvalidModelInstructions
             | Self::InvalidClassifierRequest

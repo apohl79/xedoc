@@ -69,6 +69,7 @@ mod mcp_tool_call;
 pub(crate) mod mention_syntax;
 mod model_router;
 mod model_router_credentials;
+pub mod model_router_report;
 mod model_router_script_host;
 pub mod model_router_settings;
 pub(crate) mod utils;

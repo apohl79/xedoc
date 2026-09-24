@@ -21,8 +21,6 @@ pub struct ModelRouterConfigToml {
     /// Bounded conversation context supplied to the script.
     #[serde(default)]
     pub context: ModelRouterContextToml,
-    /// Optional public URL for the host-owned routing report.
-    pub report_url: Option<String>,
     /// Forward-compatible fields preserved only long enough to report a startup warning.
     #[serde(default, flatten, skip_serializing)]
     #[schemars(skip)]
@@ -36,7 +34,6 @@ impl Default for ModelRouterConfigToml {
             decision_timeout_ms: default_decision_timeout_ms(),
             interaction_timeout_ms: default_interaction_timeout_ms(),
             context: ModelRouterContextToml::default(),
-            report_url: None,
             ignored_fields: BTreeMap::new(),
         }
     }

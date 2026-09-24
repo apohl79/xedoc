@@ -1673,10 +1673,6 @@
           "minimum": 0.0,
           "type": "integer"
         },
-        "report_url": {
-          "description": "Optional public URL for the host-owned routing report.",
-          "type": "string"
-        },
         "script": {
           "description": "Direct-exec argv for the sole model-router script.",
           "items": {
@@ -5338,7 +5334,6 @@
         },
         "decision_timeout_ms": 3000,
         "interaction_timeout_ms": 10000,
-        "report_url": null,
         "script": null
       },
       "description": "Experimental model-router controls and policy location."
