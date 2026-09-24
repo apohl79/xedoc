@@ -161,6 +161,18 @@ const renderLineChart = (section) => {
     });
     path.classList.add("series");
     svg.append(path);
+    series.points.forEach((point, index) => {
+      if (point.value != null && point.value !== 0) {
+        const marker = svgElement("circle", {
+          cx: x(index),
+          cy: y(point.value),
+          fill: palette[series.color],
+          r: 3,
+        });
+        marker.classList.add("series-point");
+        svg.append(marker);
+      }
+    });
   });
   container.append(legend, svg);
   return container;

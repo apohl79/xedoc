@@ -3573,15 +3573,6 @@ def report_total(days, key):
     return sum(day.get(key) or 0 for day in days)
 
 
-def report_complete_total(report, key):
-    if report.get("daysTruncated") or any(
-        day.get("invocations", 0) > 0 and day.get(key) is None
-        for day in report["days"]
-    ):
-        return None
-    return report_total(report["days"], key)
-
-
 def report_money(value):
     return "unknown" if value is None else f"${value:,.2f}"
 
@@ -3650,11 +3641,11 @@ def report_chart_series(report):
     metrics = (
         ("Actual cost", "totalCostUsd", "blue"),
         (
-            "Estimated baseline (price-normalized)",
+            "Estimated baseline (priced usage)",
             "normalizedBaselineUsd",
             "orange",
         ),
-        ("Estimated savings", "estimatedSavingsUsd", "green"),
+        ("Estimated savings (priced usage)", "estimatedSavingsUsd", "green"),
     )
     incomplete_from_day = (
         report["days"][-1]["day"]
@@ -3665,22 +3656,25 @@ def report_chart_series(report):
     day = report["fromDay"]
     while day <= report["throughDay"]:
         grouped[day] = {
-            key: {
-                "complete": incomplete_from_day is None or day < incomplete_from_day,
-                "value": 0.0,
+            "invocations": 0,
+            **{
+                key: {
+                    "known": 0,
+                    "value": 0.0,
+                }
+                for _, key, _ in metrics
             }
-            for _, key, _ in metrics
         }
         day += 86_400
     for record in report["days"]:
         costs = grouped.get(record["day"])
         if costs is None or record.get("invocations", 0) == 0:
             continue
+        costs["invocations"] += record["invocations"]
         for _, key, _ in metrics:
             value = record.get(key)
-            if value is None:
-                costs[key]["complete"] = False
-            else:
+            if value is not None:
+                costs[key]["known"] += 1
                 costs[key]["value"] += value
     return [
         {
@@ -3690,7 +3684,17 @@ def report_chart_series(report):
                 {
                     "x": report_day(day),
                     "value": (
-                        costs[key]["value"] if costs[key]["complete"] else None
+                        None
+                        if incomplete_from_day is not None and day >= incomplete_from_day
+                        else (
+                            0.0
+                            if costs["invocations"] == 0
+                            else (
+                                costs[key]["value"]
+                                if costs[key]["known"] > 0
+                                else None
+                            )
+                        )
                     ),
                 }
                 for day, costs in grouped.items()
@@ -3721,8 +3725,6 @@ def report_render(request):
     actual = report_total(days, "totalCostUsd")
     baseline = report_total(days, "normalizedBaselineUsd")
     savings = report_total(days, "estimatedSavingsUsd")
-    complete_baseline = report_complete_total(report, "normalizedBaselineUsd")
-    complete_savings = report_complete_total(report, "estimatedSavingsUsd")
     overhead = report_total(days, "abExperimentOverheadUsd")
     tokens = sum(
         report_total(days, key)
@@ -3741,10 +3743,8 @@ def report_render(request):
                 {"label": "Baseline cost", "value": report_money(baseline)},
                 {"label": "Estimated savings", "value": report_money(savings)},
                 {
-                    "label": "Estimated savings rate",
-                    "value": report_savings_rate(
-                        complete_savings, complete_baseline
-                    ),
+                    "label": "Estimated savings rate (priced usage)",
+                    "value": report_savings_rate(savings, baseline),
                 },
                 {"label": "A/B overhead", "value": report_money(overhead)},
                 {"label": "Observed tokens", "value": report_number(tokens)},
@@ -3789,7 +3789,7 @@ def report_render(request):
                     "Actual",
                     "Baseline",
                     "Savings",
-                    "Savings rate",
+                    "Savings rate (priced usage)",
                     "A/B overhead",
                 ],
                 "rows": [

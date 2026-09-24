@@ -244,9 +244,9 @@ FROM (
         CASE WHEN COUNT(*) = COUNT(i.input_tokens) THEN SUM(i.input_tokens) END,
         CASE WHEN COUNT(*) = COUNT(i.cached_input_tokens) THEN SUM(i.cached_input_tokens) END,
         CASE WHEN COUNT(*) = COUNT(i.output_tokens) THEN SUM(i.output_tokens) END,
-        CASE WHEN COUNT(*) = COUNT(i.total_cost_usd) THEN SUM(i.total_cost_usd) END,
-        CASE WHEN COUNT(*) = COUNT(i.normalized_baseline_usd) THEN SUM(i.normalized_baseline_usd) END,
-        CASE WHEN COUNT(*) = COUNT(i.estimated_savings_usd) THEN SUM(i.estimated_savings_usd) END,
+        SUM(i.total_cost_usd),
+        SUM(i.normalized_baseline_usd),
+        SUM(i.estimated_savings_usd),
         CASE WHEN COUNT(*) = COUNT(i.ab_experiment_overhead_usd) THEN SUM(i.ab_experiment_overhead_usd) END,
         SUM(CASE WHEN i.decision_id IS NOT NULL THEN 1 ELSE 0 END) AS attributed_invocations,
         SUM(CASE WHEN i.decision_id IS NULL THEN 1 ELSE 0 END) AS unattributed_invocations,
@@ -329,3 +329,7 @@ LIMIT ?
         .map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+#[path = "model_router_tests.rs"]
+mod tests;
