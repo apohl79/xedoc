@@ -36,6 +36,7 @@ readonly scenario_log="$artifact_dir/scenarios.tsv"
 readonly mock_port_file="$artifact_dir/mock-port"
 readonly hold_response_file="$artifact_dir/release-held-root"
 readonly permission_hook_log="$artifact_dir/model-router-permission-hook.jsonl"
+readonly report_url_file="$artifact_dir/report-url"
 readonly state_db="$runtime_home/state_5.sqlite"
 readonly router_runtime="${XEDOC_TMUX_ROUTER_RUNTIME:-}"
 
@@ -1261,6 +1262,10 @@ start_tui() {
     env
     -u
     XEDOC_TMUX_JEV_API_KEY
+    XEDOC_DISABLE_KEYCHAIN=1
+    "PATH=$repo_root/scripts/model-router:$PATH"
+    "BROWSER=$repo_root/scripts/model-router/capture-browser-url"
+    "XEDOC_BROWSER_CAPTURE=$report_url_file"
     "XEDOC_HOME=$runtime_home"
     "XEDOC_ROUTER_RUNTIME=$router_runtime"
     OPENAI_API_KEY=router-e2e-key
@@ -1282,6 +1287,51 @@ start_tui() {
   wait_for_tui_ready
   record_config_digest
   assert_standalone_launch
+}
+
+run_report_probe() {
+  reset_policy
+  start_tui
+  open_settings
+  send_key Home
+  for _ in {1..6}; do
+    send_key Down
+  done
+  send_key Enter
+  for _ in {1..60}; do
+    [[ -s "$report_url_file" ]] && break
+    capture_pane | sed -n 's/.*Opened \(http:\/\/[^ ]*#capability=[^ ]*\) in your browser.*/\1/p' |
+      head -1 >"$report_url_file"
+    sleep 0.1
+  done
+  [[ -s "$report_url_file" ]] || fail "timed out waiting for report URL"
+  local report_url
+  report_url="$(<"$report_url_file")"
+  [[ "$report_url" == http://*#capability=* ]] ||
+    fail "report URL did not contain a capability: $report_url"
+  local report_endpoint="${report_url%%#*}"
+  report_endpoint="${report_endpoint%/}/api/report"
+  local capability="${report_url##*#capability=}"
+  local report_response="$artifact_dir/report-response.txt"
+  curl --silent --show-error --write-out '\nHTTP_STATUS:%{http_code}\n' \
+    -H "X-Xedoc-Report-Capability: $capability" \
+    "$report_endpoint" >"$report_response"
+  local report_status
+  report_status="$(sed -n 's/^HTTP_STATUS://p' "$report_response")"
+  sed '/^HTTP_STATUS:/d' "$report_response" >"$artifact_dir/report.json"
+  if [[ "$report_status" != "200" ]]; then
+    cat "$report_response" >&2
+    fail "report endpoint returned HTTP $report_status"
+  fi
+  python3 - "$artifact_dir/report.json" <<'PY'
+import json
+import sys
+
+document = json.load(open(sys.argv[1], encoding="utf-8"))["document"]
+assert document["title"] == "Model router report", document
+assert document["sections"], document
+PY
+  record_scenario report-capability "tmux opened the report URL and fetched its capability-protected document"
 }
 
 open_settings() {
@@ -1648,10 +1698,10 @@ open_report_and_assert() {
   require_command curl
   exercise_host_action 6 "open report"
   local report_pane="$artifact_dir/report-pane.log"
-  local report_url_file="$artifact_dir/report-url.txt"
+  local report_open_url_file="$artifact_dir/report-url.txt"
   local report_json="$artifact_dir/report.json"
   capture_viewport >"$report_pane"
-  python3 - "$report_pane" "$report_url_file" <<'PY'
+  python3 - "$report_pane" "$report_open_url_file" <<'PY'
 import pathlib
 import re
 import sys
@@ -1662,7 +1712,7 @@ assert urls, text
 pathlib.Path(sys.argv[2]).write_text(urls[-1], encoding="utf-8")
 PY
   local report_url
-  report_url="$(<"$report_url_file")"
+  report_url="$(<"$report_open_url_file")"
   local capability="${report_url##*#capability=}"
   local report_base="${report_url%%#*}"
   local api_url="${report_base%/}/api/report"
@@ -2384,9 +2434,11 @@ PY
 }
 
 main() {
+  export XEDOC_DISABLE_KEYCHAIN=1
   require_command tmux
   require_command python3
   require_command shasum
+  require_command curl
   [[ -x "$binary" ]] || fail "XEDOC_TMUX_TEST_BIN is not executable: $binary"
   [[ -x "$source_router" ]] || fail "missing packaged reference router: $source_router"
   [[ -f "$source_policy" ]] || fail "missing packaged reference policy: $source_policy"
@@ -2450,6 +2502,11 @@ main() {
     assert_config_unchanged
     printf 'PASS: scripted model-router approval tmux acceptance\n'
     return
+  elif [[ "$phase" == "report" ]]; then
+    run_report_probe
+    assert_config_unchanged
+    printf 'PASS: scripted model-router report tmux acceptance\n'
+    return
   elif [[ "$phase" == "post-modes" ]]; then
     start_tui
   elif [[ "$phase" == "baseline-ab" || "$phase" == "ab" ]]; then
@@ -2469,6 +2526,7 @@ main() {
   if [[ "${XEDOC_TMUX_REQUIRE_JEV_LIVE:-0}" == "1" ]]; then
     run_jev_setup_and_classification
   fi
+  run_report_probe
 
   assert_config_unchanged
   if [[ "$phase" == "full" ]]; then

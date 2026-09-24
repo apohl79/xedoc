@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+if [ "$#" -gt 0 ]; then
+    printf '%s\n' "$1" >"${XEDOC_BROWSER_CAPTURE:?}"
+fi

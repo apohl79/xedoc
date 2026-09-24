@@ -196,18 +196,37 @@ async fn read_report(
         .await
     {
         Ok(report) => report,
-        Err(_) => return secured_response(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+        Err(error) => {
+            tracing::warn!(?error, "failed to read model-router report");
+            return report_error_response(format!("failed to read report: {error:?}"));
+        }
     };
     let report = match serde_json::to_value(report) {
         Ok(report) => report,
-        Err(_) => return secured_response(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+        Err(error) => {
+            tracing::warn!(%error, "failed to serialize model-router report");
+            return report_error_response(format!("failed to serialize report: {error}"));
+        }
     };
     match xedoc_core::model_router_report::render(&state.config, report).await {
         Ok(document) => {
             secured_response(Json(serde_json::json!({ "document": document })).into_response())
         }
-        Err(_) => secured_response(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+        Err(error) => {
+            tracing::warn!(%error, "failed to render model-router report");
+            report_error_response(format!("failed to render report: {error}"))
+        }
     }
+}
+
+fn report_error_response(message: String) -> Response {
+    secured_response(
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": message })),
+        )
+            .into_response(),
+    )
 }
 
 fn parse_report_query(query: Option<&str>) -> Option<ReportQuery> {

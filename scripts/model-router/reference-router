@@ -1023,7 +1023,8 @@ def response(request, result=None, error=None):
         answer["error"] = error
     else:
         answer["result"] = result
-    json.dump(answer, sys.stdout, separators=(",", ":"))
+    serialized = json.dumps(answer, separators=(",", ":"), allow_nan=False)
+    sys.stdout.write(serialized)
     sys.stdout.write("\n")
 
 

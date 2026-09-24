@@ -1,7 +1,9 @@
 //! Bounded declarative documents rendered by Xedoc report surfaces.
 
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
+use serde_json::Value;
 
 /// A script-authored report document.
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,8 +29,10 @@ pub enum ReportSection {
         /// Non-empty chart title.
         title: String,
         /// Non-empty horizontal-axis label.
+        #[serde(rename = "xAxis")]
         x_axis: String,
         /// Non-empty vertical-axis label.
+        #[serde(rename = "yAxis")]
         y_axis: String,
         /// Ordered chart series.
         series: Vec<ReportLineSeries>,
@@ -80,7 +84,23 @@ pub struct ReportLinePoint {
     /// Display-ready X coordinate.
     pub x: String,
     /// Finite Y coordinate, or `null` for an explicit gap.
+    #[serde(deserialize_with = "deserialize_report_point_value")]
     pub value: Option<f64>,
+}
+
+fn deserialize_report_point_value<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    let value = value.get("value").cloned().unwrap_or(value);
+    value
+        .as_f64()
+        .map(Some)
+        .ok_or_else(|| serde::de::Error::custom("report point value must be a finite number"))
 }
 
 /// Safe host-defined chart colors.

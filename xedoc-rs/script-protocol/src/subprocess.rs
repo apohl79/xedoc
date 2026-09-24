@@ -168,7 +168,7 @@ impl SubprocessDiagnostic {
         }
         if let SubprocessFailureKind::DeserializeResponse(error) = kind {
             details.push(format!(
-                "serde_category={:?}, serde_line={}, serde_column={}",
+                "serde_error={error}, serde_category={:?}, serde_line={}, serde_column={}",
                 error.classify(),
                 error.line(),
                 error.column()
