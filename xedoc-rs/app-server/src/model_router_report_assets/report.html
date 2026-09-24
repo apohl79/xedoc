@@ -14,9 +14,13 @@
     <section id="summary" class="summary" aria-label="Accounting summary"></section>
     <p id="coverage" class="note"></p>
     <p id="truncated" class="note" hidden></p>
+    <figure class="cost-graph">
+      <figcaption>Costs over time</figcaption>
+      <div id="cost-graph" aria-live="polite"></div>
+    </figure>
     <h2>Daily activity</h2>
     <table>
-      <thead><tr><th>Day</th><th>Route</th><th>Scope</th><th>Tokens</th><th>Actual</th><th>Baseline</th><th>Savings</th><th>A/B overhead</th></tr></thead>
+      <thead><tr><th>Day</th><th>Route</th><th>Scope</th><th>Tokens</th><th>Actual</th><th>Baseline</th><th>Savings</th><th>Savings rate</th><th>A/B overhead</th></tr></thead>
       <tbody id="days"></tbody>
     </table>
     <h2>Recent decisions</h2>
