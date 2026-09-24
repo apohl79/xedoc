@@ -226,6 +226,31 @@ def upgrade_policy(policy):
         }
         policy["approvalCalibration"]["buckets"] = {}
         changed = True
+    else:
+        external = policy["externalClassifier"]
+        if (
+            not isinstance(external, dict)
+            or external.get("backend") not in JEV_BACKENDS
+            or (
+                external.get("backend") == "jev"
+                and external.get("model") not in JEV_MODEL_OPTIONS
+            )
+            or (
+                external.get("backend") != "jev"
+                and external.get("model") is not None
+            )
+        ):
+            policy["externalClassifier"] = {
+                "backend": (
+                    "xedoc-llm" if policy["classifierRoute"] is not None else "jev"
+                ),
+                "model": (
+                    None
+                    if policy["classifierRoute"] is not None
+                    else JEV_MODEL_OPTIONS[0]
+                ),
+            }
+            changed = True
     had_legacy_not_confident_policy = "notConfidentPolicy" in policy
     legacy_not_confident_policy = policy.pop("notConfidentPolicy", None)
     if (
@@ -1914,7 +1939,11 @@ def settings_response(request, policy):
             externalClassifier={
                 "backend": backend,
                 "model": (
-                    policy["externalClassifier"]["model"]
+                    (
+                        policy["externalClassifier"]["model"]
+                        if policy["externalClassifier"]["model"] in JEV_MODEL_OPTIONS
+                        else JEV_MODEL_OPTIONS[0]
+                    )
                     if backend == "jev"
                     else None
                 ),
@@ -2507,29 +2536,7 @@ def combined_confidence(policy, similarity, llm_confidence):
             + EMBEDDER_CONFIDENCE_WEIGHT * similarity
         )
     )
-    calibration = policy["approvalCalibration"]
-    outcomes = calibration["buckets"].get(str(min(9, int(raw * 10))))
-    if outcomes is None:
-        return None, raw
-    total = sum(outcomes.values())
-    if total < calibration["minimumSamples"]:
-        return None, raw
-    correct = outcomes["approved"]
-    calibrated = (correct + 1) / (total + 2)
-    return min(raw, calibrated), raw
-
-
-def calibration_progress(policy, raw_confidence):
-    if raw_confidence is None:
-        return None
-    calibration = policy["approvalCalibration"]
-    bucket = str(min(9, int(raw_confidence * 10)))
-    outcomes = calibration["buckets"].get(
-        bucket, {"approved": 0, "rejected": 0, "override": 0}
-    )
-    completed = sum(outcomes.values())
-    required = calibration["minimumSamples"]
-    return completed, required, max(0, required - completed)
+    return raw, raw
 
 
 def record_approval_outcome(policy, raw_confidence, outcome):
@@ -2674,10 +2681,10 @@ def routing_calculation(
         )
     thresholds = confidence_thresholds(policy)
     calibration_detail = (
-        f"calibrated confidence {percentage(calibrated_confidence)} "
+        f"overall confidence {percentage(calibrated_confidence)} "
         f"(minimum {percentage(thresholds['minimumConfidence'])})"
         if calibrated_confidence is not None
-        else "confidence uncalibrated; human approval required"
+        else "overall confidence unavailable; human approval required"
     )
     calculation = (
         f"{ranking_detail} · {calibration_detail} · similarity "
@@ -2740,16 +2747,10 @@ def decision(
     llm_score = (
         percentage(llm_confidence) if llm_confidence is not None else "not available"
     )
-    progress = None if steering else calibration_progress(policy, raw_confidence)
     overall = (
-        f"{percentage(calibrated_confidence)} calibrated overall"
+        f"{percentage(calibrated_confidence)} overall confidence"
         if calibrated_confidence is not None
-        else (
-            f"uncalibrated; {progress[0]}/{progress[1]} human outcomes "
-            f"({progress[2]} more needed)"
-            if progress is not None
-            else "uncalibrated"
-        )
+        else "overall confidence unavailable"
     )
     similarity_detail = f"{percentage(confidence)}, margin {percentage(margin)}"
     work_type_validation = work_type_validation_text(classification_details)
@@ -2918,16 +2919,10 @@ def approval(
         classification_details,
         steering,
     )
-    progress = calibration_progress(policy, raw_confidence)
     confidence_detail = (
-        f"{percentage(calibrated_confidence)} calibrated overall"
+        f"{percentage(calibrated_confidence)} overall confidence"
         if calibrated_confidence is not None
-        else (
-            f"uncalibrated; {progress[0]}/{progress[1]} human outcomes "
-            f"({progress[2]} more needed)"
-            if progress is not None
-            else "uncalibrated"
-        )
+        else "overall confidence unavailable"
     )
     sections = [
         {
@@ -4059,7 +4054,7 @@ def routing_decide(
         reason = "Steering input retained the current route."
     elif not confident:
         if calibrated_confidence is None:
-            reason = "Overall confidence is uncalibrated; human approval is required."
+            reason = "Overall confidence is unavailable; human approval is required."
         else:
             reason = (
                 f"Overall confidence {percentage(calibrated_confidence)} is below the "

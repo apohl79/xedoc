@@ -2051,23 +2051,19 @@ run_approval_matrix() {
 
   start_tui
   send_prompt "ROUTER_CASE_CHANGES_SAME"
-  assert_approval_details
-  send_key Enter
   wait_for_request_marker "ROUTER_CASE_CHANGES_SAME"
   await_turn
   assert_request_route "ROUTER_CASE_CHANGES_SAME" "gpt-5.6-terra" low
-  record_scenario approval-policy-uncalibrated-same \
-    "uncalibrated unchanged route required confirmation"
+  record_scenario approval-policy-direct-confidence-same \
+    "direct overall confidence preserved the unchanged route"
 
   start_tui
   send_prompt "ROUTER_E2E_CHANGES_CHANGED review workflow security"
-  assert_approval_details
-  send_key Enter
   wait_for_request_marker "ROUTER_E2E_CHANGES_CHANGED"
   await_turn
   assert_request_route "ROUTER_E2E_CHANGES_CHANGED" "gpt-5.6-terra" low
-  record_scenario approval-policy-uncalibrated-changed \
-    "uncalibrated changed route required and accepted confirmation"
+  record_scenario approval-policy-direct-confidence-changed \
+    "direct overall confidence routed the changed request"
 
   set_approval all "All available routes"
   start_tui
