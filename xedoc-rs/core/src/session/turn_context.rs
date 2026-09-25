@@ -465,6 +465,12 @@ impl Session {
         {
             return None;
         }
+        if let Some(base_instructions) = self
+            .base_instructions_for_model(route.model.as_str(), route.provider_id.as_str())
+            .await
+        {
+            session_configuration.base_instructions = base_instructions;
+        }
         crate::model_router::append_script_model_instructions(
             &mut config.developer_instructions,
             model_instructions,
