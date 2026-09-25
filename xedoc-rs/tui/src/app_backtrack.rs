@@ -529,12 +529,16 @@ pub(crate) fn backtrack_fork_before_turn_id(
 
             let selected_local_images = prompt.local_images.iter().map(|image| &image.path);
             if prompt.text != display.message
-                || prompt.text_elements != display.text_elements
                 || prompt.remote_image_urls != display.remote_image_urls
                 || !selected_local_images.eq(display.local_images.iter())
             {
                 bail!("the selected transcript prompt no longer matches the persisted thread");
             }
+            // Text-element ranges and placeholders are presentation metadata. They may be
+            // normalized while the thread is persisted and replayed, even when the visible
+            // prompt is unchanged. Restore the canonical replayed metadata so the new composer
+            // uses the persisted representation.
+            prompt.text_elements = display.text_elements;
             prompt.mention_bindings = mention_bindings_from_user_inputs(content, &display.message);
 
             return Ok((turn_index > 0).then(|| turn.id.clone()));
