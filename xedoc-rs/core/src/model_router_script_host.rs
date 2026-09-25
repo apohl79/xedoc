@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -100,6 +101,7 @@ const MAX_REPORT_TITLE_BYTES: usize = 256;
 const MAX_REPORT_LABEL_BYTES: usize = 256;
 const MAX_REPORT_TEXT_BYTES: usize = 4_096;
 const BUNDLED_ROUTER_SCRIPT_PATH: &str = "model-router/reference-router";
+const DISABLE_MODEL_ROUTER_ENV_VAR: &str = "XEDOC_DISABLE_MODEL_ROUTER";
 /// Sentinel used for router approval prompts that remain valid until answered.
 pub(crate) const MODEL_ROUTER_INTERACTION_NEVER_EXPIRES: i64 = i64::MAX;
 static SCRIPT_REPORTING_BASELINES: OnceLock<Mutex<HashMap<Vec<OsString>, Option<Route>>>> =
@@ -117,6 +119,9 @@ impl ModelRouterScriptHost {
     /// Creates a host only when a direct-exec router script is configured.
     #[must_use]
     pub(crate) fn from_config(config: &crate::config::Config) -> Option<Self> {
+        if std::env::var_os(DISABLE_MODEL_ROUTER_ENV_VAR).as_deref() == Some(OsStr::new("1")) {
+            return None;
+        }
         if !config.features.enabled(Feature::ModelRouter) {
             return None;
         }
