@@ -11,7 +11,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 1;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 2;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
@@ -131,12 +131,16 @@ impl ModelRegistry {
     pub fn load(xedoc_home: &Path) -> io::Result<Self> {
         let path = Self::path(xedoc_home);
         let bytes = std::fs::read(&path)?;
-        let registry: Self = serde_json::from_slice(&bytes).map_err(|error| {
+        let mut registry: Self = serde_json::from_slice(&bytes).map_err(|error| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("failed to parse {}: {error}", path.display()),
             )
         })?;
+        if registry.schema_version < MODEL_REGISTRY_SCHEMA_VERSION {
+            registry.migrate_from_older_schema()?;
+            registry.save(xedoc_home)?;
+        }
         registry.validate()?;
         Ok(registry)
     }
@@ -256,6 +260,21 @@ impl ModelRegistry {
 
     fn default_registry() -> io::Result<Self> {
         crate::registry_defaults::default_registry()
+    }
+
+    fn migrate_from_older_schema(&mut self) -> io::Result<()> {
+        let defaults = Self::default_registry()?;
+        for (provider_id, default_provider) in defaults.providers {
+            let provider = self
+                .providers
+                .entry(provider_id)
+                .or_insert_with(|| default_provider.clone());
+            for (model_id, model) in default_provider.models {
+                provider.models.entry(model_id).or_insert(model);
+            }
+        }
+        self.schema_version = MODEL_REGISTRY_SCHEMA_VERSION;
+        Ok(())
     }
 }
 

@@ -71,6 +71,36 @@ fn existing_registry_is_never_overwritten() -> TestResult {
 }
 
 #[test]
+fn older_registry_is_migrated_with_new_default_models() -> TestResult {
+    let home = TempDir::new()?;
+    let mut legacy = ModelRegistry::load_or_create(home.path())?;
+    let openai = legacy
+        .provider_mut("openai")
+        .expect("OpenAI defaults should exist");
+    openai.models.remove("gpt-6-sol");
+    openai.models.remove("gpt-6-luna");
+    openai.models.remove("gpt-5.6-terra");
+    legacy.schema_version = 1;
+    fs::write(
+        home.path().join(MODEL_REGISTRY_FILE),
+        serde_json::to_vec_pretty(&legacy)?,
+    )?;
+
+    let migrated = ModelRegistry::load_or_create(home.path())?;
+    let openai = migrated
+        .provider("openai")
+        .expect("OpenAI defaults should exist");
+    assert!(openai.models.contains_key("gpt-6-sol"));
+    assert!(openai.models.contains_key("gpt-6-luna"));
+    assert!(openai.models.contains_key("gpt-5.6-terra"));
+    assert_eq!(
+        migrated.schema_version,
+        super::MODEL_REGISTRY_SCHEMA_VERSION
+    );
+    Ok(())
+}
+
+#[test]
 fn invalid_compaction_limit_is_rejected() -> TestResult {
     let home = TempDir::new()?;
     let mut registry = ModelRegistry::load_or_create(home.path())?;
