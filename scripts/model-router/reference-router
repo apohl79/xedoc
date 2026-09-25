@@ -2289,6 +2289,44 @@ def semantic_axis(policy, axis_id, embedding, scope, prompt):
     return class_id, score, margin
 
 
+def semantic_work_type_similarities(policy, embedding, scope):
+    semantic_axis = next(
+        axis
+        for axis in policy["semanticClassifier"]["axes"]
+        if axis["id"] == "work_type"
+    )
+    scope_axes = policy["semanticClassifier"].get("scopeAxes", {})
+    scoped_classes = ((scope_axes.get(scope) or {}).get("work_type"))
+    if isinstance(scoped_classes, list):
+        scoped_weights = {
+            item.get("id"): item.get("weights")
+            for item in scoped_classes
+            if isinstance(item, dict)
+        }
+        classes = [
+            {
+                **candidate,
+                "weights": scoped_weights.get(candidate["id"], candidate["weights"]),
+            }
+            for candidate in semantic_axis["classes"]
+        ]
+    else:
+        classes = semantic_axis["classes"]
+    similarities = {}
+    for candidate in classes:
+        if candidate["id"] == "steering":
+            continue
+        group = work_type_group(candidate["id"])
+        score = sum(
+            value * weight for value, weight in zip(embedding, candidate["weights"])
+        )
+        similarities[group] = max(
+            min(1.0, max(0.0, score)),
+            similarities.get(group, -math.inf),
+        )
+    return similarities
+
+
 def steering_context(prompt, recent_messages):
     messages = []
     for message in recent_messages[-4:]:
@@ -2364,10 +2402,14 @@ def classify(
             )
         axes = {axis: result[0] for axis, result in classification.items()}
         evidence = {axis: result[1:] for axis, result in classification.items()}
+        work_type_similarities = semantic_work_type_similarities(
+            policy, embedding, scope
+        )
         embedding_input_count = len(inputs)
     else:
         axes = embedder_state["axes"]
         evidence = embedder_state["evidence"]
+        work_type_similarities = embedder_state.get("workTypeSimilarities")
         steering = embedder_state["steering"]
         embedding_elapsed_ms = embedder_state["embeddingElapsedMs"]
         embedding_input_count = embedder_state["embeddingInputCount"]
@@ -2379,6 +2421,7 @@ def classify(
         "workTypeAgreement": None,
         "workTypeSource": "embedder",
         "classificationConflict": False,
+        "embedderWorkTypeSupport": None,
         "embedderSteering": steering,
         "llmSteering": None,
         "steeringAgreement": None,
@@ -2412,6 +2455,10 @@ def classify(
         )
         axes["work_type"] = llm_work_type_group
         llm_confidence = llm_classification["confidence"]
+        if work_type_similarities is not None:
+            classification_details["embedderWorkTypeSupport"] = (
+                work_type_similarities[llm_work_type_group]
+            )
         llm_steering = llm_classification.get("steering")
         if isinstance(llm_steering, bool):
             classification_details.update(
@@ -2461,6 +2508,7 @@ def classify(
         embedding_input_count,
         llm_confidence,
         classification_details,
+        work_type_similarities,
     )
 
 
@@ -2475,6 +2523,18 @@ def work_type_validation_text(classification_details):
     if not classification_details or classification_details.get("llmWorkType") is None:
         return None
     return f"embedder({classification_details['embedderWorkType']})"
+
+
+def work_type_support_text(classification_details):
+    if (
+        not classification_details
+        or classification_details.get("embedderWorkTypeSupport") is None
+    ):
+        return None
+    return (
+        f"embedder({percentage(classification_details['embedderWorkTypeSupport'])} "
+        f"for {classification_details['llmWorkTypeGroup']})"
+    )
 
 
 def valid_classification_details(details):
@@ -2493,6 +2553,7 @@ def valid_classification_details(details):
     steering_agreement = details.get("steeringAgreement")
     steering_source = details.get("steeringSource")
     orchestration_reason = details.get("orchestrationReason")
+    embedder_work_type_support = details.get("embedderWorkTypeSupport")
     if orchestration_reason is not None:
         if not isinstance(orchestration_reason, str) or not orchestration_reason.strip():
             return False
@@ -2504,6 +2565,13 @@ def valid_classification_details(details):
             return False
     if source not in ("embedder", "llm", "steering") or not isinstance(
         conflict, bool
+    ):
+        return False
+    if embedder_work_type_support is not None and (
+        not isinstance(embedder_work_type_support, (int, float))
+        or isinstance(embedder_work_type_support, bool)
+        or not math.isfinite(embedder_work_type_support)
+        or not 0.0 <= embedder_work_type_support <= 1.0
     ):
         return False
     if embedder_steering is not None and not isinstance(embedder_steering, bool):
@@ -2532,7 +2600,12 @@ def valid_classification_details(details):
     if embedder_work_type not in WORK_TYPES:
         return False
     if llm_work_type is None:
-        return llm_work_type_group is None and agreement is None and not conflict
+        return (
+            llm_work_type_group is None
+            and agreement is None
+            and not conflict
+            and embedder_work_type_support is None
+        )
     return (
         llm_work_type in WORK_TYPE_GROUP_BY_ID
         and llm_work_type_group == WORK_TYPE_GROUP_BY_ID[llm_work_type]
@@ -2680,6 +2753,7 @@ def routing_calculation(
     llm_confidence=None,
     llm_elapsed_ms=None,
     calibrated_confidence=None,
+    embedder_work_type_support=None,
 ):
     ranking = policy["ranking"]
     if selection["route"] is None:
@@ -2719,6 +2793,11 @@ def routing_calculation(
         calculation += f" · external classification {llm_elapsed_ms / 1000:.2f} s"
     if llm_confidence is not None:
         calculation += f" · external confidence {percentage(llm_confidence)}"
+    if embedder_work_type_support is not None:
+        calculation += (
+            " · embedder support for external work type "
+            f"{percentage(embedder_work_type_support)}"
+        )
     return calculation
 
 
@@ -2773,6 +2852,7 @@ def decision(
     )
     similarity_detail = f"{percentage(confidence)}, margin {percentage(margin)}"
     work_type_validation = work_type_validation_text(classification_details)
+    work_type_support = work_type_support_text(classification_details)
     feedback_active = policy["feedback"] if feedback_enabled is None else feedback_enabled
     summary_lines = [
         f"  └ Decision: {status_detail}; Target model: {target}; Used model: {used};",
@@ -2783,6 +2863,8 @@ def decision(
     ]
     if work_type_validation is not None:
         summary_lines.append(f"    Work type validation: {work_type_validation};")
+    if work_type_support is not None:
+        summary_lines.append(f"    Work type support: {work_type_support};")
     if (
         feedback_active
         and axes["orchestration"] != "none"
@@ -2797,7 +2879,7 @@ def decision(
         [
             f"    Stats: Embedding({embedding_stat}); External classification({llm_stat});",
             f"    Confidence: {overall}; External confidence({llm_score}); "
-            f"similarity({similarity_detail}).",
+            f"top similarity({similarity_detail}).",
         ]
     )
     summary = "\n".join(summary_lines)
@@ -2829,6 +2911,11 @@ def decision(
                     llm_confidence,
                     llm_elapsed_ms,
                     calibrated_confidence,
+                    (
+                        classification_details.get("embedderWorkTypeSupport")
+                        if classification_details is not None
+                        else None
+                    ),
                 ),
                 "rankingScore": selection["score"],
                 "rankingMinimumClass": selection["minimumClass"],
@@ -2991,12 +3078,17 @@ def approval(
         },
     ]
     work_type_validation = work_type_validation_text(classification_details)
+    work_type_support = work_type_support_text(classification_details)
     if work_type_validation is not None:
         classification_section = next(
             section for section in sections if section["title"] == "Classification:"
         )
         classification_section["rows"].append(
             {"text": f"Work type validation: {work_type_validation}", "indent": 1}
+        )
+    if work_type_support is not None:
+        classification_section["rows"].append(
+            {"text": f"Work type support: {work_type_support}", "indent": 1}
         )
     if notice_text is not None:
         sections[-2]["rows"].append({"text": f"Notice: {notice_text}"})
@@ -3072,14 +3164,18 @@ def embedder_state_from_result(
     steering,
     embedding_elapsed_ms,
     embedding_input_count,
+    work_type_similarities=None,
 ):
-    return {
+    state = {
         "axes": axes,
         "evidence": evidence,
         "steering": steering,
         "embeddingElapsedMs": embedding_elapsed_ms,
         "embeddingInputCount": embedding_input_count,
     }
+    if work_type_similarities is not None:
+        state["workTypeSimilarities"] = work_type_similarities
+    return state
 
 
 def valid_embedder_state(state):
@@ -3087,6 +3183,7 @@ def valid_embedder_state(state):
         return False
     axes = state.get("axes")
     evidence = state.get("evidence")
+    work_type_similarities = state.get("workTypeSimilarities")
     if (
         not isinstance(axes, dict)
         or set(axes) != set(AXIS_VALUES)
@@ -3110,6 +3207,18 @@ def valid_embedder_state(state):
             )
         ):
             return False
+    if work_type_similarities is not None and (
+        not isinstance(work_type_similarities, dict)
+        or set(work_type_similarities) != set(WORK_TYPES)
+        or any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+            or not 0.0 <= value <= 1.0
+            for value in work_type_similarities.values()
+        )
+    ):
+        return False
     elapsed = state.get("embeddingElapsedMs")
     count = state.get("embeddingInputCount")
     return (
@@ -3138,6 +3247,7 @@ def embedder_state_for_classifier(
         embedder_input_count,
         _,
         _,
+        work_type_similarities,
     ) = classify(
         policy,
         prompt,
@@ -3151,6 +3261,7 @@ def embedder_state_for_classifier(
         embedder_steering,
         embedder_elapsed_ms,
         embedder_input_count,
+        work_type_similarities,
     )
 
 
@@ -4015,6 +4126,7 @@ def routing_decide(
         embedding_input_count,
         llm_confidence,
         classification_details,
+        _,
     ) = classify(
         policy,
         prompt,
@@ -4025,8 +4137,14 @@ def routing_decide(
         embedder_state,
     )
     similarity, margin = classification_confidence(evidence)
+    confidence_similarity = (
+        classification_details["embedderWorkTypeSupport"]
+        if llm_confidence is not None
+        and classification_details["embedderWorkTypeSupport"] is not None
+        else similarity
+    )
     calibrated_confidence, raw_confidence = combined_confidence(
-        policy, similarity, llm_confidence
+        policy, confidence_similarity, llm_confidence
     )
     selection = choose_route(policy, context, axes)
     route = selection["route"]
