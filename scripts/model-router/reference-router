@@ -1365,20 +1365,16 @@ def ladder_entry(policy, rank):
     return next((entry for entry in ladder(policy) if entry["rank"] == rank), None)
 
 
-def matching_ladder_rank(policy, route):
-    return next(
-        (entry["rank"] for entry in ladder(policy) if entry_route(entry) == route),
-        None,
-    )
-
-
 def policy_route_options(policy, context):
-    available = {route_key(route) for route in offered_routes(context)}
-    routes = []
+    routes = offered_routes(context)
+    available = {route_key(route) for route in routes}
     for entry in ladder(policy):
         route = entry_route(entry)
         if route not in routes:
             routes.append(route)
+    reporting_baseline = policy.get("reportingBaseline")
+    if reporting_baseline is not None and reporting_baseline not in routes:
+        routes.append(reporting_baseline)
     return routes, available
 
 
@@ -1899,7 +1895,7 @@ def settings_response(request, policy):
         update(policy, confidence=confidence)
         return policy_menu(policy, context)
     if action_id == "set-reporting-baseline":
-        routes, _ = policy_route_options(policy, context)
+        routes, available = policy_route_options(policy, context)
         route_by_id = {
             f"route-{index}": route for index, route in enumerate(routes)
         }
@@ -1910,11 +1906,11 @@ def settings_response(request, policy):
             baseline = route_by_id.get(baseline_id)
             if baseline is None:
                 return error_notice(
-                    policy, "Choose a ladder route for the reporting baseline."
+                    policy, "Choose a currently available route for the reporting baseline."
                 )
-        if baseline is not None and matching_ladder_rank(policy, baseline) is None:
+        if baseline is not None and route_key(baseline) not in available:
             return error_notice(
-                policy, "Choose a model-ladder route for the reporting baseline."
+                policy, "Choose a currently available route for the reporting baseline."
             )
         update(policy, reportingBaseline=baseline)
         return policy_menu(policy, context)
@@ -1992,14 +1988,14 @@ def settings_response(request, policy):
     if action_id == "set-jev-api-key":
         return policy_menu(policy, context)
     if action_id == "save-policy-ladder":
-        routes, _ = policy_route_options(policy, context)
+        routes, available = policy_route_options(policy, context)
         route_by_id = {
             f"route-{index}": route for index, route in enumerate(routes)
         }
         updated_ladder = copy.deepcopy(ladder(policy))
         for entry in updated_ladder:
             route = route_by_id.get(values.get(f"ladder-{entry['rank']}"))
-            if route is None:
+            if route is None or route_key(route) not in available:
                 return error_notice(
                     policy, f"Choose an eligible model route for rank {entry['rank']}."
                 )
