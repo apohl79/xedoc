@@ -139,15 +139,19 @@ pub(crate) async fn run_turn(
 ) -> XedocResult<Option<String>> {
     let mut client_session = match prewarmed_client_session {
         Some(client_session) => client_session,
-        None if sess.get_config().await.model_provider_id
-            == turn_context.config.model_provider_id =>
-        {
-            sess.services.model_client.load().new_session()
+        None => {
+            let model_client = sess.services.model_client.load_full();
+            if model_client.is_configured_for(
+                &turn_context.config.model_provider_id,
+                turn_context.provider.info(),
+            ) {
+                model_client.new_session()
+            } else {
+                sess.model_client_for_turn(turn_context.as_ref())
+                    .await
+                    .new_session()
+            }
         }
-        None => sess
-            .model_client_for_turn(turn_context.as_ref())
-            .await
-            .new_session(),
     };
     if let Err(err) = run_pre_sampling_compact(&sess, &turn_context, &mut client_session).await {
         if matches!(err, XedocErr::TurnAborted) {

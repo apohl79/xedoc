@@ -480,6 +480,11 @@ impl ModelClient {
         self.new_session_with_turn_state(Arc::new(OnceLock::new()))
     }
 
+    /// Returns whether this client uses the supplied configured provider.
+    pub fn is_configured_for(&self, provider_id: &str, provider_info: &ModelProviderInfo) -> bool {
+        self.state.provider_id == provider_id && self.state.provider.info() == provider_info
+    }
+
     /// Creates a fresh streaming session that shares the caller's sticky turn state.
     ///
     /// Parallel requests within one logical turn must use the same routing token while keeping
