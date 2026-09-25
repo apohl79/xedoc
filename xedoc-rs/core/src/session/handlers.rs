@@ -110,6 +110,7 @@ async fn thread_settings_update(
 ) -> SessionSettingsUpdate {
     let ThreadSettingsOverrides {
         environments,
+        environment_variables,
         profile_workspace_roots,
         approval_policy,
         sandbox_policy,
@@ -143,6 +144,7 @@ async fn thread_settings_update(
     };
     SessionSettingsUpdate {
         environments,
+        environment_variables,
         profile_workspace_roots,
         approval_policy,
         sandbox_policy,

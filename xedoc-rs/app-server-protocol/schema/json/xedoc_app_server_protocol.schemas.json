@@ -21590,6 +21590,16 @@
             ],
             "description": "Override the reasoning effort for subsequent turns."
           },
+          "environmentVariables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Replace the process environment source for subsequent tool calls in this thread. Omitted leaves the current source unchanged.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "model": {
             "description": "Override the model for subsequent turns.",
             "type": [
@@ -23187,6 +23197,16 @@
               }
             ],
             "description": "Override the reasoning effort for this turn and subsequent turns."
+          },
+          "environmentVariables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Replace the process environment source for subsequent tool calls in this thread. Omitted leaves the current source unchanged.",
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "environments": {
             "description": "Optional environments for this turn and subsequent turns.\n\nOmitted uses the thread sticky environments. Empty disables environment access for this turn. Non-empty selects the first environment as the current turn environment for this turn.",

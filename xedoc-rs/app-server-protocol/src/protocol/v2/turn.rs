@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -94,6 +95,11 @@ pub struct TurnStartParams {
     #[experimental("turn/start.environments")]
     #[ts(optional = nullable)]
     pub environments: Option<Vec<TurnEnvironmentParams>>,
+    /// Replace the process environment source for subsequent tool calls in
+    /// this thread. Omitted leaves the current source unchanged.
+    #[experimental("turn/start.environmentVariables")]
+    #[ts(optional = nullable)]
+    pub environment_variables: Option<BTreeMap<String, String>>,
     /// Override the working directory for this turn and subsequent turns.
     #[ts(optional = nullable)]
     pub cwd: Option<PathBuf>,

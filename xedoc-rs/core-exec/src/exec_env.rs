@@ -30,6 +30,25 @@ pub fn create_env(
     shell_environment::create_env(policy, thread_id.as_deref())
 }
 
+/// Constructs an environment map from a client-provided complete snapshot.
+///
+/// The snapshot is filtered and augmented using the same policy as the
+/// process environment path, including the `XEDOC_THREAD_ID` injection.
+pub fn create_env_from_snapshot(
+    snapshot: &std::collections::BTreeMap<String, String>,
+    policy: &ShellEnvironmentPolicy,
+    thread_id: Option<ThreadId>,
+) -> HashMap<String, String> {
+    let thread_id = thread_id.map(|thread_id| thread_id.to_string());
+    shell_environment::create_env_from_vars(
+        snapshot
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone())),
+        policy,
+        thread_id.as_deref(),
+    )
+}
+
 /// Injects the selected named permission profile into a shell tool's environment.
 ///
 /// This is applied after the shell environment policy so the runtime-selected

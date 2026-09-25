@@ -2463,6 +2463,7 @@ async fn turn_start_explicit_local_environment_updates_legacy_cwd_between_turns(
     let first_turn = mcp
         .send_turn_start_request(TurnStartParams {
             environments: None,
+            environment_variables: None,
             thread_id: thread.id.clone(),
             client_user_message_id: None,
             input: vec![V2UserInput::Text {

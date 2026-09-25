@@ -140,6 +140,7 @@ impl ThreadConfigSnapshot {
 #[derive(Clone, Default)]
 pub struct XedocThreadSettingsOverrides {
     pub environments: Option<TurnEnvironmentSelections>,
+    pub environment_variables: Option<BTreeMap<String, String>>,
     pub profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
     pub approval_policy: Option<AskForApproval>,
     pub sandbox_policy: Option<SandboxPolicy>,
@@ -410,6 +411,7 @@ impl XedocThread {
     ) -> SessionSettingsUpdate {
         let XedocThreadSettingsOverrides {
             environments,
+            environment_variables,
             profile_workspace_roots,
             approval_policy,
             sandbox_policy,
@@ -444,6 +446,7 @@ impl XedocThread {
 
         SessionSettingsUpdate {
             environments,
+            environment_variables,
             profile_workspace_roots,
             approval_policy,
             sandbox_policy,

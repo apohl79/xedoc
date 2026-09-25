@@ -798,6 +798,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
                         responsesapi_client_metadata: None,
                         additional_context: None,
                         environments: None,
+                        environment_variables: None,
                         cwd: Some(default_cwd),
                         runtime_workspace_roots: None,
                         approval_policy: Some(default_approval_policy.into()),

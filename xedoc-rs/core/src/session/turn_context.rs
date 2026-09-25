@@ -158,6 +158,7 @@ impl Session {
             parent_thread_id: session_configuration.parent_thread_id,
             originator: session_configuration.originator.clone(),
             environments,
+            environment_variables: session_configuration.environment_variables.clone(),
             #[allow(deprecated)]
             cwd,
             current_date: Some(current_date),

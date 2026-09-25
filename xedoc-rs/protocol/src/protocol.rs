@@ -189,10 +189,13 @@ pub struct McpServerRefreshConfig {
 
 /// Persistent thread-settings overrides that can be applied before user input or
 /// on their own.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct ThreadSettingsOverrides {
     /// Updated fallback `cwd` and environments supplied together as a complete pair.
     pub environments: Option<TurnEnvironmentSelections>,
+
+    /// Replacement environment source for subsequent tool calls.
+    pub environment_variables: Option<BTreeMap<String, String>>,
 
     /// Updated profile-defined workspace roots for status summaries and
     /// per-turn config reconstruction.
@@ -239,6 +242,30 @@ pub struct ThreadSettingsOverrides {
     /// Updated model provider id. When set, switches the active provider
     /// for subsequent turns in this thread.
     pub model_provider_id: Option<String>,
+}
+
+impl fmt::Debug for ThreadSettingsOverrides {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ThreadSettingsOverrides")
+            .field("environments", &self.environments)
+            .field(
+                "environment_variables",
+                &self.environment_variables.as_ref().map(BTreeMap::len),
+            )
+            .field("profile_workspace_roots", &self.profile_workspace_roots)
+            .field("approval_policy", &self.approval_policy)
+            .field("sandbox_policy", &self.sandbox_policy)
+            .field("permission_profile", &self.permission_profile)
+            .field("active_permission_profile", &self.active_permission_profile)
+            .field("model", &self.model)
+            .field("effort", &self.effort)
+            .field("summary", &self.summary)
+            .field("service_tier", &self.service_tier)
+            .field("collaboration_mode", &self.collaboration_mode)
+            .field("personality", &self.personality)
+            .field("model_provider_id", &self.model_provider_id)
+            .finish()
+    }
 }
 
 /// Source classification for client-supplied context.

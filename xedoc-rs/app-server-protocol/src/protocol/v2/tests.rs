@@ -3502,6 +3502,7 @@ fn turn_start_params_preserve_explicit_null_service_tier() {
         responsesapi_client_metadata: None,
         additional_context: None,
         environments: None,
+        environment_variables: None,
         cwd: None,
         runtime_workspace_roots: None,
         approval_policy: None,

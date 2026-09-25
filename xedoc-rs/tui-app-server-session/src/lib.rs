@@ -11,6 +11,7 @@ use color_eyre::eyre::ContextCompat;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::WrapErr;
 use permission_compat::legacy_compatible_permission_profile;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -202,6 +203,7 @@ pub struct AppServerSession {
     remote_cwd_override: Option<PathBuf>,
     thread_params_mode: ThreadParamsMode,
     thread_settings_update_supported: bool,
+    synced_environment_variables: HashMap<String, BTreeMap<String, String>>,
     default_model: Option<String>,
     available_models: Vec<ModelPreset>,
     managed_new_thread_defaults: Option<NewThreadModelDefaults>,
@@ -266,6 +268,7 @@ impl AppServerSession {
             remote_cwd_override: None,
             thread_params_mode,
             thread_settings_update_supported: true,
+            synced_environment_variables: HashMap::new(),
             default_model: None,
             available_models: Vec::new(),
             managed_new_thread_defaults: None,
@@ -512,6 +515,7 @@ impl AppServerSession {
             .map_err(|err| {
                 bootstrap_request_error("thread/start failed during TUI bootstrap", err)
             })?;
+        self.sync_environment_variables(&response.thread.id).await?;
         started_thread_from_start_response(response, config, self.thread_params_mode()).await
     }
 
@@ -545,6 +549,7 @@ impl AppServerSession {
             .map_err(|err| {
                 bootstrap_request_error("thread/resume failed during TUI bootstrap", err)
             })?;
+        self.sync_environment_variables(&response.thread.id).await?;
         let fork_parent_title = self
             .fork_parent_title_from_app_server(response.thread.forked_from_id.as_deref())
             .await;
@@ -915,6 +920,32 @@ impl AppServerSession {
         }
     }
 
+    async fn sync_environment_variables(&mut self, thread_id: &str) -> Result<()> {
+        let Some(environment_variables) = environment_variables_for_mode(self.thread_params_mode)
+        else {
+            return Ok(());
+        };
+        self.synced_environment_variables.remove(thread_id);
+        self.thread_settings_update(ThreadSettingsUpdateParams {
+            thread_id: thread_id.to_string(),
+            environment_variables: Some(environment_variables),
+            ..ThreadSettingsUpdateParams::default()
+        })
+        .await
+    }
+
+    fn changed_environment_variables(
+        &self,
+        thread_id: &ThreadId,
+    ) -> Option<BTreeMap<String, String>> {
+        let environment_variables = environment_variables_for_mode(self.thread_params_mode)?;
+        (self
+            .synced_environment_variables
+            .get(&thread_id.to_string())
+            != Some(&environment_variables))
+        .then_some(environment_variables)
+    }
+
     pub async fn thread_inject_items(
         &mut self,
         thread_id: ThreadId,
@@ -958,7 +989,9 @@ impl AppServerSession {
         let request_id = self.next_request_id();
         let (sandbox_policy, permissions) =
             turn_permissions_overrides(permissions_override, cwd.as_path());
-        self.client
+        let environment_variables = self.changed_environment_variables(&thread_id);
+        let response = self
+            .client
             .request_typed(ClientRequest::TurnStart {
                 request_id,
                 params: TurnStartParams {
@@ -968,6 +1001,7 @@ impl AppServerSession {
                     responsesapi_client_metadata: None,
                     additional_context: None,
                     environments: None,
+                    environment_variables: environment_variables.clone(),
                     cwd: Some(cwd),
                     runtime_workspace_roots: Some(workspace_roots.to_vec()),
                     approval_policy: Some(approval_policy),
@@ -985,7 +1019,12 @@ impl AppServerSession {
                 },
             })
             .await
-            .wrap_err("turn/start failed in TUI")
+            .wrap_err("turn/start failed in TUI")?;
+        if let Some(environment_variables) = environment_variables {
+            self.synced_environment_variables
+                .insert(thread_id.to_string(), environment_variables);
+        }
+        Ok(response)
     }
 
     pub async fn turn_interrupt(
@@ -1314,7 +1353,46 @@ pub async fn start_thread_with_request_handle(
         })
         .await
         .map_err(|err| bootstrap_request_error("thread/start failed during TUI bootstrap", err))?;
+    sync_environment_variables_with_request_handle(
+        &request_handle,
+        &response.thread.id,
+        thread_params_mode,
+    )
+    .await?;
     started_thread_from_start_response(response, &config, thread_params_mode).await
+}
+
+async fn sync_environment_variables_with_request_handle(
+    request_handle: &AppServerRequestHandle,
+    thread_id: &str,
+    thread_params_mode: ThreadParamsMode,
+) -> Result<()> {
+    let Some(environment_variables) = environment_variables_for_mode(thread_params_mode) else {
+        return Ok(());
+    };
+    request_handle
+        .request_typed::<ThreadSettingsUpdateResponse>(ClientRequest::ThreadSettingsUpdate {
+            request_id: RequestId::String(format!("startup-thread-environment-{}", Uuid::new_v4())),
+            params: ThreadSettingsUpdateParams {
+                thread_id: thread_id.to_string(),
+                environment_variables: Some(environment_variables),
+                ..ThreadSettingsUpdateParams::default()
+            },
+        })
+        .await
+        .map_err(|err| {
+            bootstrap_request_error(
+                "thread/settings/update failed during TUI environment synchronization",
+                err,
+            )
+        })?;
+    Ok(())
+}
+
+fn environment_variables_for_mode(
+    thread_params_mode: ThreadParamsMode,
+) -> Option<BTreeMap<String, String>> {
+    matches!(thread_params_mode, ThreadParamsMode::Embedded).then(|| std::env::vars().collect())
 }
 
 pub fn status_account_display_from_auth_mode(

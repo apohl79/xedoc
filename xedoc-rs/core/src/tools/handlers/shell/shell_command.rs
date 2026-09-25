@@ -6,6 +6,7 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 use crate::exec::ExecCapturePolicy;
 use crate::exec::ExecParams;
 use crate::exec_env::create_env;
+use crate::exec_env::create_env_from_snapshot;
 use crate::exec_env::inject_permission_profile_env;
 use crate::function_tool::FunctionCallError;
 use crate::maybe_emit_implicit_skill_invocation;
@@ -100,9 +101,20 @@ impl ShellCommandHandler {
         let use_login_shell = Self::resolve_use_login_shell(params.login, allow_login_shell)?;
         let command = Self::base_command(shell, &params.command, use_login_shell);
 
-        let mut env = create_env(
-            &turn_context.config.permissions.shell_environment_policy,
-            Some(session.thread_id),
+        let mut env = turn_context.environment_variables.as_deref().map_or_else(
+            || {
+                create_env(
+                    &turn_context.config.permissions.shell_environment_policy,
+                    Some(session.thread_id),
+                )
+            },
+            |snapshot| {
+                create_env_from_snapshot(
+                    snapshot,
+                    &turn_context.config.permissions.shell_environment_policy,
+                    Some(session.thread_id),
+                )
+            },
         );
         let active_permission_profile = turn_context.config.permissions.active_permission_profile();
         inject_permission_profile_env(&mut env, active_permission_profile.as_ref());

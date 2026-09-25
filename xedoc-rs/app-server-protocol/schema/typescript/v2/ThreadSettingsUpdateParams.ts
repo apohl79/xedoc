@@ -11,6 +11,11 @@ import type { SandboxPolicy } from "./SandboxPolicy";
 
 export type ThreadSettingsUpdateParams = { threadId: string,
 /**
+ * Replace the process environment source for subsequent tool calls in
+ * this thread. Omitted leaves the current source unchanged.
+ */
+environmentVariables?: { [key in string]?: string } | null,
+/**
  * Override the working directory for subsequent turns.
  */
 cwd?: string | null,

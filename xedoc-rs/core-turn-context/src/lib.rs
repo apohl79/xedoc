@@ -2,6 +2,7 @@
 
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -106,6 +107,8 @@ pub struct TurnContext {
     pub originator: String,
     /// Workspace-internal selected environments.
     pub environments: TurnEnvironmentSnapshot,
+    /// Workspace-internal source environment for tool execution.
+    pub environment_variables: Option<Arc<BTreeMap<String, String>>>,
     /// Workspace-internal compatibility working directory.
     #[deprecated(note = "use the selected turn environment cwd instead")]
     pub cwd: AbsolutePathBuf,
@@ -281,6 +284,7 @@ impl TurnContext {
             parent_thread_id: self.parent_thread_id,
             originator: self.originator.clone(),
             environments: self.environments.clone(),
+            environment_variables: self.environment_variables.clone(),
             #[allow(deprecated)]
             cwd: self.cwd.clone(),
             current_date: self.current_date.clone(),
@@ -334,6 +338,7 @@ impl TurnContext {
             parent_thread_id: self.parent_thread_id,
             originator: self.originator.clone(),
             environments: self.environments.clone(),
+            environment_variables: self.environment_variables.clone(),
             #[allow(deprecated)]
             cwd: self.cwd.clone(),
             current_date: self.current_date.clone(),

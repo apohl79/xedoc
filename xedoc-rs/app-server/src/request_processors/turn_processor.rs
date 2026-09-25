@@ -41,6 +41,20 @@ fn validate_user_input_image_urls(input: &[V2UserInput]) -> Result<(), JSONRPCEr
     Ok(())
 }
 
+fn validate_environment_variables(
+    environment_variables: &BTreeMap<String, String>,
+) -> Result<(), JSONRPCErrorError> {
+    if environment_variables
+        .iter()
+        .any(|(key, value)| key.is_empty() || key.contains(['=', '\0']) || value.contains('\0'))
+    {
+        return Err(invalid_request(
+            "environment variable names must be non-empty and cannot contain `=` or NUL; values cannot contain NUL",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_response_item_image_urls(items: &[ResponseItem]) -> Result<(), JSONRPCErrorError> {
     if items.iter().any(|item| match item {
         ResponseItem::Message { content, .. } => content.iter().any(|item| {
@@ -123,6 +137,7 @@ fn map_additional_context(
 struct ThreadSettingsBuildParams {
     method: &'static str,
     environments: Option<TurnEnvironmentSelections>,
+    environment_variables: Option<BTreeMap<String, String>>,
     approval_policy: Option<xedoc_app_server_protocol::AskForApproval>,
     sandbox_policy: Option<xedoc_app_server_protocol::SandboxPolicy>,
     permissions: Option<String>,
@@ -176,6 +191,9 @@ impl TurnRequestProcessor {
         supports_openai_form_elicitation: bool,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
         validate_user_input_image_urls(&params.input)?;
+        if let Some(environment_variables) = params.environment_variables.as_ref() {
+            validate_environment_variables(environment_variables)?;
+        }
         self.turn_start_inner(
             request_id,
             params,
@@ -455,6 +473,7 @@ impl TurnRequestProcessor {
                 ThreadSettingsBuildParams {
                     method: "turn/start",
                     environments,
+                    environment_variables: params.environment_variables,
                     approval_policy: params.approval_policy,
                     sandbox_policy: params.sandbox_policy,
                     permissions: params.permissions,
@@ -573,6 +592,7 @@ impl TurnRequestProcessor {
         let ThreadSettingsBuildParams {
             method,
             environments,
+            environment_variables,
             approval_policy,
             sandbox_policy,
             permissions,
@@ -604,6 +624,7 @@ impl TurnRequestProcessor {
         };
 
         let has_any_overrides = has_environment_override
+            || environment_variables.is_some()
             || approval_policy.is_some()
             || sandbox_policy.is_some()
             || permissions.is_some()
@@ -666,6 +687,7 @@ impl TurnRequestProcessor {
             thread
                 .preview_thread_settings_overrides(XedocThreadSettingsOverrides {
                     environments: environments.clone(),
+                    environment_variables: environment_variables.clone(),
                     approval_policy,
                     sandbox_policy: sandbox_policy.clone(),
                     permission_profile: permission_profile.clone(),
@@ -687,6 +709,7 @@ impl TurnRequestProcessor {
 
         Ok(xedoc_protocol::protocol::ThreadSettingsOverrides {
             environments,
+            environment_variables,
             profile_workspace_roots,
             approval_policy,
             sandbox_policy,
@@ -707,6 +730,9 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadSettingsUpdateParams,
     ) -> Result<ThreadSettingsUpdateResponse, JSONRPCErrorError> {
+        if let Some(environment_variables) = params.environment_variables.as_ref() {
+            validate_environment_variables(environment_variables)?;
+        }
         let (_, thread) = self.load_thread(&params.thread_id).await?;
         let cwd = resolve_request_cwd(params.cwd)?;
         let environments = self
@@ -723,6 +749,7 @@ impl TurnRequestProcessor {
                 ThreadSettingsBuildParams {
                     method: "thread/settings/update",
                     environments,
+                    environment_variables: params.environment_variables,
                     approval_policy: params.approval_policy,
                     sandbox_policy: params.sandbox_policy,
                     permissions: params.permissions,

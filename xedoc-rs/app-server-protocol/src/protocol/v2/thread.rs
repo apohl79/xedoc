@@ -14,6 +14,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -207,6 +208,11 @@ impl ThreadStartResponse {
 #[ts(export_to = "v2/")]
 pub struct ThreadSettingsUpdateParams {
     pub thread_id: String,
+    /// Replace the process environment source for subsequent tool calls in
+    /// this thread. Omitted leaves the current source unchanged.
+    #[experimental("thread/settings/update.environmentVariables")]
+    #[ts(optional = nullable)]
+    pub environment_variables: Option<BTreeMap<String, String>>,
     /// Override the working directory for subsequent turns.
     #[ts(optional = nullable)]
     pub cwd: Option<PathBuf>,

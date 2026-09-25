@@ -312,6 +312,16 @@
       ],
       "description": "Override the reasoning effort for subsequent turns."
     },
+    "environmentVariables": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Replace the process environment source for subsequent tool calls in this thread. Omitted leaves the current source unchanged.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "model": {
       "description": "Override the model for subsequent turns.",
       "type": [

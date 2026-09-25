@@ -38,6 +38,11 @@ additionalContext?: { [key in string]?: AdditionalContextEntry } | null,
  */
 environments?: Array<TurnEnvironmentParams> | null,
 /**
+ * Replace the process environment source for subsequent tool calls in
+ * this thread. Omitted leaves the current source unchanged.
+ */
+environmentVariables?: { [key in string]?: string } | null,
+/**
  * Override the working directory for this turn and subsequent turns.
  */
 cwd?: string | null,

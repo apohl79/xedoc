@@ -9,6 +9,7 @@ use crate::shell_snapshot::ShellSnapshot;
 use crate::skills::SkillError;
 use crate::state::ActiveTurn;
 use crate::state::SessionReductionSink;
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
@@ -125,6 +126,11 @@ pub(crate) struct SessionConfiguration {
     /// Sticky thread-level environment selections plus the legacy cwd used
     /// when a turn does not select an environment.
     pub(super) environments: TurnEnvironmentSelections,
+    /// Optional complete process environment supplied by the attached client.
+    ///
+    /// This remains runtime-only and is deliberately excluded from persisted
+    /// thread configuration and notifications.
+    pub(super) environment_variables: Option<Arc<BTreeMap<String, String>>>,
     /// Directory containing all Xedoc state for this session.
     pub(super) xedoc_home: AbsolutePathBuf,
     /// Optional user-facing name for the thread, updated during the session.
@@ -332,6 +338,9 @@ impl SessionConfiguration {
         }
 
         let current_cwd = self.cwd().clone();
+        if let Some(environment_variables) = updates.environment_variables.clone() {
+            next_configuration.environment_variables = Some(Arc::new(environment_variables));
+        }
         let next_environments = updates
             .environments
             .clone()
@@ -470,6 +479,7 @@ impl SessionConfiguration {
 #[derive(Default, Clone)]
 pub(crate) struct SessionSettingsUpdate {
     pub(crate) environments: Option<TurnEnvironmentSelections>,
+    pub(crate) environment_variables: Option<BTreeMap<String, String>>,
     pub(crate) profile_workspace_roots: Option<Vec<AbsolutePathBuf>>,
     pub(crate) approval_policy: Option<AskForApproval>,
     pub(crate) sandbox_policy: Option<SandboxPolicy>,

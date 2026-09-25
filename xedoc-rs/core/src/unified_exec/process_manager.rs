@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::exec_env::XEDOC_PERMISSION_PROFILE_ENV_VAR;
 use crate::exec_env::XEDOC_THREAD_ID_ENV_VAR;
 use crate::exec_env::create_env;
+use crate::exec_env::create_env_from_snapshot;
 use crate::exec_env::inject_permission_profile_env;
 use crate::exec_policy::ExecApprovalRequest;
 use crate::sandboxing::ExecOptions;
@@ -59,6 +60,7 @@ use crate::unified_exec::generate_chunk_id;
 use crate::xedoc_thread::BackgroundTerminalInfo;
 use xedoc_network_proxy::NetworkProxy;
 use xedoc_protocol::config_types::ShellEnvironmentPolicy;
+use xedoc_protocol::config_types::ShellEnvironmentPolicyInherit;
 use xedoc_protocol::error::SandboxErr;
 use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::protocol::ExecCommandSource;
@@ -1054,11 +1056,30 @@ impl UnifiedExecProcessManager {
         cwd: PathUri,
         context: &UnifiedExecContext,
     ) -> Result<(UnifiedExecProcess, Option<DeferredNetworkApproval>), UnifiedExecError> {
-        let local_policy_env = create_env(
+        let mut exec_server_policy = exec_env_policy_from_shell_policy(
             &context.turn.config.permissions.shell_environment_policy,
-            /*thread_id*/ None,
         );
-        let mut env = local_policy_env.clone();
+        let (local_policy_env, mut env) =
+            context.turn.environment_variables.as_deref().map_or_else(
+                || {
+                    let env = create_env(
+                        &context.turn.config.permissions.shell_environment_policy,
+                        /*thread_id*/ None,
+                    );
+                    (env.clone(), env)
+                },
+                |snapshot| {
+                    exec_server_policy.inherit = ShellEnvironmentPolicyInherit::None;
+                    (
+                        HashMap::new(),
+                        create_env_from_snapshot(
+                            snapshot,
+                            &context.turn.config.permissions.shell_environment_policy,
+                            /*thread_id*/ None,
+                        ),
+                    )
+                },
+            );
         env.insert(
             XEDOC_THREAD_ID_ENV_VAR.to_string(),
             context.session.thread_id.to_string(),
@@ -1067,9 +1088,7 @@ impl UnifiedExecProcessManager {
         inject_permission_profile_env(&mut env, active_permission_profile.as_ref());
         let env = apply_unified_exec_env(env);
         let exec_server_env_config = ExecServerEnvConfig {
-            policy: exec_env_policy_from_shell_policy(
-                &context.turn.config.permissions.shell_environment_policy,
-            ),
+            policy: exec_server_policy,
             local_policy_env,
         };
         let mut orchestrator = ToolOrchestrator::new();

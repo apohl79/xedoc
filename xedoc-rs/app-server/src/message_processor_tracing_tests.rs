@@ -661,6 +661,7 @@ async fn turn_start_jsonrpc_span_parents_core_turn_spans() -> Result<()> {
                 request_id: RequestId::Integer(3),
                 params: TurnStartParams {
                     environments: None,
+                    environment_variables: None,
                     thread_id,
                     client_user_message_id: None,
                     input: vec![UserInput::Text {

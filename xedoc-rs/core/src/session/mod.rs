@@ -785,6 +785,7 @@ impl Session {
                 config.cwd.clone(),
                 environment_selections,
             ),
+            environment_variables: None,
             xedoc_home: config.xedoc_home.clone(),
             thread_name: None,
             original_config_do_not_use: Arc::clone(&config),
