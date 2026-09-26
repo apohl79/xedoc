@@ -2,13 +2,14 @@ use std::collections::BTreeMap;
 use std::io;
 
 use xedoc_protocol::config_types::ReasoningSummary;
+use xedoc_protocol::openai_models::ApplyPatchToolType;
 use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ModelVisibility;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::openai_models::ReasoningEffortPreset;
 
 use crate::bundled_models_response;
-use crate::model_info::BASE_INSTRUCTIONS;
+use crate::instructions::clear_persisted_instructions;
 use crate::model_info::model_info_from_provider_catalog_slug;
 use crate::registry::MODEL_REGISTRY_SCHEMA_VERSION;
 use crate::registry::ManagedModel;
@@ -82,7 +83,8 @@ fn openai_defaults() -> io::Result<ProviderModelConfig> {
     let models = catalog
         .models
         .into_iter()
-        .map(|info| {
+        .map(|mut info| {
+            prepare_persisted_model(&mut info);
             let price = prices.get(&info.slug).cloned();
             (
                 info.slug.clone(),
@@ -134,6 +136,7 @@ fn provider_defaults(
 fn configured_model_info(display_name: &str, model_id: &str, supports_max: bool) -> ModelInfo {
     let mut info = model_info_from_provider_catalog_slug(model_id, display_name);
     apply_provider_defaults(&mut info, supports_max);
+    prepare_persisted_model(&mut info);
     info
 }
 
@@ -141,8 +144,14 @@ fn provider_template(display_name: &str, supports_max: bool) -> ManagedModel {
     let mut info = model_info_from_provider_catalog_slug("*", display_name);
     apply_provider_defaults(&mut info, supports_max);
     info.description = None;
-    info.base_instructions = BASE_INSTRUCTIONS.to_string();
+    prepare_persisted_model(&mut info);
     ManagedModel { info, prices: None }
+}
+
+fn prepare_persisted_model(info: &mut ModelInfo) {
+    clear_persisted_instructions(info);
+    info.include_skills_usage_instructions = true;
+    info.apply_patch_tool_type = Some(ApplyPatchToolType::Freeform);
 }
 
 fn apply_provider_defaults(info: &mut ModelInfo, supports_max: bool) {

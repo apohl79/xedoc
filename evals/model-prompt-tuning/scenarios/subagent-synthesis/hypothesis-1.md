@@ -1,0 +1,1 @@
+Caching may reduce latency.

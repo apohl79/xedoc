@@ -26,6 +26,10 @@ use xedoc_login::ProviderCredentialStore;
 use xedoc_login::XedocAuth;
 use xedoc_model_provider_info::ANTHROPIC_PROVIDER_ID;
 use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
+use xedoc_models_manager::instructions::load_prompt_override;
+use xedoc_models_manager::instructions::prompt_override_path;
+use xedoc_models_manager::instructions::resolve_instructions;
+use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_models_manager::model_info::model_info_from_provider_catalog_slug;
 use xedoc_models_manager::registry::ManagedModel;
 use xedoc_models_manager::registry::ModelRegistry;
@@ -59,13 +63,18 @@ pub(crate) struct ModelManagerRequestProcessor {
     config: Arc<Config>,
     auth_manager: Arc<AuthManager>,
     registry: SharedModelRegistry,
+    models_manager: SharedModelsManager,
     credentials: ProviderCredentialStore,
     anthropic_oauth_login_state: Arc<Mutex<AnthropicOauthLoginState>>,
     anthropic_oauth_operation_lock: Arc<AsyncMutex<()>>,
 }
 
 impl ModelManagerRequestProcessor {
-    pub(crate) fn new(config: Arc<Config>, auth_manager: Arc<AuthManager>) -> Self {
+    pub(crate) fn new(
+        config: Arc<Config>,
+        auth_manager: Arc<AuthManager>,
+        models_manager: SharedModelsManager,
+    ) -> Self {
         Self {
             registry: config.model_registry.clone(),
             credentials: auth_manager.provider_credentials(),
@@ -73,11 +82,13 @@ impl ModelManagerRequestProcessor {
             anthropic_oauth_operation_lock: Arc::new(AsyncMutex::new(())),
             config,
             auth_manager,
+            models_manager,
         }
     }
 
     pub(crate) fn read(&self) -> Result<ModelManagerReadResponse, JSONRPCErrorError> {
         let mut registry = self.registry.snapshot();
+        let remote_models = self.models_manager.try_get_raw_remote_models().ok();
         // Configured third-party providers may not have been persisted in the
         // model registry yet. Seed a minimal editable entry so the model
         // manager can expose the active model and accept subsequent edits.
@@ -118,9 +129,23 @@ impl ModelManagerRequestProcessor {
                     let context_window = info.resolved_context_window().unwrap_or_default();
                     let auto_compact_token_limit =
                         info.auto_compact_token_limit().unwrap_or_default();
+                    let catalog_model = (provider_id == self.config.model_provider_id)
+                        .then(|| {
+                            remote_models.as_ref().and_then(|models| {
+                                models.iter().find(|model| model.slug == model_id)
+                            })
+                        })
+                        .flatten();
+                    let resolved = resolve_instructions(
+                        info.clone(),
+                        catalog_model,
+                        &self.config.to_models_manager_config(),
+                        Some(&provider.display_name),
+                        None,
+                    );
                     let base_instructions =
                         load_prompt_override(&self.config.xedoc_home, &provider_id, &model_id)
-                            .unwrap_or(info.base_instructions);
+                            .unwrap_or(resolved.base_instructions);
                     ManagedModelSettings {
                         id: model_id,
                         display_name: info.display_name,
@@ -155,46 +180,130 @@ impl ModelManagerRequestProcessor {
         &self,
         params: ModelManagerUpdateParams,
     ) -> Result<ModelManagerUpdateResponse, JSONRPCErrorError> {
-        self.registry
-            .update(|registry| match params {
-                ModelManagerUpdateParams::ProviderDefaults {
-                    provider_id,
-                    default_model,
-                    fast_model,
-                    default_reasoning_effort,
-                } => {
-                    ensure_provider_config(registry, &self.config, &provider_id);
-                    let provider = provider_mut(registry, &provider_id)?;
-                    provider.default_model = default_model;
-                    provider.fast_model = fast_model;
-                    provider.default_reasoning_effort = default_reasoning_effort;
-                    Ok(())
-                }
-                ModelManagerUpdateParams::ModelSettings {
-                    provider_id,
-                    model_id,
-                    context_window,
-                    max_context_window,
-                    auto_compact_token_limit,
-                    base_instructions,
-                } => {
-                    ensure_provider_config(registry, &self.config, &provider_id);
-                    let provider = provider_mut(registry, &provider_id)?;
-                    let model = provider.models.get_mut(&model_id).ok_or_else(|| {
-                        io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("provider `{provider_id}` has no model `{model_id}`"),
-                        )
-                    })?;
-                    model.info.context_window = Some(context_window);
-                    model.info.max_context_window = Some(max_context_window);
-                    model.info.auto_compact_token_limit = Some(auto_compact_token_limit);
-                    model.info.base_instructions = base_instructions;
-                    Ok(())
-                }
-            })
-            .map_err(registry_error)?;
+        match params {
+            ModelManagerUpdateParams::ProviderDefaults {
+                provider_id,
+                default_model,
+                fast_model,
+                default_reasoning_effort,
+            } => {
+                self.registry
+                    .update(|registry| {
+                        ensure_provider_config(registry, &self.config, &provider_id);
+                        let provider = provider_mut(registry, &provider_id)?;
+                        provider.default_model = default_model;
+                        provider.fast_model = fast_model;
+                        provider.default_reasoning_effort = default_reasoning_effort;
+                        Ok(())
+                    })
+                    .map_err(registry_error)?;
+            }
+            ModelManagerUpdateParams::ModelSettings {
+                provider_id,
+                model_id,
+                context_window,
+                max_context_window,
+                auto_compact_token_limit,
+                base_instructions,
+            } => {
+                let default_instructions =
+                    self.instructions_without_prompt_override(&provider_id, &model_id);
+                self.registry
+                    .update(|registry| {
+                        ensure_provider_config(registry, &self.config, &provider_id);
+                        let provider = provider_mut(registry, &provider_id)?;
+                        let model = provider.models.get_mut(&model_id).ok_or_else(|| {
+                            io::Error::new(
+                                io::ErrorKind::NotFound,
+                                format!("provider `{provider_id}` has no model `{model_id}`"),
+                            )
+                        })?;
+                        model.info.context_window = Some(context_window);
+                        model.info.max_context_window = Some(max_context_window);
+                        model.info.auto_compact_token_limit = Some(auto_compact_token_limit);
+                        Ok(())
+                    })
+                    .map_err(registry_error)?;
+                self.update_prompt_override(
+                    &provider_id,
+                    &model_id,
+                    &base_instructions,
+                    &default_instructions,
+                )
+                .map_err(registry_error)?;
+            }
+        }
         Ok(ModelManagerUpdateResponse {})
+    }
+
+    fn instructions_without_prompt_override(&self, provider_id: &str, model_id: &str) -> String {
+        let registry = self.registry.snapshot();
+        let provider_display_name = registry
+            .provider(provider_id)
+            .map(|provider| provider.display_name.as_str())
+            .or_else(|| {
+                self.config
+                    .model_providers
+                    .get(provider_id)
+                    .map(|provider| provider.name.as_str())
+            })
+            .unwrap_or(provider_id);
+        let model = registry
+            .provider(provider_id)
+            .and_then(|provider| provider.models.get(model_id))
+            .map(|model| model.info.clone())
+            .unwrap_or_else(|| {
+                model_info_from_provider_catalog_slug(model_id, provider_display_name)
+            });
+        let catalog_model = (provider_id == self.config.model_provider_id)
+            .then(|| {
+                self.models_manager
+                    .try_get_raw_remote_models()
+                    .ok()
+                    .and_then(|models| {
+                        models
+                            .into_iter()
+                            .find(|catalog_model| catalog_model.slug == model_id)
+                    })
+            })
+            .flatten();
+        resolve_instructions(
+            model,
+            catalog_model.as_ref(),
+            &self.config.to_models_manager_config(),
+            Some(provider_display_name),
+            None,
+        )
+        .base_instructions
+    }
+
+    fn update_prompt_override(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+        base_instructions: &str,
+        default_instructions: &str,
+    ) -> io::Result<()> {
+        let prompt_path = prompt_override_path(&self.config.xedoc_home, provider_id, model_id);
+        if load_prompt_override(&self.config.xedoc_home, provider_id, model_id).as_deref()
+            == Some(base_instructions)
+        {
+            return Ok(());
+        }
+        if base_instructions.trim().is_empty() || base_instructions == default_instructions {
+            if prompt_path.exists() {
+                std::fs::remove_file(prompt_path)?;
+            }
+            return Ok(());
+        }
+        let prompt_directory = prompt_path.parent().ok_or_else(|| {
+            io::Error::other(format!(
+                "prompt override path `{}` has no parent",
+                prompt_path.display()
+            ))
+        })?;
+        std::fs::create_dir_all(prompt_directory)?;
+        std::fs::write(prompt_path, base_instructions)
     }
 
     pub(crate) async fn set_api_key(
@@ -408,26 +517,6 @@ fn provider_config_for_model(display_name: String, model_id: String) -> Provider
         },
         models: BTreeMap::from([(model_id, model)]),
     }
-}
-
-fn load_prompt_override(
-    xedoc_home: &std::path::Path,
-    provider_id: &str,
-    model_id: &str,
-) -> Option<String> {
-    [
-        xedoc_home
-            .join("prompts")
-            .join(provider_id)
-            .join(format!("{model_id}.md")),
-        xedoc_home.join("prompts").join(format!("{model_id}.md")),
-    ]
-    .into_iter()
-    .find_map(|path| {
-        std::fs::read_to_string(path)
-            .ok()
-            .filter(|contents| !contents.trim().is_empty())
-    })
 }
 
 fn complete_anthropic_oauth_login(

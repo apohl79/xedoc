@@ -13,6 +13,7 @@ use super::replace_anthropic_oauth_with_api_key;
 use pretty_assertions::assert_eq;
 use serial_test::serial;
 use tempfile::TempDir;
+use xedoc_app_server_protocol::ModelManagerUpdateParams;
 use xedoc_app_server_protocol::ModelProviderApiKeySetParams;
 use xedoc_app_server_protocol::ModelProviderOauthDeleteParams;
 use xedoc_app_server_protocol::ModelProviderOauthStartParams;
@@ -21,6 +22,8 @@ use xedoc_core::config::ConfigBuilder;
 use xedoc_keyring_store::tests::MockKeyringStore;
 use xedoc_login::AuthManager;
 use xedoc_login::XedocAuth;
+use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
+use xedoc_models_manager::instructions::prompt_override_path;
 use xedoc_provider_anthropic::load_anthropic_oauth_credentials;
 use xedoc_provider_anthropic::store_anthropic_oauth_credential;
 
@@ -62,10 +65,76 @@ async fn processor_for_test() -> anyhow::Result<(TempDir, ModelManagerRequestPro
         xedoc_home.path().to_path_buf(),
         credentials_for_test(xedoc_home.path()),
     );
+    let config = Arc::new(config);
+    let models_manager = xedoc_core::build_models_manager(&config, auth_manager.clone());
     Ok((
         xedoc_home,
-        ModelManagerRequestProcessor::new(Arc::new(config), auth_manager),
+        ModelManagerRequestProcessor::new(config, auth_manager, models_manager),
     ))
+}
+
+#[tokio::test]
+async fn model_settings_write_only_explicit_prompt_overrides() -> anyhow::Result<()> {
+    let (xedoc_home, processor) = processor_for_test().await?;
+    let response = processor
+        .read()
+        .map_err(|error| anyhow::anyhow!(error.message))?;
+    let provider = response
+        .providers
+        .into_iter()
+        .find(|provider| provider.id == OPENAI_PROVIDER_ID)
+        .expect("OpenAI provider");
+    let model = provider.models.first().expect("OpenAI model").clone();
+    let prompt_path = prompt_override_path(xedoc_home.path(), OPENAI_PROVIDER_ID, &model.id);
+
+    processor
+        .update(ModelManagerUpdateParams::ModelSettings {
+            provider_id: OPENAI_PROVIDER_ID.to_string(),
+            model_id: model.id.clone(),
+            context_window: model.context_window,
+            max_context_window: model.max_context_window,
+            auto_compact_token_limit: model.auto_compact_token_limit,
+            base_instructions: model.base_instructions.clone(),
+        })
+        .map_err(|error| anyhow::anyhow!(error.message))?;
+    assert!(!prompt_path.exists());
+
+    let custom_prompt = "custom model prompt".to_string();
+    processor
+        .update(ModelManagerUpdateParams::ModelSettings {
+            provider_id: OPENAI_PROVIDER_ID.to_string(),
+            model_id: model.id.clone(),
+            context_window: model.context_window,
+            max_context_window: model.max_context_window,
+            auto_compact_token_limit: model.auto_compact_token_limit,
+            base_instructions: custom_prompt.clone(),
+        })
+        .map_err(|error| anyhow::anyhow!(error.message))?;
+    assert_eq!(std::fs::read_to_string(&prompt_path)?, custom_prompt);
+    assert!(
+        processor
+            .registry
+            .snapshot()
+            .provider(OPENAI_PROVIDER_ID)
+            .and_then(|provider| provider.models.get(&model.id))
+            .expect("stored model")
+            .info
+            .base_instructions
+            .is_empty()
+    );
+
+    processor
+        .update(ModelManagerUpdateParams::ModelSettings {
+            provider_id: OPENAI_PROVIDER_ID.to_string(),
+            model_id: model.id,
+            context_window: model.context_window,
+            max_context_window: model.max_context_window,
+            auto_compact_token_limit: model.auto_compact_token_limit,
+            base_instructions: model.base_instructions,
+        })
+        .map_err(|error| anyhow::anyhow!(error.message))?;
+    assert!(!prompt_path.exists());
+    Ok(())
 }
 
 #[tokio::test]

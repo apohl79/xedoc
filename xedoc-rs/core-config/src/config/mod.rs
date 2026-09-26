@@ -681,6 +681,9 @@ pub struct Config {
     /// Base instructions override.
     pub base_instructions: Option<String>,
 
+    /// Whether to use provider-supplied model instructions from the model catalog.
+    pub model_remote_instructions: bool,
+
     /// Developer instructions override injected as a separate message.
     pub developer_instructions: Option<String>,
 
@@ -1456,6 +1459,7 @@ impl Config {
             base_instructions: self.base_instructions.clone(),
             personality_enabled: self.features.enabled(Feature::Personality),
             personality: self.personality,
+            model_remote_instructions: self.model_remote_instructions,
             model_catalog: self.model_catalog.clone(),
         }
     }
@@ -3671,6 +3675,7 @@ impl Config {
         let base_instructions = base_instructions
             .or(file_base_instructions)
             .or(cfg.instructions.clone());
+        let model_remote_instructions = cfg.model_remote_instructions.unwrap_or(false);
         let developer_instructions = developer_instructions.or(cfg.developer_instructions);
         let include_permissions_instructions = cfg.include_permissions_instructions.unwrap_or(true);
         let include_collaboration_mode_instructions =
@@ -3859,6 +3864,7 @@ impl Config {
             enforce_residency: enforce_residency.value,
             notify: cfg.notify,
             base_instructions,
+            model_remote_instructions,
             personality,
             developer_instructions,
             compact_prompt,

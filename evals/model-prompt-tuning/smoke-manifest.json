@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "baseline_variant": "baseline",
+  "repeats": 1,
+  "models": [
+    {
+      "id": "gpt-56-sol",
+      "provider": "openai",
+      "model": "gpt-5.6-sol",
+      "effort": "medium"
+    },
+    {
+      "id": "gpt-56-terra",
+      "provider": "openai",
+      "model": "gpt-5.6-terra",
+      "effort": "medium"
+    },
+    {
+      "id": "gpt-56-luna",
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "effort": "medium"
+    },
+    {
+      "id": "opus-55",
+      "provider": "anthropic",
+      "model": "opus-5.5",
+      "effort": "medium"
+    },
+    {
+      "id": "deepseek-pro",
+      "provider": "deepseek",
+      "model": "deepseek-pro",
+      "effort": "medium"
+    }
+  ],
+  "variants": [
+    {
+      "id": "baseline"
+    },
+    {
+      "id": "concise",
+      "instructions_file": "prompts/concise.txt"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "plan-multi-step",
+      "tags": [
+        "planning",
+        "task-list"
+      ],
+      "workspace": "scenarios/plan-multi-step",
+      "prompt": "Inspect the repository and plan the work needed to add a CSV export. Do not edit files. Use a task list with ordered, verifiable steps.",
+      "checks": [
+        [
+          "{python}",
+          "-c",
+          "from pathlib import Path; assert not list(Path('.').glob('**/*export*'))"
+        ]
+      ]
+    },
+    {
+      "id": "decompose-feature",
+      "tags": [
+        "decomposition",
+        "task-list"
+      ],
+      "workspace": "scenarios/decompose-feature",
+      "prompt": "Break the notification feature into independent implementation tasks, identify dependencies, and state which tasks can be done in parallel. Do not edit files.",
+      "checks": [
+        [
+          "{python}",
+          "-c",
+          "from pathlib import Path; assert Path('requirements.txt').exists()"
+        ]
+      ]
+    },
+    {
+      "id": "delegate-research",
+      "tags": [
+        "delegation",
+        "subagent",
+        "orchestration"
+      ],
+      "workspace": "scenarios/delegate-research",
+      "prompt": "Find the two best approaches for parsing the input format. Delegate independent research if available, then summarize the recommendation. Do not edit files.",
+      "checks": [
+        [
+          "{python}",
+          "-c",
+          "assert open('question.txt').read().strip()"
+        ]
+      ]
+    },
+    {
+      "id": "implement-small-feature",
+      "tags": [
+        "implementation",
+        "verification"
+      ],
+      "workspace": "scenarios/implement-small-feature",
+      "prompt": "Implement the requested greeting function, add a focused test, and run the test or an equivalent verification.",
+      "checks": [
+        [
+          "{python}",
+          "-c",
+          "from pathlib import Path; assert 'def greet' in Path('greeting.py').read_text(); assert Path('test_greeting.py').exists()"
+        ]
+      ]
+    }
+  ]
+}

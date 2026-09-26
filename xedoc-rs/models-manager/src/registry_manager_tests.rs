@@ -36,6 +36,7 @@ async fn registry_overrides_discovered_model_and_adds_configured_models() -> Tes
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].slug, "deepseek-v4-pro");
     assert_eq!(models[0].context_window, Some(400_000));
+    assert!(models[0].supports_personality());
     assert_eq!(models[1].slug, "deepseek-v4-flash");
     Ok(())
 }

@@ -4,6 +4,16 @@ use xedoc_tools::JsonSchema;
 use xedoc_tools::ResponsesApiTool;
 use xedoc_tools::ToolSpec;
 
+const UPDATE_PLAN_DESCRIPTION: &str = "\
+Updates a plan for work with several distinct steps.
+Provide optional context and concise, achievable steps with `pending`, `in_progress`, or `completed` status.
+Keep exactly one step `in_progress` until all steps are complete.
+Before beginning the next step, mark the previous step complete.
+When the work is done, mark every step complete.
+Skip this tool for simple work that does not benefit from a plan.";
+
+const _: () = assert!(UPDATE_PLAN_DESCRIPTION.len() <= 1_024);
+
 pub fn create_update_plan_tool() -> ToolSpec {
     let plan_item_properties = BTreeMap::from([
         (
@@ -41,11 +51,7 @@ pub fn create_update_plan_tool() -> ToolSpec {
 
     ToolSpec::Function(ResponsesApiTool {
         name: "update_plan".to_string(),
-        description: r#"Updates the task plan.
-Provide an optional explanation and a list of plan items, each with a step and status.
-At most one step can be in_progress at a time.
-"#
-        .to_string(),
+        description: UPDATE_PLAN_DESCRIPTION.to_string(),
         strict: false,
         defer_loading: None,
         parameters: JsonSchema::object(

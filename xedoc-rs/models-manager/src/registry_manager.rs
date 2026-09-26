@@ -9,12 +9,13 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ModelsResponse;
 
 use crate::config::ModelsManagerConfig;
+use crate::instructions::load_prompt_override;
+use crate::instructions::resolve_instructions;
 use crate::manager::ModelsManager;
 use crate::manager::ModelsManagerFuture;
 use crate::manager::RefreshStrategy;
 use crate::manager::SharedModelsManager;
 use crate::model_info::model_info_from_provider_catalog_slug;
-use crate::model_info::with_config_overrides;
 use crate::registry::ModelRegistry;
 use crate::registry::SharedModelRegistry;
 
@@ -40,15 +41,62 @@ impl RegistryModelsManager {
 
     fn configured_models(&self, discovered: Vec<ModelInfo>) -> Vec<ModelInfo> {
         let registry = self.registry.snapshot();
-        let mut models = configured_models(&registry, &self.provider_id, discovered);
-        for model in &mut models {
-            if let Some(prompt) =
-                load_prompt_override(self.registry.xedoc_home(), &self.provider_id, &model.slug)
-            {
-                model.base_instructions = prompt;
-                model.model_messages = None;
-            }
-        }
+        let provider_display_name = registry
+            .provider(&self.provider_id)
+            .map(|provider| provider.display_name.as_str())
+            .unwrap_or(self.provider_id.as_str());
+        let config = ModelsManagerConfig {
+            personality_enabled: true,
+            ..Default::default()
+        };
+        let mut seen = HashSet::new();
+        let mut models = discovered
+            .into_iter()
+            .map(|catalog_model| {
+                seen.insert(catalog_model.slug.clone());
+                let model = registry
+                    .configured_model(&self.provider_id, &catalog_model)
+                    .unwrap_or_else(|| {
+                        model_info_from_provider_catalog_slug(
+                            &catalog_model.slug,
+                            provider_display_name,
+                        )
+                    });
+                let prompt_override = load_prompt_override(
+                    self.registry.xedoc_home(),
+                    &self.provider_id,
+                    &model.slug,
+                );
+                resolve_instructions(
+                    model,
+                    Some(&catalog_model),
+                    &config,
+                    Some(provider_display_name),
+                    prompt_override.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
+        models.extend(
+            registry
+                .configured_models(&self.provider_id)
+                .into_iter()
+                .filter(|model| seen.insert(model.slug.clone()))
+                .map(|model| {
+                    let prompt_override = load_prompt_override(
+                        self.registry.xedoc_home(),
+                        &self.provider_id,
+                        &model.slug,
+                    );
+                    resolve_instructions(
+                        model,
+                        None,
+                        &config,
+                        Some(provider_display_name),
+                        prompt_override.as_deref(),
+                    )
+                }),
+        );
+        models.sort_by_key(|model| model.priority);
         models
     }
 }
@@ -98,6 +146,10 @@ impl ModelsManager for RegistryModelsManager {
             .map(|discovered| self.configured_models(discovered))
     }
 
+    fn try_get_raw_remote_models(&self) -> Result<Vec<ModelInfo>, TryLockError> {
+        self.inner.try_get_raw_remote_models()
+    }
+
     fn auth_manager(&self) -> Option<&AuthManager> {
         self.inner.auth_manager()
     }
@@ -143,24 +195,27 @@ impl ModelsManager for RegistryModelsManager {
         config: &'a ModelsManagerConfig,
     ) -> ModelsManagerFuture<'a, ModelInfo> {
         Box::pin(async move {
-            let discovered = self
+            let catalog_model = self
                 .inner
                 .get_model_info(model, &ModelsManagerConfig::default())
                 .await;
-            let configured = self
-                .registry
-                .snapshot()
-                .configured_model(&self.provider_id, &discovered)
-                .unwrap_or(discovered);
-            let mut configured = with_config_overrides(configured, config);
-            if config.base_instructions.is_none()
-                && let Some(prompt) =
-                    load_prompt_override(self.registry.xedoc_home(), &self.provider_id, model)
-            {
-                configured.base_instructions = prompt;
-                configured.model_messages = None;
-            }
-            configured
+            let registry = self.registry.snapshot();
+            let provider_display_name = registry
+                .provider(&self.provider_id)
+                .map(|provider| provider.display_name.as_str())
+                .unwrap_or(self.provider_id.as_str());
+            let configured = registry
+                .configured_model(&self.provider_id, &catalog_model)
+                .unwrap_or(catalog_model.clone());
+            let prompt_override =
+                load_prompt_override(self.registry.xedoc_home(), &self.provider_id, model);
+            resolve_instructions(
+                configured,
+                Some(&catalog_model),
+                config,
+                Some(provider_display_name),
+                prompt_override.as_deref(),
+            )
         })
     }
 
@@ -171,55 +226,6 @@ impl ModelsManager for RegistryModelsManager {
     ) -> ModelsManagerFuture<'_, ()> {
         self.inner.refresh_if_new_etag(etag, http_client_factory)
     }
-}
-
-fn configured_models(
-    registry: &ModelRegistry,
-    provider_id: &str,
-    discovered: Vec<ModelInfo>,
-) -> Vec<ModelInfo> {
-    let mut seen = HashSet::new();
-    let mut configured = discovered
-        .into_iter()
-        .filter_map(|model| {
-            seen.insert(model.slug.clone());
-            Some(
-                registry
-                    .configured_model(provider_id, &model)
-                    .unwrap_or_else(|| {
-                        model_info_from_provider_catalog_slug(&model.slug, provider_id)
-                    }),
-            )
-        })
-        .collect::<Vec<_>>();
-    configured.extend(
-        registry
-            .configured_models(provider_id)
-            .into_iter()
-            .filter(|model| seen.insert(model.slug.clone())),
-    );
-    configured.sort_by_key(|model| model.priority);
-    configured
-}
-
-fn load_prompt_override(
-    xedoc_home: &std::path::Path,
-    provider_id: &str,
-    model_id: &str,
-) -> Option<String> {
-    [
-        xedoc_home
-            .join("prompts")
-            .join(provider_id)
-            .join(format!("{model_id}.md")),
-        xedoc_home.join("prompts").join(format!("{model_id}.md")),
-    ]
-    .into_iter()
-    .find_map(|path| {
-        std::fs::read_to_string(path)
-            .ok()
-            .filter(|contents| !contents.trim().is_empty())
-    })
 }
 
 #[cfg(test)]

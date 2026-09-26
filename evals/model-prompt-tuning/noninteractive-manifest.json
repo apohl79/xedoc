@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "baseline_variant": "baseline",
+  "repeats": 1,
+  "judge_model": {
+    "provider": "openai",
+    "model": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "models": [
+    {"id": "gpt-56-sol", "provider": "openai", "model": "gpt-5.6-sol", "effort": "medium"},
+    {"id": "gpt-56-terra", "provider": "openai", "model": "gpt-5.6-terra", "effort": "medium"},
+    {"id": "gpt-56-luna", "provider": "openai", "model": "gpt-5.6-luna", "effort": "medium"},
+    {"id": "opus-55", "provider": "anthropic", "model": "claude-opus-5-5", "effort": "medium"},
+    {"id": "deepseek-pro", "provider": "deepseek", "model": "deepseek-v4-pro", "effort": "medium"}
+  ],
+  "variants": [
+    {"id": "baseline"},
+    {"id": "concise", "instructions_file": "prompts/concise.txt"}
+  ],
+  "scenarios": [
+    {
+      "id": "implement-small-feature",
+      "tags": ["implementation", "verification", "noninteractive"],
+      "workspace": "scenarios/implement-small-feature",
+      "prompt": "Ensure greeting.py exports greet(name) that returns exactly \"hello \" followed by name. Create test_greeting.py with a focused executable test for greet(\"Ada\") == \"hello Ada\", then run it. Preserve the existing implementation if it already meets that contract. Do not ask a question.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert 'def greet' in Path('greeting.py').read_text(); assert Path('test_greeting.py').exists()"]],
+      "judge": {
+        "files": ["greeting.py", "test_greeting.py"],
+        "reference_facts": [
+          "greet(name) returns exactly hello followed by the supplied name",
+          "a focused executable test covers greet with Ada",
+          "the change is limited to the requested feature and verification"
+        ],
+        "rubric": "Judge whether the implementation and reported result satisfy the requested contract. Give credit only for evidence visible in the workspace or deterministic checks. Penalize unrelated changes, missing verification, and claims not supported by the artifacts."
+      }
+    },
+    {
+      "id": "refactor-with-invariants",
+      "tags": ["refactor", "verification", "noninteractive"],
+      "workspace": "scenarios/refactor-with-invariants",
+      "prompt": "In formatters.py, retain the public functions format_value(value) and format_label(value). Keep their output exactly f\"[{value}]\", but remove the duplicate formatting logic by making format_label delegate to format_value. Add or run focused regression coverage. Do not ask a question.",
+      "checks": [["{python}", "-c", "from pathlib import Path; text=Path('formatters.py').read_text(); assert text.count('def format_value') == 1"]],
+      "judge": {
+        "files": ["formatters.py"],
+        "reference_facts": [
+          "format_value and format_label remain public functions",
+          "both functions return exactly f\"[{value}]\"",
+          "format_label delegates instead of duplicating formatting logic"
+        ],
+        "rubric": "Judge semantic preservation, removal of the duplicate logic, and focused verification. Give credit only for evidence visible in the workspace or deterministic checks. Penalize unrelated changes and unsupported claims."
+      }
+    },
+    {
+      "id": "configuration-override",
+      "tags": ["configuration", "override", "noninteractive"],
+      "workspace": "scenarios/configuration-override",
+      "prompt": "Edit config.toml to add exactly the top-level TOML assignment staging_timeout = 45. Preserve the existing top-level assignment default_timeout = 30 unchanged. Parse the resulting TOML and verify both exact integer values. Do not ask a question or choose another timeout.",
+      "checks": [["{python}", "-c", "from pathlib import Path; text=Path('config.toml').read_text(); assert 'staging_timeout = 45' in text; assert 'default_timeout = 30' in text"]],
+      "judge": {
+        "files": ["config.toml"],
+        "reference_facts": [
+          "staging_timeout is exactly the top-level integer 45",
+          "default_timeout remains the top-level integer 30",
+          "the resulting file is valid TOML"
+        ],
+        "rubric": "Judge exact adherence to the requested configuration values and evidence of validation. Give credit only for evidence visible in the workspace or deterministic checks. Penalize guessed values, unnecessary changes, and unsupported claims."
+      }
+    },
+    {
+      "id": "migration-compatibility",
+      "tags": ["migration", "compatibility", "noninteractive"],
+      "workspace": "scenarios/migration-compatibility",
+      "prompt": "Implement migrate(data) in migrate.py. Given a version-1 JSON object such as records.json, return a version-2 object that preserves every existing top-level field and every record unchanged except for setting version to 2. Calling migrate on a version-2 object must preserve it unchanged. Add or run focused verification for both inputs. Do not ask a question.",
+      "checks": [["{python}", "-c", "from migrate import migrate; old={'version': 1, 'name': 'kept', 'records': [{'id': 1, 'extra': 'kept'}]}; expected={'version': 2, 'name': 'kept', 'records': [{'id': 1, 'extra': 'kept'}]}; assert migrate(old) == expected; assert migrate(expected) == expected"]],
+      "judge": {
+        "files": ["migrate.py"],
+        "reference_facts": [
+          "version-1 inputs preserve every field and record while version becomes 2",
+          "version-2 inputs are returned unchanged",
+          "focused verification covers both versions"
+        ],
+        "rubric": "Judge backward compatibility and evidence of both required behaviors. Give credit only for evidence visible in the workspace or deterministic checks. Penalize destructive migration behavior, missing verification, and unsupported claims."
+      }
+    },
+    {
+      "id": "multi-file-api-change",
+      "tags": ["implementation", "coordination", "noninteractive"],
+      "workspace": "scenarios/multi-file-api-change",
+      "prompt": "Rename the public API old_name to new_name in api.py and update every import and call site in this workspace, including consumer.py. Keep the function behavior unchanged. Verify that no source file contains old_name and that both files use new_name. Do not ask a question.",
+      "checks": [["{python}", "-c", "from pathlib import Path; sources=list(Path('.').glob('*.py')); assert all('old_name' not in source.read_text() for source in sources); assert 'def new_name' in Path('api.py').read_text(); assert 'from api import new_name' in Path('consumer.py').read_text()"]],
+      "judge": {
+        "files": ["api.py", "consumer.py"],
+        "reference_facts": [
+          "api.py exposes new_name with unchanged behavior",
+          "consumer.py imports new_name",
+          "no source file retains old_name"
+        ],
+        "rubric": "Judge completeness of the workspace-wide rename, behavior preservation, and verification. Require each existing import and call site to be updated, but do not require creating a call site that the fixture did not contain. Give credit only for evidence visible in the workspace or deterministic checks. Penalize stale names, unrelated changes, and unsupported claims."
+      }
+    },
+    {
+      "id": "data-transformation",
+      "tags": ["implementation", "edge-cases", "noninteractive"],
+      "workspace": "scenarios/data-transformation",
+      "prompt": "Create normalized.json from records.json. Keep the top-level object and unknown record fields unchanged. Deduplicate records by id, retaining the first occurrence of each id in original order. Verify normalized.json is valid JSON and contains one record with id 1. Do not ask a question.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert Path('normalized.json').exists()"]],
+      "judge": {
+        "files": ["records.json", "normalized.json"],
+        "reference_facts": [
+          "normalized.json is valid JSON",
+          "records are deduplicated by id while retaining first-occurrence order",
+          "top-level and unknown record fields are preserved",
+          "the result has exactly one record with id 1"
+        ],
+        "rubric": "Judge correctness of the transformation and evidence of verification. Give credit only for evidence visible in the workspace or deterministic checks. Penalize dropped fields, incorrect deduplication, and unsupported claims."
+      }
+    },
+    {
+      "id": "summarize-complex-design",
+      "tags": ["summarization", "language", "complex-document", "noninteractive"],
+      "workspace": "scenarios/summarize-complex-design",
+      "prompt": "Summarize PROMPT_OVERHAUL.md in SUMMARY.md.",
+      "checks": [["{python}", "-c", "from pathlib import Path; summary = Path('SUMMARY.md'); assert summary.is_file() and summary.read_text().strip()"]],
+      "judge": {
+        "source": "PROMPT_OVERHAUL.md",
+        "output": "SUMMARY.md",
+        "files": ["SUMMARY.md"],
+        "reference_facts": [
+          "one bounded shared base prompt is the default for every provider and model",
+          "provider catalog instructions are opt-in rather than the default",
+          "the model registry no longer persists prompt text",
+          "patch syntax belongs with the patch tool rather than the base prompt",
+          "user prompt files and explicit configuration remain override paths"
+        ],
+        "rubric": "Judge factual coverage, preservation of important trade-offs and constraints, organization, and clarity for a technically literate reader. Treat unexplained jargon, needless repetition, and unnecessarily complex prose as quality failures. Do not require a particular tone, format, or length."
+      }
+    },
+    {
+      "id": "summarize-research-synthesis",
+      "tags": ["summarization", "language", "research-synthesis", "noninteractive"],
+      "workspace": "scenarios/summarize-research-synthesis",
+      "prompt": "Summarize RESEARCH_SYNTHESIS.md in SUMMARY.md.",
+      "checks": [["{python}", "-c", "from pathlib import Path; summary = Path('SUMMARY.md'); assert summary.is_file() and summary.read_text().strip()"]],
+      "judge": {
+        "source": "RESEARCH_SYNTHESIS.md",
+        "output": "SUMMARY.md",
+        "files": ["SUMMARY.md"],
+        "reference_facts": [
+          "transport acknowledgement, coverage, and confirmed completion are separate failure classes",
+          "the delivery target is not necessarily the lifecycle owner",
+          "delivery identity includes publication, target, and consumer role",
+          "a durable intent record is required for the zero-unconfirmed objective",
+          "volume measurement and degraded-mode thresholds remain unresolved"
+        ],
+        "rubric": "Judge factual coverage, preservation of decisions versus unresolved questions, causal reasoning, organization, and clarity for a technically literate reader. Treat unexplained jargon, needless repetition, and unnecessarily complex prose as quality failures. Do not require a particular tone, format, or length."
+      }
+    }
+  ]
+}

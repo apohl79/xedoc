@@ -234,6 +234,9 @@ pub struct ConfigToml {
     /// sanctioned by Xedoc will likely degrade model performance.
     pub model_instructions_file: Option<AbsolutePathBuf>,
 
+    /// Whether to use provider-supplied model instructions from the model catalog.
+    pub model_remote_instructions: Option<bool>,
+
     /// Compact prompt used for history compaction.
     pub compact_prompt: Option<String>,
 

@@ -20,7 +20,7 @@ use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 use xedoc_core::shell::default_user_shell;
 use xedoc_features::Feature;
-use xedoc_prompts::APPLY_PATCH_TOOL_INSTRUCTIONS;
+use xedoc_protocol::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use xedoc_protocol::config_types::CollaborationMode;
 use xedoc_protocol::config_types::ModeKind;
 use xedoc_protocol::config_types::ReasoningSummary;

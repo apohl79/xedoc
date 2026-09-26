@@ -5321,6 +5321,10 @@
     "model_reasoning_summary": {
       "$ref": "#/definitions/ReasoningSummary"
     },
+    "model_remote_instructions": {
+      "description": "Whether to use provider-supplied model instructions from the model catalog.",
+      "type": "boolean"
+    },
     "model_router": {
       "allOf": [
         {

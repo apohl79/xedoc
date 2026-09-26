@@ -9,5 +9,6 @@ pub struct ModelsManagerConfig {
     pub base_instructions: Option<String>,
     pub personality_enabled: bool,
     pub personality: Option<Personality>,
+    pub model_remote_instructions: bool,
     pub model_catalog: Option<ModelsResponse>,
 }

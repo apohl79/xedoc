@@ -1,5 +1,6 @@
 pub mod account;
 mod agent_path;
+pub mod apply_patch;
 pub mod auth;
 mod response_item_id;
 mod session_id;

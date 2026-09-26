@@ -436,8 +436,11 @@ impl MessageProcessor {
             outgoing.clone(),
             config_manager.clone(),
         );
-        let model_manager_processor =
-            ModelManagerRequestProcessor::new(Arc::clone(&config), auth_manager.clone());
+        let model_manager_processor = ModelManagerRequestProcessor::new(
+            Arc::clone(&config),
+            auth_manager.clone(),
+            models_manager.clone(),
+        );
         let model_router_report_processor =
             ModelRouterReportRequestProcessor::new(state_db.clone());
         let model_router_report_server = ModelRouterReportServer::new(

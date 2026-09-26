@@ -5,6 +5,7 @@ use xedoc_api::Reasoning;
 use xedoc_api::ResponsesApiRequest;
 use xedoc_api::create_text_param_for_request;
 use xedoc_protocol::ResponseItemId;
+use xedoc_protocol::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use xedoc_protocol::config_types::ReasoningSummary;
 use xedoc_protocol::models::AgentMessageInputContent;
 use xedoc_protocol::models::ContentItem;
@@ -167,7 +168,7 @@ fn translates_adaptive_thinking_and_filters_tools() {
                 },
                 AnthropicTool {
                     name: "apply_patch".to_string(),
-                    description: "Apply patch".to_string(),
+                    description: format!("Apply patch\n\n{APPLY_PATCH_TOOL_INSTRUCTIONS}"),
                     input_schema: json!({
                         "type": "object",
                         "properties": {

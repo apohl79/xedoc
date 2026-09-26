@@ -4,6 +4,7 @@ use serde_json::Map;
 use serde_json::Value;
 use serde_json::json;
 use xedoc_api::ResponsesApiRequest;
+use xedoc_protocol::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use xedoc_protocol::models::AgentMessageInputContent;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::FunctionCallOutputBody;
@@ -322,18 +323,24 @@ fn function_declaration(tool: &Value) -> Option<GeminiFunctionDeclaration> {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
+    let is_apply_patch = matches!(object.get("type").and_then(Value::as_str), Some("custom"))
+        && name == CUSTOM_TOOL_NAME;
     let parameters = match object.get("type").and_then(Value::as_str) {
         Some("function") => object
             .get("parameters")
             .or_else(|| object.get("input_schema"))
             .cloned()
             .unwrap_or_else(empty_object_schema),
-        Some("custom") if name == CUSTOM_TOOL_NAME => custom_tool_schema(),
+        Some("custom") if is_apply_patch => custom_tool_schema(),
         _ => return None,
     };
     Some(GeminiFunctionDeclaration {
         name: name.to_string(),
-        description,
+        description: if is_apply_patch {
+            format!("{description}\n\n{APPLY_PATCH_TOOL_INSTRUCTIONS}")
+        } else {
+            description
+        },
         parameters: strip_additional_properties(parameters),
     })
 }

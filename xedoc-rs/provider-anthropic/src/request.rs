@@ -1,6 +1,7 @@
 use serde_json::Value;
 use serde_json::json;
 use xedoc_api::ResponsesApiRequest;
+use xedoc_protocol::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use xedoc_protocol::config_types::ReasoningSummary;
 use xedoc_protocol::openai_models::ReasoningEffort;
 
@@ -81,18 +82,25 @@ fn translate_tools(tools: Option<&[Value]>) -> Vec<AnthropicTool> {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
+            let is_apply_patch =
+                matches!(object.get("type").and_then(Value::as_str), Some("custom"))
+                    && name == "apply_patch";
             let input_schema = match object.get("type").and_then(Value::as_str) {
                 Some("function") => object
                     .get("parameters")
                     .or_else(|| object.get("input_schema"))
                     .cloned()
                     .unwrap_or_else(empty_object_schema),
-                Some("custom") if name == "apply_patch" => freeform_tool_schema(),
+                Some("custom") if is_apply_patch => freeform_tool_schema(),
                 _ => return None,
             };
             Some(AnthropicTool {
                 name: name.to_string(),
-                description,
+                description: if is_apply_patch {
+                    format!("{description}\n\n{APPLY_PATCH_TOOL_INSTRUCTIONS}")
+                } else {
+                    description
+                },
                 input_schema,
             })
         })

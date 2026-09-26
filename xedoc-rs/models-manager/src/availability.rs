@@ -68,6 +68,13 @@ impl ModelsManager for AvailabilityGatedModelsManager {
         self.inner.try_get_remote_models()
     }
 
+    fn try_get_raw_remote_models(&self) -> Result<Vec<ModelInfo>, TryLockError> {
+        if !(self.is_available)() {
+            return Ok(Vec::new());
+        }
+        self.inner.try_get_raw_remote_models()
+    }
+
     fn auth_manager(&self) -> Option<&AuthManager> {
         self.inner.auth_manager()
     }

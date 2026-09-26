@@ -4,6 +4,7 @@ use xedoc_api::Reasoning;
 use xedoc_api::ResponsesApiRequest;
 use xedoc_api::create_text_param_for_request;
 use xedoc_protocol::ResponseItemId;
+use xedoc_protocol::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use xedoc_protocol::models::AgentMessageInputContent;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::FunctionCallOutputPayload;
@@ -209,7 +210,7 @@ fn translates_tool_history_schemas_and_thought_signatures() {
                     },
                     {
                         "name": "apply_patch",
-                        "description": "Apply a patch.",
+                        "description": format!("Apply a patch.\n\n{APPLY_PATCH_TOOL_INSTRUCTIONS}"),
                         "parameters": {
                             "type": "object",
                             "properties": {"input": {"type": "string"}},

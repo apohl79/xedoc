@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "baseline_variant": "baseline",
+  "repeats": 1,
+  "judge_model": {
+    "provider": "openai",
+    "model": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "models": [
+    {"id": "gpt-56-sol", "provider": "openai", "model": "gpt-5.6-sol", "effort": "medium"},
+    {"id": "gpt-56-terra", "provider": "openai", "model": "gpt-5.6-terra", "effort": "medium"},
+    {"id": "gpt-56-luna", "provider": "openai", "model": "gpt-5.6-luna", "effort": "medium"},
+    {"id": "opus-55", "provider": "anthropic", "model": "claude-opus-5-5", "effort": "medium"},
+    {"id": "deepseek-pro", "provider": "deepseek", "model": "deepseek-v4-pro", "effort": "medium"}
+  ],
+  "variants": [
+    {"id": "baseline"},
+    {"id": "concise", "instructions_file": "prompts/concise.txt"}
+  ],
+  "scenarios": [
+    {
+      "id": "plan-multi-step",
+      "tags": ["planning", "task-list"],
+      "workspace": "scenarios/plan-multi-step",
+      "prompt": "Inspect the repository and plan the work needed to add a CSV export. Do not edit files. Use a task list with ordered, verifiable steps.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert not list(Path('.').glob('**/*export*'))"]]
+    },
+    {
+      "id": "decompose-feature",
+      "tags": ["decomposition", "task-list"],
+      "workspace": "scenarios/decompose-feature",
+      "prompt": "Break the notification feature into independent implementation tasks, identify dependencies, and state which tasks can be done in parallel. Do not edit files.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert Path('requirements.txt').exists()"]]
+    },
+    {
+      "id": "delegate-research",
+      "tags": ["delegation", "subagent", "orchestration"],
+      "workspace": "scenarios/delegate-research",
+      "prompt": "Find the two best approaches for parsing the input format. Delegate independent research if available, then summarize the recommendation. Do not edit files.",
+      "checks": [["{python}", "-c", "assert open('question.txt').read().strip()"]]
+    },
+    {
+      "id": "implement-small-feature",
+      "tags": ["implementation", "verification"],
+      "workspace": "scenarios/implement-small-feature",
+      "prompt": "Implement the requested greeting function, add a focused test, and run the test or an equivalent verification.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert 'def greet' in Path('greeting.py').read_text(); assert Path('test_greeting.py').exists()"]]
+    },
+    {
+      "id": "debug-failing-test",
+      "tags": ["diagnosis", "tests"],
+      "workspace": "scenarios/debug-failing-test",
+      "prompt": "Diagnose the failing test, fix the smallest root cause, and verify the test passes. Avoid unrelated cleanup.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert 'return a + b' in Path('mathlib.py').read_text()"]]
+    },
+    {
+      "id": "refactor-with-invariants",
+      "tags": ["refactor", "verification"],
+      "workspace": "scenarios/refactor-with-invariants",
+      "prompt": "Refactor the duplicated formatter into one helper while preserving the documented output. Add or run regression coverage.",
+      "checks": [["{python}", "-c", "from pathlib import Path; text=Path('formatters.py').read_text(); assert text.count('def format_value') == 1"]]
+    },
+    {
+      "id": "write-documentation",
+      "tags": ["documentation", "scope-control"],
+      "workspace": "scenarios/write-documentation",
+      "prompt": "Document the command-line options in README.md using the existing examples. Do not change application code.",
+      "checks": [["{python}", "-c", "from pathlib import Path; text=Path('README.md').read_text(); assert '--verbose' in text"]]
+    },
+    {
+      "id": "configuration-override",
+      "tags": ["configuration", "override"],
+      "workspace": "scenarios/configuration-override",
+      "prompt": "Add the staging timeout override without changing the default timeout. Validate both values.",
+      "checks": [["{python}", "-c", "from pathlib import Path; text=Path('config.toml').read_text(); assert 'staging_timeout = 45' in text; assert 'default_timeout = 30' in text"]]
+    },
+    {
+      "id": "migration-compatibility",
+      "tags": ["migration", "compatibility"],
+      "workspace": "scenarios/migration-compatibility",
+      "prompt": "Design and implement a backward-compatible migration from schema version 1 to version 2. Preserve old records and verify both versions.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert Path('migrate.py').exists(); assert 'version 2' in Path('migrate.py').read_text().lower()"]]
+    },
+    {
+      "id": "security-review",
+      "tags": ["security", "review"],
+      "workspace": "scenarios/security-review",
+      "prompt": "Review the token handling for concrete security issues. Report findings with severity and remediation, and do not expose the token value.",
+      "checks": [["{python}", "-c", "assert open('token.txt').read().strip()"]]
+    },
+    {
+      "id": "performance-investigation",
+      "tags": ["performance", "measurement"],
+      "workspace": "scenarios/performance-investigation",
+      "prompt": "Investigate the slow loop, measure a baseline, make the smallest safe improvement, and report the before/after measurement.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert 'def sum_values' in Path('slow.py').read_text()"]]
+    },
+    {
+      "id": "search-and-summarize",
+      "tags": ["research", "search"],
+      "workspace": "scenarios/search-and-summarize",
+      "prompt": "Search the repository for all references to the deprecated API and summarize migration implications. Do not edit files.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert len(list(Path('.').glob('*.py'))) >= 2"]]
+    },
+    {
+      "id": "multi-file-api-change",
+      "tags": ["implementation", "coordination"],
+      "workspace": "scenarios/multi-file-api-change",
+      "prompt": "Rename the public function from old_name to new_name across the implementation and callers, then verify there are no stale call sites.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert 'new_name' in Path('api.py').read_text(); assert 'new_name' in Path('consumer.py').read_text()"]]
+    },
+    {
+      "id": "conflicting-requirements",
+      "tags": ["clarification", "safety"],
+      "workspace": "scenarios/conflicting-requirements",
+      "prompt": "The request conflicts with the repository policy in POLICY.md. Identify the conflict and ask one concise clarification before editing.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert Path('POLICY.md').exists()"]]
+    },
+    {
+      "id": "minimal-patch",
+      "tags": ["scope-control", "bug-fix"],
+      "workspace": "scenarios/minimal-patch",
+      "prompt": "Fix only the off-by-one error described in issue.txt. Preserve formatting and unrelated behavior.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert 'range(1, n + 1)' in Path('counter.py').read_text()"]]
+    },
+    {
+      "id": "test-strategy",
+      "tags": ["tests", "design"],
+      "workspace": "scenarios/test-strategy",
+      "prompt": "Create a focused behavioral test strategy for the parser, covering normal, boundary, malformed, and empty inputs. Do not modify production code.",
+      "checks": [["{python}", "-c", "assert open('parser.py').read().strip()"]]
+    },
+    {
+      "id": "subagent-synthesis",
+      "tags": ["subagent", "orchestration", "synthesis"],
+      "workspace": "scenarios/subagent-synthesis",
+      "prompt": "Investigate the three independent hypotheses, use parallel subagents when useful, and synthesize one recommendation with evidence for each hypothesis.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert len(list(Path('.').glob('hypothesis-*.md'))) == 3"]]
+    },
+    {
+      "id": "review-diff",
+      "tags": ["review", "regression"],
+      "workspace": "scenarios/review-diff",
+      "prompt": "Review the supplied change for correctness, regressions, and missing tests. Report findings ordered by severity; do not edit.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert Path('CHANGE.diff').exists()"]]
+    },
+    {
+      "id": "data-transformation",
+      "tags": ["implementation", "edge-cases"],
+      "workspace": "scenarios/data-transformation",
+      "prompt": "Transform records.json into normalized.json, preserving unknown fields and handling duplicate IDs deterministically. Verify the result.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert Path('records.json').exists()"]]
+    },
+    {
+      "id": "release-checklist",
+      "tags": ["orchestration", "verification", "task-list"],
+      "workspace": "scenarios/release-checklist",
+      "prompt": "Prepare a release checklist from RELEASE.md, execute safe local checks, and clearly separate passed, failed, and unrun checks.",
+      "checks": [["{python}", "-c", "from pathlib import Path; assert Path('RELEASE.md').exists()"]]
+    }
+  ]
+}

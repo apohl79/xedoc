@@ -7,11 +7,12 @@ use std::sync::RwLock;
 
 use serde::Deserialize;
 use serde::Serialize;
+use xedoc_protocol::openai_models::ApplyPatchToolType;
 use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 2;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 3;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
@@ -273,6 +274,14 @@ impl ModelRegistry {
                 provider.models.entry(model_id).or_insert(model);
             }
         }
+        for provider in self.providers.values_mut() {
+            for model in std::iter::once(&mut provider.template).chain(provider.models.values_mut())
+            {
+                crate::instructions::clear_persisted_instructions(&mut model.info);
+                model.info.include_skills_usage_instructions = true;
+                model.info.apply_patch_tool_type = Some(ApplyPatchToolType::Freeform);
+            }
+        }
         self.schema_version = MODEL_REGISTRY_SCHEMA_VERSION;
         Ok(())
     }
@@ -305,11 +314,6 @@ fn validate_managed_model(
     {
         return Err(invalid_registry(format!(
             "provider {provider_id} model `{model_id}` compaction limit must be between 1 and {max_compact_limit}"
-        )));
-    }
-    if model.info.base_instructions.trim().is_empty() {
-        return Err(invalid_registry(format!(
-            "provider {provider_id} model `{model_id}` base instructions must not be empty"
         )));
     }
     if let Some(prices) = &model.prices

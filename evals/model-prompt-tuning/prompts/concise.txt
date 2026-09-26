@@ -1,0 +1,2 @@
+Complete the user's task with the smallest sufficient action. Be precise and
+concise. Return only the requested outcome and material validation.

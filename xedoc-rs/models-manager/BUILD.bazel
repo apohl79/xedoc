@@ -4,7 +4,9 @@ xedoc_rust_crate(
     name = "models-manager",
     compile_data = [
         "models.json",
-        "prompt.md",
+        "prompts/base.md",
+        "prompts/personality_friendly.md",
+        "prompts/personality_pragmatic.md",
     ],
     crate_name = "xedoc_models_manager",
 )

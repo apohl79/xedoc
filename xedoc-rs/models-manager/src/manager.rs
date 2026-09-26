@@ -126,6 +126,13 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
     /// Returns an error if the internal lock cannot be acquired.
     fn try_get_remote_models(&self) -> Result<Vec<ModelInfo>, TryLockError>;
 
+    /// Attempt to return the provider catalog before registry configuration is applied.
+    ///
+    /// Returns an error if the internal lock cannot be acquired.
+    fn try_get_raw_remote_models(&self) -> Result<Vec<ModelInfo>, TryLockError> {
+        self.try_get_remote_models()
+    }
+
     /// Return the auth manager used for picker filtering.
     fn auth_manager(&self) -> Option<&AuthManager>;
 
@@ -349,6 +356,15 @@ impl ModelsManager for MultiProviderModelsManager {
         let mut all_models = Vec::new();
         for (_provider_id, manager) in self.prioritized_managers() {
             let models = manager.try_get_remote_models()?;
+            all_models.extend(models);
+        }
+        Ok(all_models)
+    }
+
+    fn try_get_raw_remote_models(&self) -> Result<Vec<ModelInfo>, TryLockError> {
+        let mut all_models = Vec::new();
+        for (_provider_id, manager) in self.prioritized_managers() {
+            let models = manager.try_get_raw_remote_models()?;
             all_models.extend(models);
         }
         Ok(all_models)
