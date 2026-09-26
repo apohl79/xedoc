@@ -3453,12 +3453,12 @@ impl ThreadRequestProcessor {
                 self.thread_goal_processor
                     .emit_resume_goal_snapshot_and_continue(thread_id, xedoc_thread.as_ref())
                     .await;
-                return Ok(Some(thread_id));
+                Ok(Some(thread_id))
             }
             Err(err) => {
                 let error = internal_error(format!("error resuming thread: {err}"));
                 self.outgoing.send_error(request_id, error).await;
-                return Ok(None);
+                Ok(None)
             }
         }
     }

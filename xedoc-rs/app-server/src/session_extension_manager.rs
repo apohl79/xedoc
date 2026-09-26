@@ -427,15 +427,12 @@ impl SessionExtensionManager {
                 .collect::<Vec<_>>();
             let descriptors_to_activate = discovered
                 .iter()
-                .filter_map(|(extension_id, descriptor)| {
-                    state
+                .filter(|&(extension_id, descriptor)| state
                         .extensions
                         .get(extension_id)
                         .is_none_or(|previous| {
                             previous.declaration_digest != descriptor.declaration_digest
-                        })
-                        .then(|| descriptor.clone())
-                })
+                        })).map(|(_extension_id, descriptor)| descriptor.clone())
                 .collect::<Vec<_>>();
 
             state.extensions = discovered;

@@ -1,6 +1,7 @@
 use crate::outgoing_message::ClientRequestResult;
 use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
 use crate::session_script_registry::OpenApprovalPrompt;
+use crate::session_script_registry::OpenRequestUserInputPrompt;
 use tokio::sync::oneshot;
 use xedoc_app_server_protocol::RequestId;
 use xedoc_app_server_protocol::ServerRequestPayload;
@@ -22,4 +23,28 @@ pub(crate) async fn await_response(
         });
     }
     (Some(request_id), client_receiver)
+}
+
+pub(crate) async fn await_request_user_input_response(
+    prompt: OpenRequestUserInputPrompt,
+    request: ServerRequestPayload,
+    outgoing: ThreadScopedOutgoingMessageSender,
+) -> (RequestId, oneshot::Receiver<ClientRequestResult>) {
+    let (request_id, client_receiver) = outgoing.send_request(request).await;
+    if let Some(script_receiver) = prompt.response_receiver {
+        let response_request_id = request_id.clone();
+        tokio::spawn(async move {
+            let Ok(response) = script_receiver.await else {
+                return;
+            };
+            let Ok(response) = serde_json::to_value(response) else {
+                tracing::error!("failed to serialize session script requestUserInput response");
+                return;
+            };
+            outgoing
+                .try_notify_client_response(&response_request_id, Ok(response))
+                .await;
+        });
+    }
+    (request_id, client_receiver)
 }

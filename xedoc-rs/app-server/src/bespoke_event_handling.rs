@@ -9,6 +9,7 @@ use crate::request_processors::populate_thread_turns_from_history;
 use crate::request_processors::thread_from_stored_thread;
 use crate::request_processors::thread_settings_from_core_snapshot;
 use crate::server_request_error::is_turn_transition_server_request_error;
+use crate::session_script_registry::RequestUserInputResponseMode;
 use crate::session_script_registry::SessionScriptRegistry;
 use crate::thread_state::ThreadState;
 use crate::thread_state::TurnSummary;
@@ -739,48 +740,78 @@ pub(crate) async fn apply_bespoke_event_handling(
             let script_prompt = session_script_registry
                 .open_request_user_input(&session_script_outgoing, conversation_id, params.clone())
                 .await;
-            if let Some(response_receiver) = script_prompt.response_receiver {
-                let script_registry = session_script_registry.clone();
-                let script_outgoing = session_script_outgoing.clone();
-                let response_timeout = script_prompt
-                    .response_timeout
-                    .expect("a delegated requestUserInput prompt has a response timeout");
-                tokio::spawn(async move {
-                    on_session_script_request_user_input_response(
-                        event_turn_id,
-                        response_receiver,
-                        script_prompt.prompt_id,
-                        params,
-                        response_timeout,
-                        conversation,
-                        thread_state,
-                        user_input_guard,
-                        outgoing,
-                        script_registry,
-                        script_outgoing,
-                    )
-                    .await;
-                });
-            } else {
-                let (pending_request_id, rx) = outgoing
-                    .send_request(ServerRequestPayload::ToolRequestUserInput(params))
-                    .await;
-                let script_registry = session_script_registry.clone();
-                let script_outgoing = session_script_outgoing.clone();
-                tokio::spawn(async move {
-                    on_observed_request_user_input_response(
-                        event_turn_id,
-                        pending_request_id,
-                        rx,
-                        conversation,
-                        thread_state,
-                        user_input_guard,
-                        script_prompt.prompt_id,
-                        script_registry,
-                        script_outgoing,
-                    )
-                    .await;
-                });
+            match script_prompt.response_mode {
+                RequestUserInputResponseMode::Parallel => {
+                    let prompt_id = script_prompt.prompt_id.clone();
+                    let (pending_request_id, rx) =
+                        parallel_approval::await_request_user_input_response(
+                            script_prompt,
+                            ServerRequestPayload::ToolRequestUserInput(params),
+                            outgoing.clone(),
+                        )
+                        .await;
+                    let script_registry = session_script_registry.clone();
+                    let script_outgoing = session_script_outgoing.clone();
+                    tokio::spawn(async move {
+                        on_observed_request_user_input_response(
+                            event_turn_id,
+                            pending_request_id,
+                            rx,
+                            conversation,
+                            thread_state,
+                            user_input_guard,
+                            prompt_id,
+                            script_registry,
+                            script_outgoing,
+                        )
+                        .await;
+                    });
+                }
+                RequestUserInputResponseMode::Exclusive => {
+                    if let Some(response_receiver) = script_prompt.response_receiver {
+                        let script_registry = session_script_registry.clone();
+                        let script_outgoing = session_script_outgoing.clone();
+                        let response_timeout = script_prompt
+                            .response_timeout
+                            .expect("a delegated requestUserInput prompt has a response timeout");
+                        tokio::spawn(async move {
+                            on_session_script_request_user_input_response(
+                                event_turn_id,
+                                response_receiver,
+                                script_prompt.prompt_id,
+                                params,
+                                response_timeout,
+                                conversation,
+                                thread_state,
+                                user_input_guard,
+                                outgoing,
+                                script_registry,
+                                script_outgoing,
+                            )
+                            .await;
+                        });
+                    } else {
+                        let (pending_request_id, rx) = outgoing
+                            .send_request(ServerRequestPayload::ToolRequestUserInput(params))
+                            .await;
+                        let script_registry = session_script_registry.clone();
+                        let script_outgoing = session_script_outgoing.clone();
+                        tokio::spawn(async move {
+                            on_observed_request_user_input_response(
+                                event_turn_id,
+                                pending_request_id,
+                                rx,
+                                conversation,
+                                thread_state,
+                                user_input_guard,
+                                script_prompt.prompt_id,
+                                script_registry,
+                                script_outgoing,
+                            )
+                            .await;
+                        });
+                    }
+                }
             }
         }
         EventMsg::ElicitationRequest(request) => {

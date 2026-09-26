@@ -179,6 +179,7 @@ use xedoc_app_server_protocol::ThreadListCwdFilter;
 use xedoc_app_server_protocol::ThreadListParams;
 use xedoc_app_server_protocol::ThreadSortKey;
 use xedoc_app_server_protocol::ThreadSourceKind;
+use xedoc_app_server_protocol::ThreadStatus;
 use xedoc_config::types::SessionPickerViewMode;
 use xedoc_protocol::ThreadId;
 use xedoc_tui_frame::FrameRequester;
@@ -1016,6 +1017,7 @@ struct Row {
     preview: String,
     thread_id: Option<ThreadId>,
     thread_name: Option<String>,
+    is_running: bool,
     created_at: Option<DateTime<Utc>>,
     updated_at: Option<DateTime<Utc>>,
     cwd: Option<PathBuf>,
@@ -1991,6 +1993,7 @@ fn row_from_app_server_thread(thread: Thread) -> Option<Row> {
         },
         thread_id: Some(thread_id),
         thread_name: thread.name,
+        is_running: matches!(thread.status, ThreadStatus::Active { .. }),
         created_at: chrono::DateTime::from_timestamp(thread.created_at, 0)
             .map(|dt| dt.with_timezone(&Utc)),
         updated_at: chrono::DateTime::from_timestamp(thread.updated_at, 0)
@@ -2727,13 +2730,23 @@ fn render_comfortable_session_lines(
     width: u16,
 ) -> Vec<Line<'static>> {
     let marker = selection_marker(is_selected, is_expanded);
-    let title = truncate_text(row.display_preview(), width.saturating_sub(2) as usize);
+    let available_title_width = (width as usize)
+        .saturating_sub(marker.width())
+        .saturating_sub(running_label_width(row.is_running));
+    let title_text = truncate_text(row.display_preview(), available_title_width);
     let title = if is_selected {
-        selected_session_title_span(title)
+        selected_session_title_span(title_text)
     } else {
-        title.into()
+        title_text.into()
     };
-    let title_line = Line::from(vec![marker, title]);
+    let mut title_line = Line::from(vec![marker, title]);
+    if row.is_running {
+        let padding = (width as usize)
+            .saturating_sub(title_line.width())
+            .saturating_sub(RUNNING_LABEL.width());
+        title_line.spans.push(" ".repeat(padding).into());
+        title_line.spans.push(RUNNING_LABEL.cyan());
+    }
     let mut lines = vec![title_line];
     let row_style = if is_selected {
         Some(dense_selected_style())
@@ -2744,6 +2757,11 @@ fn render_comfortable_session_lines(
     };
     if let Some(style) = row_style {
         lines = apply_session_row_background(lines, style, width);
+    }
+    if row.is_running
+        && let Some(status) = lines.first_mut().and_then(|line| line.spans.last_mut())
+    {
+        status.style = status.style.fg(Color::Cyan);
     }
     if is_expanded {
         lines.extend(render_transcript_preview_lines(row, state, width));
@@ -2818,6 +2836,7 @@ fn render_dense_session_lines(
         marker,
         date: &date,
         title: row.display_preview(),
+        is_running: row.is_running,
         is_selected,
         is_zebra,
         width,
@@ -2832,6 +2851,7 @@ struct DenseSummaryInput<'a> {
     marker: Span<'static>,
     date: &'a str,
     title: &'a str,
+    is_running: bool,
     is_selected: bool,
     is_zebra: bool,
     width: u16,
@@ -2840,18 +2860,21 @@ struct DenseSummaryInput<'a> {
 fn dense_summary_line(input: DenseSummaryInput<'_>) -> Line<'static> {
     let marker_width = input.marker.width();
     let available = (input.width as usize).saturating_sub(marker_width);
-    let columns = dense_columns(available);
+    let columns = dense_columns(available, input.is_running);
     let title = if input.is_selected {
         selected_session_title_span(dense_column_text(input.title, columns.title_width))
     } else {
         dense_column_text(input.title, columns.title_width).into()
     };
 
-    let spans = vec![
+    let mut spans = vec![
         input.marker,
         dense_column_text(input.date, columns.date_width).dim(),
         title,
     ];
+    if input.is_running {
+        spans.push(RUNNING_LABEL.cyan());
+    }
     let mut line = Line::from(spans);
     if input.is_selected {
         let padding = (input.width as usize).saturating_sub(line.width());
@@ -2876,12 +2899,19 @@ struct DenseColumns {
     title_width: usize,
 }
 
-fn dense_columns(width: usize) -> DenseColumns {
-    let date_width = SESSION_META_DATE_WIDTH;
+fn dense_columns(width: usize, is_running: bool) -> DenseColumns {
+    let available_width = width.saturating_sub(running_label_width(is_running));
+    let date_width = SESSION_META_DATE_WIDTH.min(available_width);
     DenseColumns {
         date_width,
-        title_width: width.saturating_sub(date_width),
+        title_width: available_width.saturating_sub(date_width),
     }
+}
+
+const RUNNING_LABEL: &str = " RUNNING";
+
+fn running_label_width(is_running: bool) -> usize {
+    usize::from(is_running) * RUNNING_LABEL.width()
 }
 
 fn dense_zebra_style() -> Style {
@@ -2905,6 +2935,9 @@ fn dense_row_background_style(selected: bool) -> Style {
 }
 
 fn dense_column_text(text: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
     let text = truncate_text(text, width.saturating_sub(1));
     let padding = width.saturating_sub(UnicodeWidthStr::width(text.as_str()));
     format!("{text}{}", " ".repeat(padding))

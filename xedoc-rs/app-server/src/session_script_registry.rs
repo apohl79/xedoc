@@ -65,6 +65,13 @@ struct SessionScriptPolicy {
     capabilities: HashSet<SessionScriptCapability>,
     subscriptions: SessionScriptSubscriptionPolicy,
     response_timeout: Duration,
+    request_user_input_response_mode: RequestUserInputResponseMode,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum RequestUserInputResponseMode {
+    Exclusive,
+    Parallel,
 }
 
 #[derive(Clone, Default)]
@@ -90,6 +97,7 @@ pub(crate) struct SessionScriptRegistration {
     resync_required: bool,
     session: Option<SessionScriptSession>,
     response_timeout: Duration,
+    request_user_input_response_mode: RequestUserInputResponseMode,
     identity: SessionScriptIdentityParams,
 }
 
@@ -115,6 +123,7 @@ pub(crate) struct OpenRequestUserInputPrompt {
     pub(crate) prompt_id: String,
     pub(crate) response_receiver: Option<oneshot::Receiver<ToolRequestUserInputResponse>>,
     pub(crate) response_timeout: Option<Duration>,
+    pub(crate) response_mode: RequestUserInputResponseMode,
 }
 
 pub(crate) struct OpenApprovalPrompt {
@@ -209,6 +218,7 @@ impl SessionScriptRegistry {
                             .collect(),
                         subscriptions,
                         response_timeout: script.response_timeout(),
+                        request_user_input_response_mode: RequestUserInputResponseMode::Exclusive,
                     },
                 )
             })
@@ -361,6 +371,7 @@ impl SessionScriptRegistry {
             resync_required: false,
             session: None,
             response_timeout: policy.response_timeout,
+            request_user_input_response_mode: policy.request_user_input_response_mode,
             identity: params.script,
         };
         if registration
@@ -682,18 +693,25 @@ impl SessionScriptRegistry {
         thread_id: ThreadId,
         params: ToolRequestUserInputParams,
     ) -> OpenRequestUserInputPrompt {
-        let (prompt_id, response_receiver, response_timeout, deliveries) = {
+        let (prompt_id, response_receiver, response_timeout, response_mode, deliveries) = {
             let mut state = self.state.lock().await;
             let responder_connection_id = state
                 .request_user_input_responder_by_thread
                 .get(&thread_id)
                 .copied();
-            let response_timeout = responder_connection_id.and_then(|connection_id| {
-                state
-                    .registrations_by_connection
-                    .get(&connection_id)
-                    .map(|registration| registration.response_timeout)
-            });
+            let (response_timeout, response_mode) = responder_connection_id
+                .and_then(|connection_id| {
+                    state
+                        .registrations_by_connection
+                        .get(&connection_id)
+                        .map(|registration| {
+                            (
+                                registration.response_timeout,
+                                registration.request_user_input_response_mode,
+                            )
+                        })
+                })
+                .unzip();
             let (response_tx, response_receiver, response_lease) =
                 if responder_connection_id.is_some() {
                     let (response_tx, response_receiver) = oneshot::channel();
@@ -723,13 +741,20 @@ impl SessionScriptRegistry {
             };
             let deliveries = prompt_open_deliveries(&mut state, &prompt);
             state.prompts_by_id.insert(prompt_id.clone(), prompt);
-            (prompt_id, response_receiver, response_timeout, deliveries)
+            (
+                prompt_id,
+                response_receiver,
+                response_timeout,
+                response_mode.unwrap_or(RequestUserInputResponseMode::Exclusive),
+                deliveries,
+            )
         };
         send_deliveries(outgoing, deliveries).await;
         OpenRequestUserInputPrompt {
             prompt_id,
             response_receiver,
             response_timeout,
+            response_mode,
         }
     }
 
@@ -1060,6 +1085,7 @@ fn extension_policy_from_requested_capabilities(
         capabilities: HashSet::new(),
         subscriptions: SessionScriptSubscriptionPolicy::default(),
         response_timeout: Duration::from_secs(/*secs*/ 10),
+        request_user_input_response_mode: RequestUserInputResponseMode::Parallel,
     };
     for capability in requested_capabilities {
         match capability.as_str() {
