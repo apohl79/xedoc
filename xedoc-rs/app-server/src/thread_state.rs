@@ -491,6 +491,7 @@ mod tests {
 struct ThreadEntry {
     state: Arc<Mutex<ThreadState>>,
     connection_ids: HashSet<ConnectionId>,
+    environment_connection_id: Option<ConnectionId>,
     script_connection_ids: HashSet<ConnectionId>,
     has_connections_watcher: watch::Sender<bool>,
 }
@@ -500,6 +501,7 @@ impl Default for ThreadEntry {
         Self {
             state: Arc::new(Mutex::new(ThreadState::default())),
             connection_ids: HashSet::new(),
+            environment_connection_id: None,
             script_connection_ids: HashSet::new(),
             has_connections_watcher: watch::channel(false).0,
         }
@@ -689,6 +691,57 @@ impl ThreadStateManager {
         };
 
         true
+    }
+
+    pub(crate) async fn mark_environment_connection(
+        &self,
+        thread_id: ThreadId,
+        connection_id: ConnectionId,
+    ) -> bool {
+        let mut state = self.state.lock().await;
+        if !state.live_connections.contains(&connection_id) {
+            return false;
+        }
+        state
+            .threads
+            .entry(thread_id)
+            .or_default()
+            .environment_connection_id = Some(connection_id);
+        true
+    }
+
+    pub(crate) async fn remove_environment_connection_from_thread(
+        &self,
+        thread_id: ThreadId,
+        connection_id: ConnectionId,
+    ) -> bool {
+        let mut state = self.state.lock().await;
+        let Some(thread_entry) = state.threads.get_mut(&thread_id) else {
+            return false;
+        };
+        if thread_entry.environment_connection_id == Some(connection_id) {
+            thread_entry.environment_connection_id = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) async fn remove_environment_connection(
+        &self,
+        connection_id: ConnectionId,
+    ) -> Vec<ThreadId> {
+        let mut state = self.state.lock().await;
+        state
+            .threads
+            .iter_mut()
+            .filter_map(|(thread_id, thread_entry)| {
+                (thread_entry.environment_connection_id == Some(connection_id)).then(|| {
+                    thread_entry.environment_connection_id = None;
+                    *thread_id
+                })
+            })
+            .collect()
     }
 
     #[cfg(test)]

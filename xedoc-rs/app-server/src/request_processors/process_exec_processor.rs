@@ -94,7 +94,11 @@ impl ProcessExecRequestProcessor {
         if size.is_some() && !tty {
             return Err(invalid_params("process/spawn size requires tty: true"));
         }
-        let mut env = std::env::vars().collect::<HashMap<_, _>>();
+        let mut env = std::env::vars()
+            .filter(|(name, _)| {
+                !xedoc_protocol::shell_environment::is_cmux_environment_variable(name)
+            })
+            .collect::<HashMap<_, _>>();
         if let Some(env_overrides) = env_overrides {
             for (key, value) in env_overrides {
                 match value {

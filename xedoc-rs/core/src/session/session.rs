@@ -131,6 +131,10 @@ pub(crate) struct SessionConfiguration {
     /// This remains runtime-only and is deliberately excluded from persisted
     /// thread configuration and notifications.
     pub(super) environment_variables: Option<Arc<BTreeMap<String, String>>>,
+    /// Whether the client that supplied the runtime environment remains attached.
+    ///
+    /// This remains runtime-only and gates hook access to the client environment.
+    pub(super) hook_environment_attached: bool,
     /// Directory containing all Xedoc state for this session.
     pub(super) xedoc_home: AbsolutePathBuf,
     /// Optional user-facing name for the thread, updated during the session.

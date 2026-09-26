@@ -202,6 +202,10 @@ impl XedocThread {
         self.io.submit(op).await
     }
 
+    pub async fn set_hook_environment_attached(&self, attached: bool) {
+        self.session.set_hook_environment_attached(attached).await;
+    }
+
     /// Update the root-thread model-router A/B state without requiring an active turn.
     pub async fn control_model_router_ab(
         &self,

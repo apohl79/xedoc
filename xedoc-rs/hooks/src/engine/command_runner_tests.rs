@@ -54,6 +54,7 @@ async fn cmd_shell_runs_quoted_hook_command_path() {
             /*configured_order*/ 0,
             "{}",
             temp.path(),
+            None,
         )
         .await;
 

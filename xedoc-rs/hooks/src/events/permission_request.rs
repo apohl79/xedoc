@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::HookEnvironment;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -88,6 +89,7 @@ pub(crate) async fn run(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
     request: PermissionRequestRequest,
+    environment_variables: HookEnvironment,
 ) -> PermissionRequestOutcome {
     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
     let matched = dispatcher::select_handlers_for_matcher_inputs(
@@ -124,6 +126,7 @@ pub(crate) async fn run(
         input_json,
         request.cwd.as_path(),
         Some(request.turn_id.clone()),
+        environment_variables,
         parse_completed,
     )
     .await;

@@ -24,7 +24,9 @@ use crate::events::user_prompt_submit::UserPromptSubmitOutcome;
 use crate::events::user_prompt_submit::UserPromptSubmitRequest;
 use crate::output_spill::AdditionalContextLimit;
 use crate::output_spill::HookOutputSpiller;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 use xedoc_config::ConfigLayerStack;
 use xedoc_plugin::PluginHookSource;
 use xedoc_protocol::ThreadId;
@@ -40,6 +42,8 @@ pub(crate) struct CommandShell {
     pub program: String,
     pub args: Vec<String>,
 }
+
+pub(crate) type HookEnvironment = Option<Arc<BTreeMap<String, String>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConfiguredHandler {
@@ -176,6 +180,7 @@ impl ClaudeHooksEngine {
         &self,
         request: SessionStartRequest,
         turn_id: Option<String>,
+        environment_variables: HookEnvironment,
     ) -> SessionStartOutcome {
         crate::events::session_start::run(
             &self.handlers,
@@ -183,25 +188,44 @@ impl ClaudeHooksEngine {
             &self.output_spiller,
             request,
             turn_id,
+            environment_variables,
         )
         .await
     }
 
-    pub(crate) async fn run_pre_tool_use(&self, request: PreToolUseRequest) -> PreToolUseOutcome {
-        crate::events::pre_tool_use::run(&self.handlers, &self.shell, &self.output_spiller, request)
-            .await
+    pub(crate) async fn run_pre_tool_use(
+        &self,
+        request: PreToolUseRequest,
+        environment_variables: HookEnvironment,
+    ) -> PreToolUseOutcome {
+        crate::events::pre_tool_use::run(
+            &self.handlers,
+            &self.shell,
+            &self.output_spiller,
+            request,
+            environment_variables,
+        )
+        .await
     }
 
     pub(crate) async fn run_permission_request(
         &self,
         request: PermissionRequestRequest,
+        environment_variables: HookEnvironment,
     ) -> PermissionRequestOutcome {
-        crate::events::permission_request::run(&self.handlers, &self.shell, request).await
+        crate::events::permission_request::run(
+            &self.handlers,
+            &self.shell,
+            request,
+            environment_variables,
+        )
+        .await
     }
 
     pub(crate) async fn run_post_tool_use(
         &self,
         request: PostToolUseRequest,
+        environment_variables: HookEnvironment,
     ) -> PostToolUseOutcome {
         let session_id = request.session_id;
         let mut outcome = crate::events::post_tool_use::run(
@@ -209,6 +233,7 @@ impl ClaudeHooksEngine {
             &self.shell,
             &self.output_spiller,
             request,
+            environment_variables,
         )
         .await;
         outcome.feedback_message = self
@@ -221,8 +246,13 @@ impl ClaudeHooksEngine {
         crate::events::compact::preview_pre(&self.handlers, request)
     }
 
-    pub(crate) async fn run_pre_compact(&self, request: PreCompactRequest) -> PreCompactOutcome {
-        crate::events::compact::run_pre(&self.handlers, &self.shell, request).await
+    pub(crate) async fn run_pre_compact(
+        &self,
+        request: PreCompactRequest,
+        environment_variables: HookEnvironment,
+    ) -> PreCompactOutcome {
+        crate::events::compact::run_pre(&self.handlers, &self.shell, request, environment_variables)
+            .await
     }
 
     pub(crate) fn preview_post_compact(&self, request: &PostCompactRequest) -> Vec<HookRunSummary> {
@@ -232,8 +262,15 @@ impl ClaudeHooksEngine {
     pub(crate) async fn run_post_compact(
         &self,
         request: PostCompactRequest,
+        environment_variables: HookEnvironment,
     ) -> StatelessHookOutcome {
-        crate::events::compact::run_post(&self.handlers, &self.shell, request).await
+        crate::events::compact::run_post(
+            &self.handlers,
+            &self.shell,
+            request,
+            environment_variables,
+        )
+        .await
     }
 
     pub(crate) fn preview_user_prompt_submit(
@@ -246,12 +283,14 @@ impl ClaudeHooksEngine {
     pub(crate) async fn run_user_prompt_submit(
         &self,
         request: UserPromptSubmitRequest,
+        environment_variables: HookEnvironment,
     ) -> UserPromptSubmitOutcome {
         crate::events::user_prompt_submit::run(
             &self.handlers,
             &self.shell,
             &self.output_spiller,
             request,
+            environment_variables,
         )
         .await
     }
@@ -264,13 +303,24 @@ impl ClaudeHooksEngine {
         crate::events::session_end::preview(&self.handlers)
     }
 
-    pub(crate) async fn run_session_end(&self, request: SessionEndRequest) -> SessionEndOutcome {
-        crate::events::session_end::run(&self.handlers, &self.shell, request).await
+    pub(crate) async fn run_session_end(
+        &self,
+        request: SessionEndRequest,
+        environment_variables: HookEnvironment,
+    ) -> SessionEndOutcome {
+        crate::events::session_end::run(&self.handlers, &self.shell, request, environment_variables)
+            .await
     }
 
-    pub(crate) async fn run_stop(&self, request: StopRequest) -> StopOutcome {
+    pub(crate) async fn run_stop(
+        &self,
+        request: StopRequest,
+        environment_variables: HookEnvironment,
+    ) -> StopOutcome {
         let session_id = request.session_id;
-        let mut outcome = crate::events::stop::run(&self.handlers, &self.shell, request).await;
+        let mut outcome =
+            crate::events::stop::run(&self.handlers, &self.shell, request, environment_variables)
+                .await;
         outcome.continuation_fragments = self
             .maybe_spill_prompt_fragments(session_id, outcome.continuation_fragments)
             .await;

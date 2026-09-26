@@ -786,6 +786,7 @@ impl Session {
                 environment_selections,
             ),
             environment_variables: None,
+            hook_environment_attached: false,
             xedoc_home: config.xedoc_home.clone(),
             thread_name: None,
             original_config_do_not_use: Arc::clone(&config),
@@ -4265,6 +4266,23 @@ impl Session {
 
     pub(crate) fn hooks(&self) -> Arc<Hooks> {
         self.services.hooks.load_full()
+    }
+
+    pub(crate) async fn set_hook_environment_attached(&self, attached: bool) {
+        self.state
+            .lock()
+            .await
+            .session_configuration
+            .hook_environment_attached = attached;
+    }
+
+    pub(crate) async fn hook_environment_variables(&self) -> Option<Arc<BTreeMap<String, String>>> {
+        let state = self.state.lock().await;
+        state
+            .session_configuration
+            .hook_environment_attached
+            .then(|| state.session_configuration.environment_variables.clone())
+            .flatten()
     }
 
     pub(crate) fn user_shell(&self) -> Arc<shell::Shell> {

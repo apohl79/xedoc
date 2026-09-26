@@ -11,7 +11,17 @@ pub fn create_env(
     policy: &ShellEnvironmentPolicy,
     thread_id: Option<&str>,
 ) -> HashMap<String, String> {
-    create_env_from_vars(std::env::vars(), policy, thread_id)
+    create_env_from_vars(
+        std::env::vars().filter(|(name, _)| !is_cmux_environment_variable(name)),
+        policy,
+        thread_id,
+    )
+}
+
+/// Identifies cmux terminal-context environment variables.
+pub fn is_cmux_environment_variable(name: &str) -> bool {
+    name.get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("CMUX_"))
 }
 
 pub fn create_env_from_vars<I>(

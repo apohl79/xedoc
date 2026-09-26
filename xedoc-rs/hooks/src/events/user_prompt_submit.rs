@@ -12,6 +12,7 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::HookEnvironment;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -67,6 +68,7 @@ pub(crate) async fn run(
     shell: &CommandShell,
     output_spiller: &HookOutputSpiller,
     request: UserPromptSubmitRequest,
+    environment_variables: HookEnvironment,
 ) -> UserPromptSubmitOutcome {
     let session_id = request.session_id;
     let matched = dispatcher::select_handlers(
@@ -112,6 +114,7 @@ pub(crate) async fn run(
         input_json,
         request.cwd.as_path(),
         Some(request.turn_id),
+        environment_variables,
         parse_completed,
     )
     .await;

@@ -12,6 +12,7 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 use super::common;
 use crate::engine::CommandShell;
 use crate::engine::ConfiguredHandler;
+use crate::engine::HookEnvironment;
 use crate::engine::command_runner::CommandRunResult;
 use crate::engine::dispatcher;
 use crate::engine::output_parser;
@@ -73,6 +74,7 @@ pub(crate) async fn run_pre(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
     request: PreCompactRequest,
+    environment_variables: HookEnvironment,
 ) -> PreCompactOutcome {
     let matched = dispatcher::select_handlers(
         handlers,
@@ -108,6 +110,7 @@ pub(crate) async fn run_pre(
         input_json,
         request.cwd.as_path(),
         Some(request.turn_id),
+        environment_variables,
         parse_pre_completed,
     )
     .await;
@@ -155,6 +158,7 @@ pub(crate) async fn run_post(
     handlers: &[ConfiguredHandler],
     shell: &CommandShell,
     request: PostCompactRequest,
+    environment_variables: HookEnvironment,
 ) -> StatelessHookOutcome {
     let matched = dispatcher::select_handlers(
         handlers,
@@ -190,6 +194,7 @@ pub(crate) async fn run_post(
         input_json,
         request.cwd.as_path(),
         Some(request.turn_id),
+        environment_variables,
         parse_post_completed,
     )
     .await;

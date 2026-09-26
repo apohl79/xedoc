@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use tokio::process::Command;
 use xedoc_config::ConfigLayerStack;
 use xedoc_plugin::PluginHookSource;
@@ -140,23 +143,41 @@ impl Hooks {
         &self,
         request: SessionStartRequest,
         turn_id: Option<String>,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
     ) -> SessionStartOutcome {
-        self.engine.run_session_start(request, turn_id).await
+        self.engine
+            .run_session_start(request, turn_id, environment_variables)
+            .await
     }
 
-    pub async fn run_pre_tool_use(&self, request: PreToolUseRequest) -> PreToolUseOutcome {
-        self.engine.run_pre_tool_use(request).await
+    pub async fn run_pre_tool_use(
+        &self,
+        request: PreToolUseRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
+    ) -> PreToolUseOutcome {
+        self.engine
+            .run_pre_tool_use(request, environment_variables)
+            .await
     }
 
     pub async fn run_permission_request(
         &self,
         request: PermissionRequestRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
     ) -> PermissionRequestOutcome {
-        self.engine.run_permission_request(request).await
+        self.engine
+            .run_permission_request(request, environment_variables)
+            .await
     }
 
-    pub async fn run_post_tool_use(&self, request: PostToolUseRequest) -> PostToolUseOutcome {
-        self.engine.run_post_tool_use(request).await
+    pub async fn run_post_tool_use(
+        &self,
+        request: PostToolUseRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
+    ) -> PostToolUseOutcome {
+        self.engine
+            .run_post_tool_use(request, environment_variables)
+            .await
     }
 
     pub fn preview_pre_compact(
@@ -166,8 +187,14 @@ impl Hooks {
         self.engine.preview_pre_compact(request)
     }
 
-    pub async fn run_pre_compact(&self, request: PreCompactRequest) -> PreCompactOutcome {
-        self.engine.run_pre_compact(request).await
+    pub async fn run_pre_compact(
+        &self,
+        request: PreCompactRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
+    ) -> PreCompactOutcome {
+        self.engine
+            .run_pre_compact(request, environment_variables)
+            .await
     }
 
     pub fn preview_post_compact(
@@ -177,8 +204,14 @@ impl Hooks {
         self.engine.preview_post_compact(request)
     }
 
-    pub async fn run_post_compact(&self, request: PostCompactRequest) -> StatelessHookOutcome {
-        self.engine.run_post_compact(request).await
+    pub async fn run_post_compact(
+        &self,
+        request: PostCompactRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
+    ) -> StatelessHookOutcome {
+        self.engine
+            .run_post_compact(request, environment_variables)
+            .await
     }
 
     pub fn preview_user_prompt_submit(
@@ -191,8 +224,11 @@ impl Hooks {
     pub async fn run_user_prompt_submit(
         &self,
         request: UserPromptSubmitRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
     ) -> UserPromptSubmitOutcome {
-        self.engine.run_user_prompt_submit(request).await
+        self.engine
+            .run_user_prompt_submit(request, environment_variables)
+            .await
     }
 
     pub fn preview_stop(
@@ -202,16 +238,26 @@ impl Hooks {
         self.engine.preview_stop(request)
     }
 
-    pub async fn run_stop(&self, request: StopRequest) -> StopOutcome {
-        self.engine.run_stop(request).await
+    pub async fn run_stop(
+        &self,
+        request: StopRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
+    ) -> StopOutcome {
+        self.engine.run_stop(request, environment_variables).await
     }
 
     pub fn preview_session_end(&self) -> Vec<xedoc_protocol::protocol::HookRunSummary> {
         self.engine.preview_session_end()
     }
 
-    pub async fn run_session_end(&self, request: SessionEndRequest) -> SessionEndOutcome {
-        self.engine.run_session_end(request).await
+    pub async fn run_session_end(
+        &self,
+        request: SessionEndRequest,
+        environment_variables: Option<Arc<BTreeMap<String, String>>>,
+    ) -> SessionEndOutcome {
+        self.engine
+            .run_session_end(request, environment_variables)
+            .await
     }
 }
 

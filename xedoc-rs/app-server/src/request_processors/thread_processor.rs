@@ -906,6 +906,14 @@ impl ThreadRequestProcessor {
             .thread_state_manager
             .unsubscribe_connection_from_thread(thread_id, connection_id)
             .await;
+        if self
+            .thread_state_manager
+            .remove_environment_connection_from_thread(thread_id, connection_id)
+            .await
+            && let Ok(thread) = self.thread_manager.get_thread(thread_id).await
+        {
+            thread.set_hook_environment_attached(false).await;
+        }
 
         let status = if was_subscribed {
             ThreadUnsubscribeStatus::Unsubscribed
@@ -3014,10 +3022,20 @@ impl ThreadRequestProcessor {
             .remove_connection(connection_id)
             .await;
         crate::session_script_registry::send_deliveries(&self.outgoing, script_deliveries).await;
+        let detached_environment_thread_ids = self
+            .thread_state_manager
+            .remove_environment_connection(connection_id)
+            .await;
         let thread_ids = self
             .thread_state_manager
             .remove_connection(connection_id)
             .await;
+
+        for thread_id in detached_environment_thread_ids {
+            if let Ok(thread) = self.thread_manager.get_thread(thread_id).await {
+                thread.set_hook_environment_attached(false).await;
+            }
+        }
 
         for thread_id in thread_ids {
             if self.thread_manager.get_thread(thread_id).await.is_err() {

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -52,11 +53,12 @@ pub(crate) async fn run_command(
     configured_order: usize,
     input_json: &str,
     cwd: &Path,
+    environment_variables: Option<&BTreeMap<String, String>>,
 ) -> CommandRunResult {
     let started_at = chrono::Utc::now().timestamp();
     let started = Instant::now();
 
-    let mut command = build_command(shell, handler);
+    let mut command = build_command(shell, handler, environment_variables);
     command
         .current_dir(cwd)
         .stdin(Stdio::piped())
@@ -161,9 +163,13 @@ fn finish_command_run(
     }
 }
 
-fn build_command(shell: &CommandShell, handler: &ConfiguredHandler) -> Command {
+fn build_command(
+    shell: &CommandShell,
+    handler: &ConfiguredHandler,
+    environment_variables: Option<&BTreeMap<String, String>>,
+) -> Command {
     let mut command = if shell.program.is_empty() {
-        default_shell_command()
+        default_shell_command(environment_variables)
     } else {
         Command::new(&shell.program)
     };
@@ -186,14 +192,29 @@ fn build_command(shell: &CommandShell, handler: &ConfiguredHandler) -> Command {
         #[cfg(not(windows))]
         command.arg(&handler.command);
     }
+    command.env_clear();
+    match environment_variables {
+        Some(environment_variables) => {
+            command.envs(environment_variables);
+        }
+        None => {
+            command.envs(std::env::vars().filter(|(name, _)| {
+                !xedoc_protocol::shell_environment::is_cmux_environment_variable(name)
+            }));
+        }
+    }
     command.envs(&handler.env);
     command
 }
 
-fn default_shell_command() -> Command {
+fn default_shell_command(environment_variables: Option<&BTreeMap<String, String>>) -> Command {
     #[cfg(windows)]
     {
-        let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+        let comspec = environment_variables
+            .and_then(|variables| variables.get("COMSPEC"))
+            .cloned()
+            .or_else(|| std::env::var("COMSPEC").ok())
+            .unwrap_or_else(|| "cmd.exe".to_string());
         let mut command = Command::new(comspec);
         command.arg("/C");
         command
@@ -201,7 +222,11 @@ fn default_shell_command() -> Command {
 
     #[cfg(not(windows))]
     {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let shell = environment_variables
+            .and_then(|variables| variables.get("SHELL"))
+            .cloned()
+            .or_else(|| std::env::var("SHELL").ok())
+            .unwrap_or_else(|| "/bin/sh".to_string());
         let mut command = Command::new(shell);
         command.arg("-lc");
         command

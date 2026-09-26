@@ -13,6 +13,7 @@ use xedoc_protocol::protocol::HookScope;
 
 use super::CommandShell;
 use super::ConfiguredHandler;
+use super::HookEnvironment;
 use super::command_runner::CommandRunResult;
 use super::command_runner::run_command;
 use crate::events::common::matches_matcher;
@@ -93,14 +94,24 @@ pub(crate) async fn execute_handlers<T>(
     input_json: String,
     cwd: &Path,
     turn_id: Option<String>,
+    environment_variables: HookEnvironment,
     parse: fn(&ConfiguredHandler, CommandRunResult, Option<String>) -> ParsedHandler<T>,
 ) -> Vec<ParsedHandler<T>> {
     let mut pending = FuturesUnordered::new();
     for (configured_order, handler) in handlers.into_iter().enumerate() {
         let input_json = input_json.clone();
         let turn_id = turn_id.clone();
+        let environment_variables = environment_variables.clone();
         pending.push(async move {
-            let result = run_command(shell, &handler, configured_order, &input_json, cwd).await;
+            let result = run_command(
+                shell,
+                &handler,
+                configured_order,
+                &input_json,
+                cwd,
+                environment_variables.as_deref(),
+            )
+            .await;
             (configured_order, parse(&handler, result, turn_id))
         });
     }

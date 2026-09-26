@@ -426,7 +426,7 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<TurnStartResponse, JSONRPCErrorError> {
-        let (_, thread) = self.load_thread(&params.thread_id).await?;
+        let (thread_id, thread) = self.load_thread(&params.thread_id).await?;
         self.ensure_direct_input_allowed(thread.as_ref()).await?;
         Self::validate_v2_input_limit(&params.input)?;
         Self::set_app_server_client_info(
@@ -467,6 +467,7 @@ impl TurnRequestProcessor {
                 environment_selections,
             )
             .await;
+        let environment_variables_supplied = params.environment_variables.is_some();
         let thread_settings = self
             .build_thread_settings_overrides(
                 thread.as_ref(),
@@ -503,6 +504,14 @@ impl TurnRequestProcessor {
             )
             .await
             .map_err(|err| internal_error(format!("failed to start turn: {err}")))?;
+        if environment_variables_supplied
+            && self
+                .thread_state_manager
+                .mark_environment_connection(thread_id, request_id.connection_id)
+                .await
+        {
+            thread.set_hook_environment_attached(true).await;
+        }
 
         self.outgoing
             .record_request_turn_id(&request_id, &turn_id)
@@ -733,7 +742,7 @@ impl TurnRequestProcessor {
         if let Some(environment_variables) = params.environment_variables.as_ref() {
             validate_environment_variables(environment_variables)?;
         }
-        let (_, thread) = self.load_thread(&params.thread_id).await?;
+        let (thread_id, thread) = self.load_thread(&params.thread_id).await?;
         let cwd = resolve_request_cwd(params.cwd)?;
         let environments = self
             .build_environment_override(
@@ -743,6 +752,7 @@ impl TurnRequestProcessor {
                 /*environment_selections*/ None,
             )
             .await;
+        let environment_variables_supplied = params.environment_variables.is_some();
         let thread_settings = self
             .build_thread_settings_overrides(
                 thread.as_ref(),
@@ -772,6 +782,14 @@ impl TurnRequestProcessor {
             )
             .await
             .map_err(|err| internal_error(format!("failed to update thread settings: {err}")))?;
+        }
+        if environment_variables_supplied
+            && self
+                .thread_state_manager
+                .mark_environment_connection(thread_id, request_id.connection_id)
+                .await
+        {
+            thread.set_hook_environment_attached(true).await;
         }
 
         Ok(ThreadSettingsUpdateResponse {})

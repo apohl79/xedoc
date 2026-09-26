@@ -136,11 +136,16 @@ pub(crate) async fn run_pending_session_start_hooks(
         };
         let hooks = sess.hooks();
         let preview_runs = hooks.preview_session_start(&request);
+        let environment_variables = sess.hook_environment_variables().await;
         if run_context_injecting_hook(
             sess,
             turn_context,
             preview_runs,
-            hooks.run_session_start(request, Some(turn_context.sub_id.clone())),
+            hooks.run_session_start(
+                request,
+                Some(turn_context.sub_id.clone()),
+                environment_variables,
+            ),
         )
         .await
         .record_additional_contexts(sess, turn_context)
@@ -182,6 +187,7 @@ pub(crate) async fn run_pre_tool_use_hooks(
     let hooks = sess.hooks();
     let preview_runs = hooks.preview_pre_tool_use(&request);
     emit_hook_started_events(sess, turn_context, preview_runs).await;
+    let environment_variables = sess.hook_environment_variables().await;
 
     let PreToolUseOutcome {
         hook_events,
@@ -189,7 +195,7 @@ pub(crate) async fn run_pre_tool_use_hooks(
         block_reason,
         additional_contexts,
         updated_input,
-    } = hooks.run_pre_tool_use(request).await;
+    } = hooks.run_pre_tool_use(request, environment_variables).await;
     emit_hook_completed_events(sess, turn_context, hook_events).await;
     record_additional_contexts(sess, turn_context, additional_contexts).await;
 
@@ -243,11 +249,14 @@ pub(crate) async fn run_permission_request_hooks(
     let hooks = sess.hooks();
     let preview_runs = hooks.preview_permission_request(&request);
     emit_hook_started_events(sess, turn_context, preview_runs).await;
+    let environment_variables = sess.hook_environment_variables().await;
 
     let PermissionRequestOutcome {
         hook_events,
         decision,
-    } = hooks.run_permission_request(request).await;
+    } = hooks
+        .run_permission_request(request, environment_variables)
+        .await;
     emit_hook_completed_events(sess, turn_context, hook_events).await;
 
     decision
@@ -286,8 +295,11 @@ pub(crate) async fn run_post_tool_use_hooks(
     let hooks = sess.hooks();
     let preview_runs = hooks.preview_post_tool_use(&request);
     emit_hook_started_events(sess, turn_context, preview_runs).await;
+    let environment_variables = sess.hook_environment_variables().await;
 
-    let outcome = hooks.run_post_tool_use(request).await;
+    let outcome = hooks
+        .run_post_tool_use(request, environment_variables)
+        .await;
     emit_hook_completed_events(sess, turn_context, outcome.hook_events.clone()).await;
     outcome
 }
@@ -357,8 +369,9 @@ pub(crate) async fn run_turn_stop_hooks(
     };
     let hooks = sess.hooks();
     emit_hook_started_events(sess, turn_context, hooks.preview_stop(&request)).await;
+    let environment_variables = sess.hook_environment_variables().await;
 
-    let mut outcome = hooks.run_stop(request).await;
+    let mut outcome = hooks.run_stop(request, environment_variables).await;
     emit_hook_completed_events(sess, turn_context, std::mem::take(&mut outcome.hook_events)).await;
     outcome
 }
@@ -390,8 +403,9 @@ pub(crate) async fn run_session_end_hooks(sess: &Arc<Session>) {
         tracing::warn!("failed to flush transcript before SessionEnd hook: {err}");
     }
     emit_hook_started_events(sess, &turn_context, preview_runs).await;
+    let environment_variables = sess.hook_environment_variables().await;
 
-    let outcome = hooks.run_session_end(request).await;
+    let outcome = hooks.run_session_end(request, environment_variables).await;
     emit_hook_completed_events(sess, &turn_context, outcome.hook_events).await;
 }
 
@@ -412,8 +426,12 @@ pub(crate) async fn run_pre_compact_hooks(
     };
     let preview_runs = sess.hooks().preview_pre_compact(&request);
     emit_hook_started_events(sess, turn_context, preview_runs).await;
+    let environment_variables = sess.hook_environment_variables().await;
 
-    let outcome = sess.hooks().run_pre_compact(request).await;
+    let outcome = sess
+        .hooks()
+        .run_pre_compact(request, environment_variables)
+        .await;
     emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
     if outcome.should_stop {
         PreCompactHookOutcome::Stopped
@@ -449,8 +467,12 @@ pub(crate) async fn run_post_compact_hooks(
     };
     let preview_runs = sess.hooks().preview_post_compact(&request);
     emit_hook_started_events(sess, turn_context, preview_runs).await;
+    let environment_variables = sess.hook_environment_variables().await;
 
-    let outcome = sess.hooks().run_post_compact(request).await;
+    let outcome = sess
+        .hooks()
+        .run_post_compact(request, environment_variables)
+        .await;
     emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
     if outcome.should_stop {
         PostCompactHookOutcome::Stopped
@@ -547,11 +569,12 @@ pub(crate) async fn inspect_pending_input(
             };
             let hooks = sess.hooks();
             let preview_runs = hooks.preview_user_prompt_submit(&request);
+            let environment_variables = sess.hook_environment_variables().await;
             run_context_injecting_hook(
                 sess,
                 turn_context,
                 preview_runs,
-                hooks.run_user_prompt_submit(request),
+                hooks.run_user_prompt_submit(request, environment_variables),
             )
             .await
         }
