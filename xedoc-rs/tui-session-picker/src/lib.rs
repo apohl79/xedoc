@@ -2022,7 +2022,7 @@ fn thread_list_params(
         parent_thread_id: None,
         ancestor_thread_id: None,
         cwd: cwd_filter.map(|cwd| ThreadListCwdFilter::One(cwd.to_string_lossy().into_owned())),
-        use_state_db_only: false,
+        use_state_db_only: true,
         search_term: None,
     }
 }
