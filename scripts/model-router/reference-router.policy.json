@@ -74,13 +74,13 @@
         {
           "id": "coordination",
           "maximumModelClass": "smart",
-          "minimumModelClass": "smart",
+          "minimumModelClass": "simple",
           "points": 0
         },
         {
           "id": "workflow",
           "maximumModelClass": "smart",
-          "minimumModelClass": "smart",
+          "minimumModelClass": "simple",
           "points": 0
         }
       ],
@@ -152,6 +152,99 @@
   "feedback": true,
   "mode": "off",
   "ranking": {
+    "curve": "conservative",
+    "curves": [
+      {
+        "id": "conservative",
+        "label": "Lower — reserve smarter models for harder tasks",
+        "ranges": [
+          {
+            "maximumRank": 5,
+            "maximumScore": 10,
+            "minimumRank": 1,
+            "minimumScore": 3
+          },
+          {
+            "maximumRank": 8,
+            "maximumScore": 18,
+            "minimumRank": 6,
+            "minimumScore": 11
+          },
+          {
+            "maximumRank": 10,
+            "maximumScore": 25,
+            "minimumRank": 9,
+            "minimumScore": 19
+          },
+          {
+            "maximumRank": 15,
+            "maximumScore": 35,
+            "minimumRank": 11,
+            "minimumScore": 26
+          }
+        ]
+      },
+      {
+        "id": "balanced",
+        "label": "Balanced — escalate with mixed difficulty",
+        "ranges": [
+          {
+            "maximumRank": 5,
+            "maximumScore": 8,
+            "minimumRank": 1,
+            "minimumScore": 3
+          },
+          {
+            "maximumRank": 8,
+            "maximumScore": 15,
+            "minimumRank": 6,
+            "minimumScore": 9
+          },
+          {
+            "maximumRank": 10,
+            "maximumScore": 22,
+            "minimumRank": 9,
+            "minimumScore": 16
+          },
+          {
+            "maximumRank": 15,
+            "maximumScore": 35,
+            "minimumRank": 11,
+            "minimumScore": 23
+          }
+        ]
+      },
+      {
+        "id": "aggressive",
+        "label": "Higher — favor smarter models sooner",
+        "ranges": [
+          {
+            "maximumRank": 5,
+            "maximumScore": 6,
+            "minimumRank": 1,
+            "minimumScore": 3
+          },
+          {
+            "maximumRank": 8,
+            "maximumScore": 12,
+            "minimumRank": 6,
+            "minimumScore": 7
+          },
+          {
+            "maximumRank": 10,
+            "maximumScore": 18,
+            "minimumRank": 9,
+            "minimumScore": 13
+          },
+          {
+            "maximumRank": 15,
+            "maximumScore": 35,
+            "minimumRank": 11,
+            "minimumScore": 19
+          }
+        ]
+      }
+    ],
     "ladder": [
       {
         "class": "simple",

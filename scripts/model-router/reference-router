@@ -139,8 +139,111 @@ CONFIDENCE_PRESETS = {
         "minimumMargin": 0.15,
     },
 }
+DEFAULT_RANKING_CURVES = [
+    {
+        "id": "conservative",
+        "label": "Lower — reserve smarter models for harder tasks",
+        "ranges": [
+            {"minimumScore": 3, "maximumScore": 10, "minimumRank": 1, "maximumRank": 5},
+            {"minimumScore": 11, "maximumScore": 18, "minimumRank": 6, "maximumRank": 8},
+            {"minimumScore": 19, "maximumScore": 25, "minimumRank": 9, "maximumRank": 10},
+            {"minimumScore": 26, "maximumScore": 35, "minimumRank": 11, "maximumRank": 15},
+        ],
+    },
+    {
+        "id": "balanced",
+        "label": "Balanced — escalate with mixed difficulty",
+        "ranges": [
+            {"minimumScore": 3, "maximumScore": 8, "minimumRank": 1, "maximumRank": 5},
+            {"minimumScore": 9, "maximumScore": 15, "minimumRank": 6, "maximumRank": 8},
+            {"minimumScore": 16, "maximumScore": 22, "minimumRank": 9, "maximumRank": 10},
+            {"minimumScore": 23, "maximumScore": 35, "minimumRank": 11, "maximumRank": 15},
+        ],
+    },
+    {
+        "id": "aggressive",
+        "label": "Higher — favor smarter models sooner",
+        "ranges": [
+            {"minimumScore": 3, "maximumScore": 6, "minimumRank": 1, "maximumRank": 5},
+            {"minimumScore": 7, "maximumScore": 12, "minimumRank": 6, "maximumRank": 8},
+            {"minimumScore": 13, "maximumScore": 18, "minimumRank": 9, "maximumRank": 10},
+            {"minimumScore": 19, "maximumScore": 35, "minimumRank": 11, "maximumRank": 15},
+        ],
+    },
+]
 LLM_CONFIDENCE_WEIGHT = 0.85
 EMBEDDER_CONFIDENCE_WEIGHT = 0.15
+
+
+def migrated_ranking_curves(ranking):
+    minimum_score = ranking["minimumScore"]
+    maximum_score = ranking["maximumScore"]
+    ranks = [entry["rank"] for entry in ranking["ladder"]]
+    range_count = min(4, maximum_score - minimum_score + 1, len(ranks))
+    if range_count < 1:
+        return copy.deepcopy(DEFAULT_RANKING_CURVES)
+    migrated_curves = []
+    for template in DEFAULT_RANKING_CURVES:
+        template_ranges = template["ranges"]
+        template_minimum_score = template_ranges[0]["minimumScore"]
+        template_score_domain = (
+            template_ranges[-1]["maximumScore"] - template_minimum_score
+        )
+        template_minimum_rank = template_ranges[0]["minimumRank"]
+        template_rank_domain = (
+            template_ranges[-1]["maximumRank"] - template_minimum_rank
+        )
+        previous_maximum_score = minimum_score - 1
+        previous_maximum_rank_index = -1
+        ranges = []
+        for index, template_range in enumerate(template_ranges[:range_count]):
+            remaining_ranges = range_count - index - 1
+            if remaining_ranges == 0:
+                maximum_range_score = maximum_score
+                maximum_rank_index = len(ranks) - 1
+            else:
+                score_offset = (
+                    (
+                        (template_range["maximumScore"] - template_minimum_score)
+                        * (maximum_score - minimum_score)
+                        + template_score_domain // 2
+                    )
+                    // template_score_domain
+                )
+                maximum_range_score = min(
+                    maximum_score - remaining_ranges,
+                    max(previous_maximum_score + 1, minimum_score + score_offset),
+                )
+                rank_offset = (
+                    (
+                        (template_range["maximumRank"] - template_minimum_rank)
+                        * (len(ranks) - 1)
+                        + template_rank_domain // 2
+                    )
+                    // template_rank_domain
+                )
+                maximum_rank_index = min(
+                    len(ranks) - remaining_ranges - 1,
+                    max(previous_maximum_rank_index + 1, rank_offset),
+                )
+            ranges.append(
+                {
+                    "minimumScore": previous_maximum_score + 1,
+                    "maximumScore": maximum_range_score,
+                    "minimumRank": ranks[previous_maximum_rank_index + 1],
+                    "maximumRank": ranks[maximum_rank_index],
+                }
+            )
+            previous_maximum_score = maximum_range_score
+            previous_maximum_rank_index = maximum_rank_index
+        migrated_curves.append(
+            {
+                "id": template["id"],
+                "label": template["label"],
+                "ranges": ranges,
+            }
+        )
+    return migrated_curves
 
 
 def legacy_policy_path():
@@ -174,6 +277,14 @@ def legacy_policy_path():
 
 def upgrade_policy(policy):
     changed = False
+    ranking = policy.get("ranking")
+    if isinstance(ranking, dict):
+        if "curves" not in ranking:
+            ranking["curves"] = migrated_ranking_curves(ranking)
+            changed = True
+        if "curve" not in ranking:
+            ranking["curve"] = "conservative"
+            changed = True
     presets = policy.get("confidencePresets")
     if presets != CONFIDENCE_PRESETS:
         policy["confidencePresets"] = copy.deepcopy(CONFIDENCE_PRESETS)
@@ -275,9 +386,10 @@ def load_policy():
         POLICY_PATH.chmod(0o600)
     with POLICY_PATH.open(encoding="utf-8") as source:
         policy = json.load(source)
-    if upgrade_policy(policy):
-        save_policy(policy)
+    changed = upgrade_policy(policy)
     validate_policy(policy)
+    if changed:
+        save_policy(policy)
     return policy
 
 
@@ -478,6 +590,65 @@ def validate_policy(policy):
             or valid_route_shape(entry) is None
         ):
             raise ValueError("policy ranking ladder contains an invalid slot")
+    curves = ranking.get("curves")
+    if (
+        not isinstance(curves, list)
+        or not curves
+        or len(curves) > 12
+        or not isinstance(ranking.get("curve"), str)
+    ):
+        raise ValueError("policy ranking curves are invalid")
+    curve_ids = set()
+    ladder_ranks = set(ranks)
+    for curve in curves:
+        if not isinstance(curve, dict):
+            raise ValueError("policy ranking curve is invalid")
+        curve_id = curve.get("id")
+        label = curve.get("label")
+        ranges = curve.get("ranges")
+        if (
+            not isinstance(curve_id, str)
+            or not curve_id
+            or len(curve_id.encode("utf-8")) > 64
+            or curve_id in curve_ids
+            or not isinstance(label, str)
+            or not label
+            or len(label.encode("utf-8")) > 128
+            or not isinstance(ranges, list)
+            or not ranges
+            or len(ranges) > 16
+        ):
+            raise ValueError("policy ranking curve is invalid")
+        curve_ids.add(curve_id)
+        expected_minimum_score = ranking["minimumScore"]
+        previous_maximum_rank = 0
+        for score_range in ranges:
+            if (
+                not isinstance(score_range, dict)
+                or any(
+                    not isinstance(score_range.get(key), int)
+                    or isinstance(score_range[key], bool)
+                    for key in (
+                        "minimumScore",
+                        "maximumScore",
+                        "minimumRank",
+                        "maximumRank",
+                    )
+                )
+                or score_range["minimumScore"] != expected_minimum_score
+                or score_range["minimumScore"] > score_range["maximumScore"]
+                or score_range["minimumRank"] > score_range["maximumRank"]
+                or score_range["minimumRank"] not in ladder_ranks
+                or score_range["maximumRank"] not in ladder_ranks
+                or score_range["minimumRank"] <= previous_maximum_rank
+            ):
+                raise ValueError("policy ranking curve has invalid ranges")
+            expected_minimum_score = score_range["maximumScore"] + 1
+            previous_maximum_rank = score_range["maximumRank"]
+        if expected_minimum_score != ranking["maximumScore"] + 1:
+            raise ValueError("policy ranking curve must cover the score domain")
+    if ranking["curve"] not in curve_ids:
+        raise ValueError("policy selects an unknown ranking curve")
 
 
 def save_policy(policy):
@@ -1353,6 +1524,35 @@ def ladder(policy):
     return policy["ranking"]["ladder"]
 
 
+def ranking_curve(policy):
+    ranking = policy["ranking"]
+    return next(curve for curve in ranking["curves"] if curve["id"] == ranking["curve"])
+
+
+def ranking_curve_options(policy):
+    return [
+        {"id": curve["id"], "label": curve["label"]}
+        for curve in policy["ranking"]["curves"]
+    ]
+
+
+def score_range(policy, score):
+    ranking = policy["ranking"]
+    bounded_score = max(ranking["minimumScore"], min(ranking["maximumScore"], score))
+    curve = ranking_curve(policy)
+    return (
+        bounded_score,
+        curve,
+        next(
+            score_range
+            for score_range in curve["ranges"]
+            if score_range["minimumScore"]
+            <= bounded_score
+            <= score_range["maximumScore"]
+        ),
+    )
+
+
 def entry_route(entry):
     return {
         "providerId": entry["providerId"],
@@ -1442,6 +1642,13 @@ def policy_menu(policy, context):
                 "Confidence",
                 policy["confidence"],
                 confidence_preset_options(policy),
+            ),
+            policy_select_field(
+                "ranking-curve",
+                "Smarter-model tension",
+                policy["ranking"]["curve"],
+                ranking_curve_options(policy),
+                "Controls the nonlinear score ranges used to move up the model ladder.",
             ),
             policy_action_field(
                 "model-ladder",
@@ -1892,7 +2099,19 @@ def settings_response(request, policy):
             return error_notice(
                 policy, "Confidence must be one of the offered choices."
             )
-        update(policy, confidence=confidence)
+        curve = values.get("ranking-curve")
+        if curve not in {curve["id"] for curve in policy["ranking"]["curves"]}:
+            return error_notice(
+                policy, "Smarter-model tension must be one of the offered choices."
+            )
+        update(
+            policy,
+            confidence=confidence,
+            ranking={
+                **policy["ranking"],
+                "curve": curve,
+            },
+        )
         return policy_menu(policy, context)
     if action_id == "set-reporting-baseline":
         routes, available = policy_route_options(policy, context)
@@ -2690,25 +2909,26 @@ def choose_route(policy, context, axes):
             "minimumRank": None,
             "maximumRank": None,
             "boundedScore": None,
+            "rankingCurve": None,
+            "scoreRange": None,
             "targetRank": None,
             "selectedRank": None,
         }
     minimum_rank = eligible_entries[0]["rank"]
     maximum_rank = eligible_entries[-1]["rank"]
-    minimum_score = policy["ranking"]["minimumScore"]
-    maximum_score = policy["ranking"]["maximumScore"]
-    bounded_score = max(minimum_score, min(maximum_score, score))
-    domain = maximum_score - minimum_score
+    bounded_score, curve, selected_range = score_range(policy, score)
+    domain = selected_range["maximumScore"] - selected_range["minimumScore"]
     offset = (
         0
         if domain == 0
         else (
-            (bounded_score - minimum_score) * (maximum_rank - minimum_rank)
+            (bounded_score - selected_range["minimumScore"])
+            * (selected_range["maximumRank"] - selected_range["minimumRank"])
             + domain // 2
         )
         // domain
     )
-    target_rank = minimum_rank + offset
+    target_rank = selected_range["minimumRank"] + offset
     entry = min(
         eligible_entries,
         key=lambda candidate: abs(candidate["rank"] - target_rank),
@@ -2721,6 +2941,8 @@ def choose_route(policy, context, axes):
         "minimumRank": minimum_rank,
         "maximumRank": maximum_rank,
         "boundedScore": bounded_score,
+        "rankingCurve": curve["id"],
+        "scoreRange": selected_range,
         "targetRank": target_rank,
         "selectedRank": entry["rank"],
     }
@@ -2751,7 +2973,6 @@ def routing_calculation(
     calibrated_confidence=None,
     embedder_work_type_support=None,
 ):
-    ranking = policy["ranking"]
     if selection["route"] is None:
         ranking_detail = (
             f"score {selection['score']} · classes "
@@ -2759,10 +2980,12 @@ def routing_calculation(
             "no eligible ladder route"
         )
     else:
+        score_range = selection["scoreRange"]
         ranking_detail = (
             f"score {selection['score']} "
-            f"(bounded {selection['boundedScore']}; "
-            f"domain {ranking['minimumScore']}–{ranking['maximumScore']}) · "
+            f"(bounded {selection['boundedScore']}; curve {selection['rankingCurve']}; "
+            f"range {score_range['minimumScore']}–{score_range['maximumScore']} "
+            f"to ranks {score_range['minimumRank']}–{score_range['maximumRank']}) · "
             f"classes {selection['minimumClass']}–{selection['maximumClass']} · "
             f"ranks {selection['minimumRank']}–{selection['maximumRank']} · "
             f"target {selection['targetRank']} · "
