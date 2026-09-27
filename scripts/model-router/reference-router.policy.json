@@ -69,19 +69,19 @@
           "id": "delegate",
           "maximumModelClass": "smart",
           "minimumModelClass": "simple",
-          "points": 1
+          "points": 0
         },
         {
           "id": "coordination",
           "maximumModelClass": "smart",
           "minimumModelClass": "smart",
-          "points": 1
+          "points": 0
         },
         {
           "id": "workflow",
           "maximumModelClass": "smart",
           "minimumModelClass": "smart",
-          "points": 3
+          "points": 0
         }
       ],
       "id": "orchestration"
