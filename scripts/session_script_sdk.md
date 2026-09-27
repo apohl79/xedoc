@@ -20,6 +20,7 @@ registration requires the immutable host scope supplied to a child process.
 - [Send ordinary user input](#send-ordinary-user-input)
 - [Observe and answer prompts](#observe-and-answer-prompts)
 - [Build a plugin session extension](#build-a-plugin-session-extension)
+- [Control sessions from a WebSocket controller](#control-sessions-from-a-websocket-controller)
 - [SDK API](#sdk-api)
 - [Limits and security boundaries](#limits-and-security-boundaries)
 
@@ -503,6 +504,44 @@ while its persistent child uses the SDK for session events and approved actions.
 See `session_extension_test_entrypoint.py` for a complete dual-mode reference
 implementation.
 
+## Control sessions from a WebSocket controller
+
+Only a normal WebSocket controller can list, search, start, or resume sessions.
+Host-managed session-script children remain restricted to their registered
+thread.
+
+```python
+from session_script_sdk import SessionScriptClient
+
+client = SessionScriptClient.connect_websocket("ws://127.0.0.1:4500/rpc", 10)
+try:
+    client.initialize("remote-controller", "Remote controller", "1.0.0")
+
+    sessions = client.list_sessions(limit=20)["data"]
+    first = sessions[0]
+    print(first["cwd"], first["isRunning"], first["lastActivity"])
+
+    matches = client.search_sessions("release blocker")["data"]
+    matched_session = matches[0]["thread"]
+
+    started = client.start_session("/work/xedoc")["thread"]
+    resumed = client.resume_session(started["id"])["thread"]
+finally:
+    client.close()
+```
+
+`list_sessions` and `search_sessions` preserve the app-server thread data and
+add these fields to each returned thread:
+
+- `cwd` is the session working directory.
+- `isRunning` is true when the thread has an active turn.
+- `lastActivity` is the `updatedAt` Unix timestamp, matching the timestamp
+  shown by the resume picker.
+
+Both listing and search support cursor pagination. `list_sessions` accepts an
+optional exact `cwd` filter. Search result entries retain the app-server
+`snippet` and contain the normalized session under `thread`.
+
 ## SDK API
 
 `SessionScriptClient` intentionally exposes both high-level session helpers
@@ -515,6 +554,10 @@ and the JSON-RPC primitive for existing app-server methods.
 | `initialize(client_name, title, version)` | Initialize the connection with experimental API support and send `initialized`. |
 | `register(thread_id, script_id, name, version, subscriptions, requested_capabilities)` | Register the host-scoped child and return `registrationId`, granted capabilities, and a snapshot. |
 | `read(registration_id)` | Return a fresh bounded snapshot. |
+| `list_sessions(cursor=None, limit=None, cwd=None)` | Page stored sessions, newest activity first. Each thread includes `cwd`, `isRunning`, and `lastActivity`. Controller only. |
+| `search_sessions(search_term, cursor=None, limit=None)` | Search stored sessions. Each result keeps its `snippet` and contains a thread with `cwd`, `isRunning`, and `lastActivity`. Controller only. |
+| `start_session(cwd)` | Start a new session in `cwd` and return the normal `thread/start` response. Controller only. |
+| `resume_session(thread_id)` | Resume a session by thread id and return the normal `thread/resume` response. Controller only. |
 | `respond(registration_id, prompt_id, response_lease, response)` | Answer a valid leased prompt with its explicit response shape. |
 | `respond_approval(registration_id, prompt_id, response_lease, response)` | Answer a leased approval or extension-interaction prompt. |
 | `post_message(registration_id, level, message)` | Post an `info`, `warning`, or `error` message to the registered thread. |

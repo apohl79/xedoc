@@ -176,6 +176,24 @@ def _decode_json_object(payload: bytes) -> dict[str, Any]:
     return value
 
 
+def _session_from_thread(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise RpcError("app-server returned a non-object thread")
+    cwd = value.get("cwd")
+    if not isinstance(cwd, str):
+        raise RpcError("app-server returned a thread without a cwd")
+    status = value.get("status")
+    if not isinstance(status, dict):
+        raise RpcError("app-server returned a thread without a status")
+    last_activity = value.get("updatedAt")
+    if not isinstance(last_activity, int) or isinstance(last_activity, bool):
+        raise RpcError("app-server returned a thread without an updatedAt timestamp")
+    session = dict(value)
+    session["isRunning"] = status.get("type") == "active"
+    session["lastActivity"] = last_activity
+    return session
+
+
 class SessionScriptClient:
     """A client for session-script RPC over a controller or child transport."""
 
@@ -241,6 +259,72 @@ class SessionScriptClient:
 
     def read(self, registration_id: str) -> dict[str, Any]:
         return self.request("script/read", {"registrationId": registration_id})
+
+    def list_sessions(
+        self,
+        cursor: Optional[str] = None,
+        limit: Optional[int] = None,
+        cwd: Optional[str | list[str]] = None,
+    ) -> dict[str, Any]:
+        """List stored sessions through a normal controller connection."""
+        params: dict[str, Any] = {"sortKey": "updated_at"}
+        if cursor is not None:
+            params["cursor"] = cursor
+        if limit is not None:
+            params["limit"] = limit
+        if cwd is not None:
+            params["cwd"] = cwd
+        response = self.request("thread/list", params)
+        data = response.get("data")
+        if not isinstance(data, list):
+            raise RpcError("app-server returned a non-list session result")
+        result = dict(response)
+        result["data"] = [_session_from_thread(thread) for thread in data]
+        return result
+
+    def search_sessions(
+        self,
+        search_term: str,
+        cursor: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Search stored sessions through a normal controller connection."""
+        params: dict[str, Any] = {
+            "searchTerm": search_term,
+            "sortKey": "updated_at",
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+        if limit is not None:
+            params["limit"] = limit
+        response = self.request("thread/search", params)
+        data = response.get("data")
+        if not isinstance(data, list):
+            raise RpcError("app-server returned a non-list session search result")
+        result = dict(response)
+        sessions: list[dict[str, Any]] = []
+        for search_result in data:
+            if not isinstance(search_result, dict):
+                raise RpcError("app-server returned a non-object session search result")
+            session = dict(search_result)
+            session["thread"] = _session_from_thread(session.get("thread"))
+            sessions.append(session)
+        result["data"] = sessions
+        return result
+
+    def start_session(self, cwd: str) -> dict[str, Any]:
+        """Start a new session in cwd through a normal controller connection."""
+        response = self.request("thread/start", {"cwd": cwd})
+        result = dict(response)
+        result["thread"] = _session_from_thread(result.get("thread"))
+        return result
+
+    def resume_session(self, thread_id: str) -> dict[str, Any]:
+        """Resume a session by thread id through a normal controller connection."""
+        response = self.request("thread/resume", {"threadId": thread_id})
+        result = dict(response)
+        result["thread"] = _session_from_thread(result.get("thread"))
+        return result
 
     def respond(
         self,
