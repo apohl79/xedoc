@@ -2832,10 +2832,17 @@ fn render_dense_session_lines(
         ThreadSortKey::CreatedAt => created,
         ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt => updated,
     };
+    let cwd = (state.filter_mode == SessionFilterMode::All && width >= 120).then(|| {
+        row.cwd
+            .as_ref()
+            .map(|path| format_directory_display(path, /*max_width*/ None))
+            .unwrap_or_else(|| String::from("no cwd"))
+    });
     let mut lines = vec![dense_summary_line(DenseSummaryInput {
         marker,
         date: &date,
         title: row.display_preview(),
+        cwd: cwd.as_deref(),
         is_running: row.is_running,
         is_selected,
         is_zebra,
@@ -2851,6 +2858,7 @@ struct DenseSummaryInput<'a> {
     marker: Span<'static>,
     date: &'a str,
     title: &'a str,
+    cwd: Option<&'a str>,
     is_running: bool,
     is_selected: bool,
     is_zebra: bool,
@@ -2860,7 +2868,7 @@ struct DenseSummaryInput<'a> {
 fn dense_summary_line(input: DenseSummaryInput<'_>) -> Line<'static> {
     let marker_width = input.marker.width();
     let available = (input.width as usize).saturating_sub(marker_width);
-    let columns = dense_columns(available, input.is_running);
+    let columns = dense_columns(available, input.is_running, input.cwd.is_some());
     let title = if input.is_selected {
         selected_session_title_span(dense_column_text(input.title, columns.title_width))
     } else {
@@ -2872,6 +2880,9 @@ fn dense_summary_line(input: DenseSummaryInput<'_>) -> Line<'static> {
         dense_column_text(input.date, columns.date_width).dim(),
         title,
     ];
+    if let (Some(cwd), Some(cwd_width)) = (input.cwd, columns.cwd_width) {
+        spans.push(dense_column_text(&format!("{SESSION_META_CWD_ICON} {cwd}"), cwd_width).dim());
+    }
     if input.is_running {
         spans.push(RUNNING_LABEL.cyan());
     }
@@ -2897,14 +2908,19 @@ fn dense_summary_line(input: DenseSummaryInput<'_>) -> Line<'static> {
 struct DenseColumns {
     date_width: usize,
     title_width: usize,
+    cwd_width: Option<usize>,
 }
 
-fn dense_columns(width: usize, is_running: bool) -> DenseColumns {
+fn dense_columns(width: usize, is_running: bool, show_cwd: bool) -> DenseColumns {
     let available_width = width.saturating_sub(running_label_width(is_running));
     let date_width = SESSION_META_DATE_WIDTH.min(available_width);
+    let cwd_width = show_cwd.then(|| cwd_column_width(available_width));
     DenseColumns {
         date_width,
-        title_width: available_width.saturating_sub(date_width),
+        title_width: available_width
+            .saturating_sub(date_width)
+            .saturating_sub(cwd_width.unwrap_or_default()),
+        cwd_width,
     }
 }
 
@@ -5061,6 +5077,7 @@ session_picker_view = "dense"
             marker: selection_marker(/*is_selected*/ true, /*is_expanded*/ false),
             date: "15m ago",
             title: "Selected dense row",
+            cwd: None,
             is_selected: true,
             is_zebra: false,
             width: 80,
@@ -5077,6 +5094,7 @@ session_picker_view = "dense"
             marker: selection_marker(/*is_selected*/ false, /*is_expanded*/ false),
             date: "15m ago",
             title: "Zebra dense row",
+            cwd: None,
             is_selected: false,
             is_zebra: true,
             width: 80,
