@@ -18,6 +18,7 @@ const colorClasses = Object.freeze({
   red: "color-red",
   teal: "color-teal",
 });
+let requestGeneration = 0;
 
 const element = (name, text) => {
   const node = document.createElement(name);
@@ -33,6 +34,54 @@ const svgElement = (name, attributes = {}) => {
 
 const appendTitle = (container, title) => {
   if (title) container.append(element("h2", title));
+};
+
+const dayString = (unixSeconds) => new Date(unixSeconds * 1000).toISOString().slice(0, 10);
+
+const dayTimestamp = (value) => {
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(timestamp) ? timestamp / 1000 : null;
+};
+
+const renderTimeframe = (section) => {
+  const container = element("section");
+  container.className = "section timeframe";
+  appendTitle(container, section.title);
+  const form = element("form");
+  form.className = "timeframe-form";
+
+  const fromLabel = element("label", "Start date (UTC)");
+  const fromInput = element("input");
+  fromInput.type = "date";
+  fromInput.value = dayString(section.fromDay);
+  fromInput.required = true;
+  fromLabel.append(fromInput);
+
+  const throughLabel = element("label", "End date (UTC)");
+  const throughInput = element("input");
+  throughInput.type = "date";
+  throughInput.value = dayString(section.throughDay);
+  throughInput.required = true;
+  throughLabel.append(throughInput);
+
+  const submit = element("button", "Apply");
+  submit.type = "submit";
+  const error = element("p");
+  error.className = "timeframe-error";
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const fromDay = dayTimestamp(fromInput.value);
+    const throughDay = dayTimestamp(throughInput.value);
+    if (fromDay == null || throughDay == null || fromDay > throughDay) {
+      error.textContent = "Choose a valid UTC start and end date.";
+      return;
+    }
+    error.textContent = "";
+    loadReport({ fromDay, throughDay });
+  });
+  form.append(fromLabel, throughLabel, submit);
+  container.append(form, error);
+  return container;
 };
 
 const renderMetricGrid = (section) => {
@@ -52,6 +101,64 @@ const renderMetricGrid = (section) => {
     grid.append(card);
   });
   container.append(grid);
+  return container;
+};
+
+const renderBarChart = (section) => {
+  const container = element("section");
+  container.className = "section chart bar-chart";
+  appendTitle(container, section.title);
+  const width = 760;
+  const rowHeight = 34;
+  const padding = { top: 18, right: 72, bottom: 32, left: 250 };
+  const chartWidth = width - padding.left - padding.right;
+  const maximum = Math.max(100, ...section.bars.map((bar) => bar.value), 1);
+  const height = padding.top + section.bars.length * rowHeight + padding.bottom;
+  const svg = svgElement("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    role: "img",
+    "aria-label": section.title,
+  });
+  const svgTitle = svgElement("title");
+  svgTitle.textContent = section.title;
+  svg.append(svgTitle);
+  section.bars.forEach((bar, index) => {
+    const rowY = padding.top + index * rowHeight;
+    const label = svgElement("text", {
+      x: padding.left - 10, y: rowY + 12, "text-anchor": "end",
+    });
+    label.textContent = bar.label;
+    const track = svgElement("rect", {
+      x: padding.left,
+      y: rowY,
+      width: chartWidth,
+      height: 14,
+      fill: "#2d3441",
+      rx: 3,
+    });
+    const fill = svgElement("rect", {
+      x: padding.left,
+      y: rowY,
+      width: (chartWidth * Math.min(bar.value, maximum)) / maximum,
+      height: 14,
+      fill: palette[bar.color],
+      rx: 3,
+    });
+    const value = svgElement("text", {
+      x: width - padding.right + 10,
+      y: rowY + 12,
+    });
+    value.textContent = bar.valueLabel ?? String(bar.value);
+    svg.append(label, track, fill, value);
+  });
+  const axis = svgElement("text", {
+    x: padding.left + chartWidth / 2,
+    y: height - 6,
+    "text-anchor": "middle",
+  });
+  axis.textContent = section.xAxis;
+  svg.append(axis);
+  container.append(svg);
   return container;
 };
 
@@ -215,7 +322,9 @@ const renderDocument = (reportDocument) => {
   const sections = reportDocument.sections.map((section) => {
     switch (section.kind) {
       case "metricGrid": return renderMetricGrid(section);
+      case "timeframe": return renderTimeframe(section);
       case "lineChart": return renderLineChart(section);
+      case "barChart": return renderBarChart(section);
       case "table": return renderTable(section);
       case "notice": return renderNotice(section);
       default: throw new Error("unsupported report section");
@@ -225,15 +334,31 @@ const renderDocument = (reportDocument) => {
   root.replaceChildren(heading, ...sections);
 };
 
-if (!capability) {
-  status.textContent = "This report link is missing its capability.";
-} else {
-  fetch("/api/report", {
+const loadReport = (params = {}) => {
+  if (!capability) {
+    status.textContent = "This report link is missing its capability.";
+    root.replaceChildren(status);
+    return;
+  }
+  const generation = ++requestGeneration;
+  status.textContent = "Loading report…";
+  root.replaceChildren(status);
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => query.set(key, String(value)));
+  const queryString = query.toString();
+  fetch(`/api/report${queryString ? `?${queryString}` : ""}`, {
     headers: { "X-Xedoc-Report-Capability": capability },
   })
     .then((response) => response.ok ? response.json() : Promise.reject(response.status))
-    .then(({ document: reportDocument }) => renderDocument(reportDocument))
+    .then(({ document: reportDocument }) => {
+      if (generation === requestGeneration) renderDocument(reportDocument);
+    })
     .catch(() => {
-      status.textContent = "The report is unavailable or its capability expired.";
+      if (generation === requestGeneration) {
+        status.textContent = "The report is unavailable or its capability expired.";
+        root.replaceChildren(status);
+      }
     });
-}
+};
+
+loadReport();

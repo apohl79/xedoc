@@ -3935,8 +3935,8 @@ def report_total(days, key):
     return sum(day.get(key) or 0 for day in days)
 
 
-def report_money(value):
-    return "unknown" if value is None else f"${value:,.2f}"
+def report_money(value, missing="unknown"):
+    return missing if value is None else f"${value:,.2f}"
 
 
 def report_savings_rate(savings, baseline):
@@ -3975,6 +3975,14 @@ def report_route(item):
     )
 
 
+def report_model_route(item):
+    return "/".join(
+        str(value)
+        for value in (item.get("providerId"), item.get("modelSlug"))
+        if value
+    ) or "unknown"
+
+
 def report_decision_route(decision):
     route = "/".join(
         str(value)
@@ -4010,7 +4018,7 @@ def report_chart_series(report):
         ("Estimated savings (priced usage)", "estimatedSavingsUsd", "green"),
     )
     incomplete_from_day = (
-        report["days"][-1]["day"]
+        max(day["day"] for day in report["days"])
         if report.get("daysTruncated") and report["days"]
         else None
     )
@@ -4066,6 +4074,40 @@ def report_chart_series(report):
     ]
 
 
+def report_model_usage_bars(report):
+    counts = {}
+    for day in report["days"]:
+        invocations = day.get("invocations") or 0
+        if invocations <= 0:
+            continue
+        model = report_model_route(day)
+        counts[model] = counts.get(model, 0) + invocations
+    total = sum(counts.values())
+    if total <= 0:
+        return [
+            {
+                "label": "No recorded usage",
+                "color": "blue",
+                "value": 0.0,
+                "valueLabel": "0.0%",
+            }
+        ]
+    colors = ("blue", "orange", "green", "purple", "red", "teal")
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    if len(ranked) > 64:
+        other = sum(invocations for _, invocations in ranked[63:])
+        ranked = [*ranked[:63], ("Other models", other)]
+    return [
+        {
+            "label": model,
+            "color": colors[index % len(colors)],
+            "value": invocations / total * 100,
+            "valueLabel": f"{invocations / total:.1%}",
+        }
+        for index, (model, invocations) in enumerate(ranked)
+    ]
+
+
 def report_render(request):
     context = request.get("context")
     if context != {
@@ -4096,11 +4138,43 @@ def report_render(request):
     unknown_usage = report_total(days, "missingUsageInvocations")
     unknown_price = report_total(days, "unknownPriceInvocations")
     unknown_baseline_price = report_total(days, "unknownBaselinePriceInvocations")
+    unattributed = report_total(days, "unattributedInvocations")
+    daily_rows = sorted(
+        days,
+        key=lambda day: (
+            day.get("day") or 0,
+            report_route(day),
+            str(day.get("scope") or ""),
+            str(day.get("reasoningEffort") or ""),
+        ),
+        reverse=True,
+    )
+    recent_decisions = sorted(
+        decisions,
+        key=lambda decision: (
+            decision.get("createdAt") or 0,
+            str(decision.get("decisionId") or ""),
+        ),
+        reverse=True,
+    )
 
     sections = [
         {
+            "kind": "timeframe",
+            "title": "Reporting timeframe (UTC; max 90 days)",
+            "fromDay": report["fromDay"],
+            "throughDay": report["throughDay"],
+        },
+        {
             "kind": "metricGrid",
             "metrics": [
+                {
+                    "label": "Reporting timeframe",
+                    "value": (
+                        f"{report_day(report['fromDay'])} → "
+                        f"{report_day(report['throughDay'])} UTC"
+                    ),
+                },
                 {"label": "Actual cost", "value": report_money(actual)},
                 {"label": "Baseline cost", "value": report_money(baseline)},
                 {"label": "Estimated savings", "value": report_money(savings)},
@@ -4108,7 +4182,7 @@ def report_render(request):
                     "label": "Estimated savings rate (priced usage)",
                     "value": report_savings_rate(savings, baseline),
                 },
-                {"label": "A/B overhead", "value": report_money(overhead)},
+                {"label": "A/B overhead", "value": report_money(overhead, "n/a")},
                 {"label": "Observed tokens", "value": report_number(tokens)},
             ],
         },
@@ -4117,9 +4191,12 @@ def report_render(request):
             "level": "info",
             "text": (
                 f"{report_number(invocations)} invocations; "
-                f"{report_number(unknown_usage)} missing usage, "
-                f"{report_number(unknown_price)} with unknown actual pricing, and "
-                f"{report_number(unknown_baseline_price)} without baseline pricing."
+                "unknown values are not zero: "
+                f"{report_number(unknown_usage)} are missing one or more usage counts, "
+                f"{report_number(unknown_price)} have no actual price for the observed route, "
+                f"{report_number(unknown_baseline_price)} have no configured baseline price, "
+                f"and {report_number(unattributed)} have no matching router decision. "
+                "These categories can overlap; A/B overhead is only recorded for paired experiments."
             ),
         },
     ]
@@ -4139,6 +4216,39 @@ def report_render(request):
                 "xAxis": "Time (days)",
                 "yAxis": "Cost (USD)",
                 "series": report_chart_series(report),
+            },
+            {
+                "kind": "barChart",
+                "title": "Model usage",
+                "xAxis": "Share of invocations (%)",
+                "bars": report_model_usage_bars(report),
+            },
+            {
+                "kind": "table",
+                "title": "Unknown values",
+                "columns": ["Category", "Count", "Why"],
+                "rows": [
+                    [
+                        "Missing usage",
+                        report_number(unknown_usage),
+                        "The provider did not return all token counts.",
+                    ],
+                    [
+                        "Actual pricing",
+                        report_number(unknown_price),
+                        "No price entry matched the observed provider/model/effort.",
+                    ],
+                    [
+                        "Baseline pricing",
+                        report_number(unknown_baseline_price),
+                        "No price entry matched the configured baseline route.",
+                    ],
+                    [
+                        "Attribution",
+                        report_number(unattributed),
+                        "No matching router decision was stored for the invocation.",
+                    ],
+                ],
             },
             {
                 "kind": "table",
@@ -4171,9 +4281,9 @@ def report_render(request):
                             day.get("estimatedSavingsUsd"),
                             day.get("normalizedBaselineUsd"),
                         ),
-                        report_money(day.get("abExperimentOverheadUsd")),
+                        report_money(day.get("abExperimentOverheadUsd"), "n/a"),
                     ]
-                    for day in days
+                    for day in daily_rows
                 ],
             },
             {
@@ -4196,7 +4306,7 @@ def report_render(request):
                         "yes" if decision.get("fallback") else "no",
                         str(decision["reason"]),
                     ]
-                    for decision in decisions
+                    for decision in recent_decisions
                 ],
             },
         ]

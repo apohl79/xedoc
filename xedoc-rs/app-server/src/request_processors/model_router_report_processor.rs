@@ -67,7 +67,7 @@ impl ModelRouterReportRequestProcessor {
         let days_truncated = days.len() > MAX_DAILY_RECORDS;
         days.truncate(MAX_DAILY_RECORDS);
         let recent_decisions = state_db
-            .recent_model_router_decisions(recent_limit)
+            .recent_model_router_decisions(from_day, through_day, recent_limit)
             .await
             .map_err(|err| {
                 internal_error(format!(

@@ -24,6 +24,17 @@ pub enum ReportSection {
         /// Ordered metrics.
         metrics: Vec<ReportMetric>,
     },
+    /// A bounded date-range control for reports backed by a UTC-day query.
+    Timeframe {
+        /// Control title.
+        title: String,
+        /// Inclusive UTC-day start as whole Unix seconds.
+        #[serde(rename = "fromDay")]
+        from_day: i64,
+        /// Inclusive UTC-day end as whole Unix seconds.
+        #[serde(rename = "throughDay")]
+        through_day: i64,
+    },
     /// A multi-series line chart with shared X coordinates.
     LineChart {
         /// Non-empty chart title.
@@ -36,6 +47,16 @@ pub enum ReportSection {
         y_axis: String,
         /// Ordered chart series.
         series: Vec<ReportLineSeries>,
+    },
+    /// A horizontal chart with one bounded value per bar.
+    BarChart {
+        /// Non-empty chart title.
+        title: String,
+        /// Non-empty horizontal-axis label.
+        #[serde(rename = "xAxis")]
+        x_axis: String,
+        /// Ordered bars.
+        bars: Vec<ReportBar>,
     },
     /// A text-only data table.
     Table {
@@ -75,6 +96,21 @@ pub struct ReportLineSeries {
     pub color: ReportColor,
     /// Points aligned by X coordinate with every other series.
     pub points: Vec<ReportLinePoint>,
+}
+
+/// One horizontal chart bar.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReportBar {
+    /// Non-empty bar label.
+    pub label: String,
+    /// Host-defined bounded color.
+    pub color: ReportColor,
+    /// Finite non-negative bar value.
+    pub value: f64,
+    /// Display-ready value label.
+    #[serde(rename = "valueLabel")]
+    pub value_label: String,
 }
 
 /// One chart point or explicit gap.

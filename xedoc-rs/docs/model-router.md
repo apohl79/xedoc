@@ -639,7 +639,8 @@ reported tokens do not use a tilde.
 
 The model-router script owns report calculations, labels, section ordering, tables,
 and chart series. It returns a bounded declarative report document containing only
-metric grids, line charts, tables, and notices. The app-server owns authenticated
+metric grids, UTC date-range controls, line charts, horizontal bar charts, tables,
+and notices. The app-server owns authenticated
 access to the bounded raw report data, invokes the script, validates its document, and
 serves a content-neutral renderer. The renderer translates the typed document to
 ordinary DOM and programmatic SVG without accepting HTML, URLs, styles, classes, or

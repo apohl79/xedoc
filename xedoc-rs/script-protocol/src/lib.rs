@@ -48,6 +48,7 @@ pub use protocol::ScriptMessageLevel;
 pub use protocol::ScriptRequest;
 pub use protocol::ScriptResponse;
 pub use protocol::ScriptResult;
+pub use report::ReportBar;
 pub use report::ReportColor;
 pub use report::ReportDocument;
 pub use report::ReportLinePoint;

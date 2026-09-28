@@ -93,6 +93,7 @@ const MAX_REPORT_DOCUMENT_BYTES: usize = 256 * 1024;
 const MAX_REPORT_SECTIONS: usize = 32;
 const MAX_REPORT_METRICS: usize = 64;
 const MAX_REPORT_SERIES: usize = 8;
+const MAX_REPORT_BARS: usize = 64;
 const MAX_REPORT_POINTS: usize = 2_048;
 const MAX_REPORT_COLUMNS: usize = 32;
 const MAX_REPORT_ROWS: usize = 4_096;
@@ -782,6 +783,17 @@ fn validate_report_section(section: &ReportSection) -> Result<(), ModelRouterScr
                 validate_report_text(&metric.value)
             })
         }
+        ReportSection::Timeframe {
+            title,
+            from_day,
+            through_day,
+        } => {
+            validate_report_title(title)?;
+            if from_day > through_day {
+                return Err(ModelRouterScriptFailure::InvalidReport);
+            }
+            Ok(())
+        }
         ReportSection::LineChart {
             title,
             x_axis,
@@ -820,6 +832,25 @@ fn validate_report_section(section: &ReportSection) -> Result<(), ModelRouterScr
                         }
                         Ok(())
                     })
+            })
+        }
+        ReportSection::BarChart {
+            title,
+            x_axis,
+            bars,
+        } => {
+            validate_report_title(title)?;
+            validate_report_label(x_axis)?;
+            if bars.is_empty() || bars.len() > MAX_REPORT_BARS {
+                return Err(ModelRouterScriptFailure::InvalidReport);
+            }
+            bars.iter().try_for_each(|bar| {
+                validate_report_label(&bar.label)?;
+                validate_report_text(&bar.value_label)?;
+                if !bar.value.is_finite() || bar.value < 0.0 {
+                    return Err(ModelRouterScriptFailure::InvalidReport);
+                }
+                Ok(())
             })
         }
         ReportSection::Table {

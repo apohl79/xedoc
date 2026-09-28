@@ -20,8 +20,66 @@ h2 {
   color: #fff;
 }
 
+h1 {
+  margin-bottom: 28px;
+}
+
 .section {
   margin: 24px 0;
+}
+
+.timeframe {
+  background: #151b26;
+  border: 1px solid #2d3441;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.timeframe-form {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.timeframe-form label {
+  color: #aeb9cc;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.timeframe-form input {
+  background: #10131a;
+  border: 1px solid #4a5568;
+  border-radius: 4px;
+  color: #e7eaf0;
+  font: inherit;
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.timeframe-form button {
+  background: #63b3ed;
+  border: 0;
+  border-radius: 4px;
+  color: #10131a;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 0 16px;
+}
+
+.timeframe-form button:hover {
+  background: #90cdf4;
+}
+
+.timeframe-error {
+  color: #eb6f92;
+  margin: 10px 0 0;
 }
 
 .metric-grid {
@@ -55,10 +113,18 @@ h2 {
   padding: 16px;
 }
 
+.bar-chart {
+  overflow-x: auto;
+}
+
 .chart svg {
   display: block;
   height: auto;
   width: 100%;
+}
+
+.bar-chart svg {
+  min-width: 620px;
 }
 
 .chart text {

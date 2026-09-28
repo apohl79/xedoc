@@ -145,14 +145,18 @@ ON CONFLICT(pair_id) DO UPDATE SET
         Ok(())
     }
 
-    /// Read the newest decision metadata, capped to prevent unbounded UI or RPC responses.
+    /// Read newest decision metadata in an inclusive UTC-day range, capped to prevent
+    /// unbounded UI or RPC responses.
     pub async fn recent_model_router_decisions(
         &self,
+        from_day: i64,
+        through_day: i64,
         limit: usize,
     ) -> anyhow::Result<Vec<ModelRouterDecisionRecord>> {
         let limit = i64::try_from(limit)
             .unwrap_or(MODEL_ROUTER_RECENT_LIMIT)
             .clamp(1, MODEL_ROUTER_RECENT_LIMIT);
+        let through_exclusive = through_day.saturating_add(SECONDS_PER_DAY);
         let rows = sqlx::query_as::<_, ModelRouterDecisionRecord>(
             r#"
 SELECT
@@ -163,10 +167,13 @@ SELECT
     effective_provider_id, effective_model_slug, effective_reasoning_effort,
     disposition, reason, prompt_sha256, prompt_original_bytes, prompt_truncated, created_at
 FROM model_router_decisions
+WHERE created_at >= ? AND created_at < ?
 ORDER BY created_at DESC, decision_id DESC
 LIMIT ?
             "#,
         )
+        .bind(from_day)
+        .bind(through_exclusive)
         .bind(limit)
         .fetch_all(self.pool.as_ref())
         .await?;
