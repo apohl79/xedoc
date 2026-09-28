@@ -107,10 +107,22 @@ pub struct ReportBar {
     /// Host-defined bounded color.
     pub color: ReportColor,
     /// Finite non-negative bar value.
+    #[serde(deserialize_with = "deserialize_report_bar_value")]
     pub value: f64,
     /// Display-ready value label.
     #[serde(rename = "valueLabel")]
     pub value_label: String,
+}
+
+fn deserialize_report_bar_value<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    let value = value.get("value").cloned().unwrap_or(value);
+    value
+        .as_f64()
+        .ok_or_else(|| serde::de::Error::custom("report bar value must be a finite number"))
 }
 
 /// One chart point or explicit gap.
