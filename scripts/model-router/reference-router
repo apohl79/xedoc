@@ -4064,7 +4064,7 @@ def report_chart_series(report):
                         None
                         if incomplete_from_day is not None and day >= incomplete_from_day
                         else (
-                            0.0
+                            None
                             if grouped.get(day, {}).get("invocations", 0) == 0
                             else (
                                 grouped[day][key]["value"]
@@ -4078,6 +4078,53 @@ def report_chart_series(report):
             ],
         }
         for label, key, color in metrics
+    ]
+
+
+def report_savings_rate_series(report):
+    grouped = {}
+    for record in report["days"]:
+        if record.get("invocations", 0) <= 0:
+            continue
+        day = record["day"]
+        values = grouped.setdefault(day, {"baseline": None, "savings": None})
+        for field in ("normalizedBaselineUsd", "estimatedSavingsUsd"):
+            value = record.get(field)
+            if value is not None:
+                key = "baseline" if field == "normalizedBaselineUsd" else "savings"
+                values[key] = (values[key] or 0.0) + value
+    if not grouped:
+        return []
+    incomplete_from_day = (
+        max(day["day"] for day in report["days"])
+        if report.get("daysTruncated") and report["days"]
+        else None
+    )
+    points = []
+    for day in range(report["fromDay"], report["throughDay"] + 86_400, 86_400):
+        values = grouped.get(day)
+        baseline = values["baseline"] if values else None
+        savings = values["savings"] if values else None
+        points.append(
+            {
+                "x": report_day(day),
+                "value": (
+                    None
+                    if incomplete_from_day is not None and day >= incomplete_from_day
+                    else (
+                        None
+                        if baseline is None or savings is None or baseline <= 0
+                        else savings / baseline * 100
+                    )
+                ),
+            }
+        )
+    return [
+        {
+            "label": "Estimated savings rate (priced usage)",
+            "color": "green",
+            "points": points,
+        }
     ]
 
 
@@ -4225,6 +4272,19 @@ def report_render(request):
                 "kind": "notice",
                 "level": "info",
                 "text": "No cost data was recorded in this timeframe.",
+            }
+        )
+    savings_rate_series = report_savings_rate_series(report)
+    if savings_rate_series and any(
+        point["value"] is not None for point in savings_rate_series[0]["points"]
+    ):
+        sections.append(
+            {
+                "kind": "lineChart",
+                "title": "Savings rate over time",
+                "xAxis": "Time (days)",
+                "yAxis": "Savings rate (%)",
+                "series": savings_rate_series,
             }
         )
     sections.extend(
