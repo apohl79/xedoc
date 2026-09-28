@@ -34,6 +34,8 @@ use xedoc_agent_graph_store::AgentGraphStore;
 use xedoc_agent_graph_store::LocalAgentGraphStore;
 use xedoc_app_server_protocol::ThreadHistoryBuilder;
 use xedoc_app_server_protocol::TurnStatus;
+use xedoc_config::ConfigLayerSource;
+use xedoc_config::ConfigLayerStackOrdering;
 use xedoc_core_plugins::PluginsManager;
 use xedoc_exec_server::EnvironmentManager;
 use xedoc_extension_api::ExtensionDataInit;
@@ -276,13 +278,18 @@ pub fn build_models_manager(
     let model_catalogs = model_catalogs_for_config(config);
     let configured_provider_ids = config
         .config_layer_stack
-        .effective_user_config()
-        .map(|user_config| {
-            user_config
+        .get_user_layers(
+            ConfigLayerStackOrdering::LowestPrecedenceFirst,
+            /*include_disabled*/ false,
+        )
+        .into_iter()
+        .find(|layer| matches!(layer.name, ConfigLayerSource::User { profile: None, .. }))
+        .and_then(|layer| {
+            layer
+                .config
                 .get("model_providers")
                 .and_then(toml::Value::as_table)
                 .map(|providers| providers.keys().cloned().collect::<HashSet<_>>())
-                .unwrap_or_default()
         })
         .unwrap_or_default();
     let mut provider_infos = config.model_providers.iter().collect::<Vec<_>>();
@@ -385,9 +392,8 @@ fn model_provider_is_always_enabled(
     active_provider_id: &str,
     configured_provider_ids: &HashSet<String>,
 ) -> bool {
-    provider_id == active_provider_id
+    (provider_id == active_provider_id && provider_id != OLLAMA_OSS_PROVIDER_ID)
         || provider_id == OPENAI_PROVIDER_ID
-        || provider_id == OLLAMA_OSS_PROVIDER_ID
         || provider_id == LMSTUDIO_OSS_PROVIDER_ID
         || configured_provider_ids.contains(provider_id)
 }
