@@ -539,7 +539,7 @@ impl AppServerSession {
             params.initial_turns_page = Some(ThreadResumeInitialTurnsPageParams {
                 limit: Some(REMOTE_INITIAL_TURNS_PAGE_LIMIT),
                 sort_direction: Some(SortDirection::Desc),
-                items_view: Some(TurnItemsView::Full),
+                items_view: Some(TurnItemsView::Summary),
             });
         }
         let response: ThreadResumeResponse = self
