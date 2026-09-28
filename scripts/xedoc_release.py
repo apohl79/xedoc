@@ -39,7 +39,7 @@ RELEASE_TAG_RE = re.compile(
     r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta)(?:\.[0-9]+)?)?$"
 )
 WORKSPACE_VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*)"[^"]+"(.*)$')
-BAZEL_RELEASE_CONFIG = "xedoc-release"
+BAZEL_RELEASE_CONFIGS = ("buildbuddy-generic-rbe", "xedoc-release")
 BAZEL_RELEASE_BUNDLE = "//xedoc-rs:xedoc-release-binaries"
 BAZEL_RELEASE_STARTUP_OPTIONS = ["--noexperimental_remote_repo_contents_cache"]
 BAZEL_RELEASE_CACHE_OPTIONS = ["--repo_contents_cache="]
@@ -520,7 +520,7 @@ def bazel_release_options(target: str) -> list[str]:
     except KeyError as err:
         raise RuntimeError(f"No Bazel release platform for target {target}.") from err
     return [
-        f"--config={BAZEL_RELEASE_CONFIG}",
+        *(f"--config={config}" for config in BAZEL_RELEASE_CONFIGS),
         f"--platforms=@llvm//platforms:{platform}",
     ]
 

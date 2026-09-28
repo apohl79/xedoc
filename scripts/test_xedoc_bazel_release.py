@@ -45,10 +45,12 @@ class XedocBazelReleaseTest(unittest.TestCase):
             ),
             (
                 [
+                    "--config=buildbuddy-generic-rbe",
                     "--config=xedoc-release",
                     "--platforms=@llvm//platforms:macos_arm64",
                 ],
                 [
+                    "--config=buildbuddy-generic-rbe",
                     "--config=xedoc-release",
                     "--platforms=@llvm//platforms:macos_amd64",
                 ],
