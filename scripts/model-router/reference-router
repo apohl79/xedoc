@@ -41,6 +41,7 @@ CLASSIFIER_FEEDBACK_PATH = STATE_DIR / "classifier-feedback.jsonl"
 CLASSIFIER_FEEDBACK_EMBEDDING_CACHE_PATH = (
     STATE_DIR / "classifier-feedback-embeddings.json"
 )
+SESSION_DECISIONS_DIR = STATE_DIR / "session-decisions"
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MAX_CLASSIFIER_FEEDBACK_BYTES = 512 * 1024
 MAX_CLASSIFIER_FEEDBACK_EMBEDDING_CACHE_BYTES = 256 * 1024
@@ -51,6 +52,8 @@ MAX_CLASSIFIER_FEEDBACK_EXAMPLES = 6
 CLASSIFIER_FEEDBACK_EMBEDDING_DIMENSIONS = 384
 MAX_CLASSIFIER_PROMPT_BYTES = 7_600
 MAX_JEV_RESPONSE_BYTES = 64 * 1024
+MAX_SESSION_DECISIONS = 100
+MAX_SESSION_DECISION_PROMPT_BYTES = 8 * 1024
 JEV_API_URL = "https://api.typesafe.ai/v1/systemone"
 JEV_HTTP_TIMEOUT_SECONDS = 2
 JEV_BACKENDS = ("jev", "xedoc-llm", "embedder")
@@ -713,7 +716,7 @@ def append_classifier_feedback(record):
         pass
 
 
-def prompt_preview(prompt):
+def prompt_preview(prompt, max_bytes=MAX_PROMPT_PREVIEW_BYTES):
     if not isinstance(prompt, str):
         return ""
     normalized = "".join(
@@ -721,9 +724,9 @@ def prompt_preview(prompt):
     )
     normalized = " ".join(normalized.split())
     encoded = normalized.encode("utf-8")
-    if len(encoded) <= MAX_PROMPT_PREVIEW_BYTES:
+    if len(encoded) <= max_bytes:
         return normalized
-    prefix = encoded[: MAX_PROMPT_PREVIEW_BYTES - 3].decode(
+    prefix = encoded[: max_bytes - 3].decode(
         "utf-8", errors="ignore"
     )
     return f"{prefix}..."
@@ -1279,6 +1282,122 @@ def session_mode(context):
     return (context.get("session") or {}).get("routerMode")
 
 
+def session_decisions_path(context):
+    thread_id = ((context.get("thread") or {}).get("id") or "").strip()
+    if not thread_id:
+        return None
+    return SESSION_DECISIONS_DIR / f"{hashlib.sha256(thread_id.encode()).hexdigest()}.json"
+
+
+def session_decisions(context):
+    path = session_decisions_path(context)
+    if path is None:
+        return []
+    try:
+        with path.open(encoding="utf-8") as source:
+            records = json.load(source)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return records if isinstance(records, list) else []
+
+
+def save_session_decisions(context, records):
+    path = session_decisions_path(context)
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(records[-MAX_SESSION_DECISIONS:]), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def review_record_id(request_id):
+    return hashlib.sha256(request_id.encode()).hexdigest()[:16]
+
+
+def track_decision(
+    request,
+    context,
+    prompt,
+    axes,
+    similarity,
+    margin,
+    selection,
+    status,
+    used_route,
+    embedding_elapsed_ms,
+    embedding_input_count,
+    llm_confidence,
+    llm_elapsed_ms,
+    calibrated_confidence,
+    classification_details,
+    steering,
+):
+    identifier = review_record_id(request["requestId"])
+    records = session_decisions(context)
+    record = {
+        "id": identifier,
+        "createdAtUnixSeconds": int(time.time()),
+        "status": status,
+        "prompt": prompt_preview(prompt, MAX_SESSION_DECISION_PROMPT_BYTES),
+        "scope": (context.get("turn") or {}).get("scope", "root"),
+        "axes": axes,
+        "similarity": similarity,
+        "margin": margin,
+        "selection": selection,
+        "targetRoute": selection["route"],
+        "usedRoute": used_route,
+        "embeddingElapsedMs": embedding_elapsed_ms,
+        "embeddingInputCount": embedding_input_count,
+        "llmConfidence": llm_confidence,
+        "llmElapsedMs": llm_elapsed_ms,
+        "calibratedConfidence": calibrated_confidence,
+        "classificationDetails": classification_details,
+        "steering": steering,
+    }
+    records = [entry for entry in records if entry.get("id") != identifier]
+    records.append(record)
+    save_session_decisions(context, records)
+    return record
+
+
+def review_record(context, identifier):
+    return next(
+        (record for record in session_decisions(context) if record.get("id") == identifier),
+        None,
+    )
+
+
+def update_review_record(context, identifier, **updates):
+    records = session_decisions(context)
+    for record in records:
+        if record.get("id") == identifier:
+            record.update(updates)
+            save_session_decisions(context, records)
+            return record
+    return None
+
+
+def update_latest_review_record(context, prompt, **updates):
+    normalized_prompt = prompt_preview(prompt, MAX_SESSION_DECISION_PROMPT_BYTES)
+    records = session_decisions(context)
+    for record in reversed(records):
+        if record.get("prompt") == normalized_prompt:
+            record.update(updates)
+            save_session_decisions(context, records)
+            return record
+    return None
+
+
+def update_tracked_review_record(context, prompt, **updates):
+    identifier = context.get("routerDecisionId")
+    if isinstance(identifier, str):
+        record = update_review_record(context, identifier, **updates)
+        if record is not None:
+            return record
+    return update_latest_review_record(context, prompt, **updates)
+
+
 def supports_session_mode(context):
     return (context.get("session") or {}).get("supportsRouterMode", False)
 
@@ -1351,6 +1470,12 @@ def root_menu(policy, context=None, conflict=None, session_update=None):
                 host_action="open-report",
             ),
             item(
+                "review-decisions",
+                "Review routing decisions",
+                "Inspect this session's decisions and override classifications.",
+                "open-review-decisions",
+            ),
+            item(
                 "policy",
                 "Policy manager",
                 "Tune similarity, model ladder, and reporting baseline.",
@@ -1388,6 +1513,161 @@ def item(
         **({"description": description} if description else {}),
         **({"current": True} if current else {}),
     }
+
+
+def review_decisions_menu(policy, context):
+    records = list(reversed(session_decisions(context)))
+    if not records:
+        return notice(
+            policy,
+            "Routing decisions",
+            "No routing decisions have been recorded in this session.",
+        )
+    return menu(
+        policy,
+        "Routing decisions",
+        [
+            item(
+                f"review-{record['id']}",
+                datetime.datetime.fromtimestamp(
+                    record["createdAtUnixSeconds"], datetime.timezone.utc
+                ).strftime("%Y-%m-%d %H:%M UTC"),
+                f"{record['status'].title()}; {route_label(record.get('targetRoute'))}",
+                f"open-review-{record['id']}",
+            )
+            for record in records
+        ]
+        + [item("back", "Back", "Return to model-router settings.", "back")],
+        "Use ↑/↓ to select a decision.",
+        continuation="settings:review",
+    )
+
+
+def review_confirmation(policy, context, record):
+    details = record.get("classificationDetails") or {}
+    axes = record["axes"]
+    confidence = record.get("calibratedConfidence")
+    confidence_text = (
+        f"{percentage(confidence)} overall confidence"
+        if confidence is not None
+        else "overall confidence unavailable"
+    )
+    sections = [
+        {
+            "title": "Decision:",
+            "rows": [
+                {
+                    "text": (
+                        f"└ {record['status'].title()}; Target model: "
+                        f"{route_label(record.get('targetRoute'))}; Used model: "
+                        f"{route_label(record.get('usedRoute'))};"
+                    )
+                }
+            ],
+        },
+        {
+            "title": "Classifications:",
+            "rows": [
+                {"text": f"└ Work type: {axes['work_type']};"},
+                {"text": f"Complexity: {axes['complexity']};", "indent": 1},
+                {"text": f"Risk: {axes['risk']};", "indent": 1},
+                {"text": f"Orchestration: {axes['orchestration']};", "indent": 1},
+            ],
+        },
+        {
+            "title": "Stats:",
+            "rows": [
+                {
+                    "text": (
+                        f"└ Embedding: {record['embeddingElapsedMs']} ms"
+                        if record.get("embeddingElapsedMs") is not None
+                        else "└ Embedding: not run"
+                    )
+                },
+                {
+                    "text": (
+                        f"External classification: {record['llmElapsedMs'] / 1000:.2f} s"
+                        if record.get("llmElapsedMs") is not None
+                        else "External classification: not run"
+                    ),
+                    "indent": 1,
+                },
+                {
+                    "text": (
+                        f"Confidence: {confidence_text}; External confidence "
+                        f"{percentage(record['llmConfidence']) if record.get('llmConfidence') is not None else 'not available'}; "
+                        f"top similarity({percentage(record['similarity'])}, "
+                        f"margin {percentage(record['margin'])})."
+                    ),
+                    "indent": 1,
+                },
+            ],
+        },
+        {
+            "title": "Prompt:",
+            "rows": [{"text": f"└ {prompt_preview(record['prompt'])}"}],
+        },
+    ]
+    validation = work_type_validation_text(details)
+    support = work_type_support_text(details)
+    if validation is not None:
+        sections[1]["rows"].append(
+            {"text": f"Work type validation: {validation};", "indent": 1}
+        )
+    if support is not None:
+        sections[1]["rows"].append(
+            {"text": f"Work type support: {support};", "indent": 1}
+        )
+    if details.get("orchestrationReason"):
+        sections[1]["rows"].append(
+            {
+                "text": f"Orchestration reason: {details['orchestrationReason']};",
+                "indent": 1,
+            }
+        )
+    override = form(
+        policy,
+        "Override decision",
+        f"review:{record['id']}",
+        [
+            select_field("work_type", "Work type", axes["work_type"], WORK_TYPES),
+            select_field("complexity", "Complexity", axes["complexity"], COMPLEXITIES),
+            select_field(
+                "orchestration", "Orchestration", axes["orchestration"], ORCHESTRATIONS
+            ),
+            select_field("risk", "Risk", axes["risk"], RISKS),
+            select_field(
+                "steering", "Steering", "yes" if record.get("steering") else "no", ("no", "yes")
+            ),
+        ],
+        "submit-review-override",
+        "Apply override",
+        form_id="review-classification-override",
+        cancel_action_id="back-review",
+        subtitle="Adjust the classification and record it as router feedback.",
+    )["interaction"]["surface"]
+    return interaction(
+        "routing-decision-review",
+        f"review:{record['id']}",
+        policy,
+        {
+            "type": "confirmation",
+            "title": "Routing decision",
+            "body": "Review the recorded decision and optionally correct its classification.",
+            "details": [],
+            "sections": sections,
+            "actions": [
+                action("back-review", "Back to decisions", bindings=["escape"]),
+                action(
+                    "begin-review-override",
+                    "Override decision",
+                    opens="review-classification-override",
+                    bindings=["o"],
+                ),
+            ],
+            "override": override,
+        },
+    )
 
 
 def select_field(identifier, label, selected, options):
@@ -1751,6 +2031,15 @@ def update(policy, **values):
 def settings_surface(policy, context, continuation):
     if continuation == "settings:root":
         return root_menu(policy, context)
+    if continuation == "settings:review":
+        return review_decisions_menu(policy, context)
+    if continuation.startswith("review:"):
+        return (
+            review_record(context, continuation.removeprefix("review:"))
+            and review_confirmation(
+                policy, context, review_record(context, continuation.removeprefix("review:"))
+            )
+        )
     if continuation == "settings:policy":
         return policy_menu(policy, context)
     if continuation == "settings:policy:ladder":
@@ -2071,6 +2360,80 @@ def settings_response(request, policy):
     if action_id == "toggle-feedback":
         update(policy, feedback=not policy["feedback"])
         return root_menu(policy, context)
+    if action_id == "open-review-decisions":
+        return review_decisions_menu(policy, context)
+    if action_id.startswith("open-review-"):
+        record = review_record(context, action_id.removeprefix("open-review-"))
+        if record is None:
+            return review_decisions_menu(policy, context)
+        return review_confirmation(policy, context, record)
+    if action_id == "back-review":
+        return review_decisions_menu(policy, context)
+    if action_id == "submit-review-override":
+        continuation = params.get("continuation", "")
+        record = review_record(context, continuation.removeprefix("review:"))
+        if record is None:
+            return review_decisions_menu(policy, context)
+        original_axes = record["axes"]
+        axes = {
+            "work_type": selected_option(
+                values.get("work_type"), WORK_TYPES, original_axes["work_type"]
+            ),
+            "complexity": values.get("complexity", original_axes["complexity"]),
+            "orchestration": values.get(
+                "orchestration", original_axes["orchestration"]
+            ),
+            "risk": values.get("risk", original_axes["risk"]),
+        }
+        steering_value = values.get("steering")
+        if (
+            steering_value not in (None, "no", "yes")
+            or axes["work_type"] not in WORK_TYPES
+            or axes["complexity"] not in COMPLEXITIES
+            or axes["orchestration"] not in ORCHESTRATIONS
+            or axes["risk"] not in RISKS
+        ):
+            return error_notice(policy, "Override values must be chosen from the offered choices.")
+        steering = steering_value == "yes" if steering_value is not None else record["steering"]
+        selection = choose_route(policy, context, axes)
+        try:
+            updates = recalibrate_semantic_policy(
+                policy, record["prompt"], record["scope"], axes, steering
+            )
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+            return error_notice(policy, "The router could not record this override.")
+        record_classifier_feedback(
+            policy,
+            {"turn": {"scope": record["scope"]}},
+            record["prompt"],
+            original_axes,
+            axes,
+            record.get("classificationDetails"),
+            record["steering"],
+            steering,
+            "classification_override",
+        )
+        record_recalibration(
+            policy, "classification_override_submitted", original_axes, axes, selection
+        )
+        updated = update_review_record(
+            context,
+            record["id"],
+            status="override",
+            axes=axes,
+            steering=steering,
+            targetRoute=selection["route"],
+        )
+        record_diagnostic(
+            {
+                "event": "semantic_classifier_recalibrated",
+                "recordedAtUnixSeconds": int(time.time()),
+                "policyRevision": policy["revision"],
+                "scope": record["scope"],
+                "updatedHeads": updates,
+            }
+        )
+        return review_confirmation(policy, context, updated)
     if action_id in ("arm-ab", "disable-ab", "open-report"):
         return root_menu(policy, context)
     if action_id == "open-policy":
@@ -3180,6 +3543,8 @@ def approval_continuation(
         "eligibleRoutes": eligible(context),
         "currentRoute": context.get("currentRoute"),
         "routerPrompt": prompt_preview(context.get("routerPrompt")),
+        "routerDecisionId": context.get("routerDecisionId"),
+        "thread": context.get("thread"),
         "scope": turn.get("scope", "root"),
         "policyRevision": str(policy["revision"]),
         "recalibrated": recalibrated,
@@ -4576,6 +4941,24 @@ def routing_decide(
         )
     )
     if needs_approval:
+        tracked_decision = track_decision(
+            request,
+            context,
+            prompt,
+            axes,
+            similarity,
+            margin,
+            selection,
+            "pending",
+            current,
+            embedding_elapsed_ms,
+            embedding_input_count,
+            llm_confidence,
+            llm_elapsed_ms,
+            calibrated_confidence,
+            classification_details,
+            steering,
+        )
         record_routing_decision(
             policy,
             context,
@@ -4595,6 +4978,7 @@ def routing_decide(
         context = {
             **context,
             "routerPrompt": prompt,
+            "routerDecisionId": tracked_decision["id"],
         }
         return approval(
             policy,
@@ -4635,6 +5019,26 @@ def routing_decide(
             )
     elif route is None:
         reason = "No eligible ranked route was available."
+    track_decision(
+        request,
+        context,
+        prompt,
+        axes,
+        similarity,
+        margin,
+        selection,
+        {"apply": "approved", "shadow": "shadow", "keepCurrent": "retained"}[
+            disposition
+        ],
+        route if disposition == "apply" else current,
+        embedding_elapsed_ms,
+        embedding_input_count,
+        llm_confidence,
+        llm_elapsed_ms,
+        calibrated_confidence,
+        classification_details,
+        steering,
+    )
     record_routing_decision(
         policy,
         context,
@@ -4693,11 +5097,14 @@ def approval_state(continuation):
         classification_details = state.get("classificationDetails")
         steering = state.get("steering", False)
         scope = state.get("scope", "root")
+        router_decision_id = state.get("routerDecisionId")
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
             "currentRoute": state.get("currentRoute"),
             "routerPrompt": prompt_preview(state.get("routerPrompt")),
+            "routerDecisionId": router_decision_id,
             "turn": {"scope": scope},
+            "thread": state.get("thread"),
         }
         policy_revision = state["policyRevision"]
         recalibrated = state.get("recalibrated", False)
@@ -4706,6 +5113,11 @@ def approval_state(continuation):
             or not isinstance(recalibrated, bool)
             or not isinstance(was_override, bool)
             or not isinstance(steering, bool)
+            or router_decision_id is not None
+            and (
+                not isinstance(router_decision_id, str)
+                or len(router_decision_id) != 16
+            )
             or classifier_notice is not None
             and (
                 not isinstance(classifier_notice, str)
@@ -4985,6 +5397,15 @@ def approval_response(request, policy):
             if steering
             else "User declined the proposed route."
         )
+        update_tracked_review_record(
+            rendered_context,
+            rendered_context.get("routerPrompt", ""),
+            status="override" if was_override else "rejected",
+            axes=axes,
+            steering=steering,
+            targetRoute=selection["route"],
+            usedRoute=current_context.get("currentRoute"),
+        )
         return decision(
             policy,
             request["requestId"],
@@ -5077,6 +5498,15 @@ def approval_response(request, policy):
                 axes,
                 axes,
                 selection,
+            )
+            update_tracked_review_record(
+                rendered_context,
+                rendered_context.get("routerPrompt", ""),
+                status="override",
+                axes=axes,
+                steering=steering,
+                targetRoute=None,
+                usedRoute=current_context.get("currentRoute"),
             )
             return decision(
                 policy,
@@ -5197,6 +5627,15 @@ def approval_response(request, policy):
         steering,
         steering,
         "classification_override_approved" if was_override else "approved",
+    )
+    update_tracked_review_record(
+        rendered_context,
+        rendered_context.get("routerPrompt", ""),
+        status="override" if was_override else "approved",
+        axes=axes,
+        steering=steering,
+        targetRoute=selection["route"],
+        usedRoute=selection["route"],
     )
     if steering:
         return decision(

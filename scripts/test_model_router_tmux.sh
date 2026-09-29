@@ -1981,6 +1981,90 @@ run_root_mode() {
   record_scenario "mode-root-$mode" "$disposition route verified from Responses request"
 }
 
+run_review_decisions() {
+  start_tui
+  open_settings
+  send_key Escape
+  wait_for_pane_absent "Model Router Settings"
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["mode"] = "full"
+policy["approval"] = "off"
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
+  send_prompt "ROUTER_E2E_REVIEW_DECISIONS review workflow security"
+  wait_for_request_marker "ROUTER_E2E_REVIEW_DECISIONS"
+  await_turn
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["approval"] = "all"
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
+  local long_prompt="ROUTER_E2E_REVIEW_DECISIONS_APPROVAL "
+  long_prompt+="$(printf 'review%.0s' {1..120})"
+  send_prompt "$long_prompt"
+  wait_for_pane "Use "
+  send_key Enter
+  await_turn
+  open_settings
+  select_menu_item 7 "Routing decisions"
+  wait_for_pane "Approved"
+  wait_for_pane "ROUTER_E2E_REVIEW_DECISIONS"
+  send_key Enter
+  wait_for_pane "Routing decision"
+  wait_for_pane "Override decision"
+  send_key o
+  wait_for_pane "Override decision"
+  send_key Right
+  set_select_value "Work type: Group3:" 8
+  send_key Enter
+  wait_for_pane "Override decision"
+  python3 - "$policy_path" "$router_diagnostics" <<'PY'
+import json
+import sys
+
+policy_path, diagnostics_path = sys.argv[1:]
+policy = json.load(open(policy_path, encoding="utf-8"))
+semantic = policy["semanticClassifier"]
+assert semantic["feedbackUpdates"] > 0, semantic
+feedback_path = policy_path.replace(
+    "reference-router.policy.json", "classifier-feedback.jsonl"
+)
+feedback = [
+    json.loads(line)
+    for line in open(feedback_path, encoding="utf-8")
+    if line.strip()
+]
+assert any(
+    record.get("outcome") == "classification_override"
+    and record.get("final", {}).get("work_type", "").startswith("group3")
+    for record in feedback
+), feedback
+diagnostics = [
+    json.loads(line)
+    for line in open(diagnostics_path, encoding="utf-8")
+    if line.strip()
+]
+assert any(
+    record.get("event") == "semantic_classifier_recalibrated"
+    and record.get("updatedHeads", 0) > 0
+    for record in diagnostics
+), diagnostics
+PY
+  record_scenario review-decisions \
+    "recorded decisions are selectable, editable, submitted, and persisted as classifier feedback"
+}
+
 run_spawn_mode() {
   local mode="$1"
   local expected_child_route="$2"
@@ -2541,7 +2625,7 @@ main() {
   write_runtime_config
   local phase="${XEDOC_TMUX_TEST_PHASE:-full}"
   assert_reference_policy_contract
-  if [[ "$phase" != "report" ]]; then
+  if [[ "$phase" != "report" && "$phase" != "review-decisions" ]]; then
     seed_legacy_policy
     assert_legacy_policy_migration
     assert_script_conflict_protocol
@@ -2587,6 +2671,10 @@ main() {
     run_approval_matrix
     assert_config_unchanged
     printf 'PASS: scripted model-router approval tmux acceptance\n'
+    return
+  elif [[ "$phase" == "review-decisions" ]]; then
+    run_review_decisions
+    printf 'PASS: scripted model-router review-decisions tmux acceptance\n'
     return
   elif [[ "$phase" == "report" ]]; then
     run_report_probe

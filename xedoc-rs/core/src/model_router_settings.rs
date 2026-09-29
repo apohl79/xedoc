@@ -41,6 +41,7 @@ pub async fn open(
     models_manager: &SharedModelsManager,
     session_mode: Option<&str>,
     supports_session_mode: bool,
+    thread_id: Option<&str>,
 ) -> Result<ModelRouterSettingsResult, String> {
     let Some(host) = ModelRouterScriptHost::from_config(config) else {
         return Err("model-router script is not configured".to_string());
@@ -58,6 +59,7 @@ pub async fn open(
             "routerMode": session_mode,
             "supportsRouterMode": supports_session_mode,
         },
+        "thread": thread_id.map(|id| serde_json::json!({ "id": id })),
     });
     let cancellation = CancellationToken::new();
     let _cancel_on_drop = cancellation.clone().drop_guard();
@@ -86,6 +88,7 @@ pub async fn respond(
     jev_api_key: Option<String>,
     session_mode: Option<&str>,
     supports_session_mode: bool,
+    thread_id: Option<&str>,
 ) -> Result<ModelRouterSettingsResult, String> {
     let Some(host) = ModelRouterScriptHost::from_config(config) else {
         return Err("model-router script is not configured".to_string());
@@ -106,6 +109,7 @@ pub async fn respond(
             "routerMode": session_mode,
             "supportsRouterMode": supports_session_mode,
         },
+        "thread": thread_id.map(|id| serde_json::json!({ "id": id })),
     });
     let cancellation = CancellationToken::new();
     let _cancel_on_drop = cancellation.clone().drop_guard();

@@ -337,6 +337,7 @@ impl ConfigRequestProcessor {
             &self.thread_manager.get_models_manager(),
             session_mode.as_deref(),
             thread.is_some(),
+            params.thread_id.as_deref(),
         )
         .await;
         Ok(model_router_settings_open_response(result))
@@ -363,6 +364,7 @@ impl ConfigRequestProcessor {
             params.jev_api_key,
             session_mode.as_deref(),
             thread.is_some(),
+            params.thread_id.as_deref(),
         )
         .await;
         Ok(match result {
