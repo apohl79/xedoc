@@ -16,12 +16,18 @@ pub enum BackendKind {
 #[derive(Debug, Clone)]
 pub(crate) struct BackendPaths {
     pub(crate) xedoc_bin: PathBuf,
+    pub(crate) socket_path: Option<PathBuf>,
     pub(crate) pid_file: PathBuf,
     pub(crate) update_pid_file: PathBuf,
 }
 
 pub(crate) fn pid_backend(paths: BackendPaths) -> PidBackend {
-    PidBackend::new(paths.xedoc_bin, paths.pid_file)
+    match paths.socket_path {
+        Some(socket_path) => {
+            PidBackend::new_with_socket(paths.xedoc_bin, paths.pid_file, socket_path)
+        }
+        None => PidBackend::new(paths.xedoc_bin, paths.pid_file),
+    }
 }
 
 pub(crate) fn pid_update_loop_backend(paths: BackendPaths) -> PidBackend {

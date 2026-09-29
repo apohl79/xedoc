@@ -12,6 +12,7 @@ use anyhow::Result;
 use anyhow::anyhow;
 pub use backend::BackendKind;
 use backend::BackendPaths;
+use managed_install::experimental_managed_xedoc_bin;
 use managed_install::managed_xedoc_bin;
 #[cfg(unix)]
 use managed_install::managed_xedoc_version;
@@ -28,6 +29,8 @@ const PID_FILE_NAME: &str = "app-server.pid";
 const UPDATE_PID_FILE_NAME: &str = "app-server-updater.pid";
 const OPERATION_LOCK_FILE_NAME: &str = "daemon.lock";
 const STATE_DIR_NAME: &str = "app-server-daemon";
+const EXPERIMENTAL_STATE_DIR_NAME: &str = "app-server-daemon-experimental";
+const EXPERIMENTAL_SOCKET_FILE_NAME: &str = "experimental.sock";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LifecycleCommand {
@@ -124,12 +127,30 @@ enum RestartDecision {
 
 pub async fn run(command: LifecycleCommand) -> Result<LifecycleOutput> {
     ensure_supported_platform()?;
-    Daemon::from_environment()?.run(command).await
+    Daemon::from_environment(DaemonTarget::Current)?
+        .run(command)
+        .await
+}
+
+pub async fn run_experimental(command: LifecycleCommand) -> Result<LifecycleOutput> {
+    ensure_supported_platform()?;
+    Daemon::from_environment(DaemonTarget::Experimental)?
+        .run(command)
+        .await
 }
 
 pub async fn bootstrap() -> Result<BootstrapOutput> {
     ensure_supported_platform()?;
-    Daemon::from_environment()?.bootstrap().await
+    Daemon::from_environment(DaemonTarget::Current)?
+        .bootstrap()
+        .await
+}
+
+pub async fn bootstrap_experimental() -> Result<BootstrapOutput> {
+    ensure_supported_platform()?;
+    Daemon::from_environment(DaemonTarget::Experimental)?
+        .bootstrap()
+        .await
 }
 
 pub async fn run_pid_update_loop() -> Result<()> {
@@ -151,25 +172,51 @@ fn ensure_supported_platform() -> Result<()> {
 
 struct Daemon {
     socket_path: PathBuf,
+    backend_socket_path: Option<PathBuf>,
     pid_file: PathBuf,
     update_pid_file: PathBuf,
     operation_lock_file: PathBuf,
     managed_xedoc_bin: PathBuf,
+    auto_update_enabled: bool,
+}
+
+#[derive(Clone, Copy)]
+enum DaemonTarget {
+    Current,
+    Experimental,
 }
 
 impl Daemon {
-    fn from_environment() -> Result<Self> {
+    fn from_environment(target: DaemonTarget) -> Result<Self> {
         let xedoc_home = find_xedoc_home().context("failed to resolve XEDOC_HOME")?;
-        let socket_path = app_server_control_socket_path(xedoc_home.as_path())?
-            .as_path()
-            .to_path_buf();
-        let state_dir = xedoc_home.as_path().join(STATE_DIR_NAME);
+        let socket_path = match target {
+            DaemonTarget::Current => app_server_control_socket_path(xedoc_home.as_path())?
+                .as_path()
+                .to_path_buf(),
+            DaemonTarget::Experimental => {
+                experimental_socket_path(xedoc_home.as_path())?.to_path_buf()
+            }
+        };
+        let state_dir = xedoc_home.as_path().join(match target {
+            DaemonTarget::Current => STATE_DIR_NAME,
+            DaemonTarget::Experimental => EXPERIMENTAL_STATE_DIR_NAME,
+        });
+        let backend_socket_path = match target {
+            DaemonTarget::Current => None,
+            DaemonTarget::Experimental => Some(socket_path.clone()),
+        };
+        let managed_xedoc_bin = match target {
+            DaemonTarget::Current => managed_xedoc_bin(xedoc_home.as_path()),
+            DaemonTarget::Experimental => experimental_managed_xedoc_bin(xedoc_home.as_path()),
+        };
         Ok(Self {
             socket_path,
+            backend_socket_path,
             pid_file: state_dir.join(PID_FILE_NAME),
             update_pid_file: state_dir.join(UPDATE_PID_FILE_NAME),
             operation_lock_file: state_dir.join(OPERATION_LOCK_FILE_NAME),
-            managed_xedoc_bin: managed_xedoc_bin(xedoc_home.as_path()),
+            managed_xedoc_bin,
+            auto_update_enabled: matches!(target, DaemonTarget::Current),
         })
     }
 
@@ -395,18 +442,20 @@ impl Daemon {
 
         let backend = backend::pid_backend(self.backend_paths());
         backend.start().await?;
-        let updater = backend::pid_update_loop_backend(self.backend_paths());
-        if updater.is_starting_or_running().await? {
-            updater.stop().await?;
+        if self.auto_update_enabled {
+            let updater = backend::pid_update_loop_backend(self.backend_paths());
+            if updater.is_starting_or_running().await? {
+                updater.stop().await?;
+            }
+            updater.start().await?;
         }
-        updater.start().await?;
 
         let info = self.wait_until_ready().await?;
         let managed_xedoc_version = self.managed_xedoc_version_best_effort().await;
         Ok(BootstrapOutput {
             status: BootstrapStatus::Bootstrapped,
             backend: BackendKind::Pid,
-            auto_update_enabled: true,
+            auto_update_enabled: self.auto_update_enabled,
             managed_xedoc_path: self.managed_xedoc_bin.clone(),
             managed_xedoc_version,
             socket_path: self.socket_path.clone(),
@@ -477,6 +526,7 @@ impl Daemon {
     fn backend_paths_with_bin(&self, managed_xedoc_bin: &Path) -> BackendPaths {
         BackendPaths {
             xedoc_bin: managed_xedoc_bin.to_path_buf(),
+            socket_path: self.backend_socket_path.clone(),
             pid_file: self.pid_file.clone(),
             update_pid_file: self.update_pid_file.clone(),
         }
@@ -539,6 +589,13 @@ impl Daemon {
             app_server_version,
         }
     }
+}
+
+/// Returns the standalone experimental daemon socket path.
+pub fn experimental_socket_path(xedoc_home: &Path) -> std::io::Result<PathBuf> {
+    Ok(app_server_control_socket_path(xedoc_home)?
+        .as_path()
+        .with_file_name(EXPERIMENTAL_SOCKET_FILE_NAME))
 }
 
 #[cfg(unix)]
@@ -673,10 +730,12 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir");
         let daemon = Daemon {
             socket_path: temp_dir.path().join("app-server-control.sock"),
+            backend_socket_path: None,
             pid_file: temp_dir.path().join("app-server.pid"),
             update_pid_file: temp_dir.path().join("app-server-updater.pid"),
             operation_lock_file: temp_dir.path().join("daemon.lock"),
             managed_xedoc_bin: temp_dir.path().join("missing-xedoc"),
+            auto_update_enabled: true,
         };
         let stderr_log = daemon.pid_file.with_extension("stderr.log");
         tokio::fs::write(&stderr_log, "unexpected argument")

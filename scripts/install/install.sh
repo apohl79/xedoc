@@ -8,6 +8,7 @@ RELEASE_TARGET="${XEDOC_RELEASE_TARGET:-}"
 LOCAL_ZIP="${XEDOC_LOCAL_ZIP:-}"
 BIN_DIR="${XEDOC_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/xedoc"
+EXPERIMENTAL_BIN_PATH="$BIN_DIR/xedoc-experimental"
 SESSION_CONTROL_BIN_PATH="$BIN_DIR/xedoc-session"
 REMOTE_AGENT_BIN_PATH="$BIN_DIR/xedoc-remote-agentd"
 XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
@@ -17,8 +18,10 @@ ZSHRC_APP_SERVER_CHOICE_PATH="$XEDOC_HOME_DIR/app-server-daemon/zshrc-start"
 STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
+EXPERIMENTAL_LINK="$STANDALONE_ROOT/experimental"
 MODEL_ROUTER_RUNTIME_ROOT="$XEDOC_HOME_DIR/packages/model-router-runtime"
 CHECK_ONLY=false
+EXPERIMENTAL=false
 tmp_dir=""
 app_server_was_running=false
 remote_agent_app_server_owned=false
@@ -38,7 +41,7 @@ die() {
 
 usage() {
   cat <<EOF
-Usage: install.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--check]
+Usage: install.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--experimental] [--check]
 
 Downloads and installs the Xedoc binary release for the current release tag,
 or installs a local release ZIP without contacting GitHub.
@@ -50,6 +53,8 @@ Options:
                    GitHub repository to read releases from. Defaults to apohl79/xedoc.
   --local-zip PATH  Install a local release ZIP instead of downloading one from GitHub.
                    The ZIP must contain xedoc-package.json.
+  --experimental    Install a local ZIP and also expose it as xedoc-experimental.
+                   This option requires --local-zip.
   --check          Verify that the release asset exists, then print the plan and exit.
   -h, --help       Show this help.
 
@@ -87,6 +92,9 @@ parse_args() {
         [ "$#" -ge 2 ] || die "--local-zip requires a value."
         LOCAL_ZIP="$2"
         shift
+        ;;
+      --experimental)
+        EXPERIMENTAL=true
         ;;
       --check)
         CHECK_ONLY=true
@@ -988,6 +996,14 @@ update_current_link() {
   replace_path_with_symlink "$CURRENT_LINK" "$release_dir" "$tmp_link"
 }
 
+update_experimental_link() {
+  release_dir="$1"
+  tmp_link="$STANDALONE_ROOT/.experimental.$$"
+
+  mkdir -p "$STANDALONE_ROOT"
+  replace_path_with_symlink "$EXPERIMENTAL_LINK" "$release_dir" "$tmp_link"
+}
+
 update_visible_command() {
   mkdir -p "$BIN_DIR"
   tmp_link="$BIN_DIR/.xedoc.$$"
@@ -1013,6 +1029,16 @@ update_visible_command() {
     "$CURRENT_LINK/bin/xedoc-code-mode-host" ]; then
     rm -f "$BIN_DIR/xedoc-code-mode-host"
   fi
+}
+
+update_experimental_visible_command() {
+  mkdir -p "$BIN_DIR"
+  tmp_link="$BIN_DIR/.xedoc-experimental.$$"
+
+  replace_path_with_symlink \
+    "$EXPERIMENTAL_BIN_PATH" \
+    "$EXPERIMENTAL_LINK/bin/xedoc" \
+    "$tmp_link"
 }
 
 write_remote_agent_bootstrap() {
@@ -1134,6 +1160,10 @@ print_zshrc_app_server_instructions() {
 parse_args "$@"
 validate_repo "$RELEASE_REPO"
 
+if [ "$EXPERIMENTAL" = true ] && [ -z "$LOCAL_ZIP" ]; then
+  die "--experimental requires --local-zip."
+fi
+
 if [ -n "$LOCAL_ZIP" ]; then
   require_command unzip
   prepare_local_package
@@ -1144,6 +1174,9 @@ target="$(detect_target)"
 release_version="${tag#v}"
 asset="xedoc-$target-$release_version.zip"
 release_name="$release_version-$target"
+if [ "$EXPERIMENTAL" = true ]; then
+  release_name="$release_name-experimental"
+fi
 release_dir="$RELEASES_DIR/$release_name"
 
 if [ -n "$LOCAL_ZIP" ]; then
@@ -1209,14 +1242,16 @@ if [ -n "$router_runtime_id" ] || [ -n "$router_runtime_asset" ] || \
     "$router_runtime_tag" \
     "$target"
 
-  current_runtime_dir="$CURRENT_LINK/xedoc-resources/model-router/runtime"
-  current_runtime_id=""
-  if [ -f "$current_runtime_dir/model-router-runtime.json" ]; then
-    current_runtime_id="$(runtime_manifest_field \
-      "$current_runtime_dir/model-router-runtime.json" runtimeId)"
-  fi
-  if [ -n "$current_runtime_id" ] && [ "$current_runtime_id" != "$router_runtime_id" ]; then
-    restart_model_router_daemon "$CURRENT_LINK"
+  if [ "$EXPERIMENTAL" = false ]; then
+    current_runtime_dir="$CURRENT_LINK/xedoc-resources/model-router/runtime"
+    current_runtime_id=""
+    if [ -f "$current_runtime_dir/model-router-runtime.json" ]; then
+      current_runtime_id="$(runtime_manifest_field \
+        "$current_runtime_dir/model-router-runtime.json" runtimeId)"
+    fi
+    if [ -n "$current_runtime_id" ] && [ "$current_runtime_id" != "$router_runtime_id" ]; then
+      restart_model_router_daemon "$CURRENT_LINK"
+    fi
   fi
 
   if ! runtime_is_complete \
@@ -1261,12 +1296,18 @@ else
   step "Package has no model-router runtime reference; semantic routing is unavailable"
 fi
 
-update_current_link "$release_dir"
-update_visible_command
-"$BIN_PATH" --version >/dev/null
-restart_running_app_server
-configure_remote_agent
-configure_zshrc_app_server
+if [ "$EXPERIMENTAL" = true ]; then
+  update_experimental_link "$release_dir"
+  update_experimental_visible_command
+  "$EXPERIMENTAL_BIN_PATH" --version >/dev/null
+else
+  update_current_link "$release_dir"
+  update_visible_command
+  "$BIN_PATH" --version >/dev/null
+  restart_running_app_server
+  configure_remote_agent
+  configure_zshrc_app_server
+fi
 
 # Deploy statusline script
 STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"

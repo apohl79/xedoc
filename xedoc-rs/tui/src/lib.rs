@@ -351,6 +351,11 @@ pub fn remote_addr_supports_auth_token(endpoint: &RemoteAppServerEndpoint) -> bo
 #[cfg(unix)]
 async fn maybe_probe_default_daemon_socket(xedoc_home: &Path) -> Option<AbsolutePathBuf> {
     let socket_path = xedoc_app_server_client::app_server_control_socket_path(xedoc_home).ok()?;
+    maybe_probe_daemon_socket(socket_path).await
+}
+
+#[cfg(unix)]
+async fn maybe_probe_daemon_socket(socket_path: AbsolutePathBuf) -> Option<AbsolutePathBuf> {
     if !socket_path.as_path().try_exists().unwrap_or(false) {
         return None;
     }
@@ -379,6 +384,11 @@ async fn maybe_probe_default_daemon_socket(xedoc_home: &Path) -> Option<Absolute
 
 #[cfg(not(unix))]
 async fn maybe_probe_default_daemon_socket(_xedoc_home: &Path) -> Option<AbsolutePathBuf> {
+    None
+}
+
+#[cfg(not(unix))]
+async fn maybe_probe_daemon_socket(_socket_path: AbsolutePathBuf) -> Option<AbsolutePathBuf> {
     None
 }
 
@@ -820,10 +830,27 @@ fn can_reuse_implicit_local_daemon(
 }
 
 pub async fn run_main(
+    cli: Cli,
+    arg0_paths: Arg0DispatchPaths,
+    loader_overrides: LoaderOverrides,
+    explicit_remote_endpoint: Option<RemoteAppServerEndpoint>,
+) -> std::io::Result<AppExitInfo> {
+    run_main_with_local_daemon_socket(
+        cli,
+        arg0_paths,
+        loader_overrides,
+        explicit_remote_endpoint,
+        /*local_daemon_socket*/ None,
+    )
+    .await
+}
+
+pub async fn run_main_with_local_daemon_socket(
     mut cli: Cli,
     arg0_paths: Arg0DispatchPaths,
     loader_overrides: LoaderOverrides,
     explicit_remote_endpoint: Option<RemoteAppServerEndpoint>,
+    local_daemon_socket: Option<AbsolutePathBuf>,
 ) -> std::io::Result<AppExitInfo> {
     let strict_config = cli.strict_config;
     let (sandbox_mode, approval_policy) = if cli.dangerously_bypass_approvals_and_sandbox {
@@ -883,7 +910,10 @@ pub async fn run_main(
         cli.bypass_hook_trust,
     );
     let default_daemon = if explicit_remote_endpoint.is_none() && reuse_implicit_local_daemon {
-        maybe_probe_default_daemon_socket(&xedoc_home).await
+        match local_daemon_socket {
+            Some(socket_path) => maybe_probe_daemon_socket(socket_path).await,
+            None => maybe_probe_default_daemon_socket(&xedoc_home).await,
+        }
     } else {
         None
     };

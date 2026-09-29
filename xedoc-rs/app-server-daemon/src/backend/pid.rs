@@ -66,21 +66,37 @@ enum PidFileState {
     Running(PidRecord),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[cfg_attr(not(unix), allow(dead_code))]
 enum PidCommandKind {
-    AppServer,
+    AppServer { listen_url: String },
     UpdateLoop,
 }
 
 impl PidBackend {
     pub(crate) fn new(xedoc_bin: PathBuf, pid_file: PathBuf) -> Self {
+        Self::new_with_listen_url(xedoc_bin, pid_file, "unix://".to_string())
+    }
+
+    pub(crate) fn new_with_socket(
+        xedoc_bin: PathBuf,
+        pid_file: PathBuf,
+        socket_path: PathBuf,
+    ) -> Self {
+        Self::new_with_listen_url(
+            xedoc_bin,
+            pid_file,
+            format!("unix://{}", socket_path.display()),
+        )
+    }
+
+    fn new_with_listen_url(xedoc_bin: PathBuf, pid_file: PathBuf, listen_url: String) -> Self {
         let lock_file = pid_file.with_extension("pid.lock");
         Self {
             xedoc_bin,
             pid_file,
             lock_file,
-            command_kind: PidCommandKind::AppServer,
+            command_kind: PidCommandKind::AppServer { listen_url },
         }
     }
 
@@ -404,23 +420,35 @@ impl PidBackend {
     }
 
     #[cfg(unix)]
-    fn command_args(&self) -> Vec<&'static str> {
-        match self.command_kind {
-            PidCommandKind::AppServer => vec!["app-server", "--listen", "unix://"],
-            PidCommandKind::UpdateLoop => vec!["app-server", "daemon", "pid-update-loop"],
+    fn command_args(&self) -> Vec<String> {
+        match &self.command_kind {
+            PidCommandKind::AppServer { listen_url } => {
+                vec![
+                    "app-server".to_string(),
+                    "--listen".to_string(),
+                    listen_url.clone(),
+                ]
+            }
+            PidCommandKind::UpdateLoop => {
+                vec![
+                    "app-server".to_string(),
+                    "daemon".to_string(),
+                    "pid-update-loop".to_string(),
+                ]
+            }
         }
     }
 
     fn terminate_process(&self, pid: u32) -> Result<()> {
-        match self.command_kind {
-            PidCommandKind::AppServer => terminate_process(pid),
+        match &self.command_kind {
+            PidCommandKind::AppServer { .. } => terminate_process(pid),
             PidCommandKind::UpdateLoop => terminate_process(pid),
         }
     }
 
     fn force_terminate_process(&self, pid: u32) -> Result<()> {
-        match self.command_kind {
-            PidCommandKind::AppServer => force_terminate_process(pid),
+        match &self.command_kind {
+            PidCommandKind::AppServer { .. } => force_terminate_process(pid),
             PidCommandKind::UpdateLoop => force_terminate_process_group(pid),
         }
     }
