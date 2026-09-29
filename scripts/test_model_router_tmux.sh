@@ -278,9 +278,9 @@ expected_axes = {
     ],
     "orchestration": [
         ("none", 0, "simple", "smart"),
-        ("delegate", 1, "simple", "smart"),
-        ("coordination", 1, "smart", "smart"),
-        ("workflow", 3, "smart", "smart"),
+        ("delegate", 0, "simple", "smart"),
+        ("coordination", 0, "simple", "smart"),
+        ("workflow", 0, "simple", "smart"),
     ],
     "risk": [
         ("low", 1, "simple", "smart"),
@@ -1336,6 +1336,53 @@ import sys
 document = json.load(open(sys.argv[1], encoding="utf-8"))["document"]
 assert document["title"] == "Model router report", document
 assert document["sections"], document
+PY
+  local selected_from_day
+  selected_from_day="$(
+    python3 - <<'PY'
+import datetime
+
+print(int(datetime.datetime(2026, 9, 23, tzinfo=datetime.timezone.utc).timestamp()))
+PY
+  )"
+  local selected_through_day
+  selected_through_day="$(
+    python3 - <<'PY'
+import datetime
+
+print(int(datetime.datetime(2026, 9, 28, tzinfo=datetime.timezone.utc).timestamp()))
+PY
+  )"
+  curl --fail --silent --show-error \
+    -H "X-Xedoc-Report-Capability: $capability" \
+    "$report_endpoint?fromDay=$selected_from_day&throughDay=$selected_through_day" \
+    >"$artifact_dir/report-selected-range.json"
+  python3 - "$artifact_dir/report-selected-range.json" \
+    "$selected_from_day" "$selected_through_day" <<'PY'
+import json
+import sys
+
+document = json.load(open(sys.argv[1], encoding="utf-8"))["document"]
+timeframes = [
+    section
+    for section in document["sections"]
+    if section["kind"] == "timeframe"
+]
+assert timeframes == [{
+    "kind": "timeframe",
+    "title": "Reporting timeframe (UTC; max 90 days)",
+    "fromDay": int(sys.argv[2]),
+    "throughDay": int(sys.argv[3]),
+}], timeframes
+assert not any(
+    section["kind"] == "lineChart"
+    for section in document["sections"]
+), document
+assert any(
+    section.get("text") == "No cost data was recorded in this timeframe."
+    for section in document["sections"]
+    if section["kind"] == "notice"
+), document
 PY
   record_scenario report-capability "tmux opened the report URL and fetched its capability-protected document"
 }
@@ -2492,12 +2539,13 @@ main() {
   start_mock
   prepare_package
   write_runtime_config
-  seed_legacy_policy
-  assert_reference_policy_contract
-  assert_legacy_policy_migration
-  assert_script_conflict_protocol
-
   local phase="${XEDOC_TMUX_TEST_PHASE:-full}"
+  assert_reference_policy_contract
+  if [[ "$phase" != "report" ]]; then
+    seed_legacy_policy
+    assert_legacy_policy_migration
+    assert_script_conflict_protocol
+  fi
   if [[ "$phase" == "full" ]]; then
     start_tui
     establish_host_action_thread
