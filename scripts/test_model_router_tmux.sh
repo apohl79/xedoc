@@ -278,9 +278,9 @@ expected_axes = {
     ],
     "orchestration": [
         ("none", 0, "simple", "smart"),
-        ("delegate", 1, "simple", "smart"),
-        ("coordination", 1, "smart", "smart"),
-        ("workflow", 3, "smart", "smart"),
+        ("delegate", 0, "simple", "smart"),
+        ("coordination", 0, "simple", "smart"),
+        ("workflow", 0, "simple", "smart"),
     ],
     "risk": [
         ("low", 1, "simple", "smart"),
@@ -1337,6 +1337,53 @@ document = json.load(open(sys.argv[1], encoding="utf-8"))["document"]
 assert document["title"] == "Model router report", document
 assert document["sections"], document
 PY
+  local selected_from_day
+  selected_from_day="$(
+    python3 - <<'PY'
+import datetime
+
+print(int(datetime.datetime(2026, 9, 23, tzinfo=datetime.timezone.utc).timestamp()))
+PY
+  )"
+  local selected_through_day
+  selected_through_day="$(
+    python3 - <<'PY'
+import datetime
+
+print(int(datetime.datetime(2026, 9, 28, tzinfo=datetime.timezone.utc).timestamp()))
+PY
+  )"
+  curl --fail --silent --show-error \
+    -H "X-Xedoc-Report-Capability: $capability" \
+    "$report_endpoint?fromDay=$selected_from_day&throughDay=$selected_through_day" \
+    >"$artifact_dir/report-selected-range.json"
+  python3 - "$artifact_dir/report-selected-range.json" \
+    "$selected_from_day" "$selected_through_day" <<'PY'
+import json
+import sys
+
+document = json.load(open(sys.argv[1], encoding="utf-8"))["document"]
+timeframes = [
+    section
+    for section in document["sections"]
+    if section["kind"] == "timeframe"
+]
+assert timeframes == [{
+    "kind": "timeframe",
+    "title": "Reporting timeframe (UTC; max 90 days)",
+    "fromDay": int(sys.argv[2]),
+    "throughDay": int(sys.argv[3]),
+}], timeframes
+assert not any(
+    section["kind"] == "lineChart"
+    for section in document["sections"]
+), document
+assert any(
+    section.get("text") == "No cost data was recorded in this timeframe."
+    for section in document["sections"]
+    if section["kind"] == "notice"
+), document
+PY
   record_scenario report-capability "tmux opened the report URL and fetched its capability-protected document"
 }
 
@@ -1934,6 +1981,90 @@ run_root_mode() {
   record_scenario "mode-root-$mode" "$disposition route verified from Responses request"
 }
 
+run_review_decisions() {
+  start_tui
+  open_settings
+  send_key Escape
+  wait_for_pane_absent "Model Router Settings"
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["mode"] = "full"
+policy["approval"] = "off"
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
+  send_prompt "ROUTER_E2E_REVIEW_DECISIONS review workflow security"
+  wait_for_request_marker "ROUTER_E2E_REVIEW_DECISIONS"
+  await_turn
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["approval"] = "all"
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
+  local long_prompt="ROUTER_E2E_REVIEW_DECISIONS_APPROVAL "
+  long_prompt+="$(printf 'review%.0s' {1..120})"
+  send_prompt "$long_prompt"
+  wait_for_pane "Use "
+  send_key Enter
+  await_turn
+  open_settings
+  select_menu_item 7 "Routing decisions"
+  wait_for_pane "Approved"
+  wait_for_pane "ROUTER_E2E_REVIEW_DECISIONS"
+  send_key Enter
+  wait_for_pane "Routing decision"
+  wait_for_pane "Override decision"
+  send_key o
+  wait_for_pane "Override decision"
+  send_key Right
+  set_select_value "Work type: Group3:" 8
+  send_key Enter
+  wait_for_pane "Override decision"
+  python3 - "$policy_path" "$router_diagnostics" <<'PY'
+import json
+import sys
+
+policy_path, diagnostics_path = sys.argv[1:]
+policy = json.load(open(policy_path, encoding="utf-8"))
+semantic = policy["semanticClassifier"]
+assert semantic["feedbackUpdates"] > 0, semantic
+feedback_path = policy_path.replace(
+    "reference-router.policy.json", "classifier-feedback.jsonl"
+)
+feedback = [
+    json.loads(line)
+    for line in open(feedback_path, encoding="utf-8")
+    if line.strip()
+]
+assert any(
+    record.get("outcome") == "classification_override"
+    and record.get("final", {}).get("work_type", "").startswith("group3")
+    for record in feedback
+), feedback
+diagnostics = [
+    json.loads(line)
+    for line in open(diagnostics_path, encoding="utf-8")
+    if line.strip()
+]
+assert any(
+    record.get("event") == "semantic_classifier_recalibrated"
+    and record.get("updatedHeads", 0) > 0
+    for record in diagnostics
+), diagnostics
+PY
+  record_scenario review-decisions \
+    "recorded decisions are selectable, editable, submitted, and persisted as classifier feedback"
+}
+
 run_spawn_mode() {
   local mode="$1"
   local expected_child_route="$2"
@@ -2492,12 +2623,13 @@ main() {
   start_mock
   prepare_package
   write_runtime_config
-  seed_legacy_policy
-  assert_reference_policy_contract
-  assert_legacy_policy_migration
-  assert_script_conflict_protocol
-
   local phase="${XEDOC_TMUX_TEST_PHASE:-full}"
+  assert_reference_policy_contract
+  if [[ "$phase" != "report" && "$phase" != "review-decisions" ]]; then
+    seed_legacy_policy
+    assert_legacy_policy_migration
+    assert_script_conflict_protocol
+  fi
   if [[ "$phase" == "full" ]]; then
     start_tui
     establish_host_action_thread
@@ -2539,6 +2671,10 @@ main() {
     run_approval_matrix
     assert_config_unchanged
     printf 'PASS: scripted model-router approval tmux acceptance\n'
+    return
+  elif [[ "$phase" == "review-decisions" ]]; then
+    run_review_decisions
+    printf 'PASS: scripted model-router review-decisions tmux acceptance\n'
     return
   elif [[ "$phase" == "report" ]]; then
     run_report_probe

@@ -108,9 +108,11 @@ const renderBarChart = (section) => {
   const container = element("section");
   container.className = "section chart bar-chart";
   appendTitle(container, section.title);
-  const width = 760;
-  const rowHeight = 34;
-  const padding = { top: 18, right: 72, bottom: 32, left: 250 };
+  const width = 900;
+  const rowHeight = 32;
+  const longestLabel = Math.max(...section.bars.map((bar) => bar.label.length), 0);
+  const labelWidth = Math.min(300, Math.max(180, longestLabel * 7 + 16));
+  const padding = { top: 16, right: 64, bottom: 32, left: labelWidth };
   const chartWidth = width - padding.left - padding.right;
   const maximum = Math.max(100, ...section.bars.map((bar) => bar.value), 1);
   const height = padding.top + section.bars.length * rowHeight + padding.bottom;
@@ -125,7 +127,7 @@ const renderBarChart = (section) => {
   section.bars.forEach((bar, index) => {
     const rowY = padding.top + index * rowHeight;
     const label = svgElement("text", {
-      x: padding.left - 10, y: rowY + 12, "text-anchor": "end",
+      x: padding.left - 12, y: rowY + 12, "text-anchor": "end",
     });
     label.textContent = bar.label;
     const track = svgElement("rect", {
@@ -189,14 +191,20 @@ const renderLineChart = (section) => {
     legend.append(item);
   });
 
-  const width = 760;
-  const height = 330;
-  const padding = { top: 24, right: 24, bottom: 52, left: 86 };
+  const width = 900;
+  const height = 340;
+  const padding = { top: 24, right: 32, bottom: 56, left: 90 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const values = section.series.flatMap((series) => series.points
     .map((point) => point.value)
     .filter((value) => value != null));
+  if (values.length === 0) {
+    const empty = element("p", "No data in this timeframe.");
+    empty.className = "chart-empty";
+    container.append(legend, empty);
+    return container;
+  }
   const minimum = Math.min(0, ...values);
   const maximum = Math.max(0, ...values);
   const range = maximum - minimum || 1;
@@ -242,7 +250,9 @@ const renderLineChart = (section) => {
     : [0, Math.floor((points.length - 1) / 2), points.length - 1];
   labelIndexes.forEach((index) => {
     const label = svgElement("text", {
-      x: x(index), y: height - 28, "text-anchor": "middle",
+      x: x(index),
+      y: height - 30,
+      "text-anchor": index === 0 ? "start" : index === points.length - 1 ? "end" : "middle",
     });
     label.textContent = points[index].x;
     svg.append(label);
