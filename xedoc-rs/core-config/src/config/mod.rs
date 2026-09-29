@@ -28,6 +28,7 @@ use xedoc_config::McpServerRequirement;
 use xedoc_config::ModelRouterConfigToml;
 use xedoc_config::PluginRequirementsToml;
 use xedoc_config::ProfileV2Name;
+use xedoc_config::RemoteAgentConfigToml;
 use xedoc_config::ResidencyRequirement;
 use xedoc_config::SandboxModeRequirement;
 use xedoc_config::SessionScriptConfigToml;
@@ -617,6 +618,9 @@ pub struct Config {
 
     /// Host-managed persistent scripts that may register for a loaded root thread.
     pub session_scripts: Vec<SessionScriptConfigToml>,
+
+    /// Host-wide remote-agent broker configuration from user config only.
+    pub remote_agent: Option<RemoteAgentConfigToml>,
 
     /// Optional fast model used for side-band tasks on custom providers.
     pub model_fast: Option<String>,
@@ -3824,6 +3828,17 @@ impl Config {
             profile_workspace_roots,
         )
         .map_err(std::io::Error::from)?;
+        let remote_agent = config_layer_stack
+            .effective_user_config()
+            .and_then(|user_config| user_config.get("remote_agent").cloned())
+            .map(TomlValue::try_into)
+            .transpose()
+            .map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid [remote_agent] user configuration: {error}"),
+                )
+            })?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
             model,
@@ -3836,6 +3851,7 @@ impl Config {
                 }
             },
             session_scripts: cfg.session_scripts.clone(),
+            remote_agent,
             model_fast,
             service_tier,
             review_model,

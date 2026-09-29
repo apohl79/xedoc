@@ -12043,6 +12043,7 @@ dependencies = [
  "xedoc-hooks",
  "xedoc-http-client",
  "xedoc-image-generation-extension",
+ "xedoc-install-context",
  "xedoc-keyring-store",
  "xedoc-login",
  "xedoc-mcp",

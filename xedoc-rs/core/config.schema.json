@@ -2671,6 +2671,156 @@
         }
       ]
     },
+    "RemoteAgentConfigToml": {
+      "additionalProperties": false,
+      "description": "Host-wide remote-agent configuration.",
+      "properties": {
+        "limits": {
+          "$ref": "#/definitions/RemoteAgentLimitsToml"
+        },
+        "managed_coordinator_certificate_paths": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "maxItems": 128,
+          "type": "array"
+        },
+        "peer_listener": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RemoteAgentPeerListenerToml"
+            }
+          ],
+          "default": null
+        },
+        "role": {
+          "$ref": "#/definitions/RemoteAgentRole"
+        },
+        "static_peers": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/RemoteAgentStaticPeerToml"
+          },
+          "maxItems": 128,
+          "type": "array"
+        },
+        "workspaces": {
+          "additionalProperties": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "maxProperties": 128,
+          "propertyNames": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "limits",
+        "role",
+        "workspaces"
+      ],
+      "type": "object"
+    },
+    "RemoteAgentLimitsToml": {
+      "additionalProperties": false,
+      "description": "Explicit bounds for local remote-agent broker operations.",
+      "properties": {
+        "audit_retention_days": {
+          "format": "uint64",
+          "maximum": 3650.0,
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "max_attached_sessions": {
+          "format": "uint64",
+          "maximum": 1024.0,
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "max_discovery_seconds": {
+          "format": "uint64",
+          "maximum": 300.0,
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "max_message_bytes": {
+          "format": "uint64",
+          "maximum": 1048576.0,
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "max_result_bytes": {
+          "format": "uint64",
+          "maximum": 4194304.0,
+          "minimum": 1.0,
+          "type": "integer"
+        },
+        "max_wait_seconds": {
+          "format": "uint64",
+          "maximum": 3600.0,
+          "minimum": 1.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "audit_retention_days",
+        "max_attached_sessions",
+        "max_discovery_seconds",
+        "max_message_bytes",
+        "max_result_bytes",
+        "max_wait_seconds"
+      ],
+      "type": "object"
+    },
+    "RemoteAgentPeerListenerToml": {
+      "additionalProperties": false,
+      "description": "Local listener configuration for trusted remote-agent peers.",
+      "properties": {
+        "endpoint": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "pattern": "^[\\x00-\\x7F]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint"
+      ],
+      "type": "object"
+    },
+    "RemoteAgentRole": {
+      "description": "The host role used by the remote-agent broker.",
+      "enum": [
+        "coordinator",
+        "managed"
+      ],
+      "type": "string"
+    },
+    "RemoteAgentStaticPeerToml": {
+      "additionalProperties": false,
+      "description": "A trusted peer configured without network discovery.",
+      "properties": {
+        "certificate_path": {
+          "$ref": "#/definitions/AbsolutePathBuf"
+        },
+        "endpoint": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "pattern": "^[\\x00-\\x7F]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "certificate_path",
+        "endpoint"
+      ],
+      "type": "object"
+    },
     "ResumeCwdMode": {
       "description": "Working directory to use when resuming or forking a session.",
       "oneOf": [
@@ -5458,6 +5608,14 @@
         "$ref": "#/definitions/ProjectConfig"
       },
       "type": "object"
+    },
+    "remote_agent": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/RemoteAgentConfigToml"
+        }
+      ],
+      "description": "Host-wide configuration for the remote-agent broker."
     },
     "review_model": {
       "description": "Review model override used by the `/review` feature.",

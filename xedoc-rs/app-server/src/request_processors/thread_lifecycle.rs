@@ -1,4 +1,5 @@
 use super::*;
+use crate::session_extension_manager::SessionExtensionManager;
 use crate::session_script_registry::SessionScriptRegistry;
 use xedoc_protocol::config_types::MultiAgentMode;
 
@@ -9,6 +10,7 @@ pub(super) struct ListenerTaskContext {
     pub(super) thread_manager: Arc<ThreadManager>,
     pub(super) thread_state_manager: ThreadStateManager,
     pub(super) session_script_registry: SessionScriptRegistry,
+    pub(super) session_extension_manager: SessionExtensionManager,
     pub(super) outgoing: Arc<OutgoingMessageSender>,
     pub(super) pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
     pub(super) thread_watch_manager: ThreadWatchManager,
@@ -323,6 +325,7 @@ pub(super) async fn ensure_listener_task_running(
         thread_manager,
         thread_state_manager,
         session_script_registry,
+        session_extension_manager,
         pending_thread_unloads,
         thread_watch_manager,
         thread_list_state_permit,
@@ -396,6 +399,7 @@ pub(super) async fn ensure_listener_task_running(
                         thread_manager.clone(),
                         thread_outgoing,
                         session_script_registry.clone(),
+                        Some(session_extension_manager.clone()),
                         outgoing_for_task.clone(),
                         thread_state.clone(),
                         thread_watch_manager.clone(),

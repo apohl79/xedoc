@@ -11,6 +11,7 @@ import base64
 from collections.abc import Callable
 import hashlib
 import json
+import os
 import secrets
 import socket
 import struct
@@ -26,6 +27,10 @@ MAX_BUFFERED_RESPONSES = 64
 class RpcError(RuntimeError):
     """The peer sent invalid JSON-RPC or closed its transport unexpectedly."""
 
+    def __init__(self, message: str, code: int | None = None) -> None:
+        self.code = code
+        super().__init__(message)
+
 
 class WebSocketTransport:
     """A bounded, dependency-free JSON WebSocket transport for app-server RPC."""
@@ -34,16 +39,46 @@ class WebSocketTransport:
         parsed = urlparse(endpoint)
         if parsed.scheme != "ws" or not parsed.hostname or not parsed.port:
             raise RpcError("endpoint must be a ws:// URL with an explicit port")
-        self.socket = socket.create_connection((parsed.hostname, parsed.port), timeout)
+        connection = socket.create_connection((parsed.hostname, parsed.port), timeout)
+        self._initialize_socket(connection, timeout)
+        try:
+            path = parsed.path or "/"
+            if parsed.query:
+                path = f"{path}?{parsed.query}"
+            self._perform_handshake(f"{parsed.hostname}:{parsed.port}", path)
+        except BaseException:
+            connection.close()
+            raise
+
+    @classmethod
+    def connect_unix_socket(
+        cls, socket_path: str | os.PathLike[str], timeout: float
+    ) -> "WebSocketTransport":
+        """Connect a normal controller to an app-server Unix socket."""
+        if not hasattr(socket, "AF_UNIX"):
+            raise RpcError("Unix controller transport is unavailable on this platform")
+        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        connection.settimeout(timeout)
+        try:
+            connection.connect(os.fspath(socket_path))
+            transport = cls.__new__(cls)
+            transport._initialize_socket(connection, timeout)
+            transport._perform_handshake("localhost", "/rpc")
+            return transport
+        except BaseException:
+            connection.close()
+            raise
+
+    def _initialize_socket(self, connection: socket.socket, timeout: float) -> None:
+        self.socket = connection
         self.socket.settimeout(timeout)
         self.buffer = b""
-        path = parsed.path or "/"
-        if parsed.query:
-            path = f"{path}?{parsed.query}"
+
+    def _perform_handshake(self, host: str, path: str) -> None:
         key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
         self.socket.sendall(
             (
-                f"GET {path} HTTP/1.1\r\nHost: {parsed.hostname}:{parsed.port}\r\n"
+                f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
                 "Upgrade: websocket\r\nConnection: Upgrade\r\n"
                 f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
             ).encode("ascii")
@@ -211,7 +246,20 @@ class SessionScriptClient:
         return cls(WebSocketTransport(endpoint, timeout))
 
     @classmethod
+    def connect_unix_socket(
+        cls, socket_path: str | os.PathLike[str], timeout: float
+    ) -> "SessionScriptClient":
+        """Connect a normal controller to an app-server Unix socket.
+
+        This transport has controller scope. It does not create a
+        host-managed session-script child or grant access to a specific
+        thread.
+        """
+        return cls(WebSocketTransport.connect_unix_socket(socket_path, timeout))
+
+    @classmethod
     def from_host_child(cls) -> "SessionScriptClient":
+        """Connect the thread-scoped host-managed session-script child pipe."""
         return cls(HostChildTransport())
 
     def set_notification_handler(
@@ -383,7 +431,11 @@ class SessionScriptClient:
         message = self._wait_for_response(request_id)
         error = message.get("error")
         if isinstance(error, dict):
-            raise RpcError(str(error.get("message", "app-server request failed")))
+            code = error.get("code")
+            raise RpcError(
+                str(error.get("message", "app-server request failed")),
+                code if isinstance(code, int) and not isinstance(code, bool) else None,
+            )
         result = message.get("result", {})
         if not isinstance(result, dict):
             raise RpcError("app-server returned a non-object result")

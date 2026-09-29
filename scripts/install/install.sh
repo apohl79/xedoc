@@ -9,6 +9,7 @@ LOCAL_ZIP="${XEDOC_LOCAL_ZIP:-}"
 BIN_DIR="${XEDOC_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/xedoc"
 SESSION_CONTROL_BIN_PATH="$BIN_DIR/xedoc-session"
+REMOTE_AGENT_BIN_PATH="$BIN_DIR/xedoc-remote-agentd"
 XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
 NON_INTERACTIVE="${XEDOC_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
@@ -20,6 +21,7 @@ MODEL_ROUTER_RUNTIME_ROOT="$XEDOC_HOME_DIR/packages/model-router-runtime"
 CHECK_ONLY=false
 tmp_dir=""
 app_server_was_running=false
+remote_agent_app_server_owned=false
 skip_model_router_warm=false
 
 script_dir="$(CDPATH='' cd "$(dirname "$0")" && pwd)"
@@ -790,6 +792,9 @@ install_zip_release() {
     "$stage_release/bin/xedoc" \
     "$stage_release/bin/xedoc-session" \
     "$stage_release/xedoc-path/rg"
+  if [ -f "$stage_release/bin/xedoc-remote-agentd" ]; then
+    chmod 0755 "$stage_release/bin/xedoc-remote-agentd"
+  fi
   if [ -f "$stage_release/xedoc-resources/zsh/bin/zsh" ]; then
     chmod 0755 "$stage_release/xedoc-resources/zsh/bin/zsh"
   fi
@@ -987,16 +992,108 @@ update_visible_command() {
   mkdir -p "$BIN_DIR"
   tmp_link="$BIN_DIR/.xedoc.$$"
   tmp_session_link="$BIN_DIR/.xedoc-session.$$"
+  tmp_remote_agent_link="$BIN_DIR/.xedoc-remote-agentd.$$"
 
   replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/bin/xedoc" "$tmp_link"
   replace_path_with_symlink \
     "$SESSION_CONTROL_BIN_PATH" \
     "$CURRENT_LINK/bin/xedoc-session" \
     "$tmp_session_link"
+  if [ -x "$CURRENT_LINK/bin/xedoc-remote-agentd" ]; then
+    replace_path_with_symlink \
+      "$REMOTE_AGENT_BIN_PATH" \
+      "$CURRENT_LINK/bin/xedoc-remote-agentd" \
+      "$tmp_remote_agent_link"
+  elif [ "$(readlink "$REMOTE_AGENT_BIN_PATH" 2>/dev/null || true)" = \
+    "$CURRENT_LINK/bin/xedoc-remote-agentd" ]; then
+    rm -f "$REMOTE_AGENT_BIN_PATH"
+  fi
   # Older releases shipped a xedoc-code-mode-host symlink; drop it if stale.
   if [ "$(readlink "$BIN_DIR/xedoc-code-mode-host" 2>/dev/null || true)" = \
     "$CURRENT_LINK/bin/xedoc-code-mode-host" ]; then
     rm -f "$BIN_DIR/xedoc-code-mode-host"
+  fi
+}
+
+write_remote_agent_bootstrap() {
+  remote_agent_directory="$XEDOC_HOME_DIR/remote-agent"
+  remote_agent_socket_directory="$XEDOC_HOME_DIR/app-server-control"
+  [ -d "$remote_agent_socket_directory" ] || return 1
+  remote_agent_socket_directory="$(
+    CDPATH='' cd "$remote_agent_socket_directory" && pwd -P
+  )" || return 1
+  remote_agent_endpoint="unix://$remote_agent_socket_directory/app-server-control.sock"
+  case "$remote_agent_endpoint" in
+    *'"'* | *\\* | *'
+'*) return 1 ;;
+  esac
+
+  mkdir -p "$remote_agent_directory" || return 1
+  chmod 700 "$remote_agent_directory" || return 1
+  remote_agent_bootstrap_tmp="$(mktemp "$remote_agent_directory/.bootstrap.XXXXXX")" ||
+    return 1
+  (
+    umask 077
+    printf 'controller = "%s"\n' "$remote_agent_endpoint" >"$remote_agent_bootstrap_tmp"
+  ) || {
+    rm -f "$remote_agent_bootstrap_tmp"
+    return 1
+  }
+  chmod 600 "$remote_agent_bootstrap_tmp" || {
+    rm -f "$remote_agent_bootstrap_tmp"
+    return 1
+  }
+  mv -f "$remote_agent_bootstrap_tmp" "$remote_agent_directory/bootstrap.toml"
+}
+
+configure_remote_agent() {
+  [ -x "$CURRENT_LINK/bin/xedoc-remote-agentd" ] || return 0
+
+  if ! prompt_user_available; then
+    step "Remote-agent onboarding requires an interactive terminal"
+    printf 'Run after installation:\n  %s app-server daemon start\n  %s remote-agent-configure\n' \
+      "$BIN_PATH" "$SESSION_CONTROL_BIN_PATH"
+    return 0
+  fi
+
+  if ! app_server_is_running; then
+    step "Starting local app-server for remote-agent onboarding"
+    if ! remote_agent_start_output="$("$BIN_PATH" app-server daemon start)"; then
+      printf 'WARNING: Could not start the local app-server. Configure remote-agent later with:\n  %s app-server daemon start\n  %s remote-agent-configure\n' \
+        "$BIN_PATH" "$SESSION_CONTROL_BIN_PATH" >&2
+      return 0
+    fi
+    case "$remote_agent_start_output" in
+      *'"status":"started"'*)
+        remote_agent_app_server_owned=true
+        ;;
+      *'"status":"alreadyRunning"'*)
+        ;;
+      *)
+        printf 'WARNING: Could not determine app-server lifecycle ownership. Configure remote-agent later with:\n  %s remote-agent-configure\n' \
+          "$SESSION_CONTROL_BIN_PATH" >&2
+        return 0
+        ;;
+    esac
+  fi
+
+  if "$SESSION_CONTROL_BIN_PATH" remote-agent-configure </dev/tty; then
+    if write_remote_agent_bootstrap; then
+      step "Remote-agent configuration and controller bootstrap are ready"
+    else
+      printf 'WARNING: Remote-agent configuration was saved, but controller bootstrap could not be written.\n' >&2
+    fi
+  else
+    printf 'WARNING: Remote-agent onboarding was not completed. Re-run:\n  %s remote-agent-configure\n' \
+      "$SESSION_CONTROL_BIN_PATH" >&2
+  fi
+
+  if [ "$remote_agent_app_server_owned" = true ]; then
+    step "Stopping installer-owned app-server"
+    if ! "$BIN_PATH" app-server daemon stop >/dev/null; then
+      printf 'WARNING: Could not stop the installer-owned app-server. Run: "%s" app-server daemon stop\n' \
+        "$BIN_PATH" >&2
+    fi
   fi
 }
 
@@ -1168,6 +1265,7 @@ update_current_link "$release_dir"
 update_visible_command
 "$BIN_PATH" --version >/dev/null
 restart_running_app_server
+configure_remote_agent
 configure_zshrc_app_server
 
 # Deploy statusline script

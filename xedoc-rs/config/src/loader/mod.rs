@@ -67,6 +67,7 @@ const PROJECT_LOCAL_CONFIG_DENYLIST: &[&str] = &[
     "profile",
     "profiles",
     "otel",
+    "remote_agent",
 ];
 
 async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> Option<ConfigError> {
@@ -1251,6 +1252,7 @@ async fn load_project_layers(
                     }
                 };
                 let mut config = config;
+                let ignored_project_config_keys = sanitize_project_config(&mut config);
                 if disabled_reason.is_none() && strict_config {
                     validate_config_toml_strictly(
                         config_file.as_path(),
@@ -1259,7 +1261,6 @@ async fn load_project_layers(
                         dot_xedoc_abs.as_path(),
                     )?;
                 }
-                let ignored_project_config_keys = sanitize_project_config(&mut config);
                 let config =
                     resolve_relative_paths_in_config_toml(config, dot_xedoc_abs.as_path())?;
                 let config = merge_root_checkout_project_hooks(

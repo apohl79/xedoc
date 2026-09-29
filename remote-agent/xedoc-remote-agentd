@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+package_root=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
+python="$package_root/xedoc-resources/remote-agent/runtime/python/bin/python3"
+payload="$package_root/xedoc-resources/remote-agent/remote-agent.pyz"
+
+if [ ! -x "$python" ]; then
+    printf '%s\n' "xedoc-remote-agentd: bundled Python runtime is unavailable" >&2
+    exit 1
+fi
+if [ ! -f "$payload" ]; then
+    printf '%s\n' "xedoc-remote-agentd: bundled remote-agent payload is unavailable" >&2
+    exit 1
+fi
+
+exec "$python" -B -I "$payload" daemon "$@"

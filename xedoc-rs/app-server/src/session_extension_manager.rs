@@ -18,6 +18,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
+use xedoc_app_server_protocol::DynamicToolCallParams;
 use xedoc_app_server_protocol::ExtensionInteractionAction;
 use xedoc_app_server_protocol::ExtensionInteractionDetail;
 use xedoc_app_server_protocol::ExtensionInteractionOutcome;
@@ -40,6 +41,7 @@ use xedoc_app_server_protocol::SessionScriptPromptKind;
 use xedoc_app_server_protocol::SessionScriptPromptRequest;
 use xedoc_app_server_protocol::WarningNotification;
 use xedoc_core::ThreadManager;
+use xedoc_core::XedocThread;
 use xedoc_core::config::Config;
 use xedoc_plugin::LoadedPlugin;
 use xedoc_plugin::manifest::PluginManifestExtension;
@@ -64,6 +66,10 @@ use crate::outgoing_message::ClientRequestResult;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
 use crate::parallel_approval;
+use crate::remote_agent_extension::BUILTIN_REMOTE_AGENT_EXTENSION_ID;
+use crate::remote_agent_extension::BuiltInRemoteAgentExtension;
+use crate::remote_agent_extension::remote_tool_name;
+use crate::remote_agent_extension::remote_tool_requires_approval;
 use crate::session_script_host::SessionScriptHost;
 use crate::session_script_registry::SessionScriptRegistry;
 use crate::session_script_registry::send_deliveries;
@@ -90,6 +96,7 @@ struct SessionExtensionManagerInner {
     outgoing: Arc<OutgoingMessageSender>,
     session_script_registry: SessionScriptRegistry,
     session_script_host: Arc<Mutex<SessionScriptHost>>,
+    remote_agent: BuiltInRemoteAgentExtension,
     grants_path: PathBuf,
     persistent_grants: Mutex<Vec<PersistentGrant>>,
     threads: Mutex<HashMap<ThreadId, SessionExtensionThreadState>>,
@@ -144,12 +151,18 @@ impl SessionExtensionManager {
         let persistent_grants = read_persistent_grants(&grants_path);
         Self {
             inner: Arc::new(SessionExtensionManagerInner {
-                config,
+                config: Arc::clone(&config),
                 thread_manager,
                 thread_state_manager,
-                outgoing,
-                session_script_registry,
-                session_script_host,
+                outgoing: Arc::clone(&outgoing),
+                session_script_registry: session_script_registry.clone(),
+                session_script_host: session_script_host.clone(),
+                remote_agent: BuiltInRemoteAgentExtension::new(
+                    Arc::clone(&config),
+                    outgoing,
+                    session_script_registry,
+                    session_script_host,
+                ),
                 grants_path,
                 persistent_grants: Mutex::new(persistent_grants),
                 threads: Mutex::new(HashMap::new()),
@@ -194,8 +207,125 @@ impl SessionExtensionManager {
         });
     }
 
+    pub(crate) fn augment_dynamic_tools(
+        &self,
+        config: &Config,
+        dynamic_tools: Vec<xedoc_app_server_protocol::DynamicToolSpec>,
+    ) -> Result<Vec<xedoc_app_server_protocol::DynamicToolSpec>, String> {
+        self.inner
+            .remote_agent
+            .augment_dynamic_tools(config, dynamic_tools)
+    }
+
+    pub(crate) fn remote_dynamic_tools(
+        &self,
+        config: &Config,
+    ) -> Result<Vec<xedoc_app_server_protocol::DynamicToolSpec>, String> {
+        self.inner.remote_agent.dynamic_tools(config, &[])
+    }
+
+    pub(crate) async fn start_remote_for_thread(&self, thread_id: ThreadId) -> Result<(), String> {
+        self.inner.remote_agent.start_for_thread(thread_id).await
+    }
+
+    pub(crate) async fn dispatch_remote_dynamic_tool(
+        &self,
+        params: DynamicToolCallParams,
+        conversation: Arc<XedocThread>,
+    ) -> bool {
+        let Some(tool_name) = remote_tool_name(&params) else {
+            return false;
+        };
+        let thread_id = match ThreadId::from_string(&params.thread_id) {
+            Ok(thread_id) => thread_id,
+            Err(_) => {
+                crate::dynamic_tools::submit_unavailable_response(
+                    params.call_id,
+                    "remote-agent call has an invalid thread id".to_string(),
+                    conversation,
+                )
+                .await;
+                return true;
+            }
+        };
+        if remote_tool_requires_approval(&tool_name)
+            && !matches!(
+                tokio::time::timeout(
+                    Duration::from_secs(/*secs*/ 30),
+                    self.approve_remote_tool(thread_id, &tool_name),
+                )
+                .await,
+                Ok(Ok(true))
+            )
+        {
+            crate::dynamic_tools::submit_unavailable_response(
+                params.call_id,
+                format!("{tool_name} was declined by the local owner"),
+                conversation,
+            )
+            .await;
+            return true;
+        }
+        self.inner.remote_agent.dispatch(params, conversation).await
+    }
+
+    async fn approve_remote_tool(
+        &self,
+        thread_id: ThreadId,
+        tool_name: &str,
+    ) -> Result<bool, String> {
+        let request_id = format!("remote-agent-approval:{thread_id}:{tool_name}");
+        let response = self
+            .request_interaction(
+                thread_id,
+                &request_id,
+                BUILTIN_REMOTE_AGENT_EXTENSION_ID,
+                tool_name,
+                "remote-agent-tool",
+                /*state_revision*/ None,
+                ExtensionInteractionSurface::Confirmation {
+                    title: format!("Allow {tool_name}?"),
+                    body: "This remote-agent operation changes local broker state.".to_string(),
+                    details: Vec::new(),
+                    sections: Vec::new(),
+                    actions: vec![
+                        ExtensionInteractionAction {
+                            id: APPROVAL_ACTION_SESSION.to_string(),
+                            opens: None,
+                            host_action: None,
+                            label: Some("Allow".to_string()),
+                            key_bindings: vec!["enter".to_string()],
+                            context: None,
+                            value: None,
+                        },
+                        ExtensionInteractionAction {
+                            id: APPROVAL_ACTION_DENY.to_string(),
+                            opens: None,
+                            host_action: None,
+                            label: Some("Deny".to_string()),
+                            key_bindings: Vec::new(),
+                            context: None,
+                            value: None,
+                        },
+                    ],
+                    override_form: None,
+                },
+            )
+            .await?;
+        Ok(response.outcome == ExtensionInteractionOutcome::Accepted
+            && response
+                .action
+                .as_ref()
+                .is_some_and(|action| action.id == APPROVAL_ACTION_SESSION))
+    }
+
+    pub(crate) async fn stop_remote_for_thread(&self, thread_id: ThreadId) {
+        self.inner.remote_agent.stop_thread(thread_id).await;
+    }
+
     /// Cancels the per-thread lifecycle state when the root thread is removed.
     pub(crate) async fn stop_thread(&self, thread_id: ThreadId) {
+        self.stop_remote_for_thread(thread_id).await;
         let enabled_extensions = self
             .inner
             .threads
@@ -427,12 +557,12 @@ impl SessionExtensionManager {
                 .collect::<Vec<_>>();
             let descriptors_to_activate = discovered
                 .iter()
-                .filter(|&(extension_id, descriptor)| state
-                        .extensions
-                        .get(extension_id)
-                        .is_none_or(|previous| {
-                            previous.declaration_digest != descriptor.declaration_digest
-                        })).map(|(_extension_id, descriptor)| descriptor.clone())
+                .filter(|&(extension_id, descriptor)| {
+                    state.extensions.get(extension_id).is_none_or(|previous| {
+                        previous.declaration_digest != descriptor.declaration_digest
+                    })
+                })
+                .map(|(_extension_id, descriptor)| descriptor.clone())
                 .collect::<Vec<_>>();
 
             state.extensions = discovered;

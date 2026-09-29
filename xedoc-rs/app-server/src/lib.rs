@@ -100,6 +100,8 @@ mod models;
 mod models_refresh_worker;
 mod parallel_approval;
 mod plugin_watcher;
+mod remote_agent_extension;
+mod remote_agent_package;
 mod request_processors;
 mod session_extension_manager;
 mod session_script_host;
@@ -959,6 +961,12 @@ pub async fn run_main_with_transport_options(
                             Ok(thread_id) => {
                                 if processor.is_loaded_root_thread(thread_id).await {
                                     session_script_host.lock().await.start_for_thread(thread_id).await;
+                                    if let Err(error) = session_extension_manager
+                                        .start_remote_for_thread(thread_id)
+                                        .await
+                                    {
+                                        warn!(thread_id = %thread_id, %error, "failed to start built-in remote agent");
+                                    }
                                     session_extension_manager.start_for_thread(thread_id).await;
                                 }
                             }
@@ -997,6 +1005,12 @@ pub async fn run_main_with_transport_options(
                                     .await;
                                 if processor.is_loaded_root_thread(thread_id).await {
                                     session_script_host.lock().await.start_for_thread(thread_id).await;
+                                    if let Err(error) = session_extension_manager
+                                        .start_remote_for_thread(thread_id)
+                                        .await
+                                    {
+                                        warn!(thread_id = %thread_id, %error, "failed to start built-in remote agent");
+                                    }
                                     session_extension_manager.start_for_thread(thread_id).await;
                                 }
                             }

@@ -450,6 +450,24 @@ impl SessionScriptRegistry {
             .cloned()
     }
 
+    pub(crate) async fn ready_extension_registration(
+        &self,
+        thread_id: ThreadId,
+        extension_id: &str,
+    ) -> Option<(ConnectionId, SessionScriptRegistration)> {
+        self.state
+            .lock()
+            .await
+            .registrations_by_connection
+            .iter()
+            .find_map(|(connection_id, registration)| {
+                (registration.thread_id == thread_id
+                    && registration.identity.id == extension_id
+                    && registration.ready)
+                    .then_some((*connection_id, registration.clone()))
+            })
+    }
+
     pub(crate) async fn message(
         &self,
         connection_id: ConnectionId,

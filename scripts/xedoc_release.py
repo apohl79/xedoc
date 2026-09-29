@@ -20,6 +20,7 @@ from xedoc_package.model_router_runtime import build_runtime_archive
 from xedoc_package.model_router_runtime import runtime_asset_name
 from xedoc_package.model_router_runtime import runtime_id
 from xedoc_package.model_router_runtime import RuntimeReference
+from xedoc_package.remote_agent_runtime import build_remote_agent_runtime
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -106,6 +107,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Archive output for the separately installed semantic model-router "
             "runtime. Its filename must match the immutable runtime ID."
+        ),
+    )
+    parser.add_argument(
+        "--remote-agent-runtime-dir",
+        type=Path,
+        help=(
+            "Prebuilt target-pinned remote-agent Python runtime directory. "
+            "When omitted, the release flow builds it from the pinned "
+            "python-build-standalone distribution."
         ),
     )
     parser.add_argument(
@@ -312,6 +322,22 @@ def build_release(args: argparse.Namespace) -> None:
         runtime_archive_output,
         force=args.force,
     )
+    remote_agent_runtime = None
+    if not spec.is_windows:
+        remote_agent_runtime_output = (
+            output_dir / "remote-agent-runtime" / version / args.target
+        )
+        remote_agent_runtime_source = (
+            resolve_repo_path(getattr(args, "remote_agent_runtime_dir", None))
+            if getattr(args, "remote_agent_runtime_dir", None) is not None
+            else None
+        )
+        remote_agent_runtime = build_remote_agent_runtime(
+            spec,
+            remote_agent_runtime_output,
+            force=args.force,
+            source=remote_agent_runtime_source,
+        )
 
     package_args = [
         sys.executable,
@@ -338,6 +364,10 @@ def build_release(args: argparse.Namespace) -> None:
         "--model-router-runtime-source-release-tag",
         runtime_reference.source_release_tag,
     ]
+    if remote_agent_runtime is not None:
+        package_args.extend(
+            ["--remote-agent-runtime-dir", str(remote_agent_runtime.root.parent)]
+        )
     if args.force:
         package_args.append("--force")
 
@@ -401,6 +431,8 @@ def build_release(args: argparse.Namespace) -> None:
     for archive_output in archive_outputs:
         print(f"Archive: {archive_output}")
     print(f"Model-router runtime archive: {runtime_archive_output}")
+    if remote_agent_runtime is not None:
+        print(f"Remote-agent runtime: {remote_agent_runtime_output}")
 
 
 def build_cargo_release_binaries(
