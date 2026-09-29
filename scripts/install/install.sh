@@ -1332,5 +1332,7 @@ else
 fi
 
 print_path_note
-print_zshrc_app_server_instructions
+if [ "$EXPERIMENTAL" = false ]; then
+  print_zshrc_app_server_instructions
+fi
 printf 'Xedoc CLI %s installed successfully.\n' "$release_version"
