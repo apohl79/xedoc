@@ -4802,6 +4802,31 @@ def routing_decide(
                 "reportingBaseline": None,
             },
         }
+    if (request.get("params") or {}).get("explicitRouteOverride") is True:
+        return {
+            "kind": "route",
+            "decision": {
+                "id": f"reference-{request['requestId']}-{policy['revision']}",
+                "disposition": "keepCurrent",
+                "route": None,
+                "summary": "The explicitly selected model route was retained.",
+                "feedback": {
+                    "enabled": False,
+                    "classification": "explicit route override",
+                    "confidence": 0.0,
+                    "confidenceMargin": 0.0,
+                    "routingCalculation": "explicit route override retained the current route",
+                    "rankingScore": None,
+                    "rankingMinimumClass": None,
+                    "rankingMaximumClass": None,
+                    "rankingMinimumRank": None,
+                    "rankingMaximumRank": None,
+                    "rankingTargetRank": None,
+                    "rankingSelectedRank": None,
+                },
+                "reportingBaseline": None,
+            },
+        }
     external_classifier = policy["externalClassifier"]
     configured_classifier = valid_route(
         policy.get("classifierRoute"), eligible_classifier_routes(context)
