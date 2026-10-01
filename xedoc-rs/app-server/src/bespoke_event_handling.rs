@@ -218,7 +218,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                 let state = thread_state.lock().await;
                 (
                     state.completed_turn_count,
-                    state.completed_turn_had_mid_turn_auto_session_name_request(&event_turn_id),
+                    state.completed_turn_had_mid_turn_auto_session_name(&event_turn_id),
                 )
             };
             let notification = handle_turn_complete(

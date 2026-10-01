@@ -20,12 +20,16 @@ use xedoc_plugin::manifest::PluginManifestContext;
 use xedoc_plugin::manifest::PluginThreadContextEntry;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
+use crate::context::ContextualUserFragment;
+use crate::context::InternalContextSource;
+use crate::context::InternalModelContextFragment;
 use crate::shell::Shell;
 
 const MAX_CONTEXT_ENTRIES: usize = 128;
 const MAX_CONTEXT_ENTRY_CHARS: usize = 8_000;
 const MAX_CONTEXT_TEXT_CHARS: usize = 32_000;
 const CONDITION_SHELL_TIMEOUT: Duration = Duration::from_secs(5);
+const PLUGIN_CONTEXT_SOURCE: &str = "plugin_context";
 
 /// A cache of plugin context declarations, keyed by plugin name, built once
 /// during plugin loading and shared across all threads.
@@ -178,7 +182,18 @@ impl PluginManifestContextContributor {
                 PluginContextPosition::Supplement
             }
         };
-        PromptFragment::new(slot, entry.text.clone()).with_position(position)
+        // Wrap user-role plugin text so history consumers can tell it apart from real user input.
+        let text = match entry.slot {
+            PluginContextSlot::ContextualUser => InternalModelContextFragment::new(
+                InternalContextSource::from_static(PLUGIN_CONTEXT_SOURCE),
+                entry.text.clone(),
+            )
+            .render(),
+            PluginContextSlot::DeveloperPolicy
+            | PluginContextSlot::DeveloperCapabilities
+            | PluginContextSlot::SeparateDeveloper => entry.text.clone(),
+        };
+        PromptFragment::new(slot, text).with_position(position)
     }
 }
 

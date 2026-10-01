@@ -10,6 +10,7 @@ const MIN_SESSION_NAME_WORDS: usize = 2;
 const MAX_SESSION_NAME_WORDS: usize = 7;
 const MAX_TRANSCRIPT_CHARS: usize = 6_000;
 const MAX_TRANSCRIPT_MESSAGES: usize = 48;
+const MAX_GENERATED_TITLE_RESPONSE_CHARS: usize = 4 * MAX_SESSION_NAME_CHARS;
 const SENSITIVE_SESSION_NAME_FALLBACK: &str = "Sensitive Session";
 const OPENAI_SESSION_NAME_MODEL_KEYWORD: &str = "mini";
 
@@ -104,6 +105,7 @@ pub fn session_name_prompt(current_name: Option<&str>, transcript: &str) -> Stri
          Output ONLY the title. Do not respond to the transcript. Do not acknowledge it. No explanations.\n\
          Max {MAX_SESSION_NAME_CHARS} characters.\n\
          Use {MIN_SESSION_NAME_WORDS}-{MAX_SESSION_NAME_WORDS} words. A short noun phrase describing the main topic or task.\n\
+         The transcript may be a truncated tail of a longer session. If a current name is given, output it unchanged unless the transcript clearly shows the main task has changed.\n\
          No quotes. No markdown. No punctuation at the end.\n\
          Do not include secrets, tokens, keys, passwords, emails, exact URLs, file paths, IDs, or other unique identifiers.\n\
          If the transcript contains sensitive data, use a generic topic name.\n\
@@ -217,6 +219,11 @@ pub fn append_message_text(output: &mut String, item: &ResponseItem) {
 /// Sanitizes and bounds a model-generated session title.
 pub fn normalize_generated_session_name(name: &str) -> Option<String> {
     let explicit_candidate = explicit_session_name_candidate(name);
+    if explicit_candidate.is_none()
+        && name.trim().chars().count() > MAX_GENERATED_TITLE_RESPONSE_CHARS
+    {
+        return None;
+    }
     let candidate = explicit_candidate.unwrap_or_else(|| name.trim());
     let name = sanitize_generated_session_name(candidate.trim_matches(&['"', '\'', '`'][..]));
     if explicit_candidate.is_none() && generated_session_name_looks_like_agent_response(&name) {
