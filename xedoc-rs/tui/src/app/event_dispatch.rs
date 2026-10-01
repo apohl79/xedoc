@@ -1626,9 +1626,17 @@ impl App {
             AppEvent::OpenProviderBudget { provider_id } => {
                 self.chat_widget.open_provider_budget_kind(provider_id);
             }
-            AppEvent::OpenProviderBudgetValue { provider_id, kind } => {
+            AppEvent::OpenProviderBudgetValue {
+                provider_id,
+                kind,
+                error,
+            } => {
                 self.chat_widget
-                    .open_provider_budget_value_prompt(provider_id, kind);
+                    .open_provider_budget_value_prompt(provider_id, kind, error);
+            }
+            AppEvent::OpenProviderBudgetResetDay { provider_id, usd } => {
+                self.chat_widget
+                    .open_provider_budget_reset_day(provider_id, usd);
             }
             AppEvent::ProviderBudgetUpdate {
                 provider_id,
@@ -1642,8 +1650,23 @@ impl App {
                     .await
                 {
                     Ok(()) => {
+                        let summary = match budget.kind {
+                            xedoc_config::types::ProviderBudgetKind::None => {
+                                format!("Provider budget for {provider_id} disabled.")
+                            }
+                            xedoc_config::types::ProviderBudgetKind::Monthly => format!(
+                                "Provider budget for {provider_id} saved: ${:.2} monthly, resets on day {}.",
+                                budget.usd.unwrap_or_default(),
+                                budget.reset_day.unwrap_or(1)
+                            ),
+                            xedoc_config::types::ProviderBudgetKind::Prepaid => format!(
+                                "Provider budget for {provider_id} saved: ${:.2} prepaid, tracked from now.",
+                                budget.usd.unwrap_or_default()
+                            ),
+                        };
                         self.config.provider_budgets.insert(provider_id, budget);
                         self.chat_widget.replace_config(self.config.clone());
+                        self.chat_widget.add_info_message(summary, /*hint*/ None);
                         self.app_event_tx.send(AppEvent::RefreshProviderBudgetUsage);
                         self.refresh_status_line();
                     }
@@ -1673,6 +1696,8 @@ impl App {
                         match state_db.provider_cost_since(provider_id, started_at).await {
                             Ok(cost) => usage.push(xedoc_tui_events::ProviderBudgetUsage {
                                 provider_id: provider_id.clone(),
+                                budget_usd: limit,
+                                used_usd: cost,
                                 percentage: ((cost / limit) * 100.0).round() as i64,
                             }),
                             Err(error) => tracing::warn!(

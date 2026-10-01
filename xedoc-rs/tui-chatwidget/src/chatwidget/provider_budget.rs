@@ -40,6 +40,7 @@ impl ChatWidget {
                             provider_id: provider_id.clone(),
                         });
                     })],
+                    dismiss_on_select: true,
                     ..Default::default()
                 }
             })
@@ -54,43 +55,54 @@ impl ChatWidget {
     }
 
     pub fn open_provider_budget_kind(&mut self, provider_id: String) {
-        let items = [
+        let current_kind = self
+            .config
+            .provider_budgets
+            .get(&provider_id)
+            .map_or(ProviderBudgetKind::None, |budget| budget.kind);
+        let options = [
             (ProviderBudgetKind::None, "None", "Do not track a budget"),
             (
                 ProviderBudgetKind::Monthly,
                 "Monthly",
-                "Resets on a chosen day each month",
+                "Set a USD amount and the day of the month it refills",
             ),
             (
                 ProviderBudgetKind::Prepaid,
                 "Prepaid",
-                "Starts now and resets when manually refilled",
+                "Set a USD amount; tracking restarts now and on every refill",
             ),
-        ]
-        .into_iter()
-        .map(|(kind, name, description)| {
-            let tx = self.app_event_tx.clone();
-            let provider_id = provider_id.clone();
-            SelectionItem {
-                name: name.to_string(),
-                description: Some(description.to_string()),
-                actions: vec![Box::new(move |_| {
-                    tx.send(AppEvent::OpenProviderBudgetValue {
-                        provider_id: provider_id.clone(),
-                        kind,
-                    });
-                })],
-                ..Default::default()
-            }
-        })
-        .collect();
+        ];
+        let initial_selected_idx = options
+            .iter()
+            .position(|(kind, _, _)| *kind == current_kind);
+        let items = options
+            .into_iter()
+            .map(|(kind, name, description)| {
+                let tx = self.app_event_tx.clone();
+                let provider_id = provider_id.clone();
+                SelectionItem {
+                    name: name.to_string(),
+                    description: Some(description.to_string()),
+                    is_current: kind == current_kind,
+                    actions: vec![Box::new(move |_| {
+                        tx.send(AppEvent::OpenProviderBudgetValue {
+                            provider_id: provider_id.clone(),
+                            kind,
+                            error: None,
+                        });
+                    })],
+                    dismiss_on_select: true,
+                    ..Default::default()
+                }
+            })
+            .collect();
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some(format!("{provider_id} budget")),
-            subtitle: Some(
-                "Select a budget type. Budget values can be edited in config.toml.".to_string(),
-            ),
+            subtitle: Some("Select a budget type.".to_string()),
             footer_hint: Some(standard_popup_hint_line()),
             items,
+            initial_selected_idx,
             ..Default::default()
         });
     }
@@ -99,65 +111,133 @@ impl ChatWidget {
         &mut self,
         provider_id: String,
         kind: ProviderBudgetKind,
+        error: Option<String>,
     ) {
-        if kind == ProviderBudgetKind::None {
-            self.app_event_tx.send(AppEvent::ProviderBudgetUpdate {
-                provider_id,
-                budget: ProviderBudget {
-                    kind,
-                    usd: None,
-                    reset_day: None,
-                    started_at: None,
-                },
-            });
-            return;
+        if let Some(error) = error {
+            self.add_error_message(error);
         }
-        let existing = self.config.provider_budgets.get(&provider_id);
-        let initial_text = match kind {
-            ProviderBudgetKind::Monthly => format!(
-                "{},{}",
-                existing.and_then(|budget| budget.usd).unwrap_or_default(),
-                existing.and_then(|budget| budget.reset_day).unwrap_or(1)
-            ),
-            ProviderBudgetKind::Prepaid => existing
-                .and_then(|budget| budget.usd)
-                .unwrap_or_default()
-                .to_string(),
-            ProviderBudgetKind::None => String::new(),
-        };
         let placeholder = match kind {
-            ProviderBudgetKind::Monthly => "USD budget, reset day (for example: 25,1)",
-            ProviderBudgetKind::Prepaid => "USD budget (for example: 25)",
-            ProviderBudgetKind::None => unreachable!(),
+            ProviderBudgetKind::None => {
+                self.app_event_tx.send(AppEvent::ProviderBudgetUpdate {
+                    provider_id,
+                    budget: ProviderBudget {
+                        kind,
+                        usd: None,
+                        reset_day: None,
+                        started_at: None,
+                    },
+                });
+                return;
+            }
+            ProviderBudgetKind::Monthly => "Monthly budget in USD, for example 100",
+            ProviderBudgetKind::Prepaid => "Prepaid balance in USD, for example 25",
+        };
+        let initial_text = self
+            .config
+            .provider_budgets
+            .get(&provider_id)
+            .filter(|budget| budget.kind == kind)
+            .and_then(|budget| budget.usd)
+            .map(|usd| usd.to_string())
+            .unwrap_or_default();
+        let title = match kind {
+            ProviderBudgetKind::Monthly => format!("{provider_id} monthly budget (USD)"),
+            ProviderBudgetKind::Prepaid => format!("{provider_id} prepaid balance (USD)"),
+            ProviderBudgetKind::None => unreachable!("handled above"),
         };
         let tx = self.app_event_tx.clone();
         let view = CustomPromptView::new(
-            format!("{provider_id} {kind:?} budget"),
+            title,
             placeholder.to_string(),
             initial_text,
             None,
             Box::new(move |value| {
-                let mut values = value.split(',').map(str::trim);
-                let usd = values.next().and_then(|value| value.parse::<f64>().ok());
-                let reset_day = values.next().and_then(|value| value.parse::<u8>().ok());
-                let valid = usd.is_some_and(|usd| usd > 0.0)
-                    && (kind != ProviderBudgetKind::Monthly
-                        || reset_day.is_some_and(|day| (1..=31).contains(&day)));
-                if valid {
-                    tx.send(AppEvent::ProviderBudgetUpdate {
+                let usd = value
+                    .trim()
+                    .trim_start_matches('$')
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|usd| usd.is_finite() && *usd > 0.0);
+                let Some(usd) = usd else {
+                    tx.send(AppEvent::OpenProviderBudgetValue {
                         provider_id: provider_id.clone(),
-                        budget: ProviderBudget {
-                            kind,
-                            usd,
-                            reset_day: (kind == ProviderBudgetKind::Monthly)
-                                .then_some(reset_day.unwrap_or(1)),
-                            started_at: (kind == ProviderBudgetKind::Prepaid)
-                                .then(|| chrono::Utc::now().timestamp()),
-                        },
+                        kind,
+                        error: Some(format!(
+                            "Invalid budget {value:?}: enter a positive USD amount, for example 25."
+                        )),
                     });
+                    return;
+                };
+                match kind {
+                    ProviderBudgetKind::Monthly => {
+                        tx.send(AppEvent::OpenProviderBudgetResetDay {
+                            provider_id: provider_id.clone(),
+                            usd,
+                        });
+                    }
+                    ProviderBudgetKind::Prepaid => {
+                        tx.send(AppEvent::ProviderBudgetUpdate {
+                            provider_id: provider_id.clone(),
+                            budget: ProviderBudget {
+                                kind,
+                                usd: Some(usd),
+                                reset_day: None,
+                                started_at: Some(chrono::Utc::now().timestamp()),
+                            },
+                        });
+                    }
+                    ProviderBudgetKind::None => {}
                 }
             }),
         );
         self.bottom_pane.show_view(Box::new(view));
+    }
+
+    pub fn open_provider_budget_reset_day(&mut self, provider_id: String, usd: f64) {
+        let current_day = self
+            .config
+            .provider_budgets
+            .get(&provider_id)
+            .and_then(|budget| budget.reset_day)
+            .filter(|day| (1..=31).contains(day))
+            .unwrap_or(1);
+        let items = (1..=31u8)
+            .map(|day| {
+                let tx = self.app_event_tx.clone();
+                let provider_id = provider_id.clone();
+                let description = match day {
+                    1 => Some("Default".to_string()),
+                    29..=31 => Some("Uses the last day in shorter months".to_string()),
+                    _ => None,
+                };
+                SelectionItem {
+                    name: format!("Day {day}"),
+                    description,
+                    is_current: day == current_day,
+                    actions: vec![Box::new(move |_| {
+                        tx.send(AppEvent::ProviderBudgetUpdate {
+                            provider_id: provider_id.clone(),
+                            budget: ProviderBudget {
+                                kind: ProviderBudgetKind::Monthly,
+                                usd: Some(usd),
+                                reset_day: Some(day),
+                                started_at: None,
+                            },
+                        });
+                    })],
+                    dismiss_on_select: true,
+                    ..Default::default()
+                }
+            })
+            .collect();
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some(format!("{provider_id} monthly reset day")),
+            subtitle: Some(format!("${usd:.2} refills on this day each month.")),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            initial_selected_idx: Some(usize::from(current_day - 1)),
+            ..Default::default()
+        });
     }
 }

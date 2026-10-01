@@ -1028,10 +1028,19 @@ impl Session {
             session_configuration.thread_name = thread_name.clone();
             validate_config_lock_if_configured(&session_configuration).await?;
             export_config_lock_if_configured(&session_configuration, thread_id).await?;
-            let state = SessionState::new_with_auto_compact_window_ids(
+            let mut state = SessionState::new_with_auto_compact_window_ids(
                 session_configuration.clone(),
                 initial_auto_compact_window_ids,
             );
+            if let Some(state_db) = state_db_ctx.as_ref() {
+                match state_db.model_router_session_mode(&thread_id.to_string()).await {
+                    Ok(Some(mode)) => state.set_model_router_session_mode(Some(mode)),
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::warn!(%error, %thread_id, "failed to restore model-router session mode");
+                    }
+                }
+            }
             let managed_network_requirements_configured = config
                 .config_layer_stack
                 .requirements_toml()

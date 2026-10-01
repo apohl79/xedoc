@@ -461,7 +461,18 @@ impl Session {
     }
 
     pub(crate) async fn set_model_router_session_mode(&self, mode: Option<String>) {
-        self.state.lock().await.set_model_router_session_mode(mode);
+        self.state
+            .lock()
+            .await
+            .set_model_router_session_mode(mode.clone());
+        let disabled_mode = mode.as_deref().filter(|mode| *mode == "off");
+        if let Some(state_db) = self.state_db()
+            && let Err(error) = state_db
+                .set_model_router_session_mode(&self.thread_id.to_string(), disabled_mode)
+                .await
+        {
+            tracing::warn!(%error, thread_id = %self.thread_id, "failed to persist model-router session mode");
+        }
     }
 
     pub(crate) async fn arm_model_router_ab_next(&self) {

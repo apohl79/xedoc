@@ -582,8 +582,14 @@ impl ChatWidget {
             },
             "provider_budgets": self.provider_budget_usage.iter().map(|usage| json!({
                 "provider": usage.provider_id,
+                "budget_usd": usage.budget_usd,
+                "used_usd": usage.used_usd,
                 "percentage": usage.percentage,
             })).collect::<Vec<_>>(),
+            "provider_budget_total": {
+                "budget_usd": self.provider_budget_usage.iter().map(|usage| usage.budget_usd).sum::<f64>(),
+                "used_usd": self.provider_budget_usage.iter().map(|usage| usage.used_usd).sum::<f64>(),
+            },
             "token_optimizer": {
                 "reductions": self.token_optimizer_stats.reductions.max(0),
                 "tokens_saved": self.token_optimizer_stats.tokens_saved.max(0),

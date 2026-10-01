@@ -10,6 +10,42 @@ const SECONDS_PER_DAY: i64 = 86_400;
 const SECONDS_PER_DAY_USIZE: usize = 86_400;
 
 impl StateRuntime {
+    /// Reads the persisted router-mode override for a thread.
+    pub async fn model_router_session_mode(
+        &self,
+        thread_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        sqlx::query_scalar("SELECT router_mode FROM model_router_session_modes WHERE thread_id = ?")
+            .bind(thread_id)
+            .fetch_optional(self.pool.as_ref())
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Replaces or clears the persisted router-mode override for a thread.
+    pub async fn set_model_router_session_mode(
+        &self,
+        thread_id: &str,
+        mode: Option<&str>,
+    ) -> anyhow::Result<()> {
+        if let Some(mode) = mode {
+            sqlx::query(
+                "INSERT INTO model_router_session_modes (thread_id, router_mode) VALUES (?, ?) \
+                 ON CONFLICT(thread_id) DO UPDATE SET router_mode = excluded.router_mode",
+            )
+            .bind(thread_id)
+            .bind(mode)
+            .execute(self.pool.as_ref())
+            .await?;
+        } else {
+            sqlx::query("DELETE FROM model_router_session_modes WHERE thread_id = ?")
+                .bind(thread_id)
+                .execute(self.pool.as_ref())
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Insert a decision exactly once so replay cannot rewrite recorded routing facts.
     pub async fn insert_model_router_decision(
         &self,
