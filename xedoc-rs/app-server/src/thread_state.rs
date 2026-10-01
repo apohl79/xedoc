@@ -94,7 +94,7 @@ struct MidTurnAutoSessionNameState {
     last_item_id: Option<String>,
     partial_response: String,
     requested: bool,
-    completed_turn_id_with_request: Option<String>,
+    named_turn_id: Option<String>,
 }
 
 #[derive(Default)]
@@ -185,8 +185,7 @@ impl ThreadState {
         }
         if matches!(event, EventMsg::TurnComplete(_)) {
             self.completed_turn_count = self.completed_turn_count.saturating_add(1);
-            self.mid_turn_auto_session_name
-                .finish_turn(event_turn_id.to_string());
+            self.mid_turn_auto_session_name.finish_turn();
         }
         if matches!(event, EventMsg::TurnAborted(_)) {
             self.mid_turn_auto_session_name.reset();
@@ -224,14 +223,13 @@ impl ThreadState {
             .note_message(turn_id, message, self.completed_turn_count)
     }
 
-    pub(crate) fn completed_turn_had_mid_turn_auto_session_name_request(
-        &self,
-        turn_id: &str,
-    ) -> bool {
-        self.mid_turn_auto_session_name
-            .completed_turn_id_with_request
-            .as_deref()
-            == Some(turn_id)
+    /// Marks that a mid-turn generated name is being applied, so turn completion refreshes it.
+    pub(crate) fn note_mid_turn_auto_session_name_applied(&mut self, turn_id: &str) {
+        self.mid_turn_auto_session_name.named_turn_id = Some(turn_id.to_string());
+    }
+
+    pub(crate) fn completed_turn_had_mid_turn_auto_session_name(&self, turn_id: &str) -> bool {
+        self.mid_turn_auto_session_name.named_turn_id.as_deref() == Some(turn_id)
     }
 }
 
@@ -289,11 +287,10 @@ impl MidTurnAutoSessionNameState {
         self.last_item_id = None;
         self.partial_response.clear();
         self.requested = false;
-        self.completed_turn_id_with_request = None;
+        self.named_turn_id = None;
     }
 
-    fn finish_turn(&mut self, turn_id: String) {
-        self.completed_turn_id_with_request = self.requested.then_some(turn_id);
+    fn finish_turn(&mut self) {
         self.turn_id = None;
         self.last_item_id = None;
         self.partial_response.clear();
@@ -305,7 +302,7 @@ impl MidTurnAutoSessionNameState {
         self.last_item_id = None;
         self.partial_response.clear();
         self.requested = false;
-        self.completed_turn_id_with_request = None;
+        self.named_turn_id = None;
     }
 
     fn push_capped(&mut self, value: &str) {
@@ -416,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn mid_turn_auto_session_name_tracks_completed_turn_request() {
+    fn mid_turn_auto_session_name_tracks_applied_name() {
         let mut state = ThreadState::default();
 
         state.note_agent_message_delta_for_auto_session_name(&agent_message_delta(
@@ -424,11 +421,10 @@ mod tests {
             "msg-1",
             "title seed",
         ));
-        state
-            .mid_turn_auto_session_name
-            .finish_turn("turn-1".to_string());
+        state.note_mid_turn_auto_session_name_applied("turn-1");
+        state.mid_turn_auto_session_name.finish_turn();
 
-        assert!(state.completed_turn_had_mid_turn_auto_session_name_request("turn-1"));
+        assert!(state.completed_turn_had_mid_turn_auto_session_name("turn-1"));
     }
 
     #[test]

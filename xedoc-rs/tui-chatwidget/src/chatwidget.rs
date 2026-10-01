@@ -341,6 +341,7 @@ use self::skills::collect_tool_mentions;
 use self::skills::find_skill_mentions_with_tool_mentions;
 mod plugin_catalog;
 mod plugins;
+mod provider_budget;
 use self::plugins::PluginListFetchState;
 use self::plugins::PluginsCacheState;
 mod plan_implementation;
@@ -530,6 +531,8 @@ pub struct ChatWidget {
     token_info: Option<TokenUsageInfo>,
     /// Accumulated session cost in USD, updated with token usage notifications.
     session_cost_usd: Option<f64>,
+    /// Current configured provider-budget consumption for external status lines.
+    provider_budget_usage: Vec<xedoc_tui_events::ProviderBudgetUsage>,
     /// Cumulative usage reported by subagents in the current session.
     agent_token_usage: TokenUsage,
     /// Live subagent cost not yet reflected in the parent session cost.
@@ -1762,6 +1765,11 @@ impl ChatWidget {
     /// runtime overrides applied via TUI, e.g., model or approval policy).
     pub fn config_ref(&self) -> &Config {
         &self.config
+    }
+
+    /// Replaces settings that are persisted outside the active thread.
+    pub fn replace_config(&mut self, config: Config) {
+        self.config = config;
     }
 
     #[cfg(any(test, feature = "test-support"))]

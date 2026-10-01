@@ -53,6 +53,7 @@ use xedoc_config::types::McpServerDisabledReason;
 use xedoc_config::types::ModelAvailabilityNuxConfig;
 use xedoc_config::types::Notice;
 use xedoc_config::types::OAuthCredentialsStoreMode;
+use xedoc_config::types::ProviderBudget;
 use xedoc_config::types::ResumeCwdMode;
 use xedoc_config::types::SessionPickerViewMode;
 use xedoc_config::types::StatusLineCommand;
@@ -644,6 +645,9 @@ pub struct Config {
 
     /// Key into the model_providers map that specifies which provider to use.
     pub model_provider_id: String,
+
+    /// Spend limits keyed by model-provider ID.
+    pub provider_budgets: HashMap<String, ProviderBudget>,
 
     /// Info needed to make an API request to the model.
     pub model_provider: ModelProviderInfo,
@@ -3861,6 +3865,7 @@ impl Config {
                 .model_auto_compact_token_limit_scope
                 .unwrap_or_default(),
             model_provider_id,
+            provider_budgets: cfg.provider_budgets.clone(),
             model_provider,
             model_registry,
             cwd: resolved_cwd,

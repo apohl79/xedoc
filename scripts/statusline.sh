@@ -36,6 +36,8 @@ ENABLE_SESSION_NAME=${ENABLE_SESSION_NAME:-0}
 ENABLE_TASK_INDICATOR=${ENABLE_TASK_INDICATOR:-0}
 # Session token savings (green)
 ENABLE_TOKEN_SAVINGS=${ENABLE_TOKEN_SAVINGS:-0}
+# Per-provider budget consumption (dim gray)
+ENABLE_PROVIDER_BUDGETS=${ENABLE_PROVIDER_BUDGETS:-1}
 
 input=$(</dev/stdin)
 
@@ -72,13 +74,17 @@ status_fields=$(printf '%s' "$input" | jq -r '
         (.cost.total_duration_ms // ""),
         (.version // ""),
         (.token_optimizer.tokens_saved // 0),
-        (.token_optimizer.cost_saved_usd // "")
+        (.token_optimizer.cost_saved_usd // ""),
+        ((.provider_budgets // [])
+         | map(select(.percentage != null)
+               | "\(.provider): \(.percentage | round)%")
+         | join(" / "))
     ]
     | map(if . == null then "" else tostring end | gsub("[\r\n\t\u001f]+"; " "))
     | join("\u001f")
 ')
 
-IFS=$'\037' read -r cwd harness session_id model reasoning_effort fast_mode ctx_pct ctx_used ctx_size session_name vim_mode task_text in_tok out_tok cost added removed dur_ms version tokens_saved optimizer_cost <<< "$status_fields"
+IFS=$'\037' read -r cwd harness session_id model reasoning_effort fast_mode ctx_pct ctx_used ctx_size session_name vim_mode task_text in_tok out_tok cost added removed dur_ms version tokens_saved optimizer_cost provider_budgets <<< "$status_fields"
 
 # Helpers
 fmt_duration() {
@@ -298,6 +304,11 @@ if [ "$ENABLE_COST" = "1" ]; then
         printf -v cost_text '$%.2f' "$cost"
         parts+=("\033[33m${cost_text}\033[0m")
     fi
+fi
+
+# --- Provider budgets (dim gray) ---
+if [ "$ENABLE_PROVIDER_BUDGETS" = "1" ] && [ -n "$provider_budgets" ]; then
+    parts+=("\033[2;38;5;240m${provider_budgets}\033[0m")
 fi
 
 # --- Lines changed (green +N / red -N) ---

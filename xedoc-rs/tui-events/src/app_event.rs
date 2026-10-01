@@ -28,6 +28,7 @@ use xedoc_app_server_protocol::PluginReadResponse;
 use xedoc_app_server_protocol::PluginUninstallResponse;
 use xedoc_app_server_protocol::SkillsListResponse;
 use xedoc_app_server_protocol::ThreadGoalStatus;
+use xedoc_config::types::ProviderBudget;
 use xedoc_config::types::ToolCallRenderingMode;
 use xedoc_file_search::FileMatch;
 use xedoc_message_history::HistoryBatchCursor;
@@ -897,6 +898,23 @@ pub enum AppEvent {
     /// Dismiss the status-line setup UI without changing config.
     StatusLineSetupCancelled,
 
+    /// Persist a provider spend-budget selection.
+    ProviderBudgetUpdate {
+        provider_id: String,
+        budget: ProviderBudget,
+    },
+    /// Open the budget-kind selector for a provider.
+    OpenProviderBudget {
+        provider_id: String,
+    },
+    /// Prompt for the value of a provider budget.
+    OpenProviderBudgetValue {
+        provider_id: String,
+        kind: xedoc_config::types::ProviderBudgetKind,
+    },
+    /// Refresh provider-budget consumption from the local state database.
+    RefreshProviderBudgetUsage,
+
     /// Apply a user-confirmed terminal-title item ordering/selection.
     TerminalTitleSetup {
         item_ids: Vec<String>,
@@ -951,6 +969,15 @@ pub enum AppEvent {
         context: String,
         action: String,
     },
+}
+
+/// One configured provider's current budget consumption.
+#[derive(Clone, Debug)]
+pub struct ProviderBudgetUsage {
+    /// Provider configuration key.
+    pub provider_id: String,
+    /// Current budget consumption, rounded for display.
+    pub percentage: i64,
 }
 
 /// Named profile selection to apply after any required UI guardrails complete.

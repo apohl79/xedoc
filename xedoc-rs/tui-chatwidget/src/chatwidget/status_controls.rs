@@ -85,6 +85,12 @@ impl ChatWidget {
         self.bottom_pane.set_status_line(status_line);
     }
 
+    /// Stores the latest provider-budget usage for the external status line.
+    pub fn set_provider_budget_usage(&mut self, usage: Vec<xedoc_tui_events::ProviderBudgetUsage>) {
+        self.provider_budget_usage = usage;
+        self.refresh_status_line();
+    }
+
     /// Sets the terminal hyperlink target for the currently rendered footer status line.
     pub fn set_status_line_hyperlink(&mut self, url: Option<String>) {
         self.bottom_pane.set_status_line_hyperlink(url);

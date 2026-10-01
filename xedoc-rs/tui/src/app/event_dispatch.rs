@@ -9,8 +9,46 @@ use super::*;
 use crate::app_server_session::ForkGoalContinuation;
 use crate::city_lights::CityLightsStylize;
 use crate::config_update::format_config_error;
+use chrono::Datelike;
+use chrono::TimeZone;
+use chrono::Utc;
 
 const SHUTDOWN_FIRST_EXIT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 2);
+
+fn provider_budget_month_start(now: chrono::DateTime<Utc>, reset_day: u8) -> i64 {
+    let current = provider_budget_reset_at(now.year(), now.month(), reset_day).unwrap_or(now);
+    if current <= now {
+        return current.timestamp();
+    }
+    let (year, month) = match now.month() {
+        1 => (now.year() - 1, 12),
+        month => (now.year(), month - 1),
+    };
+    provider_budget_reset_at(year, month, reset_day)
+        .unwrap_or(now)
+        .timestamp()
+}
+
+fn provider_budget_reset_at(year: i32, month: u32, reset_day: u8) -> Option<chrono::DateTime<Utc>> {
+    let (next_year, next_month) = match month {
+        12 => (year + 1, 1),
+        month => (year, month + 1),
+    };
+    let last_day = Utc
+        .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
+        .single()?
+        .checked_sub_days(chrono::Days::new(1))?
+        .day();
+    Utc.with_ymd_and_hms(
+        year,
+        month,
+        u32::from(reset_day).clamp(1, last_day),
+        0,
+        0,
+        0,
+    )
+    .single()
+}
 
 impl App {
     pub(super) async fn handle_event(
@@ -1584,6 +1622,68 @@ impl App {
             }
             AppEvent::StatusLineSetupCancelled => {
                 self.chat_widget.cancel_status_line_setup();
+            }
+            AppEvent::OpenProviderBudget { provider_id } => {
+                self.chat_widget.open_provider_budget_kind(provider_id);
+            }
+            AppEvent::OpenProviderBudgetValue { provider_id, kind } => {
+                self.chat_widget
+                    .open_provider_budget_value_prompt(provider_id, kind);
+            }
+            AppEvent::ProviderBudgetUpdate {
+                provider_id,
+                budget,
+            } => {
+                let edits =
+                    crate::legacy_core::config::edit::provider_budget_edits(&provider_id, &budget);
+                match ConfigEditsBuilder::for_config(&self.config)
+                    .with_edits(edits)
+                    .apply()
+                    .await
+                {
+                    Ok(()) => {
+                        self.config.provider_budgets.insert(provider_id, budget);
+                        self.chat_widget.replace_config(self.config.clone());
+                        self.app_event_tx.send(AppEvent::RefreshProviderBudgetUsage);
+                        self.refresh_status_line();
+                    }
+                    Err(error) => self.chat_widget.add_error_message(format!(
+                        "Failed to save provider budget: {}",
+                        format_config_error(&error)
+                    )),
+                }
+            }
+            AppEvent::RefreshProviderBudgetUsage => {
+                let now = Utc::now();
+                let mut usage = Vec::new();
+                if let Some(state_db) = &self.state_db {
+                    for (provider_id, budget) in &self.config.provider_budgets {
+                        let Some(limit) = budget.usd.filter(|limit| *limit > 0.0) else {
+                            continue;
+                        };
+                        let started_at = match budget.kind {
+                            xedoc_config::types::ProviderBudgetKind::None => continue,
+                            xedoc_config::types::ProviderBudgetKind::Prepaid => {
+                                budget.started_at.unwrap_or_else(|| now.timestamp())
+                            }
+                            xedoc_config::types::ProviderBudgetKind::Monthly => {
+                                provider_budget_month_start(now, budget.reset_day.unwrap_or(1))
+                            }
+                        };
+                        match state_db.provider_cost_since(provider_id, started_at).await {
+                            Ok(cost) => usage.push(xedoc_tui_events::ProviderBudgetUsage {
+                                provider_id: provider_id.clone(),
+                                percentage: ((cost / limit) * 100.0).round() as i64,
+                            }),
+                            Err(error) => tracing::warn!(
+                                error = %error,
+                                provider_id,
+                                "failed to read provider budget usage"
+                            ),
+                        }
+                    }
+                }
+                self.chat_widget.set_provider_budget_usage(usage);
             }
             AppEvent::TerminalTitleSetup { item_ids } => {
                 let items = item_ids

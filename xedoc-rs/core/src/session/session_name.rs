@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use tracing::debug;
+use xedoc_core_context_manager::is_contextual_user_message_content;
 use xedoc_core_session_name::append_message_text;
 use xedoc_core_session_name::normalize_generated_session_name;
 use xedoc_core_session_name::select_session_name_model;
@@ -36,8 +37,20 @@ impl Session {
         partial_response: Option<&str>,
     ) -> XedocResult<Option<String>> {
         let history = self.clone_history().await;
+        let conversation_items = history
+            .raw_items()
+            .iter()
+            .filter(|item| {
+                !matches!(
+                    item,
+                    ResponseItem::Message { role, content, .. }
+                        if role == "user" && is_contextual_user_message_content(content)
+                )
+            })
+            .cloned()
+            .collect::<Vec<_>>();
         let Some(transcript) =
-            transcript_excerpt_with_partial_response(history.raw_items(), partial_response)
+            transcript_excerpt_with_partial_response(&conversation_items, partial_response)
         else {
             debug!(
                 partial_response_present = partial_response.is_some(),

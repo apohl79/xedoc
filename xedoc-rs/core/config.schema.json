@@ -2495,6 +2495,46 @@
       },
       "type": "object"
     },
+    "ProviderBudget": {
+      "description": "A configured spend limit for one model provider.",
+      "properties": {
+        "kind": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ProviderBudgetKind"
+            }
+          ],
+          "default": "none",
+          "description": "How the budget timeframe is reset."
+        },
+        "reset_day": {
+          "description": "Monthly reset day, from 1 through 31.",
+          "format": "uint8",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "started_at": {
+          "description": "Unix timestamp when a prepaid balance was last refilled.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "usd": {
+          "description": "Maximum spend for the current timeframe, in USD.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "ProviderBudgetKind": {
+      "description": "The lifecycle used by a provider budget.",
+      "enum": [
+        "none",
+        "monthly",
+        "prepaid"
+      ],
+      "type": "string"
+    },
     "RawMcpServerConfig": {
       "additionalProperties": false,
       "description": "Raw MCP config shape used for deserialization and supported-field JSON Schema generation.\n\nFields that are accepted only to produce targeted validation errors should be skipped in the generated schema.\n\nKeep `TryFrom<RawMcpServerConfig> for McpServerConfig` exhaustively destructuring this struct so new TOML fields cannot be added here without updating the validation/mapping logic that produces [`McpServerConfig`].",
@@ -5607,6 +5647,14 @@
       "additionalProperties": {
         "$ref": "#/definitions/ProjectConfig"
       },
+      "type": "object"
+    },
+    "provider_budgets": {
+      "additionalProperties": {
+        "$ref": "#/definitions/ProviderBudget"
+      },
+      "default": {},
+      "description": "Spend limits keyed by model-provider ID.",
       "type": "object"
     },
     "remote_agent": {

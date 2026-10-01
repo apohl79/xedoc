@@ -1080,6 +1080,7 @@ See the Xedoc keymap documentation for supported actions and examples."
         if let Some(entry) = startup_hooks_browser {
             app.chat_widget.open_hooks_browser(entry);
         }
+        app.app_event_tx.send(AppEvent::RefreshProviderBudgetUsage);
         let initial_session_started_at = Instant::now();
         if let Some(started) = initial_started_thread {
             let resumed_session =

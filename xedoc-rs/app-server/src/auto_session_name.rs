@@ -236,7 +236,7 @@ async fn maybe_update_auto_session_name(
         return Ok(());
     }
     let latest_completed_turn_count = {
-        let state = thread_state.lock().await;
+        let mut state = thread_state.lock().await;
         if !update.still_applies_to(&state) {
             debug!(
                 thread_id = %thread_id,
@@ -246,6 +246,9 @@ async fn maybe_update_auto_session_name(
                 "skipping generated session name: update no longer applies"
             );
             return Ok(());
+        }
+        if let AutoSessionNameUpdate::MidTurn(request) = &update {
+            state.note_mid_turn_auto_session_name_applied(&request.turn_id);
         }
         state.completed_turn_count
     };

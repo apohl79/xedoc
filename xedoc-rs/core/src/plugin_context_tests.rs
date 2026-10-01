@@ -3,6 +3,8 @@ use crate::shell::default_user_shell;
 use xedoc_extension_api::PromptSlot;
 use xedoc_plugin::manifest::PluginContextPosition as ManifestPosition;
 
+const WRAPPED_CONTEXT: &str = "<xedoc_internal_context source=\"plugin_context\">\nconditional context\n</xedoc_internal_context>";
+
 fn contributor(condition_shell: Option<&str>) -> PluginManifestContextContributor {
     let cwd = AbsolutePathBuf::from_absolute_path_checked(
         std::env::current_dir().expect("test current directory"),
@@ -39,7 +41,7 @@ async fn plugin_context_without_condition_shell_is_injected() {
     assert_eq!(
         fragments_for(None).await,
         vec![
-            PromptFragment::new(PromptSlot::ContextualUser, "conditional context")
+            PromptFragment::new(PromptSlot::ContextualUser, WRAPPED_CONTEXT)
                 .with_position(PluginContextPosition::Supplement)
         ]
     );
@@ -50,7 +52,7 @@ async fn plugin_context_condition_shell_exit_zero_is_injected() {
     assert_eq!(
         fragments_for(Some("exit 0")).await,
         vec![
-            PromptFragment::new(PromptSlot::ContextualUser, "conditional context")
+            PromptFragment::new(PromptSlot::ContextualUser, WRAPPED_CONTEXT)
                 .with_position(PluginContextPosition::Supplement)
         ]
     );
