@@ -580,6 +580,10 @@ impl ChatWidget {
                 "total_lines_added": null,
                 "total_lines_removed": null,
             },
+            "provider_budgets": self.provider_budget_usage.iter().map(|usage| json!({
+                "provider": usage.provider_id,
+                "percentage": usage.percentage,
+            })).collect::<Vec<_>>(),
             "token_optimizer": {
                 "reductions": self.token_optimizer_stats.reductions.max(0),
                 "tokens_saved": self.token_optimizer_stats.tokens_saved.max(0),

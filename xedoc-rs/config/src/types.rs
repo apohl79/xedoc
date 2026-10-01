@@ -49,6 +49,31 @@ const fn default_enabled() -> bool {
     true
 }
 
+/// A configured spend limit for one model provider.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ProviderBudget {
+    /// How the budget timeframe is reset.
+    #[serde(default)]
+    pub kind: ProviderBudgetKind,
+    /// Maximum spend for the current timeframe, in USD.
+    pub usd: Option<f64>,
+    /// Monthly reset day, from 1 through 31.
+    pub reset_day: Option<u8>,
+    /// Unix timestamp when a prepaid balance was last refilled.
+    pub started_at: Option<i64>,
+}
+
+/// The lifecycle used by a provider budget.
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderBudgetKind {
+    #[default]
+    None,
+    Monthly,
+    Prepaid,
+}
+
 /// Preferred layout for the resume/fork session picker.
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]

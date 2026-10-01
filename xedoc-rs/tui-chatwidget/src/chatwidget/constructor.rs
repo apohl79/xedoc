@@ -120,6 +120,7 @@ impl ChatWidget {
             remote_connection: None,
             token_info: None,
             session_cost_usd: None,
+            provider_budget_usage: Vec::new(),
             agent_token_usage: TokenUsage::default(),
             agent_session_cost_usd: None,
             token_optimizer_stats: xedoc_protocol::protocol::TokenOptimizerSessionStats {

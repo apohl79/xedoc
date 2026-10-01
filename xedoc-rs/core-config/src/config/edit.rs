@@ -13,6 +13,8 @@ use toml_edit::Table as TomlTable;
 use toml_edit::value;
 use xedoc_config::CONFIG_TOML_FILE;
 use xedoc_config::types::McpServerConfig;
+use xedoc_config::types::ProviderBudget;
+use xedoc_config::types::ProviderBudgetKind;
 use xedoc_config::types::ResumeCwdMode;
 use xedoc_config::types::SessionPickerViewMode;
 use xedoc_config::types::StatusLineCommand;
@@ -138,6 +140,59 @@ pub fn status_line_command_edit(command: Option<&StatusLineCommand>) -> ConfigEd
         }
         _ => ConfigEdit::ClearPath { segments },
     }
+}
+
+/// Produces edits that replace one provider budget.
+pub fn provider_budget_edits(provider_id: &str, budget: &ProviderBudget) -> Vec<ConfigEdit> {
+    let base = vec!["provider_budgets".to_string(), provider_id.to_string()];
+    let path = |field: &str| [base.clone(), vec![field.to_string()]].concat();
+    let mut edits = vec![ConfigEdit::SetPath {
+        segments: path("kind"),
+        value: value(match budget.kind {
+            ProviderBudgetKind::None => "none",
+            ProviderBudgetKind::Monthly => "monthly",
+            ProviderBudgetKind::Prepaid => "prepaid",
+        }),
+    }];
+
+    match budget.kind {
+        ProviderBudgetKind::None => {
+            for field in ["usd", "reset_day", "started_at"] {
+                edits.push(ConfigEdit::ClearPath {
+                    segments: path(field),
+                });
+            }
+        }
+        ProviderBudgetKind::Monthly => {
+            edits.push(ConfigEdit::SetPath {
+                segments: path("usd"),
+                value: value(budget.usd.unwrap_or_default()),
+            });
+            edits.push(ConfigEdit::SetPath {
+                segments: path("reset_day"),
+                value: value(i64::from(budget.reset_day.unwrap_or(1))),
+            });
+            edits.push(ConfigEdit::ClearPath {
+                segments: path("started_at"),
+            });
+        }
+        ProviderBudgetKind::Prepaid => {
+            edits.push(ConfigEdit::SetPath {
+                segments: path("usd"),
+                value: value(budget.usd.unwrap_or_default()),
+            });
+            edits.push(ConfigEdit::ClearPath {
+                segments: path("reset_day"),
+            });
+            if let Some(started_at) = budget.started_at {
+                edits.push(ConfigEdit::SetPath {
+                    segments: path("started_at"),
+                    value: value(started_at),
+                });
+            }
+        }
+    }
+    edits
 }
 
 /// Produces a config edit that sets `[tui].terminal_title` to an explicit ordered list.

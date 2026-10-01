@@ -44,6 +44,7 @@ pub enum SlashCommand {
     DebugConfig,
     Title,
     Statusline,
+    ProviderBudget,
     Theme,
     Mcp,
     Plugins,
@@ -89,6 +90,7 @@ impl SlashCommand {
             SlashCommand::DebugConfig => "show config layers and requirement sources for debugging",
             SlashCommand::Title => "configure which items appear in the terminal title",
             SlashCommand::Statusline => "configure which items appear in the status line",
+            SlashCommand::ProviderBudget => "configure monthly or prepaid provider budgets",
             SlashCommand::Theme => "choose a syntax highlighting theme",
             SlashCommand::Ps => "list background terminals",
             SlashCommand::Stop => "stop all background terminals",
@@ -201,6 +203,7 @@ impl SlashCommand {
             | SlashCommand::Plugins
             | SlashCommand::Title
             | SlashCommand::Statusline
+            | SlashCommand::ProviderBudget
             | SlashCommand::Ide
             | SlashCommand::Quit
             | SlashCommand::Exit

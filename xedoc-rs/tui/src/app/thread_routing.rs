@@ -1719,6 +1719,10 @@ impl App {
             ThreadBufferedEvent::Notification(ServerNotification::TurnStarted(_))
                 | ThreadBufferedEvent::Notification(ServerNotification::ThreadTokenUsageUpdated(_))
         );
+        let token_usage_updated = matches!(
+            &event,
+            ThreadBufferedEvent::Notification(ServerNotification::ThreadTokenUsageUpdated(_))
+        );
         match event {
             ThreadBufferedEvent::Notification(notification) => {
                 self.cache_collab_receiver_threads_for_notification(&notification);
@@ -1740,6 +1744,9 @@ impl App {
         }
         if needs_refresh {
             self.refresh_status_line();
+        }
+        if token_usage_updated {
+            self.app_event_tx.send(AppEvent::RefreshProviderBudgetUsage);
         }
     }
 

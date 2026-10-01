@@ -117,6 +117,23 @@ ON CONFLICT(invocation_id) DO NOTHING
         Ok(())
     }
 
+    /// Returns one provider's priced usage since a Unix timestamp.
+    pub async fn provider_cost_since(
+        &self,
+        provider_id: &str,
+        started_at: i64,
+    ) -> anyhow::Result<f64> {
+        sqlx::query_scalar(
+            "SELECT COALESCE(SUM(total_cost_usd), 0.0) FROM model_router_invocations \
+             WHERE provider_id = ? AND created_at >= ?",
+        )
+        .bind(provider_id)
+        .bind(started_at)
+        .fetch_one(self.pool.as_ref())
+        .await
+        .map_err(Into::into)
+    }
+
     /// Creates an A/B outcome or records its final human preference.
     pub async fn upsert_model_router_ab_outcome(
         &self,
