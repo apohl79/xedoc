@@ -1,5 +1,6 @@
 use super::session::Session;
 use super::turn_context::TurnContext;
+use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 use xedoc_protocol::config_types::AutoCompactTokenLimitScope;
 
 #[derive(Debug)]
@@ -26,15 +27,27 @@ pub(crate) async fn context_window_token_status(
 ) -> ContextWindowTokenStatus {
     let active_context_tokens = sess.get_total_token_usage().await;
 
-    // Providers such as DeepSeek may report per-request token usage rather
-    // than cumulative session context. Fall back to the estimated token count
-    // when it is higher so auto-compaction thresholds are evaluated against a
-    // realistic context size.
-    let estimated = sess
-        .get_estimated_token_count(turn_context)
-        .await
-        .unwrap_or(0);
-    let active_context_tokens = active_context_tokens.max(estimated);
+    let has_openai_context_usage = turn_context
+        .config
+        .model_provider_id
+        .eq_ignore_ascii_case(OPENAI_PROVIDER_ID)
+        && sess
+            .token_usage_info()
+            .await
+            .is_some_and(|info| info.last_token_usage.total_tokens > 0);
+    let active_context_tokens = if has_openai_context_usage {
+        active_context_tokens
+    } else {
+        // Providers such as DeepSeek may report per-request token usage rather
+        // than cumulative session context. Fall back to the estimated token count
+        // when it is higher so auto-compaction thresholds are evaluated against a
+        // realistic context size.
+        let estimated = sess
+            .get_estimated_token_count(turn_context)
+            .await
+            .unwrap_or(0);
+        active_context_tokens.max(estimated)
+    };
 
     // Count either the full active context or only the tokens added after the initial prefix.
     let (auto_compact_scope_tokens, auto_compact_scope_limit, auto_compact_window_prefill_tokens) =
