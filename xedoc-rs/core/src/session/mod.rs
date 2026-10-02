@@ -453,11 +453,28 @@ const SCRIPTED_INTERACTION_MAX_LIFETIME_SECONDS: i64 = 5 * 60;
 
 impl Session {
     pub(crate) async fn model_router_session_mode(&self) -> Option<String> {
-        self.state
+        let session_mode = self
+            .state
             .lock()
             .await
             .model_router_session_mode()
-            .map(str::to_string)
+            .map(str::to_string);
+        if session_mode.is_some() {
+            return session_mode;
+        }
+        let Some(state_db) = self.state_db() else {
+            return None;
+        };
+        match state_db
+            .model_router_session_mode(&self.thread_id.to_string())
+            .await
+        {
+            Ok(mode) => mode,
+            Err(error) => {
+                tracing::warn!(%error, thread_id = %self.thread_id, "failed to read model-router session mode");
+                None
+            }
+        }
     }
 
     pub(crate) async fn set_model_router_session_mode(&self, mode: Option<String>) {

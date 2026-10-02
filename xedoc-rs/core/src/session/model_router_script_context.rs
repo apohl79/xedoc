@@ -34,15 +34,15 @@ pub(crate) struct RoutingContextInput<'a> {
 
 /// Builds the bounded host-owned context shared by all routing entry points.
 pub(crate) async fn build(input: RoutingContextInput<'_>) -> Value {
-    let (thread_name, token_info, history, session_mode) = {
+    let (thread_name, token_info, history) = {
         let state = input.session.state.lock().await;
         (
             state.session_configuration.thread_name.clone(),
             state.token_info(),
             state.clone_history(),
-            state.model_router_session_mode().map(str::to_string),
         )
     };
+    let session_mode = input.session.model_router_session_mode().await;
     let message_limit = input
         .turn
         .config
