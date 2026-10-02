@@ -375,6 +375,11 @@ def prompt_role() -> str:
 def prompt_workspaces() -> dict[str, str]:
     workspaces: dict[str, str] = {}
     roots: set[Path] = set()
+    print(
+        "A workspace ID is a local label used by remote clients to select a "
+        "configured workspace. It is not a ChatGPT or OpenAI workspace ID; "
+        "for example, use `codex`."
+    )
     while True:
         workspace_id = prompt_value("Workspace ID: ")
         if not REMOTE_AGENT_WORKSPACE_ID.fullmatch(workspace_id):
