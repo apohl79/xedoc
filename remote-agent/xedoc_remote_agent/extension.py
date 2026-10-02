@@ -11,6 +11,8 @@ from .errors import BrokerError
 from .ipc import PROTOCOL
 from .ipc import PROTOCOL_VERSION
 from .ipc import LocalIpcClient
+from .workspaces import controller_identifier
+from .workspaces import load_bootstrap_descriptor
 
 
 _VERSION = "0.1.0"
@@ -264,9 +266,11 @@ def main(_argv: Sequence[str] | None = None) -> int:
         return 1
 
     client = sdk.SessionScriptClient.from_host_child()
+    controller_id = controller_identifier(load_bootstrap_descriptor())
     broker = LocalIpcClient(
         max_message_bytes=_MAX_ARGUMENT_BYTES,
         max_result_bytes=_MAX_RESULT_BYTES,
+        controller_id=controller_id,
     )
     extension = RemoteAgentExtension(
         broker, thread_id=thread_id, extension_id=extension_id
@@ -285,6 +289,7 @@ def main(_argv: Sequence[str] | None = None) -> int:
             "protocol": PROTOCOL,
             "version": PROTOCOL_VERSION,
             "status": "available",
+            "controllerId": controller_id,
         }:
             raise BrokerError.unavailable()
         _bounded_identifier(handshake["hostId"])

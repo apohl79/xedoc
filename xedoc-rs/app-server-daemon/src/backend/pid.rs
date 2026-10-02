@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
@@ -31,6 +32,7 @@ pub(crate) struct PidBackend {
     pid_file: PathBuf,
     lock_file: PathBuf,
     command_kind: PidCommandKind,
+    environment: Vec<(OsString, OsString)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,29 +76,46 @@ enum PidCommandKind {
 }
 
 impl PidBackend {
+    #[cfg(test)]
     pub(crate) fn new(xedoc_bin: PathBuf, pid_file: PathBuf) -> Self {
-        Self::new_with_listen_url(xedoc_bin, pid_file, "unix://".to_string())
+        Self::new_with_environment(xedoc_bin, pid_file, Vec::new())
     }
 
-    pub(crate) fn new_with_socket(
+    pub(crate) fn new_with_environment(
+        xedoc_bin: PathBuf,
+        pid_file: PathBuf,
+        environment: Vec<(OsString, OsString)>,
+    ) -> Self {
+        Self::new_with_listen_url(xedoc_bin, pid_file, "unix://".to_string(), environment)
+    }
+
+    pub(crate) fn new_with_socket_and_environment(
         xedoc_bin: PathBuf,
         pid_file: PathBuf,
         socket_path: PathBuf,
+        environment: Vec<(OsString, OsString)>,
     ) -> Self {
         Self::new_with_listen_url(
             xedoc_bin,
             pid_file,
             format!("unix://{}", socket_path.display()),
+            environment,
         )
     }
 
-    fn new_with_listen_url(xedoc_bin: PathBuf, pid_file: PathBuf, listen_url: String) -> Self {
+    fn new_with_listen_url(
+        xedoc_bin: PathBuf,
+        pid_file: PathBuf,
+        listen_url: String,
+        environment: Vec<(OsString, OsString)>,
+    ) -> Self {
         let lock_file = pid_file.with_extension("pid.lock");
         Self {
             xedoc_bin,
             pid_file,
             lock_file,
             command_kind: PidCommandKind::AppServer { listen_url },
+            environment,
         }
     }
 
@@ -107,6 +126,7 @@ impl PidBackend {
             pid_file,
             lock_file,
             command_kind: PidCommandKind::UpdateLoop,
+            environment: Vec::new(),
         }
     }
 
@@ -179,6 +199,9 @@ impl PidBackend {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::from(stderr_log.into_std().await));
+        for (key, value) in &self.environment {
+            command.env(key, value);
+        }
 
         #[cfg(unix)]
         {

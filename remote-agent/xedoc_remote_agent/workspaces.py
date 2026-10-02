@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -25,11 +26,7 @@ def load_bootstrap_descriptor(
 ) -> BootstrapDescriptor:
     """Read the local controller endpoint from the host-only bootstrap file."""
 
-    bootstrap_path = (
-        Path(path)
-        if path is not None
-        else _xedoc_home(xedoc_home) / "remote-agent" / "bootstrap.toml"
-    )
+    bootstrap_path = selected_bootstrap_path(path, xedoc_home=xedoc_home)
     try:
         if not bootstrap_path.is_file():
             raise OSError
@@ -44,6 +41,29 @@ def load_bootstrap_descriptor(
         raise
     except (TypeError, ValueError) as error:
         raise BrokerError.invalid_request() from error
+
+
+def selected_bootstrap_path(
+    path: str | os.PathLike[str] | None = None,
+    *,
+    xedoc_home: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Return the host-only bootstrap path selected for this process."""
+
+    if path is not None:
+        return Path(path)
+    return Path(
+        os.environ.get(
+            "XEDOC_REMOTE_AGENT_BOOTSTRAP",
+            str(_xedoc_home(xedoc_home) / "remote-agent" / "bootstrap.toml"),
+        )
+    )
+
+
+def controller_identifier(descriptor: BootstrapDescriptor) -> str:
+    """Return an opaque identifier for one local controller endpoint."""
+
+    return hashlib.sha256(os.fsencode(descriptor.socket_path)).hexdigest()
 
 
 def parse_bootstrap_descriptor(text: str) -> BootstrapDescriptor:

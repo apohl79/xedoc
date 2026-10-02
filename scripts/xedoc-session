@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import argparse
 from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
+import tempfile
 from typing import cast
 
 from session_script_sdk import RpcError
@@ -61,9 +65,66 @@ class AppServerClient:
             raise AppServerError(str(error), error.code) from error
 
 
-def default_socket_path() -> Path:
+def default_socket_path(experimental: bool) -> Path:
     xedoc_home = Path(os.environ.get("XEDOC_HOME", DEFAULT_XEDOC_HOME))
-    return xedoc_home / "app-server-control" / "app-server-control.sock"
+    filename = "experimental.sock" if experimental else "app-server-control.sock"
+    return xedoc_home / "app-server-control" / filename
+
+
+def is_experimental_invocation() -> bool:
+    return Path(sys.argv[0]).name == "xedoc-session-experimental"
+
+
+def managed_xedoc_binary() -> Path:
+    binary = Path(sys.argv[0]).resolve().with_name("xedoc")
+    if not binary.is_file():
+        raise AppServerError(
+            "cannot find the Xedoc binary beside this session-control script"
+        )
+    return binary
+
+
+def run_daemon_command(experimental: bool, action: str) -> None:
+    binary = managed_xedoc_binary()
+    command_name = "xedoc-experimental" if experimental else "xedoc"
+    try:
+        result = subprocess.run(
+            [command_name, "app-server", "daemon", action],
+            executable=binary,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AppServerError(f"could not {action} the managed app-server") from error
+    if result.returncode != 0:
+        raise AppServerError(f"could not {action} the managed app-server")
+
+
+def write_remote_agent_bootstrap(socket_path: Path, experimental: bool) -> None:
+    xedoc_home = Path(os.environ.get("XEDOC_HOME", DEFAULT_XEDOC_HOME))
+    remote_agent_directory = xedoc_home / "remote-agent"
+    remote_agent_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    remote_agent_directory.chmod(0o700)
+    socket_directory = socket_path.parent.resolve()
+    bootstrap_name = "bootstrap-experimental.toml" if experimental else "bootstrap.toml"
+    descriptor, temporary_path = tempfile.mkstemp(
+        prefix=".bootstrap.", dir=remote_agent_directory
+    )
+    try:
+        os.chmod(temporary_path, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            file.write(f'controller = "unix://{socket_directory}/{socket_path.name}"\n')
+        Path(temporary_path).replace(remote_agent_directory / bootstrap_name)
+    except OSError as error:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        Path(temporary_path).unlink(missing_ok=True)
+        raise AppServerError("could not write remote-agent controller bootstrap") from error
 
 
 def build_turn_start_params(
@@ -478,8 +539,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--socket",
         type=Path,
-        default=default_socket_path(),
         help="App-server Unix socket path.",
+    )
+    parser.add_argument(
+        "--experimental",
+        action="store_true",
+        help="Use the experimental managed app-server target.",
     )
     parser.add_argument(
         "--timeout",
@@ -523,10 +588,33 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Replace an existing remote_agent configuration.",
     )
+    remote_agent_parser.add_argument(
+        "--experimental",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Use the experimental managed app-server target.",
+    )
     return parser
 
 
+def configure_remote_agent_with_lifecycle(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    try:
+        with AppServerClient(args.socket, args.timeout, args.client_name) as client:
+            result = configure_remote_agent(client, args.reconfigure)
+    except OSError:
+        run_daemon_command(args.experimental, "start")
+        with AppServerClient(args.socket, args.timeout, args.client_name) as client:
+            result = configure_remote_agent(client, args.reconfigure)
+    write_remote_agent_bootstrap(args.socket, args.experimental)
+    run_daemon_command(args.experimental, "restart")
+    return result
+
+
 def run(args: argparse.Namespace) -> list[dict[str, object]] | dict[str, object]:
+    if args.command == "remote-agent-configure" and args.uses_default_socket:
+        return configure_remote_agent_with_lifecycle(args)
     with AppServerClient(args.socket, args.timeout, args.client_name) as client:
         if args.command == "sessions":
             return list_sessions(client)
@@ -551,6 +639,10 @@ def run(args: argparse.Namespace) -> list[dict[str, object]] | dict[str, object]
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    args.experimental = args.experimental or is_experimental_invocation()
+    args.uses_default_socket = args.socket is None
+    if args.socket is None:
+        args.socket = default_socket_path(args.experimental)
     try:
         result = run(args)
     except (AppServerError, OSError, ValueError) as error:

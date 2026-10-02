@@ -34,12 +34,13 @@ from .peer import PeerServer, PeerService
 from .peer_sessions import PeerSessionOperations
 from .peer_state import PeerState
 from .peer_state import export_existing_audit
+from .workspaces import controller_identifier
 from .workspaces import load_bootstrap_descriptor
+from .workspaces import selected_bootstrap_path
 
 
 PID_NAME = "broker.pid"
 LOCK_NAME = "broker.lock"
-BOOTSTRAP_NAME = "bootstrap.toml"
 STATE_VERSION = 1
 MAX_PID_STATE_BYTES = 4096
 MAX_DOCTOR_BYTES = 16 * 1024
@@ -69,7 +70,7 @@ class DaemonPaths:
         return cls(
             xedoc_home=home,
             directory=directory,
-            bootstrap_path=directory / BOOTSTRAP_NAME,
+            bootstrap_path=selected_bootstrap_path(xedoc_home=home),
             pid_path=directory / PID_NAME,
             lock_path=directory / LOCK_NAME,
             socket_path=directory / SOCKET_NAME,
@@ -239,6 +240,8 @@ class RemoteAgentDaemon:
                 self._finalize_shutdown_locked()
             _prepare_state_directory(self.paths.directory)
             _validate_bootstrap_state(self.paths.bootstrap_path)
+            descriptor = load_bootstrap_descriptor(xedoc_home=self.paths.xedoc_home)
+            controller_id = controller_identifier(descriptor)
             lock = _ExclusiveLock(self.paths.lock_path)
             lock.acquire()
             owner = secrets.token_urlsafe(24)
@@ -304,6 +307,7 @@ class RemoteAgentDaemon:
                     message_service=message_service,
                     shutdown_callback=self.request_shutdown,
                     xedoc_home=self.paths.xedoc_home,
+                    controller_id=controller_id,
                 )
                 ipc.start()
             except BrokerError:

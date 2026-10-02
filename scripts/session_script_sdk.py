@@ -7,6 +7,8 @@ well as the session-script registration helpers, so a script does not need a
 separate client implementation for either surface.
 """
 
+from __future__ import annotations
+
 import base64
 from collections.abc import Callable
 import hashlib

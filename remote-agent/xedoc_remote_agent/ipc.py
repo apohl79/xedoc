@@ -38,7 +38,14 @@ MAX_CLIENT_CALL_TIMEOUT_SECONDS = 3_605.0
 _FRAME_OVERHEAD = 16 * 1024
 _HARD_FRAME_LIMIT = 4 * 1024 * 1024
 _CAPABILITY_BYTES = 48
-_REQUEST_FIELDS = {"capability", "requestId", "method", "params", "extensionLease"}
+_REQUEST_FIELDS = {
+    "capability",
+    "requestId",
+    "method",
+    "params",
+    "extensionLease",
+    "controllerId",
+}
 _REQUIRED_REQUEST_FIELDS = {"capability", "requestId", "method", "params"}
 _LIST_FIELDS = {"cursor", "limit"}
 _SEARCH_FIELDS = {"query", "cursor", "limit"}
@@ -77,6 +84,7 @@ class LocalIpcServer:
         message_service: MessageService | None = None,
         shutdown_callback: Callable[[], None] | None = None,
         xedoc_home: str | os.PathLike[str] | None = None,
+        controller_id: str | None = None,
         max_clients: int = MAX_CLIENTS,
     ) -> None:
         _require_unix_sockets()
@@ -98,6 +106,9 @@ class LocalIpcServer:
             raise BrokerError.invalid_request()
         self._message_service = message_service
         self._shutdown_callback = shutdown_callback
+        self.controller_id = (
+            _bounded_identifier(controller_id) if controller_id is not None else None
+        )
         self.host_id = host_id
         self._bindings = ExtensionBindingRegistry(host_id)
         self.max_request_bytes = _frame_limit(max_message_bytes)
@@ -326,10 +337,7 @@ class LocalIpcServer:
     def _dispatch(
         self, request: Mapping[str, Any], request_id: str
     ) -> dict[str, Any]:
-        if (
-            set(request) != _REQUIRED_REQUEST_FIELDS
-            and set(request) != _REQUEST_FIELDS
-        ):
+        if not _REQUIRED_REQUEST_FIELDS <= set(request) <= _REQUEST_FIELDS:
             raise BrokerError.invalid_request()
         capability = request["capability"]
         if (
@@ -343,6 +351,13 @@ class LocalIpcServer:
         if not isinstance(method, str) or not isinstance(params, Mapping):
             raise BrokerError.invalid_request()
         extension_lease = request.get("extensionLease")
+        requested_controller_id = request.get("controllerId")
+        if requested_controller_id is not None:
+            requested_controller_id = _bounded_identifier(requested_controller_id)
+            if self.controller_id is None or not hmac.compare_digest(
+                requested_controller_id, self.controller_id
+            ):
+                raise BrokerError.conflict()
 
         if method == "extension/bind":
             _require_absent_lease(extension_lease)
@@ -383,6 +398,8 @@ class LocalIpcServer:
                 "version": PROTOCOL_VERSION,
                 "status": "available",
             }
+            if self.controller_id is not None:
+                result["controllerId"] = self.controller_id
         elif method == "daemon/shutdown":
             _require_absent_lease(extension_lease)
             _exact_fields(params, set())
@@ -544,6 +561,7 @@ class LocalIpcClient:
         max_message_bytes: int,
         max_result_bytes: int,
         timeout_seconds: float = 5.0,
+        controller_id: str | None = None,
     ) -> None:
         _require_unix_sockets()
         if (
@@ -561,6 +579,9 @@ class LocalIpcClient:
         self.max_request_bytes = _frame_limit(max_message_bytes)
         self.max_response_bytes = _frame_limit(max_result_bytes)
         self.timeout_seconds = float(timeout_seconds)
+        self.controller_id = (
+            _bounded_identifier(controller_id) if controller_id is not None else None
+        )
 
     def handshake(self) -> dict[str, Any]:
         return self.call("host/handshake", {})
@@ -589,6 +610,8 @@ class LocalIpcClient:
         }
         if extension_lease is not None:
             request["extensionLease"] = _bounded_identifier(extension_lease)
+        if self.controller_id is not None:
+            request["controllerId"] = self.controller_id
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
                 connection.settimeout(timeout)

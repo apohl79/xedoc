@@ -15,6 +15,8 @@ readonly repo_root
 readonly support="$script_dir/remote_agent_tmux_e2e.py"
 python_bin="${XEDOC_REMOTE_AGENT_E2E_PYTHON:-python3}"
 readonly keep_artifacts="${XEDOC_REMOTE_AGENT_E2E_KEEP_ARTIFACTS:-0}"
+readonly install_zip="${XEDOC_REMOTE_AGENT_E2E_INSTALL_ZIP:-}"
+install_archive="$install_zip"
 
 case "$(uname -s)" in
   Darwin | Linux) ;;
@@ -59,6 +61,15 @@ readonly coordinator_doctor="$artifacts/coordinator-doctor.json"
 readonly managed_doctor="$artifacts/managed-doctor.json"
 readonly coordinator_audit="$artifacts/coordinator-audit.jsonl"
 readonly managed_audit="$artifacts/managed-audit.jsonl"
+readonly install_home="$tmp_dir/install-home"
+readonly install_xedoc_home="$install_home/.xedoc"
+readonly install_bin="$install_home/.local/bin"
+readonly install_workspace="$tmp_dir/install-workspace"
+readonly install_experimental_socket="$install_xedoc_home/app-server-control/experimental.sock"
+readonly install_stable_socket="$install_xedoc_home/app-server-control/app-server-control.sock"
+readonly install_broker_pid="$install_xedoc_home/remote-agent/broker.pid"
+readonly install_experimental_bootstrap="$install_xedoc_home/remote-agent/bootstrap-experimental.toml"
+readonly install_stable_bootstrap="$install_xedoc_home/remote-agent/bootstrap.toml"
 
 tmux_session=""
 mock_pid=""
@@ -89,7 +100,15 @@ capture_diagnostics() {
     "$coordinator_doctor" \
     "$managed_doctor" \
     "$coordinator_audit" \
-    "$managed_audit"
+    "$managed_audit" \
+    "$artifacts/install-experimental.stdout.log" \
+    "$artifacts/install-experimental.stderr.log" \
+    "$artifacts/install-stable.stdout.log" \
+    "$artifacts/install-stable.stderr.log" \
+    "$artifacts/configure-experimental.log" \
+    "$artifacts/configure-stable.log" \
+    "$artifacts/install-experimental-broker-doctor.json" \
+    "$artifacts/install-broker-doctor.json"
   do
     [[ -f "$path" ]] || continue
     printf '\n--- %s ---\n' "$(basename -- "$path")" >&2
@@ -105,6 +124,18 @@ fail() {
 
 cleanup() {
   local status="$1"
+  if [[ -x "$install_bin/xedoc" ]]; then
+    env HOME="$install_home" XEDOC_HOME="$install_xedoc_home" \
+      "$install_bin/xedoc" app-server daemon stop >/dev/null 2>&1 || true
+  fi
+  if [[ -x "$install_bin/xedoc-experimental" ]]; then
+    env HOME="$install_home" XEDOC_HOME="$install_xedoc_home" \
+      "$install_bin/xedoc-experimental" app-server daemon stop >/dev/null 2>&1 || true
+  fi
+  if [[ -x "$install_xedoc_home/packages/standalone/experimental/bin/xedoc-remote-agentd" ]]; then
+    "$install_xedoc_home/packages/standalone/experimental/bin/xedoc-remote-agentd" \
+      shutdown --xedoc-home "$install_xedoc_home" >/dev/null 2>&1 || true
+  fi
   [[ -n "$tmux_session" ]] &&
     tmux kill-session -t "$tmux_session" >/dev/null 2>&1 || true
   [[ -n "$mock_pid" ]] && kill "$mock_pid" >/dev/null 2>&1 || true
@@ -189,6 +220,244 @@ wait_for_process() {
   fail "timed out waiting for $label"
 }
 
+wait_for_tmux_text() {
+  local target="$1"
+  local expected="$2"
+  for _ in $(seq 1 600); do
+    if tmux capture-pane -p -t "$target" -S -80 2>/dev/null |
+      grep -F -- "$expected" >/dev/null
+    then
+      return
+    fi
+    sleep 0.05
+  done
+  fail "timed out waiting for tmux prompt: $expected"
+}
+
+wait_for_tmux_exit() {
+  local target="$1"
+  for _ in $(seq 1 600); do
+    if [ "$(tmux display-message -p -t "$target" '#{pane_dead}' 2>/dev/null)" = 1 ]; then
+      return
+    fi
+    sleep 0.05
+  done
+  fail "timed out waiting for tmux configuration to exit"
+}
+
+broker_pid() {
+  "$python_bin" - "$install_broker_pid" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+pid = value.get("pid")
+if not isinstance(pid, int) or isinstance(pid, bool) or pid < 1:
+    raise SystemExit("broker pid state is invalid")
+print(pid)
+PY
+}
+
+wait_for_broker() {
+  local agent="$1"
+  local expected_pid="${2:-}"
+  for _ in $(seq 1 600); do
+    if "$agent" status --xedoc-home "$install_xedoc_home" \
+      >"$artifacts/install-broker-status.json" 2>"$artifacts/install-broker-status.stderr.log" &&
+      [ -f "$install_broker_pid" ]
+    then
+      local pid
+      pid="$(broker_pid 2>/dev/null || true)"
+      if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1 &&
+        { [ -z "$expected_pid" ] || [ "$pid" = "$expected_pid" ]; }
+      then
+        return
+      fi
+    fi
+    sleep 0.05
+  done
+  fail "remote-agent broker did not reach the expected single-process state"
+}
+
+assert_single_broker_owner() {
+  local owner_files=()
+  while IFS= read -r path; do
+    owner_files+=("$path")
+  done < <(find "$install_xedoc_home" -path '*/remote-agent/broker.pid' -type f -print)
+  [[ "${#owner_files[@]}" -eq 1 && "${owner_files[0]}" = "$install_broker_pid" ]] ||
+    fail "expected exactly one remote-agent broker owner state file"
+}
+
+run_installer() {
+  local channel="$1"
+  shift
+  env \
+    HOME="$install_home" \
+    XEDOC_HOME="$install_xedoc_home" \
+    XEDOC_INSTALL_DIR="$install_bin" \
+    XEDOC_NON_INTERACTIVE=1 \
+    PATH="$PATH" \
+    /bin/sh "$repo_root/scripts/install/install.sh" "$@" \
+    >"$artifacts/install-$channel.stdout.log" \
+    2>"$artifacts/install-$channel.stderr.log" ||
+    fail "$channel local ZIP installation failed"
+}
+
+stage_install_archive() {
+  local runtime_asset
+  runtime_asset="$(
+    unzip -p "$install_zip" xedoc-package.json | "$python_bin" -c \
+      'import json, sys; print(json.load(sys.stdin)["modelRouterRuntime"]["assetName"])'
+  )" || fail "could not read model-router runtime metadata from $install_zip"
+  [[ -n "$runtime_asset" ]] || fail "local release ZIP has no model-router runtime asset"
+  [[ -f "$(dirname -- "$install_zip")/$runtime_asset" ]] && return
+
+  local runtime_candidates=()
+  while IFS= read -r candidate; do
+    runtime_candidates+=("$candidate")
+  done < <(
+    find "$repo_root/dist/xedoc/model-router-runtime" -type f -name "$runtime_asset" \
+      -print 2>/dev/null
+  )
+  [[ "${#runtime_candidates[@]}" -eq 1 ]] || fail \
+    "could not locate the model-router runtime companion for $install_zip"
+
+  local staged_release="$tmp_dir/local-release"
+  mkdir -p "$staged_release"
+  cp "$install_zip" "$staged_release/"
+  cp "${runtime_candidates[0]}" "$staged_release/$runtime_asset"
+  install_archive="$staged_release/$(basename -- "$install_zip")"
+}
+
+run_remote_agent_configuration() {
+  local channel="$1"
+  local session_binary="$2"
+  local reconfigure="$3"
+  local workspace_id="$4"
+  local log="$artifacts/configure-$channel.log"
+  local launcher="$artifacts/configure-$channel.sh"
+
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'set -euo pipefail\n'
+    printf 'unset PYTHONPATH\n'
+    printf 'env HOME=%q XEDOC_HOME=%q XEDOC_INSTALL_DIR=%q PATH=%q %q remote-agent-configure' \
+      "$install_home" "$install_xedoc_home" "$install_bin" "$PATH" "$session_binary"
+    if [ "$reconfigure" = true ]; then
+      printf ' --reconfigure'
+    fi
+    printf ' 2>&1 | tee %q\n' "$log"
+  } >"$launcher"
+  chmod 700 "$launcher"
+
+  tmux_session="xedoc-remote-agent-configure-$channel-$RANDOM-$$"
+  tmux new-session -d -x 160 -y 40 -s "$tmux_session" "$launcher"
+  tmux set-option -t "$tmux_session":0 remain-on-exit on
+
+  wait_for_tmux_text "$tmux_session":0.0 "Remote-agent role (use ↑/↓ and Enter):"
+  # Exercise arrow navigation without changing the coordinator default.
+  tmux send-keys -t "$tmux_session":0.0 Down Up Enter
+  wait_for_tmux_text "$tmux_session":0.0 "Workspace ID:"
+  tmux send-keys -t "$tmux_session":0.0 -l "$workspace_id"
+  tmux send-keys -t "$tmux_session":0.0 Enter
+  wait_for_tmux_text "$tmux_session":0.0 "Workspace root:"
+  tmux send-keys -t "$tmux_session":0.0 -l "$install_workspace"
+  tmux send-keys -t "$tmux_session":0.0 Enter
+  wait_for_tmux_text "$tmux_session":0.0 "Add another workspace"
+  tmux send-keys -t "$tmux_session":0.0 Enter
+  wait_for_tmux_exit "$tmux_session":0.0
+  grep -F '"status": "configured"' "$log" >/dev/null ||
+    fail "$channel remote-agent configuration did not complete"
+  tmux kill-session -t "$tmux_session" >/dev/null 2>&1 || true
+  tmux_session=""
+}
+
+exercise_installed_lifecycle() {
+  [[ -n "$install_zip" ]] || return
+  [[ -f "$install_zip" ]] || fail \
+    "XEDOC_REMOTE_AGENT_E2E_INSTALL_ZIP does not name a local release ZIP: $install_zip"
+
+  mkdir -p "$install_home" "$install_workspace"
+  stage_install_archive
+  run_installer experimental --experimental --local-zip "$install_archive"
+  [[ -x "$install_bin/xedoc-experimental" ]] ||
+    fail "experimental installer did not expose xedoc-experimental"
+  [[ -x "$install_bin/xedoc-session-experimental" ]] ||
+    fail "experimental installer did not expose xedoc-session-experimental"
+
+  run_remote_agent_configuration \
+    experimental \
+    "$install_bin/xedoc-session-experimental" \
+    false \
+    experimental
+  wait_for_unix_listener "$install_experimental_socket"
+  local experimental_agent="$install_xedoc_home/packages/standalone/experimental/bin/xedoc-remote-agentd"
+  [[ -x "$experimental_agent" ]] || fail "experimental package lacks xedoc-remote-agentd"
+  wait_for_broker "$experimental_agent"
+  local broker_before_restart
+  broker_before_restart="$(broker_pid)"
+  env HOME="$install_home" XEDOC_HOME="$install_xedoc_home" \
+    "$install_bin/xedoc-experimental" app-server daemon start \
+    >"$artifacts/experimental-daemon-start.stdout.log" \
+    2>"$artifacts/experimental-daemon-start.stderr.log" ||
+    fail "experimental app-server daemon start failed"
+  wait_for_unix_listener "$install_experimental_socket"
+  wait_for_broker "$experimental_agent" "$broker_before_restart"
+  assert_single_broker_owner
+  [[ -f "$install_experimental_bootstrap" ]] ||
+    fail "experimental remote-agent bootstrap was not written"
+  env \
+    XEDOC_REMOTE_AGENT_BOOTSTRAP="$install_experimental_bootstrap" \
+    "$experimental_agent" doctor --xedoc-home "$install_xedoc_home" \
+    >"$artifacts/install-experimental-broker-doctor.json" ||
+    fail "experimental remote-agent broker doctor failed"
+  "$python_bin" - "$artifacts/install-experimental-broker-doctor.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+assert json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["ok"] is True
+PY
+
+  run_installer stable --local-zip "$install_archive"
+  [[ -x "$install_bin/xedoc" ]] || fail "stable installer did not expose xedoc"
+  [[ -x "$install_bin/xedoc-session" ]] ||
+    fail "stable installer did not expose xedoc-session"
+  run_remote_agent_configuration stable "$install_bin/xedoc-session" true stable
+  wait_for_unix_listener "$install_stable_socket"
+  local stable_agent="$install_xedoc_home/packages/standalone/current/bin/xedoc-remote-agentd"
+  [[ -x "$stable_agent" ]] || fail "stable package lacks xedoc-remote-agentd"
+  env HOME="$install_home" XEDOC_HOME="$install_xedoc_home" \
+    "$install_bin/xedoc" app-server daemon start \
+    >"$artifacts/stable-daemon-start.stdout.log" \
+    2>"$artifacts/stable-daemon-start.stderr.log" ||
+    fail "stable app-server daemon start failed"
+  wait_for_unix_listener "$install_stable_socket"
+  wait_for_broker "$stable_agent"
+  local broker_after_handoff
+  broker_after_handoff="$(broker_pid)"
+  [ "$broker_after_handoff" != "$broker_before_restart" ] ||
+    fail "stable remote-agent handoff did not replace the experimental broker"
+  ! kill -0 "$broker_before_restart" >/dev/null 2>&1 ||
+    fail "experimental remote-agent broker remained alive after stable handoff"
+  assert_single_broker_owner
+  [[ -f "$install_stable_bootstrap" ]] ||
+    fail "stable remote-agent bootstrap was not written"
+  "$stable_agent" doctor --xedoc-home "$install_xedoc_home" \
+    >"$artifacts/install-broker-doctor.json" ||
+    fail "stable remote-agent broker doctor failed after handoff"
+  "$python_bin" - "$artifacts/install-broker-doctor.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+assert json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["ok"] is True
+PY
+
+  package_root="$install_xedoc_home/packages/standalone/experimental"
+}
+
 assert_binding_provenance() {
   "$python_bin" - "$1" <<'PY'
 import json
@@ -255,7 +524,9 @@ write_launcher() {
 }
 
 prepare_package() {
-  if [[ -n "${XEDOC_REMOTE_AGENT_E2E_PACKAGE:-}" ]]; then
+  if [[ -n "$package_root" ]]; then
+    :
+  elif [[ -n "${XEDOC_REMOTE_AGENT_E2E_PACKAGE:-}" ]]; then
     package_root="$(
       "$python_bin" - "${XEDOC_REMOTE_AGENT_E2E_PACKAGE}" <<'PY'
 from pathlib import Path
@@ -476,6 +747,7 @@ main() {
     "$managed_workspace"
   [[ "$(cd -- "$outside_dir" && pwd -P)" != "$repo_root"* ]] ||
     fail "E2E process cwd must be outside the checkout"
+  exercise_installed_lifecycle
   prepare_package
 
   local coordinator_peer_port managed_peer_port
