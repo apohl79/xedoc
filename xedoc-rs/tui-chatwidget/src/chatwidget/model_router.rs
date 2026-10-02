@@ -14,12 +14,14 @@ impl ChatWidget {
         match notification.state {
             ModelRouterActivityState::Started => {
                 self.bottom_pane.ensure_status_indicator();
+                self.bottom_pane.set_model_router_running(/*running*/ true);
                 self.bottom_pane
-                    .set_interrupt_hint_visible(/*visible*/ false);
+                    .set_interrupt_hint_visible(/*visible*/ true);
                 self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Working;
                 self.set_status_header(String::from("Routing"));
             }
             ModelRouterActivityState::Finished => {
+                self.bottom_pane.set_model_router_running(/*running*/ false);
                 if self.status_state.current_status.header == "Routing" {
                     if self.bottom_pane.is_task_running() {
                         self.restore_reasoning_status_header();

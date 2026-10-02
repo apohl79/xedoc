@@ -224,6 +224,7 @@ pub struct BottomPane {
     enhanced_keys_supported: bool,
     disable_paste_burst: bool,
     is_task_running: bool,
+    is_model_router_running: bool,
     active_turn_started_at: Option<Instant>,
     runtime_context: Option<ComposerRuntimeContext>,
     active_turn_running: bool,
@@ -298,6 +299,7 @@ impl BottomPane {
             enhanced_keys_supported,
             disable_paste_burst,
             is_task_running: false,
+            is_model_router_running: false,
             active_turn_started_at: None,
             runtime_context: None,
             active_turn_running: false,
@@ -1070,6 +1072,10 @@ impl BottomPane {
         }
     }
 
+    pub fn set_model_router_running(&mut self, running: bool) {
+        self.is_model_router_running = running;
+    }
+
     /// Sets the start time for the active agent turn shown on the composer border.
     pub fn set_active_turn_started_at(&mut self, started_at: Option<Instant>) {
         self.active_turn_started_at = started_at;
@@ -1399,7 +1405,7 @@ impl BottomPane {
             .is_some_and(|(name, _, _)| name == "agent");
 
         self.keymap.chat.interrupt_turn.is_pressed(key_event)
-            && self.is_task_running
+            && (self.is_task_running || self.is_model_router_running)
             && !(is_agent_command && key_event.code == KeyCode::Esc)
             && self.no_modal_or_popup_active()
             && !self.composer_should_handle_vim_insert_escape(key_event)

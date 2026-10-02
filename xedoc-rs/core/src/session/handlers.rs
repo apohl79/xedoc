@@ -422,6 +422,9 @@ pub(super) async fn user_input_or_turn_inner(
                         }
                     }
                 };
+                if cancellation.is_cancelled() {
+                    return;
+                }
                 match outcome {
                     crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
                         decision,

@@ -202,6 +202,10 @@ impl XedocThread {
         self.io.submit(op).await
     }
 
+    pub async fn interrupt(&self) {
+        self.session.interrupt_task().await;
+    }
+
     pub async fn set_hook_environment_attached(&self, attached: bool) {
         self.session.set_hook_environment_attached(attached).await;
     }
