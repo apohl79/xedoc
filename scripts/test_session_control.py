@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
+from contextlib import redirect_stdout
 from importlib.machinery import SourceFileLoader
 import importlib.util
-import sys
+import io
 from pathlib import Path
+import sys
 import unittest
+from unittest.mock import patch
 
 SCRIPT_PATH = Path(__file__).with_name("xedoc-session")
 SCRIPT_SPEC = importlib.util.spec_from_loader(
@@ -37,6 +40,22 @@ class FakeClient:
 
 
 class SessionControlTest(unittest.TestCase):
+    def test_prompt_choice_converts_keyboard_interrupt_to_cancellation(self) -> None:
+        with (
+            patch.object(session_control, "terminal_input"),
+            patch.object(
+                session_control,
+                "read_terminal_key",
+                side_effect=KeyboardInterrupt,
+            ),
+            redirect_stdout(io.StringIO()),
+        ):
+            with self.assertRaisesRegex(
+                session_control.AppServerError,
+                "remote-agent configuration was cancelled",
+            ):
+                session_control.prompt_choice("Role:", [("coordinator", "Coordinator")])
+
     def test_start_params_include_text_and_optional_client_id(self) -> None:
         self.assertEqual(
             build_turn_start_params("thr-1", "Run tests", "msg-1"),

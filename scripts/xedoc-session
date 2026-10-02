@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -229,8 +230,112 @@ def prompt_value(label: str) -> str:
         raise AppServerError("remote-agent configuration was cancelled") from error
 
 
+@contextmanager
+def terminal_input():
+    if os.name == "nt":
+        yield
+        return
+
+    import termios
+    import tty
+
+    file_descriptor = sys.stdin.fileno()
+    settings = termios.tcgetattr(file_descriptor)
+    try:
+        tty.setcbreak(file_descriptor)
+        yield
+    finally:
+        termios.tcsetattr(file_descriptor, termios.TCSADRAIN, settings)
+
+
+def read_terminal_key() -> str:
+    if os.name == "nt":
+        import msvcrt
+
+        key = msvcrt.getwch()
+        if key in {"\x00", "\xe0"}:
+            return {
+                "H": "up",
+                "P": "down",
+                "K": "left",
+                "M": "right",
+            }.get(msvcrt.getwch(), "")
+        return {
+            "\r": "enter",
+            "\n": "enter",
+            "\x03": "cancel",
+            "\x04": "cancel",
+        }.get(key, key)
+
+    key = sys.stdin.read(1)
+    if key == "\x1b":
+        sequence = sys.stdin.read(2)
+        return {
+            "[A": "up",
+            "[B": "down",
+            "[C": "right",
+            "[D": "left",
+        }.get(sequence, "cancel")
+    return {
+        "\r": "enter",
+        "\n": "enter",
+        "\x03": "cancel",
+        "\x04": "cancel",
+    }.get(key, key)
+
+
+def prompt_choice(
+    label: str, options: list[tuple[str, str]], default_index: int = 0
+) -> str:
+    if not options:
+        raise AppServerError("choice prompt has no options")
+    if not 0 <= default_index < len(options):
+        raise AppServerError("choice prompt has an invalid default")
+
+    selected_index = default_index
+    rendered_lines = 0
+
+    def render() -> None:
+        nonlocal rendered_lines
+        if rendered_lines:
+            sys.stdout.write(f"\x1b[{rendered_lines}A")
+        for index, (_, description) in enumerate(options):
+            marker = "›" if index == selected_index else " "
+            sys.stdout.write(f"\r\x1b[2K{marker} {description}\n")
+        sys.stdout.flush()
+        rendered_lines = len(options)
+
+    sys.stdout.write(f"{label}\n")
+    render()
+    try:
+        with terminal_input():
+            while True:
+                key = read_terminal_key()
+                if key == "up":
+                    selected_index = (selected_index - 1) % len(options)
+                    render()
+                elif key == "down":
+                    selected_index = (selected_index + 1) % len(options)
+                    render()
+                elif key == "enter":
+                    sys.stdout.write("\n")
+                    return options[selected_index][0]
+                elif key == "cancel":
+                    raise AppServerError(
+                        "remote-agent configuration was cancelled"
+                    )
+    except KeyboardInterrupt as error:
+        raise AppServerError("remote-agent configuration was cancelled") from error
+    finally:
+        sys.stdout.write("\x1b[?25h")
+        sys.stdout.flush()
+
+
 def prompt_yes_no(label: str) -> bool:
-    return prompt_value(f"{label} [y/N]: ").lower() in {"y", "yes"}
+    return (
+        prompt_choice(label, [("yes", "Yes"), ("no", "No")], default_index=1)
+        == "yes"
+    )
 
 
 def canonical_workspace_root(value: str) -> Path:
@@ -258,13 +363,13 @@ def canonical_certificate_path(value: str) -> Path:
 
 
 def prompt_role() -> str:
-    while True:
-        role = prompt_value(
-            "Remote-agent role (coordinator manages peers; managed accepts coordinators): "
-        ).lower()
-        if role in REMOTE_AGENT_ROLES:
-            return role
-        print("Choose either coordinator or managed.", file=sys.stderr)
+    return prompt_choice(
+        "Remote-agent role (use ↑/↓ and Enter):",
+        [
+            ("coordinator", "Coordinator — manages peers"),
+            ("managed", "Managed — accepts coordinators"),
+        ],
+    )
 
 
 def prompt_workspaces() -> dict[str, str]:
