@@ -113,7 +113,7 @@ def response_created(response_id: str) -> dict[str, Any]:
     return {"type": "response.created", "response": {"id": response_id}}
 
 
-def completed(response_id: str) -> dict[str, Any]:
+def completed(response_id: str, total_tokens: int) -> dict[str, Any]:
     return {
         "type": "response.completed",
         "response": {
@@ -123,7 +123,7 @@ def completed(response_id: str) -> dict[str, Any]:
                 "input_tokens_details": {"cached_tokens": 2},
                 "output_tokens": 3,
                 "output_tokens_details": {"reasoning_tokens": 0},
-                "total_tokens": 15,
+                "total_tokens": total_tokens,
             },
         },
     }
@@ -164,7 +164,9 @@ def spawn_agent_call() -> dict[str, Any]:
     }
 
 
-def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str, Any]]:
+def events_for_request(
+    request: dict[str, Any], sequence: int, total_tokens: int
+) -> list[dict[str, Any]]:
     response_id = f"router-e2e-response-{sequence}"
     if request_kind(request) == "model_router_classifier":
         if contains_text(request, CHILD_MARKER):
@@ -205,7 +207,7 @@ def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str,
                 f"router-e2e-classifier-{sequence}",
                 classification,
             ),
-            completed(response_id),
+            completed(response_id, total_tokens),
         ]
     if contains_text(request, ROOT_SPAWN_PREFIX) and not has_function_call_output(
         request, SPAWN_CALL_ID
@@ -213,7 +215,7 @@ def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str,
         return [
             response_created(response_id),
             spawn_agent_call(),
-            completed(response_id),
+            completed(response_id, total_tokens),
         ]
     if has_function_call_output(request, SPAWN_CALL_ID):
         return [
@@ -221,24 +223,26 @@ def events_for_request(request: dict[str, Any], sequence: int) -> list[dict[str,
             assistant_message(
                 f"router-e2e-parent-{sequence}", "router parent completed"
             ),
-            completed(response_id),
+            completed(response_id, total_tokens),
         ]
     if contains_text(request, CHILD_MARKER):
         return [
             response_created(response_id),
             assistant_message(f"router-e2e-child-{sequence}", "router child completed"),
-            completed(response_id),
+            completed(response_id, total_tokens),
         ]
     return [
         response_created(response_id),
         assistant_message(f"router-e2e-message-{sequence}", "router root completed"),
-        completed(response_id),
+        completed(response_id, total_tokens),
     ]
 
 
 class Handler(BaseHTTPRequestHandler):
     request_log: RequestLog
     hold_response_file: Path
+    completion_log: Path
+    total_tokens: int
     request_sequence = 0
     request_sequence_lock = threading.Lock()
 
@@ -266,7 +270,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
         body = "".join(
             f"event: {event['type']}\ndata: {json.dumps(event, separators=(',', ':'))}\n\n"
-            for event in events_for_request(request, sequence)
+            for event in events_for_request(request, sequence, self.total_tokens)
         ).encode()
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
@@ -274,6 +278,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+        with self.completion_log.open("a", encoding="utf-8") as completion_log:
+            completion_log.write(f"{sequence}\n")
 
     def log_message(self, format: str, *args: object) -> None:
         del format, args
@@ -284,6 +290,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port-file", type=Path, required=True)
     parser.add_argument("--request-log", type=Path, required=True)
     parser.add_argument("--hold-response-file", type=Path, required=True)
+    parser.add_argument("--completion-log", type=Path, required=True)
+    parser.add_argument("--total-tokens", type=int, default=15)
     return parser.parse_args()
 
 
@@ -292,6 +300,8 @@ def main() -> int:
     args.request_log.touch()
     Handler.request_log = RequestLog(args.request_log)
     Handler.hold_response_file = args.hold_response_file
+    Handler.completion_log = args.completion_log
+    Handler.total_tokens = args.total_tokens
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     args.port_file.write_text(str(server.server_port), encoding="utf-8")
 
