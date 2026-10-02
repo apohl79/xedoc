@@ -1609,6 +1609,42 @@ run_jev_setup_only() {
   record_scenario jev-setup "tmux opened the Jev API-key form and saved a fixture key"
 }
 
+run_routing_interrupt() {
+  reset_policy
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["mode"] = "full"
+policy["approval"] = "off"
+policy["classifierRoute"] = {
+    "providerId": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "low",
+}
+policy["externalClassifier"] = {"backend": "xedoc-llm", "model": None}
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
+  start_tui
+  local marker="ROUTER_E2E_ROUTING_INTERRUPT"
+  send_prompt "$marker ROUTER_E2E_HOLD_OPEN review this workflow"
+  wait_for_request_marker "$marker"
+  wait_for_pane "Routing"
+  tmux send-keys -t "$tmux_session":0.0 Escape
+  wait_for_pane_absent "Routing" 10
+  touch "$hold_response_file"
+  sleep 1
+  [[ "$(request_count)" == "1" ]] ||
+    fail "routing interrupt started a regular model turn"
+  ! capture_pane | grep -Fq "router root completed" ||
+    fail "routing interrupt allowed the held router turn to complete"
+  record_scenario routing-interrupt \
+    "tmux Escape cancelled a held routing decision before a model turn started"
+}
+
 exercise_host_action() {
   local index="$1"
   local name="$2"
@@ -2625,7 +2661,7 @@ main() {
   write_runtime_config
   local phase="${XEDOC_TMUX_TEST_PHASE:-full}"
   assert_reference_policy_contract
-  if [[ "$phase" != "report" && "$phase" != "review-decisions" ]]; then
+  if [[ "$phase" != "report" && "$phase" != "review-decisions" && "$phase" != "routing-interrupt" ]]; then
     seed_legacy_policy
     assert_legacy_policy_migration
     assert_script_conflict_protocol
@@ -2643,6 +2679,11 @@ main() {
     run_classifier_mode_matrix
     assert_config_unchanged
     printf 'PASS: scripted model-router classifier tmux acceptance\n'
+    return
+  elif [[ "$phase" == "routing-interrupt" ]]; then
+    run_routing_interrupt
+    assert_config_unchanged
+    printf 'PASS: scripted model-router routing-interrupt tmux acceptance\n'
     return
   elif [[ "$phase" == "session-override" ]]; then
     run_session_mode_override

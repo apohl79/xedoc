@@ -907,10 +907,16 @@ pub enum AppEvent {
     OpenProviderBudget {
         provider_id: String,
     },
-    /// Prompt for the value of a provider budget.
+    /// Prompt for the USD amount of a provider budget, optionally after a validation error.
     OpenProviderBudgetValue {
         provider_id: String,
         kind: xedoc_config::types::ProviderBudgetKind,
+        error: Option<String>,
+    },
+    /// Select the monthly reset day after the USD amount was entered.
+    OpenProviderBudgetResetDay {
+        provider_id: String,
+        usd: f64,
     },
     /// Refresh provider-budget consumption from the local state database.
     RefreshProviderBudgetUsage,
@@ -976,6 +982,10 @@ pub enum AppEvent {
 pub struct ProviderBudgetUsage {
     /// Provider configuration key.
     pub provider_id: String,
+    /// Configured budget for the current timeframe, in USD.
+    pub budget_usd: f64,
+    /// Priced usage in the current timeframe, in USD.
+    pub used_usd: f64,
     /// Current budget consumption, rounded for display.
     pub percentage: i64,
 }

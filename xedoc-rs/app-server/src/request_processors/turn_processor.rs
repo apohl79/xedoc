@@ -1209,31 +1209,11 @@ impl TurnRequestProcessor {
                 .await;
         }
 
-        // Submit the interrupt. Turn interrupts respond upon TurnAborted; startup
-        // interrupts respond here because startup cancellation has no turn event.
-        match self
-            .submit_core_op(request_id, thread.as_ref(), Op::Interrupt)
-            .await
-        {
-            Ok(_) if is_startup_interrupt => Ok(Some(TurnInterruptResponse {})),
-            Ok(_) => Ok(None),
-            Err(err) => {
-                if !is_startup_interrupt {
-                    let thread_state = self.thread_state_manager.thread_state(thread_uuid).await;
-                    let mut thread_state = thread_state.lock().await;
-                    thread_state
-                        .pending_interrupts
-                        .retain(|pending_request_id| pending_request_id != request_id);
-                }
-                let interrupt_target = if is_startup_interrupt {
-                    "startup"
-                } else {
-                    "turn"
-                };
-                Err(internal_error(format!(
-                    "failed to interrupt {interrupt_target}: {err}"
-                )))
-            }
+        thread.interrupt().await;
+        if is_startup_interrupt {
+            Ok(Some(TurnInterruptResponse {}))
+        } else {
+            Ok(None)
         }
     }
 

@@ -330,15 +330,19 @@ pub(super) async fn user_input_or_turn_inner(
             }
             sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
                 .await;
-            if let Some(script_host) =
-                crate::model_router_script_host::ModelRouterScriptHost::from_config(
-                    current_context.config.as_ref(),
+            let routing_config = {
+                let state = sess.state.lock().await;
+                crate::session::Session::build_effective_session_config(
+                    &state.session_configuration,
                 )
+            };
+            if let Some(script_host) =
+                crate::model_router_script_host::ModelRouterScriptHost::from_config(&routing_config)
                 && let Some(current_route) =
-                    crate::model_router::current_script_route(current_context.config.as_ref())
+                    crate::model_router::current_script_route(&routing_config)
             {
                 let eligible_routes = crate::model_router::eligible_script_routes(
-                    current_context.config.as_ref(),
+                    &routing_config,
                     &sess.services.models_manager,
                 )
                 .await;
@@ -418,6 +422,9 @@ pub(super) async fn user_input_or_turn_inner(
                         }
                     }
                 };
+                if cancellation.is_cancelled() {
+                    return;
+                }
                 match outcome {
                     crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
                         decision,

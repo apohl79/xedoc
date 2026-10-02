@@ -1534,6 +1534,10 @@ impl ChatWidget {
         self.bottom_pane.is_normal_backtrack_mode()
     }
 
+    pub fn should_interrupt_running_task(&self, key_event: KeyEvent) -> bool {
+        self.bottom_pane.should_interrupt_running_task(key_event)
+    }
+
     pub fn should_handle_vim_insert_escape(&self, key_event: KeyEvent) -> bool {
         self.bottom_pane
             .composer_should_handle_vim_insert_escape(key_event)
