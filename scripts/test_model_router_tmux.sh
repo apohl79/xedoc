@@ -33,6 +33,7 @@ readonly artifact_dir="$tmp_dir/artifacts"
 readonly policy_path="$runtime_home/model-router/reference-router.policy.json"
 readonly router_diagnostics="$runtime_home/model-router/reference-router.diagnostics.jsonl"
 readonly request_log="$artifact_dir/responses.jsonl"
+readonly completion_log="$artifact_dir/completions.log"
 readonly scenario_log="$artifact_dir/scenarios.tsv"
 readonly mock_port_file="$artifact_dir/mock-port"
 readonly hold_response_file="$artifact_dir/release-held-root"
@@ -980,6 +981,56 @@ wait_for_request_marker() {
   fail "timed out waiting for Responses request marker: $marker"
 }
 
+wait_for_regular_request_marker() {
+  local marker="$1"
+  for _ in $(seq 1 600); do
+    if python3 - "$request_log" "$marker" <<'PY'
+import json
+import sys
+
+marker = sys.argv[2]
+for line in open(sys.argv[1], encoding="utf-8"):
+    request = json.loads(line)
+    if marker in request.get("markers", []) and request.get("request_kind") == "turn":
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    then
+      return
+    fi
+    sleep 0.1
+  done
+  fail "timed out waiting for regular Responses request marker: $marker"
+}
+
+regular_request_sequence() {
+  local marker="$1"
+  python3 - "$request_log" "$marker" <<'PY'
+import json
+import sys
+
+marker = sys.argv[2]
+for line in open(sys.argv[1], encoding="utf-8"):
+    request = json.loads(line)
+    if marker in request.get("markers", []) and request.get("request_kind") == "turn":
+        print(request["sequence"])
+        break
+else:
+    raise SystemExit(f"no regular request contains {marker!r}")
+PY
+}
+
+wait_for_response_completion() {
+  local sequence="$1"
+  for _ in $(seq 1 300); do
+    if grep -Fxq "$sequence" "$completion_log"; then
+      return
+    fi
+    sleep 0.1
+  done
+  fail "timed out waiting for Responses completion: $sequence"
+}
+
 request_count() {
   wc -l <"$request_log"
 }
@@ -1017,8 +1068,10 @@ PY
 }
 
 start_mock() {
+  local total_tokens="${1:-15}"
   python3 "$mock_server" --port-file "$mock_port_file" --request-log "$request_log" \
     --hold-response-file "$hold_response_file" \
+    --completion-log "$completion_log" --total-tokens "$total_tokens" \
     >"$artifact_dir/mock.stdout.log" 2>"$artifact_dir/mock.stderr.log" &
   mock_pid="$!"
   for _ in $(seq 1 100); do
@@ -1643,6 +1696,63 @@ PY
     fail "routing interrupt allowed the held router turn to complete"
   record_scenario routing-interrupt \
     "tmux Escape cancelled a held routing decision before a model turn started"
+}
+
+run_noop_route_compaction_regression() {
+  reset_policy
+  python3 - "$policy_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+policy = json.load(open(path, encoding="utf-8"))
+policy["mode"] = "full"
+policy["approval"] = "off"
+policy["classifierRoute"] = {
+    "providerId": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "low",
+}
+policy["externalClassifier"] = {"backend": "xedoc-llm", "model": None}
+for entry in policy["ranking"]["ladder"]:
+    entry["providerId"] = "openai"
+    entry["model"] = "gpt-5.6-luna"
+    entry["reasoningEffort"] = "low"
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(policy, output)
+PY
+  start_tui
+  send_prompt "ROUTER_E2E_NOOP_ROUTE_SEED explain this codebase"
+  wait_for_request_marker "ROUTER_E2E_NOOP_ROUTE_SEED"
+  await_turn
+  send_prompt "ROUTER_E2E_NOOP_ROUTE_COMPACTION explain this codebase"
+  wait_for_regular_request_marker "ROUTER_E2E_NOOP_ROUTE_COMPACTION"
+  wait_for_response_completion "$(regular_request_sequence "ROUTER_E2E_NOOP_ROUTE_COMPACTION")"
+  python3 - "$router_diagnostics" <<'PY'
+import json
+import sys
+
+records = [
+    json.loads(line)
+    for line in open(sys.argv[1], encoding="utf-8")
+    if line.strip()
+]
+decision = next(
+    record
+    for record in reversed(records)
+    if record.get("event") == "routing_decision"
+)
+assert decision["disposition"] == "apply", decision
+assert decision["route"] == {
+    "providerId": "openai",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "low",
+}, decision
+PY
+  ! capture_pane | grep -Fq "Compacting" ||
+    fail "unchanged route triggered context compaction"
+  record_scenario noop-route-compaction \
+    "tmux kept incremental context after an unchanged applied route"
 }
 
 exercise_host_action() {
@@ -2655,13 +2765,18 @@ main() {
   [[ -x "$(runtime_python)" ]] || fail "semantic runtime Python is missing"
   mkdir -p "$artifact_dir"
   : >"$request_log"
+  : >"$completion_log"
+  local phase="${XEDOC_TMUX_TEST_PHASE:-full}"
+  local mock_total_tokens=15
+  if [[ "$phase" == "noop-route-compaction" ]]; then
+    mock_total_tokens=100900
+  fi
   tmux start-server
-  start_mock
+  start_mock "$mock_total_tokens"
   prepare_package
   write_runtime_config
-  local phase="${XEDOC_TMUX_TEST_PHASE:-full}"
   assert_reference_policy_contract
-  if [[ "$phase" != "report" && "$phase" != "review-decisions" && "$phase" != "routing-interrupt" ]]; then
+  if [[ "$phase" != "report" && "$phase" != "review-decisions" && "$phase" != "routing-interrupt" && "$phase" != "noop-route-compaction" ]]; then
     seed_legacy_policy
     assert_legacy_policy_migration
     assert_script_conflict_protocol
@@ -2684,6 +2799,11 @@ main() {
     run_routing_interrupt
     assert_config_unchanged
     printf 'PASS: scripted model-router routing-interrupt tmux acceptance\n'
+    return
+  elif [[ "$phase" == "noop-route-compaction" ]]; then
+    run_noop_route_compaction_regression
+    assert_config_unchanged
+    printf 'PASS: scripted model-router no-op route compaction acceptance\n'
     return
   elif [[ "$phase" == "session-override" ]]; then
     run_session_mode_override

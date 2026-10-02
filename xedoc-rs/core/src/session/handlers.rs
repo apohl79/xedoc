@@ -431,6 +431,8 @@ pub(super) async fn user_input_or_turn_inner(
                         route,
                     } => {
                         let model_instructions = decision.model_instructions.as_deref();
+                        let has_model_instructions =
+                            model_instructions.is_some_and(|instructions| !instructions.trim().is_empty());
                         let routed_context = sess
                             .new_script_routed_turn_from_current_settings_with_sub_id(
                                 sub_id.clone(),
@@ -456,7 +458,9 @@ pub(super) async fn user_input_or_turn_inner(
                             if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
                                 startup_prewarm.abort().await;
                             }
-                            sess.force_full_context_replay().await;
+                            if route != current_route || has_model_instructions {
+                                sess.force_full_context_replay().await;
+                            }
                             current_context = routed_context;
                             sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
                                 .await;
