@@ -77,7 +77,7 @@ status_fields=$(printf '%s' "$input" | jq -r '
         (.token_optimizer.cost_saved_usd // ""),
         ((.provider_budgets // [])
          | map(select(.percentage != null)
-               | "\(.provider): \(.percentage | round)%")
+               | "\(.provider): \(.percentage | round)% $\(((.used_usd * 100) | round) / 100)/$\(((.budget_usd * 100) | round) / 100)")
          | join(" / "))
     ]
     | map(if . == null then "" else tostring end | gsub("[\r\n\t\u001f]+"; " "))
@@ -308,7 +308,7 @@ fi
 
 # --- Provider budgets (dim gray) ---
 if [ "$ENABLE_PROVIDER_BUDGETS" = "1" ] && [ -n "$provider_budgets" ]; then
-    parts+=("\033[2;38;5;240m${provider_budgets}\033[0m")
+    parts+=("\033[2m${provider_budgets}\033[0m")
 fi
 
 # --- Lines changed (green +N / red -N) ---
