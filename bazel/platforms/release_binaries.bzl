@@ -3,8 +3,8 @@
 load("@rules_platform//platform_data:defs.bzl", "platform_data")
 
 PLATFORMS = [
-    "linux_arm64_musl",
-    "linux_amd64_musl",
+    "linux_arm64_gnu.2.28",
+    "linux_amd64_gnu.2.28",
     "macos_amd64",
     "macos_arm64",
     "windows_amd64",

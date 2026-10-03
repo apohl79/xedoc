@@ -94,7 +94,7 @@ mod bottom_pane;
 mod chatwidget;
 pub(crate) use xedoc_tui_render::city_lights;
 mod cli;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 mod clipboard_paste;
 mod config_update;
 pub use xedoc_tui_transcript::Terminal;
