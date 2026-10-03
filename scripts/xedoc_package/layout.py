@@ -436,7 +436,7 @@ def _copy_remote_agent_runtime(source_root: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source_root, destination, symlinks=True)
+    shutil.copytree(source_root, destination, symlinks=False)
 
 
 def _manifest_sha256(manifest: dict[str, object], key: str) -> str:
