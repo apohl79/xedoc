@@ -583,7 +583,26 @@ local_package_metadata_field() {
 
 local_runtime_archive() {
   asset="$1"
-  printf '%s/%s\n' "$(dirname "$LOCAL_ZIP")" "$asset"
+  local_zip_dir="$(dirname "$LOCAL_ZIP")"
+  sibling_archive="$local_zip_dir/$asset"
+  if [ -f "$sibling_archive" ]; then
+    printf '%s\n' "$sibling_archive"
+    return
+  fi
+
+  runtime_archive="$(
+    find "$local_zip_dir/../model-router-runtime" \
+      -type f \
+      -name "$asset" \
+      -print \
+      -quit 2>/dev/null
+  )"
+  if [ -n "$runtime_archive" ]; then
+    printf '%s\n' "$runtime_archive"
+    return
+  fi
+
+  printf '%s\n' "$sibling_archive"
 }
 
 prepare_local_package() {
