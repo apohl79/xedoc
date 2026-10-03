@@ -400,7 +400,7 @@ def _find_python_root(path: Path, spec: TargetSpec) -> Path:
 def _copy_runtime(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
-    shutil.copytree(source, destination, symlinks=True)
+    shutil.copytree(source, destination, symlinks=False)
 
 
 def _install_dependencies(
