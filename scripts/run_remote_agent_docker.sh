@@ -9,6 +9,7 @@ container_label="com.xedoc.remote-agent-docker-test"
 container_name="xedoc-linux-remote-agent"
 package_zip=""
 target=""
+model="gpt-5.6-luna"
 normal_port=""
 pairing_port=""
 discovery_port=""
@@ -31,6 +32,7 @@ Docker image layers to reclaim Colima disk space.
 Options:
   --package PATH             Linux Xedoc package ZIP (default: newest matching dist ZIP).
   --target TARGET            linux-arm64 or linux-x86_64 (default: Docker server architecture).
+  --model MODEL              Model for managed remote tasks (default: gpt-5.6-luna).
   --name NAME                Container name (default: xedoc-linux-remote-agent).
   --normal-port PORT         Host TCP port for peer traffic (default: an available port).
   --pairing-port PORT        Host TCP port for pairing traffic (default: an available port).
@@ -209,15 +211,16 @@ while (($#)); do
       command="$1"
       command_set=1
       shift;;
-    --package|--target|--name|--normal-port|--pairing-port|--discovery-port|--advertise-host)
+    --package|--target|--model|--name|--normal-port|--pairing-port|--discovery-port|--advertise-host)
       (($# >= 2)) || fail "$1 requires a value"
-      case "$1" in --package) package_zip="$2";; --target) target="$2";; --name) container_name="$2";; --normal-port) normal_port="$2";; --pairing-port) pairing_port="$2";; --discovery-port) discovery_port="$2";; *) advertise_host="$2";; esac
+      case "$1" in --package) package_zip="$2";; --target) target="$2";; --model) model="$2";; --name) container_name="$2";; --normal-port) normal_port="$2";; --pairing-port) pairing_port="$2";; --discovery-port) discovery_port="$2";; *) advertise_host="$2";; esac
       shift 2;;
     -h|--help) usage; exit 0;;
     *) fail "unknown option: $1";;
   esac
 done
 [[ "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || fail "invalid container name"
+[[ "$model" =~ ^[a-zA-Z0-9._/-]+$ ]] || fail "invalid model"
 configure_docker
 image_name="${container_name}:latest"
 if [[ "$command" == stop ]]; then
@@ -284,6 +287,11 @@ docker run -d --platform "$platform" --name "$container_name" --label "$containe
   --mount "type=bind,src=$script_dir,dst=/e2e,readonly" \
   "$image_name" >/dev/null
 docker exec "$container_name" sh -ceu "cat > /root/.xedoc/config.toml <<'EOF'
+model = \"$model\"
+model_provider = \"openai\"
+approval_policy = \"never\"
+sandbox_mode = \"danger-full-access\"
+
 [remote_agent]
 role = \"managed\"
 workspaces = { root = \"/\" }

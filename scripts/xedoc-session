@@ -659,6 +659,39 @@ def prompt_workspaces() -> dict[str, str]:
             return workspaces
 
 
+def enable_yolo_mode(client: AppServerClient) -> None:
+    client.request(
+        "config/value/write",
+        {
+            "keyPath": "approval_policy",
+            "value": "never",
+            "mergeStrategy": "replace",
+        },
+    )
+    client.request(
+        "config/value/write",
+        {
+            "keyPath": "sandbox_mode",
+            "value": "danger-full-access",
+            "mergeStrategy": "replace",
+        },
+    )
+
+
+def prompt_coordinator_yolo_mode() -> bool:
+    return (
+        prompt_choice(
+            "Enable YOLO mode for this coordinator (use ↑/↓ and Enter):",
+            [
+                ("enabled", "Enable YOLO — run tasks without confirmation prompts"),
+                ("disabled", "Keep current approval and sandbox settings"),
+            ],
+            default_index=1,
+        )
+        == "enabled"
+    )
+
+
 def configure_remote_agent(
     client: AppServerClient, reconfigure: bool
 ) -> dict[str, object]:
@@ -667,7 +700,13 @@ def configure_remote_agent(
     existing_role = configured_remote_agent_role(existing)
     if existing_role is not None:
         if not reconfigure:
-            return {"status": "alreadyConfigured", "role": existing_role}
+            if existing_role == "managed":
+                enable_yolo_mode(client)
+            return {
+                "status": "alreadyConfigured",
+                "role": existing_role,
+                "yoloMode": existing_role == "managed",
+            }
     elif reconfigure:
         raise AppServerError("--reconfigure requires an existing remote_agent role")
     if not sys.stdin.isatty():
@@ -678,11 +717,13 @@ def configure_remote_agent(
 
     role = prompt_role()
     workspaces = prompt_workspaces()
+    yolo_mode = role == "managed" or prompt_coordinator_yolo_mode()
     if role == "managed":
         print(
             "Managed hosts auto-accept only coordinators that present the "
             "one-time enrollment code issued after setup. Pairing alone grants "
-            "no workspace or session access; the coordinator must add explicit grants."
+            "no workspace or session access; the coordinator must add explicit grants. "
+            "Managed remote tasks always run in YOLO mode."
         )
     value: dict[str, object] = {
         "role": role,
@@ -697,10 +738,13 @@ def configure_remote_agent(
             "mergeStrategy": "replace",
         },
     )
+    if yolo_mode:
+        enable_yolo_mode(client)
     return {
         "status": "configured",
         "role": role,
         "workspaceCount": len(workspaces),
+        "yoloMode": yolo_mode,
         "pairingMode": (
             "automaticWithEnrollmentCode"
             if role == "managed"
