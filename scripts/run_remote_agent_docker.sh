@@ -9,8 +9,8 @@ container_label="com.xedoc.remote-agent-docker-test"
 container_name="xedoc-linux-remote-agent"
 package_zip=""
 target=""
-normal_port=46000
-pairing_port=46001
+normal_port=""
+pairing_port=""
 discovery_port=""
 advertise_host=""
 command="start"
@@ -32,8 +32,8 @@ Options:
   --package PATH             Linux Xedoc package ZIP (default: newest matching dist ZIP).
   --target TARGET            linux-arm64 or linux-x86_64 (default: Docker server architecture).
   --name NAME                Container name (default: xedoc-linux-remote-agent).
-  --normal-port PORT         Host TCP port for peer traffic (default: 46000).
-  --pairing-port PORT        Host TCP port for pairing traffic (default: 46001).
+  --normal-port PORT         Host TCP port for peer traffic (default: an available port).
+  --pairing-port PORT        Host TCP port for pairing traffic (default: an available port).
   --discovery-port PORT      Host UDP direct-discovery port (default: an available port).
   --advertise-host IPV4      Non-loopback IPv4 address advertised to coordinators.
                              Default: this machine's outbound IPv4 address.
@@ -69,6 +69,15 @@ while True:
                 continue
             print(port)
             break
+PY
+}
+available_tcp_port() {
+  python3 - <<'PY'
+import socket
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+    listener.bind(("0.0.0.0", 0))
+    print(listener.getsockname()[1])
 PY
 }
 discovery_state_path() {
@@ -231,10 +240,16 @@ if [[ "$command" == stop ]]; then
     fi
   fi
   docker image prune -f >/dev/null
-  printf 'Pruned dangling Docker image layers.\n'
+  docker builder prune -af >/dev/null
+  printf 'Pruned Docker image layers and build cache.\n'
   exit 0
 fi
 remove_local_discovery_registration
+[[ -n "$normal_port" ]] || normal_port="$(available_tcp_port)"
+[[ -n "$pairing_port" ]] || pairing_port="$(available_tcp_port)"
+while [[ "$pairing_port" == "$normal_port" ]]; do
+  pairing_port="$(available_tcp_port)"
+done
 [[ -n "$discovery_port" ]] || discovery_port="$(available_udp_port)"
 for port in "$normal_port" "$pairing_port" "$discovery_port"; do valid_port "$port" || fail "invalid port: $port"; done
 [[ -f "$HOME/.xedoc/auth.json" ]] || fail "missing ~/.xedoc/auth.json"
@@ -252,7 +267,8 @@ package_zip="$(cd "$(dirname "$package_zip")" && pwd)/$(basename "$package_zip")
 
 build_context="$(mktemp -d "${TMPDIR:-/tmp}/xedoc-remote-agent-docker.XXXXXX")"
 trap 'rm -rf "$build_context"' EXIT
-cp "$package_zip" "$build_context/package.zip"
+ln "$package_zip" "$build_context/package.zip" 2>/dev/null ||
+  cp "$package_zip" "$build_context/package.zip"
 docker build --platform "$platform" --label "$container_label=true" --tag "$image_name" --file "$dockerfile" "$build_context"
 if docker container inspect "$container_name" >/dev/null 2>&1; then
   label="$(docker container inspect --format "{{ index .Config.Labels \"$container_label\" }}" "$container_name")"

@@ -82,6 +82,7 @@ class DiscoveredPeer:
     """A bounded discovery result, optionally usable for bootstrap pairing."""
 
     host_id: str
+    hostname: str | None
     role: Role
     endpoint: str
     fingerprint: str
@@ -95,6 +96,7 @@ class DiscoveredPeer:
     def to_dict(self, status: str) -> dict[str, object]:
         return {
             "hostId": self.host_id,
+            "hostname": self.hostname,
             "role": self.role.value,
             "endpoint": self.endpoint,
             "fingerprint": self.fingerprint,
@@ -246,6 +248,7 @@ class PeerService:
         )
         discovery = PeerDiscovery(
             host_id=self.host_id,
+            hostname=_hostname(),
             role=self.config.role,
             fingerprint_value=self.identity.certificate.fingerprint,
             endpoints=self._discovery_endpoints,
@@ -465,6 +468,7 @@ class PeerService:
             candidates.append(
                 DiscoveredPeer(
                     host_id=relationship.peer_host_id,
+                    hostname=None,
                     role=relationship.peer_role,
                     endpoint=relationship.endpoint,
                     fingerprint=relationship.certificate.fingerprint,
@@ -1156,6 +1160,7 @@ class PeerService:
     def _describe(self) -> dict[str, Any]:
         value: dict[str, Any] = {
             "hostId": self.host_id,
+            "hostname": _hostname(),
             "role": self.config.role.value,
             "protocol": PROTOCOL,
             "protocolVersion": PROTOCOL_VERSION,
@@ -1537,6 +1542,7 @@ def _assert_peer_projection(value: Mapping[str, Any]) -> None:
 def _discovered_peer(response: Mapping[str, Any], peer: StaticPeer) -> DiscoveredPeer:
     required = {
         "hostId",
+        "hostname",
         "role",
         "protocol",
         "protocolVersion",
@@ -1560,6 +1566,9 @@ def _discovered_peer(response: Mapping[str, Any], peer: StaticPeer) -> Discovere
     ):
         raise BrokerError.invalid_request()
     host_id = _identifier(response["hostId"])
+    hostname = response["hostname"]
+    if not _hostname_is_valid(hostname):
+        raise BrokerError.invalid_request()
     try:
         role = Role(response["role"])
     except (TypeError, ValueError) as error:
@@ -1593,6 +1602,7 @@ def _discovered_peer(response: Mapping[str, Any], peer: StaticPeer) -> Discovere
         raise BrokerError.invalid_request()
     return DiscoveredPeer(
         host_id=host_id,
+        hostname=hostname,
         role=role,
         endpoint=endpoint,
         fingerprint=fingerprint,
@@ -1606,6 +1616,7 @@ def _discovered_peer(response: Mapping[str, Any], peer: StaticPeer) -> Discovere
 def _discovered_lan_peer(record: DiscoveryCandidate) -> DiscoveredPeer:
     return DiscoveredPeer(
         host_id=record.host_id,
+        hostname=record.hostname,
         role=record.role,
         endpoint=record.endpoint.value,
         fingerprint=record.fingerprint,
@@ -1614,6 +1625,22 @@ def _discovered_lan_peer(record: DiscoveryCandidate) -> DiscoveredPeer:
         capabilities=record.capabilities,
         pairing_endpoint=record.pairing_endpoint,
         pairing_token=record.pairing_token,
+    )
+
+
+def _hostname() -> str:
+    hostname = socket.gethostname()
+    if not _hostname_is_valid(hostname):
+        raise BrokerError.unavailable()
+    return hostname
+
+
+def _hostname_is_valid(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and len(value.encode("utf-8")) <= 255
+        and not any(character.isspace() for character in value)
     )
 
 

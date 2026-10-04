@@ -235,7 +235,8 @@ def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
         choices = [
             (
                 cast(str, candidate["hostId"]),
-                f"{candidate['hostId']} — {candidate['endpoint']} — "
+                f"{candidate.get('hostname') or candidate['hostId']} "
+                f"({candidate['hostId']}) — {candidate['endpoint']} — "
                 f"{candidate['role']} — {candidate['status']}",
             )
             for candidate in hosts

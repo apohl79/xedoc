@@ -29,6 +29,7 @@ MAX_DISCOVERY_PACKET_BYTES = 8 * 1024
 MAX_DISCOVERY_RESULTS = 128
 MAX_DISCOVERY_TOKENS = 256
 MAX_DIRECT_DESTINATIONS = 16
+MAX_HOSTNAME_BYTES = 255
 _LOCAL_DISCOVERY_DIRECTORY = (
     Path(tempfile.gettempdir()) / f"xedoc-remote-agent-discovery-{os.getuid()}"
 )
@@ -39,6 +40,7 @@ class DiscoveryCandidate:
     """An ephemeral untrusted LAN discovery result."""
 
     host_id: str
+    hostname: str
     role: Role
     endpoint: PeerEndpoint
     pairing_endpoint: PeerEndpoint
@@ -56,16 +58,23 @@ class PeerDiscovery:
         self,
         *,
         host_id: str,
+        hostname: str,
         role: Role,
         fingerprint_value: str,
         endpoints: Callable[[str], tuple[PeerEndpoint, PeerEndpoint] | None],
         capabilities: Callable[[], frozenset[str]],
     ) -> None:
-        if not isinstance(host_id, str) or not host_id or not isinstance(role, Role):
+        if (
+            not isinstance(host_id, str)
+            or not host_id
+            or not _hostname(hostname)
+            or not isinstance(role, Role)
+        ):
             raise BrokerError.invalid_request()
         if not fingerprint(fingerprint_value):
             raise BrokerError.invalid_request()
         self._host_id = host_id
+        self._hostname = hostname
         self._role = role
         self._fingerprint = fingerprint_value
         self._endpoints = endpoints
@@ -214,6 +223,7 @@ class PeerDiscovery:
                         "kind": "response",
                         "queryId": query_id,
                         "hostId": self._host_id,
+                        "hostname": self._hostname,
                         "role": self._role.value,
                         "endpoint": endpoint.value,
                         "pairingEndpoint": pairing_endpoint.value,
@@ -362,6 +372,7 @@ def _candidate(
         "kind",
         "queryId",
         "hostId",
+        "hostname",
         "role",
         "endpoint",
         "pairingEndpoint",
@@ -381,6 +392,7 @@ def _candidate(
     ):
         return None
     host_id = value["hostId"]
+    hostname = value["hostname"]
     role = value["role"]
     endpoint = value["endpoint"]
     pairing_endpoint = value["pairingEndpoint"]
@@ -391,6 +403,7 @@ def _candidate(
     if (
         not isinstance(host_id, str)
         or not 1 <= len(host_id) <= 128
+        or not _hostname(hostname)
         or not isinstance(role, str)
         or not isinstance(endpoint, str)
         or not endpoint.isascii()
@@ -421,6 +434,7 @@ def _candidate(
         return None
     return DiscoveryCandidate(
         host_id=host_id,
+        hostname=hostname,
         role=peer_role,
         endpoint=endpoint,
         pairing_endpoint=pairing_endpoint,
@@ -429,6 +443,15 @@ def _candidate(
         protocol_minor=protocol_minor,
         capabilities=frozenset(capabilities),
         pairing_token=pairing_token,
+    )
+
+
+def _hostname(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and len(value.encode("utf-8")) <= MAX_HOSTNAME_BYTES
+        and not any(character.isspace() for character in value)
     )
 
 
