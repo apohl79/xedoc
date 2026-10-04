@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and run a packaged Linux Xedoc managed remote-agent peer.
+# Manage a packaged Linux Xedoc managed remote-agent peer.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,14 +13,20 @@ normal_port=46000
 pairing_port=46001
 discovery_port=43371
 advertise_host=""
+command="start"
+command_set=0
 
 usage() {
   cat <<'EOF'
-Usage: scripts/run_remote_agent_docker.sh [options]
+Usage: scripts/run_remote_agent_docker.sh [start|stop] [options]
 
-Starts a managed Linux peer with workspace `root` mapped to `/`. It does not
-trust a copied coordinator certificate: the printed, one-time enrollment code
-is the only automatic managed-pairing authorization.
+`start` (the default) builds and starts a managed Linux peer with workspace
+`root` mapped to `/`. It does not trust a copied coordinator certificate: the
+printed, one-time enrollment code is the only automatic managed-pairing
+authorization.
+
+`stop` removes the managed-peer container, its harness image, and dangling
+Docker image layers to reclaim Colima disk space.
 
 Options:
   --package PATH             Linux Xedoc package ZIP (default: newest matching dist ZIP).
@@ -35,6 +41,15 @@ Options:
 EOF
 }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+configure_docker() {
+  if [[ -z "${DOCKER_HOST:-}" && -S "$HOME/.colima/default/docker.sock" ]]; then
+    export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+  fi
+  if ! docker info >/dev/null 2>&1 && command -v colima >/dev/null 2>&1; then
+    colima start
+  fi
+  docker info >/dev/null || fail "Docker is unavailable; start Colima with: colima start"
+}
 target_triple() { case "$1" in linux-arm64) echo aarch64-unknown-linux-gnu;; linux-x86_64) echo x86_64-unknown-linux-gnu;; *) fail "unsupported target: $1";; esac; }
 target_platform() { case "$1" in linux-arm64) echo linux/arm64;; linux-x86_64) echo linux/amd64;; *) fail "unsupported target: $1";; esac; }
 default_target() { case "$(docker version --format '{{.Server.Arch}}')" in aarch64|arm64) echo linux-arm64;; x86_64|amd64) echo linux-x86_64;; *) fail "unsupported Docker server architecture";; esac; }
@@ -87,6 +102,11 @@ PY
 
 while (($#)); do
   case "$1" in
+    start|stop)
+      (( command_set == 0 )) || fail "command specified more than once"
+      command="$1"
+      command_set=1
+      shift;;
     --package|--target|--name|--normal-port|--pairing-port|--discovery-port|--advertise-host)
       (($# >= 2)) || fail "$1 requires a value"
       case "$1" in --package) package_zip="$2";; --target) target="$2";; --name) container_name="$2";; --normal-port) normal_port="$2";; --pairing-port) pairing_port="$2";; --discovery-port) discovery_port="$2";; *) advertise_host="$2";; esac
@@ -96,11 +116,33 @@ while (($#)); do
   esac
 done
 [[ "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || fail "invalid container name"
+configure_docker
+image_name="${container_name}:latest"
+if [[ "$command" == stop ]]; then
+  if docker container inspect "$container_name" >/dev/null 2>&1; then
+    label="$(docker container inspect --format "{{ index .Config.Labels \"$container_label\" }}" "$container_name")"
+    [[ "$label" == true ]] || fail "container exists and is not owned by this harness: $container_name"
+    docker rm -f "$container_name" >/dev/null
+    printf 'Removed managed peer container: %s\n' "$container_name"
+  else
+    printf 'Managed peer container is not running: %s\n' "$container_name"
+  fi
+  if docker image inspect "$image_name" >/dev/null 2>&1; then
+    label="$(docker image inspect --format "{{ index .Config.Labels \"$container_label\" }}" "$image_name")"
+    if [[ "$label" == true ]]; then
+      docker image rm -f "$image_name" >/dev/null
+      printf 'Removed harness image: %s\n' "$image_name"
+    else
+      printf 'Preserved image not owned by this harness: %s\n' "$image_name" >&2
+    fi
+  fi
+  docker image prune -f >/dev/null
+  printf 'Pruned dangling Docker image layers.\n'
+  exit 0
+fi
 for port in "$normal_port" "$pairing_port" "$discovery_port"; do valid_port "$port" || fail "invalid port: $port"; done
 [[ -f "$HOME/.xedoc/auth.json" ]] || fail "missing ~/.xedoc/auth.json"
 [[ -d "$HOME/.xedoc/secrets" ]] || fail "missing ~/.xedoc/secrets"
-if [[ -z "${DOCKER_HOST:-}" && -S "$HOME/.colima/default/docker.sock" ]]; then export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"; fi
-docker info >/dev/null || fail "Docker is unavailable; start Colima with: colima start"
 if [[ -z "$advertise_host" ]]; then
   advertise_host="$(outbound_ipv4)" || fail "could not determine a non-loopback outbound IPv4 address; pass --advertise-host"
 fi
@@ -115,8 +157,7 @@ package_zip="$(cd "$(dirname "$package_zip")" && pwd)/$(basename "$package_zip")
 build_context="$(mktemp -d "${TMPDIR:-/tmp}/xedoc-remote-agent-docker.XXXXXX")"
 trap 'rm -rf "$build_context"' EXIT
 cp "$package_zip" "$build_context/package.zip"
-image_name="${container_name}:latest"
-docker build --platform "$platform" --tag "$image_name" --file "$dockerfile" "$build_context"
+docker build --platform "$platform" --label "$container_label=true" --tag "$image_name" --file "$dockerfile" "$build_context"
 if docker container inspect "$container_name" >/dev/null 2>&1; then
   label="$(docker container inspect --format "{{ index .Config.Labels \"$container_label\" }}" "$container_name")"
   [[ "$label" == true ]] || fail "container already exists and is not owned by this harness: $container_name"
@@ -155,5 +196,5 @@ Enrollment code: $code
 Pair from the coordinator:
   xedoc-session remote-agent-enroll --endpoint 127.0.0.1:$discovery_port
 Container shell: docker exec -it $container_name bash
-Stop: docker rm -f $container_name
+Stop and reclaim harness image space: scripts/run_remote_agent_docker.sh stop --name $container_name
 EOF
