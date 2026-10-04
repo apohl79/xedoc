@@ -812,6 +812,9 @@ install_zip_release() {
   rm -rf "$stage_release"
   mkdir -p "$stage_release"
   unzip -q "$archive_path" -d "$stage_release"
+  if [ -d "$stage_release/xedoc-resources/remote-agent/runtime" ]; then
+    chmod -R a-w "$stage_release/xedoc-resources/remote-agent/runtime"
+  fi
 
   [ -f "$stage_release/bin/xedoc" ] || die "Archive is missing bin/xedoc."
   [ -f "$stage_release/bin/xedoc-session" ] || die "Archive is missing bin/xedoc-session."

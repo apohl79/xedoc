@@ -8,6 +8,7 @@ COPY package.zip /tmp/package.zip
 
 RUN mkdir -p /opt/xedoc \
     && unzip -q /tmp/package.zip -d /opt/xedoc \
+    && chmod -R a-w /opt/xedoc/xedoc-resources/remote-agent/runtime \
     && chmod 0755 /opt/xedoc/bin/xedoc /opt/xedoc/bin/xedoc-remote-agentd /opt/xedoc/bin/xedoc-session \
     && ln -s bin/xedoc /opt/xedoc/xedoc
 

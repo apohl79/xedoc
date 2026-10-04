@@ -247,12 +247,13 @@
     },
     {
       "name": "remote_workspaces_list",
-      "description": "List configured workspace IDs on the selected host.",
+      "description": "List workspace IDs approved on a host. Call this before remote_session_start and use one returned workspaceId there. Workspace IDs are opaque identifiers, not filesystem paths; host roots are intentionally not disclosed.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "hostId": {
             "type": "string",
+            "description": "Host ID from remote_hosts_list. Omit to list this host's workspaces.",
             "minLength": 1,
             "maxLength": 128
           }
@@ -322,22 +323,25 @@
     },
     {
       "name": "remote_session_start",
-      "description": "Start a session using the selected host broker.",
+      "description": "Start a session on a host. First call remote_workspaces_list for that host, then pass a returned workspaceId (never a filesystem path). Set relativePath to a path inside that workspace; use an empty string for its root. Absolute paths and '..' are rejected.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "hostId": {
             "type": "string",
+            "description": "Host ID from remote_hosts_list. Omit only to start a session on this host.",
             "minLength": 1,
             "maxLength": 128
           },
           "workspaceId": {
             "type": "string",
+            "description": "Required opaque ID returned by remote_workspaces_list for this host. Do not pass a filesystem path such as /root.",
             "minLength": 1,
             "maxLength": 128
           },
           "relativePath": {
             "type": "string",
+            "description": "Optional directory relative to workspaceId. Use an empty string for the workspace root; do not use an absolute path or '..'.",
             "maxLength": 4096
           }
         },

@@ -310,7 +310,7 @@ tmux new-session -d -s "$relay_session" \
   discovery-relay-client --udp-port "$discovery_port" --tcp-port "$discovery_port"
 sleep 0.1
 tmux has-session -t "$relay_session" 2>/dev/null || fail "could not start the local discovery relay"
-peer_host_id="$(docker exec "$container_name" /opt/xedoc/xedoc-resources/remote-agent/runtime/python/bin/python3 -c 'import sqlite3; print(sqlite3.connect("/root/.xedoc/remote-agent/peer-state.sqlite3").execute("SELECT host_id FROM identity WHERE singleton = 1").fetchone()[0])')"
+peer_host_id="$(docker exec "$container_name" /opt/xedoc/xedoc-resources/remote-agent/runtime/python/bin/python3 -B -c 'import sqlite3; print(sqlite3.connect("/root/.xedoc/remote-agent/peer-state.sqlite3").execute("SELECT host_id FROM identity WHERE singleton = 1").fetchone()[0])')"
 register_local_discovery "$peer_host_id" "$discovery_port"
 code="$(docker exec "$container_name" xedoc-remote-agentd enrollment create | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')"
 cat <<EOF
