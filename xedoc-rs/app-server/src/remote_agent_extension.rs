@@ -11,6 +11,7 @@ use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use xedoc_app_server_protocol::DynamicToolCallParams;
 use xedoc_app_server_protocol::DynamicToolFunctionSpec;
@@ -40,6 +41,9 @@ const REMOTE_TOOL_NAMES: &[&str] = &[
     "remote_hosts_list",
     "remote_hosts_discover",
     "remote_host_pair",
+    "remote_pairing_requests",
+    "remote_pairing_approve",
+    "remote_pairing_reject",
     "remote_host_grants_list",
     "remote_host_grant_set",
     "remote_host_suspend",
@@ -70,12 +74,20 @@ pub(crate) struct BuiltInRemoteAgentExtension {
     session_script_registry: SessionScriptRegistry,
     session_script_host: Arc<Mutex<SessionScriptHost>>,
     binding_capability_path: PathBuf,
-    providers: Arc<Mutex<HashMap<(ThreadId, String), RemoteAgentProvider>>>,
+    state: Arc<Mutex<RemoteAgentState>>,
 }
 
 #[derive(Clone)]
 struct RemoteAgentProvider {
     connection_id: ConnectionId,
+}
+
+#[derive(Default)]
+struct RemoteAgentState {
+    providers: HashMap<(ThreadId, String), RemoteAgentProvider>,
+    pending_threads: HashMap<ThreadId, u64>,
+    launches: HashMap<ThreadId, JoinHandle<()>>,
+    next_launch_generation: u64,
 }
 
 impl BuiltInRemoteAgentExtension {
@@ -95,7 +107,7 @@ impl BuiltInRemoteAgentExtension {
                 .join("remote-agent")
                 .join(REMOTE_AGENT_BINDING_CAPABILITY_NAME)
                 .to_path_buf(),
-            providers: Arc::new(Mutex::new(HashMap::new())),
+            state: Arc::new(Mutex::new(RemoteAgentState::default())),
         }
     }
 
@@ -128,25 +140,60 @@ impl BuiltInRemoteAgentExtension {
         if !self.enabled {
             return Ok(());
         }
-        if self
+        let mut state = self.state.lock().await;
+        if state
             .providers
-            .lock()
-            .await
             .contains_key(&(thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID.to_string()))
         {
             return Ok(());
         }
+        if state.pending_threads.contains_key(&thread_id) {
+            return Ok(());
+        }
+        let extension = self.clone();
+        let launch_generation = state.next_launch_generation;
+        state.next_launch_generation = state.next_launch_generation.wrapping_add(/*rhs*/ 1);
+        let handle = tokio::spawn(async move {
+            extension
+                .launch_and_wait(thread_id, launch_generation)
+                .await;
+        });
+        state.pending_threads.insert(thread_id, launch_generation);
+        state.launches.insert(thread_id, handle);
+        Ok(())
+    }
 
-        let package = installed_remote_agent_package()?;
-        let binding_token = child_binding_token(&self.binding_capability_path, thread_id)?;
-        self.session_script_registry
+    async fn launch_and_wait(&self, thread_id: ThreadId, launch_generation: u64) {
+        let package = match installed_remote_agent_package() {
+            Ok(package) => package,
+            Err(error) => {
+                self.finish_launch(thread_id, launch_generation).await;
+                tracing::warn!(thread_id = %thread_id, %error, "failed to load built-in remote agent");
+                return;
+            }
+        };
+        let binding_token = match child_binding_token(&self.binding_capability_path, thread_id) {
+            Ok(binding_token) => binding_token,
+            Err(error) => {
+                self.finish_launch(thread_id, launch_generation).await;
+                tracing::warn!(thread_id = %thread_id, %error, "failed to prepare built-in remote agent");
+                return;
+            }
+        };
+        if let Err(error) = self
+            .session_script_registry
             .grant_extension(
                 BUILTIN_REMOTE_AGENT_EXTENSION_ID,
                 thread_id,
                 BUILTIN_REMOTE_AGENT_EXTENSION_NAME,
                 &[],
             )
-            .await?;
+            .await
+        {
+            self.finish_launch(thread_id, launch_generation).await;
+            tracing::warn!(thread_id = %thread_id, %error, "failed to grant built-in remote agent");
+            return;
+        }
         if let Err(error) = self
             .session_script_host
             .lock()
@@ -166,9 +213,16 @@ impl BuiltInRemoteAgentExtension {
                 .session_script_registry
                 .revoke_extension(BUILTIN_REMOTE_AGENT_EXTENSION_ID, thread_id)
                 .await;
-            return Err(format!("failed to start built-in remote agent: {error}"));
+            self.finish_launch(thread_id, launch_generation).await;
+            tracing::warn!(thread_id = %thread_id, %error, "failed to start built-in remote agent");
+            return;
         }
 
+        self.wait_for_ready_registration(thread_id, launch_generation)
+            .await;
+    }
+
+    async fn wait_for_ready_registration(&self, thread_id: ThreadId, launch_generation: u64) {
         let deadline = Instant::now() + REMOTE_AGENT_READY_TIMEOUT;
         let (connection_id, _) = loop {
             if let Some(registration) = self
@@ -188,25 +242,33 @@ impl BuiltInRemoteAgentExtension {
                     .await
                     .stop_extension(thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID)
                     .await;
-                return Err(
-                    "built-in remote-agent extension did not complete its broker handshake"
-                        .to_string(),
-                );
+                self.finish_launch(thread_id, launch_generation).await;
+                return;
             }
             tokio::time::sleep(REMOTE_AGENT_READY_POLL).await;
         };
-        self.providers.lock().await.insert(
-            (thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID.to_string()),
-            RemoteAgentProvider { connection_id },
-        );
-        Ok(())
+        let mut state = self.state.lock().await;
+        if state.pending_threads.get(&thread_id) == Some(&launch_generation) {
+            state.pending_threads.remove(&thread_id);
+            state.launches.remove(&thread_id);
+            state.providers.insert(
+                (thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID.to_string()),
+                RemoteAgentProvider { connection_id },
+            );
+        }
     }
 
     pub(crate) async fn stop_thread(&self, thread_id: ThreadId) {
-        self.providers
-            .lock()
-            .await
+        let mut state = self.state.lock().await;
+        state
+            .providers
             .remove(&(thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID.to_string()));
+        state.pending_threads.remove(&thread_id);
+        let launch = state.launches.remove(&thread_id);
+        drop(state);
+        if let Some(launch) = launch {
+            launch.abort();
+        }
         let _ = self
             .session_script_registry
             .revoke_extension(BUILTIN_REMOTE_AGENT_EXTENSION_ID, thread_id)
@@ -216,6 +278,14 @@ impl BuiltInRemoteAgentExtension {
             .await
             .stop_extension(thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID)
             .await;
+    }
+
+    async fn finish_launch(&self, thread_id: ThreadId, launch_generation: u64) {
+        let mut state = self.state.lock().await;
+        if state.pending_threads.get(&thread_id) == Some(&launch_generation) {
+            state.pending_threads.remove(&thread_id);
+            state.launches.remove(&thread_id);
+        }
     }
 
     pub(crate) async fn dispatch(
@@ -239,7 +309,7 @@ impl BuiltInRemoteAgentExtension {
             }
         };
         let provider_key = (thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID.to_string());
-        let provider = self.providers.lock().await.get(&provider_key).cloned();
+        let provider = self.wait_for_provider(&provider_key).await;
         let Some(provider) = provider else {
             submit_unavailable_response(
                 params.call_id,
@@ -320,13 +390,32 @@ impl BuiltInRemoteAgentExtension {
         true
     }
 
+    async fn wait_for_provider(
+        &self,
+        provider_key: &(ThreadId, String),
+    ) -> Option<RemoteAgentProvider> {
+        let deadline = Instant::now() + REMOTE_AGENT_READY_TIMEOUT;
+        loop {
+            let state = self.state.lock().await;
+            if let Some(provider) = state.providers.get(provider_key).cloned() {
+                return Some(provider);
+            }
+            if !state.pending_threads.contains_key(&provider_key.0) || Instant::now() >= deadline {
+                return None;
+            }
+            drop(state);
+            tokio::time::sleep(REMOTE_AGENT_READY_POLL).await;
+        }
+    }
+
     async fn invalidate_provider(&self, key: &(ThreadId, String), connection_id: ConnectionId) {
-        let mut providers = self.providers.lock().await;
-        if providers
+        let mut state = self.state.lock().await;
+        if state
+            .providers
             .get(key)
             .is_some_and(|provider| provider.connection_id == connection_id)
         {
-            providers.remove(key);
+            state.providers.remove(key);
         }
     }
 }

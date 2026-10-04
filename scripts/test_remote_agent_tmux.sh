@@ -78,6 +78,7 @@ target_controller_pid=""
 package_root=""
 package_xedoc=""
 package_agent=""
+package_session=""
 
 capture_diagnostics() {
   printf '\n--- remote-agent E2E artifacts: %s ---\n' "$artifacts" >&2
@@ -555,6 +556,7 @@ PY
       "$python_bin" "$repo_root/scripts/build_xedoc_package.py"
       --package-dir "$package_root"
       --force
+      --include-session-control
       --entrypoint-bin "$xedoc_bin"
       --rg-bin "${XEDOC_REMOTE_AGENT_E2E_RG_BIN:-$(command -v rg)}"
       --remote-agent-runtime-dir "$runtime_dir"
@@ -569,8 +571,10 @@ PY
   fi
   package_xedoc="$package_root/bin/xedoc"
   package_agent="$package_root/bin/xedoc-remote-agentd"
+  package_session="$package_root/bin/xedoc-session"
   [[ -x "$package_xedoc" ]] || fail "missing packaged xedoc binary: $package_xedoc"
   [[ -x "$package_agent" ]] || fail "missing packaged remote-agent daemon: $package_agent"
+  [[ -x "$package_session" ]] || fail "missing packaged xedoc-session: $package_session"
   [[ -f "$package_root/xedoc-resources/remote-agent/remote-agent.pyz" ]] ||
     fail "package does not contain the remote-agent payload"
 }

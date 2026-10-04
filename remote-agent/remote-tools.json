@@ -31,7 +31,7 @@
     },
     {
       "name": "remote_host_pair",
-      "description": "Pair a host using the local broker.",
+      "description": "Pair a discovered host using the local broker. Managed hosts must first be enrolled locally with xedoc-session remote-agent-enroll; coordinator hosts require approval on the target.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -62,6 +62,52 @@
       }
     },
     {
+      "name": "remote_pairing_requests",
+      "description": "List incoming coordinator pairing requests awaiting local approval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_pairing_approve",
+      "description": "Approve an incoming coordinator pairing request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_pairing_reject",
+      "description": "Reject an incoming coordinator pairing request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "remote_host_grants_list",
       "description": "List grants for a host using the local broker.",
       "inputSchema": {
@@ -81,7 +127,7 @@
     },
     {
       "name": "remote_host_grant_set",
-      "description": "Set a host grant using the local broker.",
+      "description": "Set a host grant using the local broker. sessionWrite and cancellation grants require an expiry.",
       "inputSchema": {
         "type": "object",
         "properties": {

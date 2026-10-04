@@ -414,12 +414,38 @@ class LocalIpcServer:
             result = self._peer().hosts_list()
         elif method == "host/discover":
             _require_absent_lease(extension_lease)
-            _exact_fields(params, {"timeoutSeconds"})
+            _exact_fields(params, {"timeoutSeconds", "endpoints"})
             result = self._peer().discover(params)
         elif method == "host/pair":
             _require_absent_lease(extension_lease)
             _exact_fields(params, {"hostId", "role", "fingerprint"}, {"hostId", "role"})
             result = self._peer().pair(params)
+        elif method == "enrollment/create":
+            _require_absent_lease(extension_lease)
+            _exact_fields(params, set())
+            result = self._peer().enrollment_create(params)
+        elif method == "enrollment/remember":
+            _require_absent_lease(extension_lease)
+            _exact_fields(
+                params,
+                {"hostId", "fingerprint", "code"},
+                {"hostId", "fingerprint", "code"},
+            )
+            result = self._peer().enrollment_remember(params)
+        elif method == "pairing/list":
+            _require_absent_lease(extension_lease)
+            _exact_fields(params, set())
+            result = self._peer().pairing_requests(params)
+        elif method in {"pairing/approve", "pairing/reject"}:
+            _require_absent_lease(extension_lease)
+            _exact_fields(params, {"hostId"}, {"hostId"})
+            handler = getattr(
+                self._peer(),
+                "pairing_approve"
+                if method == "pairing/approve"
+                else "pairing_reject",
+            )
+            result = handler(params)
         elif method == "host/grants/list":
             _require_absent_lease(extension_lease)
             _exact_fields(params, {"hostId"}, {"hostId"})

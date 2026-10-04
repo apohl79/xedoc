@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+import getpass
 import json
 import os
 from pathlib import Path
@@ -101,6 +102,174 @@ def run_daemon_command(experimental: bool, action: str) -> None:
         raise AppServerError(f"could not {action} the managed app-server") from error
     if result.returncode != 0:
         raise AppServerError(f"could not {action} the managed app-server")
+
+
+def remote_agent_pairing_command(
+    action: str, peer_host_id: str | None = None
+) -> dict[str, object]:
+    binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
+    if not binary.is_file():
+        raise AppServerError("cannot find xedoc-remote-agentd beside the Xedoc binary")
+    command = [str(binary), "pairings", action]
+    if peer_host_id is not None:
+        command.extend(("--peer-host-id", peer_host_id))
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AppServerError("could not contact the local remote-agent broker") from error
+    try:
+        response = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise AppServerError("remote-agent broker returned an invalid response") from error
+    if result.returncode != 0 or not isinstance(response, dict):
+        raise AppServerError("remote-agent pairing command failed")
+    return cast(dict[str, object], response)
+
+
+def remote_agent_pairings(args: argparse.Namespace) -> dict[str, object]:
+    if args.approve is not None:
+        return remote_agent_pairing_command("approve", args.approve)
+    if args.reject is not None:
+        return remote_agent_pairing_command("reject", args.reject)
+    requests = remote_agent_pairing_command("list")
+    data = as_object_list(requests.get("data", []), "pairing request")
+    if not data:
+        return requests
+    if not sys.stdin.isatty():
+        raise AppServerError(
+            "pending pairings require an interactive terminal; pass --approve or --reject"
+        )
+    choices: list[tuple[str, str]] = []
+    for request in data:
+        host_id = request.get("hostId")
+        role = request.get("role")
+        endpoint = request.get("endpoint")
+        if not isinstance(host_id, str) or not isinstance(role, str) or not isinstance(
+            endpoint, str
+        ):
+            raise AppServerError("remote-agent broker returned an invalid pairing request")
+        choices.append((host_id, f"{host_id} — {role} at {endpoint}"))
+    peer_host_id = prompt_choice(
+        "Incoming pairing requests (use ↑/↓ and Enter):", choices
+    )
+    decision = prompt_choice(
+        "Pairing decision (use ↑/↓ and Enter):",
+        [("approve", "Approve"), ("reject", "Reject")],
+    )
+    return remote_agent_pairing_command(decision, peer_host_id)
+
+
+def remote_agent_enrollment_command(
+    action: str,
+    *,
+    peer_host_id: str | None = None,
+    fingerprint: str | None = None,
+    code: str | None = None,
+    endpoints: list[str] | None = None,
+) -> dict[str, object]:
+    binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
+    if not binary.is_file():
+        raise AppServerError("cannot find xedoc-remote-agentd beside the Xedoc binary")
+    command = [str(binary), "enrollment", action]
+    if peer_host_id is not None:
+        command.extend(("--peer-host-id", peer_host_id))
+    if fingerprint is not None:
+        command.extend(("--fingerprint", fingerprint))
+    if action == "discover" and endpoints:
+        for endpoint in endpoints:
+            command.extend(("--endpoint", endpoint))
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            input=f"{code}\n" if code is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=40,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AppServerError("could not contact the local remote-agent broker") from error
+    try:
+        response = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise AppServerError("remote-agent enrollment command returned an invalid response") from error
+    if result.returncode != 0 or not isinstance(response, dict):
+        raise AppServerError("remote-agent enrollment command failed")
+    return cast(dict[str, object], response)
+
+
+def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
+    discovered = remote_agent_enrollment_command("discover", endpoints=args.endpoint)
+    candidates = as_object_list(discovered.get("data", []), "discovered host")
+    managed = [
+        candidate
+        for candidate in candidates
+        if candidate.get("role") == "managed"
+        and candidate.get("status") != "paired"
+        and isinstance(candidate.get("hostId"), str)
+        and isinstance(candidate.get("fingerprint"), str)
+    ]
+    if not managed:
+        raise AppServerError("no unpaired managed hosts were discovered")
+    if args.host_id is None:
+        if not sys.stdin.isatty():
+            raise AppServerError(
+                "managed-host enrollment requires an interactive terminal; "
+                "pass --host-id and --fingerprint"
+            )
+        choices = [
+            (
+                cast(str, candidate["hostId"]),
+                f"{candidate['hostId']} — {candidate['endpoint']}",
+            )
+            for candidate in managed
+        ]
+        host_id = prompt_choice(
+            "Managed host to enroll (use ↑/↓ and Enter):", choices
+        )
+        candidate = next(
+            candidate for candidate in managed if candidate["hostId"] == host_id
+        )
+        fingerprint = cast(str, candidate["fingerprint"])
+    else:
+        host_id = args.host_id
+        fingerprint = args.fingerprint
+        if fingerprint is None:
+            raise AppServerError("--fingerprint is required with --host-id")
+        if not any(
+            candidate["hostId"] == host_id and candidate["fingerprint"] == fingerprint
+            for candidate in managed
+        ):
+            raise AppServerError(
+                f"managed host {host_id!r} was not discovered with the requested "
+                "fingerprint"
+            )
+    try:
+        code = getpass.getpass("Managed-host enrollment code: ").strip()
+    except (EOFError, KeyboardInterrupt) as error:
+        raise AppServerError("managed-host enrollment was cancelled") from error
+    if not code:
+        raise AppServerError("managed-host enrollment code is required")
+    remembered = remote_agent_enrollment_command(
+        "remember",
+        peer_host_id=host_id,
+        fingerprint=fingerprint,
+        code=code,
+    )
+    pairing = remote_agent_enrollment_command(
+        "pair",
+        peer_host_id=host_id,
+        fingerprint=fingerprint,
+    )
+    return {"enrollment": remembered, "pairing": pairing}
 
 
 def write_remote_agent_bootstrap(socket_path: Path, experimental: bool) -> None:
@@ -411,18 +580,6 @@ def canonical_workspace_root(value: str) -> Path:
     return root
 
 
-def canonical_certificate_path(value: str) -> Path:
-    try:
-        path = Path(value).expanduser().resolve(strict=True)
-    except (OSError, RuntimeError, ValueError) as error:
-        raise AppServerError(
-            "coordinator certificate must exist and resolve to a canonical path"
-        ) from error
-    if not path.is_file() or not os.access(path, os.R_OK):
-        raise AppServerError(f"coordinator certificate is not readable: {path}")
-    return path
-
-
 def prompt_role() -> str:
     return prompt_choice(
         "Remote-agent role (use ↑/↓ and Enter):",
@@ -468,28 +625,6 @@ def prompt_workspaces() -> dict[str, str]:
             return workspaces
 
 
-def prompt_managed_certificates() -> list[str]:
-    certificates: list[str] = []
-    paths: set[Path] = set()
-    while True:
-        try:
-            certificate = canonical_certificate_path(
-                prompt_value("Coordinator eligibility certificate path: ")
-            )
-        except AppServerError as error:
-            print(error, file=sys.stderr)
-            continue
-        if certificate in paths:
-            print("Certificate path is already configured.", file=sys.stderr)
-            continue
-        certificates.append(str(certificate))
-        paths.add(certificate)
-        if len(certificates) >= 128 or not prompt_yes_no(
-            "Add another coordinator certificate"
-        ):
-            return certificates
-
-
 def configure_remote_agent(
     client: AppServerClient, reconfigure: bool
 ) -> dict[str, object]:
@@ -509,12 +644,16 @@ def configure_remote_agent(
 
     role = prompt_role()
     workspaces = prompt_workspaces()
-    certificates = prompt_managed_certificates() if role == "managed" else []
+    if role == "managed":
+        print(
+            "Managed hosts auto-accept only coordinators that present the "
+            "one-time enrollment code issued after setup. Pairing alone grants "
+            "no workspace or session access; the coordinator must add explicit grants."
+        )
     value: dict[str, object] = {
         "role": role,
         "workspaces": workspaces,
         "limits": REMOTE_AGENT_DEFAULT_LIMITS,
-        "managed_coordinator_certificate_paths": certificates,
     }
     client.request(
         "config/value/write",
@@ -528,7 +667,11 @@ def configure_remote_agent(
         "status": "configured",
         "role": role,
         "workspaceCount": len(workspaces),
-        "certificateCount": len(certificates),
+        "pairingMode": (
+            "automaticWithEnrollmentCode"
+            if role == "managed"
+            else "approvalRequired"
+        ),
     }
 
 
@@ -549,7 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--timeout",
         type=float,
-        default=10.0,
+        default=30.0,
         help="Socket timeout in seconds.",
     )
     parser.add_argument(
@@ -594,6 +737,40 @@ def build_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         help="Use the experimental managed app-server target.",
     )
+    pairings_parser = subparsers.add_parser(
+        "remote-agent-pairings",
+        help="Review incoming coordinator pairing requests.",
+    )
+    pairings_decision = pairings_parser.add_mutually_exclusive_group()
+    pairings_decision.add_argument(
+        "--approve",
+        metavar="HOST_ID",
+        help="Approve one incoming pairing request.",
+    )
+    pairings_decision.add_argument(
+        "--reject",
+        metavar="HOST_ID",
+        help="Reject one incoming pairing request.",
+    )
+    enroll_parser = subparsers.add_parser(
+        "remote-agent-enroll",
+        help="Enroll and pair one discovered managed host.",
+    )
+    enroll_parser.add_argument(
+        "--host-id",
+        help="Managed host ID; omit to select with arrow keys.",
+    )
+    enroll_parser.add_argument(
+        "--fingerprint",
+        help="Managed host fingerprint; required with --host-id.",
+    )
+    enroll_parser.add_argument(
+        "--endpoint",
+        action="append",
+        default=[],
+        metavar="HOST:UDPPORT",
+        help="Direct discovery destination; repeatable.",
+    )
     return parser
 
 
@@ -609,10 +786,20 @@ def configure_remote_agent_with_lifecycle(
             result = configure_remote_agent(client, args.reconfigure)
     write_remote_agent_bootstrap(args.socket, args.experimental)
     run_daemon_command(args.experimental, "restart")
+    if result.get("role") == "managed":
+        print(
+            "Copy this fresh one-time enrollment code to a coordinator, then run "
+            "`xedoc-session remote-agent-enroll` there to pair this host."
+        )
+        result["enrollment"] = remote_agent_enrollment_command("create")
     return result
 
 
 def run(args: argparse.Namespace) -> list[dict[str, object]] | dict[str, object]:
+    if args.command == "remote-agent-pairings":
+        return remote_agent_pairings(args)
+    if args.command == "remote-agent-enroll":
+        return remote_agent_enroll(args)
     if args.command == "remote-agent-configure" and args.uses_default_socket:
         return configure_remote_agent_with_lifecycle(args)
     with AppServerClient(args.socket, args.timeout, args.client_name) as client:

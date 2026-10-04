@@ -33,7 +33,7 @@ class _ControllerConnection:
         cls,
         *,
         xedoc_home: str | Path | None = None,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         client_factory: Callable[[Path, float], Any] | None = None,
         version: str | None = None,
     ) -> tuple["_ControllerConnection", BrokerConfig]:
@@ -198,7 +198,7 @@ class BrokerController:
         cls,
         *,
         xedoc_home: str | Path | None = None,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         client_factory: Callable[[Path, float], Any] | None = None,
         version: str | None = None,
         host_id: str = "host_local",

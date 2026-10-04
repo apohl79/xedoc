@@ -41,11 +41,13 @@ class PeerServer:
         *,
         max_request_bytes: int,
         max_response_bytes: int,
+        bootstrap: bool = False,
     ) -> None:
         self._service = service
         self._endpoint = endpoint
         self._max_request_bytes = frame_limit(max_request_bytes)
         self._max_response_bytes = frame_limit(max_response_bytes)
+        self._bootstrap = bootstrap
         self._listener: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stopping = threading.Event()
@@ -65,15 +67,16 @@ class PeerServer:
     def start(self) -> None:
         if self._listener is not None:
             raise BrokerError.conflict()
-        context = self._service.server_tls_context()
         listener = _create_listener(self._endpoint)
         listener.listen(MAX_PEER_CLIENTS)
         listener.settimeout(0.2)
+        self._endpoint = PeerEndpoint(
+            host=self._endpoint.host, port=int(listener.getsockname()[1])
+        )
         self._listener = listener
         self._stopping.clear()
         self._thread = threading.Thread(
             target=self._serve,
-            args=(context,),
             name="xedoc-remote-agent-peer",
             daemon=True,
         )
@@ -105,7 +108,7 @@ class PeerServer:
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=1.0)
 
-    def _serve(self, context: ssl.SSLContext) -> None:
+    def _serve(self) -> None:
         while not self._stopping.is_set():
             listener = self._listener
             if listener is None:
@@ -123,7 +126,7 @@ class PeerServer:
                 continue
             worker = threading.Thread(
                 target=self._handle_connection,
-                args=(context, connection),
+                args=(connection,),
                 name="xedoc-remote-agent-peer-client",
                 daemon=True,
             )
@@ -132,19 +135,25 @@ class PeerServer:
                 self._connections.add(connection)
             worker.start()
 
-    def _handle_connection(
-        self, context: ssl.SSLContext, connection: socket.socket
-    ) -> None:
+    def _handle_connection(self, connection: socket.socket) -> None:
         tls_connection: ssl.SSLSocket | None = None
         try:
             connection.settimeout(PEER_IO_TIMEOUT_SECONDS)
+            context = (
+                self._service.bootstrap_tls_context()
+                if self._bootstrap
+                else self._service.server_tls_context()
+            )
             tls_connection = context.wrap_socket(connection, server_side=True)
-            peer_der = tls_connection.getpeercert(binary_form=True)
-            if not isinstance(peer_der, bytes):
-                raise BrokerError.unauthorized()
-            certificate = certificate_from_der(peer_der)
             request = read_frame(tls_connection, self._max_request_bytes)
-            response = self._service.handle_peer_request(request, certificate)
+            if self._bootstrap:
+                response = self._service.handle_bootstrap_pairing_request(request)
+            else:
+                peer_der = tls_connection.getpeercert(binary_form=True)
+                if not isinstance(peer_der, bytes):
+                    raise BrokerError.unauthorized()
+                certificate = certificate_from_der(peer_der)
+                response = self._service.handle_peer_request(request, certificate)
             write_frame(tls_connection, response, self._max_response_bytes)
         except (BrokerError, OSError, ssl.SSLError, TimeoutError):
             if tls_connection is not None:
@@ -222,6 +231,69 @@ class PeerClient:
             timeout_seconds=timeout_seconds,
         )
 
+    def bootstrap_pairing(
+        self,
+        endpoint: PeerEndpoint,
+        *,
+        host_id: str,
+        fingerprint: str,
+        role: Role,
+        payload: Mapping[str, Any],
+        timeout_seconds: float,
+    ) -> tuple[Mapping[str, Any], CertificateMaterial]:
+        """Send one pairing request after pinning a discovered server identity."""
+
+        if (
+            not isinstance(endpoint, PeerEndpoint)
+            or not isinstance(host_id, str)
+            or not host_id
+            or not isinstance(fingerprint, str)
+            or not isinstance(role, Role)
+            or not isinstance(payload, Mapping)
+        ):
+            raise BrokerError.invalid_request()
+        request_timeout = timeout(timeout_seconds)
+        request_id = f"req_{secrets.token_urlsafe(18)}"
+        request = signed_request(
+            self._identity,
+            self._role,
+            request_id=request_id,
+            kind="pairing",
+            value={"payload": dict(payload)},
+            timeout_seconds=request_timeout,
+        )
+        context = bootstrap_client_tls_context()
+        try:
+            with socket.create_connection(
+                (endpoint.host, endpoint.port),
+                timeout=request_timeout,
+            ) as raw_connection:
+                raw_connection.settimeout(request_timeout)
+                with context.wrap_socket(
+                    raw_connection,
+                    server_hostname=endpoint.host,
+                ) as connection:
+                    certificate = certificate_from_der(
+                        connection.getpeercert(binary_form=True)
+                    )
+                    if (
+                        not secrets.compare_digest(certificate.host_id, host_id)
+                        or not secrets.compare_digest(
+                            certificate.fingerprint, fingerprint
+                        )
+                    ):
+                        raise BrokerError.unauthorized()
+                    write_frame(connection, request, self._max_request_bytes)
+                    response = read_frame(connection, self._max_response_bytes)
+        except BrokerError:
+            raise
+        except (OSError, ssl.SSLError, TimeoutError) as error:
+            raise BrokerError.unavailable() from error
+        return (
+            parse_response(response, request_id, certificate, expected_role=role),
+            certificate,
+        )
+
     def _exchange(
         self,
         peer: PeerTarget,
@@ -296,6 +368,21 @@ def server_tls_context(
     return context
 
 
+def bootstrap_server_tls_context(state: PeerState) -> ssl.SSLContext:
+    """Build the server-authenticated TLS context for pairing only."""
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.load_cert_chain(
+        certfile=str(state.certificate_path),
+        keyfile=str(state.key_path),
+    )
+    context.verify_mode = ssl.CERT_NONE
+    context.check_hostname = False
+    return context
+
+
 def client_tls_context(
     state: PeerState,
     certificate: CertificateMaterial,
@@ -315,6 +402,17 @@ def client_tls_context(
         certfile=str(state.certificate_path),
         keyfile=str(state.key_path),
     )
+    return context
+
+
+def bootstrap_client_tls_context() -> ssl.SSLContext:
+    """Build an unverified client context before explicit identity pinning."""
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
     return context
 
 

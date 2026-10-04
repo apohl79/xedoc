@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import ipaddress
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 from .errors import BrokerError
 
@@ -107,14 +109,20 @@ class PeerListenerConfig:
     """A locally configured TLS listener endpoint for broker peers."""
 
     endpoint: str
+    pairing_endpoint: str | None = None
+    advertised_endpoint: str | None = None
+    advertised_pairing_endpoint: str | None = None
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.endpoint, str)
-            or not self.endpoint
-            or len(self.endpoint.encode("utf-8")) > 2048
-        ):
+        _validate_peer_endpoint(self.endpoint)
+        if self.pairing_endpoint is not None:
+            _validate_peer_endpoint(self.pairing_endpoint)
+        advertised = (self.advertised_endpoint, self.advertised_pairing_endpoint)
+        if (advertised[0] is None) != (advertised[1] is None):
             raise BrokerError.invalid_request()
+        for value in advertised:
+            if value is not None:
+                _validate_advertised_peer_endpoint(value)
 
 
 @dataclass(frozen=True)
@@ -128,11 +136,11 @@ class StaticPeerConfig:
         if (
             not isinstance(self.endpoint, str)
             or not self.endpoint
-            or len(self.endpoint.encode("utf-8")) > 2048
             or not isinstance(self.certificate_path, Path)
             or not self.certificate_path.is_absolute()
         ):
             raise BrokerError.invalid_request()
+        _validate_peer_endpoint(self.endpoint)
 
 
 @dataclass(frozen=True)
@@ -155,9 +163,6 @@ class BrokerConfig:
             self.managed_coordinator_certificate_paths
         ) > 128:
             raise BrokerError.invalid_request()
-        if self.role is Role.MANAGED and not self.managed_coordinator_certificate_paths:
-            raise BrokerError.invalid_request()
-
     @property
     def workspace_map(self) -> dict[str, Workspace]:
         return {workspace.workspace_id: workspace for workspace in self.workspaces}
@@ -333,9 +338,77 @@ def _peer_listener(value: Mapping[str, Any]) -> PeerListenerConfig | None:
     raw = value.get("peer_listener", value.get("peerListener"))
     if raw is None:
         return None
-    if not isinstance(raw, Mapping) or set(raw) != {"endpoint"}:
+    if not isinstance(raw, Mapping):
         raise BrokerError.invalid_request()
-    return PeerListenerConfig(raw["endpoint"])
+    aliases = {
+        "pairing_endpoint": "pairingEndpoint",
+        "advertised_endpoint": "advertisedEndpoint",
+        "advertised_pairing_endpoint": "advertisedPairingEndpoint",
+    }
+    allowed = {"endpoint", *aliases, *aliases.values()}
+    if set(raw) - allowed or "endpoint" not in raw:
+        raise BrokerError.invalid_request()
+    values: dict[str, Any] = {"endpoint": raw["endpoint"]}
+    for snake, camel in aliases.items():
+        if snake in raw and camel in raw:
+            raise BrokerError.invalid_request()
+        values[snake] = raw.get(snake, raw.get(camel))
+    return PeerListenerConfig(**values)
+
+
+def _validate_peer_endpoint(value: object) -> None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value.encode("utf-8")) > 2048
+        or any(not 0x21 <= ord(character) <= 0x7E for character in value)
+    ):
+        raise BrokerError.invalid_request()
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise BrokerError.invalid_request() from error
+    if port is not None:
+        port_text = parsed.netloc.rsplit(":", 1)[-1]
+        if not port_text or port_text[0] not in "123456789" or not port_text.isdigit():
+            raise BrokerError.invalid_request()
+    if (
+        parsed.scheme != "tls"
+        or not parsed.hostname
+        or port is None
+        or not 1 <= port <= 65535
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise BrokerError.invalid_request()
+    if parsed.netloc.startswith("["):
+        try:
+            address = ipaddress.IPv6Address(parsed.hostname)
+        except ValueError as error:
+            raise BrokerError.invalid_request() from error
+        if address.scope_id is not None:
+            raise BrokerError.invalid_request()
+
+
+def _validate_advertised_peer_endpoint(value: object) -> None:
+    _validate_peer_endpoint(value)
+    if not isinstance(value, str):
+        raise BrokerError.invalid_request()
+    hostname = urlsplit(value).hostname
+    if hostname is None:
+        raise BrokerError.invalid_request()
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        if "*" in hostname:
+            raise BrokerError.invalid_request()
+        return
+    if address.is_unspecified or address.is_loopback:
+        raise BrokerError.invalid_request()
 
 
 def _static_peers(value: Mapping[str, Any]) -> tuple[StaticPeerConfig, ...]:

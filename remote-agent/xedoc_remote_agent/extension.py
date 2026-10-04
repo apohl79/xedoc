@@ -21,11 +21,15 @@ _MAX_RESULT_BYTES = 256 * 1024
 _MAX_IDENTIFIER_LENGTH = 128
 _MAX_WAIT_SECONDS = 3_600
 _WAIT_TIMEOUT_BUFFER_SECONDS = 5.0
+_SESSION_START_TIMEOUT_SECONDS = 30.0
 _REMOTE_NAMESPACE = "remote"
 _LOCAL_METHODS = {
     "hosts_list": "host/list",
     "hosts_discover": "host/discover",
     "host_pair": "host/pair",
+    "pairing_requests": "pairing/list",
+    "pairing_approve": "pairing/approve",
+    "pairing_reject": "pairing/reject",
     "host_grants_list": "host/grants/list",
     "host_grant_set": "host/grants/set",
     "host_suspend": "host/suspend",
@@ -209,6 +213,8 @@ def _tool_name(namespace: Any, tool: Any) -> str:
 
 
 def _broker_timeout(tool: str, arguments: Mapping[str, Any]) -> float | None:
+    if tool == "session_start":
+        return _SESSION_START_TIMEOUT_SECONDS
     if tool not in {"hosts_discover", "session_wait"}:
         return None
     timeout = arguments.get("timeoutSeconds")

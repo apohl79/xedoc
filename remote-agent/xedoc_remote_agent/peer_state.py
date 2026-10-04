@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path
 import secrets
@@ -35,14 +36,18 @@ MAX_ENDPOINT_BYTES = 2 * 1024
 MAX_AUDIT_ROWS = 10_000
 MAX_AUDIT_EXPORT_ROWS = 1_000
 PROTOCOL_VERSION = 1
-STATE_VERSION = "2"
+STATE_VERSION = "3"
 _STATE_VERSION_KEY = "state_version"
 _AUDIT_RETENTION_DAYS_KEY = "audit_retention_days"
-_LEGACY_STATE_VERSIONS = {None, "1"}
+_LEGACY_STATE_VERSIONS = {None, "1", "2"}
 _RELATIONSHIP_STATES = {"pending", "paired", "suspended", "revoked"}
+_PAIRING_DIRECTIONS = {"inbound", "outbound"}
 _READ_SCOPES = {"discovery", "workspaceRead", "sessionRead"}
 _WRITE_SCOPES = {"sessionWrite", "cancellation"}
 _GRANT_SCOPES = _READ_SCOPES | _WRITE_SCOPES
+_ENROLLMENT_CODE_TTL_SECONDS = 7 * 86_400
+_MAX_ENROLLMENT_CODES = 128
+_MAX_PENDING_PAIRINGS = 128
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,16 @@ class Relationship:
             "protocolVersion": self.protocol_version,
             "grantRevision": self.grant_revision,
         }
+
+
+@dataclass(frozen=True)
+class PendingPairing:
+    """A bounded pending pairing whose direction controls local approval."""
+
+    peer_host_id: str
+    direction: str
+    pairing_id: str
+    expires_at: int
 
 
 @dataclass(frozen=True)
@@ -241,6 +256,9 @@ class PeerState:
                 for relationship in relationships:
                     _record_credential_tombstone(connection, relationship)
                 connection.execute("DELETE FROM grants")
+                connection.execute("DELETE FROM pending_pairings")
+                connection.execute("DELETE FROM managed_enrollment_codes")
+                connection.execute("DELETE FROM outbound_enrollment_codes")
                 connection.execute(
                     """
                     UPDATE relationships
@@ -268,8 +286,195 @@ class PeerState:
             )
             self._prune_audit(connection)
 
+    def create_managed_enrollment_code(self) -> tuple[str, int]:
+        """Create one owner-provisioned, single-use managed-peer credential."""
+
+        code = secrets.token_urlsafe(32)
+        expires_at = _now() + _ENROLLMENT_CODE_TTL_SECONDS
+        code_hash = _enrollment_code_hash(code)
+        with self._lock, self._transaction() as connection:
+            self._prune_enrollment_codes(connection)
+            count = connection.execute(
+                "SELECT COUNT(*) FROM managed_enrollment_codes"
+            ).fetchone()
+            if (
+                count is None
+                or len(count) != 1
+                or not isinstance(count[0], int)
+                or count[0] < 0
+            ):
+                raise BrokerError.internal()
+            if count[0] >= _MAX_ENROLLMENT_CODES:
+                raise BrokerError.limit_exceeded()
+            connection.execute(
+                """
+                INSERT INTO managed_enrollment_codes (
+                    code_hash, expires_at, created_at
+                ) VALUES (?, ?, ?)
+                """,
+                (code_hash, expires_at, _now()),
+            )
+            self._audit(
+                connection,
+                actor_host_id=None,
+                peer_host_id=None,
+                action="enrollment.created",
+                scope=None,
+                result="ok",
+                reason=None,
+            )
+            self._prune_audit(connection)
+        return code, expires_at
+
+    def remember_managed_enrollment_code(
+        self,
+        *,
+        peer_host_id: str,
+        fingerprint: str,
+        code: str,
+    ) -> None:
+        """Persist one local pairing credential until the target accepts it."""
+
+        validate_host_id(peer_host_id)
+        _validate_enrollment_code(code)
+        if not _is_fingerprint(fingerprint):
+            raise BrokerError.invalid_request()
+        expires_at = _now() + _ENROLLMENT_CODE_TTL_SECONDS
+        with self._lock, self._transaction() as connection:
+            self._prune_enrollment_codes(connection)
+            connection.execute(
+                """
+                INSERT INTO outbound_enrollment_codes (
+                    peer_host_id, fingerprint, code, expires_at, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(peer_host_id) DO UPDATE SET
+                    fingerprint = excluded.fingerprint,
+                    code = excluded.code,
+                    expires_at = excluded.expires_at,
+                    created_at = excluded.created_at
+                """,
+                (peer_host_id, fingerprint, code, expires_at, _now()),
+            )
+            self._audit(
+                connection,
+                actor_host_id=None,
+                peer_host_id=peer_host_id,
+                action="enrollment.remembered",
+                scope=None,
+                result="ok",
+                reason=None,
+            )
+            self._prune_audit(connection)
+
+    def managed_enrollment_code(
+        self, *, peer_host_id: str, fingerprint: str
+    ) -> str | None:
+        """Return a still-valid local credential for one discovered managed peer."""
+
+        validate_host_id(peer_host_id)
+        if not _is_fingerprint(fingerprint):
+            raise BrokerError.invalid_request()
+        with self._lock, self._transaction() as connection:
+            self._prune_enrollment_codes(connection)
+            row = connection.execute(
+                """
+                SELECT code FROM outbound_enrollment_codes
+                WHERE peer_host_id = ? AND fingerprint = ?
+                """,
+                (peer_host_id, fingerprint),
+            ).fetchone()
+        if row is None:
+            return None
+        if len(row) != 1 or not isinstance(row[0], str):
+            raise BrokerError.internal()
+        _validate_enrollment_code(row[0])
+        return row[0]
+
+    def accept_managed_pair_with_enrollment(
+        self,
+        *,
+        peer_host_id: str,
+        peer_role: Role,
+        certificate: CertificateMaterial,
+        endpoint: str,
+        code: str,
+    ) -> Relationship:
+        """Atomically consume one managed enrollment code and bind its peer key."""
+
+        _validate_relationship_input(peer_host_id, peer_role, certificate, endpoint)
+        with self._lock, self._transaction() as connection:
+            self._prune_enrollment_codes(connection)
+            existing = _select_relationship(connection, peer_host_id)
+            if (
+                existing is not None
+                and existing.status == "paired"
+                and existing.peer_role is Role.COORDINATOR
+                and peer_role is Role.COORDINATOR
+                and secrets.compare_digest(
+                    existing.certificate.fingerprint, certificate.fingerprint
+                )
+            ):
+                return existing
+            _validate_enrollment_code(code)
+            code_hash = _enrollment_code_hash(code)
+            row = connection.execute(
+                """
+                SELECT code_hash FROM managed_enrollment_codes
+                WHERE code_hash = ?
+                """,
+                (code_hash,),
+            ).fetchone()
+            if (
+                row is None
+                or len(row) != 1
+                or not isinstance(row[0], str)
+                or not secrets.compare_digest(row[0], code_hash)
+            ):
+                raise BrokerError.unauthorized()
+            relationship = self._accept_pair(
+                connection,
+                peer_host_id=peer_host_id,
+                peer_role=peer_role,
+                certificate=certificate,
+                endpoint=endpoint,
+                require_pending=False,
+            )
+            connection.execute(
+                "DELETE FROM managed_enrollment_codes WHERE code_hash = ?",
+                (code_hash,),
+            )
+            self._audit(
+                connection,
+                actor_host_id=peer_host_id,
+                peer_host_id=peer_host_id,
+                action="enrollment.consumed",
+                scope=None,
+                result="ok",
+                reason=None,
+            )
+            self._prune_audit(connection)
+            return relationship
+
+    def forget_managed_enrollment_code(
+        self, *, peer_host_id: str, fingerprint: str
+    ) -> None:
+        """Delete a local credential after the corresponding pairing succeeds."""
+
+        validate_host_id(peer_host_id)
+        if not _is_fingerprint(fingerprint):
+            raise BrokerError.invalid_request()
+        with self._lock, self._transaction() as connection:
+            connection.execute(
+                """
+                DELETE FROM outbound_enrollment_codes
+                WHERE peer_host_id = ? AND fingerprint = ?
+                """,
+                (peer_host_id, fingerprint),
+            )
+
     def relationship(self, peer_host_id: str) -> Relationship | None:
         validate_host_id(peer_host_id)
+        self.expire_pending_pairings()
         with self._connection() as connection:
             row = connection.execute(
                 """
@@ -283,6 +488,7 @@ class PeerState:
         return _relationship_from_row(row) if row is not None else None
 
     def relationships(self) -> tuple[Relationship, ...]:
+        self.expire_pending_pairings()
         with self._connection() as connection:
             rows = connection.execute(
                 """
@@ -298,6 +504,7 @@ class PeerState:
     def trusted_certificates(self) -> tuple[CertificateMaterial, ...]:
         """Return non-revoked persisted certificates for listener trust roots."""
 
+        self.expire_pending_pairings()
         with self._connection() as connection:
             rows = connection.execute(
                 """
@@ -308,6 +515,46 @@ class PeerState:
             ).fetchall()
         return tuple(_certificate_from_persisted_row(row) for row in rows)
 
+    def expire_pending_pairings(self) -> None:
+        """Discard expired incomplete pairings without tombstoning their keys."""
+
+        with self._lock, self._transaction() as connection:
+            self._expire_pending_pairings(connection)
+
+    def pending_pairing_requests(self) -> tuple[Relationship, ...]:
+        """Return inbound pairing requests that require this owner's decision."""
+
+        with self._lock, self._transaction() as connection:
+            self._expire_pending_pairings(connection)
+            rows = connection.execute(
+                """
+                SELECT r.peer_host_id, r.peer_role, r.certificate_pem, r.fingerprint,
+                       r.endpoint, r.status, r.protocol_version, r.grant_revision,
+                       r.paired_at, r.updated_at
+                FROM relationships AS r
+                JOIN pending_pairings AS p ON p.peer_host_id = r.peer_host_id
+                WHERE p.direction = 'inbound' AND r.status = 'pending'
+                ORDER BY r.updated_at DESC, r.peer_host_id
+                LIMIT 128
+                """
+            ).fetchall()
+        return tuple(_relationship_from_row(row) for row in rows)
+
+    def pending_pairing(self, peer_host_id: str) -> PendingPairing | None:
+        """Return one active pending pairing record."""
+
+        validate_host_id(peer_host_id)
+        with self._lock, self._transaction() as connection:
+            self._expire_pending_pairings(connection)
+            row = connection.execute(
+                """
+                SELECT peer_host_id, direction, pairing_id, expires_at
+                FROM pending_pairings WHERE peer_host_id = ?
+                """,
+                (peer_host_id,),
+            ).fetchone()
+        return _pending_pairing_from_row(row) if row is not None else None
+
     def begin_pair(
         self,
         *,
@@ -315,18 +562,50 @@ class PeerState:
         peer_role: Role,
         certificate: CertificateMaterial,
         endpoint: str,
+        direction: str,
+        pairing_id: str,
+        expires_at: int,
     ) -> Relationship:
         """Persist a locally confirmed pairing intent with no read grants."""
 
         _validate_relationship_input(peer_host_id, peer_role, certificate, endpoint)
+        _validate_pending_pairing_input(direction, pairing_id, expires_at)
         with self._lock, self._transaction() as connection:
+            self._expire_pending_pairings(connection)
             _reserve_pairing_credential(connection, peer_host_id, certificate)
             existing = _select_relationship(connection, peer_host_id)
-            if existing is not None and (
-                existing.status == "paired"
-                and existing.certificate.fingerprint != certificate.fingerprint
-            ):
-                raise BrokerError.conflict()
+            pending = _select_pending_pairing(connection, peer_host_id)
+            if existing is None:
+                count = connection.execute(
+                    "SELECT COUNT(*) FROM pending_pairings"
+                ).fetchone()
+                if (
+                    count is None
+                    or len(count) != 1
+                    or not isinstance(count[0], int)
+                    or count[0] < 0
+                ):
+                    raise BrokerError.internal()
+                if count[0] >= _MAX_PENDING_PAIRINGS:
+                    raise BrokerError.limit_exceeded()
+            if existing is not None:
+                if (
+                    existing.status == "paired"
+                    and existing.certificate.fingerprint != certificate.fingerprint
+                ):
+                    raise BrokerError.conflict()
+                if existing.status == "paired":
+                    raise BrokerError.conflict()
+                if (
+                    pending is not None
+                    and pending.direction == direction
+                    and pending.pairing_id == pairing_id
+                    and existing.peer_role is peer_role
+                    and existing.certificate.fingerprint == certificate.fingerprint
+                ):
+                    return existing
+                if pending is not None:
+                    raise BrokerError.conflict()
             relationship = self._upsert_relationship(
                 connection,
                 peer_host_id=peer_host_id,
@@ -338,11 +617,23 @@ class PeerState:
                 paired_at=None,
             )
             connection.execute("DELETE FROM grants WHERE peer_host_id = ?", (peer_host_id,))
+            connection.execute(
+                """
+                INSERT INTO pending_pairings (
+                    peer_host_id, direction, pairing_id, expires_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(peer_host_id) DO UPDATE SET
+                    direction = excluded.direction,
+                    pairing_id = excluded.pairing_id,
+                    expires_at = excluded.expires_at
+                """,
+                (peer_host_id, direction, pairing_id, expires_at),
+            )
             self._audit(
                 connection,
                 actor_host_id=None,
                 peer_host_id=peer_host_id,
-                action="pair.pending",
+                action=f"pair.pending.{direction}",
                 scope=None,
                 result="ok",
                 reason=None,
@@ -363,62 +654,47 @@ class PeerState:
 
         _validate_relationship_input(peer_host_id, peer_role, certificate, endpoint)
         with self._lock, self._transaction() as connection:
-            _reserve_pairing_credential(connection, peer_host_id, certificate)
-            existing = _select_relationship(connection, peer_host_id)
-            if require_pending:
-                if (
-                    existing is None
-                    or existing.status != "pending"
-                    or existing.peer_role is not peer_role
-                    or existing.certificate.fingerprint != certificate.fingerprint
-                ):
-                    raise BrokerError.conflict()
-            elif existing is not None and (
-                existing.status == "paired"
-                and existing.certificate.fingerprint != certificate.fingerprint
-            ):
-                raise BrokerError.conflict()
-            relationship = self._upsert_relationship(
+            self._expire_pending_pairings(connection)
+            return self._accept_pair(
                 connection,
                 peer_host_id=peer_host_id,
                 peer_role=peer_role,
                 certificate=certificate,
                 endpoint=endpoint,
-                status="paired",
-                grant_revision=0,
-                paired_at=_now(),
+                require_pending=require_pending,
             )
-            connection.execute("DELETE FROM grants WHERE peer_host_id = ?", (peer_host_id,))
-            self._audit(
-                connection,
-                actor_host_id=peer_host_id,
-                peer_host_id=peer_host_id,
-                action="pair.accepted",
-                scope=None,
-                result="ok",
-                reason=None,
-            )
-            self._prune_audit(connection)
-            return relationship
 
     def complete_pair(
         self,
         *,
         peer_host_id: str,
         certificate: CertificateMaterial,
+        pairing_id: str,
     ) -> Relationship:
         """Finalize a pairing after its target persisted the relationship."""
 
         validate_host_id(peer_host_id)
         certificate = _validated_certificate(certificate)
+        _validate_pairing_id(pairing_id)
         if certificate.host_id != peer_host_id:
             raise BrokerError.unauthorized()
         with self._lock, self._transaction() as connection:
+            self._expire_pending_pairings(connection)
             existing = _select_relationship(connection, peer_host_id)
+            pending = _select_pending_pairing(connection, peer_host_id)
+            if (
+                existing is not None
+                and existing.status == "paired"
+                and existing.certificate.fingerprint == certificate.fingerprint
+                and pending is None
+            ):
+                return existing
             if (
                 existing is None
-                or existing.status not in {"pending", "paired"}
+                or existing.status != "pending"
                 or existing.certificate.fingerprint != certificate.fingerprint
+                or pending is None
+                or pending.pairing_id != pairing_id
             ):
                 raise BrokerError.conflict()
             relationship = self._upsert_relationship(
@@ -432,6 +708,9 @@ class PeerState:
                 paired_at=_now(),
             )
             connection.execute("DELETE FROM grants WHERE peer_host_id = ?", (peer_host_id,))
+            connection.execute(
+                "DELETE FROM pending_pairings WHERE peer_host_id = ?", (peer_host_id,)
+            )
             self._audit(
                 connection,
                 actor_host_id=None,
@@ -443,6 +722,40 @@ class PeerState:
             )
             self._prune_audit(connection)
             return relationship
+
+    def discard_pending_pairing(self, *, peer_host_id: str, pairing_id: str) -> None:
+        """Reject one pending pairing without permanently revoking its key."""
+
+        validate_host_id(peer_host_id)
+        _validate_pairing_id(pairing_id)
+        with self._lock, self._transaction() as connection:
+            self._expire_pending_pairings(connection)
+            pending = _select_pending_pairing(connection, peer_host_id)
+            relationship = _select_relationship(connection, peer_host_id)
+            if (
+                pending is None
+                or pending.pairing_id != pairing_id
+                or relationship is None
+                or relationship.status != "pending"
+            ):
+                raise BrokerError.not_found()
+            connection.execute("DELETE FROM grants WHERE peer_host_id = ?", (peer_host_id,))
+            connection.execute(
+                "DELETE FROM pending_pairings WHERE peer_host_id = ?", (peer_host_id,)
+            )
+            connection.execute(
+                "DELETE FROM relationships WHERE peer_host_id = ?", (peer_host_id,)
+            )
+            self._audit(
+                connection,
+                actor_host_id=None,
+                peer_host_id=peer_host_id,
+                action="pair.rejected",
+                scope=None,
+                result="ok",
+                reason=None,
+            )
+            self._prune_audit(connection)
 
     def current_grants(self, peer_host_id: str) -> tuple[Grant, ...]:
         relationship = self.relationship(peer_host_id)
@@ -794,6 +1107,9 @@ class PeerState:
             revision = relationship.grant_revision + 1
             if status == "revoked":
                 connection.execute("DELETE FROM grants WHERE peer_host_id = ?", (peer_host_id,))
+                connection.execute(
+                    "DELETE FROM pending_pairings WHERE peer_host_id = ?", (peer_host_id,)
+                )
                 _record_credential_tombstone(connection, relationship)
             updated = self._upsert_relationship(
                 connection,
@@ -828,6 +1144,9 @@ class PeerState:
             _record_credential_tombstone(connection, relationship)
             connection.execute(
                 "DELETE FROM grants WHERE peer_host_id = ?", (peer_host_id,)
+            )
+            connection.execute(
+                "DELETE FROM pending_pairings WHERE peer_host_id = ?", (peer_host_id,)
             )
             connection.execute(
                 "DELETE FROM relationships WHERE peer_host_id = ?", (peer_host_id,)
@@ -874,6 +1193,24 @@ class PeerState:
                         grant_revision INTEGER NOT NULL,
                         paired_at INTEGER,
                         updated_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS pending_pairings (
+                        peer_host_id TEXT PRIMARY KEY,
+                        direction TEXT NOT NULL,
+                        pairing_id TEXT NOT NULL,
+                        expires_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS managed_enrollment_codes (
+                        code_hash TEXT PRIMARY KEY,
+                        expires_at INTEGER NOT NULL,
+                        created_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS outbound_enrollment_codes (
+                        peer_host_id TEXT PRIMARY KEY,
+                        fingerprint TEXT NOT NULL,
+                        code TEXT NOT NULL,
+                        expires_at INTEGER NOT NULL,
+                        created_at INTEGER NOT NULL
                     );
                     CREATE TABLE IF NOT EXISTS grants (
                         peer_host_id TEXT NOT NULL,
@@ -966,6 +1303,9 @@ class PeerState:
             if error.code is ErrorCode.UNAVAILABLE:
                 raise
             raise _state_reset_error() from error
+        if state_version == "2" and identity_row[0] == "host_local":
+            self._migrate_default_host_identity(connection)
+            return
         _set_state_version(connection)
 
     def _migrate_legacy_identity(
@@ -998,6 +1338,9 @@ class PeerState:
         for table in (
             "grants",
             "relationships",
+            "pending_pairings",
+            "managed_enrollment_codes",
+            "outbound_enrollment_codes",
             "peer_credentials",
             "credential_tombstones",
             "request_nonces",
@@ -1011,6 +1354,49 @@ class PeerState:
             scope=None,
             result="ok",
             reason="legacySan",
+        )
+        _set_state_version(connection)
+        self._prune_audit(connection)
+
+    def _migrate_default_host_identity(
+        self,
+        connection: sqlite3.Connection,
+    ) -> None:
+        replacement = new_identity(generated_host_id())
+        connection.execute(
+            """
+            UPDATE identity
+            SET host_id = ?, private_key_pem = ?, certificate_pem = ?,
+                fingerprint = ?, created_at = ?
+            WHERE singleton = 1
+            """,
+            (
+                replacement.host_id,
+                replacement.private_key_pem,
+                replacement.certificate.pem,
+                replacement.certificate.fingerprint,
+                _now(),
+            ),
+        )
+        for table in (
+            "grants",
+            "relationships",
+            "pending_pairings",
+            "managed_enrollment_codes",
+            "outbound_enrollment_codes",
+            "peer_credentials",
+            "credential_tombstones",
+            "request_nonces",
+        ):
+            connection.execute(f"DELETE FROM {table}")
+        self._audit(
+            connection,
+            actor_host_id=replacement.host_id,
+            peer_host_id=None,
+            action="state.migrated",
+            scope=None,
+            result="ok",
+            reason="defaultHostId",
         )
         _set_state_version(connection)
         self._prune_audit(connection)
@@ -1108,6 +1494,102 @@ class PeerState:
             grant_revision=grant_revision,
             paired_at=paired_at,
             updated_at=updated_at,
+        )
+
+    def _accept_pair(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        peer_host_id: str,
+        peer_role: Role,
+        certificate: CertificateMaterial,
+        endpoint: str,
+        require_pending: bool,
+    ) -> Relationship:
+        _reserve_pairing_credential(connection, peer_host_id, certificate)
+        existing = _select_relationship(connection, peer_host_id)
+        if require_pending:
+            if (
+                existing is None
+                or existing.status != "pending"
+                or existing.peer_role is not peer_role
+                or existing.certificate.fingerprint != certificate.fingerprint
+            ):
+                raise BrokerError.conflict()
+        elif existing is not None and (
+            existing.status == "paired"
+            and existing.certificate.fingerprint != certificate.fingerprint
+        ):
+            raise BrokerError.conflict()
+        relationship = self._upsert_relationship(
+            connection,
+            peer_host_id=peer_host_id,
+            peer_role=peer_role,
+            certificate=certificate,
+            endpoint=endpoint,
+            status="paired",
+            grant_revision=0,
+            paired_at=_now(),
+        )
+        connection.execute("DELETE FROM grants WHERE peer_host_id = ?", (peer_host_id,))
+        connection.execute(
+            "DELETE FROM pending_pairings WHERE peer_host_id = ?", (peer_host_id,)
+        )
+        self._audit(
+            connection,
+            actor_host_id=peer_host_id,
+            peer_host_id=peer_host_id,
+            action="pair.accepted",
+            scope=None,
+            result="ok",
+            reason=None,
+        )
+        self._prune_audit(connection)
+        return relationship
+
+    def _expire_pending_pairings(self, connection: sqlite3.Connection) -> None:
+        rows = connection.execute(
+            """
+            SELECT p.peer_host_id, r.peer_role, r.certificate_pem, r.fingerprint,
+                   r.endpoint, r.status, r.protocol_version, r.grant_revision,
+                   r.paired_at, r.updated_at
+            FROM pending_pairings AS p
+            JOIN relationships AS r ON r.peer_host_id = p.peer_host_id
+            WHERE p.expires_at <= ?
+            """,
+            (_now(),),
+        ).fetchall()
+        for row in rows:
+            relationship = _relationship_from_row(row[1:])
+            if relationship.status != "pending":
+                raise BrokerError.internal()
+            connection.execute(
+                "DELETE FROM grants WHERE peer_host_id = ?", (relationship.peer_host_id,)
+            )
+            connection.execute(
+                "DELETE FROM relationships WHERE peer_host_id = ?",
+                (relationship.peer_host_id,),
+            )
+            self._audit(
+                connection,
+                actor_host_id=None,
+                peer_host_id=relationship.peer_host_id,
+                action="pair.expired",
+                scope=None,
+                result="ok",
+                reason=None,
+            )
+        connection.execute("DELETE FROM pending_pairings WHERE expires_at <= ?", (_now(),))
+        if rows:
+            self._prune_audit(connection)
+
+    def _prune_enrollment_codes(self, connection: sqlite3.Connection) -> None:
+        now = _now()
+        connection.execute(
+            "DELETE FROM managed_enrollment_codes WHERE expires_at <= ?", (now,)
+        )
+        connection.execute(
+            "DELETE FROM outbound_enrollment_codes WHERE expires_at <= ?", (now,)
         )
 
     def _audit(
@@ -1225,6 +1707,9 @@ def _has_peer_security_state(connection: sqlite3.Connection) -> bool:
         """
         SELECT
             EXISTS(SELECT 1 FROM relationships)
+            OR EXISTS(SELECT 1 FROM pending_pairings)
+            OR EXISTS(SELECT 1 FROM managed_enrollment_codes)
+            OR EXISTS(SELECT 1 FROM outbound_enrollment_codes)
             OR EXISTS(SELECT 1 FROM grants)
             OR EXISTS(SELECT 1 FROM request_nonces)
             OR EXISTS(SELECT 1 FROM peer_credentials)
@@ -1439,6 +1924,39 @@ def _select_relationship(
     return _relationship_from_row(row) if row is not None else None
 
 
+def _select_pending_pairing(
+    connection: sqlite3.Connection, peer_host_id: str
+) -> PendingPairing | None:
+    row = connection.execute(
+        """
+        SELECT peer_host_id, direction, pairing_id, expires_at
+        FROM pending_pairings WHERE peer_host_id = ?
+        """,
+        (peer_host_id,),
+    ).fetchone()
+    return _pending_pairing_from_row(row) if row is not None else None
+
+
+def _pending_pairing_from_row(row: tuple[object, ...]) -> PendingPairing:
+    if len(row) != 4:
+        raise BrokerError.internal()
+    peer_host_id, direction, pairing_id, expires_at = row
+    if (
+        not isinstance(peer_host_id, str)
+        or not isinstance(direction, str)
+        or not isinstance(pairing_id, str)
+        or not isinstance(expires_at, int)
+        or isinstance(expires_at, bool)
+        or direction not in _PAIRING_DIRECTIONS
+    ):
+        raise BrokerError.internal()
+    validate_host_id(peer_host_id)
+    _validate_pairing_id(pairing_id)
+    if expires_at <= _now():
+        raise BrokerError.internal()
+    return PendingPairing(peer_host_id, direction, pairing_id, expires_at)
+
+
 def _validate_relationship_input(
     peer_host_id: str,
     peer_role: Role,
@@ -1457,6 +1975,44 @@ def _validate_relationship_input(
         or len(endpoint.encode("utf-8")) > MAX_ENDPOINT_BYTES
     ):
         raise BrokerError.invalid_request()
+
+
+def _validate_pending_pairing_input(
+    direction: str, pairing_id: str, expires_at: int
+) -> None:
+    if direction not in _PAIRING_DIRECTIONS:
+        raise BrokerError.invalid_request()
+    _validate_pairing_id(pairing_id)
+    if (
+        not isinstance(expires_at, int)
+        or isinstance(expires_at, bool)
+        or not _now() < expires_at <= _now() + 600
+    ):
+        raise BrokerError.invalid_request()
+
+
+def _validate_pairing_id(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not 16 <= len(value) <= 256
+        or any(character.isspace() or ord(character) < 33 for character in value)
+    ):
+        raise BrokerError.invalid_request()
+
+
+def _validate_enrollment_code(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not 32 <= len(value) <= 256
+        or not value.isascii()
+        or any(character.isspace() for character in value)
+    ):
+        raise BrokerError.invalid_request()
+
+
+def _enrollment_code_hash(value: str) -> str:
+    _validate_enrollment_code(value)
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
 
 
 def _validated_certificate(certificate: CertificateMaterial) -> CertificateMaterial:

@@ -172,11 +172,11 @@ class RemoteAgentDaemon:
         self,
         *,
         xedoc_home: str | os.PathLike[str] | None = None,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         controller_factory: ControllerFactory | None = None,
         client_factory: ClientFactory | None = None,
         version: str | None = None,
-        host_id: str = "host_local",
+        host_id: str | None = None,
     ) -> None:
         if (
             not isinstance(timeout, (int, float))
@@ -185,7 +185,9 @@ class RemoteAgentDaemon:
             or timeout > 120
         ):
             raise BrokerError.invalid_request()
-        if not isinstance(host_id, str) or not host_id or len(host_id) > 128:
+        if host_id is not None and (
+            not isinstance(host_id, str) or not host_id or len(host_id) > 128
+        ):
             raise BrokerError.invalid_request()
         self.paths = DaemonPaths.from_home(xedoc_home)
         self.timeout = float(timeout)
@@ -193,6 +195,7 @@ class RemoteAgentDaemon:
         self.client_factory = client_factory
         self.version = version
         self.host_id = host_id
+        self._effective_host_id: str | None = None
         self._lifecycle_lock = threading.RLock()
         self._shutdown = threading.Event()
         self._controller: Any | None = None
@@ -253,9 +256,14 @@ class RemoteAgentDaemon:
             local_log: LocalLog | None = None
             try:
                 _claim_pid(self.paths.pid_path, owner)
+                identity = PeerState(
+                    self.paths.directory,
+                    audit_retention_days=90,
+                ).ensure_identity(self.host_id)
+                self._effective_host_id = identity.host_id
                 controller = self._connect_controller()
                 operations, catalog, limits, host_id = _build_components(
-                    controller, self.host_id
+                    controller, identity.host_id
                 )
                 peer_sessions = PeerSessionOperations(
                     controller._connection,
@@ -273,7 +281,7 @@ class RemoteAgentDaemon:
                     self.paths.directory,
                     retention_days=limits.audit_retention_days,
                 )
-                identity = state.ensure_identity(host_id)
+                identity = state.ensure_identity(identity.host_id)
                 if identity.host_id != host_id:
                     raise BrokerError.conflict()
                 message_service = MessageService(
@@ -464,10 +472,13 @@ class RemoteAgentDaemon:
             _record_log(local_log, "daemon.stopped", "ok")
 
     def _connect_controller(self) -> Any:
+        host_id = self._effective_host_id
+        if host_id is None:
+            raise BrokerError.internal()
         kwargs: dict[str, Any] = {
             "xedoc_home": self.paths.xedoc_home,
             "timeout": self.timeout,
-            "host_id": self.host_id,
+            "host_id": host_id,
         }
         if self.client_factory is not None:
             kwargs["client_factory"] = self.client_factory
@@ -480,11 +491,11 @@ class RemoteAgentDaemon:
         cls,
         *,
         xedoc_home: str | os.PathLike[str] | None = None,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         controller_factory: ControllerFactory | None = None,
         client_factory: ClientFactory | None = None,
         version: str | None = None,
-        host_id: str = "host_local",
+        host_id: str | None = None,
     ) -> dict[str, Any]:
         """Run bounded, redacted startup and state diagnostics."""
 
@@ -519,6 +530,10 @@ class RemoteAgentDaemon:
         limits: Any | None = None
         if checks.get("bootstrap", {}).get("ok") is True:
             try:
+                daemon._effective_host_id = PeerState(
+                    paths.directory,
+                    audit_retention_days=90,
+                ).ensure_identity(daemon.host_id).host_id
                 controller = daemon._connect_controller()
                 config = getattr(controller, "config", None)
                 limits = getattr(controller, "limits", None)
@@ -676,7 +691,7 @@ class RemoteAgentDaemon:
         cls,
         *,
         xedoc_home: str | os.PathLike[str] | None = None,
-        host_id: str = "host_local",
+        host_id: str | None = None,
     ) -> str:
         """Materialize and return only this host's public identity certificate."""
 

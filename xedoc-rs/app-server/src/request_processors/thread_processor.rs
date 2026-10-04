@@ -1400,12 +1400,6 @@ impl ThreadRequestProcessor {
             ))
             .await;
 
-        listener_task_context
-            .session_extension_manager
-            .start_remote_for_thread(thread_id)
-            .await
-            .map_err(internal_error)?;
-
         thread.status = resolve_thread_status(
             listener_task_context
                 .thread_watch_manager

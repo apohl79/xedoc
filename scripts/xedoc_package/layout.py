@@ -71,6 +71,7 @@ def prepare_package_dir(package_dir: Path, *, force: bool) -> None:
                     f"Package output directory is not empty: {package_dir}. "
                     "Pass --force to replace it."
                 )
+            _make_tree_user_writable(package_dir)
             shutil.rmtree(package_dir)
 
     package_dir.mkdir(parents=True, exist_ok=True)
@@ -137,6 +138,7 @@ def build_package_dir(
         tools_sha256 = sha256_file(tools_path)
         runtime_root = remote_agent_dir / "runtime"
         _copy_remote_agent_runtime(remote_agent_runtime.root.parent, runtime_root)
+        _make_runtime_read_only(runtime_root / "python")
         runtime_metadata = {
             "target": remote_agent_runtime.target,
             "runtimeId": remote_agent_runtime.runtime_id,
@@ -437,6 +439,26 @@ def _copy_remote_agent_runtime(source_root: Path, destination: Path) -> None:
         shutil.rmtree(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source_root, destination, symlinks=False)
+
+
+def _make_runtime_read_only(runtime_root: Path) -> None:
+    for path in runtime_root.rglob("*"):
+        if path.is_file():
+            path.chmod((path.stat().st_mode & 0o111) | 0o444)
+    for path in sorted(runtime_root.rglob("*"), reverse=True):
+        if path.is_dir():
+            path.chmod(0o555)
+    runtime_root.chmod(0o555)
+
+
+def _make_tree_user_writable(root: Path) -> None:
+    for path in (root, *root.rglob("*")):
+        if path.is_symlink():
+            continue
+        mode = path.stat().st_mode | stat.S_IWUSR
+        if path.is_dir():
+            mode |= stat.S_IXUSR
+        path.chmod(mode)
 
 
 def _manifest_sha256(manifest: dict[str, object], key: str) -> str:

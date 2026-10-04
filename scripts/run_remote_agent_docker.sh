@@ -1,215 +1,159 @@
 #!/usr/bin/env bash
-
-# Build and run a packaged Linux Xedoc app-server with a root remote-agent workspace.
-#
-# Examples:
-#   scripts/run_remote_agent_docker.sh
-#   scripts/run_remote_agent_docker.sh --target linux-x86_64
-#   scripts/run_remote_agent_docker.sh --package dist/xedoc/1.44.0/xedoc-aarch64-unknown-linux-gnu-1.44.0.zip
-
+# Build and run a packaged Linux Xedoc managed remote-agent peer.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly script_dir
 repo_root="$(cd "$script_dir/.." && pwd)"
-readonly repo_root
-readonly dockerfile="$script_dir/remote_agent_docker/Dockerfile"
-readonly container_label="com.xedoc.remote-agent-docker-test"
-readonly host_auth_path="$HOME/.xedoc/auth.json"
-readonly host_secrets_path="$HOME/.xedoc/secrets"
-
+dockerfile="$script_dir/remote_agent_docker/Dockerfile"
+container_label="com.xedoc.remote-agent-docker-test"
 container_name="xedoc-linux-remote-agent"
 package_zip=""
 target=""
+normal_port=46000
+pairing_port=46001
+discovery_port=43371
+advertise_host=""
 
 usage() {
   cat <<'EOF'
 Usage: scripts/run_remote_agent_docker.sh [options]
 
-Builds a Linux release package into a Docker image, starts its app-server
-daemon, and verifies the bundled remote-agent broker. The container configures
-the coordinator role with workspace ID `root` mapped to `/`.
+Starts a managed Linux peer with workspace `root` mapped to `/`. It does not
+trust a copied coordinator certificate: the printed, one-time enrollment code
+is the only automatic managed-pairing authorization.
 
 Options:
-  --package PATH             Linux Xedoc release ZIP to install.
-  --target TARGET            linux-arm64 or linux-x86_64. Defaults to the
-                             running Docker server architecture.
-  --name NAME                Container name. Default: xedoc-linux-remote-agent.
+  --package PATH             Linux Xedoc package ZIP (default: newest matching dist ZIP).
+  --target TARGET            linux-arm64 or linux-x86_64 (default: Docker server architecture).
+  --name NAME                Container name (default: xedoc-linux-remote-agent).
+  --normal-port PORT         Host TCP port for peer traffic (default: 46000).
+  --pairing-port PORT        Host TCP port for pairing traffic (default: 46001).
+  --discovery-port PORT      Host UDP direct-discovery port (default: 43371).
+  --advertise-host IPV4      Non-loopback IPv4 address advertised to coordinators.
+                             Default: this machine's outbound IPv4 address.
   -h, --help                 Show this help.
-
-After a successful run:
-  docker exec -it xedoc-linux-remote-agent bash
-  docker exec xedoc-linux-remote-agent xedoc app-server daemon version
-  docker exec xedoc-linux-remote-agent xedoc-remote-agentd doctor
 EOF
 }
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+target_triple() { case "$1" in linux-arm64) echo aarch64-unknown-linux-gnu;; linux-x86_64) echo x86_64-unknown-linux-gnu;; *) fail "unsupported target: $1";; esac; }
+target_platform() { case "$1" in linux-arm64) echo linux/arm64;; linux-x86_64) echo linux/amd64;; *) fail "unsupported target: $1";; esac; }
+default_target() { case "$(docker version --format '{{.Server.Arch}}')" in aarch64|arm64) echo linux-arm64;; x86_64|amd64) echo linux-x86_64;; *) fail "unsupported Docker server architecture";; esac; }
+valid_port() { [[ "$1" =~ ^[1-9][0-9]{0,4}$ ]] && (( "$1" <= 65535 )); }
+outbound_ipv4() {
+  python3 - <<'PY'
+import ipaddress
+import socket
 
-fail() {
-  printf 'ERROR: %s\n' "$*" >&2
-  exit 1
-}
-
-target_triple() {
-  case "$1" in
-    linux-arm64) printf '%s\n' 'aarch64-unknown-linux-gnu' ;;
-    linux-x86_64) printf '%s\n' 'x86_64-unknown-linux-gnu' ;;
-    *) fail "unsupported target: $1 (use linux-arm64 or linux-x86_64)" ;;
-  esac
-}
-
-target_platform() {
-  case "$1" in
-    linux-arm64) printf '%s\n' 'linux/arm64' ;;
-    linux-x86_64) printf '%s\n' 'linux/amd64' ;;
-    *) fail "unsupported target: $1 (use linux-arm64 or linux-x86_64)" ;;
-  esac
-}
-
-default_target() {
-  case "$(docker version --format '{{.Server.Arch}}')" in
-    aarch64|arm64) printf '%s\n' 'linux-arm64' ;;
-    x86_64|amd64) printf '%s\n' 'linux-x86_64' ;;
-    *) fail "unsupported Docker server architecture" ;;
-  esac
-}
-
-find_package() {
-  local triple="$1"
-  python3 - "$repo_root" "$triple" <<'PY'
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1])
-triple = sys.argv[2]
-candidates = list((root / "dist" / "xedoc").glob(f"*/xedoc-{triple}-*.zip"))
-if not candidates:
-    raise SystemExit(1)
-print(max(candidates, key=lambda path: path.stat().st_mtime))
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+    probe.connect(("8.8.8.8", 80))
+    address = probe.getsockname()[0]
+parsed = ipaddress.ip_address(address)
+if parsed.is_loopback or parsed.is_unspecified:
+    raise SystemExit("no non-loopback outbound IPv4 address is available")
+print(address)
 PY
 }
-
-package_target() {
+validate_advertise_host() {
   python3 - "$1" <<'PY'
-import json
+import ipaddress
+import socket
+import sys
+
+host = sys.argv[1]
+try:
+    parsed = ipaddress.ip_address(host)
+except ValueError as error:
+    raise SystemExit(f"advertised host must be an IPv4 address: {host!r}") from error
+if parsed.version != 4 or parsed.is_loopback or parsed.is_unspecified:
+    raise SystemExit(f"advertised host must be a non-loopback IPv4 address: {host!r}")
+PY
+}
+find_package() {
+  python3 - "$repo_root" "$1" <<'PY'
 from pathlib import Path
 import sys
+items = list((Path(sys.argv[1]) / "dist" / "xedoc").glob(f"*/xedoc-{sys.argv[2]}-*.zip"))
+if not items: raise SystemExit(1)
+print(max(items, key=lambda p: p.stat().st_mtime))
+PY
+}
+package_target() {
+  python3 - "$1" <<'PY'
+import json, sys
 from zipfile import ZipFile
-
-with ZipFile(Path(sys.argv[1])) as archive:
-    manifest = json.loads(archive.read("xedoc-package.json"))
-target = manifest.get("target")
-if not isinstance(target, str):
-    raise SystemExit(1)
-print(target)
+with ZipFile(sys.argv[1]) as z: print(json.loads(z.read("xedoc-package.json"))["target"])
 PY
 }
 
 while (($#)); do
   case "$1" in
-    --package)
-      (($# >= 2)) || fail "--package requires a path"
-      package_zip="$2"
-      shift 2
-      ;;
-    --target)
-      (($# >= 2)) || fail "--target requires a value"
-      target="$2"
-      shift 2
-      ;;
-    --name)
-      (($# >= 2)) || fail "--name requires a value"
-      container_name="$2"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      fail "unknown option: $1"
-      ;;
+    --package|--target|--name|--normal-port|--pairing-port|--discovery-port|--advertise-host)
+      (($# >= 2)) || fail "$1 requires a value"
+      case "$1" in --package) package_zip="$2";; --target) target="$2";; --name) container_name="$2";; --normal-port) normal_port="$2";; --pairing-port) pairing_port="$2";; --discovery-port) discovery_port="$2";; *) advertise_host="$2";; esac
+      shift 2;;
+    -h|--help) usage; exit 0;;
+    *) fail "unknown option: $1";;
   esac
 done
-
-[[ -f "$dockerfile" ]] || fail "Dockerfile is missing: $dockerfile"
-[[ "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] ||
-  fail "invalid container name: $container_name"
-[[ -f "$host_auth_path" ]] ||
-  fail "Xedoc authentication file does not exist: $host_auth_path"
-[[ -d "$host_secrets_path" ]] ||
-  fail "Xedoc secrets directory does not exist: $host_secrets_path"
-
-if [[ -z "${DOCKER_HOST:-}" && -S "$HOME/.colima/default/docker.sock" ]]; then
-  export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-fi
+[[ "$container_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || fail "invalid container name"
+for port in "$normal_port" "$pairing_port" "$discovery_port"; do valid_port "$port" || fail "invalid port: $port"; done
+[[ -f "$HOME/.xedoc/auth.json" ]] || fail "missing ~/.xedoc/auth.json"
+[[ -d "$HOME/.xedoc/secrets" ]] || fail "missing ~/.xedoc/secrets"
+if [[ -z "${DOCKER_HOST:-}" && -S "$HOME/.colima/default/docker.sock" ]]; then export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"; fi
 docker info >/dev/null || fail "Docker is unavailable; start Colima with: colima start"
-
-if [[ -z "$target" ]]; then
-  target="$(default_target)"
+if [[ -z "$advertise_host" ]]; then
+  advertise_host="$(outbound_ipv4)" || fail "could not determine a non-loopback outbound IPv4 address; pass --advertise-host"
 fi
-triple="$(target_triple "$target")"
-platform="$(target_platform "$target")"
-
-if [[ -z "$package_zip" ]]; then
-  package_zip="$(find_package "$triple")" ||
-    fail "no package for $triple; build one or pass --package"
-fi
+validate_advertise_host "$advertise_host" || fail "invalid --advertise-host: $advertise_host"
+[[ -n "$target" ]] || target="$(default_target)"
+triple="$(target_triple "$target")"; platform="$(target_platform "$target")"
+[[ -n "$package_zip" ]] || package_zip="$(find_package "$triple")" || fail "no package for $triple; pass --package"
 package_zip="$(cd "$(dirname "$package_zip")" && pwd)/$(basename "$package_zip")"
 [[ -f "$package_zip" ]] || fail "package does not exist: $package_zip"
-package_target_value="$(package_target "$package_zip")" ||
-  fail "package has no valid xedoc-package.json target: $package_zip"
-[[ "$package_target_value" == "$triple" ]] ||
-  fail "package target $package_target_value does not match $target ($triple)"
+[[ "$(package_target "$package_zip")" == "$triple" ]] || fail "package target does not match $target"
 
 build_context="$(mktemp -d "${TMPDIR:-/tmp}/xedoc-remote-agent-docker.XXXXXX")"
-cleanup() {
-  rm -rf "$build_context"
-}
-trap cleanup EXIT
-
-ln "$package_zip" "$build_context/package.zip" 2>/dev/null ||
-  cp "$package_zip" "$build_context/package.zip"
-
+trap 'rm -rf "$build_context"' EXIT
+cp "$package_zip" "$build_context/package.zip"
 image_name="${container_name}:latest"
-printf '==> Building %s from %s for %s\n' "$image_name" "$package_zip" "$platform"
-docker build \
-  --platform "$platform" \
-  --tag "$image_name" \
-  --file "$dockerfile" \
-  "$build_context"
-
+docker build --platform "$platform" --tag "$image_name" --file "$dockerfile" "$build_context"
 if docker container inspect "$container_name" >/dev/null 2>&1; then
-  existing_label="$(
-    docker container inspect \
-      --format "{{ index .Config.Labels \"$container_label\" }}" \
-      "$container_name"
-  )"
-  [[ "$existing_label" == "true" ]] ||
-    fail "container already exists and is not owned by this harness: $container_name"
+  label="$(docker container inspect --format "{{ index .Config.Labels \"$container_label\" }}" "$container_name")"
+  [[ "$label" == true ]] || fail "container already exists and is not owned by this harness: $container_name"
   docker rm -f "$container_name" >/dev/null
 fi
-printf '==> Starting %s\n' "$container_name"
-docker run -d \
-  --platform "$platform" \
-  --name "$container_name" \
-  --label "$container_label=true" \
-  --mount "type=bind,src=$host_auth_path,dst=/root/.xedoc/auth.json,readonly" \
-  --mount "type=bind,src=$host_secrets_path,dst=/root/.xedoc/secrets,readonly" \
+docker run -d --platform "$platform" --name "$container_name" --label "$container_label=true" \
+  --add-host host.docker.internal:host-gateway \
+  -p "0.0.0.0:${normal_port}:46000/tcp" -p "0.0.0.0:${pairing_port}:46001/tcp" \
+  -p "127.0.0.1:${discovery_port}:43371/udp" \
+  --mount "type=bind,src=$HOME/.xedoc/auth.json,dst=/root/.xedoc/auth.json,readonly" \
+  --mount "type=bind,src=$HOME/.xedoc/secrets,dst=/root/.xedoc/secrets,readonly" \
   "$image_name" >/dev/null
-
-printf '==> Starting packaged app-server daemon\n'
+docker exec "$container_name" sh -ceu "cat > /root/.xedoc/config.toml <<'EOF'
+[remote_agent]
+role = \"managed\"
+workspaces = { root = \"/\" }
+peer_listener = { endpoint = \"tls://0.0.0.0:46000\", pairing_endpoint = \"tls://0.0.0.0:46001\", advertised_endpoint = \"tls://${advertise_host}:${normal_port}\", advertised_pairing_endpoint = \"tls://${advertise_host}:${pairing_port}\" }
+[remote_agent.limits]
+max_attached_sessions = 8
+max_message_bytes = 16384
+max_result_bytes = 65536
+max_wait_seconds = 120
+max_discovery_seconds = 10
+audit_retention_days = 90
+EOF
+mkdir -p /root/.xedoc/remote-agent
+printf '%s\n' 'controller = \"unix:///root/.xedoc/app-server-control/app-server-control.sock\"' > /root/.xedoc/remote-agent/bootstrap.toml
+chmod 700 /root/.xedoc/remote-agent
+chmod 600 /root/.xedoc/remote-agent/bootstrap.toml"
 docker exec "$container_name" xedoc app-server daemon start
-printf '==> Verifying daemon and remote-agent broker\n'
 docker exec "$container_name" xedoc app-server daemon version
-docker exec "$container_name" xedoc-remote-agentd status
-docker exec "$container_name" xedoc-remote-agentd doctor
-
+code="$(docker exec "$container_name" xedoc-remote-agentd enrollment create | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')"
 cat <<EOF
-==> Ready
-Container: $container_name
-Workspace: root -> /
-Shell:     docker exec -it $container_name bash
-Daemon:    docker exec $container_name xedoc app-server daemon version
-Broker:    docker exec $container_name xedoc-remote-agentd doctor
-Stop:      docker rm -f $container_name
+==> Ready: managed peer $container_name
+Enrollment code: $code
+Pair from the coordinator:
+  xedoc-session remote-agent-enroll --endpoint 127.0.0.1:$discovery_port
+Container shell: docker exec -it $container_name bash
+Stop: docker rm -f $container_name
 EOF

@@ -28,6 +28,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("audit requires the export action")
     if args.command == "certificate" and args.action != "export":
         parser.error("certificate requires the export action")
+    if args.command == "pairings" and args.action not in {"list", "approve", "reject"}:
+        parser.error("pairings requires list, approve, or reject")
+    if args.command == "pairings" and args.action in {"approve", "reject"}:
+        if args.peer_host_id is None:
+            parser.error("pairings approve/reject requires --peer-host-id")
+    if args.command == "enrollment" and args.action not in {
+        "create",
+        "discover",
+        "remember",
+        "pair",
+    }:
+        parser.error("enrollment requires create, discover, remember, or pair")
+    if args.command == "enrollment" and args.action in {"remember", "pair"}:
+        if args.peer_host_id is None or args.fingerprint is None:
+            parser.error(
+                "enrollment remember/pair requires --peer-host-id and --fingerprint"
+            )
     try:
         if args.command == "doctor":
             report = RemoteAgentDaemon.doctor(
@@ -68,6 +85,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 0
+        if args.command == "pairings":
+            report = _pairings(args)
+            print(json.dumps(report, ensure_ascii=False, separators=(",", ":")))
+            return 0
+        if args.command == "enrollment":
+            report = _enrollment(args)
+            print(json.dumps(report, ensure_ascii=False, separators=(",", ":")))
+            return 0
         daemon = RemoteAgentDaemon(
             xedoc_home=args.xedoc_home,
             timeout=args.timeout,
@@ -102,13 +127,24 @@ def _parser() -> argparse.ArgumentParser:
             "ensure",
             "audit",
             "certificate",
+            "pairings",
+            "enrollment",
         ),
     )
-    parser.add_argument("action", nargs="?", choices=("export",))
+    parser.add_argument("action", nargs="?")
     parser.add_argument("--xedoc-home")
-    parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--version")
-    parser.add_argument("--host-id", default="host_local")
+    parser.add_argument("--host-id")
+    parser.add_argument("--peer-host-id")
+    parser.add_argument("--fingerprint")
+    parser.add_argument("--discovery-timeout", type=int, default=3)
+    parser.add_argument(
+        "--endpoint",
+        action="append",
+        default=[],
+        help="Direct discovery destination in HOST:UDPPORT form; repeatable.",
+    )
     parser.add_argument("--limit", type=int, default=1_000)
     parser.add_argument(
         "--replace",
@@ -121,6 +157,65 @@ def _parser() -> argparse.ArgumentParser:
         help="Reconnect the singleton broker after its app-server restarted.",
     )
     return parser
+
+
+def _pairings(args: argparse.Namespace) -> dict[str, object]:
+    client = LocalIpcClient(
+        xedoc_home=args.xedoc_home,
+        max_message_bytes=MAX_OWNER_IPC_BYTES,
+        max_result_bytes=MAX_OWNER_IPC_BYTES,
+        timeout_seconds=args.timeout,
+    )
+    if args.action == "list":
+        return client.call("pairing/list", {})
+    peer_host_id = args.peer_host_id
+    if not isinstance(peer_host_id, str):
+        raise BrokerError.invalid_request()
+    return client.call(f"pairing/{args.action}", {"hostId": peer_host_id})
+
+
+def _enrollment(args: argparse.Namespace) -> dict[str, object]:
+    client = LocalIpcClient(
+        xedoc_home=args.xedoc_home,
+        max_message_bytes=MAX_OWNER_IPC_BYTES,
+        max_result_bytes=MAX_OWNER_IPC_BYTES,
+        timeout_seconds=args.timeout,
+    )
+    if args.action == "create":
+        return client.call("enrollment/create", {})
+    if args.action == "discover":
+        if (
+            not isinstance(args.discovery_timeout, int)
+            or isinstance(args.discovery_timeout, bool)
+            or args.discovery_timeout < 0
+            or args.discovery_timeout > 300
+        ):
+            raise BrokerError.invalid_request()
+        return client.call(
+            "host/discover",
+            {
+                "timeoutSeconds": args.discovery_timeout,
+                "endpoints": args.endpoint,
+            },
+        )
+    peer_host_id = args.peer_host_id
+    fingerprint = args.fingerprint
+    if not isinstance(peer_host_id, str) or not isinstance(fingerprint, str):
+        raise BrokerError.invalid_request()
+    if args.action == "remember":
+        code = sys.stdin.read(257).strip()
+        return client.call(
+            "enrollment/remember",
+            {"hostId": peer_host_id, "fingerprint": fingerprint, "code": code},
+        )
+    return client.call(
+        "host/pair",
+        {
+            "hostId": peer_host_id,
+            "role": "managed",
+            "fingerprint": fingerprint,
+        },
+    )
 
 
 def _ensure(args: argparse.Namespace) -> dict[str, object]:
@@ -241,9 +336,9 @@ def _spawn_daemon(args: argparse.Namespace, xedoc_home: Path) -> None:
         str(xedoc_home),
         "--timeout",
         str(args.timeout),
-        "--host-id",
-        args.host_id,
     ]
+    if args.host_id is not None:
+        command.extend(("--host-id", args.host_id))
     if args.version is not None:
         command.extend(("--version", args.version))
     try:

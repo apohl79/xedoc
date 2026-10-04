@@ -1,6 +1,8 @@
 //! Host configuration for the remote-agent broker.
 
 use std::collections::BTreeMap;
+use std::net::IpAddr;
+use std::net::Ipv6Addr;
 
 use schemars::JsonSchema;
 use schemars::r#gen::SchemaGenerator;
@@ -20,6 +22,11 @@ const MAX_WORKSPACES: usize = 128;
 const MAX_WORKSPACE_ID_LENGTH: usize = 64;
 const MAX_STATIC_PEERS: usize = 128;
 const MAX_MANAGED_COORDINATOR_CERTIFICATE_PATHS: usize = 128;
+const ENDPOINT_HOST_PATTERN: &str = r"[\x21\x22\x24-\x2e\x30-\x39\x3b-\x3e\x41-\x5a\x5c\x5e-\x7e]+";
+const ADVERTISED_ENDPOINT_HOST_PATTERN: &str =
+    r"[\x21\x22\x24-\x29\x2b-\x2e\x30-\x39\x3b-\x3e\x41-\x5a\x5c\x5e-\x7e]+";
+const ENDPOINT_PORT_PATTERN: &str = r"(?:[1-9]|[1-9][0-9]{1,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])";
+const IPV6_LITERAL_PATTERN: &str = r"(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,7}:|(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|(?:[0-9A-Fa-f]{1,4}:){1,5}(?::[0-9A-Fa-f]{1,4}){1,2}|(?:[0-9A-Fa-f]{1,4}:){1,4}(?::[0-9A-Fa-f]{1,4}){1,3}|(?:[0-9A-Fa-f]{1,4}:){1,3}(?::[0-9A-Fa-f]{1,4}){1,4}|(?:[0-9A-Fa-f]{1,4}:){1,2}(?::[0-9A-Fa-f]{1,4}){1,5}|[0-9A-Fa-f]{1,4}:(?:(?::[0-9A-Fa-f]{1,4}){1,6})|:(?:(?::[0-9A-Fa-f]{1,4}){1,7}|:)|(?:(?:[0-9A-Fa-f]{1,4}:){6}|::(?:[0-9A-Fa-f]{1,4}:){0,5}|(?:[0-9A-Fa-f]{1,4}:){1,5}:)(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))";
 
 /// The host role used by the remote-agent broker.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema)]
@@ -51,15 +58,24 @@ pub struct RemoteAgentConfigToml {
 #[derive(Serialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoteAgentPeerListenerToml {
-    #[schemars(length(min = 1, max = 2048), regex(pattern = r"^[\x00-\x7F]+$"))]
+    #[schemars(schema_with = "endpoint_schema")]
     pub endpoint: String,
+    #[serde(default)]
+    #[schemars(schema_with = "endpoint_schema")]
+    pub pairing_endpoint: Option<String>,
+    #[serde(default)]
+    #[schemars(schema_with = "advertised_endpoint_schema")]
+    pub advertised_endpoint: Option<String>,
+    #[serde(default)]
+    #[schemars(schema_with = "advertised_endpoint_schema")]
+    pub advertised_pairing_endpoint: Option<String>,
 }
 
 /// A trusted peer configured without network discovery.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoteAgentStaticPeerToml {
-    #[schemars(length(min = 1, max = 2048), regex(pattern = r"^[\x00-\x7F]+$"))]
+    #[schemars(schema_with = "endpoint_schema")]
     pub endpoint: String,
     pub certificate_path: AbsolutePathBuf,
 }
@@ -135,12 +151,35 @@ impl<'de> Deserialize<'de> for RemoteAgentPeerListenerToml {
         #[serde(deny_unknown_fields)]
         struct RemoteAgentPeerListenerTomlInput {
             endpoint: String,
+            #[serde(default)]
+            pairing_endpoint: Option<String>,
+            #[serde(default)]
+            advertised_endpoint: Option<String>,
+            #[serde(default)]
+            advertised_pairing_endpoint: Option<String>,
         }
 
         let input = RemoteAgentPeerListenerTomlInput::deserialize(deserializer)?;
         validate_endpoint(&input.endpoint).map_err(D::Error::custom)?;
+        if let Some(endpoint) = input.pairing_endpoint.as_deref() {
+            validate_endpoint(endpoint).map_err(D::Error::custom)?;
+        }
+        if let Some(endpoint) = input.advertised_endpoint.as_deref() {
+            validate_advertised_endpoint(endpoint).map_err(D::Error::custom)?;
+        }
+        if let Some(endpoint) = input.advertised_pairing_endpoint.as_deref() {
+            validate_advertised_endpoint(endpoint).map_err(D::Error::custom)?;
+        }
+        if input.advertised_endpoint.is_some() != input.advertised_pairing_endpoint.is_some() {
+            return Err(D::Error::custom(
+                "advertised_endpoint and advertised_pairing_endpoint must be supplied together",
+            ));
+        }
         Ok(Self {
             endpoint: input.endpoint,
+            pairing_endpoint: input.pairing_endpoint,
+            advertised_endpoint: input.advertised_endpoint,
+            advertised_pairing_endpoint: input.advertised_pairing_endpoint,
         })
     }
 }
@@ -226,12 +265,127 @@ impl<'de> Deserialize<'de> for RemoteAgentConfigToml {
 }
 
 fn validate_endpoint(endpoint: &str) -> Result<(), String> {
-    if !endpoint.is_ascii() || endpoint.is_empty() || endpoint.len() > MAX_ENDPOINT_LENGTH {
+    if !endpoint.is_ascii()
+        || endpoint.is_empty()
+        || endpoint.len() > MAX_ENDPOINT_LENGTH
+        || endpoint.bytes().any(|byte| !(0x21..=0x7e).contains(&byte))
+    {
         return Err(format!(
             "endpoint must be ASCII and contain between 1 and {MAX_ENDPOINT_LENGTH} bytes"
         ));
     }
+
+    parse_endpoint(endpoint).map(|_| ())
+}
+
+fn validate_advertised_endpoint(endpoint: &str) -> Result<(), String> {
+    validate_endpoint(endpoint)?;
+    let host = parse_endpoint(endpoint)?;
+    if host.contains('*') {
+        return Err("advertised endpoint host must not contain a wildcard".to_string());
+    }
+    if host
+        .parse::<IpAddr>()
+        .is_ok_and(|address| address.is_unspecified() || address.is_loopback())
+    {
+        return Err(
+            "advertised endpoint host must not be an unspecified or loopback IP address"
+                .to_string(),
+        );
+    }
     Ok(())
+}
+
+fn parse_endpoint(endpoint: &str) -> Result<&str, String> {
+    if endpoint.contains('\0') {
+        return Err("endpoint must not contain a NUL byte".to_string());
+    }
+    let authority_and_path = endpoint
+        .strip_prefix("tls://")
+        .ok_or_else(|| "endpoint must use the tls:// scheme".to_string())?;
+    if authority_and_path.contains(['?', '#']) {
+        return Err("endpoint must not include a query or fragment".to_string());
+    }
+    let (authority, path) = authority_and_path
+        .split_once('/')
+        .map_or((authority_and_path, ""), |(authority, path)| {
+            (authority, path)
+        });
+    if !path.is_empty() {
+        return Err("endpoint path must be empty or `/`".to_string());
+    }
+    if authority.is_empty() {
+        return Err("endpoint host must not be empty".to_string());
+    }
+    if authority.contains('@') {
+        return Err("endpoint must not include a username or password".to_string());
+    }
+
+    let (host, port) = if let Some(bracketed_host) = authority.strip_prefix('[') {
+        let (host, port) = bracketed_host
+            .split_once(']')
+            .ok_or_else(|| "endpoint IPv6 host must end with `]`".to_string())?;
+        host.parse::<Ipv6Addr>()
+            .map_err(|_| "endpoint bracketed host must be an IPv6 address".to_string())?;
+        let port = port
+            .strip_prefix(':')
+            .ok_or_else(|| "endpoint must include a port".to_string())?;
+        (host, port)
+    } else {
+        let (host, port) = authority
+            .rsplit_once(':')
+            .ok_or_else(|| "endpoint must include a port".to_string())?;
+        if host.contains(':') {
+            return Err("endpoint IPv6 hosts must be enclosed in `[` and `]`".to_string());
+        }
+        (host, port)
+    };
+    if host.is_empty() {
+        return Err("endpoint host must not be empty".to_string());
+    }
+    if !matches!(port.as_bytes().first(), Some(b'1'..=b'9'))
+        || !port.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err("endpoint port must be a canonical number between 1 and 65535".to_string());
+    }
+    let port = port
+        .parse::<u16>()
+        .map_err(|_| "endpoint port must be a number between 1 and 65535".to_string())?;
+    if port == 0 {
+        return Err("endpoint port must be a number between 1 and 65535".to_string());
+    }
+    Ok(host)
+}
+
+fn endpoint_schema(_: &mut SchemaGenerator) -> Schema {
+    endpoint_schema_with_host_pattern(ENDPOINT_HOST_PATTERN)
+}
+
+fn advertised_endpoint_schema(_: &mut SchemaGenerator) -> Schema {
+    endpoint_schema_with_host_pattern(ADVERTISED_ENDPOINT_HOST_PATTERN)
+}
+
+fn endpoint_schema_with_host_pattern(host_pattern: &str) -> Schema {
+    Schema::Object(SchemaObject {
+        instance_type: Some(InstanceType::String.into()),
+        string: Some(Box::new(StringValidation {
+            min_length: Some(1),
+            max_length: Some(MAX_ENDPOINT_LENGTH as u32),
+            pattern: Some(
+                [
+                    r"^tls://(?:\[",
+                    IPV6_LITERAL_PATTERN,
+                    r"\]|",
+                    host_pattern,
+                    "):",
+                    ENDPOINT_PORT_PATTERN,
+                    "/?$",
+                ]
+                .concat(),
+            ),
+        })),
+        ..Default::default()
+    })
 }
 
 fn is_valid_workspace_id(workspace_id: &str) -> bool {
