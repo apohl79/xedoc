@@ -352,13 +352,33 @@ def _validate_input_schema(value: object, *, depth: int = 0) -> None:
     }:
         raise RuntimeError("Remote-agent tool schema has an unsupported schema type")
     allowed = {
-        "object": {"additionalProperties", "properties", "required", "type"},
-        "array": {"items", "maxItems", "minItems", "type"},
-        "integer": {"enum", "maximum", "minimum", "type"},
-        "string": {"enum", "maxLength", "minLength", "pattern", "type"},
+        "object": {
+            "additionalProperties",
+            "description",
+            "properties",
+            "required",
+            "type",
+        },
+        "array": {"description", "items", "maxItems", "minItems", "type"},
+        "integer": {"description", "enum", "maximum", "minimum", "type"},
+        "string": {
+            "description",
+            "enum",
+            "maxLength",
+            "minLength",
+            "pattern",
+            "type",
+        },
     }[schema_type]
     if set(value) - allowed:
         raise RuntimeError("Remote-agent tool schema has invalid schema fields")
+    description = value.get("description")
+    if description is not None and (
+        not isinstance(description, str)
+        or not description.strip()
+        or len(description) > 1024
+    ):
+        raise RuntimeError("Remote-agent schema description is invalid")
     if schema_type == "object":
         properties = value.get("properties")
         required = value.get("required")
