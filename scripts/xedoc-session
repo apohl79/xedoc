@@ -171,6 +171,7 @@ def remote_agent_enrollment_command(
     *,
     peer_host_id: str | None = None,
     fingerprint: str | None = None,
+    role: str | None = None,
     code: str | None = None,
     endpoints: list[str] | None = None,
 ) -> dict[str, object]:
@@ -182,6 +183,8 @@ def remote_agent_enrollment_command(
         command.extend(("--peer-host-id", peer_host_id))
     if fingerprint is not None:
         command.extend(("--fingerprint", fingerprint))
+    if role is not None:
+        command.extend(("--role", role))
     if action == "discover" and endpoints:
         for endpoint in endpoints:
             command.extend(("--endpoint", endpoint))
@@ -208,50 +211,79 @@ def remote_agent_enrollment_command(
 
 def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
     discovered = remote_agent_enrollment_command("discover", endpoints=args.endpoint)
-    candidates = as_object_list(discovered.get("data", []), "discovered host")
-    managed = [
+    candidates = sorted(
+        as_object_list(discovered.get("data", []), "discovered host"),
+        key=lambda candidate: cast(str, candidate.get("hostId", "")),
+    )
+    hosts = [
         candidate
         for candidate in candidates
-        if candidate.get("role") == "managed"
-        and candidate.get("status") != "paired"
+        if candidate.get("role") in REMOTE_AGENT_ROLES
+        and isinstance(candidate.get("status"), str)
         and isinstance(candidate.get("hostId"), str)
         and isinstance(candidate.get("fingerprint"), str)
+        and isinstance(candidate.get("endpoint"), str)
     ]
-    if not managed:
-        raise AppServerError("no unpaired managed hosts were discovered")
+    if not hosts:
+        raise AppServerError("no pairable or paired hosts were discovered")
     if args.host_id is None:
         if not sys.stdin.isatty():
             raise AppServerError(
-                "managed-host enrollment requires an interactive terminal; "
+                "remote-host enrollment requires an interactive terminal; "
                 "pass --host-id and --fingerprint"
             )
         choices = [
             (
                 cast(str, candidate["hostId"]),
-                f"{candidate['hostId']} — {candidate['endpoint']}",
+                f"{candidate['hostId']} — {candidate['endpoint']} — "
+                f"{candidate['role']} — {candidate['status']}",
             )
-            for candidate in managed
+            for candidate in hosts
         ]
         host_id = prompt_choice(
-            "Managed host to enroll (use ↑/↓ and Enter):", choices
+            "Remote host (host ID — IP:port — type — pairing status; use ↑/↓ and Enter):",
+            choices,
         )
         candidate = next(
-            candidate for candidate in managed if candidate["hostId"] == host_id
+            candidate for candidate in hosts if candidate["hostId"] == host_id
         )
-        fingerprint = cast(str, candidate["fingerprint"])
     else:
         host_id = args.host_id
-        fingerprint = args.fingerprint
-        if fingerprint is None:
-            raise AppServerError("--fingerprint is required with --host-id")
-        if not any(
-            candidate["hostId"] == host_id and candidate["fingerprint"] == fingerprint
-            for candidate in managed
-        ):
+        candidate = next(
+            (candidate for candidate in hosts if candidate["hostId"] == host_id), None
+        )
+        if candidate is None:
             raise AppServerError(
-                f"managed host {host_id!r} was not discovered with the requested "
+                f"remote host {host_id!r} was not discovered as pairable or paired"
+            )
+        fingerprint = args.fingerprint
+        if fingerprint is not None and fingerprint != candidate["fingerprint"]:
+            raise AppServerError(
+                f"remote host {host_id!r} was not discovered with the requested "
                 "fingerprint"
             )
+    fingerprint = cast(str, candidate["fingerprint"])
+    role = cast(str, candidate["role"])
+    status = cast(str, candidate["status"])
+    if status == "paired":
+        decision = prompt_choice(
+            f"Unpair {host_id} (use ↑/↓ and Enter):",
+            [("unpair", "Unpair"), ("cancel", "Cancel")],
+        )
+        if decision == "cancel":
+            return {"hostId": host_id, "status": "unchanged"}
+        return remote_agent_enrollment_command("unpair", peer_host_id=host_id)
+    if status != "unpaired":
+        raise AppServerError(
+            f"remote host {host_id!r} is {status!r}; only unpaired hosts can pair"
+        )
+    if role == "coordinator":
+        return remote_agent_enrollment_command(
+            "pair",
+            peer_host_id=host_id,
+            fingerprint=fingerprint,
+            role=role,
+        )
     try:
         code = getpass.getpass("Managed-host enrollment code: ").strip()
     except (EOFError, KeyboardInterrupt) as error:
@@ -268,6 +300,7 @@ def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
         "pair",
         peer_host_id=host_id,
         fingerprint=fingerprint,
+        role=role,
     )
     return {"enrollment": remembered, "pairing": pairing}
 
@@ -754,15 +787,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     enroll_parser = subparsers.add_parser(
         "remote-agent-enroll",
-        help="Enroll and pair one discovered managed host.",
+        help="List discovered hosts and pair or unpair one with arrow-key navigation.",
     )
     enroll_parser.add_argument(
         "--host-id",
-        help="Managed host ID; omit to select with arrow keys.",
+        help="Remote host ID; omit to select with arrow keys.",
     )
     enroll_parser.add_argument(
         "--fingerprint",
-        help="Managed host fingerprint; required with --host-id.",
+        help="Expected host fingerprint when pairing non-interactively.",
     )
     enroll_parser.add_argument(
         "--endpoint",

@@ -11,7 +11,7 @@ package_zip=""
 target=""
 normal_port=46000
 pairing_port=46001
-discovery_port=43371
+discovery_port=""
 advertise_host=""
 command="start"
 command_set=0
@@ -34,7 +34,7 @@ Options:
   --name NAME                Container name (default: xedoc-linux-remote-agent).
   --normal-port PORT         Host TCP port for peer traffic (default: 46000).
   --pairing-port PORT        Host TCP port for pairing traffic (default: 46001).
-  --discovery-port PORT      Host UDP direct-discovery port (default: 43371).
+  --discovery-port PORT      Host UDP direct-discovery port (default: an available port).
   --advertise-host IPV4      Non-loopback IPv4 address advertised to coordinators.
                              Default: this machine's outbound IPv4 address.
   -h, --help                 Show this help.
@@ -54,6 +54,99 @@ target_triple() { case "$1" in linux-arm64) echo aarch64-unknown-linux-gnu;; lin
 target_platform() { case "$1" in linux-arm64) echo linux/arm64;; linux-x86_64) echo linux/amd64;; *) fail "unsupported target: $1";; esac; }
 default_target() { case "$(docker version --format '{{.Server.Arch}}')" in aarch64|arm64) echo linux-arm64;; x86_64|amd64) echo linux-x86_64;; *) fail "unsupported Docker server architecture";; esac; }
 valid_port() { [[ "$1" =~ ^[1-9][0-9]{0,4}$ ]] && (( "$1" <= 65535 )); }
+available_udp_port() {
+  python3 - <<'PY'
+import socket
+
+while True:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
+        tcp.bind(("127.0.0.1", 0))
+        port = tcp.getsockname()[1]
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+            try:
+                udp.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            print(port)
+            break
+PY
+}
+discovery_state_path() {
+  python3 - "$container_name" <<'PY'
+import hashlib
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+digest = hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest()[:16]
+print(Path(tempfile.gettempdir()) / f"xedoc-remote-agent-docker-{os.getuid()}-{digest}.json")
+PY
+}
+discovery_relay_session() {
+  python3 - "$container_name" <<'PY'
+import hashlib
+import sys
+
+digest = hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest()[:16]
+print(f"xedoc-remote-agent-relay-{digest}")
+PY
+}
+remove_local_discovery_registration() {
+  relay_session="$(discovery_relay_session)"
+  tmux has-session -t "$relay_session" 2>/dev/null && tmux kill-session -t "$relay_session"
+  python3 - "$(discovery_state_path)" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+state_path = Path(sys.argv[1])
+try:
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+except (OSError, UnicodeError, json.JSONDecodeError):
+    state_path.unlink(missing_ok=True)
+    raise SystemExit(0)
+host_id = state.get("hostId") if isinstance(state, dict) else None
+port = state.get("port") if isinstance(state, dict) else None
+if isinstance(host_id, str) and isinstance(port, int) and not isinstance(port, bool):
+    directory = Path(tempfile.gettempdir()) / f"xedoc-remote-agent-discovery-{os.getuid()}"
+    registration = directory / f"{host_id}.json"
+    try:
+        value = json.loads(registration.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        value = None
+    if value == {"hostId": host_id, "port": port}:
+        registration.unlink(missing_ok=True)
+state_path.unlink(missing_ok=True)
+PY
+}
+register_local_discovery() {
+  python3 - "$(discovery_state_path)" "$1" "$2" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+state_path = Path(sys.argv[1])
+host_id = sys.argv[2]
+port = int(sys.argv[3])
+directory = Path(tempfile.gettempdir()) / f"xedoc-remote-agent-discovery-{os.getuid()}"
+directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+directory.chmod(0o700)
+registration = directory / f"{host_id}.json"
+for path, value in (
+    (registration, {"hostId": host_id, "port": port}),
+    (state_path, {"hostId": host_id, "port": port}),
+):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(value, separators=(",", ":")), encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(path)
+PY
+}
 outbound_ipv4() {
   python3 - <<'PY'
 import ipaddress
@@ -119,6 +212,7 @@ done
 configure_docker
 image_name="${container_name}:latest"
 if [[ "$command" == stop ]]; then
+  remove_local_discovery_registration
   if docker container inspect "$container_name" >/dev/null 2>&1; then
     label="$(docker container inspect --format "{{ index .Config.Labels \"$container_label\" }}" "$container_name")"
     [[ "$label" == true ]] || fail "container exists and is not owned by this harness: $container_name"
@@ -140,6 +234,8 @@ if [[ "$command" == stop ]]; then
   printf 'Pruned dangling Docker image layers.\n'
   exit 0
 fi
+remove_local_discovery_registration
+[[ -n "$discovery_port" ]] || discovery_port="$(available_udp_port)"
 for port in "$normal_port" "$pairing_port" "$discovery_port"; do valid_port "$port" || fail "invalid port: $port"; done
 [[ -f "$HOME/.xedoc/auth.json" ]] || fail "missing ~/.xedoc/auth.json"
 [[ -d "$HOME/.xedoc/secrets" ]] || fail "missing ~/.xedoc/secrets"
@@ -166,9 +262,10 @@ fi
 docker run -d --platform "$platform" --name "$container_name" --label "$container_label=true" \
   --add-host host.docker.internal:host-gateway \
   -p "0.0.0.0:${normal_port}:46000/tcp" -p "0.0.0.0:${pairing_port}:46001/tcp" \
-  -p "127.0.0.1:${discovery_port}:43371/udp" \
+  -p "127.0.0.1:${discovery_port}:${discovery_port}/tcp" \
   --mount "type=bind,src=$HOME/.xedoc/auth.json,dst=/root/.xedoc/auth.json,readonly" \
   --mount "type=bind,src=$HOME/.xedoc/secrets,dst=/root/.xedoc/secrets,readonly" \
+  --mount "type=bind,src=$script_dir,dst=/e2e,readonly" \
   "$image_name" >/dev/null
 docker exec "$container_name" sh -ceu "cat > /root/.xedoc/config.toml <<'EOF'
 [remote_agent]
@@ -189,12 +286,22 @@ chmod 700 /root/.xedoc/remote-agent
 chmod 600 /root/.xedoc/remote-agent/bootstrap.toml"
 docker exec "$container_name" xedoc app-server daemon start
 docker exec "$container_name" xedoc app-server daemon version
+docker exec -d "$container_name" env PYTHONPATH=/e2e python3 /e2e/remote_agent_docker_e2e.py \
+  discovery-relay-server --tcp-port "$discovery_port" --udp-port 43371
+relay_session="$(discovery_relay_session)"
+tmux new-session -d -s "$relay_session" \
+  env "PYTHONPATH=$script_dir" python3 "$script_dir/remote_agent_docker_e2e.py" \
+  discovery-relay-client --udp-port "$discovery_port" --tcp-port "$discovery_port"
+sleep 0.1
+tmux has-session -t "$relay_session" 2>/dev/null || fail "could not start the local discovery relay"
+peer_host_id="$(docker exec "$container_name" /opt/xedoc/xedoc-resources/remote-agent/runtime/python/bin/python3 -c 'import sqlite3; print(sqlite3.connect("/root/.xedoc/remote-agent/peer-state.sqlite3").execute("SELECT host_id FROM identity WHERE singleton = 1").fetchone()[0])')"
+register_local_discovery "$peer_host_id" "$discovery_port"
 code="$(docker exec "$container_name" xedoc-remote-agentd enrollment create | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')"
 cat <<EOF
 ==> Ready: managed peer $container_name
 Enrollment code: $code
 Pair from the coordinator:
-  xedoc-session remote-agent-enroll --endpoint 127.0.0.1:$discovery_port
+  xedoc-session remote-agent-enroll
 Container shell: docker exec -it $container_name bash
 Stop and reclaim harness image space: scripts/run_remote_agent_docker.sh stop --name $container_name
 EOF

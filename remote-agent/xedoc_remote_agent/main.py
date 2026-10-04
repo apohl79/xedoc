@@ -38,13 +38,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         "discover",
         "remember",
         "pair",
+        "unpair",
     }:
-        parser.error("enrollment requires create, discover, remember, or pair")
+        parser.error("enrollment requires create, discover, remember, pair, or unpair")
     if args.command == "enrollment" and args.action in {"remember", "pair"}:
         if args.peer_host_id is None or args.fingerprint is None:
             parser.error(
                 "enrollment remember/pair requires --peer-host-id and --fingerprint"
             )
+    if args.command == "enrollment" and args.action == "unpair":
+        if args.peer_host_id is None:
+            parser.error("enrollment unpair requires --peer-host-id")
     try:
         if args.command == "doctor":
             report = RemoteAgentDaemon.doctor(
@@ -138,6 +142,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--host-id")
     parser.add_argument("--peer-host-id")
     parser.add_argument("--fingerprint")
+    parser.add_argument("--role", choices=("coordinator", "managed"))
     parser.add_argument("--discovery-timeout", type=int, default=3)
     parser.add_argument(
         "--endpoint",
@@ -200,7 +205,11 @@ def _enrollment(args: argparse.Namespace) -> dict[str, object]:
         )
     peer_host_id = args.peer_host_id
     fingerprint = args.fingerprint
-    if not isinstance(peer_host_id, str) or not isinstance(fingerprint, str):
+    if not isinstance(peer_host_id, str):
+        raise BrokerError.invalid_request()
+    if args.action == "unpair":
+        return client.call("host/remove", {"hostId": peer_host_id})
+    if not isinstance(fingerprint, str):
         raise BrokerError.invalid_request()
     if args.action == "remember":
         code = sys.stdin.read(257).strip()
@@ -212,7 +221,7 @@ def _enrollment(args: argparse.Namespace) -> dict[str, object]:
         "host/pair",
         {
             "hostId": peer_host_id,
-            "role": "managed",
+            "role": args.role or "managed",
             "fingerprint": fingerprint,
         },
     )
