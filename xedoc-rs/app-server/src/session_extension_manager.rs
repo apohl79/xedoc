@@ -46,6 +46,7 @@ use xedoc_core::config::Config;
 use xedoc_plugin::LoadedPlugin;
 use xedoc_plugin::manifest::PluginManifestExtension;
 use xedoc_protocol::ThreadId;
+use xedoc_protocol::protocol::AskForApproval;
 use xedoc_script_protocol::Extension;
 use xedoc_script_protocol::FormField;
 use xedoc_script_protocol::Interaction;
@@ -249,6 +250,7 @@ impl SessionExtensionManager {
             }
         };
         if remote_tool_requires_approval(&tool_name)
+            && conversation.config_snapshot().await.approval_policy != AskForApproval::Never
             && !matches!(
                 tokio::time::timeout(
                     Duration::from_secs(/*secs*/ 30),
