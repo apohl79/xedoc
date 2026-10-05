@@ -1560,7 +1560,7 @@ class PeerState:
             (_now(),),
         ).fetchall()
         for row in rows:
-            relationship = _relationship_from_row(row[1:])
+            relationship = _relationship_from_row(row)
             if relationship.status != "pending":
                 raise BrokerError.internal()
             connection.execute(

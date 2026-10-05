@@ -832,6 +832,7 @@ install_zip_release() {
   ln -sf "bin/xedoc" "$stage_release/xedoc"
 
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
+    chmod -R u+w "$release_dir"
     rm -rf "$release_dir"
   fi
   mv "$stage_release" "$release_dir"
