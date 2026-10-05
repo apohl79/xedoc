@@ -55,7 +55,15 @@ _SESSION_OPERATION_FIELDS: dict[str, tuple[set[str], set[str]]] = {
     "session/start": ({"hostId", "workspaceId", "relativePath"}, {"workspaceId"}),
     "session/resume": ({"hostId", "threadId"}, {"threadId"}),
     "session/attach": ({"hostId", "threadId"}, {"threadId"}),
+    "session/read": (
+        {"hostId", "threadId", "cursor", "limit"},
+        {"threadId"},
+    ),
     "session/send": ({"hostId", "threadId", "message"}, {"threadId", "message"}),
+    "session/steer": (
+        {"hostId", "threadId", "turnId", "message"},
+        {"threadId", "turnId", "message"},
+    ),
     "session/status": ({"hostId", "threadId"}, {"threadId"}),
     "session/wait": (
         {"hostId", "operationId", "timeoutSeconds"},

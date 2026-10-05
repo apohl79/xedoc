@@ -106,6 +106,41 @@ PY
 }
 wait_pane_exit() { local pane="$1"; for _ in {1..2400}; do [[ "$(tmux display-message -p -t "$pane" '#{pane_dead}' 2>/dev/null || true)" == 1 ]] && return; sleep .05; done; fail "timed out waiting for $pane"; }
 wait_pane_text() { local pane="$1" text="$2"; for _ in {1..600}; do tmux capture-pane -p -t "$pane" -S -100 2>/dev/null | grep -Fq -- "$text" && return; sleep .05; done; fail "timed out waiting for $text"; }
+menu_index_for_port() {
+  local home="$1" port="$2" discovery_file="$3"
+  env -u PYTHONPATH TMPDIR="$tmp_dir" "$package_agent" enrollment discover \
+    --xedoc-home "$home" >"$discovery_file"
+  "$python_bin" - "$discovery_file" "$port" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+entries = value.get("data") if isinstance(value, dict) else None
+if not isinstance(entries, list):
+    raise SystemExit("discovery response omitted data")
+hosts = sorted(
+    (
+        entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and entry.get("role") in {"coordinator", "managed"}
+        and isinstance(entry.get("status"), str)
+        and isinstance(entry.get("hostId"), str)
+        and isinstance(entry.get("fingerprint"), str)
+        and isinstance(entry.get("endpoint"), str)
+    ),
+    key=lambda entry: entry["hostId"],
+)
+port = sys.argv[2]
+for index, entry in enumerate(hosts):
+    if entry["endpoint"].rsplit(":", 1)[-1] == port:
+        print(index)
+        break
+else:
+    raise SystemExit(f"target peer on port {port} was not discovered")
+PY
+}
 
 launcher() {
   local name="$1"; shift
@@ -224,11 +259,17 @@ managed_phase() {
   local enrollment_json code
   enrollment_json="$(env -u PYTHONPATH TMPDIR="$tmp_dir" "$package_agent" enrollment create --xedoc-home "$target_home")"
   code="$($python_bin -c 'import json,sys; print(json.load(sys.stdin)["code"])' <<<"$enrollment_json")"
+  local selection_downs
+  selection_downs="$(menu_index_for_port "$source_home" "$target_port" "$dir/source-discovery.json")"
   local enroll
   enroll="$(new_pane managed-enroll "$(launcher managed-enroll env HOME="$source_home" XEDOC_HOME="$source_home" TMPDIR="$tmp_dir" "$package_session" --socket "$source_socket" remote-agent-enroll)")"
-  wait_pane_text "$enroll" 'Managed host to enroll (use ↑/↓ and Enter):'
-  tmux send-keys -t "$enroll" Down Up Enter
+  wait_pane_text "$enroll" 'Remote host (host ID'
+  for ((index = 0; index < selection_downs; index++)); do
+    tmux send-keys -t "$enroll" Down
+  done
+  tmux send-keys -t "$enroll" Enter
   wait_pane_text "$enroll" 'Managed-host enrollment code:'
+  sleep .2
   tmux send-keys -t "$enroll" -l "$code"; tmux send-keys -t "$enroll" Enter
   wait_pane_exit "$enroll"
   tmux capture-pane -p -t "$enroll" -S -80 >"$artifacts/managed-enroll.log"
@@ -276,16 +317,55 @@ assert len(completed)==1,items
 completed=completed[0]
 assert completed.get('state')=='completed',completed
 assert completed.get('resultStatus')=='completed',completed
+assert isinstance(completed.get('outputText'),str),completed
+assert 'remote-agent-e2e-tmp-entry' in completed['outputText'],completed
 events=completed.get('events')
 assert (
     isinstance(events,list)
     and events
     and events[-1]=={'type':'terminal','status':'completed'}
-    and all(event=={'type':'progress','status':'running'} for event in events[:-1])
+    and all(
+        isinstance(event,dict)
+        and event.get('type')=='progress'
+        and event.get('status')=='running'
+        for event in events[:-1]
+    )
 ),completed
 assert completed.get('stopReason')=='terminal',completed
 assert all(isinstance(completed.get(key),str) and completed[key] for key in ('operation','threadId','turnId')),completed
-assert any(x.get('event')=='remoteWaitProgress' and x.get('events')==[{'type':'progress','status':'running'}] for x in items),items
+assert any(
+    x.get('event')=='remoteWaitProgress'
+    and any(
+        event.get('type')=='progress'
+        and event.get('status')=='running'
+        and isinstance(event.get('activitySummary'),str)
+        and event['activitySummary']
+        for event in x.get('events',[])
+        if isinstance(event,dict)
+    )
+    for x in items
+),items
+lifecycles=[x for x in items if x.get('event')=='remoteActivityLifecycle']
+assert len(lifecycles)==1,items
+lifecycle=lifecycles[0]
+agent_thread_id=lifecycle.get('agentThreadId')
+kinds=lifecycle.get('kinds')
+activities=lifecycle.get('currentActivities')
+assert isinstance(agent_thread_id,str) and agent_thread_id,lifecycle
+assert (
+    isinstance(kinds,list)
+    and kinds[0]=='started'
+    and 'interacted' in kinds[1:-1]
+    and kinds[-1]=='interrupted'
+),lifecycle
+assert (
+    isinstance(activities,list)
+    and len(activities)==len(kinds)
+    and all(isinstance(activity,str) and activity and len(activity.encode())<=64 for activity in activities)
+    and 'Remote session is running.' in activities
+),lifecycle
+remote_activities=[x for x in items if x.get('event')=='remoteActivity']
+assert all(x.get('agentThreadId')==agent_thread_id for x in remote_activities),items
 assert any(x.get('event')=='targetInterrupted' for x in items),items
 state=json.load(open(sys.argv[2]))
 assert state.get('targetInterrupted') is True,state

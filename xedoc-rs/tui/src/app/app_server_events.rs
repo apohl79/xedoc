@@ -98,6 +98,27 @@ impl App {
                 );
                 return;
             }
+            ServerNotification::RemoteSessionUpdated(notification) => {
+                let remote_session_id = super::agent_navigation::RemoteSessionId::new(
+                    notification.remote_session.remote_session_id.clone(),
+                );
+                self.upsert_remote_session_picker_entry(notification.remote_session.clone());
+                if self.active_remote_session.as_ref() == Some(&remote_session_id)
+                    && let Some(output_delta) = notification
+                        .output_delta
+                        .as_deref()
+                        .filter(|output_delta| !output_delta.trim().is_empty())
+                {
+                    self.chat_widget.add_plain_history_lines(
+                        output_delta
+                            .lines()
+                            .map(|line| line.to_string().into())
+                            .collect(),
+                    );
+                }
+                self.sync_active_agent_display();
+                return;
+            }
             _ => {}
         }
 

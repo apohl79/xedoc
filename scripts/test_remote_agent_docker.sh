@@ -45,6 +45,15 @@ if parsed.is_loopback or parsed.is_unspecified:
 print(address)
 PY
 }
+available_tcp_port() {
+  python3 - <<'PY'
+import socket
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+    listener.bind(("127.0.0.1", 0))
+    print(listener.getsockname()[1])
+PY
+}
 while (($#)); do
   case "$1" in
     --host-package|--linux-package|--target)
@@ -64,6 +73,8 @@ command -v docker >/dev/null || fail "docker is required"
 command -v tmux >/dev/null || fail "tmux is required"
 if [[ -z "${DOCKER_HOST:-}" && -S "$HOME/.colima/default/docker.sock" ]]; then export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"; fi
 docker info >/dev/null || fail "Docker is unavailable; start Colima with: colima start"
+docker_host="$(docker context inspect --format '{{ .Endpoints.docker.Host }}')"
+[[ -n "$docker_host" ]] || fail "the active Docker context has no endpoint"
 advertise_host="$(outbound_ipv4)" ||
   fail "could not determine a non-loopback outbound IPv4 address for Docker peer advertisement"
 
@@ -136,22 +147,11 @@ assets="$tmp/e2e"
 state_file="$assets/state.json"
 mkdir -p "$home/remote-agent" "$control_dir" "$source_workspace" "$tmp/build" "$assets"
 chmod 700 "$home" "$home/remote-agent"
-host_normal=46100; host_pairing=46101; peer_normal=46200; peer_pairing=46201
-peer_discovery="$(python3 - <<'PY'
-import socket
-
-for port in range(43371, 43375):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        try:
-            listener.bind(("127.0.0.1", port))
-        except OSError:
-            continue
-    print(port)
-    break
-else:
-    raise SystemExit("no remote-agent discovery TCP port is available")
-PY
-)"
+host_normal="$(available_tcp_port)"
+host_pairing="$(available_tcp_port)"
+peer_normal="$(available_tcp_port)"
+peer_pairing="$(available_tcp_port)"
+peer_discovery="$(available_tcp_port)"
 cp "$helper" "$script_dir/session_script_sdk.py" "$script_dir/remote_agent_pairing_e2e.py" "$assets/"
 source_port_file="$assets/source-port"
 target_port_file="$assets/target-port"
@@ -159,6 +159,7 @@ source_log="$assets/source-mock.jsonl"
 target_log="$assets/target-mock.jsonl"
 
 tmux new-session -d -s "$session" -n e2e "exec env -u PYTHONPATH python3 '$assets/remote_agent_docker_e2e.py' mock --role source --port-file '$source_port_file' --request-log '$source_log' --state-file '$state_file'"
+tmux set-environment -t "$session" DOCKER_HOST "$docker_host"
 tmux set-option -t "$session":0 remain-on-exit on
 tmux set-option -t "$session" remain-on-exit on
 tmux split-window -d -t "$session":0 -h "exec env -u PYTHONPATH python3 '$assets/remote_agent_docker_e2e.py' mock --role target --port-file '$target_port_file' --request-log '$target_log' --state-file '$state_file'"
@@ -264,6 +265,45 @@ tmux new-window -d -t "$session" -n discovery-relay-server "exec docker exec '$c
 tmux new-window -d -t "$session" -n discovery-relay-client "exec env PYTHONPATH='$assets' python3 '$assets/remote_agent_docker_e2e.py' discovery-relay-client --udp-port $peer_discovery --tcp-port $peer_discovery"
 sleep 0.2
 enrollment="$(docker exec "$container" xedoc-remote-agentd enrollment create | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')"
+env -u PYTHONPATH XEDOC_HOME="$home" "$host_agent" enrollment discover \
+  --xedoc-home "$home" --endpoint 127.0.0.1:"$peer_discovery" >"$tmp/discovered-before-enrollment.json"
+selection_downs="$(python3 - "$tmp/discovered-before-enrollment.json" "$peer_normal" <<'PY'
+import json
+import re
+from pathlib import Path
+import sys
+
+value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+port = sys.argv[2]
+entries = value.get("data") if isinstance(value, dict) else None
+if not isinstance(entries, list):
+    raise SystemExit("discovery response omitted data")
+hosts = sorted(
+    (
+        entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and entry.get("role") in {"coordinator", "managed"}
+        and isinstance(entry.get("status"), str)
+        and isinstance(entry.get("hostId"), str)
+        and isinstance(entry.get("fingerprint"), str)
+        and isinstance(entry.get("endpoint"), str)
+    ),
+    key=lambda entry: entry["hostId"],
+)
+target = next(
+    (
+        index
+        for index, entry in enumerate(hosts)
+        if re.search(rf":{re.escape(port)}$", entry["endpoint"])
+    ),
+    None,
+)
+if target is None:
+    raise SystemExit(f"managed Docker peer on port {port} was not discovered")
+print(target)
+PY
+)"
 
 # This is the actual public managed enrollment flow. getpass reads the code from the tmux pane;
 # no certificate is copied into either home and no broker state is mutated by the harness.
@@ -271,16 +311,23 @@ tmux new-window -d -t "$session" -n enroll "exec env -u PYTHONPATH XEDOC_HOME='$
 tmux set-window-option -t "$session":enroll remain-on-exit on
 enroll_pane="$(tmux list-panes -t "$session":enroll -F '#{pane_id}')"
 for _ in {1..200}; do
-  tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'Managed host to enroll' && break
+  tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'Remote host (host ID' && break
   sleep 0.05
 done
-tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'Managed host to enroll' ||
+tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'Remote host (host ID' ||
   fail "coordinator did not discover the managed peer"
+for ((index = 0; index < selection_downs; index++)); do
+  tmux send-keys -t "$enroll_pane" Down
+done
 tmux send-keys -t "$enroll_pane" Enter
 for _ in {1..200}; do
   tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'enrollment code' && break
   sleep 0.05
 done
+tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'Managed-host enrollment code' ||
+  fail "coordinator did not prompt for the managed enrollment code"
+[[ -n "$enrollment" ]] || fail "managed peer returned an empty enrollment code"
+sleep 0.2
 tmux send-keys -t "$enroll_pane" -l "$enrollment"
 tmux send-keys -t "$enroll_pane" Enter
 for _ in {1..600}; do
@@ -325,6 +372,71 @@ for _ in {1..2400}; do
   printf '%s' "$state" | grep -q '"controllerPassed":true' && break
   sleep 0.05
 done
+printf '%s' "$state" | grep -q '"controllerPassed":true' ||
+  fail "coordinator model task did not finish"
+tmux new-window -d -t "$session" -n projection-controller "exec env PYTHONPATH='$assets' python3 '$assets/remote_agent_docker_e2e.py' projection-controller --socket '$socket' --state-file '$state_file' --timeout 0.25 --wait-timeout 90"
+tmux set-window-option -t "$session":projection-controller remain-on-exit on
+projection_pane="$(tmux list-panes -t "$session":projection-controller -F '#{pane_id}')"
+for _ in {1..1800}; do
+  state="$(cat "$state_file" 2>/dev/null || true)"
+  printf '%s' "$state" | grep -q '"remoteProjection"' &&
+    printf '%s' "$state" | grep -q '"cancelled":true' && break
+  if [[ "$(tmux display-message -p -t "$projection_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
+    fail "remote session projection controller exited unsuccessfully"
+  fi
+  sleep 0.05
+done
+printf '%s' "$state" | grep -q '"cancelled":true' ||
+  fail "remote session projection did not complete its coordinator API lifecycle"
+source_thread_id="$(python3 - "$state_file" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+thread_id = value.get("sourceThreadId")
+if not isinstance(thread_id, str) or not thread_id:
+    raise SystemExit("sourceThreadId is unavailable")
+print(thread_id)
+PY
+)"
+
+# Exercise the coordinator's actual TUI routing: /agents must show the remote
+# projection, Enter opens it, and its composer forwards a direct follow-up to
+# the paired peer. The deterministic peer replies "target idle".
+tmux new-window -d -x 180 -y 50 -t "$session" -n projection-tui \
+  "exec env -u PYTHONPATH XEDOC_HOME='$home' TERM=xterm-256color '$host_xedoc' --remote 'unix://$socket' resume '$source_thread_id'"
+tmux set-window-option -t "$session":projection-tui remain-on-exit on
+tui_pane="$(tmux list-panes -t "$session":projection-tui -F '#{pane_id}')"
+for _ in {1..600}; do
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Use /' && break
+  if [[ "$(tmux display-message -p -t "$tui_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
+    fail "coordinator TUI exited before remote session navigation"
+  fi
+  sleep 0.05
+done
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Use /' ||
+  fail "coordinator TUI did not become interactive"
+tmux send-keys -t "$tui_pane" -l '/agents'
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..600}; do
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Agents' && break
+  sleep 0.05
+done
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Agents' ||
+  fail "/agents did not open the coordinator Agents display"
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q '\[remote\]' ||
+  fail "/agents did not display the remote session projection"
+tmux send-keys -t "$tui_pane" Enter
+tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PROJECTION_E2E_TUI_FOLLOW_UP'
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..1200}; do
+  tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target idle' && break
+  sleep 0.05
+done
+tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target idle' ||
+  fail "remote projection TUI did not return its direct follow-up result"
+tmux send-keys -t "$tui_pane" C-c
 python3 - "$state_file" <<'PY'
 import json
 from pathlib import Path
@@ -351,11 +463,34 @@ if not isinstance(result, dict):
 if (
     result.get("state") != "completed"
     or result.get("resultStatus") != "completed"
-    or result.get("events") != [{"type": "terminal", "status": "completed"}]
+    or not isinstance(result.get("outputText"), str)
+    or "remote-agent-e2e-tmp-entry" not in result["outputText"]
     or result.get("stopReason") != "terminal"
+):
+    raise SystemExit("completedTaskResult is not terminal completed evidence")
+events = result.get("events")
+if (
+    not isinstance(events, list)
+    or not events
+    or events[-1] != {"type": "terminal", "status": "completed"}
 ):
     raise SystemExit("completedTaskResult is not terminal completed evidence")
 if not all(isinstance(result.get(key), str) and result[key] for key in ("operation", "threadId", "turnId")):
     raise SystemExit("completedTaskResult omits terminal identifiers")
+projection = state.get("remoteProjection")
+if not isinstance(projection, dict):
+    raise SystemExit("remote projection evidence is missing")
+if not all(
+    projection.get(key) is True
+    for key in (
+        "listed",
+        "attached",
+        "followUpOutputObserved",
+        "activityUpdated",
+        "steered",
+        "cancelled",
+    )
+):
+    raise SystemExit("remote projection did not satisfy coordinator API acceptance evidence")
 PY
-printf 'PASS: pairing, grant, remote session progress, cancellation, and target interruption succeeded; artifacts: %s\n' "$tmp"
+printf 'PASS: pairing, model remote task output, projection API activity/steer/cancel, and /agents direct follow-up succeeded; artifacts: %s\n' "$tmp"

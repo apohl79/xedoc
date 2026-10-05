@@ -226,6 +226,7 @@ impl ChatWidget {
             | ServerNotification::ScriptPromptOpened(_)
             | ServerNotification::ScriptPromptClosed(_)
             | ServerNotification::ScriptResyncRequired(_)
+            | ServerNotification::RemoteSessionUpdated(_)
             | ServerNotification::RawResponseItemCompleted(_)
             | ServerNotification::RawResponseCompleted(_)
             | ServerNotification::CommandExecOutputDelta(_)

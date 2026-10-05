@@ -484,7 +484,12 @@ impl App {
                     .await?;
             }
             AppEvent::SubmitThreadOp { thread_id, op } => {
-                self.submit_thread_op(app_server, thread_id, op).await?;
+                if !self
+                    .submit_remote_session_op(app_server, op.clone())
+                    .await?
+                {
+                    self.submit_thread_op(app_server, thread_id, op).await?;
+                }
             }
             AppEvent::ThreadHistoryEntryResponse { thread_id, event } => {
                 self.enqueue_thread_history_entry_response(thread_id, event)
@@ -1413,6 +1418,14 @@ impl App {
             AppEvent::SelectAgentThread(thread_id) => {
                 self.select_agent_thread_and_discard_side(tui, app_server, thread_id)
                     .await?;
+            }
+            AppEvent::SelectRemoteSession(remote_session_id) => {
+                self.select_remote_session(
+                    tui,
+                    app_server,
+                    RemoteSessionId::new(remote_session_id),
+                )
+                .await?;
             }
             AppEvent::StartSide {
                 parent_thread_id,

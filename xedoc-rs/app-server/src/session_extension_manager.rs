@@ -229,6 +229,14 @@ impl SessionExtensionManager {
         self.inner.remote_agent.start_for_thread(thread_id).await
     }
 
+    pub(crate) async fn control_remote_session(
+        &self,
+        thread_id: ThreadId,
+        params: xedoc_app_server_protocol::RemoteSessionControlParams,
+    ) -> Result<xedoc_app_server_protocol::RemoteSessionControlResponse, String> {
+        self.inner.remote_agent.control(thread_id, params).await
+    }
+
     pub(crate) async fn dispatch_remote_dynamic_tool(
         &self,
         params: DynamicToolCallParams,

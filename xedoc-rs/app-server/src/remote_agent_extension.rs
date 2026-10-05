@@ -17,6 +17,8 @@ use xedoc_app_server_protocol::DynamicToolCallParams;
 use xedoc_app_server_protocol::DynamicToolFunctionSpec;
 use xedoc_app_server_protocol::DynamicToolNamespaceTool;
 use xedoc_app_server_protocol::DynamicToolSpec;
+use xedoc_app_server_protocol::RemoteSessionControlParams;
+use xedoc_app_server_protocol::RemoteSessionControlResponse;
 use xedoc_app_server_protocol::ServerRequestPayload;
 use xedoc_core::XedocThread;
 use xedoc_protocol::ThreadId;
@@ -388,6 +390,52 @@ impl BuiltInRemoteAgentExtension {
             }
         });
         true
+    }
+
+    pub(crate) async fn control(
+        &self,
+        root_thread_id: ThreadId,
+        params: RemoteSessionControlParams,
+    ) -> Result<RemoteSessionControlResponse, String> {
+        let provider_key = (
+            root_thread_id,
+            BUILTIN_REMOTE_AGENT_EXTENSION_ID.to_string(),
+        );
+        let provider = self
+            .wait_for_provider(&provider_key)
+            .await
+            .ok_or_else(|| "remote-agent extension is unavailable".to_string())?;
+        let (registered_connection_id, _) = self
+            .session_script_registry
+            .ready_extension_registration(root_thread_id, BUILTIN_REMOTE_AGENT_EXTENSION_ID)
+            .await
+            .ok_or_else(|| "remote-agent extension is unavailable".to_string())?;
+        if registered_connection_id != provider.connection_id {
+            self.invalidate_provider(&provider_key, provider.connection_id)
+                .await;
+            return Err("remote-agent extension is unavailable".to_string());
+        }
+        let (request_id, receiver) = self
+            .outgoing
+            .send_request_to_connections(
+                Some(&[provider.connection_id]),
+                ServerRequestPayload::RemoteSessionControl(params),
+                Some(root_thread_id),
+            )
+            .await;
+        match tokio::time::timeout(REMOTE_AGENT_DISPATCH_TIMEOUT, receiver).await {
+            Ok(Ok(Ok(value))) => serde_json::from_value(value).map_err(|_| {
+                "remote-agent extension returned an invalid control response".to_string()
+            }),
+            Ok(Ok(Err(_))) | Ok(Err(_)) => {
+                self.outgoing.cancel_request(&request_id).await;
+                Err("remote-agent control request failed".to_string())
+            }
+            Err(_) => {
+                self.outgoing.cancel_request(&request_id).await;
+                Err("remote-agent control request timed out".to_string())
+            }
+        }
     }
 
     async fn wait_for_provider(

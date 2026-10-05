@@ -542,6 +542,54 @@ client_request_definitions! {
         serialization: None,
         response: v2::SessionScriptMessageResponse,
     },
+    #[experimental("script/remoteSessionRegister")]
+    ScriptRemoteSessionRegister => "script/remoteSessionRegister" {
+        params: v2::RemoteSessionRegisterParams,
+        serialization: None,
+        response: v2::RemoteSessionRegisterResponse,
+    },
+    #[experimental("script/remoteSessionUpdate")]
+    ScriptRemoteSessionUpdate => "script/remoteSessionUpdate" {
+        params: v2::RemoteSessionUpdateParams,
+        serialization: None,
+        response: v2::RemoteSessionUpdateResponse,
+    },
+    #[experimental("remoteSession/list")]
+    RemoteSessionList => "remoteSession/list" {
+        params: v2::RemoteSessionListParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::RemoteSessionListResponse,
+    },
+    #[experimental("remoteSession/read")]
+    RemoteSessionRead => "remoteSession/read" {
+        params: v2::RemoteSessionReadParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::RemoteSessionReadResponse,
+    },
+    #[experimental("remoteSession/attach")]
+    RemoteSessionAttach => "remoteSession/attach" {
+        params: v2::RemoteSessionAttachParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::RemoteSessionAttachResponse,
+    },
+    #[experimental("remoteSession/input")]
+    RemoteSessionInput => "remoteSession/input" {
+        params: v2::RemoteSessionInputParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::RemoteSessionInputResponse,
+    },
+    #[experimental("remoteSession/cancel")]
+    RemoteSessionCancel => "remoteSession/cancel" {
+        params: v2::RemoteSessionCancelParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::RemoteSessionCancelResponse,
+    },
+    #[experimental("remoteSession/detach")]
+    RemoteSessionDetach => "remoteSession/detach" {
+        params: v2::RemoteSessionDetachParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::RemoteSessionDetachResponse,
+    },
     #[experimental("thread/increment_elicitation")]
     /// Increment the thread-local out-of-band elicitation counter.
     ///
@@ -1458,6 +1506,13 @@ server_request_definitions! {
         response: v2::CurrentTimeReadResponse,
     },
 
+    #[experimental("remoteSession/control")]
+    /// Request a fixed remote session operation from the remote-agent extension.
+    RemoteSessionControl => "remoteSession/control" {
+        params: v2::RemoteSessionControlParams,
+        response: v2::RemoteSessionControlResponse,
+    },
+
     /// DEPRECATED APIs below
     /// Request to approve a patch.
     /// This request is used for Turns started via the legacy APIs (i.e. SendUserTurn, SendUserMessage).
@@ -1572,6 +1627,8 @@ server_notification_definitions! {
     ScriptPromptClosed => "script/promptClosed" (v2::SessionScriptPromptClosedNotification),
     #[experimental("script/resyncRequired")]
     ScriptResyncRequired => "script/resyncRequired" (v2::SessionScriptResyncRequiredNotification),
+    #[experimental("remoteSession/updated")]
+    RemoteSessionUpdated => "remoteSession/updated" (v2::RemoteSessionUpdatedNotification),
     #[experimental("sessionExtension/commandsUpdated")]
     SessionExtensionCommandsUpdated => "sessionExtension/commandsUpdated" (v2::SessionExtensionCommandsUpdatedNotification),
     SkillsChanged => "skills/changed" (v2::SkillsChangedNotification),

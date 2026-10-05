@@ -14,7 +14,9 @@ SESSION_OPERATIONS = frozenset(
         "session/start",
         "session/resume",
         "session/attach",
+        "session/read",
         "session/send",
+        "session/steer",
         "session/status",
         "session/wait",
         "session/cancel",
@@ -22,12 +24,21 @@ SESSION_OPERATIONS = frozenset(
     }
 )
 MAX_RELAY_EVENTS = 32
+MAX_OUTPUT_TEXT_BYTES = 32 * 1024
+MAX_ACTIVITY_DELTA_BYTES = 4 * 1024
+MAX_ACTIVITY_SUMMARY_LENGTH = 64
+MAX_RELAY_READ_LIMIT = MAX_RELAY_EVENTS
 _MAX_TIMEOUT_PRECISION = 3
 _SESSION_FIELDS: dict[str, tuple[set[str], set[str]]] = {
     "session/start": ({"workspaceId", "relativePath"}, {"workspaceId"}),
     "session/resume": ({"threadId"}, {"threadId"}),
     "session/attach": ({"threadId"}, {"threadId"}),
+    "session/read": ({"threadId", "cursor", "limit"}, {"threadId"}),
     "session/send": ({"threadId", "message"}, {"threadId", "message"}),
+    "session/steer": (
+        {"threadId", "turnId", "message"},
+        {"threadId", "turnId", "message"},
+    ),
     "session/status": ({"threadId"}, {"threadId"}),
     "session/wait": ({"operationId", "timeoutSeconds"}, {"operationId", "timeoutSeconds"}),
     "session/cancel": ({"threadId", "turnId"}, {"threadId", "turnId"}),
@@ -65,9 +76,26 @@ def validate_session_params(operation: str, params: Mapping[str, Any]) -> dict[s
         "session/detach",
     }:
         identifier(value["threadId"])
-    elif operation == "session/send":
+    elif operation in {"session/send", "session/steer"}:
         identifier(value["threadId"])
+        if operation == "session/steer":
+            identifier(value["turnId"])
         if not isinstance(value["message"], str) or not value["message"]:
+            raise BrokerError.invalid_request()
+    elif operation == "session/read":
+        identifier(value["threadId"])
+        cursor = value.get("cursor")
+        if cursor is not None:
+            identifier(cursor)
+        limit = value.get("limit")
+        if (
+            limit is not None
+            and (
+                not isinstance(limit, int)
+                or isinstance(limit, bool)
+                or not 1 <= limit <= MAX_RELAY_READ_LIMIT
+            )
+        ):
             raise BrokerError.invalid_request()
     elif operation == "session/wait":
         identifier(value["operationId"])
@@ -101,12 +129,16 @@ def validate_session_result(
         "session/resume",
         "session/attach",
         "session/send",
+        "session/steer",
         "session/cancel",
         "session/detach",
     }:
         if set(result) != {"operationId"}:
             raise BrokerError.invalid_request()
         identifier(result["operationId"])
+        return result
+    if operation == "session/read":
+        _validate_read_result(result)
         return result
     if operation == "session/status":
         allowed = {"threadId", "workspaceId", "isRunning", "status", "activeTurnId"}
@@ -181,14 +213,7 @@ def _validate_wait_result(value: Mapping[str, Any]) -> None:
     if not isinstance(events, list) or len(events) > MAX_RELAY_EVENTS:
         raise BrokerError.invalid_request()
     for event in events:
-        if (
-            not isinstance(event, Mapping)
-            or set(event) != {"type", "status"}
-            or event["type"] not in {"progress", "terminal"}
-            or event["status"]
-            not in {"running", "completed", "failed", "cancelled", "expired"}
-        ):
-            raise BrokerError.invalid_request()
+        _validate_wait_event(event)
     error = value.get("error")
     if error is not None and (
         not isinstance(error, Mapping)
@@ -198,8 +223,149 @@ def _validate_wait_result(value: Mapping[str, Any]) -> None:
         or not isinstance(error.get("retryable"), bool)
     ):
         raise BrokerError.invalid_request()
-    if "result" in value and not isinstance(value["result"], Mapping):
+    result = value.get("result")
+    if result is not None:
+        if not isinstance(result, Mapping):
+            raise BrokerError.invalid_request()
+        _validate_wait_operation_result(value["operation"], result)
+
+
+def _validate_read_result(value: Mapping[str, Any]) -> None:
+    allowed = {
+        "threadId",
+        "workspaceId",
+        "isRunning",
+        "status",
+        "activeTurnId",
+        "events",
+        "nextCursor",
+    }
+    required = {
+        "threadId",
+        "workspaceId",
+        "isRunning",
+        "status",
+        "events",
+        "nextCursor",
+    }
+    if set(value) - allowed or not required.issubset(value):
         raise BrokerError.invalid_request()
+    identifier(value["threadId"])
+    identifier(value["workspaceId"])
+    if not isinstance(value["isRunning"], bool):
+        raise BrokerError.invalid_request()
+    status = value["status"]
+    if not isinstance(status, str) or len(status) > 64:
+        raise BrokerError.invalid_request()
+    if "activeTurnId" in value:
+        identifier(value["activeTurnId"])
+    next_cursor = value["nextCursor"]
+    if next_cursor is not None:
+        identifier(next_cursor)
+    events = value["events"]
+    if not isinstance(events, list) or len(events) > MAX_RELAY_READ_LIMIT:
+        raise BrokerError.invalid_request()
+    for event in events:
+        _validate_read_event(event)
+
+
+def _validate_read_event(event: Any) -> None:
+    if not isinstance(event, Mapping):
+        raise BrokerError.invalid_request()
+    event = dict(event)
+    if set(event) != {"cursor", "type", "turnId", "text", "isDelta"}:
+        raise BrokerError.invalid_request()
+    identifier(event["cursor"])
+    if event["type"] not in {
+        "activity",
+        "userMessage",
+        "agentMessage",
+        "commandExecution",
+    }:
+        raise BrokerError.invalid_request()
+    identifier(event["turnId"])
+    text = event["text"]
+    if (
+        not isinstance(text, str)
+        or not text
+        or len(text.encode("utf-8")) > MAX_ACTIVITY_DELTA_BYTES
+        or not isinstance(event["isDelta"], bool)
+    ):
+        raise BrokerError.invalid_request()
+
+
+def _validate_wait_event(event: Any) -> None:
+    if not isinstance(event, Mapping):
+        raise BrokerError.invalid_request()
+    event = dict(event)
+    event_type = event.get("type")
+    status = event.get("status")
+    if (
+        event_type not in {"progress", "terminal"}
+        or status not in {"running", "completed", "failed", "cancelled", "expired"}
+    ):
+        raise BrokerError.invalid_request()
+    if event_type == "terminal":
+        if set(event) != {"type", "status"}:
+            raise BrokerError.invalid_request()
+        return
+    allowed = {
+        "type",
+        "status",
+        "activitySummary",
+        "outputDelta",
+        "outputCursor",
+    }
+    if set(event) - allowed or set(event) < {"type", "status", "activitySummary"}:
+        raise BrokerError.invalid_request()
+    summary = event["activitySummary"]
+    if not isinstance(summary, str) or len(summary) > MAX_ACTIVITY_SUMMARY_LENGTH:
+        raise BrokerError.invalid_request()
+    output_delta = event.get("outputDelta")
+    output_cursor = event.get("outputCursor")
+    if (output_delta is None) != (output_cursor is None):
+        raise BrokerError.invalid_request()
+    if output_delta is not None and (
+        not isinstance(output_delta, str)
+        or len(output_delta.encode("utf-8")) > MAX_ACTIVITY_DELTA_BYTES
+    ):
+        raise BrokerError.invalid_request()
+    if output_cursor is not None:
+        identifier(output_cursor)
+
+
+def _validate_wait_operation_result(
+    operation: str, result: Mapping[str, Any]
+) -> None:
+    result = dict(result)
+    result_fields = {
+        "session/start": {"threadId", "workspaceId"},
+        "session/resume": {"threadId", "workspaceId"},
+        "session/attach": {"threadId", "workspaceId"},
+        "session/send": {"threadId", "turnId", "status", "outputText"},
+        "session/steer": {"threadId", "turnId"},
+        "session/cancel": {"threadId", "turnId"},
+        "session/detach": {"threadId"},
+    }
+    allowed = result_fields.get(operation)
+    if allowed is None or set(result) - allowed:
+        raise BrokerError.invalid_request()
+    for key in ("threadId", "turnId", "workspaceId"):
+        if key in result:
+            identifier(result[key])
+    if operation == "session/send":
+        if "status" in result and result["status"] not in {
+            "completed",
+            "failed",
+            "cancelled",
+        }:
+            raise BrokerError.invalid_request()
+        output_text = result.get("outputText")
+        if output_text is not None and (
+            not isinstance(output_text, str)
+            or len(output_text.encode("utf-8")) > MAX_OUTPUT_TEXT_BYTES
+        ):
+            raise BrokerError.invalid_request()
 
 
 def _reject_sensitive(value: Any) -> None:

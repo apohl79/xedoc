@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Registers a remote identity from the host-managed remote-agent extension.",
+  "properties": {
+    "hostId": {
+      "type": "string"
+    },
+    "registrationId": {
+      "type": "string"
+    },
+    "remoteThreadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "hostId",
+    "registrationId",
+    "remoteThreadId"
+  ],
+  "title": "RemoteSessionRegisterParams",
+  "type": "object"
+}

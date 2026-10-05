@@ -15,6 +15,7 @@ from typing import Any
 
 from remote_agent_pairing_e2e import Recorder
 from remote_agent_pairing_e2e import ResponsesHandler
+from remote_agent_pairing_e2e import RESULT_OUTPUT_MARKER
 from remote_agent_pairing_e2e import SOURCE_MARKER
 from remote_agent_pairing_e2e import _state_read
 from remote_agent_pairing_e2e import _state_update
@@ -24,6 +25,10 @@ from session_script_sdk import SessionScriptClient
 
 MAX_DISCOVERY_PACKET_BYTES = 8 * 1024
 MAX_SOURCE_EVENTS = 64
+REMOTE_SESSION_POLL_SECONDS = 0.1
+REMOTE_SESSION_FOLLOW_UP = "REMOTE_AGENT_PROJECTION_E2E_FOLLOW_UP"
+REMOTE_SESSION_STEER = "REMOTE_AGENT_PROJECTION_E2E_STEER"
+REMOTE_SESSION_RUNNING = "REMOTE_AGENT_PAIRING_E2E_TARGET"
 
 
 def _record_source_event(state_file: Path, event: dict[str, object]) -> None:
@@ -113,6 +118,8 @@ def completed_task_result_is_valid(value: object) -> bool:
         or not isinstance(events, list)
         or not events
         or events[-1] != {"type": "terminal", "status": "completed"}
+        or not isinstance(value.get("outputText"), str)
+        or RESULT_OUTPUT_MARKER not in value["outputText"]
     ):
         return False
     return all(
@@ -128,6 +135,247 @@ def cancellation_terminal_is_valid(value: object) -> bool:
         and value.get("events") == [{"type": "terminal", "status": "cancelled"}]
         and value.get("stopReason") == "terminal"
     )
+
+
+def _remote_session_data(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, dict) or not isinstance(value.get("remoteSessions"), list):
+        raise RuntimeError("remoteSession/list did not return remoteSessions")
+    sessions = [item for item in value["remoteSessions"] if isinstance(item, dict)]
+    if len(sessions) != len(value["remoteSessions"]):
+        raise RuntimeError("remoteSession/list returned a non-object session")
+    return sessions
+
+
+def _remote_session_id(value: object) -> str:
+    if not isinstance(value, dict):
+        raise RuntimeError("remoteSession/list returned an invalid session")
+    session_id = value.get("remoteSessionId")
+    if not isinstance(session_id, str) or not session_id:
+        raise RuntimeError("remoteSession/list session omitted id")
+    return session_id
+
+
+def _remote_session_status(value: object) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    status = value.get("status")
+    return status if isinstance(status, str) else None
+
+
+def _remote_session_events(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, dict) or not isinstance(value.get("output"), str):
+        raise RuntimeError("remoteSession/read omitted bounded output")
+    return [{"type": "output", "text": value["output"]}]
+
+
+def _remote_session_from_read(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict) or not isinstance(value.get("remoteSession"), dict):
+        raise RuntimeError("remoteSession/read omitted remoteSession")
+    return value["remoteSession"]
+
+
+def _contains_text(value: object, expected: str) -> bool:
+    return expected in json.dumps(value, separators=(",", ":"))
+
+
+class RemoteSessionProjectionController:
+    """Drives the public local projection API after a model created the session."""
+
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.args = args
+        self.client = SessionScriptClient.connect_unix_socket(args.socket, args.timeout)
+        self.notifications: list[dict[str, Any]] = []
+
+    def _notification(self, message: dict[str, Any]) -> None:
+        if message.get("method") != "remoteSession/updated":
+            return
+        params = message.get("params")
+        if isinstance(params, dict):
+            self.notifications.append(params)
+
+    def _wait_for_session(self, thread_id: str) -> dict[str, Any]:
+        deadline = time.monotonic() + self.args.wait_timeout
+        while time.monotonic() < deadline:
+            sessions = _remote_session_data(
+                self.client.request("remoteSession/list", {"threadId": thread_id})
+            )
+            if sessions:
+                return sessions[0]
+            time.sleep(REMOTE_SESSION_POLL_SECONDS)
+        raise RuntimeError("remote session projection was not registered")
+
+    def _read(self, thread_id: str, session_id: str) -> dict[str, Any]:
+        return self.client.request(
+            "remoteSession/read",
+            {
+                "threadId": thread_id,
+                "remoteSessionId": session_id,
+                "limit": 64,
+            },
+        )
+
+    def _drain_notifications(self, deadline: float) -> None:
+        while time.monotonic() < deadline:
+            try:
+                self.client.handle_message(self.client.receive_message())
+            except socket.timeout:
+                return
+
+    def _wait_for(
+        self,
+        thread_id: str,
+        session_id: str,
+        predicate: Any,
+        description: str,
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + self.args.wait_timeout
+        while time.monotonic() < deadline:
+            self._drain_notifications(time.monotonic() + REMOTE_SESSION_POLL_SECONDS)
+            value = self._read(thread_id, session_id)
+            if predicate(value):
+                return value
+            time.sleep(REMOTE_SESSION_POLL_SECONDS)
+        raise RuntimeError(f"timed out waiting for {description}")
+
+    def run(self) -> int:
+        self.client.set_notification_handler(self._notification)
+        self.client.set_server_request_handler(lambda message: _approve(message))
+        self.client.initialize(
+            "docker-remote-projection",
+            "Docker remote projection controller",
+            "0.1.0",
+        )
+        try:
+            state = _state_read(self.args.state_file)
+            thread_id = state.get("sourceThreadId")
+            if not isinstance(thread_id, str) or not thread_id:
+                raise RuntimeError("source root thread id was not published")
+            session = self._wait_for_session(thread_id)
+            session_id = _remote_session_id(session)
+            attached = self.client.request(
+                "remoteSession/attach",
+                {"threadId": thread_id, "remoteSessionId": session_id},
+            )
+            if not isinstance(attached.get("remoteSession"), dict):
+                raise RuntimeError("remoteSession/attach omitted remoteSession")
+            initial_read = self._read(thread_id, session_id)
+            _remote_session_events(initial_read)
+            _state_update(
+                self.args.state_file,
+                remoteProjection={
+                    "threadId": thread_id,
+                    "remoteSessionId": session_id,
+                    "listed": True,
+                    "attached": True,
+                    "initialStatus": _remote_session_status(
+                        _remote_session_from_read(initial_read)
+                    ),
+                },
+            )
+
+            follow_up = self.client.request(
+                "remoteSession/input",
+                {
+                    "threadId": thread_id,
+                    "remoteSessionId": session_id,
+                    "message": REMOTE_SESSION_FOLLOW_UP,
+                },
+            )
+            if not isinstance(follow_up.get("remoteSession"), dict):
+                raise RuntimeError("remoteSession/input omitted follow-up session")
+            completed = self._wait_for(
+                thread_id,
+                session_id,
+                lambda value: (
+                    _remote_session_status(_remote_session_from_read(value))
+                    == "completed"
+                    and _contains_text(value, "target idle")
+                ),
+                "direct remote follow-up completion",
+            )
+
+            running = self.client.request(
+                "remoteSession/input",
+                {
+                    "threadId": thread_id,
+                    "remoteSessionId": session_id,
+                    "message": REMOTE_SESSION_RUNNING,
+                },
+            )
+            running_session = running.get("remoteSession")
+            turn_id = (
+                running_session.get("activeTurnId")
+                if isinstance(running_session, dict)
+                else None
+            )
+            if not isinstance(turn_id, str) or not turn_id:
+                raise RuntimeError("remoteSession/input omitted active turn id")
+            active = self._wait_for(
+                thread_id,
+                session_id,
+                lambda value: (
+                    _remote_session_status(_remote_session_from_read(value))
+                    in {"running", "active"}
+                    and (
+                        bool(self.notifications) or bool(_remote_session_events(value))
+                    )
+                ),
+                "remote activity update",
+            )
+            steered = self.client.request(
+                "remoteSession/input",
+                {
+                    "threadId": thread_id,
+                    "remoteSessionId": session_id,
+                    "message": REMOTE_SESSION_STEER,
+                    "expectedTurnId": turn_id,
+                },
+            )
+            if not isinstance(steered.get("remoteSession"), dict):
+                raise RuntimeError("remoteSession/input omitted steering session")
+            cancelled = self.client.request(
+                "remoteSession/cancel",
+                {
+                    "threadId": thread_id,
+                    "remoteSessionId": session_id,
+                    "expectedTurnId": turn_id,
+                },
+            )
+            if not isinstance(cancelled.get("remoteSession"), dict):
+                raise RuntimeError("remoteSession/cancel omitted session")
+            terminal = self._wait_for(
+                thread_id,
+                session_id,
+                lambda value: (
+                    _remote_session_status(_remote_session_from_read(value))
+                    == "cancelled"
+                ),
+                "remote cancellation",
+            )
+            _state_update(
+                self.args.state_file,
+                remoteProjection={
+                    "threadId": thread_id,
+                    "remoteSessionId": session_id,
+                    "listed": True,
+                    "attached": True,
+                    "followUpOutputObserved": _contains_text(completed, "target idle"),
+                    "activityUpdated": bool(self.notifications)
+                    or bool(_remote_session_events(active)),
+                    "steered": True,
+                    "cancelled": _remote_session_status(
+                        _remote_session_from_read(terminal)
+                    )
+                    == "cancelled",
+                },
+            )
+            return 0
+        finally:
+            self.client.close()
+
+
+def remote_projection_controller(args: argparse.Namespace) -> int:
+    return RemoteSessionProjectionController(args).run()
 
 
 def source_controller(args: argparse.Namespace) -> int:
@@ -297,6 +545,7 @@ def main() -> int:
     for name, function in (
         ("source-controller", source_controller),
         ("target-observer", target_observer),
+        ("projection-controller", remote_projection_controller),
     ):
         command = commands.add_parser(name)
         command.add_argument("--socket", type=Path, required=True)

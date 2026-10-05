@@ -101,6 +101,12 @@ pub(crate) struct SessionScriptRegistration {
     identity: SessionScriptIdentityParams,
 }
 
+impl SessionScriptRegistration {
+    pub(crate) fn is_extension(&self, extension_id: &str) -> bool {
+        self.identity.id == extension_id
+    }
+}
+
 struct SessionScriptPromptState {
     prompt_id: String,
     kind: SessionScriptPromptKind,

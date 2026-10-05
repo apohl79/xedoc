@@ -42,11 +42,14 @@ from session_script_sdk import SessionScriptClient
 
 
 SOURCE_MARKER = "REMOTE_AGENT_PAIRING_E2E_SOURCE"
-RESULT_MARKER = "REMOTE_AGENT_PAIRING_E2E_RESULT"
+RESULT_MARKER = "list the files in /tmp"
+RESULT_OUTPUT_MARKER = "remote-agent-e2e-tmp-entry"
 TARGET_MARKER = "REMOTE_AGENT_PAIRING_E2E_TARGET"
+TARGET_LIVE_OUTPUT_MARKER = "remote-agent pairing E2E live output"
 WORKSPACE_ID = "workspace_root"
 MAX_EVENTS = 256
 MAX_EVENT_BYTES = 8192
+MAX_ACTIVITY_BYTES = 64
 MAX_BACKGROUND_RESPONSES = 1
 STATE_POLL_SECONDS = 0.05
 STATE_SYNC_TIMEOUT = 30.0
@@ -307,13 +310,14 @@ def _grant_replaced(value: Any, host_id: str) -> bool:
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
         return False
     grants = result.get("data")
-    if not isinstance(grants, list) or len(grants) != 2:
+    if not isinstance(grants, list) or len(grants) != 3:
         return False
     return {
         (grant.get("scope"), grant.get("workspaceId"))
         for grant in grants
         if isinstance(grant, dict)
     } == {
+        ("sessionRead", WORKSPACE_ID),
         ("sessionWrite", WORKSPACE_ID),
         ("cancellation", WORKSPACE_ID),
     }
@@ -327,7 +331,7 @@ def _peer_session_provider_result(value: Any) -> dict[str, Any]:
         or value.get("status") != "ok"
     ):
         raise RuntimeError(
-            "remote peer session result was not a successful provider response"
+            f"remote peer session result was not a successful provider response: {value!r}"
         )
     result = value.get("result")
     if not isinstance(result, dict):
@@ -454,7 +458,7 @@ def _source_events(
                 {
                     "hostId": host_id,
                     "workspaceId": WORKSPACE_ID,
-                    "scopes": ["sessionWrite", "cancellation"],
+                    "scopes": ["sessionRead", "sessionWrite", "cancellation"],
                     "expiresAt": int(time.time()) + 3600,
                 },
             )
@@ -515,7 +519,9 @@ def _source_events(
             or not events
             or events[-1] != {"type": "terminal", "status": "completed"}
             or any(
-                event != {"type": "progress", "status": "running"}
+                not isinstance(event, dict)
+                or event.get("type") != "progress"
+                or event.get("status") != "running"
                 for event in events[:-1]
             )
         ):
@@ -523,9 +529,14 @@ def _source_events(
                 "remote completed task did not return running progress followed by a terminal completed event"
             )
         result = completed.get("result")
-        if not isinstance(result, dict) or result.get("status") != "completed":
+        if (
+            not isinstance(result, dict)
+            or result.get("status") != "completed"
+            or not isinstance(result.get("outputText"), str)
+            or RESULT_OUTPUT_MARKER not in result["outputText"]
+        ):
             raise RuntimeError(
-                "remote completed task did not return its structured completed result"
+                "remote completed task did not return its structured result output"
             )
         thread_id = completed.get("threadId")
         turn_id = completed.get("turnId")
@@ -541,6 +552,7 @@ def _source_events(
             "threadId": thread_id,
             "turnId": turn_id,
             "resultStatus": "completed",
+            "outputText": result["outputText"],
             "events": events,
             "stopReason": completed.get("stopReason"),
         }
@@ -581,10 +593,20 @@ def _source_events(
                 "remote_session_send completion omitted threadId or turnId"
             )
         events = wait_send.get("events")
-        expected_events = [{"type": "progress", "status": "running"}]
-        if events != expected_events:
+        if (
+            not isinstance(events, list)
+            or not events
+            or any(
+                not isinstance(event, dict)
+                or event.get("type") != "progress"
+                or event.get("status") != "running"
+                or not isinstance(event.get("activitySummary"), str)
+                or not event["activitySummary"]
+                for event in events
+            )
+        ):
             raise RuntimeError(
-                "remote_session_wait did not return the expected running progress event"
+                "remote_session_wait did not return the expected running activity event"
             )
         _advance_source_stage(
             state_file,
@@ -673,7 +695,7 @@ class ResponsesHandler(BaseHTTPRequestHandler):
                 "grantObserved",
                 role=self.role,
                 hostId=_managed_host_id(self.state_file),
-                scopes=["sessionWrite", "cancellation"],
+                scopes=["sessionRead", "sessionWrite", "cancellation"],
             )
         if step == "wait-send":
             self.request_log.add("progressWaitObserved", role=self.role)
@@ -683,6 +705,9 @@ class ResponsesHandler(BaseHTTPRequestHandler):
                 role=self.role,
                 sourceStage="complete",
             )
+        if step == "target-held":
+            self._send_target_held_response()
+            return
         self._send_events(events)
 
     def _target_events(
@@ -708,15 +733,44 @@ class ResponsesHandler(BaseHTTPRequestHandler):
                 if current_user_text is not None:
                     break
         if current_user_text is not None and RESULT_MARKER in current_user_text:
-            return "target-result", _assistant("remote-agent pairing E2E result")
+            return "target-result", _assistant("remote-agent-e2e-tmp-entry")
         if current_user_text is None or TARGET_MARKER not in current_user_text:
             return "target-final", _assistant("target idle")
+        return "target-held", []
+
+    def _send_target_held_response(self) -> None:
+        response_id = "pairing-e2e-target-live"
+        events = [
+            _event("response.created", response={"id": response_id}),
+            _event(
+                "response.output_item.added",
+                item={
+                    "type": "message",
+                    "role": "assistant",
+                    "id": f"{response_id}-message",
+                    "status": "in_progress",
+                    "content": [],
+                },
+            ),
+            _event("response.output_text.delta", delta=TARGET_LIVE_OUTPUT_MARKER),
+        ]
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream")
+        self.end_headers()
+        try:
+            for event in events:
+                self.wfile.write(
+                    f"event: {event['type']}\ndata: {_json(event)}\n\n".encode()
+                )
+                self.wfile.flush()
+        except BrokenPipeError:
+            return
         self.request_log.add("targetHeld", marker=True)
         deadline = time.monotonic() + 90.0
         while time.monotonic() < deadline:
             if _state_read(self.state_file).get("targetInterrupted") is True:
                 self.request_log.add("targetInterruptionRecorded", marker=True)
-                return "target-interrupted", []
+                return
             time.sleep(STATE_POLL_SECONDS)
         raise RuntimeError("target turn was not interrupted")
 
@@ -764,6 +818,7 @@ class Controller:
         self.target_interrupted = False
         self.completed_task_result_recorded = False
         self.progress_recorded = False
+        self.remote_activities: list[dict[str, str]] = []
         self.approvals = 0
         self.reader_errors: queue.Queue[tuple[str, BaseException]] = queue.Queue(
             maxsize=2
@@ -807,7 +862,11 @@ class Controller:
         }
 
     def _notification(self, role: str, message: dict[str, Any]) -> None:
-        if message.get("method") != "turn/completed":
+        method = message.get("method")
+        if method == "item/completed":
+            self._record_remote_activity(role, message)
+            return
+        if method != "turn/completed":
             return
         params = message.get("params")
         turn = params.get("turn") if isinstance(params, dict) else None
@@ -819,6 +878,38 @@ class Controller:
             self.target_interrupted = True
             _state_update(self.args.state_file, targetInterrupted=True)
             self.recorder.add("targetInterrupted", status=status)
+
+    def _record_remote_activity(self, role: str, message: dict[str, Any]) -> None:
+        if role != "source":
+            return
+        params = message.get("params")
+        item = params.get("item") if isinstance(params, dict) else None
+        if not isinstance(item, dict) or item.get("type") != "subAgentActivity":
+            return
+        agent_path = item.get("agentPath")
+        if not isinstance(agent_path, str) or not agent_path.startswith(
+            "/root/remote_agent_"
+        ):
+            return
+        kind = item.get("kind")
+        agent_thread_id = item.get("agentThreadId")
+        current_activity = item.get("currentActivity")
+        if (
+            not isinstance(kind, str)
+            or not isinstance(agent_thread_id, str)
+            or not agent_thread_id
+            or not isinstance(current_activity, str)
+            or not current_activity
+            or len(current_activity.encode()) > MAX_ACTIVITY_BYTES
+        ):
+            raise RuntimeError("remote activity notification was invalid or unbounded")
+        activity = {
+            "kind": kind,
+            "agentThreadId": agent_thread_id,
+            "currentActivity": current_activity,
+        }
+        self.remote_activities.append(activity)
+        self.recorder.add("remoteActivity", **activity)
 
     def run(self) -> None:
         self.source.initialize("pairing-e2e-source", "Pairing E2E source", "0.1.0")
@@ -850,8 +941,57 @@ class Controller:
             raise RuntimeError("target interruption was not observed")
         if not self.source_complete:
             raise RuntimeError("source did not receive its terminal result")
+        self._assert_remote_activity_lifecycle()
         self.recorder.add(
             "controllerPassed", approvals=self.approvals, targetInterrupted=True
+        )
+
+    def _assert_remote_activity_lifecycle(self) -> None:
+        interrupted_index = next(
+            (
+                index
+                for index in range(len(self.remote_activities) - 1, -1, -1)
+                if self.remote_activities[index]["kind"] == "interrupted"
+            ),
+            None,
+        )
+        if interrupted_index is None:
+            raise RuntimeError("source did not receive interrupted remote activity")
+        agent_thread_id = self.remote_activities[interrupted_index]["agentThreadId"]
+        started_index = next(
+            (
+                index
+                for index in range(interrupted_index - 1, -1, -1)
+                if self.remote_activities[index]["kind"] == "started"
+                and self.remote_activities[index]["agentThreadId"] == agent_thread_id
+            ),
+            None,
+        )
+        if started_index is None:
+            raise RuntimeError("remote interruption had no matching started activity")
+        interacted = [
+            activity
+            for activity in self.remote_activities[
+                started_index + 1 : interrupted_index
+            ]
+            if activity["kind"] == "interacted"
+            and activity["agentThreadId"] == agent_thread_id
+        ]
+        if not interacted:
+            raise RuntimeError("remote wait did not publish active remote activity")
+        if not any(
+            activity["currentActivity"] == "Remote session is running."
+            for activity in interacted
+        ):
+            raise RuntimeError("remote activity did not contain the running summary")
+        lifecycle = self.remote_activities[started_index : interrupted_index + 1]
+        if any(activity["agentThreadId"] != agent_thread_id for activity in lifecycle):
+            raise RuntimeError("remote activity lifecycle changed synthetic agent ID")
+        self.recorder.add(
+            "remoteActivityLifecycle",
+            agentThreadId=agent_thread_id,
+            kinds=[activity["kind"] for activity in lifecycle],
+            currentActivities=[activity["currentActivity"] for activity in lifecycle],
         )
 
     def _record_completed_task_result_before_observer(self) -> None:
@@ -884,9 +1024,18 @@ class Controller:
                 elif completed_task_result is not None:
                     raise RuntimeError("completed peer task result evidence is invalid")
             progress_events = state.get("progressEvents")
-            if not self.progress_recorded and progress_events == [
-                {"type": "progress", "status": "running"}
-            ]:
+            if (
+                not self.progress_recorded
+                and isinstance(progress_events, list)
+                and any(
+                    isinstance(event, dict)
+                    and event.get("type") == "progress"
+                    and event.get("status") == "running"
+                    and isinstance(event.get("activitySummary"), str)
+                    and event["activitySummary"]
+                    for event in progress_events
+                )
+            ):
                 self.progress_recorded = True
                 self.recorder.add("remoteWaitProgress", events=progress_events)
             if (

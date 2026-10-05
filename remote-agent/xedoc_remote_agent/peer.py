@@ -955,13 +955,30 @@ class PeerService:
             if sessions is None:
                 raise BrokerError.unavailable()
             peer_params = validate_session_params(operation, params)
-            scope = "cancellation" if operation == "session/cancel" else "sessionWrite"
-            admission = self.state.admit_write(
-                peer_host_id=source_host_id,
-                peer_role=source_role,
-                certificate_fingerprint=certificate.fingerprint,
-                scope=scope,
-            )
+            if operation in {
+                "session/attach",
+                "session/read",
+                "session/status",
+                "session/wait",
+            }:
+                admission = self.state.admit_read(
+                    peer_host_id=source_host_id,
+                    peer_role=source_role,
+                    certificate_fingerprint=certificate.fingerprint,
+                    scope="sessionRead",
+                )
+            else:
+                scope = (
+                    "cancellation"
+                    if operation == "session/cancel"
+                    else "sessionWrite"
+                )
+                admission = self.state.admit_write(
+                    peer_host_id=source_host_id,
+                    peer_role=source_role,
+                    certificate_fingerprint=certificate.fingerprint,
+                    scope=scope,
+                )
             return (
                 sessions.handle(
                     source_host_id,
@@ -1690,7 +1707,14 @@ def _request_scope(request: Mapping[str, Any]) -> str | None:
     operation = request.get("operation")
     if operation == "workspace/list":
         return "workspaceRead"
-    if operation in {"session/list", "session/search"}:
+    if operation in {
+        "session/list",
+        "session/search",
+        "session/attach",
+        "session/read",
+        "session/status",
+        "session/wait",
+    }:
         return "sessionRead"
     if operation == "session/cancel":
         return "cancellation"

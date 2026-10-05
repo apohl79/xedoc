@@ -26,7 +26,194 @@ pub(super) struct LoadedSubagentBackfill {
 }
 
 impl App {
+    pub(super) async fn refresh_remote_session_picker(
+        &mut self,
+        app_server: &mut AppServerSession,
+    ) {
+        let Some(root_thread_id) = self.primary_thread_id else {
+            return;
+        };
+        match app_server.remote_session_list(root_thread_id).await {
+            Ok(response) => {
+                for remote_session in response.remote_sessions {
+                    self.upsert_remote_session_picker_entry(remote_session);
+                }
+                self.sync_active_agent_display();
+            }
+            Err(err) => {
+                tracing::debug!(error = %err, "remote session picker refresh failed");
+            }
+        }
+    }
+
+    pub(super) fn upsert_remote_session_picker_entry(
+        &mut self,
+        remote_session: xedoc_app_server_protocol::RemoteSessionSummary,
+    ) {
+        let remote_session_id = RemoteSessionId::new(remote_session.remote_session_id);
+        let is_closed = matches!(
+            remote_session.status,
+            xedoc_app_server_protocol::RemoteSessionStatus::Completed
+                | xedoc_app_server_protocol::RemoteSessionStatus::Failed
+                | xedoc_app_server_protocol::RemoteSessionStatus::Cancelled
+                | xedoc_app_server_protocol::RemoteSessionStatus::Expired
+                | xedoc_app_server_protocol::RemoteSessionStatus::Detached
+        );
+        self.agent_navigation.upsert_remote_session(
+            remote_session_id,
+            RemoteAgentPickerEntry {
+                hostname: remote_session
+                    .host_name
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or(remote_session.host_id),
+                workspace_id: remote_session
+                    .workspace_id
+                    .filter(|workspace| !workspace.trim().is_empty())
+                    .unwrap_or_else(|| "default".to_string()),
+                is_running: matches!(
+                    remote_session.status,
+                    xedoc_app_server_protocol::RemoteSessionStatus::Running
+                ),
+                is_closed,
+                active_turn_id: remote_session.active_turn_id,
+                current_activity: remote_session.activity_summary,
+            },
+        );
+    }
+
+    pub(super) async fn select_remote_session(
+        &mut self,
+        tui: &mut tui::Tui,
+        app_server: &mut AppServerSession,
+        remote_session_id: RemoteSessionId,
+    ) -> Result<()> {
+        let Some(root_thread_id) = self.primary_thread_id else {
+            self.chat_widget
+                .add_error_message("Remote sessions require an active root session.".to_string());
+            return Ok(());
+        };
+        let remote_session_id_value = remote_session_id.as_str().to_string();
+        let attached = match app_server
+            .remote_session_attach(root_thread_id, remote_session_id_value.clone())
+            .await
+        {
+            Ok(response) => response.remote_session,
+            Err(err) => {
+                self.chat_widget.add_error_message(format!(
+                    "Failed to attach remote session {remote_session_id_value}: {err}"
+                ));
+                return Ok(());
+            }
+        };
+        self.upsert_remote_session_picker_entry(attached);
+        let read = match app_server
+            .remote_session_read(root_thread_id, remote_session_id_value.clone())
+            .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                self.chat_widget.add_error_message(format!(
+                    "Failed to read remote session {remote_session_id_value}: {err}"
+                ));
+                return Ok(());
+            }
+        };
+        self.upsert_remote_session_picker_entry(read.remote_session);
+        self.active_remote_session = Some(remote_session_id);
+        self.reset_for_thread_switch(tui)?;
+        if let Some(entry) = self
+            .active_remote_session
+            .as_ref()
+            .and_then(|id| self.agent_navigation.remote_session(id))
+        {
+            self.chat_widget.add_info_message(
+                format!(
+                    "Remote session: {} · {}",
+                    entry.hostname, entry.workspace_id
+                ),
+                Some("Messages are sent to the paired host.".to_string()),
+            );
+        }
+        if !read.output.trim().is_empty() {
+            self.chat_widget.add_plain_history_lines(
+                read.output
+                    .lines()
+                    .map(|line| line.to_string().into())
+                    .collect(),
+            );
+        }
+        self.sync_active_agent_label();
+        self.sync_active_agent_display();
+        Ok(())
+    }
+
+    pub(super) async fn submit_remote_session_op(
+        &mut self,
+        app_server: &mut AppServerSession,
+        op: AppCommand,
+    ) -> Result<bool> {
+        let Some(remote_session_id) = self.active_remote_session.clone() else {
+            return Ok(false);
+        };
+        let Some(root_thread_id) = self.primary_thread_id else {
+            self.chat_widget
+                .add_error_message("Remote sessions require an active root session.".to_string());
+            return Ok(true);
+        };
+        let expected_turn_id = self
+            .agent_navigation
+            .remote_session(&remote_session_id)
+            .and_then(|entry| entry.active_turn_id.clone());
+        let remote_session_id_value = remote_session_id.as_str().to_string();
+        let response = match op {
+            AppCommand::UserTurn { items, .. } => {
+                let message = items
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        xedoc_app_server_protocol::UserInput::Text { text, .. } => Some(text),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if message.trim().is_empty() {
+                    self.chat_widget.add_error_message(
+                        "Remote sessions currently accept text input only.".to_string(),
+                    );
+                    return Ok(true);
+                }
+                app_server
+                    .remote_session_input(
+                        root_thread_id,
+                        remote_session_id_value,
+                        message,
+                        expected_turn_id,
+                    )
+                    .await
+                    .map(|response| response.remote_session)
+            }
+            AppCommand::Interrupt => app_server
+                .remote_session_cancel(root_thread_id, remote_session_id_value, expected_turn_id)
+                .await
+                .map(|response| response.remote_session),
+            _ => {
+                self.chat_widget.add_error_message(
+                    "This action is not available while viewing a remote session.".to_string(),
+                );
+                return Ok(true);
+            }
+        };
+        match response {
+            Ok(remote_session) => self.upsert_remote_session_picker_entry(remote_session),
+            Err(err) => self
+                .chat_widget
+                .add_error_message(format!("Remote session operation failed: {err}")),
+        }
+        self.sync_active_agent_display();
+        Ok(true)
+    }
+
     pub(super) async fn open_agent_picker(&mut self, app_server: &mut AppServerSession) {
+        self.refresh_remote_session_picker(app_server).await;
         let backfill = self.backfill_loaded_subagent_threads(app_server).await;
         // V2 subagents are identified by canonical paths observed from activity events or loaded
         // thread metadata. A buffered active turn is positive liveness evidence; a completed
@@ -93,7 +280,11 @@ impl App {
         let has_non_primary_agent_thread = self
             .agent_navigation
             .has_non_primary_thread(self.primary_thread_id);
-        if !self.config.features.enabled(Feature::Collab) && !has_non_primary_agent_thread {
+        let has_remote_session = self.agent_navigation.has_remote_session();
+        if !self.config.features.enabled(Feature::Collab)
+            && !has_non_primary_agent_thread
+            && !has_remote_session
+        {
             self.chat_widget.open_multi_agent_enable_prompt();
             return;
         }
@@ -107,40 +298,78 @@ impl App {
         let mut initial_selected_idx = None;
         let items: Vec<SelectionItem> = self
             .agent_navigation
-            .ordered_threads()
+            .ordered_targets()
             .into_iter()
             .enumerate()
-            .map(|(idx, (thread_id, entry))| {
-                if self.active_thread_id == Some(thread_id) {
-                    initial_selected_idx = Some(idx);
+            .filter_map(|(idx, target)| match target {
+                AgentNavigationTarget::Local(thread_id) => {
+                    let entry = self.agent_navigation.get(&thread_id)?;
+                    if self.active_thread_id == Some(thread_id)
+                        && self.active_remote_session.is_none()
+                    {
+                        initial_selected_idx = Some(idx);
+                    }
+                    let is_primary = self.primary_thread_id == Some(thread_id);
+                    let name = entry
+                        .agent_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|agent_path| !is_primary && !agent_path.is_empty())
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| {
+                            format_agent_picker_item_name(
+                                entry.agent_nickname.as_deref(),
+                                entry.agent_role.as_deref(),
+                                is_primary,
+                            )
+                        });
+                    let uuid = thread_id.to_string();
+                    Some(SelectionItem {
+                        name: name.clone(),
+                        name_prefix_spans: agent_picker_status_dot_spans(entry.is_closed),
+                        description: Some(uuid.clone()),
+                        is_current: self.active_thread_id == Some(thread_id)
+                            && self.active_remote_session.is_none(),
+                        actions: vec![Box::new(move |tx| {
+                            tx.send(AppEvent::SelectAgentThread(thread_id));
+                        })],
+                        dismiss_on_select: true,
+                        search_value: Some(format!("{name} {uuid}")),
+                        ..Default::default()
+                    })
                 }
-                let id = thread_id;
-                let is_primary = self.primary_thread_id == Some(thread_id);
-                let name = entry
-                    .agent_path
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|agent_path| !is_primary && !agent_path.is_empty())
-                    .map(ToOwned::to_owned)
-                    .unwrap_or_else(|| {
-                        format_agent_picker_item_name(
-                            entry.agent_nickname.as_deref(),
-                            entry.agent_role.as_deref(),
-                            is_primary,
-                        )
-                    });
-                let uuid = thread_id.to_string();
-                SelectionItem {
-                    name: name.clone(),
-                    name_prefix_spans: agent_picker_status_dot_spans(entry.is_closed),
-                    description: Some(uuid.clone()),
-                    is_current: self.active_thread_id == Some(thread_id),
-                    actions: vec![Box::new(move |tx| {
-                        tx.send(AppEvent::SelectAgentThread(id));
-                    })],
-                    dismiss_on_select: true,
-                    search_value: Some(format!("{name} {uuid}")),
-                    ..Default::default()
+                AgentNavigationTarget::Remote(remote_session_id) => {
+                    let entry = self.agent_navigation.remote_session(&remote_session_id)?;
+                    if self.active_remote_session.as_ref() == Some(&remote_session_id) {
+                        initial_selected_idx = Some(idx);
+                    }
+                    let name = format!("{} · {}", entry.hostname, entry.workspace_id);
+                    let id = remote_session_id.as_str().to_string();
+                    let status = if entry.is_closed {
+                        "completed"
+                    } else if entry.is_running {
+                        "working"
+                    } else {
+                        "idle"
+                    };
+                    let activity = entry
+                        .current_activity
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                        .map(|value| format!(" — {value}"))
+                        .unwrap_or_default();
+                    Some(SelectionItem {
+                        name: format!("{name} [remote]"),
+                        name_prefix_spans: agent_picker_status_dot_spans(entry.is_closed),
+                        description: Some(format!("{status}{activity}")),
+                        is_current: self.active_remote_session.as_ref() == Some(&remote_session_id),
+                        actions: vec![Box::new(move |tx| {
+                            tx.send(AppEvent::SelectRemoteSession(id.clone()));
+                        })],
+                        dismiss_on_select: true,
+                        search_value: Some(format!("{name} {status}")),
+                        ..Default::default()
+                    })
                 }
             })
             .collect();
@@ -262,8 +491,35 @@ impl App {
                 current_activity: entry.current_activity.clone(),
             });
         }
+        let mut active_remote_session_ids = Vec::new();
+        for target in self.agent_navigation.ordered_targets() {
+            let AgentNavigationTarget::Remote(remote_session_id) = target else {
+                continue;
+            };
+            let Some(entry) = self.agent_navigation.remote_session(&remote_session_id) else {
+                continue;
+            };
+            if !entry.is_running || entry.is_closed {
+                continue;
+            }
+            active_remote_session_ids.push(remote_session_id.clone());
+            let started_at = *self
+                .active_remote_session_started_at
+                .entry(remote_session_id)
+                .or_insert(now);
+            agents.push(ActiveAgentEntry {
+                name: format!("{} · {}", entry.hostname, entry.workspace_id),
+                started_at,
+                provider_model: Some("remote".to_string()),
+                total_tokens: None,
+                token_usage: None,
+                current_activity: entry.current_activity.clone(),
+            });
+        }
         self.active_agent_started_at
             .retain(|thread_id, _| active_thread_ids.contains(thread_id));
+        self.active_remote_session_started_at
+            .retain(|session_id, _| active_remote_session_ids.contains(session_id));
         self.chat_widget.set_active_agents(agents);
         self.chat_widget.set_agent_token_usage(
             agent_token_usage,
@@ -504,7 +760,7 @@ impl App {
         app_server: &mut AppServerSession,
         thread_id: ThreadId,
     ) -> Result<()> {
-        if self.active_thread_id == Some(thread_id) {
+        if self.active_thread_id == Some(thread_id) && self.active_remote_session.is_none() {
             return Ok(());
         }
 
@@ -571,6 +827,7 @@ impl App {
         let blocks_direct_input = self.agent_navigation.is_parent_owned(thread_id);
 
         self.active_thread_id = Some(thread_id);
+        self.active_remote_session = None;
         self.active_thread_rx = Some(receiver);
 
         let init = self.chatwidget_init_for_forked_or_resumed_thread(

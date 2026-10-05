@@ -2378,6 +2378,113 @@
       ],
       "type": "object"
     },
+    "RemoteSessionHostRole": {
+      "description": "Role advertised by a remote host.",
+      "enum": [
+        "coordinator",
+        "managed"
+      ],
+      "type": "string"
+    },
+    "RemoteSessionStatus": {
+      "description": "Lifecycle state reported for a remote session.",
+      "enum": [
+        "idle",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "expired",
+        "detached"
+      ],
+      "type": "string"
+    },
+    "RemoteSessionSummary": {
+      "description": "Root-thread scoped projection of a remote session.",
+      "properties": {
+        "activeTurnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "activitySummary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hostId": {
+          "type": "string"
+        },
+        "hostName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hostRole": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RemoteSessionHostRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputCursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remoteSessionId": {
+          "type": "string"
+        },
+        "remoteThreadId": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/RemoteSessionStatus"
+        },
+        "workspaceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "hostId",
+        "remoteSessionId",
+        "remoteThreadId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "RemoteSessionUpdatedNotification": {
+      "description": "Signals a change to a root-thread-scoped remote session projection.",
+      "properties": {
+        "outputDelta": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remoteSession": {
+          "$ref": "#/definitions/RemoteSessionSummary"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "remoteSession",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "RequestId": {
       "anyOf": [
         {
@@ -5426,6 +5533,26 @@
         "params"
       ],
       "title": "Script/resyncRequiredNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "remoteSession/updated"
+          ],
+          "title": "RemoteSession/updatedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/RemoteSessionUpdatedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "RemoteSession/updatedNotification",
       "type": "object"
     },
     {

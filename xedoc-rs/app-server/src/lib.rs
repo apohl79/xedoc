@@ -102,6 +102,7 @@ mod parallel_approval;
 mod plugin_watcher;
 mod remote_agent_extension;
 mod remote_agent_package;
+mod remote_session_registry;
 mod request_processors;
 mod session_extension_manager;
 mod session_script_host;

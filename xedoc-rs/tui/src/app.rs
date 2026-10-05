@@ -203,6 +203,9 @@ mod thread_settings;
 
 use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;
+use self::agent_navigation::AgentNavigationTarget;
+use self::agent_navigation::RemoteAgentPickerEntry;
+use self::agent_navigation::RemoteSessionId;
 use self::app_server_requests::PendingAppServerRequests;
 use self::loaded_threads::find_loaded_subagent_threads_for_primary;
 use self::platform_actions::*;
@@ -571,8 +574,11 @@ pub(crate) struct App {
     thread_event_listener_tasks: HashMap<ThreadId, JoinHandle<()>>,
     agent_navigation: AgentNavigationState,
     active_agent_started_at: HashMap<ThreadId, Instant>,
+    active_remote_session_started_at: HashMap<RemoteSessionId, Instant>,
     agent_usage: HashMap<ThreadId, ThreadAgentUsage>,
     side_threads: HashMap<ThreadId, SideThreadState>,
+    /// The remote projection displayed in place of a locally owned thread.
+    active_remote_session: Option<RemoteSessionId>,
     active_thread_id: Option<ThreadId>,
     active_thread_rx: Option<mpsc::Receiver<ThreadBufferedEvent>>,
     primary_thread_id: Option<ThreadId>,
@@ -1064,8 +1070,10 @@ See the Xedoc keymap documentation for supported actions and examples."
             thread_event_listener_tasks: HashMap::new(),
             agent_navigation: AgentNavigationState::default(),
             active_agent_started_at: HashMap::new(),
+            active_remote_session_started_at: HashMap::new(),
             agent_usage: HashMap::new(),
             side_threads: HashMap::new(),
+            active_remote_session: None,
             active_thread_id: None,
             active_thread_rx: None,
             primary_thread_id: None,

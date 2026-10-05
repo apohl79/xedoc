@@ -399,7 +399,7 @@
     },
     {
       "name": "remote_session_send",
-      "description": "Send a message to a session using the selected host broker.",
+      "description": "Send a message to an idle remote session using the selected host broker. The remote session is registered for the local Agents view. Call remote_session_wait with the returned operationId until it reaches a terminal state; terminal session/send results may contain bounded assistant and command output in result.outputText.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -421,6 +421,41 @@
         },
         "required": [
           "threadId",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_steer",
+      "description": "Steer the active turn in a remote session. Call remote_session_status first and pass its activeTurnId as turnId. Use remote_session_send when the session is idle.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "turnId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "threadId",
+          "turnId",
           "message"
         ],
         "additionalProperties": false
@@ -513,7 +548,7 @@
     },
     {
       "name": "remote_session_wait",
-      "description": "Wait for a session using the selected host broker.",
+      "description": "Wait for an operation using the selected host broker. Repeat this call with the operationId until stopReason is terminal. Running events may carry bounded activitySummary plus incremental outputDelta with an opaque outputCursor; terminal completed remote_session_send results include bounded assistant and command output in result.outputText.",
       "inputSchema": {
         "type": "object",
         "properties": {

@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "RemoteSessionControlAction": {
+      "description": "Fixed broker actions permitted through the remote-agent extension.",
+      "enum": [
+        "attach",
+        "read",
+        "send",
+        "steer",
+        "cancel",
+        "detach"
+      ],
+      "type": "string"
+    }
+  },
+  "description": "Requests one broker operation from the remote-agent extension.",
+  "properties": {
+    "action": {
+      "$ref": "#/definitions/RemoteSessionControlAction"
+    },
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expectedTurnId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hostId": {
+      "type": "string"
+    },
+    "limit": {
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "hostId",
+    "threadId"
+  ],
+  "title": "RemoteSessionControlParams",
+  "type": "object"
+}

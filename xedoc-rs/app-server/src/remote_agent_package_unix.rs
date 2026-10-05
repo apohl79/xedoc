@@ -51,6 +51,7 @@ const EXPECTED_TOOL_NAMES: &[&str] = &[
     "remote_session_resume",
     "remote_session_attach",
     "remote_session_send",
+    "remote_session_steer",
     "remote_session_message",
     "remote_session_status",
     "remote_session_wait",

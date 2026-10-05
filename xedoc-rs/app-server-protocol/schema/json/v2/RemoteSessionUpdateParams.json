@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "RemoteSessionHostRole": {
+      "description": "Role advertised by a remote host.",
+      "enum": [
+        "coordinator",
+        "managed"
+      ],
+      "type": "string"
+    },
+    "RemoteSessionStatus": {
+      "description": "Lifecycle state reported for a remote session.",
+      "enum": [
+        "idle",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "expired",
+        "detached"
+      ],
+      "type": "string"
+    }
+  },
+  "description": "Updates a remote session from the host-managed remote-agent extension.",
+  "properties": {
+    "activitySummary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hostName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hostRole": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/RemoteSessionHostRole"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "outputCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outputDelta": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "registrationId": {
+      "type": "string"
+    },
+    "remoteSessionId": {
+      "type": "string"
+    },
+    "remoteTurnId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "$ref": "#/definitions/RemoteSessionStatus"
+    },
+    "workspaceId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "registrationId",
+    "remoteSessionId",
+    "status"
+  ],
+  "title": "RemoteSessionUpdateParams",
+  "type": "object"
+}

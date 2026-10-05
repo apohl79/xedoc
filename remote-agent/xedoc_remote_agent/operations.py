@@ -188,6 +188,7 @@ class SessionOperations:
             "_attach_session",
             "_read_session",
             "_start_turn",
+            "_steer_turn",
             "_interrupt_turn",
             "_unsubscribe",
         )
@@ -251,6 +252,50 @@ class SessionOperations:
             "session/send",
             lambda record: self._send(record, thread_id, message),
         )
+
+    def steer(self, request: Mapping[str, Any]) -> OperationHandle:
+        _exact_fields(
+            request,
+            {"threadId", "turnId", "message"},
+            {"threadId", "turnId", "message"},
+        )
+        thread_id = _identifier(request["threadId"])
+        turn_id = _identifier(request["turnId"])
+        message = request["message"]
+        if not isinstance(message, str) or not message:
+            raise BrokerError.invalid_request()
+        if len(message.encode("utf-8")) > self._max_message_bytes:
+            raise BrokerError.limit_exceeded()
+        thread = self._allowed_thread(thread_id)
+        if not _is_running(thread) or self._active_turns.get(thread_id) != turn_id:
+            raise BrokerError.conflict()
+        return self._run(
+            "session/steer",
+            lambda record: self._steer(record, thread_id, turn_id, message),
+        )
+
+    def read(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        _exact_fields(
+            request,
+            {"threadId", "cursor", "limit"},
+            {"threadId"},
+        )
+        thread_id = _identifier(request["threadId"])
+        thread = self._allowed_thread(thread_id)
+        result: dict[str, Any] = {
+            "threadId": thread_id,
+            "workspaceId": self._workspace_id(thread),
+            "isRunning": _is_running(thread),
+            "status": _status_name(thread),
+            "events": [],
+            "nextCursor": request.get("cursor"),
+        }
+        active_turn_id = self._active_turns.get(thread_id)
+        if active_turn_id is not None and result["isRunning"]:
+            result["activeTurnId"] = active_turn_id
+        if _encoded_size(result) > self._max_result_bytes:
+            raise BrokerError.limit_exceeded()
+        return result
 
     def status(self, request: Mapping[str, Any]) -> dict[str, Any]:
         thread_id = self._thread_request(request)
@@ -445,6 +490,29 @@ class SessionOperations:
             result={"threadId": thread_id, "turnId": turn_id},
         )
 
+    def _steer(
+        self,
+        record: OperationRecord,
+        thread_id: str,
+        turn_id: str,
+        message: str,
+    ) -> None:
+        response = self._controller._steer_turn(
+            thread_id,
+            turn_id,
+            message,
+            f"steer_{secrets.token_urlsafe(18)}",
+        )
+        if _turn_id(response) != turn_id:
+            raise BrokerError.conflict()
+        self._store.transition(
+            record,
+            OperationState.COMPLETED,
+            thread_id=thread_id,
+            turn_id=turn_id,
+            result={"threadId": thread_id, "turnId": turn_id},
+        )
+
     def _cancel(
         self, record: OperationRecord, thread_id: str, turn_id: str
     ) -> None:
@@ -521,6 +589,13 @@ def _thread(response: Any) -> Mapping[str, Any]:
 
 def _thread_id(thread: Mapping[str, Any]) -> str:
     return _identifier(thread.get("id", thread.get("threadId")))
+
+
+def _turn_id(response: Any) -> str:
+    turn = response.get("turn") if isinstance(response, Mapping) else None
+    if not isinstance(turn, Mapping):
+        raise BrokerError.internal()
+    return _identifier(turn.get("id", turn.get("turnId")))
 
 
 def _cwd(thread: Mapping[str, Any]) -> str:

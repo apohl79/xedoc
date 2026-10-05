@@ -1678,6 +1678,10 @@ async fn handle_server_request(
             )
             .await
         }
+        ServerRequest::RemoteSessionControl { .. } => {
+            // The installed remote-agent extension owns this targeted request.
+            Ok(())
+        }
     };
 
     if let Err(err) = handle_result {
