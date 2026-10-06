@@ -184,6 +184,7 @@ class RemoteAgentExtension:
         self._remote_hostnames: dict[str, str] = {}
         self._operation_sessions: dict[str, tuple[str, str | None, str | None]] = {}
         self._active_operations: dict[tuple[str, str], str] = {}
+        self._remote_session_output_bytes: dict[tuple[str, str], int] = {}
         self._pending_remote_session_updates: queue.SimpleQueue[dict[str, Any]] = (
             queue.SimpleQueue()
         )
@@ -315,6 +316,8 @@ class RemoteAgentExtension:
             if expected_turn_id is not None:
                 broker_params["turnId"] = _bounded_identifier(expected_turn_id)
 
+        if action == "send":
+            self._capture_remote_session_output(host_id, thread_id)
         method = f"session/{action}"
         operation_result = self._broker.call(
             method,
@@ -413,38 +416,63 @@ class RemoteAgentExtension:
                 )
                 self._update_tool_remote_session("session_wait", arguments, result)
                 if result.get("stopReason") == "terminal":
-                    self._project_terminal_output(host_id, operation_id)
+                    self._project_terminal_output(host_id, operation_id, result)
                     return
         except BrokerError:
             self._mark_remote_session_failed(operation_id)
 
-    def _project_terminal_output(self, host_id: str, operation_id: str) -> None:
+    def _capture_remote_session_output(self, host_id: str, thread_id: str) -> None:
+        """Record the current transcript size so a later turn projects only its delta."""
+
+        try:
+            self._remote_session_output_bytes[(host_id, thread_id)] = (
+                self._read_remote_session_output_bytes(host_id, thread_id)
+            )
+        except BrokerError:
+            self._remote_session_output_bytes.pop((host_id, thread_id), None)
+
+    def _project_terminal_output(
+        self, host_id: str, operation_id: str, terminal_result: Mapping[str, Any]
+    ) -> None:
         identity = self._operation_sessions.get(operation_id)
         if identity is None or identity[1] is None:
+            return
+        if self._active_operations.get((host_id, identity[1])) != operation_id:
             return
         remote_session_id = self._register_remote_session(*identity)
         if remote_session_id is None:
             return
+        terminal_status = terminal_result.get("state")
+        if terminal_status not in {"completed", "failed", "cancelled", "expired"}:
+            terminal_status = "completed"
+        skip_bytes = self._remote_session_output_bytes.get((host_id, identity[1]), 0)
         cursor: str | None = None
         page_number = 0
+        total_bytes = 0
         while True:
+            read_params: dict[str, Any] = {
+                "hostId": host_id,
+                "threadId": identity[1],
+            }
+            if cursor is not None:
+                read_params["cursor"] = cursor
             result = self._broker.call(
                 "session/read",
-                {
-                    "hostId": host_id,
-                    "threadId": identity[1],
-                    "cursor": cursor,
-                },
+                read_params,
             )
             output_text = result.get("outputText")
             if isinstance(output_text, str) and output_text:
+                total_bytes += len(output_text.encode("utf-8"))
+                output_text, skip_bytes = _skip_output_prefix(
+                    output_text, skip_bytes
+                )
                 for chunk_number, output_chunk in enumerate(
                     _output_chunks(output_text), start=1
                 ):
                     self._publish_remote_session_update(
                         remote_session_id,
                         {
-                            "status": result.get("status", "completed"),
+                            "status": terminal_status,
                             "outputDelta": output_chunk,
                             "outputCursor": (
                                 f"operation_{operation_id}_{page_number}_{chunk_number}"
@@ -454,8 +482,26 @@ class RemoteAgentExtension:
                     )
             cursor = _optional_identifier(result.get("nextCursor"))
             if cursor is None:
+                self._remote_session_output_bytes[(host_id, identity[1])] = (
+                    total_bytes
+                )
                 return
             page_number += 1
+
+    def _read_remote_session_output_bytes(self, host_id: str, thread_id: str) -> int:
+        cursor: str | None = None
+        total_bytes = 0
+        while True:
+            params: dict[str, Any] = {"hostId": host_id, "threadId": thread_id}
+            if cursor is not None:
+                params["cursor"] = cursor
+            result = self._broker.call("session/read", params)
+            output_text = result.get("outputText")
+            if isinstance(output_text, str):
+                total_bytes += len(output_text.encode("utf-8"))
+            cursor = _optional_identifier(result.get("nextCursor"))
+            if cursor is None:
+                return total_bytes
 
     def _mark_remote_session_failed(self, operation_id: str) -> None:
         identity = self._operation_sessions.get(operation_id)
@@ -661,6 +707,15 @@ def _output_chunks(value: str) -> Sequence[str]:
             raise BrokerError.internal()
         offset = end
     return chunks
+
+
+def _skip_output_prefix(value: str, skip_bytes: int) -> tuple[str, int]:
+    if skip_bytes <= 0:
+        return value, 0
+    content = value.encode("utf-8")
+    if skip_bytes >= len(content):
+        return "", skip_bytes - len(content)
+    return content[skip_bytes:].decode("utf-8"), 0
 
 
 def _require_completed_control_operation(
