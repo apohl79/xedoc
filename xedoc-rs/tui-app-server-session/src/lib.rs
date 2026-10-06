@@ -41,6 +41,8 @@ use xedoc_app_server_protocol::LogoutAccountResponse;
 use xedoc_app_server_protocol::Model as ApiModel;
 use xedoc_app_server_protocol::ModelListParams;
 use xedoc_app_server_protocol::ModelListResponse;
+use xedoc_app_server_protocol::ModelManagerReadParams;
+use xedoc_app_server_protocol::ModelManagerReadResponse;
 use xedoc_app_server_protocol::NewThreadModelDefaults;
 use xedoc_app_server_protocol::RequestId;
 use xedoc_app_server_protocol::ReviewDelivery;
@@ -481,6 +483,19 @@ impl AppServerSession {
             })
             .await
             .map_err(|err| bootstrap_request_error("account/read failed during TUI bootstrap", err))
+    }
+
+    pub async fn read_model_manager(&mut self) -> Result<ModelManagerReadResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::ModelManagerRead {
+                request_id,
+                params: ModelManagerReadParams {},
+            })
+            .await
+            .map_err(|err| {
+                bootstrap_request_error("modelManager/read failed during TUI bootstrap", err)
+            })
     }
 
     pub async fn next_event(&mut self) -> Option<AppServerEvent> {

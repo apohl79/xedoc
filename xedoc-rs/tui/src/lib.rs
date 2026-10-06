@@ -1265,7 +1265,7 @@ async fn run_ratatui_app(
         let Some(app_server) = app_server.as_mut() else {
             unreachable!("app server should exist when auth is required");
         };
-        get_login_status(app_server, &initial_config).await?
+        get_login_status(app_server).await?
     } else {
         LoginStatus::NotAuthenticated
     };
@@ -1702,27 +1702,32 @@ fn determine_alt_screen_mode(no_alt_screen: bool, tui_alternate_screen: AltScree
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoginStatus {
     AuthMode(AuthMode),
+    OtherProvider,
     NotAuthenticated,
 }
 
 /// Determines the user's authentication mode using a lightweight account read
 /// rather than a full `bootstrap`, avoiding the model-list fetch and
 /// rate-limit round-trip that `bootstrap` would trigger.
-async fn get_login_status(
-    app_server: &mut AppServerSession,
-    config: &Config,
-) -> color_eyre::Result<LoginStatus> {
-    if !config.model_provider.requires_openai_auth {
-        return Ok(LoginStatus::NotAuthenticated);
-    }
-
+async fn get_login_status(app_server: &mut AppServerSession) -> color_eyre::Result<LoginStatus> {
     let account = app_server.read_account().await?;
-    Ok(match account.account {
+    let login_status = match account.account {
         Some(AppServerAccount::ApiKey {}) => LoginStatus::AuthMode(AuthMode::ApiKey),
         Some(AppServerAccount::Chatgpt { .. }) => LoginStatus::AuthMode(AuthMode::Chatgpt),
-        Some(AppServerAccount::AmazonBedrock { .. }) => LoginStatus::NotAuthenticated,
-        None => LoginStatus::NotAuthenticated,
-    })
+        Some(AppServerAccount::AmazonBedrock { .. }) => LoginStatus::OtherProvider,
+        None => {
+            let model_manager = app_server.read_model_manager().await?;
+            if model_manager.providers.iter().any(|provider| {
+                provider.id != "openai"
+                    && (provider.api_key_configured || provider.oauth_configured)
+            }) {
+                LoginStatus::OtherProvider
+            } else {
+                LoginStatus::NotAuthenticated
+            }
+        }
+    };
+    Ok(login_status)
 }
 
 async fn load_config_or_exit(

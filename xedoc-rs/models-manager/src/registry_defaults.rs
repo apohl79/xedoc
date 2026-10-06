@@ -260,6 +260,10 @@ fn deepseek_prices() -> BTreeMap<String, ModelTokenPrices> {
 fn openai_prices() -> BTreeMap<String, ModelTokenPrices> {
     [
         (
+            "gpt-6-astra",
+            tiered_price(2.0, Some(0.2), 10.0, 4.0, Some(0.4), 15.0),
+        ),
+        (
             "gpt-6-sol",
             tiered_price(2.0, Some(0.2), 10.0, 4.0, Some(0.4), 15.0),
         ),
