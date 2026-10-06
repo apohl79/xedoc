@@ -138,19 +138,17 @@ pub(crate) async fn run_turn(
     cancellation_token: CancellationToken,
 ) -> XedocResult<Option<String>> {
     let mut client_session = match prewarmed_client_session {
-        Some(client_session) => client_session,
-        None => {
-            let model_client = sess.services.model_client.load_full();
-            if model_client.is_configured_for(
+        Some(client_session)
+            if client_session.is_configured_for(
                 &turn_context.config.model_provider_id,
                 turn_context.provider.info(),
-            ) {
-                model_client.new_session()
-            } else {
-                sess.model_client_for_turn(turn_context.as_ref())
-                    .await
-                    .new_session()
-            }
+            ) =>
+        {
+            client_session
+        }
+        Some(_) | None => {
+            sess.model_client_session_for_turn(turn_context.as_ref())
+                .await
         }
     };
     if let Err(err) = run_pre_sampling_compact(&sess, &turn_context, &mut client_session).await {
@@ -2401,7 +2399,9 @@ async fn generate_sub_agent_activity_summary_inner(
         sess.current_window_id().await,
         XedocResponsesRequestKind::SessionName,
     );
-    let mut client_session = sess.services.model_client.load().new_session();
+    let mut client_session = sess
+        .model_client_session_for_turn(turn_context.as_ref())
+        .await;
     let request_started_at = Instant::now();
     tracing::info!(
         provider_id = %turn_context.config.model_provider_id,

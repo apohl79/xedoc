@@ -1087,6 +1087,21 @@ async fn resume_scripted_interaction(
             ))
             .await;
         }
+        crate::session::session::PendingScriptedInteractionContinuation::Idle { sub_id, input } => {
+            sess.scripted_interaction_responses
+                .lock()
+                .await
+                .insert(sub_id.clone(), response);
+            if Box::pin(sess.try_start_turn_if_idle_with_response(input, sub_id.clone()))
+                .await
+                .is_err()
+            {
+                sess.scripted_interaction_responses
+                    .lock()
+                    .await
+                    .remove(&sub_id);
+            }
+        }
         crate::session::session::PendingScriptedInteractionContinuation::AwaitResponse(sender) => {
             let _ = sender.send(response);
         }

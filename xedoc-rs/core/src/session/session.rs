@@ -89,6 +89,11 @@ pub(crate) struct PendingScriptedInteractionTurn {
 pub(crate) enum PendingScriptedInteractionContinuation {
     /// Resume a root user-input turn.
     Root(PendingScriptedInteractionTurn),
+    /// Retry automatic idle work after its route is resolved.
+    Idle {
+        sub_id: String,
+        input: Vec<xedoc_protocol::models::ResponseItem>,
+    },
     /// Deliver a response to an in-flight caller that has not yet spawned its
     /// subagent. The caller retains its pre-spawn state and decides whether the
     /// response permits spawning.
@@ -569,6 +574,21 @@ impl Session {
             &session_configuration,
             turn_context.config.as_ref(),
         )
+    }
+
+    pub(crate) async fn model_client_session_for_turn(
+        &self,
+        turn_context: &TurnContext,
+    ) -> xedoc_core_client::ModelClientSession {
+        let client = self.services.model_client.load_full();
+        if client.is_configured_for(
+            &turn_context.config.model_provider_id,
+            turn_context.provider.info(),
+        ) {
+            client.new_session()
+        } else {
+            self.model_client_for_turn(turn_context).await.new_session()
+        }
     }
 
     /// Returns the concrete identity for this thread.

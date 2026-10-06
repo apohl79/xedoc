@@ -1018,6 +1018,11 @@ impl Drop for ModelClientSession {
 }
 
 impl ModelClientSession {
+    /// Returns whether this session uses the turn's configured provider.
+    pub fn is_configured_for(&self, provider_id: &str, provider_info: &ModelProviderInfo) -> bool {
+        self.client.is_configured_for(provider_id, provider_info)
+    }
+
     pub fn turn_state(&self) -> Arc<OnceLock<String>> {
         Arc::clone(&self.turn_state)
     }
