@@ -81,10 +81,12 @@ impl Session {
             .get(provider_id)
             .and_then(|provider| provider.model_prices.as_ref())
             .and_then(|prices| prices.get(model_slug));
-        let (input_tokens, cached_input_tokens, output_tokens) =
-            token_usage.map_or((None, None, None), |usage| {
+        let (input_tokens, cache_write_input_tokens, cached_input_tokens, output_tokens) =
+            token_usage.map_or((None, None, None, None), |usage| {
+                let cache_write_input_tokens = usage.cache_write_input_tokens.max(0);
                 (
-                    Some(usage.non_cached_input().max(0)),
+                    Some(non_write_input_tokens(usage)),
+                    Some(cache_write_input_tokens),
                     Some(usage.cached_input().max(0)),
                     Some(usage.output_tokens.max(0)),
                 )
@@ -109,12 +111,14 @@ impl Session {
                         .map(|prices| invocation_prices(usage, prices))
                 });
         let normalized_baseline_usd = baseline_prices.zip(token_usage).map(|(prices, usage)| {
-            prices.input * usage.non_cached_input().max(0) as f64
+            prices.input * non_write_input_tokens(usage) as f64
+                + prices.cache_write * usage.cache_write_input_tokens.max(0) as f64
                 + prices.cached_input * usage.cached_input().max(0) as f64
                 + prices.output * usage.output_tokens.max(0) as f64
         });
         let total_cost_usd = prices.zip(token_usage).map(|(prices, usage)| {
-            prices.input * usage.non_cached_input().max(0) as f64
+            prices.input * non_write_input_tokens(usage) as f64
+                + prices.cache_write * usage.cache_write_input_tokens.max(0) as f64
                 + prices.cached_input * usage.cached_input().max(0) as f64
                 + prices.output * usage.output_tokens.max(0) as f64
         });
@@ -157,15 +161,20 @@ impl Session {
                 .as_ref()
                 .map(ToString::to_string),
             input_tokens,
+            cache_write_input_tokens,
             cached_input_tokens,
             output_tokens,
             actual_input_price_usd_per_token: prices.map(|prices| prices.input),
+            actual_cache_write_input_price_usd_per_token: prices.map(|prices| prices.cache_write),
             actual_cached_input_price_usd_per_token: prices.map(|prices| prices.cached_input),
             actual_output_price_usd_per_token: prices.map(|prices| prices.output),
             actual_price_revision: None,
             input_cost_usd: prices
-                .zip(input_tokens)
-                .map(|(prices, tokens)| prices.input * tokens as f64),
+                .zip(token_usage)
+                .map(|(prices, usage)| prices.input * non_write_input_tokens(usage) as f64),
+            cache_write_input_cost_usd: prices
+                .zip(cache_write_input_tokens)
+                .map(|(prices, tokens)| prices.cache_write * tokens as f64),
             cached_input_cost_usd: prices
                 .zip(cached_input_tokens)
                 .map(|(prices, tokens)| prices.cached_input * tokens as f64),
@@ -183,6 +192,8 @@ impl Session {
                 .as_ref()
                 .map(|baseline| baseline.reasoning_effort.as_str().to_string()),
             baseline_input_price_usd_per_token: baseline_prices.map(|prices| prices.input),
+            baseline_cache_write_input_price_usd_per_token: baseline_prices
+                .map(|prices| prices.cache_write),
             baseline_cached_input_price_usd_per_token: baseline_prices
                 .map(|prices| prices.cached_input),
             baseline_output_price_usd_per_token: baseline_prices.map(|prices| prices.output),
@@ -198,6 +209,13 @@ impl Session {
             tracing::warn!(%error, "failed to persist model-router invocation");
         }
     }
+}
+
+fn non_write_input_tokens(usage: &TokenUsage) -> i64 {
+    usage
+        .non_cached_input()
+        .saturating_sub(usage.cache_write_input_tokens.max(0))
+        .max(0)
 }
 
 fn model_router_invocation_id(
@@ -220,6 +238,7 @@ fn model_router_invocation_id(
 #[derive(Clone, Copy)]
 struct InvocationPrices {
     input: f64,
+    cache_write: f64,
     cached_input: f64,
     output: f64,
 }
@@ -243,6 +262,9 @@ fn invocation_prices(usage: &TokenUsage, prices: &ModelTokenPrices) -> Invocatio
             .cached_input_price_per_1m_tokens
             .unwrap_or(prices.input_price_per_1m_tokens)
     };
+    let cache_write = prices
+        .cache_write_input_price_per_1m_tokens
+        .unwrap_or(input);
     let output = if long_context {
         prices
             .long_context_output_price_per_1m_tokens
@@ -252,6 +274,7 @@ fn invocation_prices(usage: &TokenUsage, prices: &ModelTokenPrices) -> Invocatio
     };
     InvocationPrices {
         input: input / 1_000_000.0,
+        cache_write: cache_write / 1_000_000.0,
         cached_input: cached_input / 1_000_000.0,
         output: output / 1_000_000.0,
     }

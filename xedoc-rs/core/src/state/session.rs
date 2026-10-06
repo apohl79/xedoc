@@ -44,6 +44,7 @@ pub(crate) struct SessionCostTracker {
 pub(crate) struct PerModelCost {
     pub(crate) input_tokens: i64,
     pub(crate) cached_input_tokens: i64,
+    pub(crate) cache_write_input_tokens: i64,
     pub(crate) output_tokens: i64,
     pub(crate) cost_usd: f64,
 }
@@ -103,8 +104,14 @@ impl SessionCostTracker {
             .entry(model_id.to_string())
             .or_default();
 
-        let input_tokens = usage.non_cached_input().max(0) as f64;
+        let cache_write_tokens = usage.cache_write_input_tokens.max(0);
+        let input_token_count = usage
+            .non_cached_input()
+            .saturating_sub(cache_write_tokens)
+            .max(0);
+        let input_tokens = input_token_count as f64;
         let cached_tokens = usage.cached_input().max(0) as f64;
+        let cache_write_tokens = cache_write_tokens as f64;
         let output_tokens = usage.output_tokens.max(0) as f64;
 
         let input_price = if is_long_context {
@@ -126,6 +133,10 @@ impl SessionCostTracker {
             cached_price_per_1m
         };
 
+        let cache_write_price_per_1m = model_prices
+            .cache_write_input_price_per_1m_tokens
+            .unwrap_or(input_price);
+
         let output_price = if is_long_context {
             model_prices
                 .long_context_output_price_per_1m_tokens
@@ -136,10 +147,12 @@ impl SessionCostTracker {
 
         let cost_delta = (input_tokens / 1_000_000.0) * input_price
             + (cached_tokens / 1_000_000.0) * cached_price_per_1m
+            + (cache_write_tokens / 1_000_000.0) * cache_write_price_per_1m
             + (output_tokens / 1_000_000.0) * output_price;
 
-        entry.input_tokens += usage.non_cached_input().max(0);
+        entry.input_tokens += input_token_count;
         entry.cached_input_tokens += usage.cached_input().max(0);
+        entry.cache_write_input_tokens += usage.cache_write_input_tokens.max(0);
         entry.output_tokens += usage.output_tokens.max(0);
         entry.cost_usd += cost_delta;
     }

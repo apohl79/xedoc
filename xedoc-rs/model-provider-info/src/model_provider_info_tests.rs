@@ -740,6 +740,7 @@ fn merge_openai_model_prices() {
         ModelTokenPrices {
             input_price_per_1m_tokens: 1.25,
             cached_input_price_per_1m_tokens: None,
+            cache_write_input_price_per_1m_tokens: None,
             long_context_input_price_per_1m_tokens: None,
             long_context_cached_input_price_per_1m_tokens: None,
             long_context_output_price_per_1m_tokens: None,

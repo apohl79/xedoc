@@ -197,6 +197,7 @@ fn price(input: f64, cached_input: Option<f64>, output: f64) -> ModelTokenPrices
     ModelTokenPrices {
         input,
         cached_input,
+        cache_write_input: None,
         output,
         long_context_input: None,
         long_context_cached_input: None,
@@ -215,6 +216,7 @@ fn tiered_price(
     ModelTokenPrices {
         input,
         cached_input,
+        cache_write_input: None,
         output,
         long_context_input: Some(long_context_input),
         long_context_cached_input,
@@ -224,17 +226,23 @@ fn tiered_price(
 
 fn anthropic_prices() -> BTreeMap<String, ModelTokenPrices> {
     [
-        ("claude-opus-5-5", price(4.0, Some(0.2), 20.0)),
-        ("claude-opus-5", price(5.0, Some(0.5), 25.0)),
-        ("claude-opus-4-8", price(5.0, Some(0.5), 25.0)),
-        ("claude-fable-5-1", price(10.0, Some(1.0), 50.0)),
-        ("claude-sonnet-5-5", price(2.0, Some(0.2), 10.0)),
-        ("claude-sonnet-5", price(2.0, Some(0.2), 10.0)),
-        ("claude-haiku-4-5-20251001", price(1.0, Some(0.1), 5.0)),
+        ("claude-opus-5-5", anthropic_price(4.0, 0.2, 20.0)),
+        ("claude-opus-5", anthropic_price(5.0, 0.5, 25.0)),
+        ("claude-opus-4-8", anthropic_price(5.0, 0.5, 25.0)),
+        ("claude-fable-5-1", anthropic_price(10.0, 0.25, 50.0)),
+        ("claude-sonnet-5-5", anthropic_price(2.0, 0.2, 10.0)),
+        ("claude-sonnet-5", anthropic_price(2.0, 0.2, 10.0)),
+        ("claude-haiku-4-5-20251001", anthropic_price(1.0, 0.1, 5.0)),
     ]
     .into_iter()
     .map(|(model, prices)| (model.to_string(), prices))
     .collect()
+}
+
+fn anthropic_price(input: f64, cached_input: f64, output: f64) -> ModelTokenPrices {
+    let mut prices = price(input, Some(cached_input), output);
+    prices.cache_write_input = Some(input * 1.25);
+    prices
 }
 
 fn google_prices() -> BTreeMap<String, ModelTokenPrices> {

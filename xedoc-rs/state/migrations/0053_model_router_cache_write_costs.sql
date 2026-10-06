@@ -1,0 +1,14 @@
+ALTER TABLE model_router_invocations
+ADD COLUMN cache_write_input_tokens INTEGER;
+
+ALTER TABLE model_router_invocations
+ADD COLUMN actual_cache_write_input_price_usd_per_token REAL;
+
+ALTER TABLE model_router_invocations
+ADD COLUMN cache_write_input_cost_usd REAL;
+
+ALTER TABLE model_router_invocations
+ADD COLUMN baseline_cache_write_input_price_usd_per_token REAL;
+
+ALTER TABLE model_router_daily
+ADD COLUMN cache_write_input_tokens INTEGER;

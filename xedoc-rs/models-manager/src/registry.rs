@@ -12,7 +12,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 4;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 5;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
@@ -47,6 +47,8 @@ pub struct ModelTokenPrices {
     pub input: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_input: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_input: Option<f64>,
     pub output: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub long_context_input: Option<f64>,
@@ -266,12 +268,26 @@ impl ModelRegistry {
     fn migrate_from_older_schema(&mut self) -> io::Result<()> {
         let defaults = Self::default_registry()?;
         for (provider_id, default_provider) in defaults.providers {
+            let is_anthropic = provider_id == "anthropic";
             let provider = self
                 .providers
                 .entry(provider_id)
                 .or_insert_with(|| default_provider.clone());
             for (model_id, model) in default_provider.models {
-                provider.models.entry(model_id).or_insert(model);
+                let configured = provider
+                    .models
+                    .entry(model_id.clone())
+                    .or_insert_with(|| model.clone());
+                let mut previous_default_prices = model.prices.clone();
+                if is_anthropic && let Some(prices) = &mut previous_default_prices {
+                    prices.cache_write_input = None;
+                    if model_id == "claude-fable-5-1" {
+                        prices.cached_input = Some(1.0);
+                    }
+                }
+                if is_anthropic && configured.prices == previous_default_prices {
+                    configured.prices = model.prices;
+                }
             }
         }
         for provider in self.providers.values_mut() {
@@ -320,6 +336,7 @@ fn validate_managed_model(
         && [
             Some(prices.input),
             prices.cached_input,
+            prices.cache_write_input,
             Some(prices.output),
             prices.long_context_input,
             prices.long_context_cached_input,
