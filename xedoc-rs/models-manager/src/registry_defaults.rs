@@ -277,7 +277,7 @@ fn openai_prices() -> BTreeMap<String, ModelTokenPrices> {
         ),
         (
             "gpt-5.6-terra",
-            tiered_price(2.5, Some(0.25), 15.0, 5.0, Some(0.5), 22.5),
+            tiered_price(2.0, Some(0.2), 12.0, 4.0, Some(0.4), 18.0),
         ),
         (
             "gpt-5.6-luna",
