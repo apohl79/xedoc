@@ -3711,11 +3711,16 @@ def selected_table(policy, context):
         for value in (primary, secondary)
     ):
         return fallback, f"{fallback} (provider budgets unavailable)"
-    side = (
-        "primary"
-        if primary - secondary < budget["thresholdPercent"]
-        else "secondary"
-    )
+    if primary >= 100 > secondary:
+        side = "secondary"
+    elif secondary >= 100 > primary:
+        side = "primary"
+    else:
+        side = (
+            "primary"
+            if primary - secondary < budget["thresholdPercent"]
+            else "secondary"
+        )
     provider_id = budget[f"{side}ProviderId"]
     table = selection[side]
     return table, f"{table} ({provider_id}; {primary:.0f}% vs {secondary:.0f}% used)"
