@@ -6,4 +6,4 @@ import type { RemoteSessionSummary } from "./RemoteSessionSummary";
 /**
  * Result of sending input to a remote session.
  */
-export type RemoteSessionInputResponse = { remoteSession: RemoteSessionSummary, };
+export type RemoteSessionInputResponse = { remoteSession: RemoteSessionSummary, outputDelta: string | null, };

@@ -89,6 +89,12 @@
   },
   "description": "Result of sending input to a remote session.",
   "properties": {
+    "outputDelta": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "remoteSession": {
       "$ref": "#/definitions/RemoteSessionSummary"
     }

@@ -29,6 +29,8 @@ _MAX_OPERATION_RECORDS = 8_192
 _OPERATION_TTL_SECONDS = 300
 _POLL_INTERVAL_SECONDS = 0.1
 _MIN_RESULT_BYTES = 1024
+_TRANSCRIPT_PAGE_BYTES = 16 * 1024
+_MAX_TRANSCRIPT_SNAPSHOTS_PER_PEER = 4
 
 
 @dataclass
@@ -48,7 +50,15 @@ class _Relay:
         default_factory=lambda: deque(maxlen=MAX_RELAY_EVENTS)
     )
     sources: OrderedDict[str, str] = field(default_factory=OrderedDict)
+    transcript_snapshots: dict[str, "_TranscriptSnapshot"] = field(default_factory=dict)
     next_sequence: int = 1
+
+
+@dataclass(frozen=True)
+class _TranscriptSnapshot:
+    token: str
+    peer_host_id: str
+    content: bytes
 
 
 @dataclass(frozen=True)
@@ -194,6 +204,7 @@ class PeerSessionOperations:
                 if relay is None:
                     continue
                 relay.peers.discard(peer_host_id)
+                relay.transcript_snapshots.pop(peer_host_id, None)
                 if relay.peers:
                     continue
                 self._relays.pop(thread_id, None)
@@ -287,7 +298,14 @@ class PeerSessionOperations:
         try:
             with self._lock:
                 attached = self._peer_attachments.setdefault(peer_host_id, set())
-                if thread_id in attached or thread_id in self._detaching:
+                if thread_id in attached:
+                    self._complete(
+                        stored,
+                        thread_id=thread_id,
+                        result={"threadId": thread_id, "workspaceId": workspace_id},
+                    )
+                    return _operation_handle(stored)
+                if thread_id in self._detaching:
                     raise BrokerError.conflict()
                 if (
                     len(attached) >= self._max_attached_sessions
@@ -353,6 +371,7 @@ class PeerSessionOperations:
         if _is_running(thread):
             raise BrokerError.conflict()
         stored = self._create(peer_host_id, "session/send", workspace_id)
+        turn_id: str | None = None
         try:
             with self._lock:
                 if thread_id in self._active_turns or thread_id in self._turn_starting:
@@ -379,7 +398,10 @@ class PeerSessionOperations:
             with self._lock:
                 self._turn_starting.discard(thread_id)
             self._fail(stored, error)
-        return _operation_handle(stored)
+        result = _operation_handle(stored)
+        if turn_id is not None:
+            result.update({"threadId": thread_id, "turnId": turn_id})
+        return result
 
     def _steer(
         self,
@@ -393,11 +415,9 @@ class PeerSessionOperations:
         message = params["message"]
         if len(message.encode("utf-8")) > self._max_message_bytes:
             raise BrokerError.limit_exceeded()
-        thread, workspace_id = self._resolve_thread(
-            thread_id, policy, ensure_authorized, include_turns=True
+        _, workspace_id = self._resolve_thread(
+            thread_id, policy, ensure_authorized, include_turns=False
         )
-        if _active_turn_id(thread) != turn_id:
-            raise BrokerError.conflict()
         stored = self._create(peer_host_id, "session/steer", workspace_id)
         try:
             ensure_authorized()
@@ -436,9 +456,6 @@ class PeerSessionOperations:
     ) -> dict[str, Any]:
         thread_id = _identifier(params["threadId"])
         cursor = params.get("cursor")
-        limit = params.get("limit", MAX_RELAY_READ_LIMIT)
-        if not isinstance(limit, int):
-            raise BrokerError.invalid_request()
         thread, workspace_id = self._resolve_thread(
             thread_id, policy, ensure_authorized, include_turns=True
         )
@@ -448,28 +465,38 @@ class PeerSessionOperations:
                 raise BrokerError.not_found()
             if relay.workspace_id != workspace_id:
                 raise BrokerError.internal()
-            self._sync_relay_locked(relay, thread)
-            events, next_cursor = _relay_page(relay, cursor, limit)
-            result: dict[str, Any] = {
-                "threadId": thread_id,
-                "workspaceId": workspace_id,
-                "isRunning": _is_running(thread),
-                "status": _status_name(thread),
-                "events": events,
-                "nextCursor": next_cursor,
-            }
-            active_turn_id = _active_turn_id(thread)
-            if active_turn_id is not None:
-                result["activeTurnId"] = active_turn_id
-            while _encoded_size(result) > self._max_result_bytes and result["events"]:
-                result["events"].pop()
-                last_cursor = (
-                    result["events"][-1]["cursor"] if result["events"] else cursor
-                )
-                result["nextCursor"] = last_cursor
-            if _encoded_size(result) > self._max_result_bytes:
-                raise BrokerError.limit_exceeded()
-            return result
+            snapshot, offset = _transcript_snapshot(
+                relay,
+                peer_host_id,
+                thread,
+                cursor,
+            )
+            output_text, next_offset = _transcript_page(
+                snapshot.content,
+                offset,
+                min(_TRANSCRIPT_PAGE_BYTES, self._max_result_bytes // 2),
+            )
+            if next_offset is None:
+                relay.transcript_snapshots.pop(snapshot.token, None)
+                next_cursor = None
+            else:
+                next_cursor = f"transcript_{snapshot.token}_{next_offset}"
+        result: dict[str, Any] = {
+            "threadId": thread_id,
+            "workspaceId": workspace_id,
+            "isRunning": _is_running(thread),
+            "status": _status_name(thread),
+            "nextCursor": next_cursor,
+        }
+        if output_text:
+            result["outputText"] = output_text
+        active_turn_id = _active_turn_id(thread)
+        if active_turn_id is not None:
+            result["activeTurnId"] = active_turn_id
+            result["activitySummary"] = "Remote session is running."
+        if _encoded_size(result) > self._max_result_bytes:
+            raise BrokerError.limit_exceeded()
+        return result
 
     def _status(
         self,
@@ -494,6 +521,8 @@ class PeerSessionOperations:
                 self._active_turns.pop(thread_id, None)
             elif active is not None and active.peer_host_id == peer_host_id:
                 result["activeTurnId"] = active.turn_id
+            elif active_turn_id := _active_turn_id(thread):
+                result["activeTurnId"] = active_turn_id
             relay = self._relays.get(thread_id)
             if relay is not None:
                 self._sync_relay_locked(relay, thread)
@@ -567,14 +596,6 @@ class PeerSessionOperations:
         _, workspace_id = self._resolve_thread(
             thread_id, policy, ensure_authorized, include_turns=False
         )
-        with self._lock:
-            active = self._active_turns.get(thread_id)
-            if (
-                active is None
-                or active.peer_host_id != peer_host_id
-                or active.turn_id != turn_id
-            ):
-                raise BrokerError.conflict()
         stored = self._create(peer_host_id, "session/cancel", workspace_id)
         try:
             ensure_authorized()
@@ -630,6 +651,11 @@ class PeerSessionOperations:
                 if relay is None:
                     raise BrokerError.internal()
                 relay.peers.remove(peer_host_id)
+                relay.transcript_snapshots = {
+                    token: snapshot
+                    for token, snapshot in relay.transcript_snapshots.items()
+                    if snapshot.peer_host_id != peer_host_id
+                }
                 self._peer_attachments.get(peer_host_id, set()).discard(thread_id)
                 if not self._peer_attachments.get(peer_host_id):
                     self._peer_attachments.pop(peer_host_id, None)
@@ -924,7 +950,12 @@ def _thread_id(thread: Mapping[str, Any]) -> str:
 
 
 def _turn_id(response: Any) -> str:
-    turn = response.get("turn") if isinstance(response, Mapping) else None
+    if not isinstance(response, Mapping):
+        raise BrokerError.internal()
+    direct_turn_id = response.get("turnId")
+    if direct_turn_id is not None:
+        return _identifier(direct_turn_id)
+    turn = response.get("turn")
     if not isinstance(turn, Mapping):
         raise BrokerError.internal()
     return _identifier(turn.get("id", turn.get("turnId")))
@@ -948,6 +979,79 @@ def _relay_cursor(sequence: int) -> str:
     if not isinstance(sequence, int) or sequence < 0:
         raise BrokerError.internal()
     return f"relay_{sequence}"
+
+
+def _transcript_snapshot(
+    relay: _Relay,
+    peer_host_id: str,
+    thread: Mapping[str, Any],
+    cursor: Any,
+) -> tuple[_TranscriptSnapshot, int]:
+    if cursor is None:
+        snapshot_count = sum(
+            snapshot.peer_host_id == peer_host_id
+            for snapshot in relay.transcript_snapshots.values()
+        )
+        if snapshot_count >= _MAX_TRANSCRIPT_SNAPSHOTS_PER_PEER:
+            raise BrokerError.limit_exceeded()
+        snapshot = _TranscriptSnapshot(
+            token=secrets.token_hex(16),
+            peer_host_id=peer_host_id,
+            content=_transcript_text(thread).encode("utf-8"),
+        )
+        relay.transcript_snapshots[snapshot.token] = snapshot
+        return snapshot, 0
+    token, offset = _transcript_cursor(cursor)
+    snapshot = relay.transcript_snapshots.get(token)
+    if snapshot is None or not secrets.compare_digest(snapshot.peer_host_id, peer_host_id):
+        raise BrokerError.not_found()
+    return snapshot, offset
+
+
+def _transcript_page(content: bytes, offset: int, max_bytes: int) -> tuple[str, int | None]:
+    if max_bytes < 1:
+        raise BrokerError.limit_exceeded()
+    if offset > len(content):
+        raise BrokerError.invalid_request()
+    if offset == len(content):
+        return "", None
+    end = min(offset + max_bytes, len(content))
+    while end > offset:
+        try:
+            page = content[offset:end].decode("utf-8")
+            break
+        except UnicodeDecodeError:
+            end -= 1
+    else:
+        raise BrokerError.internal()
+    if end >= len(content):
+        return page, None
+    return page, end
+
+
+def _transcript_cursor(cursor: Any) -> tuple[str, int]:
+    cursor = _identifier(cursor)
+    prefix = "transcript_"
+    value = cursor.removeprefix(prefix)
+    if value == cursor:
+        raise BrokerError.invalid_request()
+    token, separator, offset = value.rpartition("_")
+    if not separator or not token or not offset.isdecimal():
+        raise BrokerError.invalid_request()
+    return token, int(offset)
+
+
+def _transcript_text(thread: Mapping[str, Any]) -> str:
+    parts: list[str] = []
+    for _, event_type, _, text in _transcript_sources(thread):
+        label = {
+            "userMessage": "User",
+            "agentMessage": "Remote agent",
+            "commandExecution": "Command output",
+        }.get(event_type)
+        if label is not None:
+            parts.append(f"{label}:\n{text}")
+    return "\n\n".join(parts)
 
 
 def _relay_page(
@@ -977,6 +1081,12 @@ def _relay_sequence(cursor: Any) -> int:
 def _relay_sources(
     thread: Mapping[str, Any],
 ) -> list[tuple[str, str, str, str]]:
+    return _transcript_sources(thread)[-MAX_RELAY_EVENTS:]
+
+
+def _transcript_sources(
+    thread: Mapping[str, Any],
+) -> list[tuple[str, str, str, str]]:
     turns = thread.get("turns")
     if not isinstance(turns, list):
         return []
@@ -998,7 +1108,7 @@ def _relay_sources(
             if event_type is None or text is None:
                 continue
             sources.append((f"{turn_id}:{index}:{event_type}", event_type, turn_id, text))
-    return sources[-MAX_RELAY_EVENTS:]
+    return sources
 
 
 def _relay_item(item: Mapping[str, Any]) -> tuple[str | None, str | None]:
@@ -1017,7 +1127,13 @@ def _relay_item(item: Mapping[str, Any]) -> tuple[str | None, str | None]:
 def _status_name(thread: Mapping[str, Any]) -> str:
     status = thread.get("status")
     value = status.get("type") if isinstance(status, Mapping) else status
-    return value if isinstance(value, str) and len(value) <= 64 else "unknown"
+    if not isinstance(value, str) or len(value) > 64:
+        return "unknown"
+    if value in {"interrupted", "aborted"}:
+        return "cancelled"
+    if value in {"error", "systemError"}:
+        return "failed"
+    return value
 
 
 def _is_running(thread: Mapping[str, Any]) -> bool:
@@ -1046,7 +1162,7 @@ def _turn_terminal_state(thread: Mapping[str, Any], turn_id: str) -> str | None:
             if status in {"failed", "error"}:
                 return "failed"
             return "completed"
-    return "completed" if not _is_running(thread) else None
+    return None
 
 
 def _terminal_output(

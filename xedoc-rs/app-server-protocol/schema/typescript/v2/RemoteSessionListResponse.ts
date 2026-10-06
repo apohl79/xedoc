@@ -6,4 +6,4 @@ import type { RemoteSessionSummary } from "./RemoteSessionSummary";
 /**
  * Registered remote sessions belonging to one root thread.
  */
-export type RemoteSessionListResponse = { remoteSessions: Array<RemoteSessionSummary>, };
+export type RemoteSessionListResponse = { data: Array<RemoteSessionSummary>, nextCursor: string | null, };

@@ -33,15 +33,22 @@ impl App {
         let Some(root_thread_id) = self.primary_thread_id else {
             return;
         };
-        match app_server.remote_session_list(root_thread_id).await {
-            Ok(response) => {
-                for remote_session in response.remote_sessions {
-                    self.upsert_remote_session_picker_entry(remote_session);
+        let mut cursor: Option<String> = None;
+        loop {
+            let response = match app_server.remote_session_list(root_thread_id, cursor).await {
+                Ok(response) => response,
+                Err(err) => {
+                    tracing::debug!(error = %err, "remote session picker refresh failed");
+                    return;
                 }
-                self.sync_active_agent_display();
+            };
+            for remote_session in response.data {
+                self.upsert_remote_session_picker_entry(remote_session);
             }
-            Err(err) => {
-                tracing::debug!(error = %err, "remote session picker refresh failed");
+            cursor = response.next_cursor;
+            if cursor.is_none() {
+                self.sync_active_agent_display();
+                return;
             }
         }
     }
@@ -106,19 +113,6 @@ impl App {
             }
         };
         self.upsert_remote_session_picker_entry(attached);
-        let read = match app_server
-            .remote_session_read(root_thread_id, remote_session_id_value.clone())
-            .await
-        {
-            Ok(response) => response,
-            Err(err) => {
-                self.chat_widget.add_error_message(format!(
-                    "Failed to read remote session {remote_session_id_value}: {err}"
-                ));
-                return Ok(());
-            }
-        };
-        self.upsert_remote_session_picker_entry(read.remote_session);
         self.active_remote_session = Some(remote_session_id);
         self.reset_for_thread_switch(tui)?;
         if let Some(entry) = self
@@ -134,13 +128,44 @@ impl App {
                 Some("Messages are sent to the paired host.".to_string()),
             );
         }
-        if !read.output.trim().is_empty() {
-            self.chat_widget.add_plain_history_lines(
-                read.output
-                    .lines()
-                    .map(|line| line.to_string().into())
-                    .collect(),
-            );
+        let mut cursor: Option<String> = None;
+        let mut seen_cursors = HashSet::new();
+        loop {
+            if let Some(cursor) = cursor.as_ref()
+                && !seen_cursors.insert(cursor.clone())
+            {
+                tracing::warn!("remote session transcript cursor did not advance");
+                break;
+            }
+            let read = match app_server
+                .remote_session_read(
+                    root_thread_id,
+                    remote_session_id_value.clone(),
+                    cursor.clone(),
+                )
+                .await
+            {
+                Ok(response) => response,
+                Err(err) => {
+                    self.chat_widget.add_error_message(format!(
+                        "Failed to read remote session {remote_session_id_value}: {err}"
+                    ));
+                    return Ok(());
+                }
+            };
+            cursor = read.remote_session.output_cursor.clone();
+            self.upsert_remote_session_picker_entry(read.remote_session);
+            if !read.output.trim().is_empty() {
+                self.chat_widget.add_plain_history_lines(
+                    read.output
+                        .lines()
+                        .map(|line| line.to_string().into())
+                        .collect(),
+                );
+            }
+            if cursor.is_none() {
+                break;
+            }
         }
         self.sync_active_agent_label();
         self.sync_active_agent_display();
@@ -163,6 +188,7 @@ impl App {
         let expected_turn_id = self
             .agent_navigation
             .remote_session(&remote_session_id)
+            .filter(|entry| entry.is_running)
             .and_then(|entry| entry.active_turn_id.clone());
         let remote_session_id_value = remote_session_id.as_str().to_string();
         let response = match op {
@@ -189,12 +215,12 @@ impl App {
                         expected_turn_id,
                     )
                     .await
-                    .map(|response| response.remote_session)
+                    .map(|response| (response.remote_session, response.output_delta))
             }
             AppCommand::Interrupt => app_server
                 .remote_session_cancel(root_thread_id, remote_session_id_value, expected_turn_id)
                 .await
-                .map(|response| response.remote_session),
+                .map(|response| (response.remote_session, None)),
             _ => {
                 self.chat_widget.add_error_message(
                     "This action is not available while viewing a remote session.".to_string(),
@@ -203,7 +229,9 @@ impl App {
             }
         };
         match response {
-            Ok(remote_session) => self.upsert_remote_session_picker_entry(remote_session),
+            Ok((remote_session, _)) => {
+                self.upsert_remote_session_picker_entry(remote_session);
+            }
             Err(err) => self
                 .chat_widget
                 .add_error_message(format!("Remote session operation failed: {err}")),
@@ -375,7 +403,7 @@ impl App {
             .collect();
 
         self.chat_widget.show_selection_view(SelectionViewParams {
-            title: Some("Subagents".to_string()),
+            title: Some("Agents".to_string()),
             subtitle: Some(AgentNavigationState::picker_subtitle()),
             footer_hint: Some(standard_popup_hint_line()),
             items,

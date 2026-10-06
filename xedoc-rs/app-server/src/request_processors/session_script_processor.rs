@@ -262,6 +262,7 @@ impl ThreadRequestProcessor {
                 registration.thread_id,
                 params.host_id,
                 params.remote_thread_id,
+                params.host_name,
             )
             .await
             .map_err(invalid_request)?;
@@ -301,8 +302,15 @@ impl ThreadRequestProcessor {
         params: RemoteSessionListParams,
     ) -> Result<RemoteSessionListResponse, JSONRPCErrorError> {
         let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
-        let remote_sessions = self.remote_session_registry.list(root_thread_id).await;
-        Ok(RemoteSessionListResponse { remote_sessions })
+        let page = self
+            .remote_session_registry
+            .list(root_thread_id, params.cursor.as_deref(), params.limit)
+            .await
+            .map_err(invalid_request)?;
+        Ok(RemoteSessionListResponse {
+            data: page.data,
+            next_cursor: page.next_cursor,
+        })
     }
 
     pub(crate) async fn remote_session_read(
@@ -310,34 +318,29 @@ impl ThreadRequestProcessor {
         params: RemoteSessionReadParams,
     ) -> Result<RemoteSessionReadResponse, JSONRPCErrorError> {
         let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
-        let (remote_session, _) = self
+        let remote_session = self
             .remote_session_registry
             .read(root_thread_id, &params.remote_session_id)
             .await
             .map_err(invalid_request)?;
-        let cursor = params.cursor.or(remote_session.output_cursor.clone());
-        self.control_remote_session(
-            root_thread_id,
-            &params.remote_session_id,
-            RemoteSessionControlParams {
-                action: RemoteSessionControlAction::Read,
-                host_id: remote_session.host_id,
-                thread_id: remote_session.remote_thread_id,
-                message: None,
-                expected_turn_id: None,
-                cursor,
-                limit: params.limit,
-            },
-        )
-        .await?;
-        let (remote_session, output) = self
-            .remote_session_registry
-            .read(root_thread_id, &params.remote_session_id)
-            .await
-            .map_err(invalid_request)?;
+        let update = self
+            .control_remote_session(
+                root_thread_id,
+                &params.remote_session_id,
+                RemoteSessionControlParams {
+                    action: RemoteSessionControlAction::Read,
+                    host_id: remote_session.host_id,
+                    thread_id: remote_session.remote_thread_id,
+                    message: None,
+                    expected_turn_id: None,
+                    cursor: params.cursor,
+                    limit: params.limit,
+                },
+            )
+            .await?;
         Ok(RemoteSessionReadResponse {
-            remote_session,
-            output,
+            remote_session: update.summary,
+            output: update.output_delta.unwrap_or_default(),
         })
     }
 
@@ -420,6 +423,7 @@ impl ThreadRequestProcessor {
             .await?;
         Ok(RemoteSessionInputResponse {
             remote_session: update.summary,
+            output_delta: update.output_delta,
         })
     }
 
@@ -533,7 +537,6 @@ impl ThreadRequestProcessor {
         self.remote_session_registry
             .read(root_thread_id, remote_session_id)
             .await
-            .map(|(summary, _)| summary)
             .map_err(invalid_request)
     }
 
@@ -543,6 +546,10 @@ impl ThreadRequestProcessor {
         remote_session_id: &str,
         params: RemoteSessionControlParams,
     ) -> Result<RemoteSessionProjectionUpdate, JSONRPCErrorError> {
+        self.session_extension_manager
+            .start_remote_for_thread(root_thread_id)
+            .await
+            .map_err(invalid_request)?;
         let action = params.action;
         let response = self
             .session_extension_manager
@@ -562,14 +569,16 @@ impl ThreadRequestProcessor {
             .apply_control_result(root_thread_id, remote_session_id, action, &response.result)
             .await
             .map_err(invalid_request)?;
-        self.send_remote_session_updated(
-            root_thread_id,
-            RemoteSessionProjectionUpdate {
-                summary: update.summary.clone(),
-                output_delta: update.output_delta.clone(),
-            },
-        )
-        .await;
+        if action != RemoteSessionControlAction::Read {
+            self.send_remote_session_updated(
+                root_thread_id,
+                RemoteSessionProjectionUpdate {
+                    summary: update.summary.clone(),
+                    output_delta: update.output_delta.clone(),
+                },
+            )
+            .await;
+        }
         Ok(update)
     }
 
@@ -582,19 +591,20 @@ impl ThreadRequestProcessor {
             .thread_state_manager
             .subscribed_connection_ids(root_thread_id)
             .await;
-        ThreadScopedOutgoingMessageSender::new(
+        let outgoing = ThreadScopedOutgoingMessageSender::new(
             self.outgoing.clone(),
             connection_ids,
             root_thread_id,
-        )
-        .send_server_notification(ServerNotification::RemoteSessionUpdated(
-            RemoteSessionUpdatedNotification {
-                thread_id: root_thread_id.to_string(),
-                remote_session: update.summary,
-                output_delta: update.output_delta,
-            },
-        ))
-        .await;
+        );
+        outgoing
+            .send_server_notification(ServerNotification::RemoteSessionUpdated(
+                RemoteSessionUpdatedNotification {
+                    thread_id: root_thread_id.to_string(),
+                    remote_session: update.summary,
+                    output_delta: update.output_delta,
+                },
+            ))
+            .await;
     }
 
     async fn session_script_snapshot(

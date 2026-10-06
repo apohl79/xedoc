@@ -89,15 +89,21 @@
   },
   "description": "Registered remote sessions belonging to one root thread.",
   "properties": {
-    "remoteSessions": {
+    "data": {
       "items": {
         "$ref": "#/definitions/RemoteSessionSummary"
       },
       "type": "array"
+    },
+    "nextCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
-    "remoteSessions"
+    "data"
   ],
   "title": "RemoteSessionListResponse",
   "type": "object"

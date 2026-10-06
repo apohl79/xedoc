@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import select
 import sys
+import threading
 from typing import Any, Callable, Mapping, Sequence
 
 from .errors import BrokerError
@@ -22,6 +25,8 @@ _MAX_IDENTIFIER_LENGTH = 128
 _MAX_WAIT_SECONDS = 3_600
 _WAIT_TIMEOUT_BUFFER_SECONDS = 5.0
 _SESSION_START_TIMEOUT_SECONDS = 30.0
+_REMOTE_SESSION_WATCH_POLL_SECONDS = 1.0
+_REMOTE_SESSION_UPDATE_BYTES = 4_096
 _REMOTE_NAMESPACE = "remote"
 _REMOTE_SESSION_CONTROL_METHOD = "remoteSession/control"
 _REMOTE_SESSION_REGISTER_METHOD = "script/remoteSessionRegister"
@@ -176,7 +181,12 @@ class RemoteAgentExtension:
         self._app_server_request = app_server_request
         self._script_registration_id: str | None = None
         self._remote_sessions: dict[tuple[str, str], str] = {}
-        self._operation_sessions: dict[str, tuple[str, str | None]] = {}
+        self._remote_hostnames: dict[str, str] = {}
+        self._operation_sessions: dict[str, tuple[str, str | None, str | None]] = {}
+        self._active_operations: dict[tuple[str, str], str] = {}
+        self._pending_remote_session_updates: queue.SimpleQueue[dict[str, Any]] = (
+            queue.SimpleQueue()
+        )
 
     def set_source_lease(self, source_lease: str) -> None:
         """Attach the broker-issued lease after host registration succeeds."""
@@ -247,6 +257,7 @@ class RemoteAgentExtension:
                 timeout_seconds=_broker_timeout(tool, arguments),
                 extension_lease=source_lease,
             )
+            self._remember_host_metadata(tool, result)
             self._register_tool_remote_session(tool, arguments, result)
             self._update_tool_remote_session(tool, arguments, result)
             return _response(
@@ -268,7 +279,9 @@ class RemoteAgentExtension:
             _REMOTE_SESSION_CONTROL_BASE_FIELDS
             | _REMOTE_SESSION_CONTROL_NULLABLE_FIELDS
         )
-        required = _REMOTE_SESSION_CONTROL_BASE_FIELDS | allowed_values
+        required = _REMOTE_SESSION_CONTROL_BASE_FIELDS | (
+            allowed_values - _REMOTE_SESSION_CONTROL_NULLABLE_FIELDS
+        )
         if set(params) - allowed or not required.issubset(params):
             raise BrokerError.invalid_request()
         if any(
@@ -298,24 +311,70 @@ class RemoteAgentExtension:
                 raise BrokerError.invalid_request()
             broker_params["message"] = message
         if action in {"steer", "cancel"}:
-            broker_params["turnId"] = _bounded_identifier(params["expectedTurnId"])
+            expected_turn_id = params.get("expectedTurnId")
+            if expected_turn_id is not None:
+                broker_params["turnId"] = _bounded_identifier(expected_turn_id)
 
         method = f"session/{action}"
-        result = self._broker.call(
+        operation_result = self._broker.call(
             method,
             broker_params,
             timeout_seconds=(
                 _SESSION_START_TIMEOUT_SECONDS if action == "attach" else None
             ),
         )
-        if action == "attach":
-            result = self._await_control_operation(host_id, result)
+        result = operation_result
+        if action in {"attach", "steer", "cancel", "detach"}:
+            completed = self._await_control_operation(host_id, operation_result)
+            _require_completed_control_operation(action, completed)
+        if action in {"attach", "steer", "cancel"}:
+            result = self._broker.call(
+                "session/status",
+                {"hostId": host_id, "threadId": thread_id},
+            )
         if action in {"send", "steer"}:
-            self._register_remote_session(host_id, thread_id)
+            remote_session_id = self._register_remote_session(
+                host_id,
+                thread_id,
+                _optional_hostname(result.get("hostName")),
+            )
+            operation_id = _optional_identifier(operation_result.get("operationId"))
+            if operation_id is not None and remote_session_id is not None:
+                self._operation_sessions[operation_id] = (
+                    host_id,
+                    thread_id,
+                    _optional_hostname(result.get("hostName")),
+                )
+                if action == "send":
+                    self._active_operations[(host_id, thread_id)] = operation_id
+        if action == "send":
+            turn_id = _optional_identifier(result.get("turnId"))
+            status = self._broker.call(
+                "session/status",
+                {"hostId": host_id, "threadId": thread_id},
+            )
+            self._watch_control_operation(host_id, operation_result)
+            result = {
+                **status,
+                **operation_result,
+                "threadId": thread_id,
+                "isRunning": True,
+                "status": "running",
+                "activitySummary": "Remote session is running.",
+            }
+            if turn_id is not None:
+                result["activeTurnId"] = turn_id
         return {"success": True, "result": result}
 
     def _await_control_operation(
         self, host_id: str, result: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        return self._wait_for_control_operation(
+            host_id, result, _SESSION_START_TIMEOUT_SECONDS
+        )
+
+    def _wait_for_control_operation(
+        self, host_id: str, result: Mapping[str, Any], timeout_seconds: float
     ) -> dict[str, Any]:
         operation_id = _bounded_identifier(result.get("operationId"))
         return self._broker.call(
@@ -323,10 +382,95 @@ class RemoteAgentExtension:
             {
                 "hostId": host_id,
                 "operationId": operation_id,
-                "timeoutSeconds": _SESSION_START_TIMEOUT_SECONDS,
+                "timeoutSeconds": timeout_seconds,
             },
-            timeout_seconds=_SESSION_START_TIMEOUT_SECONDS + _WAIT_TIMEOUT_BUFFER_SECONDS,
+            timeout_seconds=timeout_seconds + _WAIT_TIMEOUT_BUFFER_SECONDS,
         )
+
+    def _watch_control_operation(
+        self, host_id: str, result: Mapping[str, Any]
+    ) -> None:
+        operation_id = _optional_identifier(result.get("operationId"))
+        if operation_id is None:
+            return
+        threading.Thread(
+            target=self._watch_control_operation_worker,
+            args=(host_id, operation_id),
+            daemon=True,
+            name=f"xedoc-remote-session-{operation_id[:12]}",
+        ).start()
+
+    def _watch_control_operation_worker(self, host_id: str, operation_id: str) -> None:
+        handle: Mapping[str, Any] = {"operationId": operation_id}
+        arguments: Mapping[str, Any] = {
+            "hostId": host_id,
+            "operationId": operation_id,
+        }
+        try:
+            while True:
+                result = self._wait_for_control_operation(
+                    host_id, handle, _REMOTE_SESSION_WATCH_POLL_SECONDS
+                )
+                self._update_tool_remote_session("session_wait", arguments, result)
+                if result.get("stopReason") == "terminal":
+                    self._project_terminal_output(host_id, operation_id)
+                    return
+        except BrokerError:
+            self._mark_remote_session_failed(operation_id)
+
+    def _project_terminal_output(self, host_id: str, operation_id: str) -> None:
+        identity = self._operation_sessions.get(operation_id)
+        if identity is None or identity[1] is None:
+            return
+        remote_session_id = self._register_remote_session(*identity)
+        if remote_session_id is None:
+            return
+        cursor: str | None = None
+        page_number = 0
+        while True:
+            result = self._broker.call(
+                "session/read",
+                {
+                    "hostId": host_id,
+                    "threadId": identity[1],
+                    "cursor": cursor,
+                },
+            )
+            output_text = result.get("outputText")
+            if isinstance(output_text, str) and output_text:
+                for chunk_number, output_chunk in enumerate(
+                    _output_chunks(output_text), start=1
+                ):
+                    self._publish_remote_session_update(
+                        remote_session_id,
+                        {
+                            "status": result.get("status", "completed"),
+                            "outputDelta": output_chunk,
+                            "outputCursor": (
+                                f"operation_{operation_id}_{page_number}_{chunk_number}"
+                            ),
+                        },
+                        _optional_identifier(result.get("activeTurnId")),
+                    )
+            cursor = _optional_identifier(result.get("nextCursor"))
+            if cursor is None:
+                return
+            page_number += 1
+
+    def _mark_remote_session_failed(self, operation_id: str) -> None:
+        identity = self._operation_sessions.get(operation_id)
+        if identity is None or identity[1] is None:
+            return
+        remote_session_id = self._register_remote_session(*identity)
+        if remote_session_id is not None:
+            self._publish_remote_session_update(
+                remote_session_id,
+                {
+                    "status": "failed",
+                    "activitySummary": "Remote session connection failed.",
+                },
+                None,
+            )
 
     def _register_tool_remote_session(
         self, tool: str, arguments: Mapping[str, Any], result: Mapping[str, Any]
@@ -334,14 +478,15 @@ class RemoteAgentExtension:
         host_id = _optional_identifier(arguments.get("hostId"))
         if host_id is None:
             return
+        host_name = _optional_hostname(result.get("hostName"))
         thread_id = _optional_identifier(arguments.get("threadId"))
         operation_id = _optional_identifier(result.get("operationId"))
         if tool in {"session_resume", "session_attach", "session_send", "session_steer"}:
             if thread_id is None:
                 return
-            self._register_remote_session(host_id, thread_id)
+            self._register_remote_session(host_id, thread_id, host_name)
         if operation_id is not None:
-            self._operation_sessions[operation_id] = (host_id, thread_id)
+            self._operation_sessions[operation_id] = (host_id, thread_id, host_name)
 
     def _update_tool_remote_session(
         self, tool: str, arguments: Mapping[str, Any], result: Mapping[str, Any]
@@ -358,6 +503,9 @@ class RemoteAgentExtension:
                 host_id = identity[0]
             elif host_id != identity[0]:
                 return
+        host_name = _optional_hostname(result.get("hostName"))
+        if host_name is None and identity is not None:
+            host_name = identity[2]
         thread_id = _optional_identifier(result.get("threadId"))
         if thread_id is None and identity is not None:
             thread_id = identity[1]
@@ -366,10 +514,15 @@ class RemoteAgentExtension:
             thread_id = _optional_identifier(nested_result.get("threadId"))
         if host_id is None or thread_id is None:
             return
-        remote_session_id = self._register_remote_session(host_id, thread_id)
+        if self._active_operations.get((host_id, thread_id)) not in {
+            None,
+            operation_id,
+        }:
+            return
+        remote_session_id = self._register_remote_session(host_id, thread_id, host_name)
         if remote_session_id is None:
             return
-        self._operation_sessions[operation_id] = (host_id, thread_id)
+        self._operation_sessions[operation_id] = (host_id, thread_id, host_name)
         turn_id = _optional_identifier(result.get("turnId"))
         if turn_id is None and isinstance(nested_result, Mapping):
             turn_id = _optional_identifier(nested_result.get("turnId"))
@@ -389,19 +542,38 @@ class RemoteAgentExtension:
                 turn_id,
             )
 
-    def _register_remote_session(self, host_id: str, thread_id: str) -> str | None:
+    def _remember_host_metadata(self, tool: str, result: Mapping[str, Any]) -> None:
+        if tool != "hosts_list":
+            return
+        data = result.get("data")
+        if not isinstance(data, list):
+            return
+        for host in data:
+            if not isinstance(host, Mapping):
+                continue
+            host_id = _optional_identifier(host.get("hostId"))
+            hostname = _optional_hostname(host.get("hostname"))
+            if host_id is not None and hostname is not None:
+                self._remote_hostnames[host_id] = hostname
+
+    def _register_remote_session(
+        self, host_id: str, thread_id: str, host_name: str | None = None
+    ) -> str | None:
         if self._app_server_request is None or self._script_registration_id is None:
             return None
         identity = (host_id, thread_id)
         existing = self._remote_sessions.get(identity)
         if existing is not None:
             return existing
+        if host_name is None:
+            host_name = self._remote_hostnames.get(host_id)
         response = self._app_server_request(
             _REMOTE_SESSION_REGISTER_METHOD,
             {
                 "registrationId": self._script_registration_id,
                 "hostId": host_id,
                 "remoteThreadId": thread_id,
+                "hostName": host_name,
             },
         )
         remote_session = response.get("remoteSession")
@@ -436,11 +608,23 @@ class RemoteAgentExtension:
         output_delta = event.get("outputDelta")
         output_cursor = event.get("outputCursor")
         if isinstance(output_delta, str) and isinstance(output_cursor, str):
-            params["outputDelta"] = output_delta[:4_096]
+            params["outputDelta"] = output_delta[:_REMOTE_SESSION_UPDATE_BYTES]
             params["outputCursor"] = _bounded_identifier(output_cursor)
         if turn_id is not None:
             params["remoteTurnId"] = turn_id
-        self._app_server_request(_REMOTE_SESSION_UPDATE_METHOD, params)
+        self._pending_remote_session_updates.put(params)
+
+    def flush_remote_session_updates(self) -> None:
+        """Send watcher updates through the child IPC owner thread."""
+
+        if self._app_server_request is None:
+            return
+        while True:
+            try:
+                params = self._pending_remote_session_updates.get_nowait()
+            except queue.Empty:
+                return
+            self._app_server_request(_REMOTE_SESSION_UPDATE_METHOD, params)
 
 
 def _tool_name(namespace: Any, tool: Any) -> str:
@@ -459,6 +643,44 @@ def _optional_identifier(value: Any) -> str | None:
         return _bounded_identifier(value)
     except BrokerError:
         return None
+
+
+def _output_chunks(value: str) -> Sequence[str]:
+    content = value.encode("utf-8")
+    chunks: list[str] = []
+    offset = 0
+    while offset < len(content):
+        end = min(offset + _REMOTE_SESSION_UPDATE_BYTES, len(content))
+        while end > offset:
+            try:
+                chunks.append(content[offset:end].decode("utf-8"))
+                break
+            except UnicodeDecodeError:
+                end -= 1
+        else:
+            raise BrokerError.internal()
+        offset = end
+    return chunks
+
+
+def _require_completed_control_operation(
+    action: str, result: Mapping[str, Any]
+) -> None:
+    state = result.get("state")
+    expected_state = "cancelled" if action == "cancel" else "completed"
+    if state != expected_state:
+        raise BrokerError.internal()
+
+
+def _optional_hostname(value: Any) -> str | None:
+    if (
+        isinstance(value, str)
+        and value
+        and len(value.encode("utf-8")) <= 255
+        and not any(character.isspace() for character in value)
+    ):
+        return value
+    return None
 
 
 def _broker_timeout(tool: str, arguments: Mapping[str, Any]) -> float | None:
@@ -576,7 +798,13 @@ def main(_argv: Sequence[str] | None = None) -> int:
         extension.set_source_lease(source_lease)
         client.read(registration_id)
         while True:
-            client.handle_message(client.receive_message())
+            extension.flush_remote_session_updates()
+            if client.has_buffered_message():
+                client.handle_message(client.receive_message())
+                continue
+            readable, _, _ = select.select([sys.stdin], [], [], 0.1)
+            if readable:
+                client.handle_message(client.receive_message())
     except (BrokerError, sdk.RpcError, EOFError, OSError, RuntimeError) as error:
         message = str(error).encode("utf-8", "replace")[:512].decode(
             "utf-8", "ignore"

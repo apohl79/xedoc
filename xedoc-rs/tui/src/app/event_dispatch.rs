@@ -432,8 +432,13 @@ impl App {
                         self.chat_widget.pre_draw_tick();
                         self.render_chat_widget_frame(tui)?;
                     }
-                    self.chat_widget.prepare_local_op_submission(&op);
-                    self.submit_active_thread_op(app_server, op).await?;
+                    if !self
+                        .submit_remote_session_op(app_server, op.clone())
+                        .await?
+                    {
+                        self.chat_widget.prepare_local_op_submission(&op);
+                        self.submit_active_thread_op(app_server, op).await?;
+                    }
                 }
             }
             AppEvent::RetrySafetyBufferedTurn {
@@ -484,9 +489,12 @@ impl App {
                     .await?;
             }
             AppEvent::SubmitThreadOp { thread_id, op } => {
-                if !self
-                    .submit_remote_session_op(app_server, op.clone())
-                    .await?
+                let routes_to_remote_session = self.active_remote_session.is_some()
+                    && self.primary_thread_id == Some(thread_id);
+                if !(routes_to_remote_session
+                    && self
+                        .submit_remote_session_op(app_server, op.clone())
+                        .await?)
                 {
                     self.submit_thread_op(app_server, thread_id, op).await?;
                 }

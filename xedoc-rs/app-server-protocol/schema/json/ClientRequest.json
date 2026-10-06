@@ -2559,6 +2559,20 @@
     "RemoteSessionListParams": {
       "description": "Lists locally registered remote sessions for one root thread.",
       "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "threadId": {
           "type": "string"
         }
@@ -2603,6 +2617,12 @@
       "properties": {
         "hostId": {
           "type": "string"
+        },
+        "hostName": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "registrationId": {
           "type": "string"

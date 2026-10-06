@@ -5,4 +5,4 @@
 /**
  * Lists locally registered remote sessions for one root thread.
  */
-export type RemoteSessionListParams = { threadId: string, };
+export type RemoteSessionListParams = { threadId: string, cursor?: string | null, limit?: number | null, };

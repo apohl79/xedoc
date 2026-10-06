@@ -185,8 +185,14 @@ class WebSocketTransport:
 class HostChildTransport:
     """Bounded JSONL framing for the host-managed stdin/stdout child connection."""
 
+    def __init__(self) -> None:
+        self._input = bytearray()
+
     def close(self) -> None:
         return
+
+    def has_buffered_message(self) -> bool:
+        return b"\n" in self._input
 
     def send_json(self, value: dict[str, Any]) -> None:
         encoded = json.dumps(value, separators=(",", ":"))
@@ -195,9 +201,15 @@ class HostChildTransport:
         print(encoded, flush=True)
 
     def receive_json(self) -> dict[str, Any]:
-        line = sys.stdin.buffer.readline(MAX_MESSAGE_BYTES + 1)
-        if not line:
-            raise RpcError("app-server closed the child pipe")
+        while b"\n" not in self._input:
+            chunk = os.read(sys.stdin.fileno(), 8192)
+            if not chunk:
+                raise RpcError("app-server closed the child pipe")
+            self._input.extend(chunk)
+            if b"\n" not in self._input and len(self._input) > MAX_MESSAGE_BYTES:
+                raise RpcError("JSON-RPC message exceeds the size limit")
+        line, _, remaining = self._input.partition(b"\n")
+        self._input = bytearray(remaining)
         if len(line) > MAX_MESSAGE_BYTES:
             raise RpcError("JSON-RPC message exceeds the size limit")
         return _decode_json_object(line)
@@ -475,6 +487,10 @@ class SessionScriptClient:
 
     def receive_message(self) -> dict[str, Any]:
         return self._transport.receive_json()
+
+    def has_buffered_message(self) -> bool:
+        checker = getattr(self._transport, "has_buffered_message", None)
+        return bool(checker()) if callable(checker) else False
 
     def handle_message(self, message: dict[str, Any]) -> None:
         if message.get("method") is not None:

@@ -50,6 +50,10 @@ pub enum RemoteSessionStatus {
 #[ts(export_to = "v2/")]
 pub struct RemoteSessionListParams {
     pub thread_id: String,
+    #[ts(optional = nullable)]
+    pub cursor: Option<String>,
+    #[ts(optional = nullable)]
+    pub limit: Option<u32>,
 }
 
 /// Registered remote sessions belonging to one root thread.
@@ -57,7 +61,8 @@ pub struct RemoteSessionListParams {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct RemoteSessionListResponse {
-    pub remote_sessions: Vec<RemoteSessionSummary>,
+    pub data: Vec<RemoteSessionSummary>,
+    pub next_cursor: Option<String>,
 }
 
 /// Reads one locally registered remote session.
@@ -137,6 +142,7 @@ pub struct RemoteSessionAttachResponse {
 #[ts(export_to = "v2/")]
 pub struct RemoteSessionInputResponse {
     pub remote_session: RemoteSessionSummary,
+    pub output_delta: Option<String>,
 }
 
 /// Result of cancelling a remote session turn.
@@ -163,6 +169,8 @@ pub struct RemoteSessionRegisterParams {
     pub registration_id: String,
     pub host_id: String,
     pub remote_thread_id: String,
+    #[ts(optional = nullable)]
+    pub host_name: Option<String>,
 }
 
 /// Returns the opaque local session ID for a registered remote identity.

@@ -14,7 +14,9 @@ use xedoc_protocol::ThreadId;
 
 const MAX_IDENTIFIER_CHARS: usize = 128;
 const MAX_ACTIVITY_SUMMARY_CHARS: usize = 64;
-const MAX_OUTPUT_BYTES: usize = 64 * 1024;
+const MAX_OUTPUT_DELTA_BYTES: usize = 32 * 1024;
+const DEFAULT_LIST_LIMIT: usize = 100;
+const MAX_LIST_LIMIT: usize = 100;
 
 /// Owns opaque local identities for remote session projections.
 #[derive(Clone, Default)]
@@ -31,8 +33,13 @@ struct RemoteSessionRegistryState {
 struct RemoteSessionEntry {
     root_thread_id: ThreadId,
     summary: RemoteSessionSummary,
-    output: String,
     activity_cursor: Option<String>,
+}
+
+/// One bounded page of remote session projections.
+pub(crate) struct RemoteSessionPage {
+    pub(crate) data: Vec<RemoteSessionSummary>,
+    pub(crate) next_cursor: Option<String>,
 }
 
 /// A changed projection and its optional output delta.
@@ -48,9 +55,13 @@ impl RemoteSessionRegistry {
         root_thread_id: ThreadId,
         host_id: String,
         remote_thread_id: String,
+        host_name: Option<String>,
     ) -> Result<RemoteSessionSummary, String> {
         validate_identifier("host id", &host_id)?;
         validate_identifier("remote thread id", &remote_thread_id)?;
+        if let Some(host_name) = host_name.as_deref() {
+            validate_identifier("host name", host_name)?;
+        }
         let mut state = self.state.lock().await;
         let identity = (root_thread_id, host_id.clone(), remote_thread_id.clone());
         if let Some(remote_session_id) = state.remote_session_ids_by_identity.get(&identity) {
@@ -66,7 +77,7 @@ impl RemoteSessionRegistry {
             host_id,
             remote_thread_id,
             workspace_id: None,
-            host_name: None,
+            host_name,
             host_role: None,
             status: RemoteSessionStatus::Idle,
             active_turn_id: None,
@@ -81,7 +92,6 @@ impl RemoteSessionRegistry {
             RemoteSessionEntry {
                 root_thread_id,
                 summary: summary.clone(),
-                output: String::new(),
                 activity_cursor: None,
             },
         );
@@ -89,7 +99,21 @@ impl RemoteSessionRegistry {
     }
 
     /// Lists all projections owned by one root thread.
-    pub(crate) async fn list(&self, root_thread_id: ThreadId) -> Vec<RemoteSessionSummary> {
+    pub(crate) async fn list(
+        &self,
+        root_thread_id: ThreadId,
+        cursor: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<RemoteSessionPage, String> {
+        if let Some(cursor) = cursor {
+            validate_identifier("remote session cursor", cursor)?;
+        }
+        let limit = limit
+            .map(|limit| usize::try_from(limit).unwrap_or(MAX_LIST_LIMIT))
+            .unwrap_or(DEFAULT_LIST_LIMIT);
+        if limit == 0 || limit > MAX_LIST_LIMIT {
+            return Err("remote session list limit is invalid".to_string());
+        }
         let state = self.state.lock().await;
         let mut remote_sessions = state
             .entries_by_id
@@ -102,19 +126,34 @@ impl RemoteSessionRegistry {
                 .cmp(&right.remote_session_id)
                 .then_with(|| left.host_id.cmp(&right.host_id))
         });
-        remote_sessions
+        if let Some(cursor) = cursor {
+            remote_sessions.retain(|session| session.remote_session_id.as_str() > cursor);
+        }
+        let has_more = remote_sessions.len() > limit;
+        remote_sessions.truncate(limit);
+        let next_cursor = has_more.then(|| {
+            remote_sessions
+                .last()
+                .expect("non-empty page when more remote sessions exist")
+                .remote_session_id
+                .clone()
+        });
+        Ok(RemoteSessionPage {
+            data: remote_sessions,
+            next_cursor,
+        })
     }
 
-    /// Reads one projection and its bounded output.
+    /// Reads one projection summary.
     pub(crate) async fn read(
         &self,
         root_thread_id: ThreadId,
         remote_session_id: &str,
-    ) -> Result<(RemoteSessionSummary, String), String> {
+    ) -> Result<RemoteSessionSummary, String> {
         validate_identifier("remote session id", remote_session_id)?;
         let state = self.state.lock().await;
         let entry = entry_for_root(&state, root_thread_id, remote_session_id)?;
-        Ok((entry.summary.clone(), entry.output.clone()))
+        Ok(entry.summary.clone())
     }
 
     /// Applies a trusted extension update.
@@ -126,12 +165,17 @@ impl RemoteSessionRegistry {
         validate_update(&params)?;
         let mut state = self.state.lock().await;
         let entry = entry_for_root_mut(&mut state, root_thread_id, &params.remote_session_id)?;
-        entry.summary.status = params.status;
-        if let Some(activity_summary) = params.activity_summary {
-            entry.summary.activity_summary = Some(activity_summary);
-        }
-        if let Some(remote_turn_id) = params.remote_turn_id {
-            entry.summary.active_turn_id = Some(remote_turn_id);
+        let accepts_update = accepts_update(entry, &params);
+        if accepts_update {
+            entry.summary.status = params.status;
+            if let Some(activity_summary) = params.activity_summary {
+                entry.summary.activity_summary = Some(activity_summary);
+            } else if is_terminal_status(params.status) {
+                entry.summary.activity_summary = None;
+            }
+            if let Some(remote_turn_id) = params.remote_turn_id {
+                entry.summary.active_turn_id = Some(remote_turn_id);
+            }
         }
         if let Some(workspace_id) = params.workspace_id {
             entry.summary.workspace_id = Some(workspace_id);
@@ -145,7 +189,6 @@ impl RemoteSessionRegistry {
         let output_delta = match (params.output_delta, params.output_cursor) {
             (Some(delta), Some(cursor)) if entry.activity_cursor.as_deref() != Some(&cursor) => {
                 entry.activity_cursor = Some(cursor);
-                append_bounded(&mut entry.output, &delta);
                 Some(delta)
             }
             (Some(_), Some(_)) => None,
@@ -180,17 +223,16 @@ impl RemoteSessionRegistry {
             }
             RemoteSessionControlAction::Send | RemoteSessionControlAction::Steer => {
                 entry.summary.status = RemoteSessionStatus::Running;
+                entry.summary.activity_summary = Some("Remote session is running.".to_string());
             }
             RemoteSessionControlAction::Cancel => {
                 entry.summary.status = RemoteSessionStatus::Cancelled;
+                entry.summary.activity_summary = Some("Remote session cancelled".to_string());
             }
             RemoteSessionControlAction::Detach => {
                 entry.summary.status = RemoteSessionStatus::Detached;
             }
             RemoteSessionControlAction::Read => {}
-        }
-        if let Some(delta) = output_delta.as_deref() {
-            append_bounded(&mut entry.output, delta);
         }
         Ok(RemoteSessionProjectionUpdate {
             summary: entry.summary.clone(),
@@ -243,7 +285,7 @@ fn validate_update(params: &RemoteSessionUpdateParams) -> Result<(), String> {
         validate_activity_summary(activity_summary)?;
     }
     if let Some(output_delta) = params.output_delta.as_deref() {
-        if output_delta.is_empty() || output_delta.len() > MAX_OUTPUT_BYTES {
+        if output_delta.is_empty() || output_delta.len() > MAX_OUTPUT_DELTA_BYTES {
             return Err("output delta is invalid".to_string());
         }
     }
@@ -274,19 +316,41 @@ fn apply_broker_result(
     if let Some(workspace_id) = optional_identifier(object.get("workspaceId"), "workspace id")? {
         entry.summary.workspace_id = Some(workspace_id);
     }
-    if let Some(remote_turn_id) = optional_identifier(object.get("turnId"), "turn id")? {
+    if let Some(host_name) = optional_identifier(object.get("hostName"), "host name")? {
+        entry.summary.host_name = Some(host_name);
+    }
+    let remote_turn_id = optional_identifier(
+        object.get("activeTurnId").or_else(|| object.get("turnId")),
+        "turn id",
+    )?;
+    let new_turn = remote_turn_id.as_deref().is_some_and(|remote_turn_id| {
+        entry.summary.active_turn_id.as_deref() != Some(remote_turn_id)
+    });
+    if let Some(remote_turn_id) = remote_turn_id {
         entry.summary.active_turn_id = Some(remote_turn_id);
     }
-    if let Some(status) = optional_status(object.get("status"))? {
-        if status != RemoteSessionStatus::Idle || !is_terminal_status(entry.summary.status) {
-            entry.summary.status = status;
-        }
-    }
-    if optional_bool(object.get("isRunning"), "is running")? == Some(true) {
+    let broker_status = optional_status(object.get("status"))?;
+    let accepts_activity = broker_status
+        .map(|status| {
+            let accepted = apply_status(entry, status, new_turn);
+            if accepted && is_terminal_status(status) && object.get("activitySummary").is_none() {
+                entry.summary.activity_summary = None;
+            }
+            accepted
+        })
+        .unwrap_or(!is_terminal_status(entry.summary.status));
+    if optional_bool(object.get("isRunning"), "is running")? == Some(true)
+        && !is_terminal_status(entry.summary.status)
+    {
         entry.summary.status = RemoteSessionStatus::Running;
     }
-    if let Some(output_cursor) = optional_identifier(object.get("nextCursor"), "next cursor")? {
-        entry.summary.output_cursor = Some(output_cursor);
+    if object.contains_key("nextCursor") {
+        entry.summary.output_cursor = optional_identifier(object.get("nextCursor"), "next cursor")?;
+    }
+    if accepts_activity
+        && let Some(activity_summary) = optional_activity_summary(object.get("activitySummary"))?
+    {
+        entry.summary.activity_summary = Some(activity_summary);
     }
 
     let mut output_delta = optional_output_text(object.get("outputText"))?;
@@ -298,23 +362,43 @@ fn apply_broker_result(
             let event = event
                 .as_object()
                 .ok_or_else(|| "remote-agent event is invalid".to_string())?;
-            if let Some(status) = optional_status(event.get("status"))? {
-                entry.summary.status = status;
+            let event_turn_id = optional_identifier(event.get("turnId"), "turn id")?;
+            let new_event_turn = event_turn_id
+                .as_deref()
+                .is_some_and(|turn_id| entry.summary.active_turn_id.as_deref() != Some(turn_id));
+            if let Some(event_turn_id) = event_turn_id {
+                entry.summary.active_turn_id = Some(event_turn_id);
             }
-            if let Some(activity_summary) = optional_activity_summary(event.get("activitySummary"))?
+            let event_status = optional_status(event.get("status"))?;
+            let accepts_event_activity = event_status
+                .map(|status| {
+                    let accepted = apply_status(entry, status, new_event_turn);
+                    if accepted
+                        && is_terminal_status(status)
+                        && event.get("activitySummary").is_none()
+                    {
+                        entry.summary.activity_summary = None;
+                    }
+                    accepted
+                })
+                .unwrap_or(!is_terminal_status(entry.summary.status));
+            if accepts_event_activity
+                && let Some(activity_summary) =
+                    optional_activity_summary(event.get("activitySummary"))?
             {
                 entry.summary.activity_summary = Some(activity_summary);
             }
             if let Some(cursor) = optional_identifier(event.get("outputCursor"), "output cursor")? {
                 entry.activity_cursor = Some(cursor);
             }
-            let event_output =
-                optional_output_text(event.get("outputDelta").or_else(|| event.get("text")))?;
+            let event_output = if event.get("type").and_then(JsonValue::as_str) == Some("activity")
+            {
+                None
+            } else {
+                optional_output_text(event.get("outputDelta").or_else(|| event.get("text")))?
+            };
             if let Some(event_output) = event_output {
-                output_delta = Some(match output_delta {
-                    Some(previous) => format!("{previous}{event_output}"),
-                    None => event_output,
-                });
+                append_output_delta(&mut output_delta, event_output);
             }
         }
     }
@@ -323,13 +407,57 @@ fn apply_broker_result(
             .as_object()
             .ok_or_else(|| "remote-agent nested result is invalid".to_string())?;
         if let Some(nested_output_delta) = apply_broker_result(entry, nested_result)? {
-            output_delta = Some(match output_delta {
-                Some(previous) => format!("{previous}{nested_output_delta}"),
-                None => nested_output_delta,
-            });
+            append_output_delta(&mut output_delta, nested_output_delta);
         }
     }
-    Ok(output_delta.map(truncate_output_delta))
+    Ok(output_delta)
+}
+
+fn apply_status(
+    entry: &mut RemoteSessionEntry,
+    status: RemoteSessionStatus,
+    new_turn: bool,
+) -> bool {
+    if !is_terminal_status(entry.summary.status)
+        || status == entry.summary.status
+        || (status == RemoteSessionStatus::Running && new_turn)
+    {
+        entry.summary.status = status;
+        true
+    } else {
+        false
+    }
+}
+
+fn accepts_update(entry: &RemoteSessionEntry, params: &RemoteSessionUpdateParams) -> bool {
+    if is_terminal_status(entry.summary.status) && params.status == RemoteSessionStatus::Running {
+        return params
+            .remote_turn_id
+            .as_deref()
+            .is_some_and(|remote_turn_id| {
+                entry.summary.active_turn_id.as_deref() != Some(remote_turn_id)
+            });
+    }
+    if is_terminal_status(params.status)
+        && entry.summary.status == RemoteSessionStatus::Running
+        && let Some(active_turn_id) = entry.summary.active_turn_id.as_deref()
+        && params.remote_turn_id.as_deref() != Some(active_turn_id)
+    {
+        return false;
+    }
+    !is_terminal_status(entry.summary.status) || params.status == entry.summary.status
+}
+
+fn append_output_delta(output_delta: &mut Option<String>, next: String) {
+    match output_delta {
+        Some(previous) => {
+            if !previous.ends_with('\n') && !next.starts_with('\n') {
+                previous.push('\n');
+            }
+            previous.push_str(&next);
+        }
+        None => *output_delta = Some(next),
+    }
 }
 
 fn optional_identifier(value: Option<&JsonValue>, field: &str) -> Result<Option<String>, String> {
@@ -350,11 +478,6 @@ fn optional_activity_summary(value: Option<&JsonValue>) -> Result<Option<String>
 
 fn optional_output_text(value: Option<&JsonValue>) -> Result<Option<String>, String> {
     let value = optional_string(value, "output text")?;
-    if let Some(value) = value.as_deref()
-        && value.len() > MAX_OUTPUT_BYTES
-    {
-        return Err("output text is invalid".to_string());
-    }
     Ok(value)
 }
 
@@ -371,14 +494,14 @@ fn optional_bool(value: Option<&JsonValue>, field: &str) -> Result<Option<bool>,
 }
 
 fn optional_string(value: Option<&JsonValue>, field: &str) -> Result<Option<String>, String> {
-    value
-        .map(|value| {
-            value
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| format!("{field} is invalid"))
-        })
-        .transpose()
+    match value {
+        None | Some(JsonValue::Null) => Ok(None),
+        Some(value) => value
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| format!("{field} is invalid"))
+            .map(Some),
+    }
 }
 
 fn status_from_broker(value: &str) -> Result<RemoteSessionStatus, String> {
@@ -402,30 +525,4 @@ fn is_terminal_status(status: RemoteSessionStatus) -> bool {
             | RemoteSessionStatus::Cancelled
             | RemoteSessionStatus::Expired
     )
-}
-
-fn append_bounded(output: &mut String, delta: &str) {
-    output.push_str(delta);
-    if output.len() <= MAX_OUTPUT_BYTES {
-        return;
-    }
-    let overflow = output.len() - MAX_OUTPUT_BYTES;
-    let start = output
-        .char_indices()
-        .find_map(|(index, _)| (index >= overflow).then_some(index))
-        .unwrap_or(output.len());
-    output.replace_range(..start, "");
-}
-
-fn truncate_output_delta(mut output_delta: String) -> String {
-    if output_delta.len() <= MAX_OUTPUT_BYTES {
-        return output_delta;
-    }
-    let overflow = output_delta.len() - MAX_OUTPUT_BYTES;
-    let start = output_delta
-        .char_indices()
-        .find_map(|(index, _)| (index >= overflow).then_some(index))
-        .unwrap_or(output_delta.len());
-    output_delta.replace_range(..start, "");
-    output_delta
 }

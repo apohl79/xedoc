@@ -732,6 +732,7 @@ impl AppServerSession {
     pub async fn remote_session_list(
         &mut self,
         thread_id: ThreadId,
+        cursor: Option<String>,
     ) -> Result<RemoteSessionListResponse> {
         let request_id = self.next_request_id();
         self.client
@@ -739,6 +740,8 @@ impl AppServerSession {
                 request_id,
                 params: RemoteSessionListParams {
                     thread_id: thread_id.to_string(),
+                    cursor,
+                    limit: None,
                 },
             })
             .await
@@ -764,11 +767,12 @@ impl AppServerSession {
             .wrap_err("remoteSession/attach failed during TUI session lookup")
     }
 
-    /// Reads bounded output from one registered remote session.
+    /// Reads one incremental output page from one registered remote session.
     pub async fn remote_session_read(
         &mut self,
         thread_id: ThreadId,
         remote_session_id: String,
+        cursor: Option<String>,
     ) -> Result<RemoteSessionReadResponse> {
         let request_id = self.next_request_id();
         self.client
@@ -777,7 +781,7 @@ impl AppServerSession {
                 params: RemoteSessionReadParams {
                     thread_id: thread_id.to_string(),
                     remote_session_id,
-                    cursor: None,
+                    cursor,
                     limit: None,
                 },
             })

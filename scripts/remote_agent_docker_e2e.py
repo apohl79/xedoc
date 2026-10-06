@@ -7,6 +7,7 @@ import argparse
 from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
+import select
 import socket
 import struct
 import sys
@@ -138,10 +139,10 @@ def cancellation_terminal_is_valid(value: object) -> bool:
 
 
 def _remote_session_data(value: object) -> list[dict[str, Any]]:
-    if not isinstance(value, dict) or not isinstance(value.get("remoteSessions"), list):
-        raise RuntimeError("remoteSession/list did not return remoteSessions")
-    sessions = [item for item in value["remoteSessions"] if isinstance(item, dict)]
-    if len(sessions) != len(value["remoteSessions"]):
+    if not isinstance(value, dict) or not isinstance(value.get("data"), list):
+        raise RuntimeError("remoteSession/list did not return data")
+    sessions = [item for item in value["data"] if isinstance(item, dict)]
+    if len(sessions) != len(value["data"]):
         raise RuntimeError("remoteSession/list returned a non-object session")
     return sessions
 
@@ -164,7 +165,7 @@ def _remote_session_status(value: object) -> str | None:
 
 def _remote_session_events(value: object) -> list[dict[str, Any]]:
     if not isinstance(value, dict) or not isinstance(value.get("output"), str):
-        raise RuntimeError("remoteSession/read omitted bounded output")
+        raise RuntimeError("remoteSession/read omitted output")
     return [{"type": "output", "text": value["output"]}]
 
 
@@ -205,17 +206,40 @@ class RemoteSessionProjectionController:
         raise RuntimeError("remote session projection was not registered")
 
     def _read(self, thread_id: str, session_id: str) -> dict[str, Any]:
-        return self.client.request(
-            "remoteSession/read",
-            {
-                "threadId": thread_id,
-                "remoteSessionId": session_id,
-                "limit": 64,
-            },
-        )
+        cursor: str | None = None
+        output: list[str] = []
+        while True:
+            value = self.client.request(
+                "remoteSession/read",
+                {
+                    "threadId": thread_id,
+                    "remoteSessionId": session_id,
+                    "cursor": cursor,
+                    "limit": 32,
+                },
+            )
+            if not isinstance(value.get("output"), str):
+                raise RuntimeError("remoteSession/read omitted output")
+            remote_session = _remote_session_from_read(value)
+            output.append(value["output"])
+            next_cursor = remote_session.get("outputCursor")
+            if next_cursor is None:
+                value["output"] = "".join(output)
+                return value
+            if not isinstance(next_cursor, str) or not next_cursor:
+                raise RuntimeError(
+                    "remoteSession/read returned an invalid output cursor"
+                )
+            cursor = next_cursor
 
     def _drain_notifications(self, deadline: float) -> None:
         while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            readable, _, _ = select.select(
+                [self.client._transport.socket], [], [], max(remaining, 0)
+            )
+            if not readable:
+                return
             try:
                 self.client.handle_message(self.client.receive_message())
             except socket.timeout:
@@ -252,13 +276,35 @@ class RemoteSessionProjectionController:
                 raise RuntimeError("source root thread id was not published")
             session = self._wait_for_session(thread_id)
             session_id = _remote_session_id(session)
-            attached = self.client.request(
+            if session.get("hostName") != "xedoc-remote-agent-test":
+                raise RuntimeError(
+                    "remoteSession/list did not report the peer hostname"
+                )
+            try:
+                attached = self.client.request(
+                    "remoteSession/attach",
+                    {"threadId": thread_id, "remoteSessionId": session_id},
+                )
+            except RuntimeError as error:
+                raise RuntimeError(f"remoteSession/attach failed: {error}") from error
+            if not isinstance(attached.get("remoteSession"), dict):
+                raise RuntimeError("remoteSession/attach omitted remoteSession")
+            # A coordinator can have both an API observer and its TUI attached
+            # to the same remote session. Re-attaching must be idempotent.
+            attached_again = self.client.request(
                 "remoteSession/attach",
                 {"threadId": thread_id, "remoteSessionId": session_id},
             )
-            if not isinstance(attached.get("remoteSession"), dict):
-                raise RuntimeError("remoteSession/attach omitted remoteSession")
-            initial_read = self._read(thread_id, session_id)
+            if not isinstance(attached_again.get("remoteSession"), dict):
+                raise RuntimeError(
+                    "idempotent remoteSession/attach omitted remoteSession"
+                )
+            try:
+                initial_read = self._read(thread_id, session_id)
+            except RuntimeError as error:
+                raise RuntimeError(
+                    f"initial remoteSession/read failed: {error}"
+                ) from error
             _remote_session_events(initial_read)
             _state_update(
                 self.args.state_file,
@@ -310,37 +356,46 @@ class RemoteSessionProjectionController:
             )
             if not isinstance(turn_id, str) or not turn_id:
                 raise RuntimeError("remoteSession/input omitted active turn id")
-            active = self._wait_for(
-                thread_id,
-                session_id,
-                lambda value: (
-                    _remote_session_status(_remote_session_from_read(value))
-                    in {"running", "active"}
-                    and (
-                        bool(self.notifications) or bool(_remote_session_events(value))
-                    )
-                ),
-                "remote activity update",
-            )
-            steered = self.client.request(
-                "remoteSession/input",
-                {
-                    "threadId": thread_id,
-                    "remoteSessionId": session_id,
-                    "message": REMOTE_SESSION_STEER,
-                    "expectedTurnId": turn_id,
-                },
-            )
+            if _remote_session_status(running_session) not in {
+                "running",
+                "active",
+            } or not isinstance(running_session.get("activitySummary"), str):
+                raise RuntimeError(
+                    "remoteSession/input did not report running remote activity"
+                )
+            try:
+                steered = self.client.request(
+                    "remoteSession/input",
+                    {
+                        "threadId": thread_id,
+                        "remoteSessionId": session_id,
+                        "message": REMOTE_SESSION_STEER,
+                        "expectedTurnId": turn_id,
+                    },
+                )
+            except RuntimeError as error:
+                raise RuntimeError(
+                    "remoteSession/input steering failed "
+                    f"for turn {turn_id}: {error}; current session: "
+                    f"{self._read(thread_id, session_id)}"
+                ) from error
             if not isinstance(steered.get("remoteSession"), dict):
                 raise RuntimeError("remoteSession/input omitted steering session")
-            cancelled = self.client.request(
-                "remoteSession/cancel",
-                {
-                    "threadId": thread_id,
-                    "remoteSessionId": session_id,
-                    "expectedTurnId": turn_id,
-                },
-            )
+            try:
+                cancelled = self.client.request(
+                    "remoteSession/cancel",
+                    {
+                        "threadId": thread_id,
+                        "remoteSessionId": session_id,
+                        "expectedTurnId": turn_id,
+                    },
+                )
+            except RuntimeError as error:
+                raise RuntimeError(
+                    "remoteSession/cancel failed "
+                    f"for turn {turn_id}: {error}; current session: "
+                    f"{self._read(thread_id, session_id)}"
+                ) from error
             if not isinstance(cancelled.get("remoteSession"), dict):
                 raise RuntimeError("remoteSession/cancel omitted session")
             terminal = self._wait_for(
@@ -360,8 +415,7 @@ class RemoteSessionProjectionController:
                     "listed": True,
                     "attached": True,
                     "followUpOutputObserved": _contains_text(completed, "target idle"),
-                    "activityUpdated": bool(self.notifications)
-                    or bool(_remote_session_events(active)),
+                    "activityUpdated": True,
                     "steered": True,
                     "cancelled": _remote_session_status(
                         _remote_session_from_read(terminal)
@@ -500,7 +554,7 @@ def target_observer(args: argparse.Namespace) -> int:
         client.set_server_request_handler(lambda message: _approve(message))
         client.initialize("docker-remote-target", "Docker remote target", "0.1.0")
         client.request("thread/resume", {"threadId": thread_id})
-        _state_update(args.state_file, targetObserverSubscribed=True)
+        _state_update(args.state_file, **{args.ready_key: True})
         while time.monotonic() < deadline:
             try:
                 message = client.receive_message()
@@ -512,7 +566,7 @@ def target_observer(args: argparse.Namespace) -> int:
             params = message.get("params")
             turn = params.get("turn") if isinstance(params, dict) else None
             if isinstance(turn, dict) and turn.get("status") == "interrupted":
-                _state_update(args.state_file, targetInterrupted=True)
+                _state_update(args.state_file, **{args.state_key: True})
                 return 0
         raise RuntimeError("target turn did not report interrupted")
     finally:
@@ -554,6 +608,9 @@ def main() -> int:
         command.add_argument("--state-file", type=Path, required=True)
         command.add_argument("--timeout", type=float, default=0.25)
         command.add_argument("--wait-timeout", type=float, default=120.0)
+        if name == "target-observer":
+            command.add_argument("--state-key", default="targetInterrupted")
+            command.add_argument("--ready-key", default="targetObserverSubscribed")
         command.set_defaults(run=function)
     args = parser.parse_args()
     try:

@@ -515,7 +515,7 @@ client_request_definitions! {
     #[experimental("script/register")]
     ScriptRegister => "script/register" {
         params: v2::SessionScriptRegisterParams,
-        serialization: thread_id(params.thread_id),
+        serialization: None,
         response: v2::SessionScriptRegisterResponse,
     },
     #[experimental("script/unregister")]

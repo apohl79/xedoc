@@ -124,11 +124,21 @@ def validate_session_result(
     if encoded_size(result) > max_result_bytes:
         raise BrokerError.limit_exceeded()
     _reject_sensitive(result)
+    if operation == "session/send":
+        allowed = {"operationId", "threadId", "turnId"}
+        if set(result) - allowed or "operationId" not in result:
+            raise BrokerError.invalid_request()
+        identifier(result["operationId"])
+        for key in ("threadId", "turnId"):
+            if key in result:
+                identifier(result[key])
+        if ("threadId" in result) != ("turnId" in result):
+            raise BrokerError.invalid_request()
+        return result
     if operation in {
         "session/start",
         "session/resume",
         "session/attach",
-        "session/send",
         "session/steer",
         "session/cancel",
         "session/detach",
@@ -239,13 +249,14 @@ def _validate_read_result(value: Mapping[str, Any]) -> None:
         "activeTurnId",
         "events",
         "nextCursor",
+        "outputText",
+        "activitySummary",
     }
     required = {
         "threadId",
         "workspaceId",
         "isRunning",
         "status",
-        "events",
         "nextCursor",
     }
     if set(value) - allowed or not required.issubset(value):
@@ -262,11 +273,25 @@ def _validate_read_result(value: Mapping[str, Any]) -> None:
     next_cursor = value["nextCursor"]
     if next_cursor is not None:
         identifier(next_cursor)
-    events = value["events"]
+    events = value.get("events", [])
     if not isinstance(events, list) or len(events) > MAX_RELAY_READ_LIMIT:
         raise BrokerError.invalid_request()
     for event in events:
         _validate_read_event(event)
+    output_text = value.get("outputText")
+    if output_text is not None and (
+        not isinstance(output_text, str)
+        or not output_text
+        or len(output_text.encode("utf-8")) > MAX_OUTPUT_TEXT_BYTES
+    ):
+        raise BrokerError.invalid_request()
+    activity_summary = value.get("activitySummary")
+    if activity_summary is not None and (
+        not isinstance(activity_summary, str)
+        or not activity_summary
+        or len(activity_summary) > MAX_ACTIVITY_SUMMARY_LENGTH
+    ):
+        raise BrokerError.invalid_request()
 
 
 def _validate_read_event(event: Any) -> None:

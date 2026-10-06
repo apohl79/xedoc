@@ -104,11 +104,13 @@ capture_diagnostics() {
 }
 cleanup() {
   local status="${1:-1}"
-  if [[ -n "${host_agent:-}" && -n "${home:-}" ]]; then
-    "$host_agent" shutdown --xedoc-home "$home" --timeout 5 >/dev/null 2>&1 || true
-  fi
-  if docker container inspect "$container" >/dev/null 2>&1; then
-    docker exec "$container" xedoc-remote-agentd shutdown --timeout 5 >/dev/null 2>&1 || true
+  if [[ "$keep" != 1 ]]; then
+    if [[ -n "${host_agent:-}" && -n "${home:-}" ]]; then
+      "$host_agent" shutdown --xedoc-home "$home" --timeout 5 >/dev/null 2>&1 || true
+    fi
+    if docker container inspect "$container" >/dev/null 2>&1; then
+      docker exec "$container" xedoc-remote-agentd shutdown --timeout 5 >/dev/null 2>&1 || true
+    fi
   fi
   if [[ "$keep" == 1 || "$status" != 0 ]]; then
     capture_diagnostics
@@ -232,7 +234,7 @@ cp "$linux_package" "$tmp/build/package.zip"
 docker build --platform "$platform" --tag "$container:latest" --file "$dockerfile" "$tmp/build"
 
 tmux split-window -d -t "$session":0 -v "exec env -u PYTHONPATH XEDOC_HOME='$home' '$host_xedoc' app-server --listen unix://$socket"
-tmux split-window -d -t "$session":0 -v "exec docker run --rm --name '$container' --platform '$platform' --add-host host.docker.internal:host-gateway -p 0.0.0.0:$peer_normal:46000/tcp -p 0.0.0.0:$peer_pairing:46001/tcp -p 127.0.0.1:$peer_discovery:$peer_discovery/tcp -v '$assets:/e2e' '$container:latest'"
+tmux split-window -d -t "$session":0 -v "exec docker run --rm --name '$container' --hostname xedoc-remote-agent-test --platform '$platform' --add-host host.docker.internal:host-gateway -p 0.0.0.0:$peer_normal:46000/tcp -p 0.0.0.0:$peer_pairing:46001/tcp -p 127.0.0.1:$peer_discovery:$peer_discovery/tcp -v '$assets:/e2e' '$container:latest'"
 for _ in {1..200}; do
   [[ "$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)" == true ]] && break
   sleep 0.05
@@ -328,7 +330,7 @@ tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'Managed-host enrollment c
   fail "coordinator did not prompt for the managed enrollment code"
 [[ -n "$enrollment" ]] || fail "managed peer returned an empty enrollment code"
 sleep 0.2
-tmux send-keys -t "$enroll_pane" -l "$enrollment"
+tmux send-keys -t "$enroll_pane" -l -- "$enrollment"
 tmux send-keys -t "$enroll_pane" Enter
 for _ in {1..600}; do
   tmux capture-pane -pt "$enroll_pane" -S -100 | grep -q '"pairing"' && break
@@ -374,7 +376,7 @@ for _ in {1..2400}; do
 done
 printf '%s' "$state" | grep -q '"controllerPassed":true' ||
   fail "coordinator model task did not finish"
-tmux new-window -d -t "$session" -n projection-controller "exec env PYTHONPATH='$assets' python3 '$assets/remote_agent_docker_e2e.py' projection-controller --socket '$socket' --state-file '$state_file' --timeout 0.25 --wait-timeout 90"
+tmux new-window -d -t "$session" -n projection-controller "exec env PYTHONPATH='$assets' python3 '$assets/remote_agent_docker_e2e.py' projection-controller --socket '$socket' --state-file '$state_file' --timeout 40 --wait-timeout 90"
 tmux set-window-option -t "$session":projection-controller remain-on-exit on
 projection_pane="$(tmux list-panes -t "$session":projection-controller -F '#{pane_id}')"
 for _ in {1..1800}; do
@@ -403,21 +405,22 @@ PY
 
 # Exercise the coordinator's actual TUI routing: /agents must show the remote
 # projection, Enter opens it, and its composer forwards a direct follow-up to
-# the paired peer. The deterministic peer replies "target idle".
-tmux new-window -d -x 180 -y 50 -t "$session" -n projection-tui \
+# the paired peer. The deterministic peer replies with a distinct marker.
+tmux new-window -d -t "$session" -n projection-tui \
   "exec env -u PYTHONPATH XEDOC_HOME='$home' TERM=xterm-256color '$host_xedoc' --remote 'unix://$socket' resume '$source_thread_id'"
 tmux set-window-option -t "$session":projection-tui remain-on-exit on
 tui_pane="$(tmux list-panes -t "$session":projection-tui -F '#{pane_id}')"
 for _ in {1..600}; do
-  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Use /' && break
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'mock-model default' && break
   if [[ "$(tmux display-message -p -t "$tui_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
     fail "coordinator TUI exited before remote session navigation"
   fi
   sleep 0.05
 done
-tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Use /' ||
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'mock-model default' ||
   fail "coordinator TUI did not become interactive"
 tmux send-keys -t "$tui_pane" -l '/agents'
+sleep 0.1
 tmux send-keys -t "$tui_pane" Enter
 for _ in {1..600}; do
   tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Agents' && break
@@ -425,18 +428,108 @@ for _ in {1..600}; do
 done
 tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Agents' ||
   fail "/agents did not open the coordinator Agents display"
-tmux capture-pane -pt "$tui_pane" -S -160 | grep -q '\[remote\]' ||
+# The remote picker row includes the workspace name; the type label is
+# intentionally abbreviated when the pane is narrow.
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'workspace_root' ||
   fail "/agents did not display the remote session projection"
+tmux send-keys -t "$tui_pane" Down
+sleep 0.1
 tmux send-keys -t "$tui_pane" Enter
-tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PROJECTION_E2E_TUI_FOLLOW_UP'
-tmux send-keys -t "$tui_pane" Enter
-for _ in {1..1200}; do
-  tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target idle' && break
+for _ in {1..600}; do
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session: xedoc-remote-agent-test' && break
+  if [[ "$(tmux display-message -p -t "$tui_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
+    fail "coordinator TUI exited while attaching the remote session"
+  fi
   sleep 0.05
 done
-tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target idle' ||
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session: xedoc-remote-agent-test' ||
+  fail "coordinator TUI did not attach the selected remote session"
+# `select_remote_session` renders the header before it finishes reading the
+# existing remote transcript. Wait for the known transcript before submitting
+# an interactive turn so its control request cannot race that initial read.
+for _ in {1..600}; do
+  (( "$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'target idle' || true)" >= 1 )) && break
+  sleep 0.05
+done
+(( "$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'target idle' || true)" >= 1 )) ||
+  fail "coordinator TUI did not finish reading the remote transcript"
+tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PROJECTION_E2E_TUI_FOLLOW_UP'
+sleep 0.1
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..1200}; do
+  tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target tui follow-up' && break
+  sleep 0.05
+done
+tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target tui follow-up' ||
   fail "remote projection TUI did not return its direct follow-up result"
+
+# Keep a remote turn running so the picker must render the dedicated remote
+# activity, then exercise steering and interruption from the selected remote
+# TUI thread rather than only through the projection API.
+tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PAIRING_E2E_TARGET'
+sleep 0.1
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..600}; do
+  tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'remote-agent pairing E2E live output' && break
+  sleep 0.05
+done
+tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'remote-agent pairing E2E live output' ||
+  fail "remote projection TUI did not receive live remote activity"
+tmux send-keys -t "$tui_pane" -l '/agents'
+sleep 0.1
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..600}; do
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session is running.' && break
+  sleep 0.05
+done
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session is running.' ||
+  fail "/agents did not render live remote activity"
+tmux send-keys -t "$tui_pane" Down
+sleep 0.1
+tmux send-keys -t "$tui_pane" Enter
+idle_count_before="$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'target idle' || true)"
+idle_count="$idle_count_before"
+tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PROJECTION_E2E_STEER'
+sleep 0.1
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..1200}; do
+  idle_count="$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'target idle' || true)"
+  (( idle_count > idle_count_before )) && break
+  sleep 0.05
+done
+(( idle_count > idle_count_before )) ||
+  fail "remote projection TUI steering did not complete the active turn"
+tmux new-window -d -t "$session" -n tui-interrupt-observer \
+  "exec docker exec '$container' env PYTHONPATH=/e2e python3 /e2e/remote_agent_docker_e2e.py target-observer --socket /root/.xedoc/app-server-control/app-server-control.sock --state-file /e2e/state.json --timeout 30 --state-key targetTuiInterrupted --ready-key targetTuiObserverSubscribed"
+tmux set-window-option -t "$session":tui-interrupt-observer remain-on-exit on
+tui_observer_pane="$(tmux list-panes -t "$session":tui-interrupt-observer -F '#{pane_id}')"
+for _ in {1..600}; do
+  state="$(cat "$state_file" 2>/dev/null || true)"
+  printf '%s' "$state" | grep -q '"targetTuiObserverSubscribed":true' && break
+  sleep 0.05
+done
+printf '%s' "$state" | grep -q '"targetTuiObserverSubscribed":true' ||
+  fail "target observer did not subscribe before TUI interruption coverage"
+live_count_before="$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'remote-agent pairing E2E live output' || true)"
+live_count="$live_count_before"
+tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PAIRING_E2E_TARGET'
+sleep 0.1
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..600}; do
+  live_count="$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'remote-agent pairing E2E live output' || true)"
+  (( live_count > live_count_before )) && break
+  sleep 0.05
+done
+(( live_count > live_count_before )) ||
+  fail "remote projection TUI did not start an interruptible remote turn"
 tmux send-keys -t "$tui_pane" C-c
+for _ in {1..1200}; do
+  state="$(cat "$state_file" 2>/dev/null || true)"
+  printf '%s' "$state" | grep -q '"targetTuiInterrupted":true' && break
+  sleep 0.05
+done
+printf '%s' "$state" | grep -q '"targetTuiInterrupted":true' ||
+  fail "remote projection TUI interrupt did not interrupt the remote turn"
 python3 - "$state_file" <<'PY'
 import json
 from pathlib import Path
@@ -445,6 +538,7 @@ state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 for key in (
     "grantObserved",
     "targetInterrupted",
+    "targetTuiInterrupted",
     "controllerPassed",
 ):
     if state.get(key) is not True:
@@ -493,4 +587,4 @@ if not all(
 ):
     raise SystemExit("remote projection did not satisfy coordinator API acceptance evidence")
 PY
-printf 'PASS: pairing, model remote task output, projection API activity/steer/cancel, and /agents direct follow-up succeeded; artifacts: %s\n' "$tmp"
+printf 'PASS: pairing, model remote task output, projection API activity/steer/cancel, and /agents follow-up/live activity/steer/interrupt succeeded; artifacts: %s\n' "$tmp"

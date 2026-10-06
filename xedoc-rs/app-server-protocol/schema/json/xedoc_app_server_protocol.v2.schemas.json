@@ -12289,6 +12289,12 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "Result of sending input to a remote session.",
       "properties": {
+        "outputDelta": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "remoteSession": {
           "$ref": "#/definitions/RemoteSessionSummary"
         }
@@ -12303,6 +12309,20 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "Lists locally registered remote sessions for one root thread.",
       "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "threadId": {
           "type": "string"
         }
@@ -12317,15 +12337,21 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "description": "Registered remote sessions belonging to one root thread.",
       "properties": {
-        "remoteSessions": {
+        "data": {
           "items": {
             "$ref": "#/definitions/RemoteSessionSummary"
           },
           "type": "array"
+        },
+        "nextCursor": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "remoteSessions"
+        "data"
       ],
       "title": "RemoteSessionListResponse",
       "type": "object"
@@ -12386,6 +12412,12 @@
       "properties": {
         "hostId": {
           "type": "string"
+        },
+        "hostName": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "registrationId": {
           "type": "string"

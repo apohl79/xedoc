@@ -5,6 +5,12 @@
     "hostId": {
       "type": "string"
     },
+    "hostName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "registrationId": {
       "type": "string"
     },

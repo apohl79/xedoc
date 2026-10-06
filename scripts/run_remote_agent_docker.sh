@@ -6,7 +6,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 dockerfile="$script_dir/remote_agent_docker/Dockerfile"
 container_label="com.xedoc.remote-agent-docker-test"
-container_name="xedoc-linux-remote-agent"
+container_name="xedoc-remote-agent-test"
 package_zip=""
 target=""
 model="gpt-5.6-luna"
@@ -33,7 +33,7 @@ Options:
   --package PATH             Linux Xedoc package ZIP (default: newest matching dist ZIP).
   --target TARGET            linux-arm64 or linux-x86_64 (default: Docker server architecture).
   --model MODEL              Model for managed remote tasks (default: gpt-5.6-luna).
-  --name NAME                Container name (default: xedoc-linux-remote-agent).
+  --name NAME                Container name and hostname (default: xedoc-remote-agent-test).
   --normal-port PORT         Host TCP port for peer traffic (default: an available port).
   --pairing-port PORT        Host TCP port for pairing traffic (default: an available port).
   --discovery-port PORT      Host UDP direct-discovery port (default: an available port).
@@ -278,7 +278,7 @@ if docker container inspect "$container_name" >/dev/null 2>&1; then
   [[ "$label" == true ]] || fail "container already exists and is not owned by this harness: $container_name"
   docker rm -f "$container_name" >/dev/null
 fi
-docker run -d --platform "$platform" --name "$container_name" --label "$container_label=true" \
+docker run -d --platform "$platform" --name "$container_name" --hostname "$container_name" --label "$container_label=true" \
   --add-host host.docker.internal:host-gateway \
   -p "0.0.0.0:${normal_port}:46000/tcp" -p "0.0.0.0:${pairing_port}:46001/tcp" \
   -p "127.0.0.1:${discovery_port}:${discovery_port}/tcp" \

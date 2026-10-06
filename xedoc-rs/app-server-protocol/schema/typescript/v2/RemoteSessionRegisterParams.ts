@@ -5,4 +5,4 @@
 /**
  * Registers a remote identity from the host-managed remote-agent extension.
  */
-export type RemoteSessionRegisterParams = { registrationId: string, hostId: string, remoteThreadId: string, };
+export type RemoteSessionRegisterParams = { registrationId: string, hostId: string, remoteThreadId: string, hostName?: string | null, };

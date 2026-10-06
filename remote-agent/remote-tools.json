@@ -398,6 +398,34 @@
       }
     },
     {
+      "name": "remote_session_read",
+      "description": "Read one output page from an attached remote session. Pass the nextCursor from the prior response to retrieve the next page. Repeat until nextCursor is null to receive the complete available transcript.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "remote_session_send",
       "description": "Send a message to an idle remote session using the selected host broker. The remote session is registered for the local Agents view. Call remote_session_wait with the returned operationId until it reaches a terminal state; terminal session/send results may contain bounded assistant and command output in result.outputText.",
       "inputSchema": {

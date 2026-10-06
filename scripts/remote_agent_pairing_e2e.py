@@ -45,6 +45,8 @@ SOURCE_MARKER = "REMOTE_AGENT_PAIRING_E2E_SOURCE"
 RESULT_MARKER = "list the files in /tmp"
 RESULT_OUTPUT_MARKER = "remote-agent-e2e-tmp-entry"
 TARGET_MARKER = "REMOTE_AGENT_PAIRING_E2E_TARGET"
+TUI_FOLLOW_UP_MARKER = "REMOTE_AGENT_PROJECTION_E2E_TUI_FOLLOW_UP"
+TUI_FOLLOW_UP_OUTPUT_MARKER = "target tui follow-up"
 TARGET_LIVE_OUTPUT_MARKER = "remote-agent pairing E2E live output"
 WORKSPACE_ID = "workspace_root"
 MAX_EVENTS = 256
@@ -734,6 +736,8 @@ class ResponsesHandler(BaseHTTPRequestHandler):
                     break
         if current_user_text is not None and RESULT_MARKER in current_user_text:
             return "target-result", _assistant("remote-agent-e2e-tmp-entry")
+        if current_user_text is not None and TUI_FOLLOW_UP_MARKER in current_user_text:
+            return "target-tui-follow-up", _assistant(TUI_FOLLOW_UP_OUTPUT_MARKER)
         if current_user_text is None or TARGET_MARKER not in current_user_text:
             return "target-final", _assistant("target idle")
         return "target-held", []
@@ -766,9 +770,14 @@ class ResponsesHandler(BaseHTTPRequestHandler):
         except BrokenPipeError:
             return
         self.request_log.add("targetHeld", marker=True)
+        interruption_key = (
+            "targetTuiInterrupted"
+            if _state_read(self.state_file).get("targetInterrupted") is True
+            else "targetInterrupted"
+        )
         deadline = time.monotonic() + 90.0
         while time.monotonic() < deadline:
-            if _state_read(self.state_file).get("targetInterrupted") is True:
+            if _state_read(self.state_file).get(interruption_key) is True:
                 self.request_log.add("targetInterruptionRecorded", marker=True)
                 return
             time.sleep(STATE_POLL_SECONDS)
@@ -863,6 +872,13 @@ class Controller:
 
     def _notification(self, role: str, message: dict[str, Any]) -> None:
         method = message.get("method")
+        if method == "remoteSession/updated":
+            self.recorder.add(
+                "remoteSessionUpdate",
+                role=role,
+                params=message.get("params"),
+            )
+            return
         if method == "item/completed":
             self._record_remote_activity(role, message)
             return

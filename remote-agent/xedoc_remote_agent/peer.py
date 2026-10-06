@@ -308,11 +308,15 @@ class PeerService:
         return bootstrap_server_tls_context(self.state)
 
     def hosts_list(self) -> dict[str, object]:
-        return {
-            "data": [
-                relationship.public_dict() for relationship in self.state.relationships()
-            ]
-        }
+        relationships = self.state.relationships()
+        data: list[dict[str, object]] = []
+        for relationship in relationships:
+            host = relationship.public_dict()
+            hostname = self._peer_hostname(relationship)
+            if hostname is not None:
+                host["hostname"] = hostname
+            data.append(host)
+        return {"data": data}
 
     def pairing_requests(self, params: Mapping[str, Any]) -> dict[str, object]:
         _exact_fields(params, set())
@@ -746,11 +750,32 @@ class PeerService:
             peer_params,
             timeout_seconds=timeout_seconds,
         )
-        return validate_session_result(
+        result = validate_session_result(
             method,
             response,
             self.config.limits.max_result_bytes,
         )
+        hostname = self._peer_hostname(relationship)
+        if hostname is not None:
+            result["hostName"] = hostname
+        return result
+
+    def _peer_hostname(self, relationship: Relationship) -> str | None:
+        candidate = self._candidates.get(relationship.peer_host_id)
+        if candidate is not None and candidate.hostname is not None:
+            return candidate.hostname
+        try:
+            response = self._client.operation(
+                _peer_from_relationship(relationship),
+                "host/describe",
+                {},
+                timeout_seconds=PEER_IO_TIMEOUT_SECONDS,
+            )
+            candidate = _discovered_peer(response, _peer_from_relationship(relationship))
+        except BrokerError:
+            return None
+        self._candidates[candidate.host_id] = candidate
+        return candidate.hostname
 
     def peer_message(
         self, source: MessageSource, submission: MessageSubmission

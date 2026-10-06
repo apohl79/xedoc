@@ -32,6 +32,7 @@ pub enum SlashCommand {
     Compact,
     Plan,
     Goal,
+    #[strum(serialize = "agent", serialize = "agents")]
     Agent,
     Side,
     Btw,
