@@ -253,7 +253,7 @@ async fn run_compact_task_inner_impl(
         XedocResponsesRequestKind::Compaction(compaction_metadata),
     );
 
-    let base_instructions = sess.get_base_instructions().await;
+    let base_instructions = Session::base_instructions_for_turn(turn_context.as_ref());
     if let Err(error) = ensure_fixed_instructions_fit(turn_context.as_ref(), &base_instructions) {
         send_progress(&sess, &turn_context, CompactionStage::Failed).await;
         let event = EventMsg::Error(error.to_error_event(/*message_prefix*/ None));

@@ -120,6 +120,8 @@ pub struct TurnContext {
     pub app_server_client_name: Option<String>,
     /// Workspace-internal developer instructions.
     pub developer_instructions: Option<String>,
+    /// Base instructions for the model selected for this turn.
+    pub base_instructions: String,
     /// Workspace-internal collaboration mode.
     pub mode: ModeKind,
     /// Workspace-internal collaboration developer instructions.
@@ -291,6 +293,7 @@ impl TurnContext {
             timezone: self.timezone.clone(),
             app_server_client_name: self.app_server_client_name.clone(),
             developer_instructions: self.developer_instructions.clone(),
+            base_instructions: self.base_instructions.clone(),
             mode: self.mode,
             collaboration_mode_developer_instructions: self
                 .collaboration_mode_developer_instructions
@@ -345,6 +348,7 @@ impl TurnContext {
             timezone: self.timezone.clone(),
             app_server_client_name: self.app_server_client_name.clone(),
             developer_instructions: self.developer_instructions.clone(),
+            base_instructions: self.base_instructions.clone(),
             mode: self.mode,
             collaboration_mode_developer_instructions: self
                 .collaboration_mode_developer_instructions

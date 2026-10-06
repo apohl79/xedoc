@@ -165,6 +165,7 @@ impl Session {
             timezone: Some(timezone),
             app_server_client_name: session_configuration.app_server_client_name.clone(),
             developer_instructions: session_configuration.developer_instructions.clone(),
+            base_instructions: session_configuration.base_instructions.clone(),
             mode: collaboration_mode.mode,
             collaboration_mode_developer_instructions: collaboration_mode
                 .settings

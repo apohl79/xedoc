@@ -25,7 +25,7 @@ pub(super) async fn run_remote_compact_attempt(
     compaction_metadata: CompactionTurnMetadata,
 ) -> XedocResult<Vec<ResponseItem>> {
     let turn_context = &step_context.turn;
-    let base_instructions = sess.get_base_instructions().await;
+    let base_instructions = Session::base_instructions_for_turn(turn_context.as_ref());
     ensure_fixed_instructions_fit(turn_context.as_ref(), &base_instructions)?;
     let mut history = sess.clone_history().await;
     let rewritten_outputs = trim_function_call_history_to_fit_context_window(

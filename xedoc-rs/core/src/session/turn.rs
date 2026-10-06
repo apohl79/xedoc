@@ -790,7 +790,7 @@ async fn maybe_run_model_switch_request_baseline_compact(
         input,
         router.as_ref(),
         turn_context,
-        sess.get_base_instructions().await,
+        Session::base_instructions_for_turn(turn_context),
     );
     let Some(estimated_request_tokens) =
         prompt.estimated_request_token_count(&turn_context.model_info)
@@ -1065,7 +1065,7 @@ async fn run_sampling_request(
         None => built_tools(sess.as_ref(), step_context.as_ref(), &cancellation_token).await?,
     };
 
-    let base_instructions = sess.get_base_instructions().await;
+    let base_instructions = Session::base_instructions_for_turn(turn_context.as_ref());
 
     let tool_runtime = ToolCallRuntime::new(
         Arc::clone(&router),

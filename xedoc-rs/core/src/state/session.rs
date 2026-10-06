@@ -173,6 +173,10 @@ pub(crate) struct SessionState {
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
     model_router_session_mode: Option<String>,
+    /// Route applied by the model router, paired with the session route it was chosen against.
+    /// Retained-route decisions (e.g. steering) reuse it while the session route is unchanged.
+    model_router_applied_route:
+        Option<(xedoc_script_protocol::Route, xedoc_script_protocol::Route)>,
     /// Settings used by the latest regular user turn, used for turn-to-turn
     /// model handling on subsequent regular turns (including full-context
     /// reinjection after resume or `/compact`).
@@ -210,6 +214,7 @@ impl SessionState {
             mcp_dependency_prompted: HashSet::new(),
             additional_context: AdditionalContextStore::default(),
             model_router_session_mode: None,
+            model_router_applied_route: None,
             previous_turn_settings: None,
             auto_compact_window: AutoCompactWindow::new_with_ids(auto_compact_window_ids),
             startup_prewarm: None,
@@ -245,6 +250,26 @@ impl SessionState {
 
     pub(crate) fn set_model_router_session_mode(&mut self, mode: Option<String>) {
         self.model_router_session_mode = mode;
+    }
+
+    /// Returns the router-applied route if it was chosen against `baseline_route`.
+    pub(crate) fn model_router_applied_route(
+        &self,
+        baseline_route: &xedoc_script_protocol::Route,
+    ) -> Option<xedoc_script_protocol::Route> {
+        self.model_router_applied_route
+            .as_ref()
+            .filter(|(baseline, _)| baseline == baseline_route)
+            .map(|(_, applied)| applied.clone())
+    }
+
+    pub(crate) fn set_model_router_applied_route(
+        &mut self,
+        baseline_route: xedoc_script_protocol::Route,
+        applied_route: xedoc_script_protocol::Route,
+    ) {
+        self.model_router_applied_route =
+            (baseline_route != applied_route).then_some((baseline_route, applied_route));
     }
 
     pub(crate) fn clone_history(&self) -> ContextManager {

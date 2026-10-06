@@ -1379,6 +1379,12 @@ impl Session {
         }
     }
 
+    pub(crate) fn base_instructions_for_turn(turn_context: &TurnContext) -> BaseInstructions {
+        BaseInstructions {
+            text: turn_context.base_instructions.clone(),
+        }
+    }
+
     pub(crate) async fn base_instructions_for_model(
         &self,
         model: &str,

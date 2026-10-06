@@ -129,6 +129,7 @@ pub(super) async fn spawn_review_thread(
         timezone: parent_turn_context.timezone.clone(),
         app_server_client_name: parent_turn_context.app_server_client_name.clone(),
         developer_instructions: None,
+        base_instructions: parent_turn_context.base_instructions.clone(),
         mode: parent_turn_context.mode,
         collaboration_mode_developer_instructions: parent_turn_context
             .collaboration_mode_developer_instructions
