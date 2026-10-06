@@ -12,7 +12,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 3;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 4;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.

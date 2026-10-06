@@ -35,6 +35,7 @@ pub(crate) fn default_registry() -> io::Result<ModelRegistry> {
                 "claude-opus-5",
                 "claude-opus-4-8",
                 "claude-fable-5-1",
+                "claude-sonnet-5-5",
                 "claude-sonnet-5",
                 "claude-haiku-4-5-20251001",
             ],
@@ -227,6 +228,7 @@ fn anthropic_prices() -> BTreeMap<String, ModelTokenPrices> {
         ("claude-opus-5", price(5.0, Some(0.5), 25.0)),
         ("claude-opus-4-8", price(5.0, Some(0.5), 25.0)),
         ("claude-fable-5-1", price(10.0, Some(1.0), 50.0)),
+        ("claude-sonnet-5-5", price(2.0, Some(0.2), 10.0)),
         ("claude-sonnet-5", price(2.0, Some(0.2), 10.0)),
         ("claude-haiku-4-5-20251001", price(1.0, Some(0.1), 5.0)),
     ]
