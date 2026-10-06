@@ -5,6 +5,7 @@ use tokio_util::sync::CancellationToken;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_protocol::protocol::ScriptedInteractionOutcome;
 use xedoc_protocol::protocol::ScriptedInteractionResponse;
+use xedoc_rollout::state_db::StateDbHandle;
 
 use crate::config::Config;
 use crate::model_router::current_script_route;
@@ -38,6 +39,7 @@ pub struct ModelRouterSettingsResult {
 /// valid settings surface.
 pub async fn open(
     config: &Config,
+    state_db: Option<&StateDbHandle>,
     models_manager: &SharedModelsManager,
     session_mode: Option<&str>,
     supports_session_mode: bool,
@@ -47,6 +49,7 @@ pub async fn open(
         return Err("model-router script is not configured".to_string());
     };
     let eligible_routes = eligible_script_routes(config, models_manager).await;
+    let provider_budgets = crate::model_router_provider_budgets::snapshot(config, state_db).await;
     let context = serde_json::json!({
         "client": {
             "kind": "tui",
@@ -54,6 +57,7 @@ pub async fn open(
         },
         "eligibleRoutes": eligible_routes,
         "eligibleClassifierRoutes": eligible_routes,
+        "providerBudgets": provider_budgets,
         "currentRoute": current_script_route(config),
         "session": {
             "routerMode": session_mode,
@@ -83,6 +87,7 @@ pub async fn open(
 /// or cannot provide its replacement surface.
 pub async fn respond(
     config: &Config,
+    state_db: Option<&StateDbHandle>,
     models_manager: &SharedModelsManager,
     response: Value,
     jev_api_key: Option<String>,
@@ -97,6 +102,7 @@ pub async fn respond(
         .map_err(|_| "invalid model-router settings response".to_string())?;
     let jev_api_key = validated_jev_api_key(&response, jev_api_key)?;
     let eligible_routes = eligible_script_routes(config, models_manager).await;
+    let provider_budgets = crate::model_router_provider_budgets::snapshot(config, state_db).await;
     let context = serde_json::json!({
         "client": {
             "kind": "tui",
@@ -104,6 +110,7 @@ pub async fn respond(
         },
         "eligibleRoutes": eligible_routes,
         "eligibleClassifierRoutes": eligible_routes,
+        "providerBudgets": provider_budgets,
         "currentRoute": current_script_route(config),
         "session": {
             "routerMode": session_mode,

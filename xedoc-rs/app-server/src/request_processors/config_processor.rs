@@ -334,6 +334,7 @@ impl ConfigRequestProcessor {
         };
         let result = xedoc_core::model_router_settings::open(
             &config,
+            self.state_db.as_ref(),
             &self.thread_manager.get_models_manager(),
             session_mode.as_deref(),
             thread.is_some(),
@@ -359,6 +360,7 @@ impl ConfigRequestProcessor {
             .map_err(|_| invalid_request("invalid model-router settings response"))?;
         let result = xedoc_core::model_router_settings::respond(
             &config,
+            self.state_db.as_ref(),
             &self.thread_manager.get_models_manager(),
             response,
             params.jev_api_key,

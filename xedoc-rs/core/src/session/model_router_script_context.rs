@@ -87,6 +87,12 @@ pub(crate) async fn build(input: RoutingContextInput<'_>) -> Value {
     if let Some(thread_name) = thread_name {
         thread.insert("name".to_string(), Value::String(thread_name));
     }
+    let state_db = input.session.state_db();
+    let provider_budgets = crate::model_router_provider_budgets::snapshot(
+        input.turn.config.as_ref(),
+        state_db.as_ref(),
+    )
+    .await;
 
     json!({
         "turn": {
@@ -98,6 +104,7 @@ pub(crate) async fn build(input: RoutingContextInput<'_>) -> Value {
         "currentRoute": input.current_route,
         "eligibleRoutes": input.eligible_routes,
         "eligibleClassifierRoutes": input.eligible_routes,
+        "providerBudgets": provider_budgets,
         "thread": thread,
         "session": {
             "routerMode": session_mode,

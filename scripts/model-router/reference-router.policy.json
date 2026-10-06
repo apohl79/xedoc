@@ -153,6 +153,9 @@
   "mode": "off",
   "ranking": {
     "curve": "conservative",
+    "sharedMappingTable": true,
+    "tableMode": "shared",
+    "subagentCurve": "conservative",
     "curves": [
       {
         "id": "conservative",
