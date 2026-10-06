@@ -90,6 +90,9 @@ fn apply_turn_context(metadata: &mut ThreadMetadata, turn_ctx: &TurnContextItem)
         metadata.cwd = turn_ctx.cwd.clone().into_path_buf();
     }
     metadata.model = Some(turn_ctx.model.clone());
+    if let Some(provider_id) = turn_ctx.model_provider_id.as_ref() {
+        metadata.model_provider.clone_from(provider_id);
+    }
     metadata.reasoning_effort = turn_ctx.effort.clone();
     metadata.sandbox_policy =
         serde_json::to_string(&turn_ctx.permission_profile()).unwrap_or_default();
@@ -428,6 +431,7 @@ mod tests {
                 network: None,
                 file_system_sandbox_policy: None,
                 model: "gpt-5".to_string(),
+                model_provider_id: None,
                 comp_hash: None,
                 personality: None,
                 collaboration_mode: None,
@@ -472,6 +476,7 @@ mod tests {
                 network: None,
                 file_system_sandbox_policy: None,
                 model: "gpt-5".to_string(),
+                model_provider_id: None,
                 comp_hash: None,
                 personality: None,
                 collaboration_mode: None,
@@ -512,6 +517,7 @@ mod tests {
                 network: None,
                 file_system_sandbox_policy: None,
                 model: "gpt-5".to_string(),
+                model_provider_id: None,
                 comp_hash: None,
                 personality: None,
                 collaboration_mode: None,
@@ -549,6 +555,7 @@ mod tests {
                 network: None,
                 file_system_sandbox_policy: None,
                 model: "gpt-5".to_string(),
+                model_provider_id: None,
                 comp_hash: None,
                 personality: None,
                 collaboration_mode: None,

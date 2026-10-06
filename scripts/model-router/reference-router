@@ -2874,7 +2874,8 @@ def settings_response(request, policy):
             "budget": ("primary", "secondary", "root", "subagent"),
         }[previous_mode]
         for key in visible_tables:
-            name = values.get(f"{key}-table")
+            field_id = f"budget-{key}-table" if key in ("primary", "secondary") else f"{key}-table"
+            name = values.get(field_id)
             if name not in ranking["tables"]:
                 return error_notice(policy, "Choose an existing named routing table.")
             ranking["tableSelection"][key] = name
