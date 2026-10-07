@@ -326,6 +326,7 @@ impl ChatWidget {
                 SelectionItem {
                     name: model.display_name.clone(),
                     description: Some(model.id.clone()),
+                    search_value: Some(format!("{} {}", model.display_name, model.id)),
                     is_current: model.id == *current,
                     actions: vec![provider_update_action(updated)],
                     dismiss_on_select: false,
@@ -390,6 +391,7 @@ impl ChatWidget {
                         "{} · context {} · compact {}",
                         model.id, model.context_window, model.auto_compact_token_limit
                     )),
+                    search_value: Some(format!("{} {}", model.display_name, model.id)),
                     actions: vec![Box::new(move |tx| {
                         tx.send(AppEvent::ModelManagerUi(ModelManagerUiAction::OpenModel {
                             provider: action_provider.clone(),
