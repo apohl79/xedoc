@@ -73,6 +73,7 @@ from .peer_transport import (
 StaticPeer = PeerTarget
 _MAX_PENDING_REVIEWS = 64
 _PENDING_REVIEW_TTL_SECONDS = 3_600
+_DEFAULT_GRANT_TTL_SECONDS = 365 * 86_400
 _PAIRING_TTL_SECONDS = 300
 _SESSION_START_TIMEOUT_SECONDS = 30.0
 
@@ -573,6 +574,20 @@ class PeerService:
                 peer_host_id=candidate.host_id,
                 fingerprint=candidate.fingerprint,
             )
+            self.grant_set(
+                {
+                    "hostId": candidate.host_id,
+                    "scopes": [
+                        "discovery",
+                        "workspaceRead",
+                        "sessionRead",
+                        "sessionWrite",
+                        "cancellation",
+                    ],
+                    "expiresAt": int(time.time()) + _DEFAULT_GRANT_TTL_SECONDS,
+                }
+            )
+            relationship = self._paired_relationship(candidate.host_id)
         return relationship.public_dict()
 
     def enrollment_create(self, params: Mapping[str, Any]) -> dict[str, object]:

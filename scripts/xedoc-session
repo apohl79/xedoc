@@ -203,7 +203,10 @@ def remote_agent_enrollment_command(
     try:
         response = json.loads(result.stdout)
     except json.JSONDecodeError as error:
-        raise AppServerError("remote-agent enrollment command returned an invalid response") from error
+        raise AppServerError(
+            "remote-agent enrollment command failed: "
+            f"{result.stderr.strip()[:300] or 'no output'}"
+        ) from error
     if result.returncode != 0 or not isinstance(response, dict):
         raise AppServerError("remote-agent enrollment command failed")
     return cast(dict[str, object], response)

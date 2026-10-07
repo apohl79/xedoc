@@ -169,7 +169,7 @@ target_port_file="$assets/target-port"
 source_log="$assets/source-mock.jsonl"
 target_log="$assets/target-mock.jsonl"
 
-tmux new-session -d -s "$session" -n e2e "exec env -u PYTHONPATH python3 '$assets/remote_agent_docker_e2e.py' mock --role source --port-file '$source_port_file' --request-log '$source_log' --state-file '$state_file'"
+tmux new-session -d -x 250 -y 50 -s "$session" -n e2e "exec env -u PYTHONPATH python3 '$assets/remote_agent_docker_e2e.py' mock --role source --port-file '$source_port_file' --request-log '$source_log' --state-file '$state_file'"
 tmux set-environment -t "$session" DOCKER_HOST "$docker_host"
 tmux set-option -t "$session":0 remain-on-exit on
 tmux set-option -t "$session" remain-on-exit on
@@ -329,9 +329,16 @@ for _ in {1..200}; do
 done
 tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'Remote host (host ID' ||
   fail "coordinator did not discover the managed peer"
-for ((index = 0; index < selection_downs; index++)); do
+selected=0
+for _ in {1..60}; do
+  if tmux capture-pane -pt "$enroll_pane" -S -200 | grep '^›' | tail -n 1 | grep -q ":$peer_normal "; then
+    selected=1
+    break
+  fi
   tmux send-keys -t "$enroll_pane" Down
+  sleep 0.2
 done
+((selected)) || fail "enrollment menu never highlighted the Docker managed peer"
 tmux send-keys -t "$enroll_pane" Enter
 for _ in {1..200}; do
   tmux capture-pane -pt "$enroll_pane" -S -60 | grep -q 'enrollment code' && break
