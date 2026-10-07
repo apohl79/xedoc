@@ -12,7 +12,7 @@ use xedoc_api::SharedAuthProvider;
 use xedoc_login::AuthManager;
 use xedoc_login::XedocAuth;
 use xedoc_login::auth::BedrockApiKeyAuth;
-use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_4_MODEL_ID;
+use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID;
 use xedoc_model_provider_info::ModelProviderAwsAuthInfo;
 use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_models_manager::manager::SharedModelsManager;
@@ -129,7 +129,7 @@ impl ModelProvider for AmazonBedrockModelProvider {
     }
 
     fn approval_review_preferred_model(&self) -> &'static str {
-        AMAZON_BEDROCK_GPT_5_4_MODEL_ID
+        AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID
     }
 
     fn auth_manager(&self) -> Option<Arc<AuthManager>> {
