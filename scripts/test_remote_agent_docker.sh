@@ -118,6 +118,13 @@ cleanup() {
   if [[ "$keep" != 1 ]]; then
     docker rm -f "$container" >/dev/null 2>&1 || true
     tmux kill-session -t "$session" >/dev/null 2>&1 || true
+    for path in "$host_tmp" "$tmp"; do
+      pkill -TERM -f -- "$path" >/dev/null 2>&1 || true
+    done
+    sleep 1
+    for path in "$host_tmp" "$tmp"; do
+      pkill -KILL -f -- "$path" >/dev/null 2>&1 || true
+    done
     chmod -R u+w "$host_tmp" 2>/dev/null || true
     rm -rf "$host_tmp"
   fi
@@ -129,6 +136,8 @@ cleanup() {
   fi
 }
 trap 'status=$?; cleanup "$status"; exit "$status"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 host_root="$tmp/host-package"
 if [[ -d "$host_package" ]]; then
