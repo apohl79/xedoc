@@ -103,6 +103,7 @@ impl App {
                     notification.remote_session.remote_session_id.clone(),
                 );
                 self.upsert_remote_session_picker_entry(notification.remote_session.clone());
+                self.sync_active_remote_session_running();
                 if self.active_remote_session.as_ref() == Some(&remote_session_id)
                     && let Some(output_delta) = notification
                         .output_delta

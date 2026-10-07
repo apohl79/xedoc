@@ -747,16 +747,17 @@ class ResponsesHandler(BaseHTTPRequestHandler):
         events = [
             _event("response.created", response={"id": response_id}),
             _event(
-                "response.output_item.added",
+                "response.output_item.done",
                 item={
                     "type": "message",
                     "role": "assistant",
                     "id": f"{response_id}-message",
-                    "status": "in_progress",
-                    "content": [],
+                    "status": "completed",
+                    "content": [
+                        {"type": "output_text", "text": TARGET_LIVE_OUTPUT_MARKER}
+                    ],
                 },
             ),
-            _event("response.output_text.delta", delta=TARGET_LIVE_OUTPUT_MARKER),
         ]
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
@@ -777,7 +778,17 @@ class ResponsesHandler(BaseHTTPRequestHandler):
         )
         deadline = time.monotonic() + 90.0
         while time.monotonic() < deadline:
-            if _state_read(self.state_file).get(interruption_key) is True:
+            held_state = _state_read(self.state_file)
+            if held_state.get("targetSteerRelease") is True:
+                _state_update(self.state_file, targetSteerRelease=False)
+                self.request_log.add("targetSteerReleased", marker=True)
+                completed = _completed(response_id)
+                self.wfile.write(
+                    f"event: {completed['type']}\ndata: {_json(completed)}\n\n".encode()
+                )
+                self.wfile.flush()
+                return
+            if held_state.get(interruption_key) is True:
                 self.request_log.add("targetInterruptionRecorded", marker=True)
                 return
             time.sleep(STATE_POLL_SECONDS)

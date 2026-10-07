@@ -58,6 +58,10 @@ impl App {
         remote_session: xedoc_app_server_protocol::RemoteSessionSummary,
     ) {
         let remote_session_id = RemoteSessionId::new(remote_session.remote_session_id);
+        let is_running = matches!(
+            remote_session.status,
+            xedoc_app_server_protocol::RemoteSessionStatus::Running
+        );
         let is_closed = matches!(
             remote_session.status,
             xedoc_app_server_protocol::RemoteSessionStatus::Completed
@@ -77,15 +81,24 @@ impl App {
                     .workspace_id
                     .filter(|workspace| !workspace.trim().is_empty())
                     .unwrap_or_else(|| "default".to_string()),
-                is_running: matches!(
-                    remote_session.status,
-                    xedoc_app_server_protocol::RemoteSessionStatus::Running
-                ),
+                is_running,
                 is_closed,
                 active_turn_id: remote_session.active_turn_id,
                 current_activity: remote_session.activity_summary,
             },
         );
+    }
+
+    /// Mirrors the viewed remote session's running state into the composer so interrupt keys reach it.
+    pub(super) fn sync_active_remote_session_running(&mut self) {
+        let is_running = self
+            .active_remote_session
+            .as_ref()
+            .and_then(|id| self.agent_navigation.remote_session(id))
+            .is_some_and(|entry| entry.is_running);
+        if self.active_remote_session.is_some() {
+            self.chat_widget.set_remote_session_running(is_running);
+        }
     }
 
     pub(super) async fn select_remote_session(
@@ -112,8 +125,8 @@ impl App {
                 return Ok(());
             }
         };
-        self.upsert_remote_session_picker_entry(attached);
         self.active_remote_session = Some(remote_session_id);
+        self.upsert_remote_session_picker_entry(attached);
         self.reset_for_thread_switch(tui)?;
         if let Some(entry) = self
             .active_remote_session
@@ -167,6 +180,7 @@ impl App {
                 break;
             }
         }
+        self.sync_active_remote_session_running();
         self.sync_active_agent_label();
         self.sync_active_agent_display();
         Ok(())
@@ -231,6 +245,7 @@ impl App {
         match response {
             Ok((remote_session, _)) => {
                 self.upsert_remote_session_picker_entry(remote_session);
+                self.sync_active_remote_session_running();
             }
             Err(err) => self
                 .chat_widget

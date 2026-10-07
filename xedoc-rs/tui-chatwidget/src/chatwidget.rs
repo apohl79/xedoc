@@ -1312,6 +1312,11 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    /// Mirrors a viewed remote session's turn state so interrupt keys target it.
+    pub fn set_remote_session_running(&mut self, running: bool) {
+        self.bottom_pane.set_task_running(running);
+    }
+
     pub fn add_plain_history_lines(&mut self, lines: Vec<Line<'static>>) {
         self.add_boxed_history(Box::new(PlainHistoryCell::new(lines)));
         self.request_redraw();

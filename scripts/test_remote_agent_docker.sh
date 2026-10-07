@@ -402,7 +402,10 @@ for _ in {1..1800}; do
   printf '%s' "$state" | grep -q '"remoteProjection"' &&
     printf '%s' "$state" | grep -q '"cancelled":true' && break
   if [[ "$(tmux display-message -p -t "$projection_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
-    fail "remote session projection controller exited unsuccessfully"
+    [[ "$(tmux display-message -p -t "$projection_pane" '#{pane_dead_status}')" == 0 ]] ||
+      fail "remote session projection controller exited unsuccessfully"
+    state="$(cat "$state_file" 2>/dev/null || true)"
+    break
   fi
   sleep 0.05
 done
@@ -502,14 +505,16 @@ for _ in {1..600}; do
 done
 tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session is running.' ||
   fail "/agents did not render live remote activity"
-tmux send-keys -t "$tui_pane" Down
-sleep 0.1
+# The picker opens on the active (remote) row, so Enter keeps the remote thread selected.
 tmux send-keys -t "$tui_pane" Enter
 idle_count_before="$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'target idle' || true)"
 idle_count="$idle_count_before"
 tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PROJECTION_E2E_STEER'
 sleep 0.1
 tmux send-keys -t "$tui_pane" Enter
+# A steer is consumed at the next sampling boundary, so let the held target request finish.
+sleep 3
+PYTHONPATH="$assets" python3 -c "import sys; from pathlib import Path; from remote_agent_pairing_e2e import _state_update; _state_update(Path(sys.argv[1]), targetSteerRelease=True)" "$state_file"
 for _ in {1..1200}; do
   idle_count="$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'target idle' || true)"
   (( idle_count > idle_count_before )) && break
