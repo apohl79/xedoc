@@ -55,11 +55,9 @@ fn resolve_model(model: &str) -> String {
         .unwrap_or(trimmed);
     match without_long_context {
         "fable" => "claude-fable-5-1",
-        "opus" | "opus-4.8" | "claude-opus-4-7" => "claude-opus-4-8",
-        "opus-5" => "claude-opus-5",
-        "sonnet-5.5" | "claude-sonnet-5.5" => "claude-sonnet-5-5",
-        "sonnet" | "claude-sonnet-4-6" => "claude-sonnet-5",
-        "haiku" | "claude-haiku-4-5" => "claude-haiku-4-5-20251001",
+        "opus" | "opus-5.5" | "claude-opus-5.5" => "claude-opus-5-5",
+        "sonnet" | "sonnet-5.5" | "claude-sonnet-5.5" => "claude-sonnet-5-5",
+        "haiku" | "haiku-5.5" | "claude-haiku-5.5" => "claude-haiku-5-5",
         model => model,
     }
     .to_string()
@@ -223,6 +221,7 @@ fn supports_adaptive_thinking(model: &str) -> bool {
             | "claude-sonnet-4-6"
             | "claude-sonnet-5"
             | "claude-sonnet-5-5"
+            | "claude-haiku-5-5"
             | "claude-fable-5-1"
     )
 }

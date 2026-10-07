@@ -35,7 +35,7 @@ fn seeded_provider_defaults_match_reference_limits() -> TestResult {
         .expect("Anthropic defaults should exist");
 
     assert_eq!(anthropic.default_model, "claude-fable-5-1");
-    assert_eq!(anthropic.fast_model, "claude-haiku-4-5-20251001");
+    assert_eq!(anthropic.fast_model, "claude-haiku-5-5");
     assert_eq!(anthropic.default_reasoning_effort, ReasoningEffort::Medium);
     assert_eq!(
         anthropic.template.info.context_window,

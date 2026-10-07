@@ -12,7 +12,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 7;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 8;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
@@ -284,6 +284,18 @@ impl ModelRegistry {
                         || model_id == "xedoc-auto-review")
                 });
             }
+            if is_anthropic {
+                // Haiku 4.5, Sonnet 5, Opus 5, and Opus 4.8 are retired.
+                provider.models.retain(|model_id, _| {
+                    !matches!(
+                        model_id.as_str(),
+                        "claude-haiku-4-5-20251001"
+                            | "claude-sonnet-5"
+                            | "claude-opus-5"
+                            | "claude-opus-4-8"
+                    )
+                });
+            }
             for (model_id, model) in default_provider.models {
                 let configured = provider
                     .models
@@ -296,7 +308,17 @@ impl ModelRegistry {
                         prices.cached_input = Some(1.0);
                     }
                 }
-                if is_anthropic && configured.prices == previous_default_prices {
+                // Sonnet 5.5 cache reads dropped from $0.20 to $0.10; registries that still
+                // hold the old default (with cache-write pricing already set) follow the new one.
+                let mut previous_sonnet_5_5_prices = model.prices.clone();
+                if let Some(prices) = &mut previous_sonnet_5_5_prices {
+                    prices.cached_input = Some(0.2);
+                }
+                if is_anthropic
+                    && (configured.prices == previous_default_prices
+                        || (model_id == "claude-sonnet-5-5"
+                            && configured.prices == previous_sonnet_5_5_prices))
+                {
                     configured.prices = model.prices;
                 }
             }
