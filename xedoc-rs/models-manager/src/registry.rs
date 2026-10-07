@@ -12,7 +12,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 6;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 7;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
@@ -275,11 +275,13 @@ impl ModelRegistry {
                 .entry(provider_id)
                 .or_insert_with(|| default_provider.clone());
             if is_openai {
-                // GPT-5.6 Sol, GPT-5.6 Luna, and every model before GPT-5.6 are retired.
+                // GPT-5.6 Sol, GPT-5.6 Luna, every model before GPT-5.6, and the former
+                // auto-review alias are retired.
                 provider.models.retain(|model_id, _| {
                     !((model_id.starts_with("gpt-5") && !model_id.starts_with("gpt-5.6"))
                         || model_id == "gpt-5.6-sol"
-                        || model_id == "gpt-5.6-luna")
+                        || model_id == "gpt-5.6-luna"
+                        || model_id == "xedoc-auto-review")
                 });
             }
             for (model_id, model) in default_provider.models {

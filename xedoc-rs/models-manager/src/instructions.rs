@@ -109,7 +109,6 @@ fn apply_built_in_instructions(model: &mut ModelInfo, provider_display_name: Opt
                 personality_pragmatic: Some(PRAGMATIC_PERSONALITY.to_string()),
             }),
             approvals: None,
-            auto_review: None,
             permissions: None,
         }),
     );
@@ -130,17 +129,11 @@ fn built_in_template(slug: &str, provider_display_name: Option<&str>) -> String 
 }
 
 fn replace_instruction_messages(model: &mut ModelInfo, instructions: Option<&ModelMessages>) {
-    let (approvals, auto_review, permissions) = model
+    let (approvals, permissions) = model
         .model_messages
         .take()
-        .map(|messages| {
-            (
-                messages.approvals,
-                messages.auto_review,
-                messages.permissions,
-            )
-        })
-        .unwrap_or((None, None, None));
+        .map(|messages| (messages.approvals, messages.permissions))
+        .unwrap_or((None, None));
     let (instructions_template, instructions_variables) = instructions
         .map(|messages| {
             (
@@ -153,14 +146,12 @@ fn replace_instruction_messages(model: &mut ModelInfo, instructions: Option<&Mod
     if instructions_template.is_some()
         || instructions_variables.is_some()
         || approvals.is_some()
-        || auto_review.is_some()
         || permissions.is_some()
     {
         model.model_messages = Some(ModelMessages {
             instructions_template,
             instructions_variables,
             approvals,
-            auto_review,
             permissions,
         });
     }

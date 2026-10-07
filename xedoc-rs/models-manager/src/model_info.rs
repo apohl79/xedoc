@@ -53,10 +53,7 @@ pub(crate) fn clear_instruction_messages(model: &mut ModelInfo) {
     if let Some(model_messages) = &mut model.model_messages {
         model_messages.instructions_template = None;
         model_messages.instructions_variables = None;
-        if model_messages.approvals.is_none()
-            && model_messages.auto_review.is_none()
-            && model_messages.permissions.is_none()
-        {
+        if model_messages.approvals.is_none() && model_messages.permissions.is_none() {
             model.model_messages = None;
         }
     }
@@ -107,7 +104,6 @@ pub fn model_info_from_catalog_slug(slug: &str) -> ModelInfo {
         used_fallback_model_metadata: true, // this is the fallback model metadata
         supports_search_tool: false,
         use_responses_lite: false,
-        auto_review_model_override: None,
         tool_mode: None,
         multi_agent_version: None,
     }

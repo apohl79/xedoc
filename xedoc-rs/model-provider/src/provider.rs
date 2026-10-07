@@ -88,10 +88,6 @@ impl std::error::Error for ProviderAccountError {}
 
 pub type ProviderAccountResult = std::result::Result<ProviderAccountState, ProviderAccountError>;
 
-/// Default model used for automatic approval review when a provider does not
-/// require a backend-specific model ID.
-pub const DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL: &str = "xedoc-auto-review";
-
 /// Runtime provider abstraction used by model execution.
 ///
 /// Implementations own provider-specific behavior for a model backend. The
@@ -104,13 +100,6 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
     /// Returns the provider-owned capability upper bounds.
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities::default()
-    }
-
-    /// Returns the preferred model used for automatic approval review.
-    ///
-    /// Providers that require backend-specific model IDs should override this.
-    fn approval_review_preferred_model(&self) -> &'static str {
-        DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL
     }
 
     /// Returns the provider-scoped auth manager, when this provider uses one.
@@ -605,19 +594,6 @@ mod tests {
         );
 
         assert_eq!(provider.capabilities(), ProviderCapabilities::default());
-    }
-
-    #[test]
-    fn configured_provider_uses_default_approval_review_preferred_model() {
-        let provider = create_model_provider(
-            ModelProviderInfo::create_openai_provider(/*base_url*/ None),
-            /*auth_manager*/ None,
-        );
-
-        assert_eq!(
-            provider.approval_review_preferred_model(),
-            DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL
-        );
     }
 
     #[tokio::test]
