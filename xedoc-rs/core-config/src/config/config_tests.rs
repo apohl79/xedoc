@@ -267,10 +267,7 @@ async fn load_config_uses_provider_defaults_from_model_registry() -> std::io::Re
         Config::load_from_base_config_with_overrides(cfg, ConfigOverrides::default(), home.abs())
             .await?;
 
-    assert_eq!(
-        config.model_fast,
-        Some("claude-haiku-4-5-20251001".to_string())
-    );
+    assert_eq!(config.model_fast, Some("claude-haiku-5-5".to_string()));
     assert_eq!(config.model_reasoning_effort, Some(ReasoningEffort::Medium));
     assert!(home.path().join("models.json").is_file());
     Ok(())

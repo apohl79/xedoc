@@ -29,15 +29,12 @@ pub(crate) fn default_registry() -> io::Result<ModelRegistry> {
         provider_defaults(
             "Anthropic",
             "claude-fable-5-1",
-            "claude-haiku-4-5-20251001",
+            "claude-haiku-5-5",
             &[
                 "claude-opus-5-5",
-                "claude-opus-5",
-                "claude-opus-4-8",
                 "claude-fable-5-1",
                 "claude-sonnet-5-5",
-                "claude-sonnet-5",
-                "claude-haiku-4-5-20251001",
+                "claude-haiku-5-5",
             ],
             anthropic_prices(),
             /*supports_max*/ true,
@@ -227,12 +224,9 @@ fn tiered_price(
 fn anthropic_prices() -> BTreeMap<String, ModelTokenPrices> {
     [
         ("claude-opus-5-5", anthropic_price(4.0, 0.2, 20.0)),
-        ("claude-opus-5", anthropic_price(5.0, 0.5, 25.0)),
-        ("claude-opus-4-8", anthropic_price(5.0, 0.5, 25.0)),
         ("claude-fable-5-1", anthropic_price(10.0, 0.25, 50.0)),
-        ("claude-sonnet-5-5", anthropic_price(2.0, 0.2, 10.0)),
-        ("claude-sonnet-5", anthropic_price(2.0, 0.2, 10.0)),
-        ("claude-haiku-4-5-20251001", anthropic_price(1.0, 0.1, 5.0)),
+        ("claude-sonnet-5-5", anthropic_price(2.0, 0.1, 10.0)),
+        ("claude-haiku-5-5", anthropic_price(0.1, 0.01, 0.5)),
     ]
     .into_iter()
     .map(|(model, prices)| (model.to_string(), prices))
