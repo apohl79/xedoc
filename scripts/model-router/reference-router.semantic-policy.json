@@ -10714,35 +10714,35 @@
     "ladder": [
       {
         "class": "simple",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "provider": "openai",
         "rank": 1,
         "reasoning_effort": "low"
       },
       {
         "class": "simple",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "provider": "openai",
         "rank": 2,
         "reasoning_effort": "medium"
       },
       {
         "class": "simple",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "provider": "openai",
         "rank": 3,
         "reasoning_effort": "high"
       },
       {
         "class": "simple",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "provider": "openai",
         "rank": 4,
         "reasoning_effort": "xhigh"
       },
       {
         "class": "simple",
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "provider": "openai",
         "rank": 5,
         "reasoning_effort": "max"
@@ -10784,35 +10784,35 @@
       },
       {
         "class": "intelligent",
-        "model": "gpt-5.6-sol",
+        "model": "gpt-6-sol",
         "provider": "openai",
         "rank": 11,
         "reasoning_effort": "low"
       },
       {
         "class": "intelligent",
-        "model": "gpt-5.6-sol",
+        "model": "gpt-6-sol",
         "provider": "openai",
         "rank": 12,
         "reasoning_effort": "medium"
       },
       {
         "class": "intelligent",
-        "model": "gpt-5.6-sol",
+        "model": "gpt-6-sol",
         "provider": "openai",
         "rank": 13,
         "reasoning_effort": "high"
       },
       {
         "class": "intelligent",
-        "model": "gpt-5.6-sol",
+        "model": "gpt-6-sol",
         "provider": "openai",
         "rank": 14,
         "reasoning_effort": "xhigh"
       },
       {
         "class": "intelligent",
-        "model": "gpt-5.6-sol",
+        "model": "gpt-6-sol",
         "provider": "openai",
         "rank": 15,
         "reasoning_effort": "max"
