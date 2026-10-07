@@ -164,6 +164,13 @@ impl SessionCostTracker {
     }
 }
 
+/// Root model-router decision retained for later keep-current turns.
+struct ModelRouterAppliedRoute {
+    baseline_route: xedoc_script_protocol::Route,
+    route: xedoc_script_protocol::Route,
+    model_instructions: Option<String>,
+}
+
 /// Persistent, session-scoped state previously stored directly on `Session`.
 pub(crate) struct SessionState {
     pub(crate) session_configuration: SessionConfiguration,
@@ -173,10 +180,10 @@ pub(crate) struct SessionState {
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
     model_router_session_mode: Option<String>,
-    /// Route applied by the model router, paired with the session route it was chosen against.
-    /// Retained-route decisions (e.g. steering) reuse it while the session route is unchanged.
-    model_router_applied_route:
-        Option<(xedoc_script_protocol::Route, xedoc_script_protocol::Route)>,
+    /// Route and multi-agent guidance applied by the model router, paired with the session route
+    /// they were chosen against. Retained-route decisions (e.g. steering) reuse them while the
+    /// session route is unchanged.
+    model_router_applied_route: Option<ModelRouterAppliedRoute>,
     /// Settings used by the latest regular user turn, used for turn-to-turn
     /// model handling on subsequent regular turns (including full-context
     /// reinjection after resume or `/compact`).
@@ -252,24 +259,31 @@ impl SessionState {
         self.model_router_session_mode = mode;
     }
 
-    /// Returns the router-applied route if it was chosen against `baseline_route`.
+    /// Returns the router-applied route and its multi-agent guidance if they were chosen against
+    /// `baseline_route`.
     pub(crate) fn model_router_applied_route(
         &self,
         baseline_route: &xedoc_script_protocol::Route,
-    ) -> Option<xedoc_script_protocol::Route> {
+    ) -> Option<(xedoc_script_protocol::Route, Option<String>)> {
         self.model_router_applied_route
             .as_ref()
-            .filter(|(baseline, _)| baseline == baseline_route)
-            .map(|(_, applied)| applied.clone())
+            .filter(|applied| &applied.baseline_route == baseline_route)
+            .map(|applied| (applied.route.clone(), applied.model_instructions.clone()))
     }
 
     pub(crate) fn set_model_router_applied_route(
         &mut self,
         baseline_route: xedoc_script_protocol::Route,
         applied_route: xedoc_script_protocol::Route,
+        model_instructions: Option<String>,
     ) {
-        self.model_router_applied_route =
-            (baseline_route != applied_route).then_some((baseline_route, applied_route));
+        self.model_router_applied_route = (baseline_route != applied_route
+            || model_instructions.is_some())
+        .then_some(ModelRouterAppliedRoute {
+            baseline_route,
+            route: applied_route,
+            model_instructions,
+        });
     }
 
     pub(crate) fn clone_history(&self) -> ContextManager {

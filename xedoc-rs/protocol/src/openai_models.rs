@@ -442,8 +442,6 @@ pub struct ModelInfo {
     pub supports_search_tool: bool,
     #[serde(default)]
     pub use_responses_lite: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auto_review_model_override: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -514,22 +512,14 @@ pub struct ModelMessages {
     pub instructions_template: Option<String>,
     pub instructions_variables: Option<ModelInstructionsVariables>,
     pub approvals: Option<ApprovalMessages>,
-    pub auto_review: Option<AutoReviewMessages>,
     pub permissions: Option<PermissionMessages>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, TS, JsonSchema)]
 pub struct ApprovalMessages {
     pub on_request: Option<String>,
-    pub on_request_auto_review: Option<String>,
     pub never: Option<String>,
     pub unless_trusted: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, TS, JsonSchema)]
-pub struct AutoReviewMessages {
-    pub policy: Option<String>,
-    pub policy_template: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, TS, JsonSchema)]
@@ -789,46 +779,6 @@ mod tests {
                 on_request_auto_review: None,
                 never: Some(String::new()),
                 unless_trusted: None,
-            })
-        );
-    }
-
-    #[test]
-    fn auto_review_messages_preserve_missing_and_empty_template_values() {
-        let missing_template: ModelMessages = from_str(
-            r#"{
-                "instructions_template": null,
-                "instructions_variables": null,
-                "auto_review": {
-                    "policy": "policy"
-                }
-            }"#,
-        )
-        .expect("auto-review messages should deserialize without a policy template");
-        let empty_template: ModelMessages = from_str(
-            r#"{
-                "instructions_template": null,
-                "instructions_variables": null,
-                "auto_review": {
-                    "policy": "policy",
-                    "policy_template": ""
-                }
-            }"#,
-        )
-        .expect("auto-review messages should deserialize with an empty policy template");
-
-        assert_eq!(
-            missing_template.auto_review,
-            Some(AutoReviewMessages {
-                policy: Some("policy".to_string()),
-                policy_template: None,
-            })
-        );
-        assert_eq!(
-            empty_template.auto_review,
-            Some(AutoReviewMessages {
-                policy: Some("policy".to_string()),
-                policy_template: Some(String::new()),
             })
         );
     }

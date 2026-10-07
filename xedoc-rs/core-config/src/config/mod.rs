@@ -618,6 +618,12 @@ pub struct Config {
     /// Effective model-router controls.
     pub model_router: ModelRouterConfigToml,
 
+    /// Runtime-only multi-agent guidance from an applied model-router decision.
+    ///
+    /// Never loaded from config files; set by the host when a validated router route is applied
+    /// and used as the turn's multi-agent mode text when no higher-priority mode applies.
+    pub model_router_instructions: Option<String>,
+
     /// Host-managed persistent scripts that may register for a loaded root thread.
     pub session_scripts: Vec<SessionScriptConfigToml>,
 
@@ -3855,6 +3861,7 @@ impl Config {
                     ..cfg.model_router.clone()
                 }
             },
+            model_router_instructions: None,
             session_scripts: cfg.session_scripts.clone(),
             remote_agent,
             model_fast,

@@ -191,8 +191,9 @@ embedder_daemon_is_running() {
 }
 
 restart_model_router_daemon() {
-  release_dir="$1"
-  runtime_dir="$release_dir/xedoc-resources/model-router/runtime"
+  # POSIX sh has no locals; do not reuse the global release_dir here.
+  daemon_release_dir="$1"
+  runtime_dir="$daemon_release_dir/xedoc-resources/model-router/runtime"
   runtime_real_dir="$(CDPATH='' cd "$runtime_dir" && pwd -P)"
   runtime_state_dir="$(dirname "$runtime_real_dir")"
   state_path="$runtime_state_dir/embedder-daemon.json"
@@ -200,7 +201,7 @@ restart_model_router_daemon() {
   if [ ! -f "$state_path" ] && [ -f "$legacy_state_path" ]; then
     state_path="$legacy_state_path"
   fi
-  embedder="$release_dir/xedoc-resources/model-router/reference-router-embedder.py"
+  embedder="$daemon_release_dir/xedoc-resources/model-router/reference-router-embedder.py"
   python="$(runtime_python "$runtime_dir")"
 
   if ! embedder_daemon_is_running "$state_path"; then

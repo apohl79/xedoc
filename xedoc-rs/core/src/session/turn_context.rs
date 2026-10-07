@@ -473,14 +473,9 @@ impl Session {
         {
             session_configuration.base_instructions = base_instructions;
         }
-        crate::model_router::append_script_model_instructions(
-            &mut config.developer_instructions,
-            model_instructions,
-        );
-        crate::model_router::append_script_model_instructions(
-            &mut session_configuration.developer_instructions,
-            model_instructions,
-        );
+        if let Some(model_instructions) = model_instructions {
+            config.model_router_instructions = Some(model_instructions.to_string());
+        }
         session_configuration.provider = config.model_provider.clone();
         session_configuration.collaboration_mode =
             session_configuration.collaboration_mode.with_updates(

@@ -30,8 +30,6 @@ for every provider, tool set, and permission mode, and that change in one place.
 - Compaction, review, and auto-review policy prompts.
 - New app-server API fields. The only new configuration key is the opt-in
   switch for provider-supplied instructions.
-- Built-in per-model prompt variants. Model-specific text comes only from user
-  prompt files or, when enabled, the provider's catalog.
 
 ## Current state
 
@@ -197,7 +195,8 @@ without the footer, or a bundled `base_instructions`/`instructions_template`.
 The base prompt must not name a tool as always available, restate a
 permission or approval policy, or carry text for one provider, model family, or
 task domain. It may mention a capability conditionally ("when a planning tool
-is available").
+is available"). Model-family text lives in a separate family file (see
+[Model-family additions](#model-family-additions)).
 
 ### Built-in prompt files
 
@@ -218,7 +217,25 @@ Size caps, enforced at compile time with
 | File | Cap |
 | --- | --- |
 | `base.md` | 4,096 bytes (~1k tokens) |
+| `family_claude.md` | 3,072 bytes |
 | Each personality file | 512 bytes |
+
+### Model-family additions
+
+Models need provider-specific tuning: Claude follows instructions literally and
+behaves poorly on a prompt that only states general principles. A family file
+adds behavior rules for one model family on top of `base.md`.
+
+- `models-manager/prompts/family_claude.md` applies to every slug that starts with
+  `claude-`, through any provider or proxy. The choice is by model family, not
+  by provider or wire API, so DeepSeek on the Anthropic adapter does not get it.
+  Aliases such as `opus` or `sonnet` are not covered.
+- Family files avoid the name `claude.md`: `.gitignore` ignores `CLAUDE.md`,
+  and that rule matches case-insensitively on macOS checkouts.
+- It is appended after `base.md` and before the model identity footer.
+- User prompt files in `~/.xedoc/prompts/` still replace the whole prompt,
+  including the family file.
+- Other families get a file only when evidence shows they need one.
 
 ### Composition
 
@@ -228,6 +245,7 @@ single function in a new module `models-manager/src/instructions.rs` builds it:
 
 ```text
 base.md with {{ personality }} placeholder
+[+ family file, for example family_claude.md for claude-* slugs]
 + "\n\n# Model identity\nYou are running as {slug} from {provider_display_name}."
 ```
 
@@ -529,6 +547,8 @@ None.
   registry entries and config `model_catalog` catalogs, gets the built-in
   base prompt. Catalog text never replaces it unless
   `model_remote_instructions` is on.
+- **Model-family additions** are built in. The earlier non-goal "no built-in
+  per-model prompt variants" is dropped because Claude needs its own tuning.
 - **Registry** never stores or supplies prompt text.
 - **Registry prompt migration.** Migration deletes all registry prompt text.
   Hand-edited registry prompts on other installs are not moved to prompt

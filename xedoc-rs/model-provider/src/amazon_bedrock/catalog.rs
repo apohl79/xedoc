@@ -1,56 +1,21 @@
-use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_4_MODEL_ID;
-use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_5_MODEL_ID;
-use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_6_LUNA_MODEL_ID;
-use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_6_SOL_MODEL_ID;
 use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID;
 use xedoc_models_manager::bundled_models_response;
 use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ModelVisibility;
 use xedoc_protocol::openai_models::ModelsResponse;
 use xedoc_protocol::openai_models::ReasoningEffort;
-use xedoc_protocol::openai_models::ReasoningEffortPreset;
 
 const GPT_5_BEDROCK_CONTEXT_WINDOW: i64 = 272_000;
-const GPT_5_6_SOL_OPENAI_MODEL_ID: &str = "gpt-5.6-sol";
 const GPT_5_6_TERRA_OPENAI_MODEL_ID: &str = "gpt-5.6-terra";
-const GPT_5_6_LUNA_OPENAI_MODEL_ID: &str = "gpt-5.6-luna";
-const GPT_5_5_OPENAI_MODEL_ID: &str = "gpt-5.5";
-const GPT_5_4_OPENAI_MODEL_ID: &str = "gpt-5.4";
 
 pub(crate) fn static_model_catalog() -> ModelsResponse {
     with_default_only_service_tier(ModelsResponse {
-        models: vec![
-            gpt_5_6_bedrock_model(
-                GPT_5_6_SOL_OPENAI_MODEL_ID,
-                AMAZON_BEDROCK_GPT_5_6_SOL_MODEL_ID,
-                "GPT-5.6 Sol",
-                /*priority*/ 0,
-            ),
-            gpt_5_6_bedrock_model(
-                GPT_5_6_TERRA_OPENAI_MODEL_ID,
-                AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID,
-                "GPT-5.6 Terra",
-                /*priority*/ 1,
-            ),
-            gpt_5_6_bedrock_model(
-                GPT_5_6_LUNA_OPENAI_MODEL_ID,
-                AMAZON_BEDROCK_GPT_5_6_LUNA_MODEL_ID,
-                "GPT-5.6 Luna",
-                /*priority*/ 2,
-            ),
-            gpt_5_bedrock_model(
-                GPT_5_5_OPENAI_MODEL_ID,
-                AMAZON_BEDROCK_GPT_5_5_MODEL_ID,
-                "GPT-5.5",
-                /*priority*/ 3,
-            ),
-            gpt_5_bedrock_model(
-                GPT_5_4_OPENAI_MODEL_ID,
-                AMAZON_BEDROCK_GPT_5_4_MODEL_ID,
-                "GPT-5.4",
-                /*priority*/ 4,
-            ),
-        ],
+        models: vec![gpt_5_bedrock_model(
+            GPT_5_6_TERRA_OPENAI_MODEL_ID,
+            AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID,
+            "GPT-5.6 Terra",
+            /*priority*/ 0,
+        )],
     })
 }
 
@@ -76,33 +41,13 @@ fn gpt_5_bedrock_model(
     model.priority = priority;
     model.context_window = Some(GPT_5_BEDROCK_CONTEXT_WINDOW);
     model.max_context_window = Some(GPT_5_BEDROCK_CONTEXT_WINDOW);
+    // Bedrock does not offer the `ultra` reasoning effort.
+    model
+        .supported_reasoning_levels
+        .retain(|preset| preset.effort != ReasoningEffort::Ultra);
     model.visibility = ModelVisibility::List;
     model.availability_nux = None;
     model.upgrade = None;
-    model
-}
-
-fn gpt_5_6_bedrock_model(
-    openai_slug: &str,
-    bedrock_slug: &str,
-    display_name: &str,
-    priority: i32,
-) -> ModelInfo {
-    let openai_model = bundled_openai_model(openai_slug);
-    let mut model = gpt_5_bedrock_model(
-        GPT_5_5_OPENAI_MODEL_ID,
-        bedrock_slug,
-        display_name,
-        priority,
-    );
-    model.description = openai_model.description;
-    model.default_reasoning_level = openai_model.default_reasoning_level;
-    model
-        .supported_reasoning_levels
-        .push(ReasoningEffortPreset {
-            effort: ReasoningEffort::Max,
-            description: "Maximum reasoning depth for the hardest problems".to_string(),
-        });
     model
 }
 

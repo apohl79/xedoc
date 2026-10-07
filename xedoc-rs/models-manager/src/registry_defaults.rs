@@ -282,40 +282,8 @@ fn openai_prices() -> BTreeMap<String, ModelTokenPrices> {
             tiered_price(0.1, Some(0.01), 0.5, 0.2, Some(0.02), 0.75),
         ),
         (
-            "gpt-5.6-sol",
-            tiered_price(5.0, Some(0.5), 30.0, 10.0, Some(1.0), 45.0),
-        ),
-        (
             "gpt-5.6-terra",
             tiered_price(2.0, Some(0.2), 12.0, 4.0, Some(0.4), 18.0),
-        ),
-        (
-            "gpt-5.6-luna",
-            tiered_price(1.0, Some(0.1), 6.0, 2.0, Some(0.2), 9.0),
-        ),
-        (
-            "gpt-5.5",
-            tiered_price(5.0, Some(0.5), 30.0, 10.0, Some(1.0), 45.0),
-        ),
-        (
-            "gpt-5.5-pro",
-            tiered_price(30.0, None, 180.0, 60.0, None, 270.0),
-        ),
-        (
-            "gpt-5.4",
-            tiered_price(2.5, Some(0.25), 15.0, 5.0, Some(0.5), 22.5),
-        ),
-        (
-            "gpt-5.4-mini",
-            tiered_price(0.75, Some(0.075), 4.5, 1.5, Some(0.15), 9.0),
-        ),
-        (
-            "gpt-5-codex",
-            tiered_price(5.0, Some(0.5), 30.0, 10.0, Some(1.0), 45.0),
-        ),
-        (
-            "gpt-5.1-codex-max",
-            tiered_price(5.0, Some(0.5), 30.0, 10.0, Some(1.0), 45.0),
         ),
     ]
     .into_iter()

@@ -4,9 +4,9 @@
   "repeats": 1,
   "models": [
     {
-      "id": "gpt-56-sol",
+      "id": "gpt-6-sol",
       "provider": "openai",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-sol",
       "effort": "medium"
     },
     {
@@ -16,9 +16,9 @@
       "effort": "medium"
     },
     {
-      "id": "gpt-56-luna",
+      "id": "gpt-6-luna",
       "provider": "openai",
-      "model": "gpt-5.6-luna",
+      "model": "gpt-6-luna",
       "effort": "medium"
     },
     {

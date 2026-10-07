@@ -11,6 +11,8 @@ use xedoc_protocol::models::FunctionCallOutputBody;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::provider_item_metadata::ProviderItemMetadata;
+use xedoc_protocol::system_reminder::SYSTEM_REMINDER_EXPLANATION;
+use xedoc_protocol::system_reminder::wrap_system_reminder;
 
 use crate::GeminiContent;
 use crate::GeminiFunctionCall;
@@ -42,6 +44,7 @@ pub fn translate_request(
         .into_iter()
         .collect::<Vec<_>>();
     let contents = translate_history(&request.input, &mut system_texts, thought_signatures)?;
+    system_texts.push(SYSTEM_REMINDER_EXPLANATION.to_string());
     Ok(GeminiGenerateContentRequest {
         model: request.model.trim().to_string(),
         stream: request.stream,
@@ -185,8 +188,19 @@ fn append_message(
 ) {
     if role == "system" || role == "developer" {
         let text = content_text(content);
-        if !text.is_empty() {
+        if text.is_empty() {
+            return;
+        }
+        if contents.is_empty() {
             system_texts.push(text);
+        } else {
+            append_content(
+                contents,
+                GeminiRole::User,
+                vec![GeminiPart::Text {
+                    text: wrap_system_reminder(&text),
+                }],
+            );
         }
         return;
     }

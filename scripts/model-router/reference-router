@@ -68,24 +68,19 @@ WORK_TYPES = (
 )
 COMPLEXITIES = ("low", "medium", "high", "very_high")
 ORCHESTRATIONS = ("none", "delegate", "coordination", "workflow")
+DELEGATION_MODEL_INSTRUCTIONS = (
+    "This request may benefit from subagents. Delegate a part only when all of these hold: "
+    "it does not block your next step, it is large enough to justify a fresh context (more "
+    "than a handful of tool calls), and it can run while you do other useful work. Give each "
+    "subagent the goal, the relevant files, and what you already ruled out. Do not delegate "
+    "checks of your own work, and do not redo delegated work. You own integration and final "
+    "verification. This replaces earlier delegation guidance and applies until a later "
+    "instruction changes it."
+)
 ORCHESTRATION_MODEL_INSTRUCTIONS = {
-    "delegate": (
-        "The router classified this task as delegation-oriented. This task can be delegated "
-        "when subagent execution would be more efficient. Identify bounded, independent "
-        "sub-tasks and delegate suitable pieces to subagents when that improves coverage or "
-        "speed. Keep the parent responsible for integrating and verifying the results."
-    ),
-    "coordination": (
-        "The router classified this task as coordination-oriented. Act as the orchestrator: "
-        "decompose the task into independent sub-tasks, and expect execution to happen via "
-        "subagents. Coordinate their outputs and keep ownership of integration and "
-        "verification."
-    ),
-    "workflow": (
-        "The router classified this task as workflow-oriented. Break the work into explicit "
-        "phases, delegate suitable phases to subagents, and keep ownership of sequencing, "
-        "integration, and final verification."
-    ),
+    "delegate": DELEGATION_MODEL_INSTRUCTIONS,
+    "coordination": DELEGATION_MODEL_INSTRUCTIONS,
+    "workflow": DELEGATION_MODEL_INSTRUCTIONS,
 }
 RISKS = ("low", "medium", "high", "very_high")
 WORK_TYPE_LEAVES = {

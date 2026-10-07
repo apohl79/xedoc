@@ -249,6 +249,10 @@ impl ChatWidget {
                 description,
                 category_tag: (!preset.provider_id.is_empty())
                     .then(|| format!("[{}]", preset.provider_id)),
+                search_value: Some(format!(
+                    "{} {} {}",
+                    preset.model, preset.display_name, preset.provider_id
+                )),
                 is_current,
                 is_default: preset.is_default,
                 actions,
@@ -266,6 +270,8 @@ impl ChatWidget {
             footer_hint: Some(self.bottom_pane.standard_popup_hint_line()),
             items,
             header,
+            is_searchable: true,
+            search_placeholder: Some("Type to search models".to_string()),
             ..Default::default()
         });
     }

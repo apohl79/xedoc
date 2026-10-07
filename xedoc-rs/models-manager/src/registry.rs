@@ -12,7 +12,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 5;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 7;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
@@ -269,10 +269,21 @@ impl ModelRegistry {
         let defaults = Self::default_registry()?;
         for (provider_id, default_provider) in defaults.providers {
             let is_anthropic = provider_id == "anthropic";
+            let is_openai = provider_id == "openai";
             let provider = self
                 .providers
                 .entry(provider_id)
                 .or_insert_with(|| default_provider.clone());
+            if is_openai {
+                // GPT-5.6 Sol, GPT-5.6 Luna, every model before GPT-5.6, and the former
+                // auto-review alias are retired.
+                provider.models.retain(|model_id, _| {
+                    !((model_id.starts_with("gpt-5") && !model_id.starts_with("gpt-5.6"))
+                        || model_id == "gpt-5.6-sol"
+                        || model_id == "gpt-5.6-luna"
+                        || model_id == "xedoc-auto-review")
+                });
+            }
             for (model_id, model) in default_provider.models {
                 let configured = provider
                     .models
@@ -288,6 +299,13 @@ impl ModelRegistry {
                 if is_anthropic && configured.prices == previous_default_prices {
                     configured.prices = model.prices;
                 }
+            }
+            if !provider.models.contains_key(&provider.default_model) {
+                provider.default_model = default_provider.default_model;
+                provider.default_reasoning_effort = default_provider.default_reasoning_effort;
+            }
+            if !provider.models.contains_key(&provider.fast_model) {
+                provider.fast_model = default_provider.fast_model;
             }
         }
         for provider in self.providers.values_mut() {
