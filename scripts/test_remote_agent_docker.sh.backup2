@@ -165,7 +165,7 @@ tmux set-environment -t "$session" DOCKER_HOST "$docker_host"
 tmux set-option -t "$session":0 remain-on-exit on
 tmux set-option -t "$session" remain-on-exit on
 tmux split-window -d -t "$session":0 -h "exec env -u PYTHONPATH python3 '$assets/remote_agent_docker_e2e.py' mock --role target --port-file '$target_port_file' --request-log '$target_log' --state-file '$state_file'"
-sleep 5
+sleep 2
 for _ in {1..200}; do [[ -s "$source_port_file" && -s "$target_port_file" ]] && break; sleep 0.05; done
 [[ -s "$source_port_file" && -s "$target_port_file" ]] || fail "deterministic Responses mocks did not start"
 source_port="$(cat "$source_port_file")"
@@ -256,7 +256,7 @@ for _ in {1..200}; do [[ -S "$socket" ]] && break; sleep 0.05; done
 [[ -S "$socket" ]] || fail "coordinator app server did not create its socket"
 tmux split-window -d -t "$session":0 -v "exec sh -ceu 'for i in \$(seq 1 120); do env -u PYTHONPATH XEDOC_HOME=\"$home\" \"$host_agent\" ensure --xedoc-home \"$home\" && exit 0; sleep 1; done; exit 1'"
 tmux split-window -d -t "$session":0 -v "exec docker exec '$container' sh -ceu 'chmod 700 /root/.xedoc/remote-agent; chmod 600 /root/.xedoc/remote-agent/bootstrap.toml; xedoc app-server daemon start || true; for i in \$(seq 1 120); do xedoc-remote-agentd ensure && exit 0; sleep 1; done; exit 1'"
-sleep 5
+sleep 2
 for _ in {1..200}; do
   host_status="$("$host_agent" status --xedoc-home "$home" 2>/dev/null || true)"
   managed_status="$(docker exec "$container" xedoc-remote-agentd status 2>/dev/null || true)"
