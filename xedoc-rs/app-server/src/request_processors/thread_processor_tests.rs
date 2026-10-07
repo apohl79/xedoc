@@ -878,6 +878,7 @@ mod thread_processor_behavior_tests {
             &mut request_overrides,
             &mut typesafe_overrides,
             &persisted_metadata,
+            &InitialHistory::New,
         );
 
         assert_eq!(
@@ -915,6 +916,7 @@ mod thread_processor_behavior_tests {
             &mut request_overrides,
             &mut typesafe_overrides,
             &persisted_metadata,
+            &InitialHistory::New,
         );
 
         assert_eq!(typesafe_overrides.model, Some("gpt-5.2-codex".to_string()));
@@ -944,6 +946,7 @@ mod thread_processor_behavior_tests {
             &mut request_overrides,
             &mut typesafe_overrides,
             &persisted_metadata,
+            &InitialHistory::New,
         );
 
         assert_eq!(typesafe_overrides.model, None);
@@ -973,6 +976,7 @@ mod thread_processor_behavior_tests {
             &mut request_overrides,
             &mut typesafe_overrides,
             &persisted_metadata,
+            &InitialHistory::New,
         );
 
         assert_eq!(typesafe_overrides.model, None);
@@ -996,6 +1000,7 @@ mod thread_processor_behavior_tests {
             &mut request_overrides,
             &mut typesafe_overrides,
             &persisted_metadata,
+            &InitialHistory::New,
         );
 
         assert_eq!(typesafe_overrides.model, None);
@@ -1021,6 +1026,7 @@ mod thread_processor_behavior_tests {
             &mut request_overrides,
             &mut typesafe_overrides,
             &persisted_metadata,
+            &InitialHistory::New,
         );
 
         assert_eq!(typesafe_overrides.model, None);
@@ -1057,6 +1063,7 @@ mod thread_processor_behavior_tests {
                     network: None,
                     file_system_sandbox_policy: None,
                     model: "gpt-5.4".to_string(),
+                    model_provider_id: None,
                     comp_hash: None,
                     personality: None,
                     collaboration_mode: None,

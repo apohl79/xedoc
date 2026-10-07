@@ -92,7 +92,7 @@ pub(crate) async fn summarize_history(
         item_budget, "starting hierarchical compaction map phase"
     );
 
-    let model_client = sess.services.model_client.load_full().as_ref().clone();
+    let model_client = sess.model_client_for_turn(turn_context.as_ref()).await;
     let map_total = map_chunks.len();
     let mut map_results = stream::iter(map_chunks.into_iter().enumerate().map(|(index, chunk)| {
         summarize_chunk(

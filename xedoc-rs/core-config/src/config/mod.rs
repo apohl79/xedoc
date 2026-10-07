@@ -179,6 +179,7 @@ fn model_token_prices(prices: RegistryModelTokenPrices) -> ProviderModelTokenPri
     ProviderModelTokenPrices {
         input_price_per_1m_tokens: prices.input,
         cached_input_price_per_1m_tokens: prices.cached_input,
+        cache_write_input_price_per_1m_tokens: prices.cache_write_input,
         long_context_input_price_per_1m_tokens: prices.long_context_input,
         long_context_cached_input_price_per_1m_tokens: prices.long_context_cached_input,
         long_context_output_price_per_1m_tokens: prices.long_context_output,

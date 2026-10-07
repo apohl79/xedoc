@@ -9881,6 +9881,13 @@
             "null"
           ]
         },
+        "cacheWriteInputTokens": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "cachedInputTokens": {
           "format": "int64",
           "type": [

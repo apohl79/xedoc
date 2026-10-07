@@ -38,7 +38,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
 ) -> XedocResult<RemoteCompactV2Attempt> {
     let turn_context = &step_context.turn;
     let mut history = sess.clone_history().await;
-    let base_instructions = sess.get_base_instructions().await;
+    let base_instructions = Session::base_instructions_for_turn(turn_context.as_ref());
     ensure_fixed_instructions_fit(turn_context.as_ref(), &base_instructions)?;
     let rewritten_outputs = trim_function_call_history_to_fit_context_window(
         &mut history,
@@ -86,7 +86,10 @@ pub(super) async fn run_remote_compact_v2_attempt(
     let mut owned_client_session = None;
     let client_session = match client_session {
         Some(client_session) => client_session,
-        None => owned_client_session.insert(sess.services.model_client.load().new_session()),
+        None => owned_client_session.insert(
+            sess.model_client_session_for_turn(turn_context.as_ref())
+                .await,
+        ),
     };
     let compaction_output_result = run_remote_compaction_request_v2(
         sess,

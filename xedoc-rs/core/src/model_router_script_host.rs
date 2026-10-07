@@ -314,9 +314,8 @@ impl ModelRouterScriptHost {
             XedocResponsesRequestKind::ModelRouterClassifier,
         );
         let mut client_session = session
-            .model_client_for_turn(&classifier_turn)
-            .await
-            .new_session();
+            .model_client_session_for_turn(&classifier_turn)
+            .await;
         let mut retries = 0;
         let max_retries = classifier_turn.provider.info().stream_max_retries();
         let mut stream = loop {

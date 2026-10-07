@@ -72,9 +72,9 @@ impl ChatWidget {
         )
     }
 
-    /// Hide the status row unless an in-flight compaction still owns it.
+    /// Hide the status row only after the task ends and compaction releases it.
     pub(super) fn hide_status_indicator(&mut self) {
-        if self.status_state.compaction_status_active() {
+        if self.bottom_pane.is_task_running() || self.status_state.compaction_status_active() {
             return;
         }
         self.bottom_pane.hide_status_indicator();

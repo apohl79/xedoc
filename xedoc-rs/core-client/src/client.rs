@@ -97,6 +97,7 @@ use xedoc_protocol::protocol::InternalSessionSource;
 use xedoc_protocol::protocol::SessionSource;
 use xedoc_protocol::protocol::W3cTraceContext;
 use xedoc_tools::create_tools_json_for_responses_api;
+use xedoc_tools::create_tools_json_for_responses_lite;
 
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
@@ -738,7 +739,11 @@ impl ModelClient {
                 .iter_mut()
                 .for_each(ResponseItem::clear_provider_metadata);
         }
-        let tools = create_tools_json_for_responses_api(&prompt.tools)?;
+        let tools = if model_info.use_responses_lite {
+            create_tools_json_for_responses_lite(&prompt.tools)?
+        } else {
+            create_tools_json_for_responses_api(&prompt.tools)?
+        };
         let (instructions, tools) = if model_info.use_responses_lite {
             let mut prefix = vec![ResponseItem::AdditionalTools {
                 id: None,
@@ -1013,6 +1018,11 @@ impl Drop for ModelClientSession {
 }
 
 impl ModelClientSession {
+    /// Returns whether this session uses the turn's configured provider.
+    pub fn is_configured_for(&self, provider_id: &str, provider_info: &ModelProviderInfo) -> bool {
+        self.client.is_configured_for(provider_id, provider_info)
+    }
+
     pub fn turn_state(&self) -> Arc<OnceLock<String>> {
         Arc::clone(&self.turn_state)
     }

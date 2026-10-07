@@ -103,15 +103,18 @@ ON CONFLICT(decision_id) DO NOTHING
 INSERT INTO model_router_invocations (
     invocation_id, decision_id, ab_pair_id, ab_branch, thread_id, turn_id, response_id, invocation_kind,
     provider_id, model_slug, reasoning_effort,
-    input_tokens, cached_input_tokens, output_tokens,
-    actual_input_price_usd_per_token, actual_cached_input_price_usd_per_token,
+    input_tokens, cache_write_input_tokens, cached_input_tokens, output_tokens,
+    actual_input_price_usd_per_token, actual_cache_write_input_price_usd_per_token,
+    actual_cached_input_price_usd_per_token,
     actual_output_price_usd_per_token, actual_price_revision,
-    input_cost_usd, cached_input_cost_usd, output_cost_usd, total_cost_usd,
+    input_cost_usd, cache_write_input_cost_usd, cached_input_cost_usd,
+    output_cost_usd, total_cost_usd,
     baseline_provider_id, baseline_model_slug, baseline_reasoning_effort,
-    baseline_input_price_usd_per_token, baseline_cached_input_price_usd_per_token,
+    baseline_input_price_usd_per_token, baseline_cache_write_input_price_usd_per_token,
+    baseline_cached_input_price_usd_per_token,
     baseline_output_price_usd_per_token, baseline_price_revision,
     normalized_baseline_usd, estimated_savings_usd, ab_experiment_overhead_usd, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(invocation_id) DO NOTHING
             "#,
         )
@@ -127,13 +130,16 @@ ON CONFLICT(invocation_id) DO NOTHING
         .bind(&invocation.model_slug)
         .bind(&invocation.reasoning_effort)
         .bind(invocation.input_tokens)
+        .bind(invocation.cache_write_input_tokens)
         .bind(invocation.cached_input_tokens)
         .bind(invocation.output_tokens)
         .bind(invocation.actual_input_price_usd_per_token)
+        .bind(invocation.actual_cache_write_input_price_usd_per_token)
         .bind(invocation.actual_cached_input_price_usd_per_token)
         .bind(invocation.actual_output_price_usd_per_token)
         .bind(&invocation.actual_price_revision)
         .bind(invocation.input_cost_usd)
+        .bind(invocation.cache_write_input_cost_usd)
         .bind(invocation.cached_input_cost_usd)
         .bind(invocation.output_cost_usd)
         .bind(invocation.total_cost_usd)
@@ -141,6 +147,7 @@ ON CONFLICT(invocation_id) DO NOTHING
         .bind(&invocation.baseline_model_slug)
         .bind(&invocation.baseline_reasoning_effort)
         .bind(invocation.baseline_input_price_usd_per_token)
+        .bind(invocation.baseline_cache_write_input_price_usd_per_token)
         .bind(invocation.baseline_cached_input_price_usd_per_token)
         .bind(invocation.baseline_output_price_usd_per_token)
         .bind(&invocation.baseline_price_revision)
@@ -246,7 +253,7 @@ LIMIT ?
             r#"
 INSERT INTO model_router_daily (
     day, provider_id, model_slug, scope, reasoning_effort, decisions, invocations,
-    input_tokens, cached_input_tokens, output_tokens, total_cost_usd,
+    input_tokens, cache_write_input_tokens, cached_input_tokens, output_tokens, total_cost_usd,
     normalized_baseline_usd, estimated_savings_usd, ab_experiment_overhead_usd,
     attributed_invocations, unattributed_invocations, missing_usage_invocations,
     unknown_price_invocations, unknown_baseline_price_invocations,
@@ -256,7 +263,8 @@ INSERT INTO model_router_daily (
 SELECT
     day, provider_id, model_slug, scope, reasoning_effort,
     SUM(decisions), SUM(invocations),
-    SUM(input_tokens), SUM(cached_input_tokens), SUM(output_tokens), SUM(total_cost_usd),
+    SUM(input_tokens), SUM(cache_write_input_tokens), SUM(cached_input_tokens),
+    SUM(output_tokens), SUM(total_cost_usd),
     SUM(normalized_baseline_usd), SUM(estimated_savings_usd), SUM(ab_experiment_overhead_usd),
     SUM(attributed_invocations), SUM(unattributed_invocations), SUM(missing_usage_invocations),
     SUM(unknown_price_invocations), SUM(unknown_baseline_price_invocations),
@@ -272,6 +280,7 @@ FROM (
         COUNT(*) AS decisions,
         0 AS invocations,
         NULL AS input_tokens,
+        NULL AS cache_write_input_tokens,
         NULL AS cached_input_tokens,
         NULL AS output_tokens,
         NULL AS total_cost_usd,
@@ -302,6 +311,7 @@ FROM (
         0 AS decisions,
         COUNT(*) AS invocations,
         CASE WHEN COUNT(*) = COUNT(i.input_tokens) THEN SUM(i.input_tokens) END,
+        CASE WHEN COUNT(*) = COUNT(i.cache_write_input_tokens) THEN SUM(i.cache_write_input_tokens) END,
         CASE WHEN COUNT(*) = COUNT(i.cached_input_tokens) THEN SUM(i.cached_input_tokens) END,
         CASE WHEN COUNT(*) = COUNT(i.output_tokens) THEN SUM(i.output_tokens) END,
         SUM(i.total_cost_usd),
@@ -369,7 +379,7 @@ GROUP BY 1, 2, 3, 4, 5
             r#"
 SELECT
     day, provider_id, model_slug, scope, reasoning_effort, decisions, invocations,
-    input_tokens, cached_input_tokens, output_tokens, total_cost_usd,
+    input_tokens, cache_write_input_tokens, cached_input_tokens, output_tokens, total_cost_usd,
     normalized_baseline_usd, estimated_savings_usd, ab_experiment_overhead_usd,
     attributed_invocations, unattributed_invocations, missing_usage_invocations,
     unknown_price_invocations, unknown_baseline_price_invocations,

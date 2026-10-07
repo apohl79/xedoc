@@ -50,6 +50,7 @@ MAX_PROMPT_PREVIEW_BYTES = 508
 MAX_CLASSIFIER_FEEDBACK_CANDIDATES = 48
 MAX_CLASSIFIER_FEEDBACK_EXAMPLES = 6
 CLASSIFIER_FEEDBACK_EMBEDDING_DIMENSIONS = 384
+MODEL_LADDER_SLOT_COUNT = 15
 MAX_CLASSIFIER_PROMPT_BYTES = 7_600
 MAX_JEV_RESPONSE_BYTES = 64 * 1024
 MAX_SESSION_DECISIONS = 100
@@ -109,6 +110,16 @@ WORK_TYPE_GROUP_PROMPT = "; ".join(
 )
 MODEL_CLASSES = ("simple", "smart", "intelligent")
 CLASS_ORDER = {model_class: index for index, model_class in enumerate(MODEL_CLASSES)}
+ROUTE_EFFORT_ORDER = {
+    "none": 0,
+    "minimal": 1,
+    "low": 2,
+    "medium": 3,
+    "high": 4,
+    "xhigh": 5,
+    "max": 6,
+    "ultra": 7,
+}
 AXIS_VALUES = {
     "work_type": WORK_TYPES,
     "complexity": COMPLEXITIES,
@@ -287,6 +298,66 @@ def upgrade_policy(policy):
             changed = True
         if "curve" not in ranking:
             ranking["curve"] = "conservative"
+            changed = True
+        if "sharedMappingTable" not in ranking:
+            ranking["sharedMappingTable"] = True
+            changed = True
+        if "subagentCurves" not in ranking:
+            ranking["subagentCurves"] = copy.deepcopy(ranking["curves"])
+            changed = True
+        if "subagentCurve" not in ranking:
+            ranking["subagentCurve"] = ranking["curve"]
+            changed = True
+        if "subagentLadder" not in ranking:
+            ranking["subagentLadder"] = copy.deepcopy(ranking["ladder"])
+            changed = True
+        if "tableMode" not in ranking:
+            ranking["tableMode"] = (
+                "shared" if ranking["sharedMappingTable"] else "scope"
+            )
+            changed = True
+        if "budget" not in ranking:
+            ranking["budget"] = {
+                "primaryProviderId": "openai",
+                "secondaryProviderId": "anthropic",
+                "applyTo": "subagent",
+                "thresholdPercent": 10,
+                "primaryCurve": ranking["curve"],
+                "secondaryCurve": ranking["curve"],
+                "primaryLadder": copy.deepcopy(ranking["ladder"]),
+                "secondaryLadder": copy.deepcopy(ranking["ladder"]),
+            }
+            changed = True
+        if "tables" not in ranking:
+            default_table = {
+                "curve": ranking["curve"],
+                "ladder": copy.deepcopy(ranking["ladder"]),
+            }
+            tables = {"default": default_table}
+            subagent_table = {
+                "curve": ranking["subagentCurve"],
+                "ladder": copy.deepcopy(ranking["subagentLadder"]),
+            }
+            if subagent_table != default_table:
+                tables["subagent"] = subagent_table
+            budget = ranking["budget"]
+            selection = {
+                "shared": "default",
+                "root": "default",
+                "subagent": "subagent" if "subagent" in tables else "default",
+                "primary": "default",
+                "secondary": "default",
+            }
+            if ranking["tableMode"] == "budget":
+                for side in ("primary", "secondary"):
+                    name = f"budget-{side}"
+                    tables[name] = {
+                        "curve": budget[f"{side}Curve"],
+                        "ladder": copy.deepcopy(budget[f"{side}Ladder"]),
+                    }
+                    selection[side] = name
+            ranking["tables"] = tables
+            ranking["tableSelection"] = selection
             changed = True
     presets = policy.get("confidencePresets")
     if presets != CONFIDENCE_PRESETS:
@@ -578,27 +649,107 @@ def validate_policy(policy):
         )
     ):
         raise ValueError("policy external classifier is invalid")
-    ladder = ranking.get("ladder")
-    if not isinstance(ladder, list) or not ladder:
-        raise ValueError("policy ranking ladder must not be empty")
-    ranks = [entry.get("rank") for entry in ladder]
-    if ranks != sorted(ranks) or len(ranks) != len(set(ranks)):
-        raise ValueError("policy ranking ladder ranks must be unique and ordered")
-    for entry in ladder:
+    budget = ranking.get("budget")
+    if (
+        not isinstance(ranking.get("tableMode"), str)
+        or ranking["tableMode"] not in ("shared", "scope", "budget")
+        or not isinstance(budget, dict)
+        or any(
+            not isinstance(budget.get(key), str)
+            or not budget[key]
+            or len(budget[key].encode("utf-8")) > 64
+            for key in ("primaryProviderId", "secondaryProviderId")
+        )
+        or budget["primaryProviderId"] == budget["secondaryProviderId"]
+        or budget.get("applyTo") not in ("all", "root", "subagent")
+        or not isinstance(budget.get("thresholdPercent"), int)
+        or isinstance(budget["thresholdPercent"], bool)
+        or not 0 <= budget["thresholdPercent"] <= 100
+    ):
+        raise ValueError("policy ranking table mode or provider budget rule is invalid")
+    ranks = None
+    for ladder_key, container in (
+        ("ladder", ranking),
+        ("subagentLadder", ranking),
+        ("primaryLadder", budget),
+        ("secondaryLadder", budget),
+    ):
+        ladder = container.get(ladder_key)
+        if not isinstance(ladder, list) or not ladder:
+            raise ValueError(f"policy ranking {ladder_key} must not be empty")
+        ladder_ranks = [entry.get("rank") for entry in ladder]
+        if ladder_ranks != sorted(ladder_ranks) or len(ladder_ranks) != len(set(ladder_ranks)):
+            raise ValueError(f"policy ranking {ladder_key} ranks must be unique and ordered")
+        for entry in ladder:
+            if (
+                not isinstance(entry.get("rank"), int)
+                or isinstance(entry.get("rank"), bool)
+                or entry["rank"] < 1
+                or entry.get("class") not in CLASS_ORDER
+                or valid_route_shape(entry) is None
+            ):
+                raise ValueError(f"policy ranking {ladder_key} contains an invalid slot")
+        if ladder_key == "ladder":
+            ranks = ladder_ranks
+        elif ladder_ranks != ranks:
+            raise ValueError(f"policy ranking {ladder_key} ranks must match the root ladder")
+    if not isinstance(ranking.get("sharedMappingTable"), bool):
+        raise ValueError("policy ranking shared mapping table is invalid")
+    for curves_key, curve_key in (
+        ("curves", "curve"),
+        ("subagentCurves", "subagentCurve"),
+    ):
+        validate_ranking_curves(ranking, ranks, curves_key, curve_key)
+    curve_ids = {curve["id"] for curve in ranking["curves"]}
+    if any(
+        budget.get(key) not in curve_ids
+        for key in ("primaryCurve", "secondaryCurve")
+    ):
+        raise ValueError("policy budget tables select an unknown ranking curve")
+    tables = ranking.get("tables")
+    selection = ranking.get("tableSelection")
+    if (
+        not isinstance(tables, dict)
+        or not 1 <= len(tables) <= 12
+        or not isinstance(selection, dict)
+        or set(selection) != {"shared", "root", "subagent", "primary", "secondary"}
+        or any(
+            not isinstance(name, str) or name not in tables
+            for name in selection.values()
+        )
+    ):
+        raise ValueError("policy named routing tables are invalid")
+    for name, table in tables.items():
         if (
-            not isinstance(entry.get("rank"), int)
-            or isinstance(entry.get("rank"), bool)
-            or entry["rank"] < 1
-            or entry.get("class") not in CLASS_ORDER
-            or valid_route_shape(entry) is None
+            not isinstance(name, str)
+            or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}", name) is None
+            or not isinstance(table, dict)
+            or set(table) != {"curve", "ladder"}
+            or not isinstance(table["curve"], str)
+            or table["curve"] not in curve_ids
+            or not isinstance(table["ladder"], list)
+            or len(table["ladder"]) != MODEL_LADDER_SLOT_COUNT
+            or [
+                entry.get("rank") if isinstance(entry, dict) else None
+                for entry in table["ladder"]
+            ] != ranks
+            or any(
+                not isinstance(entry, dict)
+                or entry.get("class") not in CLASS_ORDER
+                or valid_route_shape(entry) is None
+                for entry in table["ladder"]
+            )
         ):
-            raise ValueError("policy ranking ladder contains an invalid slot")
-    curves = ranking.get("curves")
+            raise ValueError("policy named routing table is invalid")
+
+
+def validate_ranking_curves(ranking, ranks, curves_key, curve_key):
+    curves = ranking.get(curves_key)
     if (
         not isinstance(curves, list)
         or not curves
         or len(curves) > 12
-        or not isinstance(ranking.get("curve"), str)
+        or not isinstance(ranking.get(curve_key), str)
     ):
         raise ValueError("policy ranking curves are invalid")
     curve_ids = set()
@@ -650,7 +801,7 @@ def validate_policy(policy):
             previous_maximum_rank = score_range["maximumRank"]
         if expected_minimum_score != ranking["maximumScore"] + 1:
             raise ValueError("policy ranking curve must cover the score domain")
-    if ranking["curve"] not in curve_ids:
+    if ranking[curve_key] not in curve_ids:
         raise ValueError("policy selects an unknown ranking curve")
 
 
@@ -1800,26 +1951,43 @@ def route_label(route):
     )
 
 
-def ladder(policy):
-    return policy["ranking"]["ladder"]
+def sort_route_options(routes):
+    return sorted(
+        routes,
+        key=lambda route: (
+            route["model"].casefold(),
+            ROUTE_EFFORT_ORDER.get(
+                route["reasoningEffort"].casefold(), len(ROUTE_EFFORT_ORDER)
+            ),
+            route["reasoningEffort"].casefold(),
+            route["providerId"].casefold(),
+        ),
+    )
 
 
-def ranking_curve(policy):
+def ladder(policy, table=None):
     ranking = policy["ranking"]
-    return next(curve for curve in ranking["curves"] if curve["id"] == ranking["curve"])
+    return ranking["tables"][table or ranking["tableSelection"]["shared"]]["ladder"]
+
+
+def ranking_curve(policy, table):
+    ranking = policy["ranking"]
+    selected = ranking["tables"][table]["curve"]
+    return next(curve for curve in ranking["curves"] if curve["id"] == selected)
 
 
 def ranking_curve_options(policy):
+    curves = policy["ranking"]["curves"]
     return [
         {"id": curve["id"], "label": curve["label"]}
-        for curve in policy["ranking"]["curves"]
+        for curve in curves
     ]
 
 
-def score_range(policy, score):
+def score_range(policy, score, table):
     ranking = policy["ranking"]
     bounded_score = max(ranking["minimumScore"], min(ranking["maximumScore"], score))
-    curve = ranking_curve(policy)
+    curve = ranking_curve(policy, table)
     return (
         bounded_score,
         curve,
@@ -1841,21 +2009,18 @@ def entry_route(entry):
     }
 
 
-def ladder_entry(policy, rank):
-    return next((entry for entry in ladder(policy) if entry["rank"] == rank), None)
-
-
 def policy_route_options(policy, context):
     routes = offered_routes(context)
     available = {route_key(route) for route in routes}
-    for entry in ladder(policy):
-        route = entry_route(entry)
-        if route not in routes:
-            routes.append(route)
+    for table in policy["ranking"]["tables"].values():
+        for entry in table["ladder"]:
+            route = entry_route(entry)
+            if route not in routes:
+                routes.append(route)
     reporting_baseline = policy.get("reportingBaseline")
     if reporting_baseline is not None and reporting_baseline not in routes:
         routes.append(reporting_baseline)
-    return routes, available
+    return sort_route_options(routes), available
 
 
 def policy_route_id(route, routes):
@@ -1923,17 +2088,10 @@ def policy_menu(policy, context):
                 policy["confidence"],
                 confidence_preset_options(policy),
             ),
-            policy_select_field(
-                "ranking-curve",
-                "Smarter-model tension",
-                policy["ranking"]["curve"],
-                ranking_curve_options(policy),
-                "Controls the nonlinear score ranges used to move up the model ladder.",
-            ),
             policy_action_field(
-                "model-ladder",
-                f"Model ladder: {len(ladder(policy))} ranked slots",
-                "open-policy-ladder",
+                "routing-tables",
+                "Routing tables",
+                "open-routing-tables",
             ),
             policy_action_field(
                 "reporting-baseline",
@@ -1968,7 +2126,168 @@ def policy_menu(policy, context):
     )
 
 
-def policy_ladder_form(policy, context):
+def routing_tables_menu(policy, context):
+    ranking = policy["ranking"]
+    budget = ranking["budget"]
+    mode = ranking["tableMode"]
+    selection = ranking["tableSelection"]
+    table_options = [
+        {"id": name, "label": name}
+        for name in sorted(ranking["tables"])
+    ]
+    fields = [
+        policy_select_field(
+            "table-mode",
+            "Table selection",
+            mode,
+            [
+                {"id": "shared", "label": "One table for all decisions"},
+                {"id": "scope", "label": "Separate root and subagent tables"},
+                {"id": "budget", "label": "Select by provider budget"},
+            ],
+        )
+    ]
+    if mode == "budget":
+        provider_ids = sorted({
+            budget["primaryProviderId"],
+            budget["secondaryProviderId"],
+            *(route.get("providerId") for route in eligible(context)),
+            *(context.get("providerBudgets") or {}),
+        } - {None, ""})
+        provider_options = [{"id": provider_id, "label": provider_id} for provider_id in provider_ids]
+        fields.extend(
+            [
+                policy_select_field(
+                    "budget-primary-provider",
+                    "First provider",
+                    budget["primaryProviderId"],
+                    provider_options,
+                ),
+                policy_select_field(
+                    "budget-secondary-provider",
+                    "Second provider",
+                    budget["secondaryProviderId"],
+                    provider_options,
+                ),
+                {
+                    "type": "text",
+                    "id": "budget-threshold",
+                    "label": "Switch threshold (percentage points)",
+                    "description": "Use the first table when first consumed % minus second consumed % is below this value.",
+                    "value": str(budget["thresholdPercent"]),
+                    "maxBytes": 3,
+                    "sensitive": False,
+                },
+                policy_select_field(
+                    "budget-apply-to",
+                    "Apply budget routing to",
+                    budget["applyTo"],
+                    [
+                        {"id": "all", "label": "All decisions"},
+                        {"id": "root", "label": "Root only"},
+                        {"id": "subagent", "label": "Subagents only"},
+                    ],
+                ),
+                policy_select_field(
+                    "budget-primary-table",
+                    f"{budget['primaryProviderId']} table",
+                    selection["primary"],
+                    table_options,
+                ),
+                policy_select_field(
+                    "budget-secondary-table",
+                    f"{budget['secondaryProviderId']} table",
+                    selection["secondary"],
+                    table_options,
+                ),
+                policy_select_field(
+                    "root-table",
+                    "Root fallback table",
+                    selection["root"],
+                    table_options,
+                ),
+                policy_select_field(
+                    "subagent-table",
+                    "Subagent fallback table",
+                    selection["subagent"],
+                    table_options,
+                ),
+            ]
+        )
+    elif mode == "scope":
+        fields.extend(
+            [
+                policy_select_field(
+                    "root-table",
+                    "Root table",
+                    selection["root"],
+                    table_options,
+                ),
+                policy_select_field(
+                    "subagent-table",
+                    "Subagent table",
+                    selection["subagent"],
+                    table_options,
+                ),
+            ]
+        )
+    else:
+        fields.append(
+            policy_select_field(
+                "shared-table",
+                "Table for all decisions",
+                selection["shared"],
+                table_options,
+            )
+        )
+    fields.append(
+        policy_action_field(
+            "manage-tables",
+            f"Manage named tables: {len(ranking['tables'])}",
+            "open-table-manager",
+        )
+    )
+    return form(
+        policy,
+        "Routing tables",
+        "settings:policy:routing-tables",
+        fields,
+        "save-routing-tables",
+        "Save routing tables",
+        subtitle="Budget mode uses configured provider spend; missing budgets use the scope's fallback table.",
+        cancel_action_id="back-policy",
+    )
+
+
+def table_manager_menu(policy, context):
+    items = [
+        item(
+            "create-table",
+            "Create named table",
+            "Copy an existing table's curve and 15 ranked model slots.",
+            "open-create-table",
+        )
+    ]
+    for name, table in sorted(policy["ranking"]["tables"].items()):
+        items.append(
+            item(
+                f"table-{name}",
+                f"{name}: {len(table['ladder'])} model slots",
+                f"Score curve: {table['curve']}",
+                f"open-table-{name}",
+            )
+        )
+    items.append(item("back", "Back", "Return to routing table selection.", "back-routing-tables"))
+    return menu(
+        policy,
+        "Named routing tables",
+        items,
+        continuation="settings:policy:table-manager",
+    )
+
+
+def named_table_form(policy, context, name):
+    table = policy["ranking"]["tables"][name]
     routes, available = policy_route_options(policy, context)
     route_options = [
         {
@@ -1980,9 +2299,16 @@ def policy_ladder_form(policy, context):
     ]
     return form(
         policy,
-        "Model ladder",
-        "settings:policy:ladder",
+        f"Table: {name}",
+        f"settings:policy:table:{name}",
         [
+            policy_select_field(
+                "table-curve",
+                "Score curve",
+                table["curve"],
+                ranking_curve_options(policy),
+            ),
+        ] + [
             policy_select_field(
                 f"ladder-{entry['rank']}",
                 f"Rank {entry['rank']} · {entry['class']}",
@@ -1990,12 +2316,18 @@ def policy_ladder_form(policy, context):
                 route_options,
                 search_placeholder="Filter model routes",
             )
-            for entry in ladder(policy)
+            for entry in table["ladder"]
+        ] + [
+            policy_action_field(
+                "delete-table",
+                f"Delete {name}",
+                f"delete-table-{name}",
+            )
         ],
-        "save-policy-ladder",
-        "Save ladder",
-        subtitle="Choose a model route for each ranked slot.",
-        cancel_action_id="back-policy",
+        f"save-table-{name}",
+        "Save table",
+        subtitle="Assign a model route to every ranked slot.",
+        cancel_action_id="back-table-manager",
     )
 
 
@@ -2042,8 +2374,40 @@ def settings_surface(policy, context, continuation):
         )
     if continuation == "settings:policy":
         return policy_menu(policy, context)
-    if continuation == "settings:policy:ladder":
-        return policy_ladder_form(policy, context)
+    if continuation == "settings:policy:routing-tables":
+        return routing_tables_menu(policy, context)
+    if continuation == "settings:policy:table-manager":
+        return table_manager_menu(policy, context)
+    if continuation == "settings:policy:create-table":
+        return form(
+            policy,
+            "Create named table",
+            continuation,
+            [
+                text_field(
+                    "table-name",
+                    "Name",
+                    "Use 1–32 letters, digits, underscores, or hyphens; start with a letter or digit.",
+                    32,
+                ),
+                policy_select_field(
+                    "copy-table",
+                    "Copy from",
+                    policy["ranking"]["tableSelection"]["shared"],
+                    [
+                        {"id": name, "label": name}
+                        for name in sorted(policy["ranking"]["tables"])
+                    ],
+                ),
+            ],
+            "create-table",
+            "Create table",
+            cancel_action_id="back-table-manager",
+        )
+    if continuation.startswith("settings:policy:table:"):
+        name = continuation.removeprefix("settings:policy:table:")
+        if name in policy["ranking"]["tables"]:
+            return named_table_form(policy, context, name)
     if continuation == "settings:policy:reporting-baseline":
         routes, available = policy_route_options(policy, context)
         route_options = [
@@ -2084,6 +2448,7 @@ def settings_surface(policy, context, continuation):
                 )
                 if route:
                     routes.append(route)
+        routes = sort_route_options(routes)
         route_options = [
             {"id": f"route-{index}", "label": route_label(route)}
             for index, route in enumerate(routes)
@@ -2438,8 +2803,39 @@ def settings_response(request, policy):
         return root_menu(policy, context)
     if action_id == "open-policy":
         return policy_menu(policy, context)
-    if action_id == "open-policy-ladder":
-        return policy_ladder_form(policy, context)
+    if action_id == "open-routing-tables":
+        return routing_tables_menu(policy, context)
+    if action_id == "open-table-manager" or action_id == "back-table-manager":
+        return table_manager_menu(policy, context)
+    if action_id == "open-create-table":
+        return settings_surface(policy, context, "settings:policy:create-table")
+    if action_id.startswith("open-table-"):
+        name = action_id.removeprefix("open-table-")
+        if name in policy["ranking"]["tables"]:
+            return named_table_form(policy, context, name)
+    if action_id == "create-table":
+        name = values.get("table-name")
+        source = values.get("copy-table")
+        ranking = copy.deepcopy(policy["ranking"])
+        if (
+            not isinstance(name, str)
+            or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}", name) is None
+            or name in ranking["tables"]
+            or len(ranking["tables"]) >= 12
+            or source not in ranking["tables"]
+        ):
+            return error_notice(policy, "Choose a unique table name and an existing source table.")
+        ranking["tables"][name] = copy.deepcopy(ranking["tables"][source])
+        update(policy, ranking=ranking)
+        return named_table_form(policy, context, name)
+    if action_id.startswith("delete-table-"):
+        name = action_id.removeprefix("delete-table-")
+        ranking = copy.deepcopy(policy["ranking"])
+        if name not in ranking["tables"] or name in ranking["tableSelection"].values():
+            return error_notice(policy, "Assign another table to every use before deleting this one.")
+        del ranking["tables"][name]
+        update(policy, ranking=ranking)
+        return table_manager_menu(policy, context)
     if action_id == "open-reporting-baseline":
         return settings_surface(
             policy, context, "settings:policy:reporting-baseline"
@@ -2462,20 +2858,61 @@ def settings_response(request, policy):
             return error_notice(
                 policy, "Confidence must be one of the offered choices."
             )
-        curve = values.get("ranking-curve")
-        if curve not in {curve["id"] for curve in policy["ranking"]["curves"]}:
-            return error_notice(
-                policy, "Smarter-model tension must be one of the offered choices."
-            )
+        update(policy, confidence=confidence)
+        return policy_menu(policy, context)
+    if action_id == "save-routing-tables":
+        mode = values.get("table-mode")
+        if mode not in ("shared", "scope", "budget"):
+            return error_notice(policy, "Choose an offered routing table mode.")
+        ranking = copy.deepcopy(policy["ranking"])
+        ranking["tableMode"] = mode
+        ranking["sharedMappingTable"] = mode == "shared"
+        previous_mode = policy["ranking"]["tableMode"]
+        visible_tables = {
+            "shared": ("shared",),
+            "scope": ("root", "subagent"),
+            "budget": ("primary", "secondary", "root", "subagent"),
+        }[previous_mode]
+        for key in visible_tables:
+            field_id = f"budget-{key}-table" if key in ("primary", "secondary") else f"{key}-table"
+            name = values.get(field_id)
+            if name not in ranking["tables"]:
+                return error_notice(policy, "Choose an existing named routing table.")
+            ranking["tableSelection"][key] = name
+        if mode == "budget" and policy["ranking"]["tableMode"] == "budget":
+            budget = ranking["budget"]
+            primary = values.get("budget-primary-provider")
+            secondary = values.get("budget-secondary-provider")
+            offered_providers = {
+                budget["primaryProviderId"],
+                budget["secondaryProviderId"],
+                *(route.get("providerId") for route in eligible(context)),
+                *(context.get("providerBudgets") or {}),
+            }
+            if (
+                primary not in offered_providers
+                or secondary not in offered_providers
+                or primary == secondary
+            ):
+                return error_notice(policy, "Choose two different offered providers.")
+            threshold = values.get("budget-threshold")
+            if not isinstance(threshold, str) or re.fullmatch(r"[0-9]{1,3}", threshold) is None:
+                return error_notice(policy, "Threshold must be a number from 0 to 100.")
+            threshold = int(threshold)
+            if threshold > 100:
+                return error_notice(policy, "Threshold must be a number from 0 to 100.")
+            apply_to = values.get("budget-apply-to")
+            if apply_to not in ("all", "root", "subagent"):
+                return error_notice(policy, "Choose where budget routing applies.")
+            budget["primaryProviderId"] = primary
+            budget["secondaryProviderId"] = secondary
+            budget["thresholdPercent"] = threshold
+            budget["applyTo"] = apply_to
         update(
             policy,
-            confidence=confidence,
-            ranking={
-                **policy["ranking"],
-                "curve": curve,
-            },
+            ranking=ranking,
         )
-        return policy_menu(policy, context)
+        return routing_tables_menu(policy, context)
     if action_id == "set-reporting-baseline":
         routes, available = policy_route_options(policy, context)
         route_by_id = {
@@ -2510,6 +2947,7 @@ def settings_response(request, policy):
                 )
                 if route:
                     routes.append(route)
+        routes = sort_route_options(routes)
         selected = values.get("classifier-model")
         if selected == "none":
             classifier_route = None
@@ -2569,12 +3007,18 @@ def settings_response(request, policy):
         return policy_menu(policy, context)
     if action_id == "set-jev-api-key":
         return policy_menu(policy, context)
-    if action_id == "save-policy-ladder":
+    if action_id.startswith("save-table-"):
+        name = action_id.removeprefix("save-table-")
+        if name not in policy["ranking"]["tables"]:
+            return error_notice(policy, "This named table no longer exists.")
+        curve = values.get("table-curve")
+        if curve not in {item["id"] for item in policy["ranking"]["curves"]}:
+            return error_notice(policy, "Choose an offered score curve.")
         routes, available = policy_route_options(policy, context)
         route_by_id = {
             f"route-{index}": route for index, route in enumerate(routes)
         }
-        updated_ladder = copy.deepcopy(ladder(policy))
+        updated_ladder = copy.deepcopy(ladder(policy, name))
         for entry in updated_ladder:
             route = route_by_id.get(values.get(f"ladder-{entry['rank']}"))
             if route is None or route_key(route) not in available:
@@ -2582,14 +3026,14 @@ def settings_response(request, policy):
                     policy, f"Choose an eligible model route for rank {entry['rank']}."
                 )
             entry.update(route)
-        update(
-            policy,
-            ranking={
-                **policy["ranking"],
-                "ladder": updated_ladder,
-            },
-        )
-        return policy_menu(policy, context)
+        ranking = copy.deepcopy(policy["ranking"])
+        ranking["tables"][name] = {"curve": curve, "ladder": updated_ladder}
+        update(policy, ranking=ranking)
+        return table_manager_menu(policy, context)
+    if action_id == "back-table-manager":
+        return table_manager_menu(policy, context)
+    if action_id == "back-routing-tables":
+        return routing_tables_menu(policy, context)
     if action_id == "back-policy":
         return policy_menu(policy, context)
     if action_id == "back":
@@ -3241,6 +3685,48 @@ def axis_class(policy, axis_id, class_id):
     return next(item for item in axis["classes"] if item["id"] == class_id)
 
 
+def selected_table(policy, context):
+    ranking = policy["ranking"]
+    mode = ranking["tableMode"]
+    selection = ranking["tableSelection"]
+    scope = (context.get("turn") or {}).get("scope", "root")
+    if mode == "shared":
+        return selection["shared"], selection["shared"]
+    if mode == "scope":
+        table = selection["subagent"] if scope == "subagent" else selection["root"]
+        return table, table
+    budget = ranking["budget"]
+    fallback = selection["subagent"] if scope == "subagent" else selection["root"]
+    if budget["applyTo"] not in ("all", scope):
+        return fallback, f"{fallback} (budget routing not applied)"
+    percentages = context.get("providerBudgets") or {}
+    if not isinstance(percentages, dict):
+        return fallback, f"{fallback} (provider budgets unavailable)"
+    primary = percentages.get(budget["primaryProviderId"])
+    secondary = percentages.get(budget["secondaryProviderId"])
+    if any(
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(value)
+        or value < 0
+        for value in (primary, secondary)
+    ):
+        return fallback, f"{fallback} (provider budgets unavailable)"
+    if primary >= 100 > secondary:
+        side = "secondary"
+    elif secondary >= 100 > primary:
+        side = "primary"
+    else:
+        side = (
+            "primary"
+            if primary - secondary < budget["thresholdPercent"]
+            else "secondary"
+        )
+    provider_id = budget[f"{side}ProviderId"]
+    table = selection[side]
+    return table, f"{table} ({provider_id}; {primary:.0f}% vs {secondary:.0f}% used)"
+
+
 def choose_route(policy, context, axes):
     selected = [axis_class(policy, axis_id, axes[axis_id]) for axis_id in AXIS_VALUES]
     score = sum(item["points"] for item in selected)
@@ -3253,9 +3739,10 @@ def choose_route(policy, context, axes):
         key=CLASS_ORDER.__getitem__,
     )
     available = {route_key(route) for route in offered_routes(context)}
+    table, table_label = selected_table(policy, context)
     eligible_entries = [
         entry
-        for entry in ladder(policy)
+        for entry in ladder(policy, table)
         if (
             CLASS_ORDER[minimum_class]
             <= CLASS_ORDER[entry["class"]]
@@ -3276,10 +3763,11 @@ def choose_route(policy, context, axes):
             "scoreRange": None,
             "targetRank": None,
             "selectedRank": None,
+            "routingTable": table_label,
         }
     minimum_rank = eligible_entries[0]["rank"]
     maximum_rank = eligible_entries[-1]["rank"]
-    bounded_score, curve, selected_range = score_range(policy, score)
+    bounded_score, curve, selected_range = score_range(policy, score, table)
     domain = selected_range["maximumScore"] - selected_range["minimumScore"]
     offset = (
         0
@@ -3308,6 +3796,7 @@ def choose_route(policy, context, axes):
         "scoreRange": selected_range,
         "targetRank": target_rank,
         "selectedRank": entry["rank"],
+        "routingTable": table_label,
     }
 
 
@@ -3362,7 +3851,8 @@ def routing_calculation(
         else "overall confidence unavailable; human approval required"
     )
     calculation = (
-        f"{ranking_detail} · {calibration_detail} · similarity "
+        f"table {selection['routingTable']} · {ranking_detail} · "
+        f"{calibration_detail} · similarity "
         f"{percentage(similarity)} (margin {percentage(margin)})"
     )
     if embedding_elapsed_ms is not None and embedding_input_count is not None:
@@ -3536,6 +4026,8 @@ def approval_continuation(
     steering=False,
 ):
     turn = context.get("turn") or {}
+    budget = policy["ranking"]["budget"]
+    percentages = context.get("providerBudgets") or {}
     state = {
         "axes": axes,
         "confidence": confidence,
@@ -3545,6 +4037,14 @@ def approval_continuation(
         "routerPrompt": prompt_preview(context.get("routerPrompt")),
         "routerDecisionId": context.get("routerDecisionId"),
         "thread": context.get("thread"),
+        "providerBudgets": {
+            provider_id: percentages[provider_id]
+            for provider_id in (
+                budget["primaryProviderId"],
+                budget["secondaryProviderId"],
+            )
+            if isinstance(percentages, dict) and provider_id in percentages
+        },
         "scope": turn.get("scope", "root"),
         "policyRevision": str(policy["revision"]),
         "recalibrated": recalibrated,
@@ -5098,6 +5598,7 @@ def approval_state(continuation):
         steering = state.get("steering", False)
         scope = state.get("scope", "root")
         router_decision_id = state.get("routerDecisionId")
+        percentages = state.get("providerBudgets", {})
         context = {
             "eligibleRoutes": state["eligibleRoutes"],
             "currentRoute": state.get("currentRoute"),
@@ -5105,6 +5606,7 @@ def approval_state(continuation):
             "routerDecisionId": router_decision_id,
             "turn": {"scope": scope},
             "thread": state.get("thread"),
+            "providerBudgets": percentages,
         }
         policy_revision = state["policyRevision"]
         recalibrated = state.get("recalibrated", False)
@@ -5124,6 +5626,17 @@ def approval_state(continuation):
                 or len(classifier_notice.encode()) > 256
             )
             or scope not in ("root", "subagent")
+            or not isinstance(percentages, dict)
+            or len(percentages) > 2
+            or any(
+                not isinstance(provider_id, str)
+                or len(provider_id.encode("utf-8")) > 64
+                or not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+                or value < 0
+                for provider_id, value in percentages.items()
+            )
             or embedding_elapsed_ms is not None
             and (
                 not isinstance(embedding_elapsed_ms, int)

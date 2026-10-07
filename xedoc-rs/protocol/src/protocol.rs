@@ -3227,6 +3227,8 @@ pub struct TurnContextItem {
     pub file_system_sandbox_policy: Option<FileSystemSandboxPolicy>,
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_provider_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comp_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub personality: Option<Personality>,
@@ -6080,6 +6082,7 @@ mod tests {
                 },
             ])),
             model: "gpt-5".to_string(),
+            model_provider_id: None,
             comp_hash: None,
             personality: None,
             collaboration_mode: None,

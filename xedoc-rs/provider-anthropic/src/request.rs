@@ -53,6 +53,7 @@ fn resolve_model(model: &str) -> String {
         "fable" => "claude-fable-5-1",
         "opus" | "opus-4.8" | "claude-opus-4-7" => "claude-opus-4-8",
         "opus-5" => "claude-opus-5",
+        "sonnet-5.5" | "claude-sonnet-5.5" => "claude-sonnet-5-5",
         "sonnet" | "claude-sonnet-4-6" => "claude-sonnet-5",
         "haiku" | "claude-haiku-4-5" => "claude-haiku-4-5-20251001",
         model => model,
@@ -217,6 +218,7 @@ fn supports_adaptive_thinking(model: &str) -> bool {
             | "claude-opus-5-5"
             | "claude-sonnet-4-6"
             | "claude-sonnet-5"
+            | "claude-sonnet-5-5"
             | "claude-fable-5-1"
     )
 }

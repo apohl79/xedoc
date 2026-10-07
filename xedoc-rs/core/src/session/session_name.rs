@@ -117,7 +117,9 @@ impl Session {
             window_id,
             XedocResponsesRequestKind::SessionName,
         );
-        let mut client_session = self.services.model_client.load().new_session();
+        let mut client_session = self
+            .model_client_session_for_turn(turn_context.as_ref())
+            .await;
         let mut stream = client_session
             .stream(
                 &prompt,

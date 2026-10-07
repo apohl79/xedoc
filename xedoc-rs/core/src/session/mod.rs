@@ -1379,6 +1379,12 @@ impl Session {
         }
     }
 
+    pub(crate) fn base_instructions_for_turn(turn_context: &TurnContext) -> BaseInstructions {
+        BaseInstructions {
+            text: turn_context.base_instructions.clone(),
+        }
+    }
+
     pub(crate) async fn base_instructions_for_model(
         &self,
         model: &str,
@@ -1558,7 +1564,7 @@ impl Session {
             AutoCompactTokenLimitScope::BodyAfterPrefix
         ) {
             let history = self.clone_history().await;
-            let base_instructions = self.get_base_instructions().await;
+            let base_instructions = Self::base_instructions_for_turn(turn_context);
             history.estimate_token_count_with_base_instructions(&base_instructions)
         } else {
             None
@@ -3461,11 +3467,10 @@ impl Session {
         let mut contextual_user_sections = Vec::<String>::with_capacity(2);
         let mut supplement_sections = Vec::<String>::new();
         let mut separate_developer_sections = Vec::<String>::new();
-        let (previous_turn_settings, base_instructions, session_source, auto_compact_window_ids) = {
+        let (previous_turn_settings, session_source, auto_compact_window_ids) = {
             let state = self.state.lock().await;
             (
                 state.previous_turn_settings(),
-                state.session_configuration.base_instructions.clone(),
                 state.session_configuration.session_source.clone(),
                 state.auto_compact_window_ids(),
             )
@@ -3490,7 +3495,8 @@ impl Session {
         {
             let model_info = turn_context.model_info.clone();
             let has_baked_personality = model_info.supports_personality()
-                && base_instructions == model_info.get_model_instructions(Some(personality));
+                && turn_context.base_instructions
+                    == model_info.get_model_instructions(Some(personality));
             if !has_baked_personality
                 && let Some(personality_message) =
                     crate::context_manager::updates::personality_message_for(
@@ -3972,7 +3978,7 @@ impl Session {
 
     pub(crate) async fn recompute_token_usage(&self, turn_context: &TurnContext) {
         let history = self.clone_history().await;
-        let base_instructions = self.get_base_instructions().await;
+        let base_instructions = Self::base_instructions_for_turn(turn_context);
         let Some(estimated_total_tokens) =
             history.estimate_token_count_with_base_instructions(&base_instructions)
         else {

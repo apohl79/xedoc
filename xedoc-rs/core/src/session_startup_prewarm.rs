@@ -304,7 +304,9 @@ async fn schedule_startup_prewarm_inner(
             window_id,
             XedocResponsesRequestKind::Prewarm,
         );
-    let mut client_session = session.services.model_client.load().new_session();
+    let mut client_session = session
+        .model_client_session_for_turn(startup_turn_context.as_ref())
+        .await;
     let websocket_warmup_started_at = Instant::now();
     client_session
         .prewarm_websocket(

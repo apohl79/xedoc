@@ -89,6 +89,7 @@ impl ModelRouterReportRequestProcessor {
                     decisions: day.decisions,
                     invocations: day.invocations,
                     input_tokens: day.input_tokens,
+                    cache_write_input_tokens: day.cache_write_input_tokens,
                     cached_input_tokens: day.cached_input_tokens,
                     output_tokens: day.output_tokens,
                     total_cost_usd: day.total_cost_usd,

@@ -814,6 +814,8 @@ pub struct ModelRouterReportDay {
     #[ts(type = "number | null")]
     pub input_tokens: Option<i64>,
     #[ts(type = "number | null")]
+    pub cache_write_input_tokens: Option<i64>,
+    #[ts(type = "number | null")]
     pub cached_input_tokens: Option<i64>,
     #[ts(type = "number | null")]
     pub output_tokens: Option<i64>,

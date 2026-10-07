@@ -92,7 +92,7 @@ pub(crate) async fn build_prompt_input_from_session(
         .await
         .for_prompt(&turn_context.model_info.input_modalities);
     let router = built_tools(sess, step_context.as_ref(), &CancellationToken::new()).await?;
-    let base_instructions = sess.get_base_instructions().await;
+    let base_instructions = Session::base_instructions_for_turn(turn_context.as_ref());
     let prompt = build_prompt(
         prompt_input,
         router.as_ref(),

@@ -7,13 +7,7 @@ use super::*;
 
 impl ChatWidget {
     pub(super) fn restore_reasoning_status_header(&mut self) {
-        if self.reasoning_header.is_none() {
-            self.reasoning_header = extract_first_bold(&self.reasoning_buffer);
-        }
-        if let Some(header) = self.reasoning_header.clone() {
-            self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Thinking;
-            self.set_status_header(header);
-        } else if self.bottom_pane.is_task_running() {
+        if self.bottom_pane.is_task_running() {
             self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Working;
             self.set_status_header(String::from("Working"));
         }
@@ -206,9 +200,8 @@ impl ChatWidget {
     }
 
     pub(super) fn on_agent_reasoning_delta(&mut self, delta: String) {
-        // For reasoning deltas, do not stream to history. Accumulate the
-        // current reasoning block and extract the first bold element
-        // (between **/**) as the chunk header. Show this header as status.
+        // For reasoning deltas, do not stream to history. Accumulate the current
+        // reasoning block, but keep provider-generated headings out of the status label.
         self.reasoning_buffer.push_str(&delta);
 
         if self.safety_buffering_is_waiting() {
@@ -222,30 +215,6 @@ impl ChatWidget {
 
         if self.reasoning_header.is_none() {
             self.reasoning_header = extract_first_bold(&self.reasoning_buffer);
-        }
-        let Some(header) = self.reasoning_header.as_deref() else {
-            // Fallback while we don't yet have a bold header: leave existing header as-is.
-            return;
-        };
-
-        let status = &self.status_state.current_status;
-        if self.status_state.terminal_title_status_kind == TerminalTitleStatusKind::Thinking
-            && status.header == header
-            && status.details.is_none()
-            && status.details_max_lines == STATUS_DETAILS_DEFAULT_MAX_LINES
-            && self
-                .bottom_pane
-                .status_widget()
-                .is_none_or(|status| status.header() == header)
-        {
-            return;
-        }
-
-        // Update the shimmer header to the extracted reasoning chunk header.
-        let header = header.to_string();
-        self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Thinking;
-        if !self.set_status_header(header) {
-            self.request_redraw();
         }
     }
 

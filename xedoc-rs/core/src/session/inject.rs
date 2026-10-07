@@ -1,6 +1,9 @@
 use super::input_queue::TurnInput;
 use super::session::Session;
 use super::turn_context::TurnContext;
+use crate::model_router_script_host::ModelRouterScriptDecisionOutcome;
+use crate::model_router_script_host::ModelRouterScriptHost;
+use crate::model_router_script_host::ModelRouterScriptInteractionOutcome;
 use crate::state::ActiveTurn;
 use crate::state::TurnState;
 use crate::tasks::RegularTask;
@@ -46,6 +49,23 @@ impl Session {
         self: &Arc<Self>,
         input: Vec<ResponseItem>,
     ) -> Result<(), TryStartTurnIfIdleError> {
+        self.try_start_turn_if_idle_inner(input, uuid::Uuid::new_v4().to_string())
+            .await
+    }
+
+    pub(crate) async fn try_start_turn_if_idle_with_response(
+        self: &Arc<Self>,
+        input: Vec<ResponseItem>,
+        sub_id: String,
+    ) -> Result<(), TryStartTurnIfIdleError> {
+        self.try_start_turn_if_idle_inner(input, sub_id).await
+    }
+
+    async fn try_start_turn_if_idle_inner(
+        self: &Arc<Self>,
+        input: Vec<ResponseItem>,
+        sub_id: String,
+    ) -> Result<(), TryStartTurnIfIdleError> {
         if input.is_empty() {
             return Ok(());
         }
@@ -83,9 +103,7 @@ impl Session {
             ));
         }
 
-        let turn_context = self
-            .new_default_turn_with_sub_id(uuid::Uuid::new_v4().to_string())
-            .await;
+        let mut turn_context = self.new_default_turn_with_sub_id(sub_id.clone()).await;
         if turn_context.mode == ModeKind::Plan {
             self.clear_reserved_idle_turn(&turn_state).await;
             self.maybe_start_turn_for_pending_work().await;
@@ -93,6 +111,215 @@ impl Session {
                 TryStartTurnIfIdleRejectionReason::PlanMode,
                 input,
             ));
+        }
+        if let Some(script_host) = ModelRouterScriptHost::from_config(turn_context.config.as_ref())
+            && let Some(baseline_route) =
+                crate::model_router::current_script_route(turn_context.config.as_ref())
+        {
+            let eligible_routes = crate::model_router::eligible_script_routes(
+                turn_context.config.as_ref(),
+                &self.services.models_manager,
+            )
+            .await;
+            let current_route = self
+                .state
+                .lock()
+                .await
+                .model_router_applied_route(&baseline_route)
+                .filter(|route| {
+                    eligible_routes.iter().any(|eligible| {
+                        eligible.provider_id == route.provider_id
+                            && eligible.model == route.model
+                            && eligible.reasoning_efforts.contains(&route.reasoning_effort)
+                    })
+                })
+                .unwrap_or_else(|| baseline_route.clone());
+            self.begin_model_router_ab_root_turn(baseline_route.clone())
+                .await;
+            let cancellation = self.begin_model_router_script_invocation().await;
+            let context = crate::session::model_router_script_context::build(
+                crate::session::model_router_script_context::RoutingContextInput {
+                    session: self,
+                    turn: turn_context.as_ref(),
+                    turn_state:
+                        crate::session::model_router_script_context::RoutingTurnState::PendingRoot,
+                    current_route: &current_route,
+                    eligible_routes: &eligible_routes,
+                },
+            )
+            .await;
+            let outcome = if let Some(response) =
+                self.take_scripted_interaction_response(&sub_id).await
+            {
+                script_host
+                    .respond(
+                        context,
+                        crate::model_router_script_host::interaction_response(response.response),
+                        &eligible_routes,
+                        /*route_mutable*/ true,
+                        response.automated,
+                        cancellation.child_token(),
+                    )
+                    .await
+            } else {
+                self.emit_model_router_activity(
+                    turn_context.as_ref(),
+                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                    xedoc_protocol::protocol::ModelRouterActivityState::Started,
+                )
+                .await;
+                let outcome = script_host
+                    .decide(
+                        self,
+                        turn_context.as_ref(),
+                        turn_context.config.as_ref(),
+                        context,
+                        serde_json::json!({
+                            "prompt": input.iter().filter_map(|item| match item {
+                                ResponseItem::Message { content, .. } => crate::content_items_to_text(content),
+                                _ => None,
+                            }).collect::<Vec<_>>().join("\n"),
+                            "explicitRouteOverride": false,
+                        }),
+                        &eligible_routes,
+                        /*route_mutable*/ true,
+                        cancellation.child_token(),
+                    )
+                    .await;
+                self.emit_model_router_activity(
+                    turn_context.as_ref(),
+                    xedoc_protocol::protocol::ModelRouterScope::Root,
+                    xedoc_protocol::protocol::ModelRouterActivityState::Finished,
+                )
+                .await;
+                match outcome {
+                    ModelRouterScriptDecisionOutcome::Apply { decision, route } => {
+                        ModelRouterScriptInteractionOutcome::Apply { decision, route }
+                    }
+                    ModelRouterScriptDecisionOutcome::KeepCurrent { decision, failure } => {
+                        ModelRouterScriptInteractionOutcome::KeepCurrent { decision, failure }
+                    }
+                    ModelRouterScriptDecisionOutcome::Interaction(interaction) => {
+                        ModelRouterScriptInteractionOutcome::Interaction(interaction)
+                    }
+                }
+            };
+            if cancellation.is_cancelled() {
+                self.clear_reserved_idle_turn(&turn_state).await;
+                return Err(TryStartTurnIfIdleError::new(
+                    TryStartTurnIfIdleRejectionReason::Busy,
+                    input,
+                ));
+            }
+            match outcome {
+                ModelRouterScriptInteractionOutcome::Apply { decision, route } => {
+                    let has_model_instructions = decision
+                        .model_instructions
+                        .as_deref()
+                        .is_some_and(|instructions| !instructions.trim().is_empty());
+                    if let Some(routed_context) = self
+                        .new_script_routed_turn_from_current_settings_with_sub_id(
+                            turn_context.sub_id.clone(),
+                            /*final_output_json_schema*/ None,
+                            &route,
+                            decision.model_instructions.as_deref(),
+                        )
+                        .await
+                    {
+                        self.emit_and_remember_model_router_decision(
+                            turn_context.as_ref(),
+                            crate::model_router_script_host::decision_event(
+                                decision,
+                                &route,
+                                self.thread_id.to_string(),
+                                turn_context.sub_id.clone(),
+                                xedoc_protocol::protocol::ModelRouterScope::Root,
+                                /*applied*/ true,
+                                None,
+                            ),
+                        )
+                        .await;
+                        if let Some(startup_prewarm) = self.take_session_startup_prewarm().await {
+                            startup_prewarm.abort().await;
+                        }
+                        if route != current_route || has_model_instructions {
+                            self.force_full_context_replay().await;
+                        }
+                        self.state
+                            .lock()
+                            .await
+                            .set_model_router_applied_route(baseline_route, route);
+                        turn_context = routed_context;
+                    }
+                }
+                ModelRouterScriptInteractionOutcome::KeepCurrent { decision, failure } => {
+                    if current_route != baseline_route
+                        && let Some(retained_context) = self
+                            .new_script_routed_turn_from_current_settings_with_sub_id(
+                                turn_context.sub_id.clone(),
+                                /*final_output_json_schema*/ None,
+                                &current_route,
+                                /*model_instructions*/ None,
+                            )
+                            .await
+                    {
+                        if let Some(startup_prewarm) = self.take_session_startup_prewarm().await {
+                            startup_prewarm.abort().await;
+                        }
+                        turn_context = retained_context;
+                    }
+                    if let Some(decision) = decision {
+                        self.emit_and_remember_model_router_decision(
+                            turn_context.as_ref(),
+                            crate::model_router_script_host::decision_event(
+                                decision,
+                                &current_route,
+                                self.thread_id.to_string(),
+                                turn_context.sub_id.clone(),
+                                xedoc_protocol::protocol::ModelRouterScope::Root,
+                                /*applied*/ false,
+                                failure.as_ref(),
+                            ),
+                        )
+                        .await;
+                    }
+                }
+                ModelRouterScriptInteractionOutcome::Interaction(interaction) => {
+                    let pending = crate::model_router_script_host::interaction_request(interaction)
+                        .ok()
+                        .and_then(|(request, extension_id, interaction_id, continuation, state_revision)| {
+                            serde_json::from_value(request.surface.clone()).ok().map(|surface| {
+                                (request.clone(), crate::session::session::PendingScriptedInteraction {
+                                    extension_id,
+                                    interaction_id,
+                                    script_continuation: continuation,
+                                    state_revision,
+                                    expires_at: request.expires_at,
+                                    surface,
+                                    continuation: crate::session::session::PendingScriptedInteractionContinuation::Idle {
+                                        sub_id: sub_id.clone(),
+                                        input: input.clone(),
+                                    },
+                                })
+                            })
+                        });
+                    self.clear_reserved_idle_turn(&turn_state).await;
+                    if let Some((request, pending)) = pending
+                        && self
+                            .request_scripted_interaction(&turn_context, request, pending)
+                            .await
+                    {
+                        return Ok(());
+                    }
+                    return Err(TryStartTurnIfIdleError::new(
+                        TryStartTurnIfIdleRejectionReason::Busy,
+                        input,
+                    ));
+                }
+                ModelRouterScriptInteractionOutcome::Failure(failure) => {
+                    tracing::warn!(failure = %failure.diagnostic(), "scripted model-router interaction failed; retaining current route");
+                }
+            }
         }
         self.maybe_emit_model_warnings_for_turn(turn_context.as_ref())
             .await;

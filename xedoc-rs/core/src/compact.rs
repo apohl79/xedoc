@@ -242,7 +242,9 @@ async fn run_compact_task_inner_impl(
 
     let max_retries = turn_context.provider.info().stream_max_retries();
     let mut retries = 0;
-    let mut client_session = sess.services.model_client.load().new_session();
+    let mut client_session = sess
+        .model_client_session_for_turn(turn_context.as_ref())
+        .await;
     // Reuse one client session so turn-scoped state (sticky routing, websocket incremental
     // request tracking)
     // survives retries within this compact turn.
@@ -253,7 +255,7 @@ async fn run_compact_task_inner_impl(
         XedocResponsesRequestKind::Compaction(compaction_metadata),
     );
 
-    let base_instructions = sess.get_base_instructions().await;
+    let base_instructions = Session::base_instructions_for_turn(turn_context.as_ref());
     if let Err(error) = ensure_fixed_instructions_fit(turn_context.as_ref(), &base_instructions) {
         send_progress(&sess, &turn_context, CompactionStage::Failed).await;
         let event = EventMsg::Error(error.to_error_event(/*message_prefix*/ None));

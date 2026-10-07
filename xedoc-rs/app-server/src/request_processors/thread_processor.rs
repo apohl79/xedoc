@@ -157,6 +157,7 @@ fn merge_persisted_resume_metadata(
     request_overrides: &mut Option<HashMap<String, serde_json::Value>>,
     typesafe_overrides: &mut ConfigOverrides,
     persisted_metadata: &ThreadMetadata,
+    thread_history: &InitialHistory,
 ) {
     if has_model_resume_override(request_overrides.as_ref(), typesafe_overrides) {
         return;
@@ -164,6 +165,11 @@ fn merge_persisted_resume_metadata(
 
     typesafe_overrides.model = persisted_metadata.model.clone();
     typesafe_overrides.model_provider = Some(persisted_metadata.model_provider.clone());
+    if let Some(model) = persisted_metadata.model.as_deref()
+        && let Some(provider_id) = last_routed_turn_provider(thread_history, model)
+    {
+        typesafe_overrides.model_provider = Some(provider_id);
+    }
 
     if let Some(reasoning_effort) = persisted_metadata.reasoning_effort.as_ref() {
         request_overrides.get_or_insert_with(HashMap::new).insert(
@@ -171,6 +177,45 @@ fn merge_persisted_resume_metadata(
             serde_json::Value::String(reasoning_effort.to_string()),
         );
     }
+}
+
+fn last_routed_turn_provider(thread_history: &InitialHistory, model: &str) -> Option<String> {
+    let InitialHistory::Resumed(resumed_history) = thread_history else {
+        return None;
+    };
+    let RolloutItem::TurnContext(last_turn) =
+        resumed_history.history.iter().rev().find(|item| {
+            matches!(
+                item,
+                RolloutItem::TurnContext(_)
+                    | RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(_))
+            )
+        })?
+    else {
+        return None;
+    };
+    if last_turn.model != model {
+        return None;
+    }
+    if let Some(provider_id) = last_turn.model_provider_id.as_ref() {
+        return Some(provider_id.clone());
+    }
+    resumed_history.history.iter().rev().find_map(|item| {
+        if let RolloutItem::EventMsg(EventMsg::ModelRouterDecision(decision)) = item
+            && decision.scope == xedoc_protocol::protocol::ModelRouterScope::Root
+            && last_turn.turn_id.as_deref() == Some(decision.turn_id.as_str())
+            && let xedoc_protocol::protocol::ModelRouterEffectiveRoute::Available {
+                provider_id,
+                model_slug,
+                ..
+            } = &decision.effective_route
+            && model_slug == model
+        {
+            Some(provider_id.clone())
+        } else {
+            None
+        }
+    })
 }
 
 fn merge_rollout_resume_metadata(
@@ -198,6 +243,9 @@ fn merge_rollout_resume_metadata(
             }
             RolloutItem::TurnContext(turn_context) => {
                 model = Some(turn_context.model.clone());
+                if let Some(provider_id) = turn_context.model_provider_id.as_ref() {
+                    model_provider = Some(provider_id.clone());
+                }
                 reasoning_effort = turn_context.effort.clone();
             }
             RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
@@ -215,6 +263,11 @@ fn merge_rollout_resume_metadata(
         }
     }
 
+    if let Some(current_model) = model.as_deref()
+        && let Some(provider_id) = last_routed_turn_provider(thread_history, current_model)
+    {
+        model_provider = Some(provider_id);
+    }
     typesafe_overrides.model = model;
     typesafe_overrides.model_provider = model_provider;
     if let Some(reasoning_effort) = reasoning_effort {
@@ -3512,6 +3565,7 @@ impl ThreadRequestProcessor {
                 request_overrides,
                 typesafe_overrides,
                 &persisted_metadata,
+                thread_history,
             );
             Some(persisted_metadata)
         } else {

@@ -1578,7 +1578,7 @@
           "additionalProperties": {
             "$ref": "#/definitions/ModelTokenPrices"
           },
-          "description": "Per-model token pricing in USD per 1M tokens.\n\nWhen set, Xedoc tracks session cost in USD using the token usage reported by the API. If a model used at runtime has no entry here, its usage is not priced. Cached input tokens use `cached_input_price_per_1m_tokens` when provided; otherwise cached input is priced at the standard input rate (no caching assumed).",
+          "description": "Per-model token pricing in USD per 1M tokens.\n\nWhen set, Xedoc tracks session cost in USD using the token usage reported by the API. If a model used at runtime has no entry here, its usage is not priced. Cached input tokens use `cached_input_price_per_1m_tokens` when provided; otherwise cached input is priced at the standard input rate (no caching assumed). Cache-write tokens use `cache_write_input_price_per_1m_tokens` when provided; otherwise they use the standard input rate.",
           "type": "object"
         },
         "name": {
@@ -1707,6 +1707,11 @@
       "additionalProperties": false,
       "description": "Token pricing for a specific model in USD per 1M tokens.",
       "properties": {
+        "cache_write_input_price_per_1m_tokens": {
+          "description": "Price per 1M input tokens written to the default (5-minute) cache in USD.\n\nWhen `None`, cache-write tokens use the standard input rate.",
+          "format": "double",
+          "type": "number"
+        },
         "cached_input_price_per_1m_tokens": {
           "description": "Price per 1M cached input tokens in USD.\n\nWhen `None`, cached input tokens are priced at the standard `input_price_per_1m_tokens` rate (no caching discount assumed).",
           "format": "double",

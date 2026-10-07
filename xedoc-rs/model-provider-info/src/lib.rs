@@ -172,6 +172,8 @@ pub struct ModelProviderInfo {
     /// its usage is not priced. Cached input tokens use
     /// `cached_input_price_per_1m_tokens` when provided; otherwise cached
     /// input is priced at the standard input rate (no caching assumed).
+    /// Cache-write tokens use `cache_write_input_price_per_1m_tokens` when
+    /// provided; otherwise they use the standard input rate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<HashMap<String, ModelTokenPrices>>")]
     pub model_prices: Option<HashMap<String, ModelTokenPrices>>,
@@ -219,6 +221,11 @@ pub struct ModelTokenPrices {
     /// `input_price_per_1m_tokens` rate (no caching discount assumed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_input_price_per_1m_tokens: Option<f64>,
+    /// Price per 1M input tokens written to the default (5-minute) cache in USD.
+    ///
+    /// When `None`, cache-write tokens use the standard input rate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_input_price_per_1m_tokens: Option<f64>,
     /// Long-context (>272K tokens) price per 1M input tokens in USD.
     ///
     /// When `None`, long-context requests use the standard
@@ -439,11 +446,7 @@ impl ModelProviderInfo {
             aws: None,
             wire_api: WireApi::Responses,
             query_params: None,
-            http_headers: Some(
-                [("version".to_string(), env!("CARGO_PKG_VERSION").to_string())]
-                    .into_iter()
-                    .collect(),
-            ),
+            http_headers: None,
             env_http_headers: Some(
                 [
                     (
@@ -533,6 +536,7 @@ impl ModelProviderInfo {
                     ModelTokenPrices {
                         input_price_per_1m_tokens: 4.0,
                         cached_input_price_per_1m_tokens: Some(0.2),
+                        cache_write_input_price_per_1m_tokens: Some(5.0),
                         long_context_input_price_per_1m_tokens: None,
                         long_context_cached_input_price_per_1m_tokens: None,
                         long_context_output_price_per_1m_tokens: None,
@@ -543,7 +547,8 @@ impl ModelProviderInfo {
                     "claude-fable-5-1".to_string(),
                     ModelTokenPrices {
                         input_price_per_1m_tokens: 10.0,
-                        cached_input_price_per_1m_tokens: Some(1.0),
+                        cached_input_price_per_1m_tokens: Some(0.25),
+                        cache_write_input_price_per_1m_tokens: Some(12.5),
                         long_context_input_price_per_1m_tokens: None,
                         long_context_cached_input_price_per_1m_tokens: None,
                         long_context_output_price_per_1m_tokens: None,
