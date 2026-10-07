@@ -7,6 +7,7 @@ use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::FunctionCallOutputBody;
 use xedoc_protocol::models::ReasoningItemReasoningSummary;
 use xedoc_protocol::models::ResponseItem;
+use xedoc_protocol::system_reminder::wrap_system_reminder;
 
 use crate::types::AnthropicContentBlock;
 use crate::types::AnthropicImageSource;
@@ -115,7 +116,9 @@ fn translate_message(
         } else {
             translated.messages.push(AnthropicMessage {
                 role: AnthropicRole::User,
-                content: vec![AnthropicContentBlock::Text { text }],
+                content: vec![AnthropicContentBlock::Text {
+                    text: wrap_system_reminder(&text),
+                }],
             });
         }
         return;

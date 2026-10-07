@@ -517,8 +517,12 @@ pub fn effective_multi_agent_mode(
         .multi_agent_mode_hint_text
     {
         Some(hint_text) => MultiAgentMode::Custom(hint_text.clone()),
-        None => match turn_context.effective_reasoning_effort() {
-            Some(ReasoningEffort::Ultra) => MultiAgentMode::Proactive,
+        None => match (
+            turn_context.effective_reasoning_effort(),
+            &turn_context.config.model_router_instructions,
+        ) {
+            (Some(ReasoningEffort::Ultra), _) => MultiAgentMode::Proactive,
+            (_, Some(router_text)) => MultiAgentMode::Custom(router_text.clone()),
             _ => MultiAgentMode::ExplicitRequestOnly,
         },
     };

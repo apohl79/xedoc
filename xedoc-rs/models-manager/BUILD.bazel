@@ -5,6 +5,7 @@ xedoc_rust_crate(
     compile_data = [
         "models.json",
         "prompts/base.md",
+        "prompts/family_claude.md",
         "prompts/personality_friendly.md",
         "prompts/personality_pragmatic.md",
     ],

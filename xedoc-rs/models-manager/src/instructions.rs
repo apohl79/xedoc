@@ -10,11 +10,13 @@ use crate::model_info::clear_instruction_messages;
 use crate::model_info::with_config_overrides;
 
 pub const BASE_INSTRUCTIONS: &str = include_str!("../prompts/base.md");
+const CLAUDE_INSTRUCTIONS: &str = include_str!("../prompts/family_claude.md");
 const FRIENDLY_PERSONALITY: &str = include_str!("../prompts/personality_friendly.md");
 const PRAGMATIC_PERSONALITY: &str = include_str!("../prompts/personality_pragmatic.md");
 const PERSONALITY_PLACEHOLDER: &str = "{{ personality }}";
 
 const _: () = assert!(BASE_INSTRUCTIONS.len() <= 4_096);
+const _: () = assert!(CLAUDE_INSTRUCTIONS.len() <= 3_072);
 const _: () = assert!(FRIENDLY_PERSONALITY.len() <= 512);
 const _: () = assert!(PRAGMATIC_PERSONALITY.len() <= 512);
 
@@ -114,14 +116,17 @@ fn apply_built_in_instructions(model: &mut ModelInfo, provider_display_name: Opt
 }
 
 fn built_in_template(slug: &str, provider_display_name: Option<&str>) -> String {
+    let base = if slug.starts_with("claude-") {
+        format!("{BASE_INSTRUCTIONS}\n{CLAUDE_INSTRUCTIONS}")
+    } else {
+        BASE_INSTRUCTIONS.to_string()
+    };
     let Some(provider_display_name) = provider_display_name.filter(|name| !name.trim().is_empty())
     else {
-        return BASE_INSTRUCTIONS.to_string();
+        return base;
     };
 
-    format!(
-        "{BASE_INSTRUCTIONS}\n\n# Model identity\nYou are running as {slug} from {provider_display_name}."
-    )
+    format!("{base}\n\n# Model identity\nYou are running as {slug} from {provider_display_name}.")
 }
 
 fn replace_instruction_messages(model: &mut ModelInfo, instructions: Option<&ModelMessages>) {

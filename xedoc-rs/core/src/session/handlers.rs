@@ -346,12 +346,12 @@ pub(super) async fn user_input_or_turn_inner(
                     &sess.services.models_manager,
                 )
                 .await;
-                let current_route = sess
+                let (current_route, router_instructions) = sess
                     .state
                     .lock()
                     .await
                     .model_router_applied_route(&baseline_route)
-                    .filter(|route| {
+                    .filter(|(route, _)| {
                         !explicit_route_override
                             && eligible_routes.iter().any(|eligible| {
                                 eligible.provider_id == route.provider_id
@@ -359,7 +359,7 @@ pub(super) async fn user_input_or_turn_inner(
                                     && eligible.reasoning_efforts.contains(&route.reasoning_effort)
                             })
                     })
-                    .unwrap_or_else(|| baseline_route.clone());
+                    .unwrap_or_else(|| (baseline_route.clone(), None));
                 let cancellation = sess.begin_model_router_script_invocation().await;
                 let context = crate::session::model_router_script_context::build(
                     crate::session::model_router_script_context::RoutingContextInput {
@@ -444,15 +444,13 @@ pub(super) async fn user_input_or_turn_inner(
                         decision,
                         route,
                     } => {
-                        let model_instructions = decision.model_instructions.as_deref();
-                        let has_model_instructions =
-                            model_instructions.is_some_and(|instructions| !instructions.trim().is_empty());
+                        let model_instructions = decision.model_instructions.clone();
                         let routed_context = sess
                             .new_script_routed_turn_from_current_settings_with_sub_id(
                                 sub_id.clone(),
                                 final_output_json_schema.clone(),
                                 &route,
-                                model_instructions,
+                                model_instructions.as_deref(),
                             )
                             .await;
                         if let Some(routed_context) = routed_context {
@@ -472,13 +470,17 @@ pub(super) async fn user_input_or_turn_inner(
                             if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
                                 startup_prewarm.abort().await;
                             }
-                            if route != current_route || has_model_instructions {
+                            if route != current_route {
                                 sess.force_full_context_replay().await;
                             }
                             sess.state
                                 .lock()
                                 .await
-                                .set_model_router_applied_route(baseline_route.clone(), route.clone());
+                                .set_model_router_applied_route(
+                                    baseline_route.clone(),
+                                    route.clone(),
+                                    model_instructions,
+                                );
                             current_context = routed_context;
                             sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
                                 .await;
@@ -564,13 +566,13 @@ pub(super) async fn user_input_or_turn_inner(
                         } else if let Some(decision) = decision.as_ref() {
                             tracing::debug!(decision_id = %decision.id.as_str(), "scripted model-router retained current route");
                         }
-                        if current_route != baseline_route
+                        if (current_route != baseline_route || router_instructions.is_some())
                             && let Some(retained_context) = sess
                                 .new_script_routed_turn_from_current_settings_with_sub_id(
                                     sub_id.clone(),
                                     final_output_json_schema.clone(),
                                     &current_route,
-                                    /*model_instructions*/ None,
+                                    router_instructions.as_deref(),
                                 )
                                 .await
                         {

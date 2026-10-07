@@ -4,6 +4,7 @@ use xedoc_api::ResponsesApiRequest;
 use xedoc_protocol::apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
 use xedoc_protocol::config_types::ReasoningSummary;
 use xedoc_protocol::openai_models::ReasoningEffort;
+use xedoc_protocol::system_reminder::SYSTEM_REMINDER_EXPLANATION;
 
 use crate::history::append_continuation_if_needed;
 use crate::history::translate_history;
@@ -39,6 +40,9 @@ pub fn translate_request(
     apply_reasoning(request, &mut translated);
     reconcile_forced_tool_choice(&mut translated);
     translate_history(&request.input, &mut translated)?;
+    translated.system.push(AnthropicSystemBlock::Text {
+        text: SYSTEM_REMINDER_EXPLANATION.to_string(),
+    });
     append_continuation_if_needed(&mut translated.messages);
     Ok(translated)
 }

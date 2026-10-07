@@ -121,19 +121,19 @@ impl Session {
                 &self.services.models_manager,
             )
             .await;
-            let current_route = self
+            let (current_route, router_instructions) = self
                 .state
                 .lock()
                 .await
                 .model_router_applied_route(&baseline_route)
-                .filter(|route| {
+                .filter(|(route, _)| {
                     eligible_routes.iter().any(|eligible| {
                         eligible.provider_id == route.provider_id
                             && eligible.model == route.model
                             && eligible.reasoning_efforts.contains(&route.reasoning_effort)
                     })
                 })
-                .unwrap_or_else(|| baseline_route.clone());
+                .unwrap_or_else(|| (baseline_route.clone(), None));
             self.begin_model_router_ab_root_turn(baseline_route.clone())
                 .await;
             let cancellation = self.begin_model_router_script_invocation().await;
@@ -213,16 +213,13 @@ impl Session {
             }
             match outcome {
                 ModelRouterScriptInteractionOutcome::Apply { decision, route } => {
-                    let has_model_instructions = decision
-                        .model_instructions
-                        .as_deref()
-                        .is_some_and(|instructions| !instructions.trim().is_empty());
+                    let model_instructions = decision.model_instructions.clone();
                     if let Some(routed_context) = self
                         .new_script_routed_turn_from_current_settings_with_sub_id(
                             turn_context.sub_id.clone(),
                             /*final_output_json_schema*/ None,
                             &route,
-                            decision.model_instructions.as_deref(),
+                            model_instructions.as_deref(),
                         )
                         .await
                     {
@@ -242,24 +239,25 @@ impl Session {
                         if let Some(startup_prewarm) = self.take_session_startup_prewarm().await {
                             startup_prewarm.abort().await;
                         }
-                        if route != current_route || has_model_instructions {
+                        if route != current_route {
                             self.force_full_context_replay().await;
                         }
-                        self.state
-                            .lock()
-                            .await
-                            .set_model_router_applied_route(baseline_route, route);
+                        self.state.lock().await.set_model_router_applied_route(
+                            baseline_route,
+                            route,
+                            model_instructions,
+                        );
                         turn_context = routed_context;
                     }
                 }
                 ModelRouterScriptInteractionOutcome::KeepCurrent { decision, failure } => {
-                    if current_route != baseline_route
+                    if (current_route != baseline_route || router_instructions.is_some())
                         && let Some(retained_context) = self
                             .new_script_routed_turn_from_current_settings_with_sub_id(
                                 turn_context.sub_id.clone(),
                                 /*final_output_json_schema*/ None,
                                 &current_route,
-                                /*model_instructions*/ None,
+                                router_instructions.as_deref(),
                             )
                             .await
                     {

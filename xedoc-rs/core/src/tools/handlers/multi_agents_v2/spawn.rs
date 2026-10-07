@@ -178,7 +178,6 @@ async fn handle_spawn_agent(
                         decision,
                         route,
                     } => {
-                        let model_instructions = decision.model_instructions.as_deref();
                         let applied = crate::model_router::apply_script_route_to_config(
                             &mut config,
                             &session.services.models_manager,
@@ -186,10 +185,7 @@ async fn handle_spawn_agent(
                         )
                         .await;
                         if applied {
-                            crate::model_router::append_script_model_instructions(
-                                &mut config.developer_instructions,
-                                model_instructions,
-                            );
+                            config.model_router_instructions = decision.model_instructions.clone();
                         }
                         if !applied {
                             tracing::warn!(
