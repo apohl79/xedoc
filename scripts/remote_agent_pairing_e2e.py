@@ -838,7 +838,7 @@ class Controller:
         self.target_interrupted = False
         self.completed_task_result_recorded = False
         self.progress_recorded = False
-        self.remote_activities: list[dict[str, str]] = []
+        self.remote_activities: list[dict[str, str | None]] = []
         self.approvals = 0
         self.reader_errors: queue.Queue[tuple[str, BaseException]] = queue.Queue(
             maxsize=2
@@ -889,9 +889,8 @@ class Controller:
                 role=role,
                 params=message.get("params"),
             )
-            return
-        if method == "item/completed":
-            self._record_remote_activity(role, message)
+            if role == "source":
+                self._record_remote_session(message.get("params"))
             return
         if method != "turn/completed":
             return
@@ -906,37 +905,33 @@ class Controller:
             _state_update(self.args.state_file, targetInterrupted=True)
             self.recorder.add("targetInterrupted", status=status)
 
-    def _record_remote_activity(self, role: str, message: dict[str, Any]) -> None:
-        if role != "source":
-            return
-        params = message.get("params")
-        item = params.get("item") if isinstance(params, dict) else None
-        if not isinstance(item, dict) or item.get("type") != "subAgentActivity":
-            return
-        agent_path = item.get("agentPath")
-        if not isinstance(agent_path, str) or not agent_path.startswith(
-            "/root/remote_agent_"
-        ):
-            return
-        kind = item.get("kind")
-        agent_thread_id = item.get("agentThreadId")
-        current_activity = item.get("currentActivity")
+    def _record_remote_session(self, params: Any) -> None:
+        session = params.get("remoteSession") if isinstance(params, dict) else None
+        if not isinstance(session, dict):
+            raise RuntimeError("remote session notification was invalid")
+        status = session.get("status")
+        remote_session_id = session.get("remoteSessionId")
+        summary = session.get("activitySummary")
         if (
-            not isinstance(kind, str)
-            or not isinstance(agent_thread_id, str)
-            or not agent_thread_id
-            or not isinstance(current_activity, str)
-            or not current_activity
-            or len(current_activity.encode()) > MAX_ACTIVITY_BYTES
+            not isinstance(status, str)
+            or not isinstance(remote_session_id, str)
+            or not remote_session_id
+            or (
+                summary is not None
+                and (
+                    not isinstance(summary, str)
+                    or len(summary.encode()) > MAX_ACTIVITY_BYTES
+                )
+            )
         ):
-            raise RuntimeError("remote activity notification was invalid or unbounded")
-        activity = {
-            "kind": kind,
-            "agentThreadId": agent_thread_id,
-            "currentActivity": current_activity,
-        }
-        self.remote_activities.append(activity)
-        self.recorder.add("remoteActivity", **activity)
+            raise RuntimeError("remote session notification was invalid or unbounded")
+        self.remote_activities.append(
+            {
+                "status": status,
+                "remoteSessionId": remote_session_id,
+                "activitySummary": summary,
+            }
+        )
 
     def run(self) -> None:
         self.source.initialize("pairing-e2e-source", "Pairing E2E source", "0.1.0")
@@ -974,51 +969,32 @@ class Controller:
         )
 
     def _assert_remote_activity_lifecycle(self) -> None:
-        interrupted_index = next(
+        cancelled_index = next(
             (
                 index
                 for index in range(len(self.remote_activities) - 1, -1, -1)
-                if self.remote_activities[index]["kind"] == "interrupted"
+                if self.remote_activities[index]["status"] == "cancelled"
             ),
             None,
         )
-        if interrupted_index is None:
-            raise RuntimeError("source did not receive interrupted remote activity")
-        agent_thread_id = self.remote_activities[interrupted_index]["agentThreadId"]
-        started_index = next(
-            (
-                index
-                for index in range(interrupted_index - 1, -1, -1)
-                if self.remote_activities[index]["kind"] == "started"
-                and self.remote_activities[index]["agentThreadId"] == agent_thread_id
-            ),
-            None,
-        )
-        if started_index is None:
-            raise RuntimeError("remote interruption had no matching started activity")
-        interacted = [
+        if cancelled_index is None:
+            raise RuntimeError("source did not receive cancelled remote session update")
+        remote_session_id = self.remote_activities[cancelled_index]["remoteSessionId"]
+        lifecycle = [
             activity
-            for activity in self.remote_activities[
-                started_index + 1 : interrupted_index
-            ]
-            if activity["kind"] == "interacted"
-            and activity["agentThreadId"] == agent_thread_id
+            for activity in self.remote_activities[: cancelled_index + 1]
+            if activity["remoteSessionId"] == remote_session_id
         ]
-        if not interacted:
-            raise RuntimeError("remote wait did not publish active remote activity")
         if not any(
-            activity["currentActivity"] == "Remote session is running."
-            for activity in interacted
+            activity["status"] == "running"
+            and activity["activitySummary"] == "Remote session is running."
+            for activity in lifecycle
         ):
-            raise RuntimeError("remote activity did not contain the running summary")
-        lifecycle = self.remote_activities[started_index : interrupted_index + 1]
-        if any(activity["agentThreadId"] != agent_thread_id for activity in lifecycle):
-            raise RuntimeError("remote activity lifecycle changed synthetic agent ID")
+            raise RuntimeError("remote session did not publish the running summary")
         self.recorder.add(
             "remoteActivityLifecycle",
-            agentThreadId=agent_thread_id,
-            kinds=[activity["kind"] for activity in lifecycle],
-            currentActivities=[activity["currentActivity"] for activity in lifecycle],
+            remoteSessionId=remote_session_id,
+            statuses=[activity["status"] for activity in lifecycle],
         )
 
     def _record_completed_task_result_before_observer(self) -> None:

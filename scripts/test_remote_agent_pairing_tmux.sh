@@ -348,24 +348,14 @@ assert any(
 lifecycles=[x for x in items if x.get('event')=='remoteActivityLifecycle']
 assert len(lifecycles)==1,items
 lifecycle=lifecycles[0]
-agent_thread_id=lifecycle.get('agentThreadId')
-kinds=lifecycle.get('kinds')
-activities=lifecycle.get('currentActivities')
-assert isinstance(agent_thread_id,str) and agent_thread_id,lifecycle
+remote_session_id=lifecycle.get('remoteSessionId')
+statuses=lifecycle.get('statuses')
+assert isinstance(remote_session_id,str) and remote_session_id,lifecycle
 assert (
-    isinstance(kinds,list)
-    and kinds[0]=='started'
-    and 'interacted' in kinds[1:-1]
-    and kinds[-1]=='interrupted'
+    isinstance(statuses,list)
+    and 'running' in statuses
+    and statuses[-1]=='cancelled'
 ),lifecycle
-assert (
-    isinstance(activities,list)
-    and len(activities)==len(kinds)
-    and all(isinstance(activity,str) and activity and len(activity.encode())<=64 for activity in activities)
-    and 'Remote session is running.' in activities
-),lifecycle
-remote_activities=[x for x in items if x.get('event')=='remoteActivity']
-assert all(x.get('agentThreadId')==agent_thread_id for x in remote_activities),items
 assert any(x.get('event')=='targetInterrupted' for x in items),items
 state=json.load(open(sys.argv[2]))
 assert state.get('targetInterrupted') is True,state
