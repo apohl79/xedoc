@@ -106,40 +106,16 @@ PY
 }
 wait_pane_exit() { local pane="$1"; for _ in {1..2400}; do [[ "$(tmux display-message -p -t "$pane" '#{pane_dead}' 2>/dev/null || true)" == 1 ]] && return; sleep .05; done; fail "timed out waiting for $pane"; }
 wait_pane_text() { local pane="$1" text="$2"; for _ in {1..600}; do tmux capture-pane -p -t "$pane" -S -100 2>/dev/null | grep -Fq -- "$text" && return; sleep .05; done; fail "timed out waiting for $text"; }
-menu_index_for_port() {
-  local home="$1" port="$2" discovery_file="$3"
-  env -u PYTHONPATH TMPDIR="$tmp_dir" "$package_agent" enrollment discover \
-    --xedoc-home "$home" >"$discovery_file"
-  "$python_bin" - "$discovery_file" "$port" <<'PY'
-import json
-from pathlib import Path
-import sys
-
-value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-entries = value.get("data") if isinstance(value, dict) else None
-if not isinstance(entries, list):
-    raise SystemExit("discovery response omitted data")
-hosts = sorted(
-    (
-        entry
-        for entry in entries
-        if isinstance(entry, dict)
-        and entry.get("role") in {"coordinator", "managed"}
-        and isinstance(entry.get("status"), str)
-        and isinstance(entry.get("hostId"), str)
-        and isinstance(entry.get("fingerprint"), str)
-        and isinstance(entry.get("endpoint"), str)
-    ),
-    key=lambda entry: entry["hostId"],
-)
-port = sys.argv[2]
-for index, entry in enumerate(hosts):
-    if entry["endpoint"].rsplit(":", 1)[-1] == port:
-        print(index)
-        break
-else:
-    raise SystemExit(f"target peer on port {port} was not discovered")
-PY
+select_host_by_port() {
+  local pane="$1" port="$2" attempt
+  for ((attempt = 0; attempt < 20; attempt++)); do
+    if tmux capture-pane -p -t "$pane" | grep -Eq "^› .*:${port} "; then
+      return 0
+    fi
+    tmux send-keys -t "$pane" Down
+    sleep .2
+  done
+  fail "target peer on port $port was not selectable in the host picker"
 }
 
 launcher() {
@@ -259,14 +235,10 @@ managed_phase() {
   local enrollment_json code
   enrollment_json="$(env -u PYTHONPATH TMPDIR="$tmp_dir" "$package_agent" enrollment create --xedoc-home "$target_home")"
   code="$($python_bin -c 'import json,sys; print(json.load(sys.stdin)["code"])' <<<"$enrollment_json")"
-  local selection_downs
-  selection_downs="$(menu_index_for_port "$source_home" "$target_port" "$dir/source-discovery.json")"
   local enroll
   enroll="$(new_pane managed-enroll "$(launcher managed-enroll env HOME="$source_home" XEDOC_HOME="$source_home" TMPDIR="$tmp_dir" "$package_session" --socket "$source_socket" remote-agent-enroll)")"
   wait_pane_text "$enroll" 'Remote host (host ID'
-  for ((index = 0; index < selection_downs; index++)); do
-    tmux send-keys -t "$enroll" Down
-  done
+  select_host_by_port "$enroll" "$target_port"
   tmux send-keys -t "$enroll" Enter
   wait_pane_text "$enroll" 'Managed-host enrollment code:'
   sleep .2

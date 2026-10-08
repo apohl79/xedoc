@@ -444,9 +444,28 @@ def _advance_source_stage(state_file: Path, stage: str, **updates: object) -> No
         _state_write_unlocked(state_file, state)
 
 
+ACTIVITY_SUMMARY_PROMPT = "Summarize what this coding agent is currently working on"
+ACTIVITY_SUMMARY_TEXT = "Watching remote agent output"
+
+
+def _is_activity_summary_request(request: dict[str, Any]) -> bool:
+    return ACTIVITY_SUMMARY_PROMPT in json.dumps(request.get("input", []))
+
+
+def _activity_summary_events() -> list[dict[str, object]]:
+    response_id = "pairing-e2e-activity-summary"
+    return [
+        _event("response.created", response={"id": response_id}),
+        _event("response.output_text.delta", delta=ACTIVITY_SUMMARY_TEXT),
+        _completed(response_id),
+    ]
+
+
 def _source_events(
     request: dict[str, Any], state_file: Path
 ) -> tuple[str, list[dict[str, object]]]:
+    if _is_activity_summary_request(request):
+        return "activity-summary", _activity_summary_events()
     host_id = _managed_host_id(state_file)
     background_events = _source_background_events(request, state_file)
     if background_events is not None:
@@ -617,6 +636,10 @@ def _source_events(
             targetThreadId=thread_id,
             targetTurnId=turn_id,
         )
+        if _wait_for_state(state_file, "remoteSummaryGenerated") is not True:
+            raise RuntimeError(
+                "the remote session never showed a model-generated activity summary"
+            )
         return "cancel", _function_call(
             "cancel",
             "remote_session_cancel",
@@ -912,6 +935,8 @@ class Controller:
         status = session.get("status")
         remote_session_id = session.get("remoteSessionId")
         summary = session.get("activitySummary")
+        if summary == ACTIVITY_SUMMARY_TEXT:
+            _state_update(self.args.state_file, remoteSummaryGenerated=True)
         if (
             not isinstance(status, str)
             or not isinstance(remote_session_id, str)
