@@ -26,7 +26,8 @@ Usage: scripts/run_remote_agent_docker.sh [start|stop] [options]
 `root` mapped to `/`. It does not trust a copied coordinator certificate: the
 printed, one-time enrollment code is the only automatic managed-pairing
 authorization. When ~/.ssh/id_*.pub exists, the peer also runs an sshd that
-accepts those keys, so the coordinator can fetch that code over SSH.
+accepts those keys and `xedoc-session remote-agent-enroll` on this machine
+fetches that code over SSH.
 
 `stop` removes the managed-peer container, its harness image, and dangling
 Docker image layers to reclaim Colima disk space.
@@ -133,6 +134,7 @@ if isinstance(host_id, str) and isinstance(port, int) and not isinstance(port, b
         value = None
     if value == {"hostId": host_id, "port": port}:
         registration.unlink(missing_ok=True)
+    (directory / f"{host_id}.ssh").unlink(missing_ok=True)
 state_path.unlink(missing_ok=True)
 PY
 }
@@ -337,6 +339,34 @@ sleep 0.1
 tmux has-session -t "$relay_session" 2>/dev/null || fail "could not start the local discovery relay"
 peer_host_id="$(docker exec "$container_name" /opt/xedoc/xedoc-resources/remote-agent/runtime/python/bin/python3 -B -c 'import sqlite3; print(sqlite3.connect("/root/.xedoc/remote-agent/peer-state.sqlite3").execute("SELECT host_id FROM identity WHERE singleton = 1").fetchone()[0])')"
 register_local_discovery "$peer_host_id" "$discovery_port"
+if [[ -n "$ssh_known_hosts" ]]; then
+  python3 - "$peer_host_id" "$ssh_port" "$ssh_known_hosts" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+host_id, port, known_hosts = sys.argv[1:4]
+directory = Path(tempfile.gettempdir()) / f"xedoc-remote-agent-discovery-{os.getuid()}"
+directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+directory.chmod(0o700)
+hint = directory / f"{host_id}.ssh"
+temporary = hint.with_suffix(".tmp")
+temporary.write_text(
+    json.dumps(
+        {
+            "target": "root@127.0.0.1",
+            "options": [f"Port={port}", f"UserKnownHostsFile={known_hosts}"],
+        },
+        separators=(",", ":"),
+    ),
+    encoding="utf-8",
+)
+temporary.chmod(0o600)
+temporary.replace(hint)
+PY
+fi
 code="$(docker exec "$container_name" xedoc-remote-agentd enrollment create | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')"
 cat <<EOF
 ==> Ready: managed peer $container_name
@@ -346,8 +376,7 @@ Pair from the coordinator:
 EOF
 if [[ -n "$ssh_known_hosts" ]]; then
   cat <<EOF
-Pair without typing the code (the coordinator fetches it over SSH):
-  xedoc-session remote-agent-enroll --ssh-target root@127.0.0.1 --ssh-option Port=$ssh_port --ssh-option UserKnownHostsFile=$ssh_known_hosts
+The coordinator fetches the code over SSH, so you can skip typing it.
 EOF
 fi
 cat <<EOF

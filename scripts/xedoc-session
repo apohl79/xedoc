@@ -239,6 +239,44 @@ def ssh_target_for(candidate: dict[str, object], override: str | None) -> str | 
     return host or None
 
 
+def local_ssh_hint(host_id: object) -> tuple[str, list[str]] | None:
+    """Read the SSH settings a local test harness registered for a peer.
+
+    The Docker harness publishes its peer's sshd on a loopback port and writes
+    the destination next to the local discovery registrations. Only a private
+    directory owned by this user is trusted, and only the options below are
+    accepted, so the hint cannot add arbitrary ssh behaviour.
+    """
+
+    if not isinstance(host_id, str) or not re.fullmatch(r"[A-Za-z0-9_]+", host_id):
+        return None
+    directory = Path(tempfile.gettempdir()) / f"xedoc-remote-agent-discovery-{os.getuid()}"
+    try:
+        status = directory.stat()
+        if status.st_uid != os.getuid() or status.st_mode & 0o077:
+            return None
+        value = json.loads((directory / f"{host_id}.ssh").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    target = value.get("target")
+    options = value.get("options")
+    if (
+        not isinstance(target, str)
+        or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.@-]*", target)
+        or not isinstance(options, list)
+        or len(options) > 4
+        or not all(
+            isinstance(option, str)
+            and re.fullmatch(r"(Port|UserKnownHostsFile)=\S+", option)
+            for option in options
+        )
+    ):
+        return None
+    return target, cast(list[str], options)
+
+
 def ssh_enrollment_unavailable(reason: str) -> None:
     # The reason may carry text from the remote side; keep it to one printable line.
     printable = "".join(character for character in reason if character.isprintable())
@@ -260,6 +298,10 @@ def remote_agent_ssh_enrollment_code(
     are disabled, so any failure returns None and the caller asks for the code.
     """
 
+    if ssh_target is None and not ssh_options:
+        hint = local_ssh_hint(candidate.get("hostId"))
+        if hint is not None:
+            ssh_target, ssh_options = hint
     target = ssh_target_for(candidate, ssh_target)
     if target is None or target.startswith("-"):
         ssh_enrollment_unavailable("no usable SSH target")
