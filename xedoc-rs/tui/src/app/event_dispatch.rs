@@ -432,8 +432,13 @@ impl App {
                         self.chat_widget.pre_draw_tick();
                         self.render_chat_widget_frame(tui)?;
                     }
-                    self.chat_widget.prepare_local_op_submission(&op);
-                    self.submit_active_thread_op(app_server, op).await?;
+                    if !self
+                        .submit_remote_session_op(app_server, op.clone())
+                        .await?
+                    {
+                        self.chat_widget.prepare_local_op_submission(&op);
+                        self.submit_active_thread_op(app_server, op).await?;
+                    }
                 }
             }
             AppEvent::RetrySafetyBufferedTurn {
@@ -484,7 +489,15 @@ impl App {
                     .await?;
             }
             AppEvent::SubmitThreadOp { thread_id, op } => {
-                self.submit_thread_op(app_server, thread_id, op).await?;
+                let routes_to_remote_session = self.active_remote_session.is_some()
+                    && self.primary_thread_id == Some(thread_id);
+                if !(routes_to_remote_session
+                    && self
+                        .submit_remote_session_op(app_server, op.clone())
+                        .await?)
+                {
+                    self.submit_thread_op(app_server, thread_id, op).await?;
+                }
             }
             AppEvent::ThreadHistoryEntryResponse { thread_id, event } => {
                 self.enqueue_thread_history_entry_response(thread_id, event)
@@ -1413,6 +1426,14 @@ impl App {
             AppEvent::SelectAgentThread(thread_id) => {
                 self.select_agent_thread_and_discard_side(tui, app_server, thread_id)
                     .await?;
+            }
+            AppEvent::SelectRemoteSession(remote_session_id) => {
+                self.select_remote_session(
+                    tui,
+                    app_server,
+                    RemoteSessionId::new(remote_session_id),
+                )
+                .await?;
             }
             AppEvent::StartSide {
                 parent_thread_id,

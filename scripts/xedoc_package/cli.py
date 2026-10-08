@@ -10,6 +10,7 @@ from .layout import build_package_dir
 from .layout import prepare_package_dir
 from .layout import validate_package_dir
 from .model_router_runtime import RuntimeReference
+from .remote_agent_runtime import build_remote_agent_runtime
 from .ripgrep import resolve_rg_bin
 from .targets import PACKAGE_VARIANTS
 from .targets import TARGET_SPECS
@@ -123,6 +124,14 @@ def parse_args() -> argparse.Namespace:
         "--model-router-runtime-source-release-tag",
         help="GitHub release tag that owns the immutable runtime asset.",
     )
+    parser.add_argument(
+        "--remote-agent-runtime-dir",
+        type=Path,
+        help=(
+            "Optional prebuilt target-pinned Python runtime directory. If omitted, "
+            "the package builder downloads and verifies the declared target runtime."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -155,12 +164,26 @@ def main() -> int:
     )
     version = args.version or read_workspace_version()
     model_router_runtime = runtime_reference_from_args(args)
+    prepare_package_dir(package_dir, force=args.force)
+    remote_agent_runtime = (
+        None
+        if spec.is_windows
+        else build_remote_agent_runtime(
+            spec,
+            package_dir.parent / f".{package_dir.name}-remote-agent-runtime",
+            force=True,
+            source=(
+                args.remote_agent_runtime_dir.resolve()
+                if args.remote_agent_runtime_dir is not None
+                else None
+            ),
+        )
+    )
     inputs = PackageInputs(
         entrypoint_bin=source_outputs.entrypoint_bin,
         rg_bin=resolve_rg_bin(spec, args.rg_bin),
         bwrap_bin=source_outputs.bwrap_bin,
     )
-    prepare_package_dir(package_dir, force=args.force)
     build_package_dir(
         package_dir,
         version,
@@ -168,6 +191,7 @@ def main() -> int:
         spec,
         inputs,
         model_router_runtime=model_router_runtime,
+        remote_agent_runtime=remote_agent_runtime,
         include_session_control=args.include_session_control,
     )
     validate_package_dir(
@@ -175,6 +199,7 @@ def main() -> int:
         variant,
         spec,
         model_router_runtime=model_router_runtime,
+        remote_agent_runtime=remote_agent_runtime,
         include_session_control=args.include_session_control,
     )
 

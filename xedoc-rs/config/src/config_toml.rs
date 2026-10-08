@@ -8,6 +8,7 @@ use crate::HooksToml;
 use crate::model_router::ModelRouterConfigToml;
 use crate::permissions_toml::PermissionsToml;
 use crate::profile_toml::ConfigProfile;
+use crate::remote_agent::RemoteAgentConfigToml;
 use crate::session_scripts::SessionScriptConfigToml;
 use crate::types::AppsConfigToml;
 use crate::types::AuthCredentialsStoreMode;
@@ -412,6 +413,10 @@ pub struct ConfigToml {
     /// User-level plugin config entries keyed by plugin name.
     #[serde(default)]
     pub plugins: HashMap<String, PluginConfig>,
+
+    /// Host-wide configuration for the remote-agent broker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_agent: Option<RemoteAgentConfigToml>,
 
     /// User-level marketplace entries keyed by marketplace name.
     #[serde(default)]

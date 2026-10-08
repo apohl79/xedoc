@@ -44,6 +44,16 @@ use xedoc_app_server_protocol::ModelListResponse;
 use xedoc_app_server_protocol::ModelManagerReadParams;
 use xedoc_app_server_protocol::ModelManagerReadResponse;
 use xedoc_app_server_protocol::NewThreadModelDefaults;
+use xedoc_app_server_protocol::RemoteSessionAttachParams;
+use xedoc_app_server_protocol::RemoteSessionAttachResponse;
+use xedoc_app_server_protocol::RemoteSessionCancelParams;
+use xedoc_app_server_protocol::RemoteSessionCancelResponse;
+use xedoc_app_server_protocol::RemoteSessionInputParams;
+use xedoc_app_server_protocol::RemoteSessionInputResponse;
+use xedoc_app_server_protocol::RemoteSessionListParams;
+use xedoc_app_server_protocol::RemoteSessionListResponse;
+use xedoc_app_server_protocol::RemoteSessionReadParams;
+use xedoc_app_server_protocol::RemoteSessionReadResponse;
 use xedoc_app_server_protocol::RequestId;
 use xedoc_app_server_protocol::ReviewDelivery;
 use xedoc_app_server_protocol::ReviewStartParams;
@@ -731,6 +741,111 @@ impl AppServerSession {
             .request_typed(ClientRequest::ThreadList { request_id, params })
             .await
             .wrap_err("thread/list failed during TUI session lookup")
+    }
+
+    /// Lists remote session projections registered for one local root thread.
+    pub async fn remote_session_list(
+        &mut self,
+        thread_id: ThreadId,
+        cursor: Option<String>,
+    ) -> Result<RemoteSessionListResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::RemoteSessionList {
+                request_id,
+                params: RemoteSessionListParams {
+                    thread_id: thread_id.to_string(),
+                    cursor,
+                    limit: None,
+                },
+            })
+            .await
+            .wrap_err("remoteSession/list failed during TUI session lookup")
+    }
+
+    /// Attaches the local projection to one registered remote session.
+    pub async fn remote_session_attach(
+        &mut self,
+        thread_id: ThreadId,
+        remote_session_id: String,
+    ) -> Result<RemoteSessionAttachResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::RemoteSessionAttach {
+                request_id,
+                params: RemoteSessionAttachParams {
+                    thread_id: thread_id.to_string(),
+                    remote_session_id,
+                },
+            })
+            .await
+            .wrap_err("remoteSession/attach failed during TUI session lookup")
+    }
+
+    /// Reads one incremental output page from one registered remote session.
+    pub async fn remote_session_read(
+        &mut self,
+        thread_id: ThreadId,
+        remote_session_id: String,
+        cursor: Option<String>,
+    ) -> Result<RemoteSessionReadResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::RemoteSessionRead {
+                request_id,
+                params: RemoteSessionReadParams {
+                    thread_id: thread_id.to_string(),
+                    remote_session_id,
+                    cursor,
+                    limit: None,
+                },
+            })
+            .await
+            .wrap_err("remoteSession/read failed during TUI session lookup")
+    }
+
+    /// Sends a new message or steering input to a remote session.
+    pub async fn remote_session_input(
+        &mut self,
+        thread_id: ThreadId,
+        remote_session_id: String,
+        message: String,
+        expected_turn_id: Option<String>,
+    ) -> Result<RemoteSessionInputResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::RemoteSessionInput {
+                request_id,
+                params: RemoteSessionInputParams {
+                    thread_id: thread_id.to_string(),
+                    remote_session_id,
+                    message,
+                    expected_turn_id,
+                },
+            })
+            .await
+            .wrap_err("remoteSession/input failed during TUI session lookup")
+    }
+
+    /// Cancels an active remote turn.
+    pub async fn remote_session_cancel(
+        &mut self,
+        thread_id: ThreadId,
+        remote_session_id: String,
+        expected_turn_id: Option<String>,
+    ) -> Result<RemoteSessionCancelResponse> {
+        let request_id = self.next_request_id();
+        self.client
+            .request_typed(ClientRequest::RemoteSessionCancel {
+                request_id,
+                params: RemoteSessionCancelParams {
+                    thread_id: thread_id.to_string(),
+                    remote_session_id,
+                    expected_turn_id,
+                },
+            })
+            .await
+            .wrap_err("remoteSession/cancel failed during TUI session lookup")
     }
 
     /// Lists thread ids that the app server currently holds in memory.

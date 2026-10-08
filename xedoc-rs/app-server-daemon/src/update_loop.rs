@@ -97,7 +97,7 @@ async fn update_once(
 ) -> Result<UpdateLoopControl> {
     install_latest_standalone().await?;
 
-    let daemon = Daemon::from_environment()?;
+    let daemon = Daemon::from_environment(crate::DaemonTarget::Current)?;
     let managed_xedoc_bin = resolved_managed_xedoc_bin(&daemon.managed_xedoc_bin).await?;
     let managed_identity = executable_identity(&managed_xedoc_bin).await?;
     let (restart_mode, updater_refresh_mode) =

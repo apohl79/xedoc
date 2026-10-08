@@ -106,6 +106,7 @@ pub(crate) struct TurnRequestProcessor {
     pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
     thread_state_manager: ThreadStateManager,
     session_script_registry: crate::session_script_registry::SessionScriptRegistry,
+    session_extension_manager: crate::session_extension_manager::SessionExtensionManager,
     thread_watch_manager: ThreadWatchManager,
     thread_list_state_permit: Arc<Semaphore>,
     skills_watcher: Arc<SkillsWatcher>,
@@ -161,6 +162,7 @@ impl TurnRequestProcessor {
         pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
         thread_state_manager: ThreadStateManager,
         session_script_registry: crate::session_script_registry::SessionScriptRegistry,
+        session_extension_manager: crate::session_extension_manager::SessionExtensionManager,
         thread_watch_manager: ThreadWatchManager,
         thread_list_state_permit: Arc<Semaphore>,
         skills_watcher: Arc<SkillsWatcher>,
@@ -176,6 +178,7 @@ impl TurnRequestProcessor {
             pending_thread_unloads,
             thread_state_manager,
             session_script_registry,
+            session_extension_manager,
             thread_watch_manager,
             thread_list_state_permit,
             skills_watcher,
@@ -296,6 +299,22 @@ impl TurnRequestProcessor {
             ));
         }
 
+        Ok(())
+    }
+
+    async fn ensure_remote_agent_ready(
+        &self,
+        thread_id: ThreadId,
+        thread: &XedocThread,
+    ) -> Result<(), JSONRPCErrorError> {
+        if thread.config_snapshot().await.parent_thread_id.is_none() {
+            self.session_extension_manager
+                .start_remote_for_thread(thread_id)
+                .await
+                .map_err(|_| {
+                    internal_error("built-in remote agent failed its readiness check".to_string())
+                })?;
+        }
         Ok(())
     }
 
@@ -428,6 +447,8 @@ impl TurnRequestProcessor {
     ) -> Result<TurnStartResponse, JSONRPCErrorError> {
         let (thread_id, thread) = self.load_thread(&params.thread_id).await?;
         self.ensure_direct_input_allowed(thread.as_ref()).await?;
+        self.ensure_remote_agent_ready(thread_id, thread.as_ref())
+            .await?;
         Self::validate_v2_input_limit(&params.input)?;
         Self::set_app_server_client_info(
             thread.as_ref(),
@@ -1116,7 +1137,9 @@ impl TurnRequestProcessor {
             delivery,
         } = params;
 
-        let (_, parent_thread) = self.load_thread(&thread_id).await?;
+        let (parent_thread_id, parent_thread) = self.load_thread(&thread_id).await?;
+        self.ensure_remote_agent_ready(parent_thread_id, parent_thread.as_ref())
+            .await?;
         let (review_request, display_text, target_prompt) =
             Self::review_request_from_target(target)?;
         match delivery.unwrap_or(ApiReviewDelivery::Inline).to_core() {
@@ -1199,6 +1222,7 @@ impl TurnRequestProcessor {
             thread_manager: Arc::clone(&self.thread_manager),
             thread_state_manager: self.thread_state_manager.clone(),
             session_script_registry: self.session_script_registry.clone(),
+            session_extension_manager: self.session_extension_manager.clone(),
             outgoing: Arc::clone(&self.outgoing),
             pending_thread_unloads: Arc::clone(&self.pending_thread_unloads),
             thread_watch_manager: self.thread_watch_manager.clone(),

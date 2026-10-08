@@ -30,6 +30,7 @@ pub fn server_request_thread_id(request: &ServerRequest) -> Option<ThreadId> {
         ServerRequest::CurrentTimeRead { params, .. } => {
             ThreadId::from_string(&params.thread_id).ok()
         }
+        ServerRequest::RemoteSessionControl { .. } => None,
         ServerRequest::ChatgptAuthTokensRefresh { .. }
         | ServerRequest::ApplyPatchApproval { .. }
         | ServerRequest::ExecCommandApproval { .. } => None,
@@ -77,6 +78,9 @@ pub fn server_notification_thread_target(
         }
         ServerNotification::ScriptPromptOpened(notification) => {
             Some(notification.prompt.thread_id.as_str())
+        }
+        ServerNotification::RemoteSessionUpdated(notification) => {
+            Some(notification.thread_id.as_str())
         }
         ServerNotification::SessionExtensionCommandsUpdated(notification) => {
             Some(notification.thread_id.as_str())

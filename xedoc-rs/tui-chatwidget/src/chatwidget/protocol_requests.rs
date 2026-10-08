@@ -50,6 +50,7 @@ impl ChatWidget {
             }
             ServerRequest::DynamicToolCall { .. }
             | ServerRequest::CurrentTimeRead { .. }
+            | ServerRequest::RemoteSessionControl { .. }
             | ServerRequest::ChatgptAuthTokensRefresh { .. }
             | ServerRequest::ApplyPatchApproval { .. }
             | ServerRequest::ExecCommandApproval { .. } => {

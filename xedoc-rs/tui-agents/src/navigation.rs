@@ -30,6 +30,51 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use xedoc_protocol::ThreadId;
 
+/// Stable local identity for a remote session projection.
+///
+/// The value is minted by the local app server. It is deliberately distinct
+/// from a remote thread id, which must never be passed to local `thread/read`.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct RemoteSessionId(String);
+
+impl RemoteSessionId {
+    /// Creates an id from the app-server-owned projection identity.
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    /// Returns the opaque app-server-owned projection identity.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A selectable session in the unified agent picker.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum AgentNavigationTarget {
+    /// A thread owned by this local app server.
+    Local(ThreadId),
+    /// A projection of a thread owned by a paired remote host.
+    Remote(RemoteSessionId),
+}
+
+/// Display state for an app-server-owned remote session projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RemoteAgentPickerEntry {
+    /// Human-readable remote host name.
+    pub hostname: String,
+    /// Workspace selected on the remote host.
+    pub workspace_id: String,
+    /// Whether the remote session is currently executing.
+    pub is_running: bool,
+    /// Whether the remote session has finished and is view-only.
+    pub is_closed: bool,
+    /// Active remote turn used to distinguish a steer from a new turn.
+    pub active_turn_id: Option<String>,
+    /// Bounded broker-reported activity summary.
+    pub current_activity: Option<String>,
+}
+
 /// Small state container for multi-agent picker ordering and labeling.
 ///
 /// `App` owns thread lifecycle and UI side effects. This type keeps the pure rules for stable
@@ -49,6 +94,11 @@ pub struct AgentNavigationState {
     stopped_threads: HashSet<ThreadId>,
     /// Spawned child threads whose instructions are owned by their parent agent.
     parent_owned_threads: HashSet<ThreadId>,
+    /// Remote projections have an app-server-owned identity and never enter
+    /// the local thread cache.
+    remote_sessions: HashMap<RemoteSessionId, RemoteAgentPickerEntry>,
+    /// Unified stable picker order for local threads and remote projections.
+    targets: Vec<AgentNavigationTarget>,
 }
 
 /// Direction of keyboard traversal through the stable picker order.
@@ -85,7 +135,28 @@ impl AgentNavigationState {
     /// This is the cheapest way for `App` to decide whether opening the picker should show "No
     /// agents available yet." rather than constructing picker rows from an empty state.
     pub fn is_empty(&self) -> bool {
-        self.threads.is_empty()
+        self.threads.is_empty() && self.remote_sessions.is_empty()
+    }
+
+    /// Inserts or updates a remote projection without making it a local thread.
+    pub fn upsert_remote_session(
+        &mut self,
+        remote_session_id: RemoteSessionId,
+        entry: RemoteAgentPickerEntry,
+    ) {
+        if !self.remote_sessions.contains_key(&remote_session_id) {
+            self.targets
+                .push(AgentNavigationTarget::Remote(remote_session_id.clone()));
+        }
+        self.remote_sessions.insert(remote_session_id, entry);
+    }
+
+    /// Returns metadata for a remote projection.
+    pub fn remote_session(
+        &self,
+        remote_session_id: &RemoteSessionId,
+    ) -> Option<&RemoteAgentPickerEntry> {
+        self.remote_sessions.get(remote_session_id)
     }
 
     /// Inserts or updates a picker entry while preserving first-seen traversal order.
@@ -102,6 +173,7 @@ impl AgentNavigationState {
     ) {
         if !self.threads.contains_key(&thread_id) {
             self.order.push(thread_id);
+            self.targets.push(AgentNavigationTarget::Local(thread_id));
         }
         let (
             previous_agent_path,
@@ -144,6 +216,8 @@ impl AgentNavigationState {
     pub fn record_sub_agent_activity(&mut self, activity: SubAgentActivityDisplay) {
         if !self.threads.contains_key(&activity.thread_id) {
             self.order.push(activity.thread_id);
+            self.targets
+                .push(AgentNavigationTarget::Local(activity.thread_id));
         }
         let entry =
             self.threads
@@ -264,6 +338,8 @@ impl AgentNavigationState {
         self.order.clear();
         self.stopped_threads.clear();
         self.parent_owned_threads.clear();
+        self.remote_sessions.clear();
+        self.targets.clear();
     }
 
     /// Removes a tracked thread entirely from picker metadata and traversal order.
@@ -276,6 +352,8 @@ impl AgentNavigationState {
         self.order.retain(|candidate| *candidate != thread_id);
         self.stopped_threads.remove(&thread_id);
         self.parent_owned_threads.remove(&thread_id);
+        self.targets
+            .retain(|target| target != &AgentNavigationTarget::Local(thread_id));
     }
 
     /// Returns whether there is at least one tracked thread other than the primary one.
@@ -289,6 +367,11 @@ impl AgentNavigationState {
             .any(|thread_id| Some(*thread_id) != primary_thread_id)
     }
 
+    /// Returns whether any remote session projection is available for selection.
+    pub fn has_remote_session(&self) -> bool {
+        !self.remote_sessions.is_empty()
+    }
+
     /// Returns live picker rows in the same order users cycle through them.
     ///
     /// The `order` vector is intentionally historical and may briefly contain thread ids that no
@@ -298,6 +381,20 @@ impl AgentNavigationState {
         self.order
             .iter()
             .filter_map(|thread_id| self.threads.get(thread_id).map(|entry| (*thread_id, entry)))
+            .collect()
+    }
+
+    /// Returns every selectable local thread and remote projection in first-seen order.
+    pub fn ordered_targets(&self) -> Vec<AgentNavigationTarget> {
+        self.targets
+            .iter()
+            .filter(|target| match target {
+                AgentNavigationTarget::Local(thread_id) => self.threads.contains_key(thread_id),
+                AgentNavigationTarget::Remote(remote_session_id) => {
+                    self.remote_sessions.contains_key(remote_session_id)
+                }
+            })
+            .cloned()
             .collect()
     }
 

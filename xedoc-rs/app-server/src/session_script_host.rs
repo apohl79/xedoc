@@ -73,6 +73,7 @@ impl SessionScriptHost {
             match launch_session_script(
                 &script.id,
                 &argv,
+                &[],
                 thread_id,
                 self.transport_event_tx.clone(),
             )
@@ -103,6 +104,31 @@ impl SessionScriptHost {
         extension_id: String,
         entrypoint: PathBuf,
     ) -> Result<(), IoError> {
+        self.start_extension_argv(
+            thread_id,
+            extension_id,
+            vec![OsString::from(entrypoint.as_os_str())],
+        )
+        .await
+    }
+
+    pub(crate) async fn start_extension_argv(
+        &mut self,
+        thread_id: ThreadId,
+        extension_id: String,
+        argv: Vec<OsString>,
+    ) -> Result<(), IoError> {
+        self.start_extension_argv_with_env(thread_id, extension_id, argv, &[])
+            .await
+    }
+
+    pub(crate) async fn start_extension_argv_with_env(
+        &mut self,
+        thread_id: ThreadId,
+        extension_id: String,
+        argv: Vec<OsString>,
+        environment: &[(OsString, OsString)],
+    ) -> Result<(), IoError> {
         if self
             .extension_scripts_by_thread
             .get(&thread_id)
@@ -110,10 +136,10 @@ impl SessionScriptHost {
         {
             return Ok(());
         }
-        let argv = [OsString::from(entrypoint.as_os_str())];
         let hosted_script = launch_session_script(
             &extension_id,
             &argv,
+            environment,
             thread_id,
             self.transport_event_tx.clone(),
         )
@@ -179,6 +205,7 @@ impl SessionScriptHost {
 async fn launch_session_script(
     script_id: &str,
     argv: &[OsString],
+    environment: &[(OsString, OsString)],
     thread_id: ThreadId,
     transport_event_tx: mpsc::Sender<TransportEvent>,
 ) -> Result<HostedSessionScript, IoError> {
@@ -188,6 +215,7 @@ async fn launch_session_script(
     let mut command = Command::new(program);
     command
         .args(args)
+        .envs(environment.iter().cloned())
         .env("XEDOC_SESSION_SCRIPT_ID", script_id)
         .env("XEDOC_SESSION_SCRIPT_THREAD_ID", thread_id.to_string())
         .stdin(std::process::Stdio::piped())

@@ -34,6 +34,9 @@ mod navigation;
 
 pub use navigation::AgentNavigationDirection;
 pub use navigation::AgentNavigationState;
+pub use navigation::AgentNavigationTarget;
+pub use navigation::RemoteAgentPickerEntry;
+pub use navigation::RemoteSessionId;
 
 const COLLAB_PROMPT_PREVIEW_GRAPHEMES: usize = 160;
 const COLLAB_AGENT_ERROR_PREVIEW_GRAPHEMES: usize = 160;

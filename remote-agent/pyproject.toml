@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xedoc-remote-agent"
+version = "0.1.0"
+description = "Local Xedoc remote-agent broker core"
+requires-python = ">=3.10"
+dependencies = [
+    "cryptography==46.0.5",
+]
+
+[project.scripts]
+xedoc-remote-agentd = "xedoc_remote_agent.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

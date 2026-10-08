@@ -14,10 +14,18 @@ use tokio::fs;
 use tokio::process::Command;
 
 pub(crate) fn managed_xedoc_bin(xedoc_home: &Path) -> PathBuf {
+    standalone_xedoc_bin(xedoc_home, "current")
+}
+
+pub(crate) fn experimental_managed_xedoc_bin(xedoc_home: &Path) -> PathBuf {
+    standalone_xedoc_bin(xedoc_home, "experimental")
+}
+
+fn standalone_xedoc_bin(xedoc_home: &Path, release_link: &str) -> PathBuf {
     xedoc_home
         .join("packages")
         .join("standalone")
-        .join("current")
+        .join(release_link)
         .join(managed_xedoc_file_name())
 }
 

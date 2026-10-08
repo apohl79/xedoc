@@ -95,6 +95,56 @@ class InstallShTest(unittest.TestCase):
                 },
             )
 
+    def test_experimental_local_package_install_creates_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_path = root / "offline-package.zip"
+            write_package_archive(archive_path)
+            env = local_package_install_env(root)
+
+            stable_result = run_local_package_installer(env, archive_path)
+            result = run_local_package_installer(env, archive_path, experimental=True)
+
+            standalone = root / "xedoc-home/packages/standalone"
+            stable_release_dir = standalone / "releases" / f"{VERSION}-{TARGET}"
+            experimental_release_dir = (
+                standalone / "releases" / f"{VERSION}-{TARGET}-experimental"
+            )
+            self.assertEqual(
+                {
+                    "returncodes": [stable_result.returncode, result.returncode],
+                    "current": os.readlink(standalone / "current"),
+                    "experimental": os.readlink(standalone / "experimental"),
+                    "xedoc": os.readlink(root / "install-bin/xedoc"),
+                    "xedoc_experimental": os.readlink(
+                        root / "install-bin/xedoc-experimental"
+                    ),
+                },
+                {
+                    "returncodes": [0, 0],
+                    "current": str(stable_release_dir),
+                    "experimental": str(experimental_release_dir),
+                    "xedoc": str(standalone / "current/bin/xedoc"),
+                    "xedoc_experimental": str(standalone / "experimental/bin/xedoc"),
+                },
+            )
+
+    def test_experimental_install_requires_a_local_package(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            env = local_package_install_env(root)
+
+            result = subprocess.run(
+                ["/bin/sh", str(INSTALL_SCRIPT), "--experimental"],
+                capture_output=True,
+                check=False,
+                env=env,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--experimental requires --local-zip", result.stderr)
+
     def test_package_install_creates_visible_xedoc_and_host_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -488,10 +538,13 @@ def local_package_install_env(root: Path) -> dict[str, str]:
 
 
 def run_local_package_installer(
-    env: dict[str, str], archive_path: Path
+    env: dict[str, str], archive_path: Path, *, experimental: bool = False
 ) -> subprocess.CompletedProcess[str]:
+    args = ["/bin/sh", str(INSTALL_SCRIPT), "--local-zip", str(archive_path)]
+    if experimental:
+        args.append("--experimental")
     return subprocess.run(
-        ["/bin/sh", str(INSTALL_SCRIPT), "--local-zip", str(archive_path)],
+        args,
         capture_output=True,
         check=False,
         cwd=archive_path.parent,

@@ -8,7 +8,10 @@ RELEASE_TARGET="${XEDOC_RELEASE_TARGET:-}"
 LOCAL_ZIP="${XEDOC_LOCAL_ZIP:-}"
 BIN_DIR="${XEDOC_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/xedoc"
+EXPERIMENTAL_BIN_PATH="$BIN_DIR/xedoc-experimental"
 SESSION_CONTROL_BIN_PATH="$BIN_DIR/xedoc-session"
+EXPERIMENTAL_SESSION_CONTROL_BIN_PATH="$BIN_DIR/xedoc-session-experimental"
+REMOTE_AGENT_BIN_PATH="$BIN_DIR/xedoc-remote-agentd"
 XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
 NON_INTERACTIVE="${XEDOC_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
@@ -16,11 +19,14 @@ ZSHRC_APP_SERVER_CHOICE_PATH="$XEDOC_HOME_DIR/app-server-daemon/zshrc-start"
 STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
+EXPERIMENTAL_LINK="$STANDALONE_ROOT/experimental"
 MODEL_ROUTER_RUNTIME_ROOT="$XEDOC_HOME_DIR/packages/model-router-runtime"
 CHECK_ONLY=false
+EXPERIMENTAL=false
 tmp_dir=""
 app_server_was_running=false
 skip_model_router_warm=false
+zshrc_app_server_action="skipped"
 
 script_dir="$(CDPATH='' cd "$(dirname "$0")" && pwd)"
 repo_root="$(CDPATH='' cd "$script_dir/../.." && pwd)"
@@ -36,7 +42,7 @@ die() {
 
 usage() {
   cat <<EOF
-Usage: install.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--check]
+Usage: install.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--experimental] [--check]
 
 Downloads and installs the Xedoc binary release for the current release tag,
 or installs a local release ZIP without contacting GitHub.
@@ -48,6 +54,8 @@ Options:
                    GitHub repository to read releases from. Defaults to apohl79/xedoc.
   --local-zip PATH  Install a local release ZIP instead of downloading one from GitHub.
                    The ZIP must contain xedoc-package.json.
+  --experimental    Install a local ZIP and also expose it as xedoc-experimental.
+                   This option requires --local-zip.
   --check          Verify that the release asset exists, then print the plan and exit.
   -h, --help       Show this help.
 
@@ -85,6 +93,9 @@ parse_args() {
         [ "$#" -ge 2 ] || die "--local-zip requires a value."
         LOCAL_ZIP="$2"
         shift
+        ;;
+      --experimental)
+        EXPERIMENTAL=true
         ;;
       --check)
         CHECK_ONLY=true
@@ -573,7 +584,26 @@ local_package_metadata_field() {
 
 local_runtime_archive() {
   asset="$1"
-  printf '%s/%s\n' "$(dirname "$LOCAL_ZIP")" "$asset"
+  local_zip_dir="$(dirname "$LOCAL_ZIP")"
+  sibling_archive="$local_zip_dir/$asset"
+  if [ -f "$sibling_archive" ]; then
+    printf '%s\n' "$sibling_archive"
+    return
+  fi
+
+  runtime_archive="$(
+    find "$local_zip_dir/../model-router-runtime" \
+      -type f \
+      -name "$asset" \
+      -print \
+      -quit 2>/dev/null
+  )"
+  if [ -n "$runtime_archive" ]; then
+    printf '%s\n' "$runtime_archive"
+    return
+  fi
+
+  printf '%s\n' "$sibling_archive"
 }
 
 prepare_local_package() {
@@ -783,6 +813,9 @@ install_zip_release() {
   rm -rf "$stage_release"
   mkdir -p "$stage_release"
   unzip -q "$archive_path" -d "$stage_release"
+  if [ -d "$stage_release/xedoc-resources/remote-agent/runtime" ]; then
+    chmod -R a-w "$stage_release/xedoc-resources/remote-agent/runtime"
+  fi
 
   [ -f "$stage_release/bin/xedoc" ] || die "Archive is missing bin/xedoc."
   [ -f "$stage_release/bin/xedoc-session" ] || die "Archive is missing bin/xedoc-session."
@@ -791,12 +824,16 @@ install_zip_release() {
     "$stage_release/bin/xedoc" \
     "$stage_release/bin/xedoc-session" \
     "$stage_release/xedoc-path/rg"
+  if [ -f "$stage_release/bin/xedoc-remote-agentd" ]; then
+    chmod 0755 "$stage_release/bin/xedoc-remote-agentd"
+  fi
   if [ -f "$stage_release/xedoc-resources/zsh/bin/zsh" ]; then
     chmod 0755 "$stage_release/xedoc-resources/zsh/bin/zsh"
   fi
   ln -sf "bin/xedoc" "$stage_release/xedoc"
 
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
+    chmod -R u+w "$release_dir"
     rm -rf "$release_dir"
   fi
   mv "$stage_release" "$release_dir"
@@ -984,20 +1021,77 @@ update_current_link() {
   replace_path_with_symlink "$CURRENT_LINK" "$release_dir" "$tmp_link"
 }
 
+update_experimental_link() {
+  release_dir="$1"
+  tmp_link="$STANDALONE_ROOT/.experimental.$$"
+
+  mkdir -p "$STANDALONE_ROOT"
+  replace_path_with_symlink "$EXPERIMENTAL_LINK" "$release_dir" "$tmp_link"
+}
+
 update_visible_command() {
   mkdir -p "$BIN_DIR"
   tmp_link="$BIN_DIR/.xedoc.$$"
   tmp_session_link="$BIN_DIR/.xedoc-session.$$"
+  tmp_remote_agent_link="$BIN_DIR/.xedoc-remote-agentd.$$"
 
   replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/bin/xedoc" "$tmp_link"
   replace_path_with_symlink \
     "$SESSION_CONTROL_BIN_PATH" \
     "$CURRENT_LINK/bin/xedoc-session" \
     "$tmp_session_link"
+  if [ -x "$CURRENT_LINK/bin/xedoc-remote-agentd" ]; then
+    replace_path_with_symlink \
+      "$REMOTE_AGENT_BIN_PATH" \
+      "$CURRENT_LINK/bin/xedoc-remote-agentd" \
+      "$tmp_remote_agent_link"
+  elif [ "$(readlink "$REMOTE_AGENT_BIN_PATH" 2>/dev/null || true)" = \
+    "$CURRENT_LINK/bin/xedoc-remote-agentd" ]; then
+    rm -f "$REMOTE_AGENT_BIN_PATH"
+  fi
   # Older releases shipped a xedoc-code-mode-host symlink; drop it if stale.
   if [ "$(readlink "$BIN_DIR/xedoc-code-mode-host" 2>/dev/null || true)" = \
     "$CURRENT_LINK/bin/xedoc-code-mode-host" ]; then
     rm -f "$BIN_DIR/xedoc-code-mode-host"
+  fi
+}
+
+update_experimental_visible_command() {
+  mkdir -p "$BIN_DIR"
+  tmp_link="$BIN_DIR/.xedoc-experimental.$$"
+  tmp_session_link="$BIN_DIR/.xedoc-session-experimental.$$"
+
+  replace_path_with_symlink \
+    "$EXPERIMENTAL_BIN_PATH" \
+    "$EXPERIMENTAL_LINK/bin/xedoc" \
+    "$tmp_link"
+  replace_path_with_symlink \
+    "$EXPERIMENTAL_SESSION_CONTROL_BIN_PATH" \
+    "$EXPERIMENTAL_LINK/bin/xedoc-session" \
+    "$tmp_session_link"
+}
+
+configure_remote_agent() {
+  remote_agent_command="$SESSION_CONTROL_BIN_PATH"
+  remote_agent_release="$CURRENT_LINK"
+  if [ "$EXPERIMENTAL" = true ]; then
+    remote_agent_command="$EXPERIMENTAL_SESSION_CONTROL_BIN_PATH"
+    remote_agent_release="$EXPERIMENTAL_LINK"
+  fi
+  [ -x "$remote_agent_release/bin/xedoc-remote-agentd" ] || return 0
+
+  if ! prompt_user_available; then
+    step "Remote-agent onboarding requires an interactive terminal"
+    printf 'Run after installation:\n  %s remote-agent-configure\n' \
+      "$remote_agent_command"
+    return 0
+  fi
+
+  if "$remote_agent_command" remote-agent-configure </dev/tty; then
+    step "Remote-agent configuration is ready"
+  else
+    printf 'WARNING: Remote-agent onboarding was not completed. Re-run:\n  %s remote-agent-configure\n' \
+      "$remote_agent_command" >&2
   fi
 }
 
@@ -1038,6 +1132,10 @@ print_zshrc_app_server_instructions() {
 parse_args "$@"
 validate_repo "$RELEASE_REPO"
 
+if [ "$EXPERIMENTAL" = true ] && [ -z "$LOCAL_ZIP" ]; then
+  die "--experimental requires --local-zip."
+fi
+
 if [ -n "$LOCAL_ZIP" ]; then
   require_command unzip
   prepare_local_package
@@ -1048,6 +1146,9 @@ target="$(detect_target)"
 release_version="${tag#v}"
 asset="xedoc-$target-$release_version.zip"
 release_name="$release_version-$target"
+if [ "$EXPERIMENTAL" = true ]; then
+  release_name="$release_name-experimental"
+fi
 release_dir="$RELEASES_DIR/$release_name"
 
 if [ -n "$LOCAL_ZIP" ]; then
@@ -1113,14 +1214,16 @@ if [ -n "$router_runtime_id" ] || [ -n "$router_runtime_asset" ] || \
     "$router_runtime_tag" \
     "$target"
 
-  current_runtime_dir="$CURRENT_LINK/xedoc-resources/model-router/runtime"
-  current_runtime_id=""
-  if [ -f "$current_runtime_dir/model-router-runtime.json" ]; then
-    current_runtime_id="$(runtime_manifest_field \
-      "$current_runtime_dir/model-router-runtime.json" runtimeId)"
-  fi
-  if [ -n "$current_runtime_id" ] && [ "$current_runtime_id" != "$router_runtime_id" ]; then
-    restart_model_router_daemon "$CURRENT_LINK"
+  if [ "$EXPERIMENTAL" = false ]; then
+    current_runtime_dir="$CURRENT_LINK/xedoc-resources/model-router/runtime"
+    current_runtime_id=""
+    if [ -f "$current_runtime_dir/model-router-runtime.json" ]; then
+      current_runtime_id="$(runtime_manifest_field \
+        "$current_runtime_dir/model-router-runtime.json" runtimeId)"
+    fi
+    if [ -n "$current_runtime_id" ] && [ "$current_runtime_id" != "$router_runtime_id" ]; then
+      restart_model_router_daemon "$CURRENT_LINK"
+    fi
   fi
 
   if ! runtime_is_complete \
@@ -1165,11 +1268,19 @@ else
   step "Package has no model-router runtime reference; semantic routing is unavailable"
 fi
 
-update_current_link "$release_dir"
-update_visible_command
-"$BIN_PATH" --version >/dev/null
-restart_running_app_server
-configure_zshrc_app_server
+if [ "$EXPERIMENTAL" = true ]; then
+  update_experimental_link "$release_dir"
+  update_experimental_visible_command
+  "$EXPERIMENTAL_BIN_PATH" --version >/dev/null
+else
+  update_current_link "$release_dir"
+  update_visible_command
+  "$BIN_PATH" --version >/dev/null
+  restart_running_app_server
+  configure_zshrc_app_server
+fi
+
+configure_remote_agent
 
 # Deploy statusline script
 STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"
@@ -1194,5 +1305,7 @@ else
 fi
 
 print_path_note
-print_zshrc_app_server_instructions
+if [ "$EXPERIMENTAL" = false ]; then
+  print_zshrc_app_server_instructions
+fi
 printf 'Xedoc CLI %s installed successfully.\n' "$release_version"

@@ -527,6 +527,198 @@
           "type": "object"
         },
         {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "script/remoteSessionRegister"
+              ],
+              "title": "Script/remoteSessionRegisterRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionRegisterParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Script/remoteSessionRegisterRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "script/remoteSessionUpdate"
+              ],
+              "title": "Script/remoteSessionUpdateRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionUpdateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Script/remoteSessionUpdateRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "remoteSession/list"
+              ],
+              "title": "RemoteSession/listRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionListParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/listRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "remoteSession/read"
+              ],
+              "title": "RemoteSession/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "remoteSession/attach"
+              ],
+              "title": "RemoteSession/attachRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionAttachParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/attachRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "remoteSession/input"
+              ],
+              "title": "RemoteSession/inputRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionInputParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/inputRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "remoteSession/cancel"
+              ],
+              "title": "RemoteSession/cancelRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionCancelParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/cancelRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "remoteSession/detach"
+              ],
+              "title": "RemoteSession/detachRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionDetachParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/detachRequest",
+          "type": "object"
+        },
+        {
           "description": "Increment the thread-local out-of-band elicitation counter.\n\nThis is used by external helpers to pause timeout accounting while a user approval or other elicitation is pending outside the app-server request flow.",
           "properties": {
             "id": {
@@ -5060,6 +5252,82 @@
       "title": "PermissionsRequestApprovalResponse",
       "type": "object"
     },
+    "RemoteSessionControlAction": {
+      "description": "Fixed broker actions permitted through the remote-agent extension.",
+      "enum": [
+        "attach",
+        "read",
+        "send",
+        "steer",
+        "cancel",
+        "detach"
+      ],
+      "type": "string"
+    },
+    "RemoteSessionControlParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Requests one broker operation from the remote-agent extension.",
+      "properties": {
+        "action": {
+          "$ref": "#/definitions/RemoteSessionControlAction"
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expectedTurnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hostId": {
+          "type": "string"
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "hostId",
+        "threadId"
+      ],
+      "title": "RemoteSessionControlParams",
+      "type": "object"
+    },
+    "RemoteSessionControlResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Broker result returned by the remote-agent extension.",
+      "properties": {
+        "result": true,
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "result",
+        "success"
+      ],
+      "title": "RemoteSessionControlResponse",
+      "type": "object"
+    },
     "RequestId": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "anyOf": [
@@ -5424,6 +5692,26 @@
             "params"
           ],
           "title": "Script/resyncRequiredNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "remoteSession/updated"
+              ],
+              "title": "RemoteSession/updatedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/RemoteSessionUpdatedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/updatedNotification",
           "type": "object"
         },
         {
@@ -6688,6 +6976,31 @@
             "params"
           ],
           "title": "CurrentTime/readRequest",
+          "type": "object"
+        },
+        {
+          "description": "Request a fixed remote session operation from the remote-agent extension.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
+                "remoteSession/control"
+              ],
+              "title": "RemoteSession/controlRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/RemoteSessionControlParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "RemoteSession/controlRequest",
           "type": "object"
         },
         {
@@ -15905,6 +16218,524 @@
           "turnId"
         ],
         "title": "ReasoningTextDeltaNotification",
+        "type": "object"
+      },
+      "RemoteSessionAttachParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Attaches the caller's root thread to a registered remote session.",
+        "properties": {
+          "remoteSessionId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "remoteSessionId",
+          "threadId"
+        ],
+        "title": "RemoteSessionAttachParams",
+        "type": "object"
+      },
+      "RemoteSessionAttachResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Result of attaching to a remote session.",
+        "properties": {
+          "remoteSession": {
+            "$ref": "#/definitions/v2/RemoteSessionSummary"
+          }
+        },
+        "required": [
+          "remoteSession"
+        ],
+        "title": "RemoteSessionAttachResponse",
+        "type": "object"
+      },
+      "RemoteSessionCancelParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Cancels the active turn of a registered remote session.",
+        "properties": {
+          "expectedTurnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remoteSessionId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "remoteSessionId",
+          "threadId"
+        ],
+        "title": "RemoteSessionCancelParams",
+        "type": "object"
+      },
+      "RemoteSessionCancelResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Result of cancelling a remote session turn.",
+        "properties": {
+          "remoteSession": {
+            "$ref": "#/definitions/v2/RemoteSessionSummary"
+          }
+        },
+        "required": [
+          "remoteSession"
+        ],
+        "title": "RemoteSessionCancelResponse",
+        "type": "object"
+      },
+      "RemoteSessionDetachParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Detaches the caller's root thread from a registered remote session.",
+        "properties": {
+          "remoteSessionId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "remoteSessionId",
+          "threadId"
+        ],
+        "title": "RemoteSessionDetachParams",
+        "type": "object"
+      },
+      "RemoteSessionDetachResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Result of detaching a remote session.",
+        "properties": {
+          "remoteSession": {
+            "$ref": "#/definitions/v2/RemoteSessionSummary"
+          }
+        },
+        "required": [
+          "remoteSession"
+        ],
+        "title": "RemoteSessionDetachResponse",
+        "type": "object"
+      },
+      "RemoteSessionHostRole": {
+        "description": "Role advertised by a remote host.",
+        "enum": [
+          "coordinator",
+          "managed"
+        ],
+        "type": "string"
+      },
+      "RemoteSessionInputParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Sends input or steering to a registered remote session.",
+        "properties": {
+          "expectedTurnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "remoteSessionId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "remoteSessionId",
+          "threadId"
+        ],
+        "title": "RemoteSessionInputParams",
+        "type": "object"
+      },
+      "RemoteSessionInputResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Result of sending input to a remote session.",
+        "properties": {
+          "outputDelta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remoteSession": {
+            "$ref": "#/definitions/v2/RemoteSessionSummary"
+          }
+        },
+        "required": [
+          "remoteSession"
+        ],
+        "title": "RemoteSessionInputResponse",
+        "type": "object"
+      },
+      "RemoteSessionItem": {
+        "description": "One transcript item of a remote session, in the remote host's own thread-item shape so a client renders it like an item of a local thread.",
+        "properties": {
+          "item": {
+            "$ref": "#/definitions/v2/ThreadItem"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "turnId"
+        ],
+        "type": "object"
+      },
+      "RemoteSessionListParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Lists locally registered remote sessions for one root thread.",
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "title": "RemoteSessionListParams",
+        "type": "object"
+      },
+      "RemoteSessionListResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Registered remote sessions belonging to one root thread.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/definitions/v2/RemoteSessionSummary"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "RemoteSessionListResponse",
+        "type": "object"
+      },
+      "RemoteSessionReadParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Reads one locally registered remote session.",
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "remoteSessionId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "remoteSessionId",
+          "threadId"
+        ],
+        "title": "RemoteSessionReadParams",
+        "type": "object"
+      },
+      "RemoteSessionReadResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Bounded output and summary for a remote session.",
+        "properties": {
+          "items": {
+            "description": "Structured transcript items of the page.",
+            "items": {
+              "$ref": "#/definitions/v2/RemoteSessionItem"
+            },
+            "type": "array"
+          },
+          "output": {
+            "description": "Text projection of the page, for clients that do not render items.",
+            "type": "string"
+          },
+          "remoteSession": {
+            "$ref": "#/definitions/v2/RemoteSessionSummary"
+          }
+        },
+        "required": [
+          "items",
+          "output",
+          "remoteSession"
+        ],
+        "title": "RemoteSessionReadResponse",
+        "type": "object"
+      },
+      "RemoteSessionRegisterParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Registers a remote identity from the host-managed remote-agent extension.",
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "hostName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "remoteThreadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostId",
+          "registrationId",
+          "remoteThreadId"
+        ],
+        "title": "RemoteSessionRegisterParams",
+        "type": "object"
+      },
+      "RemoteSessionRegisterResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Returns the opaque local session ID for a registered remote identity.",
+        "properties": {
+          "remoteSession": {
+            "$ref": "#/definitions/v2/RemoteSessionSummary"
+          }
+        },
+        "required": [
+          "remoteSession"
+        ],
+        "title": "RemoteSessionRegisterResponse",
+        "type": "object"
+      },
+      "RemoteSessionStatus": {
+        "description": "Lifecycle state reported for a remote session.",
+        "enum": [
+          "idle",
+          "running",
+          "completed",
+          "failed",
+          "cancelled",
+          "expired",
+          "detached"
+        ],
+        "type": "string"
+      },
+      "RemoteSessionSummary": {
+        "description": "Root-thread scoped projection of a remote session.",
+        "properties": {
+          "activeTurnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activitySummary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostId": {
+            "type": "string"
+          },
+          "hostName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostRole": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/RemoteSessionHostRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remoteSessionId": {
+            "type": "string"
+          },
+          "remoteThreadId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/definitions/v2/RemoteSessionStatus"
+          },
+          "workspaceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "hostId",
+          "remoteSessionId",
+          "remoteThreadId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "RemoteSessionUpdateParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Updates a remote session from the host-managed remote-agent extension.",
+        "properties": {
+          "activitySummary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hostRole": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/RemoteSessionHostRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/definitions/v2/RemoteSessionItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "outputCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outputDelta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "remoteSessionId": {
+            "type": "string"
+          },
+          "remoteTurnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/definitions/v2/RemoteSessionStatus"
+          },
+          "workspaceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "registrationId",
+          "remoteSessionId",
+          "status"
+        ],
+        "title": "RemoteSessionUpdateParams",
+        "type": "object"
+      },
+      "RemoteSessionUpdateResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Empty successful response for a remote-session update.",
+        "title": "RemoteSessionUpdateResponse",
+        "type": "object"
+      },
+      "RemoteSessionUpdatedNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Signals a change to a root-thread-scoped remote session projection.",
+        "properties": {
+          "items": {
+            "description": "Newly finished transcript items, in order.",
+            "items": {
+              "$ref": "#/definitions/v2/RemoteSessionItem"
+            },
+            "type": "array"
+          },
+          "outputDelta": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remoteSession": {
+            "$ref": "#/definitions/v2/RemoteSessionSummary"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "remoteSession",
+          "threadId"
+        ],
+        "title": "RemoteSessionUpdatedNotification",
         "type": "object"
       },
       "RequestId": {

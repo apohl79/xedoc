@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Attaches the caller's root thread to a registered remote session.",
+  "properties": {
+    "remoteSessionId": {
+      "type": "string"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "remoteSessionId",
+    "threadId"
+  ],
+  "title": "RemoteSessionAttachParams",
+  "type": "object"
+}

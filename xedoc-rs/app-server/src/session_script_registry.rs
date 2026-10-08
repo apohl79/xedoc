@@ -101,6 +101,12 @@ pub(crate) struct SessionScriptRegistration {
     identity: SessionScriptIdentityParams,
 }
 
+impl SessionScriptRegistration {
+    pub(crate) fn is_extension(&self, extension_id: &str) -> bool {
+        self.identity.id == extension_id
+    }
+}
+
 struct SessionScriptPromptState {
     prompt_id: String,
     kind: SessionScriptPromptKind,
@@ -448,6 +454,24 @@ impl SessionScriptRegistry {
             .registrations_by_connection
             .get(&connection_id)
             .cloned()
+    }
+
+    pub(crate) async fn ready_extension_registration(
+        &self,
+        thread_id: ThreadId,
+        extension_id: &str,
+    ) -> Option<(ConnectionId, SessionScriptRegistration)> {
+        self.state
+            .lock()
+            .await
+            .registrations_by_connection
+            .iter()
+            .find_map(|(connection_id, registration)| {
+                (registration.thread_id == thread_id
+                    && registration.identity.id == extension_id
+                    && registration.ready)
+                    .then_some((*connection_id, registration.clone()))
+            })
     }
 
     pub(crate) async fn message(

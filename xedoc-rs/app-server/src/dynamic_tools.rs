@@ -20,24 +20,74 @@ pub(crate) async fn on_call_response(
     receiver: oneshot::Receiver<ClientRequestResult>,
     conversation: Arc<XedocThread>,
 ) {
-    let response = receiver.await;
-    let (response, _error) = match response {
-        Ok(Ok(value)) => decode_response(value),
-        Ok(Err(err)) if is_turn_transition_server_request_error(&err) => return,
-        Ok(Err(err)) => {
-            error!("request failed with client error: {err:?}");
-            fallback_response("dynamic tool request failed")
+    on_call_response_with_failure(
+        call_id,
+        receiver,
+        conversation,
+        "dynamic tool request failed",
+    )
+    .await;
+}
+
+pub(crate) async fn on_targeted_call_response(
+    call_id: String,
+    response: ClientRequestResult,
+    conversation: Arc<XedocThread>,
+) {
+    on_resolved_call_response(
+        call_id,
+        response,
+        conversation,
+        "remote-agent operation became unavailable; restart the local remote-agent broker",
+    )
+    .await
+}
+
+async fn on_call_response_with_failure(
+    call_id: String,
+    receiver: oneshot::Receiver<ClientRequestResult>,
+    conversation: Arc<XedocThread>,
+    failure_message: &str,
+) {
+    match receiver.await {
+        Ok(response) => {
+            on_resolved_call_response(call_id, response, conversation, failure_message).await;
         }
         Err(err) => {
             error!("request failed: {err:?}");
-            fallback_response("dynamic tool request failed")
+            let (response, _error) = fallback_response(failure_message);
+            submit_dynamic_tool_response(call_id, response, conversation).await;
+        }
+    }
+}
+
+async fn on_resolved_call_response(
+    call_id: String,
+    response: ClientRequestResult,
+    conversation: Arc<XedocThread>,
+    failure_message: &str,
+) {
+    let (response, _error) = match response {
+        Ok(value) => decode_response(value),
+        Err(err) if is_turn_transition_server_request_error(&err) => return,
+        Err(err) => {
+            error!("request failed with client error: {err:?}");
+            fallback_response(failure_message)
         }
     };
 
+    submit_dynamic_tool_response(call_id, response, conversation).await;
+}
+
+async fn submit_dynamic_tool_response(
+    call_id: String,
+    response: DynamicToolCallResponse,
+    conversation: Arc<XedocThread>,
+) {
     let DynamicToolCallResponse {
         content_items,
         success,
-    } = response.clone();
+    } = response;
     let core_response = CoreDynamicToolResponse {
         content_items: content_items
             .into_iter()
@@ -45,10 +95,34 @@ pub(crate) async fn on_call_response(
             .collect(),
         success,
     };
+    submit_core_response(call_id, core_response, conversation).await;
+}
+
+pub(crate) async fn submit_unavailable_response(
+    call_id: String,
+    message: String,
+    conversation: Arc<XedocThread>,
+) {
+    submit_core_response(
+        call_id,
+        CoreDynamicToolResponse {
+            content_items: vec![CoreDynamicToolCallOutputContentItem::InputText { text: message }],
+            success: false,
+        },
+        conversation,
+    )
+    .await;
+}
+
+async fn submit_core_response(
+    call_id: String,
+    response: CoreDynamicToolResponse,
+    conversation: Arc<XedocThread>,
+) {
     if let Err(err) = conversation
         .submit(Op::DynamicToolResponse {
-            id: call_id.clone(),
-            response: core_response,
+            id: call_id,
+            response,
         })
         .await
     {

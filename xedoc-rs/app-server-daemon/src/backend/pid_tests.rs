@@ -169,6 +169,7 @@ fn update_loop_uses_hidden_app_server_subcommand() {
         pid_file: "updater.pid".into(),
         lock_file: "updater.pid.lock".into(),
         command_kind: PidCommandKind::UpdateLoop,
+        environment: Vec::new(),
     };
 
     assert_eq!(

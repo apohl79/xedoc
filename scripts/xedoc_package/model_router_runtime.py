@@ -1,6 +1,7 @@
 """Build immutable Python runtimes for semantic model routing."""
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from pathlib import Path
 from .targets import TargetSpec
 
 
-RUNTIME_SERIES = "r1"
+RUNTIME_SERIES = "r2"
 RUNTIME_MANIFEST = "model-router-runtime.json"
 PYTHON_RELEASE = "20260814"
 PYTHON_VERSION = "3.12.14"
@@ -249,6 +250,12 @@ def install_wheels(
     distribution: RuntimeDistribution,
     temp_dir: Path,
 ) -> list[dict[str, str]]:
+    if importlib.util.find_spec("pip") is None:
+        subprocess.run(
+            [sys.executable, "-m", "ensurepip", "--upgrade"],
+            check=True,
+        )
+
     wheels_dir = temp_dir / "wheels"
     wheels_dir.mkdir()
     requirements = [
@@ -378,7 +385,13 @@ def download_file(url: str, destination: Path, expected_sha256: str) -> None:
 
 def extract_tar(archive_path: Path, destination: Path) -> None:
     with tarfile.open(archive_path, mode="r:gz") as archive:
-        members = archive.getmembers()
+        # The model router does not use ncurses. Its Linux terminal database has
+        # case-colliding aliases that cannot be extracted on default macOS volumes.
+        members = [
+            member
+            for member in archive.getmembers()
+            if not member.name.startswith("python/share/terminfo/")
+        ]
         for member in members:
             validate_member_path(destination, member.name)
         archive.extractall(destination, members=members)

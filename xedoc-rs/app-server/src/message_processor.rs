@@ -17,6 +17,7 @@ use crate::outgoing_message::ConnectionRequestId;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::RequestContext;
 use crate::plugin_watcher::PluginWatcher;
+use crate::remote_session_registry::RemoteSessionRegistry;
 use crate::request_processors::AccountRequestProcessor;
 use crate::request_processors::CatalogRequestProcessor;
 use crate::request_processors::CommandExecRequestProcessor;
@@ -106,7 +107,9 @@ fn authorize_session_script_request(
         ClientRequest::ScriptRead { .. }
         | ClientRequest::ScriptUnregister { .. }
         | ClientRequest::ScriptRespond { .. }
-        | ClientRequest::ScriptMessage { .. } => Ok(()),
+        | ClientRequest::ScriptMessage { .. }
+        | ClientRequest::ScriptRemoteSessionRegister { .. }
+        | ClientRequest::ScriptRemoteSessionUpdate { .. } => Ok(()),
         ClientRequest::TurnStart { params, .. }
             if may_send_input
                 && params.thread_id == thread_id
@@ -311,6 +314,7 @@ impl MessageProcessor {
         } = args;
         let thread_state_manager = ThreadStateManager::new();
         let session_script_registry = SessionScriptRegistry::new(&config.session_scripts);
+        let remote_session_registry = RemoteSessionRegistry::default();
         // The thread store is intentionally process-scoped. Config reloads can
         // affect per-thread behavior, but they must not move newly started,
         // resumed, or forked threads to a different persistence backend/root.
@@ -474,6 +478,8 @@ impl MessageProcessor {
             Arc::clone(&pending_thread_unloads),
             thread_state_manager.clone(),
             session_script_registry.clone(),
+            session_extension_manager.clone(),
+            remote_session_registry,
             thread_watch_manager.clone(),
             Arc::clone(&thread_list_state_permit),
             thread_goal_processor.clone(),
@@ -492,6 +498,7 @@ impl MessageProcessor {
             pending_thread_unloads,
             thread_state_manager,
             session_script_registry,
+            session_extension_manager.clone(),
             thread_watch_manager,
             thread_list_state_permit,
             Arc::clone(&skills_watcher),
@@ -1129,6 +1136,46 @@ impl MessageProcessor {
                     .script_message(connection_id, params)
                     .await
             }
+            ClientRequest::ScriptRemoteSessionRegister { params, .. } => {
+                self.thread_processor
+                    .script_remote_session_register(connection_id, params)
+                    .await
+            }
+            ClientRequest::ScriptRemoteSessionUpdate { params, .. } => {
+                self.thread_processor
+                    .script_remote_session_update(connection_id, params)
+                    .await
+            }
+            ClientRequest::RemoteSessionList { params, .. } => self
+                .thread_processor
+                .remote_session_list(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::RemoteSessionRead { params, .. } => self
+                .thread_processor
+                .remote_session_read(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::RemoteSessionAttach { params, .. } => self
+                .thread_processor
+                .remote_session_attach(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::RemoteSessionInput { params, .. } => self
+                .thread_processor
+                .remote_session_input(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::RemoteSessionCancel { params, .. } => self
+                .thread_processor
+                .remote_session_cancel(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::RemoteSessionDetach { params, .. } => self
+                .thread_processor
+                .remote_session_detach(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ThreadResume { params, .. } => {
                 let (result, resumed_thread_id) = self
                     .thread_processor

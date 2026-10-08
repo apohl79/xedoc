@@ -472,6 +472,8 @@ pub(crate) struct ThreadRequestProcessor {
     pub(super) pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
     pub(super) thread_state_manager: ThreadStateManager,
     pub(super) session_script_registry: crate::session_script_registry::SessionScriptRegistry,
+    pub(super) session_extension_manager: crate::session_extension_manager::SessionExtensionManager,
+    pub(super) remote_session_registry: crate::remote_session_registry::RemoteSessionRegistry,
     pub(super) thread_watch_manager: ThreadWatchManager,
     pub(super) thread_list_state_permit: Arc<Semaphore>,
     pub(super) thread_goal_processor: ThreadGoalRequestProcessor,
@@ -530,6 +532,8 @@ impl ThreadRequestProcessor {
         pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
         thread_state_manager: ThreadStateManager,
         session_script_registry: crate::session_script_registry::SessionScriptRegistry,
+        session_extension_manager: crate::session_extension_manager::SessionExtensionManager,
+        remote_session_registry: crate::remote_session_registry::RemoteSessionRegistry,
         thread_watch_manager: ThreadWatchManager,
         thread_list_state_permit: Arc<Semaphore>,
         thread_goal_processor: ThreadGoalRequestProcessor,
@@ -550,6 +554,8 @@ impl ThreadRequestProcessor {
             pending_thread_unloads,
             thread_state_manager,
             session_script_registry,
+            session_extension_manager,
+            remote_session_registry,
             thread_watch_manager,
             thread_list_state_permit,
             thread_goal_processor,
@@ -1004,6 +1010,7 @@ impl ThreadRequestProcessor {
             thread_manager: Arc::clone(&self.thread_manager),
             thread_state_manager: self.thread_state_manager.clone(),
             session_script_registry: self.session_script_registry.clone(),
+            session_extension_manager: self.session_extension_manager.clone(),
             outgoing: Arc::clone(&self.outgoing),
             pending_thread_unloads: Arc::clone(&self.pending_thread_unloads),
             thread_watch_manager: self.thread_watch_manager.clone(),
@@ -1127,6 +1134,7 @@ impl ThreadRequestProcessor {
             thread_manager: Arc::clone(&self.thread_manager),
             thread_state_manager: self.thread_state_manager.clone(),
             session_script_registry: self.session_script_registry.clone(),
+            session_extension_manager: self.session_extension_manager.clone(),
             outgoing: Arc::clone(&self.outgoing),
             pending_thread_unloads: Arc::clone(&self.pending_thread_unloads),
             thread_watch_manager: self.thread_watch_manager.clone(),
@@ -1333,7 +1341,10 @@ impl ThreadRequestProcessor {
                 .thread_manager
                 .default_environment_selections(&config.cwd, &config.workspace_roots)
         });
-        let dynamic_tools = dynamic_tools.unwrap_or_default();
+        let dynamic_tools = listener_task_context
+            .session_extension_manager
+            .augment_dynamic_tools(&config, dynamic_tools.unwrap_or_default())
+            .map_err(invalid_request)?;
         if !dynamic_tools.is_empty() {
             validate_dynamic_tools(&dynamic_tools).map_err(invalid_request)?;
         }
@@ -3300,17 +3311,22 @@ impl ThreadRequestProcessor {
         {
             config.model_reasoning_effort = None;
         }
+        let remote_dynamic_tools = self
+            .session_extension_manager
+            .remote_dynamic_tools(&config)
+            .map_err(invalid_request)?;
 
         let response_history = thread_history.clone();
 
         match self
             .thread_manager
-            .resume_thread_with_history(
+            .resume_thread_with_history_and_dynamic_tools(
                 config,
                 thread_history,
                 self.auth_manager.clone(),
                 self.request_trace_context(&request_id).await,
                 supports_openai_form_elicitation,
+                remote_dynamic_tools,
             )
             .await
         {
@@ -3374,6 +3390,16 @@ impl ThreadRequestProcessor {
                     request_id.connection_id,
                     "thread",
                 );
+                if let Err(error) = self
+                    .session_extension_manager
+                    .start_remote_for_thread(thread_id)
+                    .await
+                {
+                    self.outgoing
+                        .send_error(request_id, internal_error(error))
+                        .await;
+                    return Ok(None);
+                }
 
                 let mut thread = match self
                     .load_thread_from_resume_source_or_send_internal(
@@ -4219,6 +4245,10 @@ impl ThreadRequestProcessor {
             .load_for_cwd(request_overrides, typesafe_overrides, history_cwd)
             .await
             .map_err(|err| config_load_error(&err))?;
+        let remote_dynamic_tools = self
+            .session_extension_manager
+            .remote_dynamic_tools(&config)
+            .map_err(invalid_request)?;
         let goals_enabled = config.features.enabled(Feature::Goals);
 
         let fallback_model_provider = config.model_provider_id.clone();
@@ -4230,13 +4260,14 @@ impl ThreadRequestProcessor {
             ..
         } = self
             .thread_manager
-            .fork_thread_from_history(
+            .fork_thread_from_history_and_dynamic_tools(
                 ForkSnapshot::Interrupted,
                 config,
                 thread_history,
                 thread_source.map(Into::into),
                 self.request_trace_context(&request_id).await,
                 supports_openai_form_elicitation,
+                remote_dynamic_tools,
             )
             .await
             .map_err(|err| match err {
@@ -4311,6 +4342,16 @@ impl ThreadRequestProcessor {
             request_id.connection_id,
             "thread",
         );
+        if let Err(error) = self
+            .session_extension_manager
+            .start_remote_for_thread(thread_id)
+            .await
+        {
+            self.outgoing
+                .send_error(request_id, internal_error(error))
+                .await;
+            return Ok(());
+        }
 
         let config_snapshot = forked_thread.config_snapshot().await;
 

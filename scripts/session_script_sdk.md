@@ -7,8 +7,9 @@ read a bounded session snapshot, optionally send ordinary user input, and,
 when exclusively granted the relevant capability, answer `request_user_input`
 and approval prompts.
 
-The SDK also provides a small WebSocket JSON-RPC transport for ordinary
-app-server clients. A WebSocket client cannot register as a session script:
+The SDK also provides small WebSocket JSON-RPC transports for ordinary
+app-server clients. A controller can connect over TCP WebSocket or a local
+Unix-domain socket. A controller cannot register as a session script:
 registration requires the immutable host scope supplied to a child process.
 
 ## Contents
@@ -20,7 +21,7 @@ registration requires the immutable host scope supplied to a child process.
 - [Send ordinary user input](#send-ordinary-user-input)
 - [Observe and answer prompts](#observe-and-answer-prompts)
 - [Build a plugin session extension](#build-a-plugin-session-extension)
-- [Control sessions from a WebSocket controller](#control-sessions-from-a-websocket-controller)
+- [Control sessions from a controller](#control-sessions-from-a-controller)
 - [SDK API](#sdk-api)
 - [Limits and security boundaries](#limits-and-security-boundaries)
 
@@ -30,7 +31,7 @@ registration requires the immutable host scope supplied to a child process.
 | --- | --- | --- |
 | Configured session script | Xedoc starts one child for each loaded root thread from `config.toml`. | Automation that is trusted by the local configuration. Multiple configured scripts may attach to the same thread. |
 | Plugin session extension | Xedoc discovers an extension declared in `plugin.json`, asks for approval, runs its one-shot setup, then starts its persistent child. | Installable plugin functionality with reviewed commands and requested capabilities. |
-| WebSocket controller | Your process calls `SessionScriptClient.connect_websocket`. | A normal app-server JSON-RPC client or test controller. It can use the shared request primitive but cannot use `script/register`. |
+| WebSocket controller | Your process calls `SessionScriptClient.connect_websocket` or `SessionScriptClient.connect_unix_socket`. | A normal app-server JSON-RPC client or test controller. It can use the shared request primitive but cannot use `script/register`. |
 
 All session-script API methods and notifications are experimental. Initialize
 the connection with `experimentalApi: true`, which `SessionScriptClient.initialize`
@@ -504,16 +505,22 @@ while its persistent child uses the SDK for session events and approved actions.
 See `session_extension_test_entrypoint.py` for a complete dual-mode reference
 implementation.
 
-## Control sessions from a WebSocket controller
+## Control sessions from a controller
 
-Only a normal WebSocket controller can list, search, start, or resume sessions.
+Only a normal controller can list, search, start, or resume sessions.
 Host-managed session-script children remain restricted to their registered
-thread.
+thread. Use the Unix-socket constructor for a daemon-backed local controller;
+it does not expose the app-server beyond the local socket.
 
 ```python
+from pathlib import Path
+
 from session_script_sdk import SessionScriptClient
 
-client = SessionScriptClient.connect_websocket("ws://127.0.0.1:4500/rpc", 10)
+client = SessionScriptClient.connect_unix_socket(
+    Path.home() / ".xedoc/app-server-control/app-server-control.sock",
+    10,
+)
 try:
     client.initialize("remote-controller", "Remote controller", "1.0.0")
 
@@ -529,6 +536,12 @@ try:
 finally:
     client.close()
 ```
+
+For an explicitly listening app-server, use
+`SessionScriptClient.connect_websocket("ws://127.0.0.1:4500/rpc", 10)`.
+The Unix-socket constructor never falls back to TCP. On platforms without a
+usable Unix-domain socket API, it raises `RpcError`; callers must choose
+another explicitly local transport.
 
 `list_sessions` and `search_sessions` preserve the app-server thread data and
 add these fields to each returned thread:
@@ -549,8 +562,9 @@ and the JSON-RPC primitive for existing app-server methods.
 
 | API | Description |
 | --- | --- |
-| `SessionScriptClient.from_host_child()` | Connect through the host-provided JSONL stdin/stdout pipe. Use this in configured scripts and approved extension children. |
+| `SessionScriptClient.from_host_child()` | Connect through the host-provided JSONL stdin/stdout pipe. Use this in configured scripts and approved extension children; it remains restricted to the registered thread. |
 | `SessionScriptClient.connect_websocket(endpoint, timeout)` | Connect to a `ws://` app-server endpoint with an explicit port. This is a normal controller transport, not a way to obtain session-script authority. |
+| `SessionScriptClient.connect_unix_socket(socket_path, timeout)` | Connect a normal controller to a local app-server Unix socket. This does not create a session-script child and never falls back to TCP. |
 | `initialize(client_name, title, version)` | Initialize the connection with experimental API support and send `initialized`. |
 | `register(thread_id, script_id, name, version, subscriptions, requested_capabilities)` | Register the host-scoped child and return `registrationId`, granted capabilities, and a snapshot. |
 | `read(registration_id)` | Return a fresh bounded snapshot. |

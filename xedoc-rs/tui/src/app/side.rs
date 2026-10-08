@@ -98,7 +98,8 @@ impl SideParentStatus {
             | ServerRequest::ExecCommandApproval { .. } => Some(SideParentStatus::NeedsApproval),
             ServerRequest::DynamicToolCall { .. }
             | ServerRequest::CurrentTimeRead { .. }
-            | ServerRequest::ChatgptAuthTokensRefresh { .. } => None,
+            | ServerRequest::ChatgptAuthTokensRefresh { .. }
+            | ServerRequest::RemoteSessionControl { .. } => None,
         }
     }
 }

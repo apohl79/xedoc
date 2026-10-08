@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
@@ -31,6 +32,7 @@ pub(crate) struct PidBackend {
     pid_file: PathBuf,
     lock_file: PathBuf,
     command_kind: PidCommandKind,
+    environment: Vec<(OsString, OsString)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,21 +68,54 @@ enum PidFileState {
     Running(PidRecord),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[cfg_attr(not(unix), allow(dead_code))]
 enum PidCommandKind {
-    AppServer,
+    AppServer { listen_url: String },
     UpdateLoop,
 }
 
 impl PidBackend {
+    #[cfg(test)]
     pub(crate) fn new(xedoc_bin: PathBuf, pid_file: PathBuf) -> Self {
+        Self::new_with_environment(xedoc_bin, pid_file, Vec::new())
+    }
+
+    pub(crate) fn new_with_environment(
+        xedoc_bin: PathBuf,
+        pid_file: PathBuf,
+        environment: Vec<(OsString, OsString)>,
+    ) -> Self {
+        Self::new_with_listen_url(xedoc_bin, pid_file, "unix://".to_string(), environment)
+    }
+
+    pub(crate) fn new_with_socket_and_environment(
+        xedoc_bin: PathBuf,
+        pid_file: PathBuf,
+        socket_path: PathBuf,
+        environment: Vec<(OsString, OsString)>,
+    ) -> Self {
+        Self::new_with_listen_url(
+            xedoc_bin,
+            pid_file,
+            format!("unix://{}", socket_path.display()),
+            environment,
+        )
+    }
+
+    fn new_with_listen_url(
+        xedoc_bin: PathBuf,
+        pid_file: PathBuf,
+        listen_url: String,
+        environment: Vec<(OsString, OsString)>,
+    ) -> Self {
         let lock_file = pid_file.with_extension("pid.lock");
         Self {
             xedoc_bin,
             pid_file,
             lock_file,
-            command_kind: PidCommandKind::AppServer,
+            command_kind: PidCommandKind::AppServer { listen_url },
+            environment,
         }
     }
 
@@ -91,6 +126,7 @@ impl PidBackend {
             pid_file,
             lock_file,
             command_kind: PidCommandKind::UpdateLoop,
+            environment: Vec::new(),
         }
     }
 
@@ -163,6 +199,9 @@ impl PidBackend {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::from(stderr_log.into_std().await));
+        for (key, value) in &self.environment {
+            command.env(key, value);
+        }
 
         #[cfg(unix)]
         {
@@ -404,23 +443,35 @@ impl PidBackend {
     }
 
     #[cfg(unix)]
-    fn command_args(&self) -> Vec<&'static str> {
-        match self.command_kind {
-            PidCommandKind::AppServer => vec!["app-server", "--listen", "unix://"],
-            PidCommandKind::UpdateLoop => vec!["app-server", "daemon", "pid-update-loop"],
+    fn command_args(&self) -> Vec<String> {
+        match &self.command_kind {
+            PidCommandKind::AppServer { listen_url } => {
+                vec![
+                    "app-server".to_string(),
+                    "--listen".to_string(),
+                    listen_url.clone(),
+                ]
+            }
+            PidCommandKind::UpdateLoop => {
+                vec![
+                    "app-server".to_string(),
+                    "daemon".to_string(),
+                    "pid-update-loop".to_string(),
+                ]
+            }
         }
     }
 
     fn terminate_process(&self, pid: u32) -> Result<()> {
-        match self.command_kind {
-            PidCommandKind::AppServer => terminate_process(pid),
+        match &self.command_kind {
+            PidCommandKind::AppServer { .. } => terminate_process(pid),
             PidCommandKind::UpdateLoop => terminate_process(pid),
         }
     }
 
     fn force_terminate_process(&self, pid: u32) -> Result<()> {
-        match self.command_kind {
-            PidCommandKind::AppServer => force_terminate_process(pid),
+        match &self.command_kind {
+            PidCommandKind::AppServer { .. } => force_terminate_process(pid),
             PidCommandKind::UpdateLoop => force_terminate_process_group(pid),
         }
     }

@@ -14,12 +14,12 @@ import textwrap
 
 from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
-from xedoc_package.targets import default_target
 from xedoc_package.archive import write_archive
 from xedoc_package.model_router_runtime import build_runtime_archive
 from xedoc_package.model_router_runtime import runtime_asset_name
 from xedoc_package.model_router_runtime import runtime_id
 from xedoc_package.model_router_runtime import RuntimeReference
+from xedoc_package.remote_agent_runtime import build_remote_agent_runtime
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -43,15 +43,47 @@ BAZEL_RELEASE_CONFIGS = ("buildbuddy-generic-rbe", "xedoc-release")
 BAZEL_RELEASE_BUNDLE = "//xedoc-rs:xedoc-release-binaries"
 BAZEL_RELEASE_STARTUP_OPTIONS = ["--noexperimental_remote_repo_contents_cache"]
 BAZEL_RELEASE_CACHE_OPTIONS = ["--repo_contents_cache="]
+DEFAULT_RELEASE_TARGET = "macos-arm64"
+RELEASE_TARGET_ALIASES = {
+    "macos-arm64": "aarch64-apple-darwin",
+    "macos-x86_64": "x86_64-apple-darwin",
+    "linux-x86_64": "x86_64-unknown-linux-gnu",
+    "linux-arm64": "aarch64-unknown-linux-gnu",
+}
+RELEASE_TARGET_CHOICES = {
+    **RELEASE_TARGET_ALIASES,
+    **{target: target for target in RELEASE_TARGET_ALIASES.values()},
+}
 BAZEL_PLATFORM_BY_TARGET = {
     "aarch64-apple-darwin": "macos_arm64",
     "x86_64-apple-darwin": "macos_amd64",
+}
+BAZEL_MULTIPLATFORM_TARGET_BY_TARGET = {
+    "aarch64-apple-darwin": "//xedoc-rs/cli:xedoc_macos_arm64",
+    "x86_64-apple-darwin": "//xedoc-rs/cli:xedoc_macos_amd64",
+    "aarch64-unknown-linux-gnu": "//xedoc-rs/cli:xedoc_linux_arm64_gnu.2.28",
+    "x86_64-unknown-linux-gnu": "//xedoc-rs/cli:xedoc_linux_amd64_gnu.2.28",
+}
+BAZEL_MULTIPLATFORM_BWRAP_TARGET_BY_TARGET = {
+    "aarch64-unknown-linux-gnu": "//xedoc-rs/bwrap:bwrap_linux_arm64_gnu.2.28",
+    "x86_64-unknown-linux-gnu": "//xedoc-rs/bwrap:bwrap_linux_amd64_gnu.2.28",
 }
 
 
 @dataclass(frozen=True)
 class ReleaseBinaries:
     entrypoint: Path
+    bwrap: Path | None = None
+
+
+@dataclass(frozen=True)
+class ReleasePackage:
+    target: str
+    package_dir: Path
+    archive_outputs: tuple[Path, ...]
+    runtime_reference: RuntimeReference
+    runtime_archive_output: Path
+    remote_agent_runtime_output: Path | None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -66,9 +98,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--target",
-        choices=sorted(TARGET_SPECS),
-        default=default_target(),
-        help="Rust target triple to package.",
+        action="append",
+        choices=sorted(RELEASE_TARGET_CHOICES),
+        default=argparse.SUPPRESS,
+        help=(
+            "Release target alias or Rust target triple. May be repeated. "
+            f"Defaults to {DEFAULT_RELEASE_TARGET}."
+        ),
     )
     parser.add_argument(
         "--codesign-identity",
@@ -106,6 +142,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Archive output for the separately installed semantic model-router "
             "runtime. Its filename must match the immutable runtime ID."
+        ),
+    )
+    parser.add_argument(
+        "--remote-agent-runtime-dir",
+        type=Path,
+        help=(
+            "Prebuilt target-pinned remote-agent Python runtime directory. "
+            "When omitted, the release flow builds it from the pinned "
+            "python-build-standalone distribution."
         ),
     )
     parser.add_argument(
@@ -200,7 +245,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "checkout directly so build caches can be reused."
         ),
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    args.targets = resolve_release_targets(getattr(args, "target", None))
+    # Keep the historical Namespace shape for callers that build a single target.
+    args.target = args.targets[0]
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -213,20 +262,69 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def build_release(args: argparse.Namespace) -> None:
-    spec = TARGET_SPECS[args.target]
-    if not args.target.endswith("apple-darwin"):
+def resolve_release_targets(requested_targets: list[str] | None) -> list[str]:
+    targets: list[str] = []
+    for requested_target in requested_targets or [DEFAULT_RELEASE_TARGET]:
+        try:
+            target = RELEASE_TARGET_CHOICES[requested_target]
+        except KeyError as err:
+            supported = ", ".join(sorted(RELEASE_TARGET_ALIASES))
+            raise RuntimeError(
+                f"Unsupported release target {requested_target!r}. "
+                f"Supported aliases: {supported}."
+            ) from err
+        if target not in targets:
+            targets.append(target)
+    return targets
+
+
+def release_targets(args: argparse.Namespace) -> list[str]:
+    parsed_targets = getattr(args, "targets", None)
+    if parsed_targets is not None:
+        return resolve_release_targets(parsed_targets)
+
+    target = getattr(args, "target", None)
+    if isinstance(target, list):
+        return resolve_release_targets(target)
+    return resolve_release_targets([target] if target else None)
+
+
+def ensure_target_specific_paths_are_unambiguous(
+    args: argparse.Namespace,
+    targets: list[str],
+) -> None:
+    if len(targets) == 1:
+        return
+
+    options = {
+        "--archive-output": getattr(args, "archive_output", []),
+        "--model-router-runtime-archive-output": getattr(
+            args, "model_router_runtime_archive_output", None
+        ),
+        "--package-dir": getattr(args, "package_dir", None),
+        "--remote-agent-runtime-dir": getattr(args, "remote_agent_runtime_dir", None),
+    }
+    supplied = [flag for flag, value in options.items() if value]
+    if supplied:
         raise RuntimeError(
-            "Xedoc release signing uses Apple codesign and supports only "
-            "macOS targets. Pass an *-apple-darwin target."
+            f"{', '.join(supplied)} can be used only with a single --target."
         )
+
+
+def build_release(args: argparse.Namespace) -> None:
+    targets = release_targets(args)
+    ensure_target_specific_paths_are_unambiguous(args, targets)
     if getattr(args, "allow_dirty", False) and not args.skip_github_release:
         raise RuntimeError(
             "--allow-dirty requires --skip-github-release because a GitHub "
             "release must match its committed target."
         )
 
-    codesign_identity = resolve_codesign_identity(args.codesign_identity)
+    codesign_identity = (
+        resolve_codesign_identity(args.codesign_identity)
+        if any(target.endswith("apple-darwin") for target in targets)
+        else None
+    )
 
     output_dir = resolve_repo_path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -258,66 +356,167 @@ def build_release(args: argparse.Namespace) -> None:
         source_root=source_root,
         cargo_toml=cargo_toml,
         cargo_lock=cargo_lock,
-        target=args.target,
+        target=targets[0],
     )
 
     build_system = getattr(args, "build_system", DEFAULT_BUILD_SYSTEM)
     if build_system == "bazel":
-        release_binaries = build_bazel_release_binaries(
+        built_binaries = build_bazel_release_binaries_for_targets(
             bazel=getattr(args, "bazel", "bazel"),
             bazel_build_jobs=getattr(args, "bazel_build_jobs", None),
             bazel_max_heap_mb=getattr(args, "bazel_max_heap_mb", None),
             source_root=source_root,
-            target=args.target,
+            targets=targets,
         )
-        release_binaries = stage_release_binaries(
-            release_binaries,
-            output_dir / ".bazel-release" / version / args.target,
-        )
+        release_binaries_by_target = {
+            target: stage_release_binaries(
+                built_binaries[target],
+                output_dir / ".bazel-release" / version / target,
+            )
+            for target in targets
+        }
     elif build_system == "cargo":
-        release_binaries = build_cargo_release_binaries(
-            cargo=args.cargo,
-            cargo_build_jobs=getattr(args, "cargo_build_jobs", None),
-            source_root=source_root,
-            spec=spec,
-            target=args.target,
-        )
+        release_binaries_by_target = {
+            target: build_cargo_release_binaries(
+                cargo=args.cargo,
+                cargo_build_jobs=getattr(args, "cargo_build_jobs", None),
+                source_root=source_root,
+                spec=TARGET_SPECS[target],
+                target=target,
+            )
+            for target in targets
+        }
     else:
         raise RuntimeError(f"Unsupported release build system: {build_system}")
 
+    release_packages = [
+        package_release_target(
+            args=args,
+            codesign_identity=codesign_identity,
+            output_dir=output_dir,
+            release_binaries=release_binaries_by_target[target],
+            source_root=source_root,
+            target=target,
+            version=version,
+        )
+        for target in targets
+    ]
+
+    if not args.skip_github_release:
+        for package in release_packages:
+            publish_immutable_runtime_release(
+                gh=args.gh,
+                repo=args.github_repo,
+                reference=package.runtime_reference,
+                target=release_target,
+                archive_output=package.runtime_archive_output,
+                env=github_env,
+            )
+        publish_github_release(
+            gh=args.gh,
+            repo=args.github_repo,
+            tag=release_tag,
+            title=version,
+            target=release_target,
+            archive_outputs=[
+                archive_output
+                for package in release_packages
+                for archive_output in package.archive_outputs
+            ],
+            env=github_env,
+            notes=generate_release_notes(
+                release_tag,
+                version,
+                gh=args.gh,
+                repo=args.github_repo,
+                env=github_env,
+                target=release_target,
+            ),
+        )
+
+    print(f"Built Xedoc release {version}")
+    if not args.skip_github_release:
+        print(f"GitHub release: {release_tag}")
+    for package in release_packages:
+        print(f"Package directory ({package.target}): {package.package_dir}")
+        for archive_output in package.archive_outputs:
+            print(f"Archive ({package.target}): {archive_output}")
+        print(
+            f"Model-router runtime archive ({package.target}): "
+            f"{package.runtime_archive_output}"
+        )
+        if package.remote_agent_runtime_output is not None:
+            print(
+                f"Remote-agent runtime ({package.target}): "
+                f"{package.remote_agent_runtime_output}"
+            )
+
+
+def package_release_target(
+    *,
+    args: argparse.Namespace,
+    codesign_identity: str | None,
+    output_dir: Path,
+    release_binaries: ReleaseBinaries,
+    source_root: Path,
+    target: str,
+    version: str,
+) -> ReleasePackage:
+    spec = TARGET_SPECS[target]
     signing_script = source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
     entitlements = (
         source_root / ".github/scripts/macos-signing/xedoc.entitlements.plist"
     )
 
+    explicit_package_dir = getattr(args, "package_dir", None)
     package_dir = (
-        resolve_repo_path(args.package_dir)
-        if args.package_dir is not None
-        else output_dir / version / f"xedoc-package-{args.target}"
+        resolve_repo_path(explicit_package_dir)
+        if explicit_package_dir is not None
+        else output_dir / version / f"xedoc-package-{target}"
     )
-    archive_outputs = [resolve_repo_path(path) for path in args.archive_output] or [
-        output_dir / version / f"xedoc-{args.target}-{version}.zip"
-    ]
+    archive_outputs = [
+        resolve_repo_path(path) for path in getattr(args, "archive_output", [])
+    ] or [output_dir / version / f"xedoc-{target}-{version}.zip"]
     runtime_id_value = runtime_id()
+    explicit_runtime_archive_output = getattr(
+        args, "model_router_runtime_archive_output", None
+    )
     runtime_archive_output = (
-        resolve_repo_path(args.model_router_runtime_archive_output)
-        if args.model_router_runtime_archive_output is not None
+        resolve_repo_path(explicit_runtime_archive_output)
+        if explicit_runtime_archive_output is not None
         else output_dir
         / "model-router-runtime"
         / runtime_id_value
-        / runtime_asset_name(runtime_id_value, args.target)
+        / runtime_asset_name(runtime_id_value, target)
     )
     runtime_reference = build_runtime_archive(
         spec,
         runtime_archive_output,
         force=args.force,
     )
+    remote_agent_runtime = None
+    remote_agent_runtime_output = None
+    if not spec.is_windows:
+        remote_agent_runtime_output = (
+            output_dir / "remote-agent-runtime" / version / target
+        )
+        remote_agent_runtime_source = (
+            resolve_repo_path(getattr(args, "remote_agent_runtime_dir", None))
+            if getattr(args, "remote_agent_runtime_dir", None) is not None
+            else None
+        )
+        remote_agent_runtime = build_remote_agent_runtime(
+            spec,
+            remote_agent_runtime_output,
+            force=args.force,
+            source=remote_agent_runtime_source,
+        )
 
     package_args = [
         sys.executable,
         str(source_root / "scripts/build_xedoc_package.py"),
         "--target",
-        args.target,
+        target,
         "--variant",
         "xedoc",
         "--version",
@@ -338,69 +537,63 @@ def build_release(args: argparse.Namespace) -> None:
         "--model-router-runtime-source-release-tag",
         runtime_reference.source_release_tag,
     ]
+    if remote_agent_runtime is not None:
+        package_args.extend(
+            ["--remote-agent-runtime-dir", str(remote_agent_runtime.root.parent)]
+        )
+    if release_binaries.bwrap is not None:
+        package_args.extend(["--bwrap-bin", str(release_binaries.bwrap)])
     if args.force:
         package_args.append("--force")
 
     run(package_args, cwd=source_root)
     packaged_entrypoint = package_dir / "bin" / "xedoc"
-    run(
-        build_codesign_command(
-            target=packaged_entrypoint,
-            identity=codesign_identity,
-            entitlements=entitlements,
-            signing_script=signing_script,
-        ),
-        cwd=source_root,
-    )
-    run(["codesign", "--verify", "--strict", "--verbose=2", str(packaged_entrypoint)])
-    if getattr(args, "notarize", False) and not args.skip_github_release:
+    if target.endswith("apple-darwin"):
+        if codesign_identity is None:
+            raise RuntimeError(f"Missing codesign identity for macOS target {target}.")
         run(
-            [
-                str(
-                    source_root
-                    / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
-                ),
-                "--binary",
-                str(packaged_entrypoint),
-            ],
+            build_codesign_command(
+                target=packaged_entrypoint,
+                identity=codesign_identity,
+                entitlements=entitlements,
+                signing_script=signing_script,
+            ),
             cwd=source_root,
         )
+        run(
+            [
+                "codesign",
+                "--verify",
+                "--strict",
+                "--verbose=2",
+                str(packaged_entrypoint),
+            ]
+        )
+        if getattr(args, "notarize", False) and not args.skip_github_release:
+            run(
+                [
+                    str(
+                        source_root
+                        / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
+                    ),
+                    "--binary",
+                    str(packaged_entrypoint),
+                    "--report-dir",
+                    str(output_dir / version / "notarization" / target),
+                ],
+                cwd=source_root,
+            )
     for archive_output in archive_outputs:
         write_archive(package_dir, archive_output, force=args.force)
 
-    if not args.skip_github_release:
-        publish_immutable_runtime_release(
-            gh=args.gh,
-            repo=args.github_repo,
-            reference=runtime_reference,
-            target=release_target,
-            archive_output=runtime_archive_output,
-            env=github_env,
-        )
-        publish_github_release(
-            gh=args.gh,
-            repo=args.github_repo,
-            tag=release_tag,
-            title=version,
-            target=release_target,
-            archive_outputs=archive_outputs,
-            env=github_env,
-            notes=generate_release_notes(
-                release_tag,
-                version,
-                gh=args.gh,
-                repo=args.github_repo,
-                env=github_env,
-                target=release_target,
-            ),
-        )
-
-    print(f"Built Xedoc release {version}")
-    print(f"GitHub release: {release_tag}")
-    print(f"Package directory: {package_dir}")
-    for archive_output in archive_outputs:
-        print(f"Archive: {archive_output}")
-    print(f"Model-router runtime archive: {runtime_archive_output}")
+    return ReleasePackage(
+        target=target,
+        package_dir=package_dir,
+        archive_outputs=tuple(archive_outputs),
+        runtime_reference=runtime_reference,
+        runtime_archive_output=runtime_archive_output,
+        remote_agent_runtime_output=remote_agent_runtime_output,
+    )
 
 
 def build_cargo_release_binaries(
@@ -449,6 +642,110 @@ def build_cargo_release_binaries(
             "Built entrypoint",
         ),
     )
+
+
+def build_bazel_release_binaries_for_targets(
+    *,
+    bazel: str,
+    bazel_build_jobs: int | None = None,
+    bazel_max_heap_mb: int | None = None,
+    source_root: Path,
+    targets: list[str],
+) -> dict[str, ReleaseBinaries]:
+    target_labels = [bazel_multiplatform_release_target(target) for target in targets]
+    bwrap_labels = {
+        target: bazel_multiplatform_bwrap_target(target)
+        for target in targets
+        if TARGET_SPECS[target].is_linux
+    }
+    startup_options = [
+        *BAZEL_RELEASE_STARTUP_OPTIONS,
+        *(
+            [f"--host_jvm_args=-Xmx{bazel_max_heap_mb}m"]
+            if bazel_max_heap_mb is not None
+            else []
+        ),
+    ]
+    local_build_options = (
+        [f"--local_resources=cpu={bazel_build_jobs}"]
+        if bazel_build_jobs is not None
+        else []
+    )
+    options = [f"--config={config}" for config in BAZEL_RELEASE_CONFIGS]
+    run(
+        [
+            bazel,
+            *startup_options,
+            "build",
+            *BAZEL_RELEASE_CACHE_OPTIONS,
+            *options,
+            *local_build_options,
+            "--",
+            *target_labels,
+            *bwrap_labels.values(),
+        ],
+        cwd=source_root,
+    )
+    execution_root = bazel_execution_root(
+        command_output(
+            [
+                bazel,
+                *startup_options,
+                "info",
+                *BAZEL_RELEASE_CACHE_OPTIONS,
+                "execution_root",
+            ],
+            cwd=source_root,
+        )
+    )
+    release_binaries: dict[str, ReleaseBinaries] = {}
+    for target, target_label in zip(targets, target_labels, strict=True):
+        entrypoint = resolve_bazel_multiplatform_binary(
+            command_output(
+                [
+                    bazel,
+                    *startup_options,
+                    "cquery",
+                    *BAZEL_RELEASE_CACHE_OPTIONS,
+                    *options,
+                    "--output=files",
+                    "--",
+                    target_label,
+                ],
+                cwd=source_root,
+            ),
+            execution_root,
+            binary_name="xedoc",
+            description="Bazel entrypoint",
+        )
+        bwrap_label = bwrap_labels.get(target)
+        bwrap = (
+            resolve_bazel_multiplatform_binary(
+                command_output(
+                    [
+                        bazel,
+                        *startup_options,
+                        "cquery",
+                        *BAZEL_RELEASE_CACHE_OPTIONS,
+                        *options,
+                        "--output=files",
+                        "--",
+                        bwrap_label,
+                    ],
+                    cwd=source_root,
+                ),
+                execution_root,
+                binary_name="bwrap",
+                description="Bazel bwrap",
+            )
+            if bwrap_label is not None
+            else None
+        )
+        release_binaries[target] = ReleaseBinaries(
+            entrypoint=entrypoint,
+            bwrap=bwrap,
+        )
+    return release_binaries
 
 
 def build_bazel_release_binaries(
@@ -525,6 +822,24 @@ def bazel_release_options(target: str) -> list[str]:
     ]
 
 
+def bazel_multiplatform_release_target(target: str) -> str:
+    try:
+        return BAZEL_MULTIPLATFORM_TARGET_BY_TARGET[target]
+    except KeyError as err:
+        raise RuntimeError(
+            f"No Bazel multi-platform release target for {target}."
+        ) from err
+
+
+def bazel_multiplatform_bwrap_target(target: str) -> str:
+    try:
+        return BAZEL_MULTIPLATFORM_BWRAP_TARGET_BY_TARGET[target]
+    except KeyError as err:
+        raise RuntimeError(
+            f"No Bazel multi-platform bwrap target for {target}."
+        ) from err
+
+
 def bazel_execution_root(stdout: str) -> Path:
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     if len(lines) != 1 or not Path(lines[0]).is_absolute():
@@ -549,6 +864,41 @@ def resolve_bazel_release_binaries(
     )
 
 
+def resolve_bazel_multiplatform_release_binary(
+    stdout: str,
+    execution_root: Path,
+) -> ReleaseBinaries:
+    return ReleaseBinaries(
+        entrypoint=resolve_bazel_multiplatform_binary(
+            stdout,
+            execution_root,
+            binary_name="xedoc",
+            description="Bazel entrypoint",
+        )
+    )
+
+
+def resolve_bazel_multiplatform_binary(
+    stdout: str,
+    execution_root: Path,
+    *,
+    binary_name: str,
+    description: str,
+) -> Path:
+    paths = [
+        execution_root / output
+        for output in (line.strip() for line in stdout.splitlines())
+        if output
+    ]
+    binaries = [path for path in paths if path.name == binary_name]
+    if len(binaries) != 1:
+        raise RuntimeError(
+            "Bazel multi-platform release target must contain exactly one "
+            f"{binary_name} binary; reported {[path.name for path in paths]}."
+        )
+    return require_built_file(binaries[0], description)
+
+
 def stage_release_binaries(
     release_binaries: ReleaseBinaries,
     staging_dir: Path,
@@ -559,7 +909,13 @@ def stage_release_binaries(
     # previously staged binary before overwriting it.
     entrypoint.unlink(missing_ok=True)
     shutil.copy2(release_binaries.entrypoint, entrypoint)
-    return ReleaseBinaries(entrypoint=entrypoint.resolve())
+    bwrap = None
+    if release_binaries.bwrap is not None:
+        bwrap = staging_dir / release_binaries.bwrap.name
+        bwrap.unlink(missing_ok=True)
+        shutil.copy2(release_binaries.bwrap, bwrap)
+        bwrap = bwrap.resolve()
+    return ReleaseBinaries(entrypoint=entrypoint.resolve(), bwrap=bwrap)
 
 
 def require_built_file(path: Path, description: str) -> Path:

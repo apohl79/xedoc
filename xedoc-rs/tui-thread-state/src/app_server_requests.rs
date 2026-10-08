@@ -112,6 +112,7 @@ impl PendingAppServerRequests {
                     message: "Dynamic tool calls are not available in TUI yet.".to_string(),
                 })
             }
+            ServerRequest::RemoteSessionControl { .. } => None,
             ServerRequest::ChatgptAuthTokensRefresh { .. } => None,
             ServerRequest::CurrentTimeRead { request_id, .. } => {
                 Some(UnsupportedAppServerRequest {
@@ -356,6 +357,7 @@ impl PendingAppServerRequests {
                 .values()
                 .any(|pending_request_id| pending_request_id == request_id),
             ServerRequest::DynamicToolCall { .. }
+            | ServerRequest::RemoteSessionControl { .. }
             | ServerRequest::ChatgptAuthTokensRefresh { .. }
             | ServerRequest::CurrentTimeRead { .. }
             | ServerRequest::ApplyPatchApproval { .. }

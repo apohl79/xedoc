@@ -8,11 +8,34 @@ use super::TurnItemsView;
 use super::thread_lifecycle::EnsureConversationListenerResult;
 use crate::error_code::invalid_request;
 use crate::message_processor::ConnectionSessionState;
+use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
+use crate::remote_agent_extension::BUILTIN_REMOTE_AGENT_EXTENSION_ID;
+use crate::remote_session_registry::RemoteSessionProjectionUpdate;
 use crate::session_script_registry::SessionScriptRegistration;
 use crate::session_script_registry::send_deliveries;
 use std::path::Path;
 use std::path::PathBuf;
 use xedoc_app_server_protocol::ClientResponsePayload;
+use xedoc_app_server_protocol::RemoteSessionAttachParams;
+use xedoc_app_server_protocol::RemoteSessionAttachResponse;
+use xedoc_app_server_protocol::RemoteSessionCancelParams;
+use xedoc_app_server_protocol::RemoteSessionCancelResponse;
+use xedoc_app_server_protocol::RemoteSessionControlAction;
+use xedoc_app_server_protocol::RemoteSessionControlParams;
+use xedoc_app_server_protocol::RemoteSessionDetachParams;
+use xedoc_app_server_protocol::RemoteSessionDetachResponse;
+use xedoc_app_server_protocol::RemoteSessionInputParams;
+use xedoc_app_server_protocol::RemoteSessionInputResponse;
+use xedoc_app_server_protocol::RemoteSessionListParams;
+use xedoc_app_server_protocol::RemoteSessionListResponse;
+use xedoc_app_server_protocol::RemoteSessionReadParams;
+use xedoc_app_server_protocol::RemoteSessionReadResponse;
+use xedoc_app_server_protocol::RemoteSessionRegisterParams;
+use xedoc_app_server_protocol::RemoteSessionRegisterResponse;
+use xedoc_app_server_protocol::RemoteSessionStatus;
+use xedoc_app_server_protocol::RemoteSessionUpdateParams;
+use xedoc_app_server_protocol::RemoteSessionUpdateResponse;
+use xedoc_app_server_protocol::RemoteSessionUpdatedNotification;
 use xedoc_app_server_protocol::ServerNotification;
 use xedoc_app_server_protocol::SessionScriptCapability;
 use xedoc_app_server_protocol::SessionScriptMessageParams;
@@ -31,6 +54,7 @@ use xedoc_app_server_protocol::SessionScriptUnregisterResponse;
 use xedoc_config::ConfigLayerSource;
 use xedoc_config::ConfigLayerStackOrdering;
 use xedoc_git_utils::get_git_repo_root;
+const MAX_REMOTE_SESSION_INPUT_BYTES: usize = 64 * 1024;
 
 impl ThreadRequestProcessor {
     pub(crate) async fn session_script_registration(
@@ -224,6 +248,377 @@ impl ThreadRequestProcessor {
         Ok(Some(SessionScriptMessageResponse {}.into()))
     }
 
+    pub(crate) async fn script_remote_session_register(
+        &self,
+        connection_id: ConnectionId,
+        params: RemoteSessionRegisterParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let registration = self
+            .remote_agent_registration(connection_id, &params.registration_id)
+            .await?;
+        let remote_session = self
+            .remote_session_registry
+            .register(
+                registration.thread_id,
+                params.host_id,
+                params.remote_thread_id,
+                params.host_name,
+            )
+            .await
+            .map_err(invalid_request)?;
+        self.send_remote_session_updated(
+            registration.thread_id,
+            RemoteSessionProjectionUpdate {
+                summary: remote_session.clone(),
+                output_delta: None,
+                items: Vec::new(),
+            },
+        )
+        .await;
+        Ok(Some(
+            RemoteSessionRegisterResponse { remote_session }.into(),
+        ))
+    }
+
+    pub(crate) async fn script_remote_session_update(
+        &self,
+        connection_id: ConnectionId,
+        params: RemoteSessionUpdateParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let registration = self
+            .remote_agent_registration(connection_id, &params.registration_id)
+            .await?;
+        let update = self
+            .remote_session_registry
+            .update(registration.thread_id, params)
+            .await
+            .map_err(invalid_request)?;
+        let running = update.summary.status == RemoteSessionStatus::Running;
+        self.send_remote_session_updated(registration.thread_id, update)
+            .await;
+        if running {
+            self.ensure_remote_activity_timer(registration.thread_id)
+                .await;
+        }
+        Ok(Some(RemoteSessionUpdateResponse {}.into()))
+    }
+
+    pub(crate) async fn remote_session_list(
+        &self,
+        params: RemoteSessionListParams,
+    ) -> Result<RemoteSessionListResponse, JSONRPCErrorError> {
+        let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
+        let page = self
+            .remote_session_registry
+            .list(root_thread_id, params.cursor.as_deref(), params.limit)
+            .await
+            .map_err(invalid_request)?;
+        Ok(RemoteSessionListResponse {
+            data: page.data,
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    pub(crate) async fn remote_session_read(
+        &self,
+        params: RemoteSessionReadParams,
+    ) -> Result<RemoteSessionReadResponse, JSONRPCErrorError> {
+        let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
+        let remote_session = self
+            .remote_session_registry
+            .read(root_thread_id, &params.remote_session_id)
+            .await
+            .map_err(invalid_request)?;
+        let update = self
+            .control_remote_session(
+                root_thread_id,
+                &params.remote_session_id,
+                RemoteSessionControlParams {
+                    action: RemoteSessionControlAction::Read,
+                    host_id: remote_session.host_id,
+                    thread_id: remote_session.remote_thread_id,
+                    message: None,
+                    expected_turn_id: None,
+                    cursor: params.cursor,
+                    limit: params.limit,
+                },
+            )
+            .await?;
+        Ok(RemoteSessionReadResponse {
+            remote_session: update.summary,
+            output: update.output_delta.unwrap_or_default(),
+            items: update.items,
+        })
+    }
+
+    pub(crate) async fn remote_session_attach(
+        &self,
+        params: RemoteSessionAttachParams,
+    ) -> Result<RemoteSessionAttachResponse, JSONRPCErrorError> {
+        let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
+        let remote_session = self
+            .remote_session_summary(root_thread_id, &params.remote_session_id)
+            .await?;
+        let update = self
+            .control_remote_session(
+                root_thread_id,
+                &params.remote_session_id,
+                RemoteSessionControlParams {
+                    action: RemoteSessionControlAction::Attach,
+                    host_id: remote_session.host_id,
+                    thread_id: remote_session.remote_thread_id,
+                    message: None,
+                    expected_turn_id: None,
+                    cursor: None,
+                    limit: None,
+                },
+            )
+            .await?;
+        Ok(RemoteSessionAttachResponse {
+            remote_session: update.summary,
+        })
+    }
+
+    pub(crate) async fn remote_session_input(
+        &self,
+        params: RemoteSessionInputParams,
+    ) -> Result<RemoteSessionInputResponse, JSONRPCErrorError> {
+        validate_remote_session_message(&params.message)?;
+        let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
+        let remote_session = self
+            .remote_session_summary(root_thread_id, &params.remote_session_id)
+            .await?;
+        if remote_session.status == RemoteSessionStatus::Detached {
+            return Err(invalid_request(
+                "remote session is detached; attach it before sending input",
+            ));
+        }
+        let (action, expected_turn_id) = if remote_session.status == RemoteSessionStatus::Running {
+            (
+                RemoteSessionControlAction::Steer,
+                Some(
+                    params
+                        .expected_turn_id
+                        .or(remote_session.active_turn_id)
+                        .ok_or_else(|| {
+                            invalid_request("remote session has no active turn to steer")
+                        })?,
+                ),
+            )
+        } else {
+            if params.expected_turn_id.is_some() {
+                return Err(invalid_request(
+                    "expected turn id is only valid while steering a remote session",
+                ));
+            }
+            (RemoteSessionControlAction::Send, None)
+        };
+        let update = self
+            .control_remote_session(
+                root_thread_id,
+                &params.remote_session_id,
+                RemoteSessionControlParams {
+                    action,
+                    host_id: remote_session.host_id,
+                    thread_id: remote_session.remote_thread_id,
+                    message: Some(params.message),
+                    expected_turn_id,
+                    cursor: None,
+                    limit: None,
+                },
+            )
+            .await?;
+        Ok(RemoteSessionInputResponse {
+            remote_session: update.summary,
+            output_delta: update.output_delta,
+        })
+    }
+
+    pub(crate) async fn remote_session_cancel(
+        &self,
+        params: RemoteSessionCancelParams,
+    ) -> Result<RemoteSessionCancelResponse, JSONRPCErrorError> {
+        let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
+        let remote_session = self
+            .remote_session_summary(root_thread_id, &params.remote_session_id)
+            .await?;
+        let expected_turn_id = params
+            .expected_turn_id
+            .or(remote_session.active_turn_id)
+            .ok_or_else(|| invalid_request("remote session has no active turn to cancel"))?;
+        let update = self
+            .control_remote_session(
+                root_thread_id,
+                &params.remote_session_id,
+                RemoteSessionControlParams {
+                    action: RemoteSessionControlAction::Cancel,
+                    host_id: remote_session.host_id,
+                    thread_id: remote_session.remote_thread_id,
+                    message: None,
+                    expected_turn_id: Some(expected_turn_id),
+                    cursor: None,
+                    limit: None,
+                },
+            )
+            .await?;
+        Ok(RemoteSessionCancelResponse {
+            remote_session: update.summary,
+        })
+    }
+
+    pub(crate) async fn remote_session_detach(
+        &self,
+        params: RemoteSessionDetachParams,
+    ) -> Result<RemoteSessionDetachResponse, JSONRPCErrorError> {
+        let root_thread_id = self.remote_session_root_thread(&params.thread_id).await?;
+        let remote_session = self
+            .remote_session_summary(root_thread_id, &params.remote_session_id)
+            .await?;
+        let update = self
+            .control_remote_session(
+                root_thread_id,
+                &params.remote_session_id,
+                RemoteSessionControlParams {
+                    action: RemoteSessionControlAction::Detach,
+                    host_id: remote_session.host_id,
+                    thread_id: remote_session.remote_thread_id,
+                    message: None,
+                    expected_turn_id: None,
+                    cursor: None,
+                    limit: None,
+                },
+            )
+            .await?;
+        Ok(RemoteSessionDetachResponse {
+            remote_session: update.summary,
+        })
+    }
+
+    async fn remote_agent_registration(
+        &self,
+        connection_id: ConnectionId,
+        registration_id: &str,
+    ) -> Result<SessionScriptRegistration, JSONRPCErrorError> {
+        let registration = self
+            .session_script_registry
+            .registration(connection_id)
+            .await
+            .ok_or_else(|| invalid_request("no session script is registered on this connection"))?;
+        if registration.registration_id != registration_id {
+            return Err(invalid_request(
+                "registration does not belong to this connection",
+            ));
+        }
+        if !registration.is_extension(BUILTIN_REMOTE_AGENT_EXTENSION_ID) {
+            return Err(invalid_request(
+                "remote session updates require the built-in remote-agent extension",
+            ));
+        }
+        Ok(registration)
+    }
+
+    async fn remote_session_root_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<ThreadId, JSONRPCErrorError> {
+        let thread_id = ThreadId::from_string(thread_id)
+            .map_err(|error| invalid_request(format!("invalid thread id: {error}")))?;
+        let thread = self
+            .thread_manager
+            .get_thread(thread_id)
+            .await
+            .map_err(|_| invalid_request("remote sessions require a loaded root thread"))?;
+        if thread.config_snapshot().await.parent_thread_id.is_some() {
+            return Err(invalid_request(
+                "remote sessions are scoped to a root thread",
+            ));
+        }
+        Ok(thread_id)
+    }
+
+    async fn remote_session_summary(
+        &self,
+        root_thread_id: ThreadId,
+        remote_session_id: &str,
+    ) -> Result<xedoc_app_server_protocol::RemoteSessionSummary, JSONRPCErrorError> {
+        self.remote_session_registry
+            .read(root_thread_id, remote_session_id)
+            .await
+            .map_err(invalid_request)
+    }
+
+    async fn control_remote_session(
+        &self,
+        root_thread_id: ThreadId,
+        remote_session_id: &str,
+        params: RemoteSessionControlParams,
+    ) -> Result<RemoteSessionProjectionUpdate, JSONRPCErrorError> {
+        self.session_extension_manager
+            .start_remote_for_thread(root_thread_id)
+            .await
+            .map_err(invalid_request)?;
+        let action = params.action;
+        let response = self
+            .session_extension_manager
+            .control_remote_session(root_thread_id, params)
+            .await
+            .map_err(invalid_request)?;
+        if !response.success {
+            let message = response
+                .result
+                .pointer("/error/message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("remote-agent control operation failed");
+            return Err(invalid_request(message));
+        }
+        let update = self
+            .remote_session_registry
+            .apply_control_result(root_thread_id, remote_session_id, action, &response.result)
+            .await
+            .map_err(invalid_request)?;
+        if action != RemoteSessionControlAction::Read {
+            self.send_remote_session_updated(
+                root_thread_id,
+                RemoteSessionProjectionUpdate {
+                    summary: update.summary.clone(),
+                    output_delta: update.output_delta.clone(),
+                    items: update.items.clone(),
+                },
+            )
+            .await;
+        }
+        if update.summary.status == RemoteSessionStatus::Running {
+            self.ensure_remote_activity_timer(root_thread_id).await;
+        }
+        Ok(update)
+    }
+
+    pub(super) async fn send_remote_session_updated(
+        &self,
+        root_thread_id: ThreadId,
+        update: RemoteSessionProjectionUpdate,
+    ) {
+        let connection_ids = self
+            .thread_state_manager
+            .subscribed_connection_ids(root_thread_id)
+            .await;
+        let outgoing = ThreadScopedOutgoingMessageSender::new(
+            self.outgoing.clone(),
+            connection_ids,
+            root_thread_id,
+        );
+        outgoing
+            .send_server_notification(ServerNotification::RemoteSessionUpdated(
+                RemoteSessionUpdatedNotification {
+                    thread_id: root_thread_id.to_string(),
+                    remote_session: update.summary,
+                    output_delta: update.output_delta,
+                    items: update.items,
+                },
+            ))
+            .await;
+    }
+
     async fn session_script_snapshot(
         &self,
         connection_id: ConnectionId,
@@ -271,6 +666,13 @@ impl ThreadRequestProcessor {
             .await
             .map_err(invalid_request)
     }
+}
+
+fn validate_remote_session_message(message: &str) -> Result<(), JSONRPCErrorError> {
+    if message.trim().is_empty() || message.len() > MAX_REMOTE_SESSION_INPUT_BYTES {
+        return Err(invalid_request("remote session input is invalid"));
+    }
+    Ok(())
 }
 
 fn session_script_capability_sort_key(capability: &SessionScriptCapability) -> u8 {

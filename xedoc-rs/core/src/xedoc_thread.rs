@@ -650,6 +650,15 @@ impl XedocThread {
         self.session.generate_session_name(current_name).await
     }
 
+    pub async fn generate_remote_session_activity_summary(
+        &self,
+        recent_output: &str,
+    ) -> XedocResult<Option<String>> {
+        self.session
+            .generate_remote_session_activity_summary(recent_output)
+            .await
+    }
+
     pub async fn generate_session_name_with_partial_response(
         &self,
         current_name: Option<&str>,

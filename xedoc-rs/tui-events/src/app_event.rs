@@ -164,6 +164,8 @@ pub enum AppEvent {
     OpenAgentPicker,
     /// Switch the active thread to the selected agent.
     SelectAgentThread(ThreadId),
+    /// Attach the selected app-server-owned remote session projection.
+    SelectRemoteSession(String),
 
     /// Fork the current thread into a transient side conversation.
     StartSide {

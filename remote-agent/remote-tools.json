@@ -1,0 +1,726 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "xedoc.remote-agent/v1",
+  "namespace": "remote",
+  "tools": [
+    {
+      "name": "remote_hosts_list",
+      "description": "List paired hosts from the broker's cache, with hostId, hostname, reachable and lastSeenAt. Optionally filter by a substring of the hostname, host ID, role or status. Use this, not remote_hosts_discover, to find a host to work on.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_hosts_discover",
+      "description": "List hosts seen via passive LAN announcements, including unpaired ones, instantly. Only needed for pairing. timeoutSeconds adds an active scan and blocks for that long; omit it normally.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 300
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_host_pair",
+      "description": "Pair a discovered host using the local broker. Managed hosts must first be enrolled locally with xedoc-session remote-agent-enroll; coordinator hosts require approval on the target.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "coordinator",
+              "managed"
+            ]
+          },
+          "fingerprint": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "hostId",
+          "role"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_pairing_requests",
+      "description": "List incoming coordinator pairing requests awaiting local approval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_pairing_approve",
+      "description": "Approve an incoming coordinator pairing request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_pairing_reject",
+      "description": "Reject an incoming coordinator pairing request.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_host_grants_list",
+      "description": "List grants for a host using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_host_grant_set",
+      "description": "Set a host grant using the local broker. sessionWrite and cancellation grants require an expiry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "scopes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "enum": [
+                "discovery",
+                "workspaceRead",
+                "sessionRead",
+                "sessionWrite",
+                "cancellation"
+              ]
+            }
+          },
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "hostId",
+          "scopes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_host_suspend",
+      "description": "Suspend a host relationship using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_host_revoke",
+      "description": "Revoke a host relationship using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_host_remove",
+      "description": "Remove a host relationship using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_host_rotate",
+      "description": "Rotate a host relationship using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "hostId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_workspaces_list",
+      "description": "List workspace IDs approved on a host. Call this before remote_session_start and use one returned workspaceId there. Workspace IDs are opaque identifiers, not filesystem paths; host roots are intentionally not disclosed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "description": "Host ID (or unique hostname) from remote_hosts_list. Omit to list this host's workspaces.",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_sessions_list",
+      "description": "List bounded session summaries on the selected host.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_sessions_search",
+      "description": "Search bounded session summaries on the selected host.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_start",
+      "description": "Start a session on a host. First call remote_workspaces_list for that host, then pass a returned workspaceId (never a filesystem path). Set relativePath to a path inside that workspace; use an empty string for its root. Absolute paths and '..' are rejected.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "description": "Host ID (or unique hostname) from remote_hosts_list. Omit only to start a session on this host.",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Required opaque ID returned by remote_workspaces_list for this host. Do not pass a filesystem path such as /root.",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "relativePath": {
+            "type": "string",
+            "description": "Optional directory relative to workspaceId. Use an empty string for the workspace root; do not use an absolute path or '..'.",
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "workspaceId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_resume",
+      "description": "Resume a session using the selected host broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_attach",
+      "description": "Attach to a session using the selected host broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_read",
+      "description": "Read one output page from an attached remote session. Pass the nextCursor from the prior response to retrieve the next page. Repeat until nextCursor is null to receive the complete available transcript.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_send",
+      "description": "Send a message to an idle remote session using the selected host broker. The remote session is registered for the local Agents view. Call remote_session_wait with the returned operationId until it reaches a terminal state; terminal session/send results may contain bounded assistant and command output in result.outputText.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "threadId",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_steer",
+      "description": "Steer the active turn in a remote session. Call remote_session_status first and pass its activeTurnId as turnId. Use remote_session_send when the session is idle.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "turnId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "threadId",
+          "turnId",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_message",
+      "description": "Send a bounded, provenance-labeled message through the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "hostId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "threadId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "activeTurnId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "required": [
+              "hostId",
+              "threadId"
+            ],
+            "additionalProperties": false
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "defer",
+              "steer",
+              "interrupt"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_status",
+      "description": "Read session status using the selected host broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_wait",
+      "description": "Wait for an operation using the selected host broker. Repeat this call with the operationId until stopReason is terminal. Running events may carry bounded activitySummary plus incremental outputDelta with an opaque outputCursor; terminal completed remote_session_send results include bounded assistant and command output in result.outputText.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3600
+          }
+        },
+        "required": [
+          "operationId",
+          "timeoutSeconds"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_cancel",
+      "description": "Cancel a session using the selected host broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "turnId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "threadId",
+          "turnId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_session_detach",
+      "description": "Detach from a session using the selected host broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_request_review",
+      "description": "Request a review using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_request_approve",
+      "description": "Approve a request using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "remote_request_reject",
+      "description": "Reject a request using the local broker.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

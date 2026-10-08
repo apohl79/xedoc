@@ -11,9 +11,15 @@ The builder creates a canonical Xedoc package directory:
 ├── xedoc-package.json
 ├── bin
 │   ├── <entrypoint>[.exe]
-│   └── xedoc-session                    # Unix fork packages only
+│   ├── xedoc-remote-agentd             # Unix fork packages only
+│   └── xedoc-session                   # Unix fork packages only
 ├── xedoc-resources
-│   └── bwrap                             # Linux only
+│   ├── bwrap                             # Linux only
+│   └── remote-agent
+│       ├── remote-agent.pyz
+│       ├── remote-agent-manifest.json
+│       ├── remote-tools.json
+│       └── runtime/python                # target-pinned, dependency-free CPython
 └── xedoc-path
     └── rg[.exe]
 ```
@@ -32,7 +38,11 @@ The `--variant` flag selects the package entrypoint. Supported variants are
 read from `[workspace.package].version` in `xedoc-rs/Cargo.toml`.
 
 Pass `--include-session-control` for the fork package variant to include the
-Unix `xedoc-session` control CLI; this uses package layout version 2.
+Unix `xedoc-session` control CLI; this uses the session-control package layout
+version. Provide a prebuilt target-pinned runtime with
+`--remote-agent-runtime-dir` when one is already available. If omitted, the
+builder downloads and verifies the pinned runtime for the selected target;
+package creation never downloads or discovers a host Python interpreter.
 
 ## Source-built artifacts
 

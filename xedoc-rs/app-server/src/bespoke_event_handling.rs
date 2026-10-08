@@ -9,6 +9,7 @@ use crate::request_processors::populate_thread_turns_from_history;
 use crate::request_processors::thread_from_stored_thread;
 use crate::request_processors::thread_settings_from_core_snapshot;
 use crate::server_request_error::is_turn_transition_server_request_error;
+use crate::session_extension_manager::SessionExtensionManager;
 use crate::session_script_registry::RequestUserInputResponseMode;
 use crate::session_script_registry::SessionScriptRegistry;
 use crate::thread_state::ThreadState;
@@ -150,6 +151,7 @@ pub(crate) async fn apply_bespoke_event_handling(
     thread_manager: Arc<ThreadManager>,
     outgoing: ThreadScopedOutgoingMessageSender,
     session_script_registry: SessionScriptRegistry,
+    session_extension_manager: Option<SessionExtensionManager>,
     session_script_outgoing: Arc<crate::outgoing_message::OutgoingMessageSender>,
     thread_state: Arc<tokio::sync::Mutex<ThreadState>>,
     thread_watch_manager: ThreadWatchManager,
@@ -1188,6 +1190,13 @@ pub(crate) async fn apply_bespoke_event_handling(
                 outgoing.send_server_notification(notification).await;
             }
             if let Some(params) = dynamic_tool_call_params {
+                if let Some(session_extension_manager) = session_extension_manager.as_ref()
+                    && session_extension_manager
+                        .dispatch_remote_dynamic_tool(params.clone(), conversation.clone())
+                        .await
+                {
+                    return;
+                }
                 let call_id = params.call_id.clone();
                 let (_pending_request_id, rx) = outgoing
                     .send_request(ServerRequestPayload::DynamicToolCall(params))
@@ -3248,6 +3257,7 @@ mod tests {
             thread_manager,
             outgoing,
             SessionScriptRegistry::default(),
+            None,
             session_script_outgoing,
             thread_state,
             thread_watch_manager,
@@ -3308,6 +3318,7 @@ mod tests {
             thread_manager,
             outgoing,
             SessionScriptRegistry::default(),
+            None,
             session_script_outgoing,
             thread_state,
             thread_watch_manager,
@@ -3380,6 +3391,7 @@ mod tests {
             thread_manager,
             outgoing,
             SessionScriptRegistry::default(),
+            None,
             session_script_outgoing,
             new_thread_state(),
             thread_watch_manager.clone(),
@@ -3472,6 +3484,7 @@ mod tests {
             thread_manager,
             outgoing,
             SessionScriptRegistry::default(),
+            None,
             session_script_outgoing,
             new_thread_state(),
             ThreadWatchManager::new(),

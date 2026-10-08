@@ -207,6 +207,26 @@ pub struct StartThreadOptions {
     pub supports_openai_form_elicitation: bool,
 }
 
+fn merge_dynamic_tools(
+    historical: Option<Vec<xedoc_protocol::dynamic_tools::DynamicToolSpec>>,
+    overlay: Vec<xedoc_protocol::dynamic_tools::DynamicToolSpec>,
+) -> Vec<xedoc_protocol::dynamic_tools::DynamicToolSpec> {
+    let mut dynamic_tools = historical.unwrap_or_default();
+    if overlay.is_empty() {
+        return dynamic_tools;
+    }
+    dynamic_tools.retain(|tool| match tool {
+        xedoc_protocol::dynamic_tools::DynamicToolSpec::Function(function) => {
+            !function.name.starts_with("remote_")
+        }
+        xedoc_protocol::dynamic_tools::DynamicToolSpec::Namespace(namespace) => {
+            namespace.name != "remote"
+        }
+    });
+    dynamic_tools.extend(overlay);
+    dynamic_tools
+}
+
 fn originator_from_service_name(service_name: Option<&str>) -> Option<String> {
     let service_name = service_name?.trim();
     for originator in [
@@ -898,6 +918,26 @@ impl ThreadManager {
         parent_trace: Option<W3cTraceContext>,
         supports_openai_form_elicitation: bool,
     ) -> XedocResult<NewThread> {
+        self.resume_thread_with_history_and_dynamic_tools(
+            config,
+            initial_history,
+            auth_manager,
+            parent_trace,
+            supports_openai_form_elicitation,
+            Vec::new(),
+        )
+        .await
+    }
+
+    pub async fn resume_thread_with_history_and_dynamic_tools(
+        &self,
+        config: Config,
+        initial_history: InitialHistory,
+        auth_manager: Arc<AuthManager>,
+        parent_trace: Option<W3cTraceContext>,
+        supports_openai_form_elicitation: bool,
+        dynamic_tools: Vec<xedoc_protocol::dynamic_tools::DynamicToolSpec>,
+    ) -> XedocResult<NewThread> {
         let agent_control = self.agent_control_for_config(&config);
         let environments = default_thread_environment_selections(
             self.state.environment_manager.as_ref(),
@@ -915,6 +955,7 @@ impl ThreadManager {
                 .restore_v2_agent_metadata(&config, resumed.conversation_id)
                 .await;
         }
+        let dynamic_tools = merge_dynamic_tools(initial_history.get_dynamic_tools(), dynamic_tools);
         Box::pin(self.state.spawn_thread_with_source(
             config,
             initial_history,
@@ -926,7 +967,7 @@ impl ThreadManager {
             /*parent_thread_id*/ None,
             /*forked_from_thread_id*/ None,
             thread_source,
-            Vec::new(),
+            dynamic_tools,
             /*metrics_service_name*/ None,
             /*inherited_environments*/ None,
             /*inherited_exec_policy*/ None,
@@ -1136,6 +1177,32 @@ impl ThreadManager {
             thread_source,
             parent_trace,
             supports_openai_form_elicitation,
+            Vec::new(),
+        )
+        .await
+    }
+
+    pub async fn fork_thread_from_history_and_dynamic_tools<S>(
+        &self,
+        snapshot: S,
+        config: Config,
+        history: InitialHistory,
+        thread_source: Option<ThreadSource>,
+        parent_trace: Option<W3cTraceContext>,
+        supports_openai_form_elicitation: bool,
+        dynamic_tools: Vec<xedoc_protocol::dynamic_tools::DynamicToolSpec>,
+    ) -> XedocResult<NewThread>
+    where
+        S: Into<ForkSnapshot>,
+    {
+        self.fork_thread_with_initial_history(
+            snapshot.into(),
+            config,
+            history,
+            thread_source,
+            parent_trace,
+            supports_openai_form_elicitation,
+            dynamic_tools,
         )
         .await
     }
@@ -1148,6 +1215,7 @@ impl ThreadManager {
         thread_source: Option<ThreadSource>,
         parent_trace: Option<W3cTraceContext>,
         supports_openai_form_elicitation: bool,
+        dynamic_tools: Vec<xedoc_protocol::dynamic_tools::DynamicToolSpec>,
     ) -> XedocResult<NewThread> {
         // `forked_from_id()` describes this history's existing lineage. When
         // forking a resumed thread, the child copies the resumed thread itself.
@@ -1169,6 +1237,7 @@ impl ThreadManager {
         let interrupted_marker =
             InterruptedTurnHistoryMarker::from_config_and_version(&config, multi_agent_version);
         let history = fork_history_from_snapshot(snapshot, history, interrupted_marker);
+        let dynamic_tools = merge_dynamic_tools(history.get_dynamic_tools(), dynamic_tools);
         let environments = default_thread_environment_selections(
             self.state.environment_manager.as_ref(),
             &config.cwd,
@@ -1183,7 +1252,7 @@ impl ThreadManager {
             /*parent_thread_id*/ None,
             source_thread_id,
             thread_source,
-            Vec::new(),
+            dynamic_tools,
             /*metrics_service_name*/ None,
             parent_trace,
             environments,

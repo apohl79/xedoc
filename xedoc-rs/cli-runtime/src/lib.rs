@@ -7,6 +7,7 @@ use owo_colors::OwoColorize;
 use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use supports_color::Stream;
@@ -953,6 +954,9 @@ pub fn run(xedoc_version: &'static str) -> anyhow::Result<()> {
 }
 
 async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
+    let experimental_invocation = is_experimental_invocation();
+    let daemon_target =
+        AppServerDaemonTarget::from_experimental_invocation(experimental_invocation);
     let MultitoolCli {
         config_overrides: mut root_config_overrides,
         feature_toggles,
@@ -966,6 +970,9 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
     root_config_overrides.raw_overrides.extend(toggle_overrides);
     let root_remote = remote.remote;
     let root_remote_auth_token_env = remote.remote_auth_token_env;
+    let default_local_daemon_socket = experimental_invocation
+        .then(experimental_app_server_socket)
+        .transpose()?;
     let root_strict_config = interactive.strict_config;
     reject_root_strict_config_for_subcommand(root_strict_config, &subcommand)?;
     if let Some(subcommand) = subcommand.as_ref() {
@@ -983,6 +990,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 root_remote.clone(),
                 root_remote_auth_token_env.clone(),
                 arg0_paths.clone(),
+                default_local_daemon_socket.clone(),
             )
             .await?;
             handle_app_exit(exit_info)?;
@@ -1125,20 +1133,40 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 }
                 Some(AppServerSubcommand::Daemon(daemon_cli)) => match daemon_cli.subcommand {
                     AppServerDaemonSubcommand::Start => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Start).await?;
+                        print_app_server_daemon_output(
+                            AppServerLifecycleCommand::Start,
+                            daemon_target,
+                        )
+                        .await?;
                     }
                     AppServerDaemonSubcommand::Bootstrap => {
-                        let output = xedoc_app_server_daemon::bootstrap().await?;
+                        let output = if experimental_invocation {
+                            xedoc_app_server_daemon::bootstrap_experimental().await?
+                        } else {
+                            xedoc_app_server_daemon::bootstrap().await?
+                        };
                         println!("{}", serde_json::to_string(&output)?);
                     }
                     AppServerDaemonSubcommand::Restart => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Restart).await?;
+                        print_app_server_daemon_output(
+                            AppServerLifecycleCommand::Restart,
+                            daemon_target,
+                        )
+                        .await?;
                     }
                     AppServerDaemonSubcommand::Stop => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
+                        print_app_server_daemon_output(
+                            AppServerLifecycleCommand::Stop,
+                            daemon_target,
+                        )
+                        .await?;
                     }
                     AppServerDaemonSubcommand::Version => {
-                        print_app_server_daemon_output(AppServerLifecycleCommand::Version).await?;
+                        print_app_server_daemon_output(
+                            AppServerLifecycleCommand::Version,
+                            daemon_target,
+                        )
+                        .await?;
                     }
                     AppServerDaemonSubcommand::PidUpdateLoop => {
                         xedoc_app_server_daemon::run_pid_update_loop().await?;
@@ -1147,6 +1175,14 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                 Some(AppServerSubcommand::Proxy(proxy_cli)) => {
                     let socket_path = match proxy_cli.socket_path {
                         Some(socket_path) => socket_path,
+                        None if experimental_invocation => {
+                            let xedoc_home = find_xedoc_home()?;
+                            AbsolutePathBuf::from_absolute_path(
+                                xedoc_app_server_daemon::experimental_socket_path(
+                                    xedoc_home.as_path(),
+                                )?,
+                            )?
+                        }
                         None => {
                             let xedoc_home = find_xedoc_home()?;
                             xedoc_app_server::app_server_control_socket_path(&xedoc_home)?
@@ -1201,6 +1237,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     .remote_auth_token_env
                     .or(root_remote_auth_token_env.clone()),
                 arg0_paths.clone(),
+                default_local_daemon_socket.clone(),
             )
             .await?;
             handle_app_exit(exit_info)?;
@@ -1268,6 +1305,7 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     .remote_auth_token_env
                     .or(root_remote_auth_token_env.clone()),
                 arg0_paths.clone(),
+                default_local_daemon_socket,
             )
             .await?;
             handle_app_exit(exit_info)?;
@@ -2173,10 +2211,34 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
     }
 }
 
-async fn print_app_server_daemon_output(command: AppServerLifecycleCommand) -> anyhow::Result<()> {
-    let output = xedoc_app_server_daemon::run(command).await?;
+async fn print_app_server_daemon_output(
+    command: AppServerLifecycleCommand,
+    target: AppServerDaemonTarget,
+) -> anyhow::Result<()> {
+    let output = match target {
+        AppServerDaemonTarget::Current => xedoc_app_server_daemon::run(command).await?,
+        AppServerDaemonTarget::Experimental => {
+            xedoc_app_server_daemon::run_experimental(command).await?
+        }
+    };
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum AppServerDaemonTarget {
+    Current,
+    Experimental,
+}
+
+impl AppServerDaemonTarget {
+    fn from_experimental_invocation(experimental_invocation: bool) -> Self {
+        if experimental_invocation {
+            Self::Experimental
+        } else {
+            Self::Current
+        }
+    }
 }
 
 fn read_remote_auth_token_from_env_var_with<F>(
@@ -2204,6 +2266,7 @@ async fn run_interactive_tui(
     remote: Option<String>,
     remote_auth_token_env: Option<String>,
     arg0_paths: Arg0DispatchPaths,
+    default_local_daemon_socket: Option<AbsolutePathBuf>,
 ) -> std::io::Result<AppExitInfo> {
     if let Some(prompt) = interactive.prompt.take() {
         // Normalize CRLF/CR to LF so CLI-provided text can't leak `\r` into TUI state.
@@ -2236,11 +2299,12 @@ async fn run_interactive_tui(
         Err(err) => return Err(err),
     };
     let start_tui = || {
-        xedoc_tui::run_main(
+        xedoc_tui::run_main_with_local_daemon_socket(
             interactive.clone(),
             arg0_paths.clone(),
             xedoc_config::LoaderOverrides::default(),
             remote_endpoint.clone(),
+            default_local_daemon_socket.clone(),
         )
     };
     let mut attempted_backups = HashSet::new();
@@ -2276,6 +2340,21 @@ async fn run_interactive_tui(
             }
         }
     }
+}
+
+fn is_experimental_invocation() -> bool {
+    std::env::args_os().next().is_some_and(|arg0| {
+        Path::new(&arg0)
+            .file_name()
+            .is_some_and(|file_name| file_name == "xedoc-experimental")
+    })
+}
+
+fn experimental_app_server_socket() -> anyhow::Result<AbsolutePathBuf> {
+    let xedoc_home = find_xedoc_home()?;
+    Ok(AbsolutePathBuf::from_absolute_path(
+        xedoc_app_server_daemon::experimental_socket_path(xedoc_home.as_path())?,
+    )?)
 }
 
 fn resolve_remote_endpoint(
