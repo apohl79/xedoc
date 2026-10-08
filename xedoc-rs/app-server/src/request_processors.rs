@@ -416,6 +416,7 @@ mod model_manager_processor;
 mod model_router_report_processor;
 mod plugins;
 mod process_exec_processor;
+mod remote_session_activity;
 mod search;
 mod session_script_processor;
 mod thread_fork_goal;

@@ -292,8 +292,13 @@ impl ThreadRequestProcessor {
             .update(registration.thread_id, params)
             .await
             .map_err(invalid_request)?;
+        let running = update.summary.status == RemoteSessionStatus::Running;
         self.send_remote_session_updated(registration.thread_id, update)
             .await;
+        if running {
+            self.ensure_remote_activity_timer(registration.thread_id)
+                .await;
+        }
         Ok(Some(RemoteSessionUpdateResponse {}.into()))
     }
 
@@ -579,10 +584,13 @@ impl ThreadRequestProcessor {
             )
             .await;
         }
+        if update.summary.status == RemoteSessionStatus::Running {
+            self.ensure_remote_activity_timer(root_thread_id).await;
+        }
         Ok(update)
     }
 
-    async fn send_remote_session_updated(
+    pub(super) async fn send_remote_session_updated(
         &self,
         root_thread_id: ThreadId,
         update: RemoteSessionProjectionUpdate,

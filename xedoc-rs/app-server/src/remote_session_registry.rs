@@ -1,6 +1,7 @@
 //! Root-thread scoped remote session projections.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde_json::Value as JsonValue;
@@ -15,6 +16,8 @@ use xedoc_protocol::ThreadId;
 const MAX_IDENTIFIER_CHARS: usize = 128;
 const MAX_ACTIVITY_SUMMARY_CHARS: usize = 64;
 const MAX_OUTPUT_DELTA_BYTES: usize = 32 * 1024;
+const RUNNING_ACTIVITY_SUMMARY: &str = "Remote session is running.";
+const MAX_RECENT_OUTPUT_BYTES: usize = 4 * 1024;
 const DEFAULT_LIST_LIMIT: usize = 100;
 const MAX_LIST_LIMIT: usize = 100;
 
@@ -28,12 +31,18 @@ pub(crate) struct RemoteSessionRegistry {
 struct RemoteSessionRegistryState {
     remote_session_ids_by_identity: HashMap<(ThreadId, String, String), String>,
     entries_by_id: HashMap<String, RemoteSessionEntry>,
+    activity_timer_roots: HashSet<ThreadId>,
 }
 
 struct RemoteSessionEntry {
     root_thread_id: ThreadId,
     summary: RemoteSessionSummary,
     activity_cursor: Option<String>,
+    /// Tail of the remote output, used as input for generated activity summaries.
+    recent_output: String,
+    output_dirty: bool,
+    /// Generated summary and the remote turn it describes.
+    generated_activity: Option<(Option<String>, String)>,
 }
 
 /// One bounded page of remote session projections.
@@ -93,6 +102,9 @@ impl RemoteSessionRegistry {
                 root_thread_id,
                 summary: summary.clone(),
                 activity_cursor: None,
+                recent_output: String::new(),
+                output_dirty: false,
+                generated_activity: None,
             },
         );
         Ok(summary)
@@ -195,6 +207,10 @@ impl RemoteSessionRegistry {
             (None, None) => None,
             _ => return Err("output delta and cursor must be provided together".to_string()),
         };
+        if let Some(delta) = output_delta.as_deref() {
+            note_output(entry, delta);
+        }
+        restore_generated_activity(entry);
         Ok(RemoteSessionProjectionUpdate {
             summary: entry.summary.clone(),
             output_delta,
@@ -215,6 +231,9 @@ impl RemoteSessionRegistry {
             .as_object()
             .ok_or_else(|| "remote-agent control result must be an object".to_string())?;
         let output_delta = apply_broker_result(entry, object)?;
+        if let Some(delta) = output_delta.as_deref() {
+            note_output(entry, delta);
+        }
         match action {
             RemoteSessionControlAction::Attach => {
                 if entry.summary.status == RemoteSessionStatus::Detached {
@@ -223,7 +242,8 @@ impl RemoteSessionRegistry {
             }
             RemoteSessionControlAction::Send | RemoteSessionControlAction::Steer => {
                 entry.summary.status = RemoteSessionStatus::Running;
-                entry.summary.activity_summary = Some("Remote session is running.".to_string());
+                entry.summary.activity_summary = Some(RUNNING_ACTIVITY_SUMMARY.to_string());
+                entry.generated_activity = None;
             }
             RemoteSessionControlAction::Cancel => {
                 entry.summary.status = RemoteSessionStatus::Cancelled;
@@ -234,10 +254,115 @@ impl RemoteSessionRegistry {
             }
             RemoteSessionControlAction::Read => {}
         }
+        restore_generated_activity(entry);
         Ok(RemoteSessionProjectionUpdate {
             summary: entry.summary.clone(),
             output_delta,
         })
+    }
+
+    /// Marks the root's activity timer as running; returns false when one already exists.
+    pub(crate) async fn claim_activity_timer(&self, root_thread_id: ThreadId) -> bool {
+        self.state
+            .lock()
+            .await
+            .activity_timer_roots
+            .insert(root_thread_id)
+    }
+
+    /// Returns `(remote_session_id, recent_output)` for running sessions with new output.
+    ///
+    /// Returns `None` and releases the root's timer once no session is running.
+    pub(crate) async fn take_activity_inputs(
+        &self,
+        root_thread_id: ThreadId,
+    ) -> Option<Vec<(String, String)>> {
+        let mut state = self.state.lock().await;
+        let mut any_running = false;
+        let mut inputs = Vec::new();
+        for (remote_session_id, entry) in &mut state.entries_by_id {
+            if entry.root_thread_id != root_thread_id
+                || entry.summary.status != RemoteSessionStatus::Running
+            {
+                continue;
+            }
+            any_running = true;
+            if std::mem::take(&mut entry.output_dirty) {
+                inputs.push((remote_session_id.clone(), entry.recent_output.clone()));
+            }
+        }
+        if !any_running {
+            state.activity_timer_roots.remove(&root_thread_id);
+            return None;
+        }
+        Some(inputs)
+    }
+
+    /// Releases the root's activity timer when its thread is gone.
+    pub(crate) async fn release_activity_timer(&self, root_thread_id: ThreadId) {
+        self.state
+            .lock()
+            .await
+            .activity_timer_roots
+            .remove(&root_thread_id);
+    }
+
+    /// Queues another summary attempt after a failed generation.
+    pub(crate) async fn retry_activity(&self, remote_session_id: &str) {
+        if let Some(entry) = self
+            .state
+            .lock()
+            .await
+            .entries_by_id
+            .get_mut(remote_session_id)
+        {
+            entry.output_dirty = true;
+        }
+    }
+
+    /// Stores a generated summary while the session is still running.
+    pub(crate) async fn set_generated_activity(
+        &self,
+        root_thread_id: ThreadId,
+        remote_session_id: &str,
+        summary: String,
+    ) -> Option<RemoteSessionProjectionUpdate> {
+        let mut state = self.state.lock().await;
+        let entry = entry_for_root_mut(&mut state, root_thread_id, remote_session_id).ok()?;
+        if entry.summary.status != RemoteSessionStatus::Running
+            || validate_activity_summary(&summary).is_err()
+        {
+            return None;
+        }
+        entry.generated_activity = Some((entry.summary.active_turn_id.clone(), summary.clone()));
+        entry.summary.activity_summary = Some(summary);
+        Some(RemoteSessionProjectionUpdate {
+            summary: entry.summary.clone(),
+            output_delta: None,
+        })
+    }
+}
+
+fn note_output(entry: &mut RemoteSessionEntry, delta: &str) {
+    entry.recent_output.push_str(delta);
+    if entry.recent_output.len() > MAX_RECENT_OUTPUT_BYTES {
+        let mut cut = entry.recent_output.len() - MAX_RECENT_OUTPUT_BYTES;
+        while !entry.recent_output.is_char_boundary(cut) {
+            cut += 1;
+        }
+        entry.recent_output.drain(..cut);
+    }
+    entry.output_dirty = true;
+}
+
+/// Keeps a generated summary instead of the extension's fixed running text.
+fn restore_generated_activity(entry: &mut RemoteSessionEntry) {
+    if entry.summary.status == RemoteSessionStatus::Running
+        && entry.summary.activity_summary.as_deref() == Some(RUNNING_ACTIVITY_SUMMARY)
+        && let Some((turn_id, summary)) = entry.generated_activity.as_ref()
+        && *turn_id == entry.summary.active_turn_id
+    {
+        entry.summary.activity_summary = Some(summary.clone());
     }
 }
 

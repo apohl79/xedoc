@@ -201,6 +201,7 @@ mod mcp_runtime;
 pub(crate) mod model_router_script_context;
 mod model_router_usage;
 pub(crate) mod multi_agents;
+mod remote_activity;
 mod review;
 mod rollout_budget;
 mod rollout_reconstruction;
