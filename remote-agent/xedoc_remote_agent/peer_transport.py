@@ -6,6 +6,7 @@ import secrets
 import socket
 import ssl
 import threading
+import time
 from typing import Any, Mapping
 
 from .errors import BrokerError
@@ -29,6 +30,9 @@ from .peer_state import PeerState
 
 MAX_PEER_CLIENTS = 16
 PEER_IO_TIMEOUT_SECONDS = 5.0
+BOOTSTRAP_ATTEMPTS_PER_WINDOW = 10
+BOOTSTRAP_WINDOW_SECONDS = 60.0
+MAX_BOOTSTRAP_SOURCES = 1_024
 
 
 class PeerServer:
@@ -55,10 +59,32 @@ class PeerServer:
         self._workers: set[threading.Thread] = set()
         self._connections: set[socket.socket] = set()
         self._lock = threading.Lock()
+        self._bootstrap_attempts: dict[str, list[float]] = {}
 
     @property
     def endpoint(self) -> str:
         return self._endpoint.value
+
+    def _admit_bootstrap(self, source_host: str) -> bool:
+        """Rate-limit unauthenticated pairing attempts per source address."""
+
+        now = time.monotonic()
+        with self._lock:
+            for host, attempts in tuple(self._bootstrap_attempts.items()):
+                recent = [at for at in attempts if now - at < BOOTSTRAP_WINDOW_SECONDS]
+                if recent:
+                    self._bootstrap_attempts[host] = recent
+                else:
+                    del self._bootstrap_attempts[host]
+            attempts = self._bootstrap_attempts.get(source_host)
+            if attempts is None:
+                if len(self._bootstrap_attempts) >= MAX_BOOTSTRAP_SOURCES:
+                    return False
+                attempts = self._bootstrap_attempts[source_host] = []
+            if len(attempts) >= BOOTSTRAP_ATTEMPTS_PER_WINDOW:
+                return False
+            attempts.append(now)
+        return True
 
     @property
     def running(self) -> bool:
@@ -114,12 +140,15 @@ class PeerServer:
             if listener is None:
                 return
             try:
-                connection, _ = listener.accept()
+                connection, address = listener.accept()
             except TimeoutError:
                 continue
             except OSError:
                 if self._stopping.is_set():
                     return
+                continue
+            if self._bootstrap and not self._admit_bootstrap(str(address[0])):
+                connection.close()
                 continue
             if not self._clients.acquire(blocking=False):
                 connection.close()

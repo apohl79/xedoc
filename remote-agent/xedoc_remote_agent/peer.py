@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import ipaddress
 import secrets
@@ -24,6 +25,7 @@ from .message_contract import (
 )
 from .messages import MessageService
 from .models import BrokerConfig, Role, StaticPeerConfig
+from .host_presence import PresenceTracker
 from .peer_discovery import DiscoveryCandidate, PeerDiscovery
 from .peer_identity import (
     CertificateMaterial,
@@ -76,6 +78,11 @@ _PENDING_REVIEW_TTL_SECONDS = 3_600
 _DEFAULT_GRANT_TTL_SECONDS = 365 * 86_400
 _PAIRING_TTL_SECONDS = 300
 _SESSION_START_TIMEOUT_SECONDS = 30.0
+_HOST_REFRESH_INTERVAL_SECONDS = 30.0
+_HOST_REFRESH_TIMEOUT_SECONDS = 3.0
+_HOST_REFRESH_WORKERS = 8
+_MAX_HOST_QUERY_BYTES = 128
+_MAX_ANNOUNCED_HOSTS_PER_ADDRESS = 8
 
 
 @dataclass(frozen=True)
@@ -92,7 +99,6 @@ class DiscoveredPeer:
     capabilities: frozenset[str]
     certificate: CertificateMaterial | None = None
     pairing_endpoint: PeerEndpoint | None = None
-    pairing_token: str | None = None
 
     def to_dict(self, status: str) -> dict[str, object]:
         return {
@@ -216,6 +222,9 @@ class PeerService:
         self._pairing_server: PeerServer | None = None
         self._discovery: PeerDiscovery | None = None
         self._candidates: dict[str, DiscoveredPeer] = {}
+        self._presence = PresenceTracker()
+        self._refresh_stop = threading.Event()
+        self._refresh_thread: threading.Thread | None = None
 
     @property
     def host_id(self) -> str:
@@ -254,6 +263,7 @@ class PeerService:
             fingerprint_value=self.identity.certificate.fingerprint,
             endpoints=self._discovery_endpoints,
             capabilities=self._discovery_capabilities,
+            on_announce=self._on_announce,
         )
         try:
             server.start()
@@ -262,7 +272,9 @@ class PeerService:
             self._pairing_server = pairing_server
             self._discovery = discovery
             discovery.start()
+            self._start_host_refresh()
         except BaseException:
+            self._stop_host_refresh()
             discovery.stop()
             pairing_server.stop()
             server.stop()
@@ -273,6 +285,7 @@ class PeerService:
         return server
 
     def stop_listener(self) -> None:
+        self._stop_host_refresh()
         discovery, self._discovery = self._discovery, None
         if discovery is not None:
             discovery.stop()
@@ -308,16 +321,158 @@ class PeerService:
     def bootstrap_tls_context(self) -> ssl.SSLContext:
         return bootstrap_server_tls_context(self.state)
 
-    def hosts_list(self) -> dict[str, object]:
-        relationships = self.state.relationships()
+    def hosts_list(self, params: Mapping[str, Any]) -> dict[str, object]:
+        """List known hosts from the local cache; this never touches the network."""
+
+        _exact_fields(params, {"query"})
+        query = params.get("query")
+        if query is not None and (
+            not isinstance(query, str)
+            or len(query.encode("utf-8")) > _MAX_HOST_QUERY_BYTES
+        ):
+            raise BrokerError.invalid_request()
+        needle = query.strip().casefold() if isinstance(query, str) else ""
         data: list[dict[str, object]] = []
-        for relationship in relationships:
+        for relationship in self.state.relationships():
             host = relationship.public_dict()
-            hostname = self._peer_hostname(relationship)
+            hostname = self._cached_hostname(relationship.peer_host_id)
             if hostname is not None:
                 host["hostname"] = hostname
+            presence = self._presence.get(relationship.peer_host_id)
+            host["reachable"] = presence.reachable if presence is not None else None
+            host["lastSeenAt"] = presence.last_seen_at if presence is not None else None
+            if needle and not any(
+                needle in str(host.get(field, "")).casefold()
+                for field in ("hostId", "hostname", "role", "status")
+            ):
+                continue
             data.append(host)
         return {"data": data}
+
+    def resolve_host(self, value: str) -> str:
+        """Map a host id or a unique paired hostname to a host id."""
+
+        relationships = self.state.relationships()
+        if any(relationship.peer_host_id == value for relationship in relationships):
+            return value
+        wanted = value.casefold()
+        matches = [
+            relationship.peer_host_id
+            for relationship in relationships
+            if (self._cached_hostname(relationship.peer_host_id) or "").casefold()
+            == wanted
+        ]
+        return matches[0] if len(matches) == 1 else value
+
+    def _cached_hostname(self, host_id: str) -> str | None:
+        candidate = self._candidates.get(host_id)
+        return candidate.hostname if candidate is not None else None
+
+    def _on_announce(self, record: DiscoveryCandidate) -> None:
+        """Fold one unauthenticated announcement into the presence cache.
+
+        Paired hosts are ignored: their liveness and hostname come only from the
+        authenticated describe in the refresher, so a spoofed announcement can
+        neither rename, hide, nor revive them.
+        """
+
+        if self.state.relationship(record.host_id) is not None:
+            return
+        existing = self._candidates.get(record.host_id)
+        if record.ttl_seconds == 0:
+            if existing is not None and existing.endpoint == record.endpoint.value:
+                self._presence.forget(record.host_id)
+                self._candidates.pop(record.host_id, None)
+            return
+        if existing is not None and existing.certificate is not None:
+            return
+        if existing is None and (
+            sum(
+                1
+                for candidate in tuple(self._candidates.values())
+                if candidate.certificate is None
+                and PeerEndpoint.parse(candidate.endpoint).host == record.endpoint.host
+            )
+            >= _MAX_ANNOUNCED_HOSTS_PER_ADDRESS
+        ):
+            return
+        if not self._presence.seen(record.host_id, ttl_seconds=float(record.ttl_seconds)):
+            return
+        self._candidates[record.host_id] = _discovered_lan_peer(record)
+
+    def _prune_announced(self) -> None:
+        announced = {
+            host_id
+            for host_id, candidate in tuple(self._candidates.items())
+            if candidate.certificate is None
+        }
+        for host_id in self._presence.expired(announced):
+            self._candidates.pop(host_id, None)
+
+    def _start_host_refresh(self) -> None:
+        self._refresh_stop = threading.Event()
+        thread = threading.Thread(
+            target=self._refresh_loop,
+            name="xedoc-remote-agent-host-refresh",
+            args=(self._refresh_stop,),
+            daemon=True,
+        )
+        self._refresh_thread = thread
+        thread.start()
+
+    def _stop_host_refresh(self) -> None:
+        self._refresh_stop.set()
+        thread, self._refresh_thread = self._refresh_thread, None
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
+
+    def _refresh_loop(self, stop: threading.Event) -> None:
+        while True:
+            try:
+                self._refresh_hosts()
+            except Exception:  # noqa: BLE001 - a refresh failure must not stop the loop
+                pass
+            if stop.wait(_HOST_REFRESH_INTERVAL_SECONDS):
+                return
+
+    def _refresh_hosts(self) -> None:
+        """Describe every paired and statically configured host in parallel."""
+
+        targets: list[tuple[str | None, StaticPeer]] = [
+            (relationship.peer_host_id, _peer_from_relationship(relationship))
+            for relationship in self.state.relationships()
+            if relationship.status != "revoked"
+        ]
+        targets.extend((None, peer) for peer in self._static_peers)
+        if not targets:
+            return
+
+        def describe(
+            target: tuple[str | None, StaticPeer],
+        ) -> tuple[str | None, DiscoveredPeer | None]:
+            expected_host_id, peer = target
+            try:
+                response = self._client.operation(
+                    peer,
+                    "host/describe",
+                    {},
+                    timeout_seconds=_HOST_REFRESH_TIMEOUT_SECONDS,
+                )
+                return expected_host_id, _discovered_peer(response, peer)
+            except BrokerError:
+                return expected_host_id, None
+
+        with ThreadPoolExecutor(max_workers=_HOST_REFRESH_WORKERS) as pool:
+            for expected_host_id, candidate in pool.map(describe, targets):
+                if candidate is None:
+                    if expected_host_id is not None:
+                        self._presence.unreachable(expected_host_id)
+                    continue
+                if expected_host_id is not None and candidate.host_id != expected_host_id:
+                    self._presence.unreachable(expected_host_id)
+                    continue
+                self._candidates[candidate.host_id] = candidate
+                self._presence.seen(candidate.host_id, ttl_seconds=None)
 
     def pairing_requests(self, params: Mapping[str, Any]) -> dict[str, object]:
         _exact_fields(params, set())
@@ -423,8 +578,15 @@ class PeerService:
         return result
 
     def discover(self, params: Mapping[str, Any]) -> dict[str, object]:
+        """Return hosts from the passive presence cache, optionally scanning actively.
+
+        ``timeoutSeconds`` defaults to 0: the call answers immediately from
+        announcements and refreshed paired hosts. A positive value adds an
+        active multicast scan that waits up to that many seconds.
+        """
+
         _exact_fields(params, {"timeoutSeconds", "endpoints"})
-        timeout_seconds = params.get("timeoutSeconds", self.config.limits.max_discovery_seconds)
+        timeout_seconds = params.get("timeoutSeconds", 0)
         if (
             not isinstance(timeout_seconds, int)
             or isinstance(timeout_seconds, bool)
@@ -436,10 +598,7 @@ class PeerService:
         if not isinstance(direct_endpoints, list):
             raise BrokerError.invalid_request()
         deadline = time.monotonic() + timeout_seconds
-        candidates: list[DiscoveredPeer] = []
-        seen: set[str] = set()
-        self._candidates = {}
-        for peer in self._static_peers:
+        for peer in self._static_peers if timeout_seconds > 0 else ():
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
@@ -453,19 +612,24 @@ class PeerService:
                 candidate = _discovered_peer(response, peer)
             except BrokerError:
                 continue
-            if candidate.host_id not in seen:
-                seen.add(candidate.host_id)
-                candidates.append(candidate)
-                self._candidates[candidate.host_id] = candidate
+            self._candidates[candidate.host_id] = candidate
+            self._presence.seen(candidate.host_id, ttl_seconds=None)
         discovery = self._discovery
-        if discovery is not None:
+        if timeout_seconds > 0 and discovery is not None:
             remaining = max(0, int(deadline - time.monotonic() + 0.999))
             for record in discovery.discover(remaining, direct_endpoints):
-                candidate = _discovered_lan_peer(record)
-                if candidate.host_id not in seen:
-                    seen.add(candidate.host_id)
-                    candidates.append(candidate)
-                    self._candidates[candidate.host_id] = candidate
+                if self._candidates.get(record.host_id, None) is None or (
+                    self._candidates[record.host_id].certificate is None
+                ):
+                    self._candidates[record.host_id] = _discovered_lan_peer(record)
+                    self._presence.seen(
+                        record.host_id, ttl_seconds=float(record.ttl_seconds)
+                    )
+        self._prune_announced()
+        candidates = sorted(
+            self._candidates.values(), key=lambda candidate: candidate.host_id
+        )
+        seen = {candidate.host_id for candidate in candidates}
         for relationship in self.state.relationships():
             if relationship.peer_host_id in seen or relationship.status == "revoked":
                 continue
@@ -483,13 +647,14 @@ class PeerService:
                     certificate=relationship.certificate,
                 )
             )
-        return {
-            "data": [
-                candidate.to_dict(_candidate_status(candidate, self.state))
-                for candidate in candidates
-            ],
-            "timedOut": timeout_seconds > 0 and time.monotonic() >= deadline,
-        }
+        data: list[dict[str, object]] = []
+        for candidate in candidates:
+            entry = candidate.to_dict(_candidate_status(candidate, self.state))
+            presence = self._presence.get(candidate.host_id)
+            entry["reachable"] = presence.reachable if presence is not None else None
+            entry["lastSeenAt"] = presence.last_seen_at if presence is not None else None
+            data.append(entry)
+        return {"data": data, "timedOut": timeout_seconds > 0}
 
     def pair(self, params: Mapping[str, Any]) -> dict[str, object]:
         _exact_fields(params, {"hostId", "role", "fingerprint"}, {"hostId", "role"})
@@ -521,9 +686,8 @@ class PeerService:
             "pairingId": pairing_id,
             "expiresAt": expires_at,
         }
-        if candidate.pairing_endpoint is not None and candidate.pairing_token is not None:
+        if candidate.pairing_endpoint is not None:
             payload["sourceCertificate"] = self.identity.certificate.pem.decode("ascii")
-            payload["pairingToken"] = candidate.pairing_token
             if candidate.role is Role.MANAGED:
                 enrollment_code = self.state.managed_enrollment_code(
                     peer_host_id=candidate.host_id,
@@ -591,13 +755,26 @@ class PeerService:
         return relationship.public_dict()
 
     def enrollment_create(self, params: Mapping[str, Any]) -> dict[str, object]:
-        """Create a one-time credential for a managed peer's next pairing."""
+        """Create a one-time credential for a managed peer's next pairing.
 
-        _exact_fields(params, set())
+        The result also names this host so a caller that received the code over
+        an authenticated side channel (SSH) can confirm which host issued it.
+        """
+
+        _exact_fields(params, {"ttlSeconds"})
         if self.config.role is not Role.MANAGED:
             raise BrokerError.unauthorized()
-        code, expires_at = self.state.create_managed_enrollment_code()
-        return {"code": code, "expiresAt": expires_at}
+        ttl_seconds = params.get("ttlSeconds")
+        if ttl_seconds is None:
+            code, expires_at = self.state.create_managed_enrollment_code()
+        else:
+            code, expires_at = self.state.create_managed_enrollment_code(ttl_seconds)
+        return {
+            "code": code,
+            "expiresAt": expires_at,
+            "hostId": self.host_id,
+            "fingerprint": self.identity.certificate.fingerprint,
+        }
 
     def enrollment_remember(self, params: Mapping[str, Any]) -> dict[str, object]:
         """Store a managed peer's one-time credential only in local broker state."""
@@ -776,21 +953,7 @@ class PeerService:
         return result
 
     def _peer_hostname(self, relationship: Relationship) -> str | None:
-        candidate = self._candidates.get(relationship.peer_host_id)
-        if candidate is not None and candidate.hostname is not None:
-            return candidate.hostname
-        try:
-            response = self._client.operation(
-                _peer_from_relationship(relationship),
-                "host/describe",
-                {},
-                timeout_seconds=PEER_IO_TIMEOUT_SECONDS,
-            )
-            candidate = _discovered_peer(response, _peer_from_relationship(relationship))
-        except BrokerError:
-            return None
-        self._candidates[candidate.host_id] = candidate
-        return candidate.hostname
+        return self._cached_hostname(relationship.peer_host_id)
 
     def peer_message(
         self, source: MessageSource, submission: MessageSubmission
@@ -893,7 +1056,7 @@ class PeerService:
     def handle_bootstrap_pairing_request(
         self, frame: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """Accept exactly one discovery-authorized pairing request."""
+        """Accept one pairing request from an unpaired coordinator."""
 
         request_id = _request_id_or_empty(
             frame.get("requestId") if isinstance(frame, Mapping) else None
@@ -905,11 +1068,6 @@ class PeerService:
             source_certificate = payload.get("sourceCertificate")
             if not isinstance(source_certificate, str):
                 raise BrokerError.invalid_request()
-            pairing_token = payload.get("pairingToken")
-            if not isinstance(pairing_token, str) or not self._has_pairing_token(
-                pairing_token
-            ):
-                raise BrokerError.unauthorized()
             certificate = certificate_material(source_certificate.encode("ascii"))
             request = _parse_request(frame, certificate, self.state)
             if request["kind"] != "pairing":
@@ -1077,7 +1235,7 @@ class PeerService:
                 "expiresAt",
             }
             if bootstrap:
-                fields |= {"sourceCertificate", "pairingToken"}
+                fields |= {"sourceCertificate"}
                 if (
                     self.config.role is Role.MANAGED
                     and "enrollmentCode" in request_payload
@@ -1091,11 +1249,7 @@ class PeerService:
                 raise BrokerError.invalid_request()
             pairing_id, expires_at = _pairing_metadata(payload)
             source_endpoint = PeerEndpoint.parse(payload["sourceEndpoint"]).value
-            if bootstrap:
-                token = payload["pairingToken"]
-                if not isinstance(token, str) or not self._consume_pairing_token(token):
-                    raise BrokerError.unauthorized()
-            elif certificate.fingerprint not in self._eligible_certificates:
+            if not bootstrap and certificate.fingerprint not in self._eligible_certificates:
                 raise BrokerError.unauthorized()
             if self.config.role is Role.MANAGED:
                 if certificate.fingerprint in self._eligible_certificates:
@@ -1372,13 +1526,6 @@ class PeerService:
             }
         )
 
-    def _consume_pairing_token(self, token: str) -> bool:
-        discovery = self._discovery
-        return discovery is not None and discovery.consume_pairing_token(token)
-
-    def _has_pairing_token(self, token: str) -> bool:
-        discovery = self._discovery
-        return discovery is not None and discovery.has_pairing_token(token)
 
     def _certificate_allowed(self, certificate: CertificateMaterial) -> bool:
         if self.state.is_credential_tombstoned(certificate):
@@ -1681,7 +1828,6 @@ def _discovered_lan_peer(record: DiscoveryCandidate) -> DiscoveredPeer:
         protocol_minor=record.protocol_minor,
         capabilities=record.capabilities,
         pairing_endpoint=record.pairing_endpoint,
-        pairing_token=record.pairing_token,
     )
 
 

@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -174,6 +175,8 @@ def remote_agent_enrollment_command(
     role: str | None = None,
     code: str | None = None,
     endpoints: list[str] | None = None,
+    discovery_timeout: int | None = None,
+    ttl_seconds: int | None = None,
 ) -> dict[str, object]:
     binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
     if not binary.is_file():
@@ -188,6 +191,10 @@ def remote_agent_enrollment_command(
     if action == "discover" and endpoints:
         for endpoint in endpoints:
             command.extend(("--endpoint", endpoint))
+    if action == "discover" and discovery_timeout is not None:
+        command.extend(("--discovery-timeout", str(discovery_timeout)))
+    if ttl_seconds is not None:
+        command.extend(("--ttl-seconds", str(ttl_seconds)))
     try:
         result = subprocess.run(
             command,
@@ -212,13 +219,98 @@ def remote_agent_enrollment_command(
     return cast(dict[str, object], response)
 
 
-def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
-    discovered = remote_agent_enrollment_command("discover", endpoints=args.endpoint)
+SSH_ENROLLMENT_TTL_SECONDS = 300
+# The remote shell is a login shell so PATH matches an interactive session; the
+# default install locations cover hosts where the binary is not on PATH.
+SSH_ENROLLMENT_SCRIPT = (
+    "for b in xedoc-remote-agentd "
+    '"$HOME/.xedoc/packages/standalone/current/bin/xedoc-remote-agentd" '
+    '"$HOME/.xedoc/packages/standalone/experimental/bin/xedoc-remote-agentd"; do '
+    'if command -v "$b" >/dev/null 2>&1; then '
+    f'exec "$b" enrollment create --ttl-seconds {SSH_ENROLLMENT_TTL_SECONDS}; fi; done; '
+    "exit 127"
+)
+
+
+def ssh_target_for(candidate: dict[str, object], override: str | None) -> str | None:
+    if override:
+        return override
+    endpoint = candidate.get("endpoint")
+    if not isinstance(endpoint, str):
+        return None
+    host = endpoint.split("://", 1)[-1].rsplit(":", 1)[0].strip("[]")
+    return host or None
+
+
+def remote_agent_ssh_enrollment_code(
+    candidate: dict[str, object], ssh_target: str | None
+) -> str | None:
+    """Ask the managed host for a short-lived enrollment code over SSH.
+
+    SSH proves the coordinator's user may log in to the managed host's account,
+    so no code has to be typed. Host keys are verified by ssh itself and prompts
+    are disabled, so any failure returns None and the caller asks for the code.
+    """
+
+    target = ssh_target_for(candidate, ssh_target)
+    if target is None or target.startswith("-") or shutil.which("ssh") is None:
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "ssh",
+                "-T",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=5",
+                "--",
+                target,
+                f"sh -lc '{SSH_ENROLLMENT_SCRIPT}'",
+            ],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        issued = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(issued, dict):
+        return None
+    code = issued.get("code")
+    if (
+        not isinstance(code, str)
+        or issued.get("hostId") != candidate.get("hostId")
+        or issued.get("fingerprint") != candidate.get("fingerprint")
+    ):
+        # The login landed on a different host or account than the one discovered.
+        return None
+    print(
+        f"Obtained a one-time enrollment code from {target} over SSH.",
+        file=sys.stderr,
+    )
+    return code
+
+
+def discovered_remote_agent_hosts(
+    endpoints: list[str], discovery_timeout: int | None
+) -> list[dict[str, object]]:
+    discovered = remote_agent_enrollment_command(
+        "discover", endpoints=endpoints, discovery_timeout=discovery_timeout
+    )
     candidates = sorted(
         as_object_list(discovered.get("data", []), "discovered host"),
         key=lambda candidate: cast(str, candidate.get("hostId", "")),
     )
-    hosts = [
+    return [
         candidate
         for candidate in candidates
         if candidate.get("role") in REMOTE_AGENT_ROLES
@@ -227,6 +319,21 @@ def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
         and isinstance(candidate.get("fingerprint"), str)
         and isinstance(candidate.get("endpoint"), str)
     ]
+
+
+def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
+    # Hosts announce themselves, so the passive cache answers at once; scan
+    # actively only when it is empty or direct destinations were requested.
+    hosts = (
+        []
+        if args.endpoint
+        else discovered_remote_agent_hosts(args.endpoint, discovery_timeout=0)
+    )
+    if not hosts or (
+        args.host_id is not None
+        and all(candidate["hostId"] != args.host_id for candidate in hosts)
+    ):
+        hosts = discovered_remote_agent_hosts(args.endpoint, discovery_timeout=None)
     if not hosts:
         raise AppServerError("no pairable or paired hosts were discovered")
     if args.host_id is None:
@@ -288,10 +395,16 @@ def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
             fingerprint=fingerprint,
             role=role,
         )
-    try:
-        code = getpass.getpass("Managed-host enrollment code: ").strip()
-    except (EOFError, KeyboardInterrupt) as error:
-        raise AppServerError("managed-host enrollment was cancelled") from error
+    code = (
+        None
+        if args.no_ssh
+        else remote_agent_ssh_enrollment_code(candidate, args.ssh_target)
+    )
+    if code is None:
+        try:
+            code = getpass.getpass("Managed-host enrollment code: ").strip()
+        except (EOFError, KeyboardInterrupt) as error:
+            raise AppServerError("managed-host enrollment was cancelled") from error
     if not code:
         raise AppServerError("managed-host enrollment code is required")
     remembered = remote_agent_enrollment_command(
@@ -851,6 +964,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="HOST:UDPPORT",
         help="Direct discovery destination; repeatable.",
+    )
+    enroll_parser.add_argument(
+        "--ssh-target",
+        metavar="[USER@]HOST",
+        help="SSH destination used to obtain a managed host's enrollment code.",
+    )
+    enroll_parser.add_argument(
+        "--no-ssh",
+        action="store_true",
+        help="Always ask for the enrollment code instead of trying SSH.",
     )
     return parser
 

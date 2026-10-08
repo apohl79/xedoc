@@ -132,7 +132,12 @@ impl DynamicToolHandler {
             }
         };
 
-        let args: Value = parse_arguments(&arguments)?;
+        // Some models send an empty argument string for tools without parameters.
+        let args: Value = if arguments.trim().is_empty() {
+            Value::Object(serde_json::Map::new())
+        } else {
+            parse_arguments(&arguments)?
+        };
         let response = request_dynamic_tool(
             &session,
             turn.as_ref(),

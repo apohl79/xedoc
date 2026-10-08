@@ -1,4 +1,10 @@
-"""Bounded LAN discovery for unpaired remote-agent hosts."""
+"""Passive announcements and bounded queries for LAN remote-agent hosts.
+
+Hosts periodically announce themselves on the discovery group so coordinators
+can keep a presence table without polling. Announcements and query responses
+carry no credential: pairing is authenticated by an enrollment code or an
+eligible certificate, never by something handed out during discovery.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +13,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import random
 import secrets
 import socket
 import tempfile
@@ -20,14 +27,16 @@ from .peer_protocol import PROTOCOL_MAJOR, PROTOCOL_MINOR, PeerEndpoint, fingerp
 
 
 DISCOVERY_PROTOCOL = "xedoc.remote-agent.discovery"
-DISCOVERY_VERSION = 1
+DISCOVERY_VERSION = 2
 DISCOVERY_GROUP = "239.255.70.40"
 DISCOVERY_PORT = 43_371
 DISCOVERY_PORT_SLOTS = 16
-DISCOVERY_TOKEN_TTL_SECONDS = 60
+ANNOUNCE_INTERVAL_SECONDS = 30.0
+ANNOUNCE_JITTER = 0.2
+ANNOUNCE_TTL_SECONDS = 95
+MAX_ANNOUNCE_TTL_SECONDS = 600
 MAX_DISCOVERY_PACKET_BYTES = 8 * 1024
 MAX_DISCOVERY_RESULTS = 128
-MAX_DISCOVERY_TOKENS = 256
 MAX_DIRECT_DESTINATIONS = 16
 MAX_HOSTNAME_BYTES = 255
 _LOCAL_DISCOVERY_DIRECTORY = (
@@ -48,11 +57,11 @@ class DiscoveryCandidate:
     protocol_major: int
     protocol_minor: int
     capabilities: frozenset[str]
-    pairing_token: str
+    ttl_seconds: int
 
 
 class PeerDiscovery:
-    """Answer bounded multicast queries and issue one-time pairing capabilities."""
+    """Announce this host periodically and answer bounded multicast queries."""
 
     def __init__(
         self,
@@ -63,6 +72,7 @@ class PeerDiscovery:
         fingerprint_value: str,
         endpoints: Callable[[str], tuple[PeerEndpoint, PeerEndpoint] | None],
         capabilities: Callable[[], frozenset[str]],
+        on_announce: Callable[[DiscoveryCandidate], None] | None = None,
     ) -> None:
         if (
             not isinstance(host_id, str)
@@ -79,10 +89,10 @@ class PeerDiscovery:
         self._fingerprint = fingerprint_value
         self._endpoints = endpoints
         self._capabilities = capabilities
-        self._tokens: dict[str, float] = {}
-        self._tokens_lock = threading.Lock()
+        self._on_announce = on_announce
         self._socket: socket.socket | None = None
         self._thread: threading.Thread | None = None
+        self._announcer: threading.Thread | None = None
         self._stopping = threading.Event()
         self._local_registration: Path | None = None
 
@@ -102,9 +112,19 @@ class PeerDiscovery:
             daemon=True,
         )
         self._thread.start()
+        self._announcer = threading.Thread(
+            target=self._announce_loop,
+            name="xedoc-remote-agent-announce",
+            daemon=True,
+        )
+        self._announcer.start()
 
     def stop(self) -> None:
         self._stopping.set()
+        announcer, self._announcer = self._announcer, None
+        if announcer is not None and announcer is not threading.current_thread():
+            announcer.join(timeout=1.0)
+        self._announce(ttl_seconds=0)
         listener, self._socket = self._socket, None
         self._remove_local_listener()
         if listener is not None:
@@ -167,32 +187,12 @@ class PeerDiscovery:
                         payload, address = client.recvfrom(MAX_DISCOVERY_PACKET_BYTES + 1)
                     except TimeoutError:
                         continue
-                    candidate = _candidate(payload, address, query_id)
+                    candidate = _candidate(payload, "response", query_id)
                     if candidate is not None and candidate.host_id != self._host_id:
                         results[candidate.host_id] = candidate
         except OSError as error:
             raise BrokerError.unavailable() from error
         return tuple(sorted(results.values(), key=lambda candidate: candidate.host_id))
-
-    def consume_pairing_token(self, token: str) -> bool:
-        if not isinstance(token, str) or not 16 <= len(token) <= 256:
-            return False
-        now = time.monotonic()
-        with self._tokens_lock:
-            self._prune_tokens(now)
-            expires_at = self._tokens.pop(token, None)
-        return expires_at is not None and expires_at > now
-
-    def has_pairing_token(self, token: str) -> bool:
-        """Check an advertised token before parsing an unauthenticated frame."""
-
-        if not isinstance(token, str) or not 16 <= len(token) <= 256:
-            return False
-        now = time.monotonic()
-        with self._tokens_lock:
-            self._prune_tokens(now)
-            expires_at = self._tokens.get(token)
-        return expires_at is not None and expires_at > now
 
     def _serve(self) -> None:
         while not self._stopping.is_set():
@@ -208,50 +208,99 @@ class PeerDiscovery:
                     return
                 continue
             query_id = _query_id(payload)
-            endpoints = self._endpoints(address[0])
-            if query_id is None or endpoints is None:
+            if query_id is not None:
+                self._respond(listener, address, query_id)
                 continue
-            endpoint, pairing_endpoint = endpoints
-            token = self._issue_pairing_token()
-            if token is None:
+            if self._on_announce is None:
                 continue
-            try:
-                response = _encode(
-                    {
-                        "protocol": DISCOVERY_PROTOCOL,
-                        "version": DISCOVERY_VERSION,
-                        "kind": "response",
-                        "queryId": query_id,
-                        "hostId": self._host_id,
-                        "hostname": self._hostname,
-                        "role": self._role.value,
-                        "endpoint": endpoint.value,
-                        "pairingEndpoint": pairing_endpoint.value,
-                        "fingerprint": self._fingerprint,
-                        "protocolMajor": PROTOCOL_MAJOR,
-                        "protocolMinor": PROTOCOL_MINOR,
-                        "capabilities": sorted(self._capabilities()),
-                        "pairingToken": token,
-                    }
-                )
-                listener.sendto(response, address)
-            except OSError:
-                continue
+            candidate = _candidate(payload, "announce", None)
+            if (
+                candidate is not None
+                and candidate.host_id != self._host_id
+                and _announced_from(candidate, address[0])
+            ):
+                self._on_announce(candidate)
 
-    def _issue_pairing_token(self) -> str | None:
-        token = secrets.token_urlsafe(24)
-        now = time.monotonic()
-        with self._tokens_lock:
-            self._prune_tokens(now)
-            if len(self._tokens) >= MAX_DISCOVERY_TOKENS:
-                return None
-            self._tokens[token] = now + DISCOVERY_TOKEN_TTL_SECONDS
-        return token
+    def _respond(
+        self, listener: socket.socket, address: tuple[str, int], query_id: str
+    ) -> None:
+        packet = self._host_packet("response", address[0], query_id, ANNOUNCE_TTL_SECONDS)
+        if packet is None:
+            return
+        try:
+            listener.sendto(packet, address)
+        except OSError:
+            return
 
-    def _prune_tokens(self, now: float) -> None:
-        for token, expires_at in tuple(self._tokens.items()):
-            if expires_at <= now:
-                del self._tokens[token]
+    def _announce_loop(self) -> None:
+        # Spread the first announcement so hosts that start together do not collide.
+        delay = random.uniform(0.0, 1.0)
+        while not self._stopping.wait(delay):
+            self._announce(ttl_seconds=ANNOUNCE_TTL_SECONDS)
+            delay = ANNOUNCE_INTERVAL_SECONDS * random.uniform(
+                1.0 - ANNOUNCE_JITTER, 1.0 + ANNOUNCE_JITTER
+            )
+
+    def _announce(self, *, ttl_seconds: int) -> None:
+        """Send one best-effort announcement to the group and to local peers."""
+
+        targets: list[tuple[str, tuple[str, int]]] = [
+            (DISCOVERY_GROUP, (DISCOVERY_GROUP, port)) for port in _discovery_ports()
+        ]
+        targets.extend(
+            ("127.0.0.1", ("127.0.0.1", port)) for port in self._local_discovery_ports()
+        )
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sender:
+                sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+                sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+                packets: dict[str, bytes | None] = {}
+                for query_host, destination in targets:
+                    if query_host not in packets:
+                        packets[query_host] = self._host_packet(
+                            "announce", query_host, None, ttl_seconds
+                        )
+                    packet = packets[query_host]
+                    if packet is None:
+                        continue
+                    try:
+                        sender.sendto(packet, destination)
+                    except OSError:
+                        continue
+        except OSError:
+            return
+
+    def _host_packet(
+        self, kind: str, peer_host: str, query_id: str | None, ttl_seconds: int
+    ) -> bytes | None:
+        try:
+            endpoints = self._endpoints(peer_host)
+        except BrokerError:
+            return None
+        if endpoints is None:
+            return None
+        endpoint, pairing_endpoint = endpoints
+        value: dict[str, object] = {
+            "protocol": DISCOVERY_PROTOCOL,
+            "version": DISCOVERY_VERSION,
+            "kind": kind,
+            "hostId": self._host_id,
+            "hostname": self._hostname,
+            "role": self._role.value,
+            "endpoint": endpoint.value,
+            "pairingEndpoint": pairing_endpoint.value,
+            "fingerprint": self._fingerprint,
+            "protocolMajor": PROTOCOL_MAJOR,
+            "protocolMinor": PROTOCOL_MINOR,
+            "capabilities": sorted(self._capabilities()),
+            "ttlSeconds": ttl_seconds,
+        }
+        if query_id is not None:
+            value["queryId"] = query_id
+        try:
+            return _encode(value)
+        except BrokerError:
+            return None
 
     def _register_local_listener(self, listener: socket.socket) -> None:
         try:
@@ -363,14 +412,13 @@ def _query_id(payload: bytes) -> str | None:
 
 
 def _candidate(
-    payload: bytes, address: tuple[str, int], query_id: str
+    payload: bytes, kind: str, query_id: str | None
 ) -> DiscoveryCandidate | None:
     value = _decode(payload)
     required = {
         "protocol",
         "version",
         "kind",
-        "queryId",
         "hostId",
         "hostname",
         "role",
@@ -380,15 +428,17 @@ def _candidate(
         "protocolMajor",
         "protocolMinor",
         "capabilities",
-        "pairingToken",
+        "ttlSeconds",
     }
+    if query_id is not None:
+        required.add("queryId")
     if (
         value is None
         or set(value) != required
         or value["protocol"] != DISCOVERY_PROTOCOL
         or value["version"] != DISCOVERY_VERSION
-        or value["kind"] != "response"
-        or value["queryId"] != query_id
+        or value["kind"] != kind
+        or (query_id is not None and value["queryId"] != query_id)
     ):
         return None
     host_id = value["hostId"]
@@ -399,7 +449,7 @@ def _candidate(
     protocol_major = value["protocolMajor"]
     protocol_minor = value["protocolMinor"]
     capabilities = value["capabilities"]
-    pairing_token = value["pairingToken"]
+    ttl_seconds = value["ttlSeconds"]
     if (
         not isinstance(host_id, str)
         or not 1 <= len(host_id) <= 128
@@ -422,8 +472,9 @@ def _candidate(
             isinstance(capability, str) and 1 <= len(capability) <= 64
             for capability in capabilities
         )
-        or not isinstance(pairing_token, str)
-        or not 16 <= len(pairing_token) <= 256
+        or not isinstance(ttl_seconds, int)
+        or isinstance(ttl_seconds, bool)
+        or not 0 <= ttl_seconds <= MAX_ANNOUNCE_TTL_SECONDS
     ):
         return None
     try:
@@ -442,7 +493,20 @@ def _candidate(
         protocol_major=protocol_major,
         protocol_minor=protocol_minor,
         capabilities=frozenset(capabilities),
-        pairing_token=pairing_token,
+        ttl_seconds=ttl_seconds,
+    )
+
+
+def _announced_from(candidate: DiscoveryCandidate, source_host: str) -> bool:
+    """Accept an announcement only for the address it was actually sent from.
+
+    Announcements are unauthenticated, so a host may not point listeners at
+    some other address.
+    """
+
+    return (
+        candidate.endpoint.host == source_host
+        and candidate.pairing_endpoint.host == source_host
     )
 
 

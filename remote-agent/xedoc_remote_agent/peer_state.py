@@ -46,6 +46,7 @@ _READ_SCOPES = {"discovery", "workspaceRead", "sessionRead"}
 _WRITE_SCOPES = {"sessionWrite", "cancellation"}
 _GRANT_SCOPES = _READ_SCOPES | _WRITE_SCOPES
 _ENROLLMENT_CODE_TTL_SECONDS = 7 * 86_400
+_MIN_ENROLLMENT_CODE_TTL_SECONDS = 60
 _MAX_ENROLLMENT_CODES = 128
 _MAX_PENDING_PAIRINGS = 128
 
@@ -286,11 +287,21 @@ class PeerState:
             )
             self._prune_audit(connection)
 
-    def create_managed_enrollment_code(self) -> tuple[str, int]:
+    def create_managed_enrollment_code(
+        self, ttl_seconds: int = _ENROLLMENT_CODE_TTL_SECONDS
+    ) -> tuple[str, int]:
         """Create one owner-provisioned, single-use managed-peer credential."""
 
+        if (
+            not isinstance(ttl_seconds, int)
+            or isinstance(ttl_seconds, bool)
+            or not _MIN_ENROLLMENT_CODE_TTL_SECONDS
+            <= ttl_seconds
+            <= _ENROLLMENT_CODE_TTL_SECONDS
+        ):
+            raise BrokerError.invalid_request()
         code = secrets.token_urlsafe(32)
-        expires_at = _now() + _ENROLLMENT_CODE_TTL_SECONDS
+        expires_at = _now() + ttl_seconds
         code_hash = _enrollment_code_hash(code)
         with self._lock, self._transaction() as connection:
             self._prune_enrollment_codes(connection)

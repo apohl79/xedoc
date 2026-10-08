@@ -5,17 +5,22 @@
   "tools": [
     {
       "name": "remote_hosts_list",
-      "description": "List hosts known to the local broker.",
+      "description": "List paired hosts from the broker's cache, with hostId, hostname, reachable and lastSeenAt. Optionally filter by a substring of the hostname, host ID, role or status. Use this, not remote_hosts_discover, to find a host to work on.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
         "required": [],
         "additionalProperties": false
       }
     },
     {
       "name": "remote_hosts_discover",
-      "description": "Discover hosts using the local broker.",
+      "description": "List hosts seen via passive LAN announcements, including unpaired ones, instantly. Only needed for pairing. timeoutSeconds adds an active scan and blocks for that long; omit it normally.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -253,7 +258,7 @@
         "properties": {
           "hostId": {
             "type": "string",
-            "description": "Host ID from remote_hosts_list. Omit to list this host's workspaces.",
+            "description": "Host ID (or unique hostname) from remote_hosts_list. Omit to list this host's workspaces.",
             "minLength": 1,
             "maxLength": 128
           }
@@ -329,7 +334,7 @@
         "properties": {
           "hostId": {
             "type": "string",
-            "description": "Host ID from remote_hosts_list. Omit only to start a session on this host.",
+            "description": "Host ID (or unique hostname) from remote_hosts_list. Omit only to start a session on this host.",
             "minLength": 1,
             "maxLength": 128
           },

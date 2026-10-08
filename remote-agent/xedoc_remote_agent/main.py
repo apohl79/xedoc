@@ -144,6 +144,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--fingerprint")
     parser.add_argument("--role", choices=("coordinator", "managed"))
     parser.add_argument("--discovery-timeout", type=int, default=3)
+    parser.add_argument("--ttl-seconds", type=int)
     parser.add_argument(
         "--endpoint",
         action="append",
@@ -187,7 +188,10 @@ def _enrollment(args: argparse.Namespace) -> dict[str, object]:
         timeout_seconds=args.timeout,
     )
     if args.action == "create":
-        return client.call("enrollment/create", {})
+        params: dict[str, object] = {}
+        if args.ttl_seconds is not None:
+            params["ttlSeconds"] = args.ttl_seconds
+        return client.call("enrollment/create", params)
     if args.action == "discover":
         if (
             not isinstance(args.discovery_timeout, int)

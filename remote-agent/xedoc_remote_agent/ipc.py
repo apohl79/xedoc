@@ -358,6 +358,7 @@ class LocalIpcServer:
         params = request["params"]
         if not isinstance(method, str) or not isinstance(params, Mapping):
             raise BrokerError.invalid_request()
+        params = self._resolve_host_name(method, params)
         extension_lease = request.get("extensionLease")
         requested_controller_id = request.get("controllerId")
         if requested_controller_id is not None:
@@ -418,8 +419,7 @@ class LocalIpcServer:
             result = {"status": "shutdownRequested"}
         elif method == "host/list":
             _require_absent_lease(extension_lease)
-            _exact_fields(params, set())
-            result = self._peer().hosts_list()
+            result = self._peer().hosts_list(params)
         elif method == "host/discover":
             _require_absent_lease(extension_lease)
             _exact_fields(params, {"timeoutSeconds", "endpoints"})
@@ -430,7 +430,7 @@ class LocalIpcServer:
             result = self._peer().pair(params)
         elif method == "enrollment/create":
             _require_absent_lease(extension_lease)
-            _exact_fields(params, set())
+            _exact_fields(params, {"ttlSeconds"})
             result = self._peer().enrollment_create(params)
         elif method == "enrollment/remember":
             _require_absent_lease(extension_lease)
@@ -542,6 +542,21 @@ class LocalIpcServer:
             "status": "ok",
             "result": _json_value(result),
         }
+
+    def _resolve_host_name(
+        self, method: str, params: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Let session and workspace calls name a paired host by hostname."""
+
+        host = params.get("hostId")
+        if (
+            not isinstance(host, str)
+            or self._peer_service is None
+            or not method.startswith(("session/", "workspace/"))
+        ):
+            return params
+        resolved = self._peer_service.resolve_host(host)
+        return params if resolved == host else {**params, "hostId": resolved}
 
     def _peer(self) -> Any:
         if self._peer_service is None:
