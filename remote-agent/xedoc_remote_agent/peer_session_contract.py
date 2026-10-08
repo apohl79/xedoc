@@ -27,6 +27,18 @@ MAX_RELAY_EVENTS = 32
 MAX_OUTPUT_TEXT_BYTES = 32 * 1024
 MAX_ACTIVITY_DELTA_BYTES = 4 * 1024
 MAX_ACTIVITY_SUMMARY_LENGTH = 64
+# Transcript item types a peer may relay, with the label that heads each rendered section.
+ITEM_LABELS: dict[str, str] = {
+    "userMessage": "User",
+    "agentMessage": "Remote agent",
+    "reasoning": "Reasoning",
+    "plan": "Plan",
+    "commandExecution": "Command",
+    "fileChange": "File change",
+    "mcpToolCall": "Tool call",
+    "dynamicToolCall": "Tool call",
+    "collabAgentToolCall": "Sub-agent",
+}
 MAX_RELAY_READ_LIMIT = MAX_RELAY_EVENTS
 _MAX_TIMEOUT_PRECISION = 3
 _SESSION_FIELDS: dict[str, tuple[set[str], set[str]]] = {
@@ -301,12 +313,7 @@ def _validate_read_event(event: Any) -> None:
     if set(event) != {"cursor", "type", "turnId", "text", "isDelta"}:
         raise BrokerError.invalid_request()
     identifier(event["cursor"])
-    if event["type"] not in {
-        "activity",
-        "userMessage",
-        "agentMessage",
-        "commandExecution",
-    }:
+    if event["type"] != "activity" and event["type"] not in ITEM_LABELS:
         raise BrokerError.invalid_request()
     identifier(event["turnId"])
     text = event["text"]

@@ -189,6 +189,7 @@ mod loaded_threads;
 mod model_manager_requests;
 mod platform_actions;
 mod plugin_mentions;
+mod remote_session_output;
 mod replay_filter;
 mod resize_reflow;
 mod safety_buffering;

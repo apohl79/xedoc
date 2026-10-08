@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections import deque
 from dataclasses import dataclass, field
+import json
 import secrets
 import threading
 import time
@@ -13,6 +14,7 @@ from typing import Any, Callable, Mapping
 from .errors import BrokerError, map_controller_error
 from .models import OperationRecord, OperationState
 from .peer_session_contract import (
+    ITEM_LABELS,
     MAX_ACTIVITY_DELTA_BYTES,
     MAX_RELAY_EVENTS,
     MAX_RELAY_READ_LIMIT,
@@ -39,7 +41,7 @@ class _StoredOperation:
     workspace_id: str | None
     record: OperationRecord
     activity_cursor: int = 0
-    last_visible_output: str = ""
+    last_sections: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1044,13 +1046,7 @@ def _transcript_cursor(cursor: Any) -> tuple[str, int]:
 def _transcript_text(thread: Mapping[str, Any]) -> str:
     parts: list[str] = []
     for _, event_type, _, text in _transcript_sources(thread):
-        label = {
-            "userMessage": "User",
-            "agentMessage": "Remote agent",
-            "commandExecution": "Command output",
-        }.get(event_type)
-        if label is not None:
-            parts.append(f"{label}:\n{text}")
+        parts.append(_section(event_type, text))
     return "\n\n".join(parts)
 
 
@@ -1113,15 +1109,149 @@ def _transcript_sources(
 
 def _relay_item(item: Mapping[str, Any]) -> tuple[str | None, str | None]:
     item_type = item.get("type")
-    if item_type in {"userMessage", "agentMessage"}:
-        text = item.get("text")
-    elif item_type == "commandExecution":
-        text = item.get("aggregatedOutput")
-    else:
+    if item_type not in ITEM_LABELS:
         return None, None
-    if not isinstance(text, str) or not text:
+    text = _RENDERERS[item_type](item)
+    if not isinstance(text, str) or not text.strip():
         return None, None
     return item_type, text
+
+
+def _section(item_type: str, text: str) -> str:
+    return f"{ITEM_LABELS[item_type]}:\n{text}"
+
+
+def _user_message_text(item: Mapping[str, Any]) -> str:
+    content = item.get("content")
+    if not isinstance(content, list):
+        text = item.get("text")
+        return text if isinstance(text, str) else ""
+    parts: list[str] = []
+    for part in content:
+        if not isinstance(part, Mapping):
+            continue
+        if part.get("type") == "text" and isinstance(part.get("text"), str):
+            parts.append(part["text"])
+        elif part.get("type") in {"image", "localImage"}:
+            parts.append("[image]")
+    return "\n".join(parts)
+
+
+def _text_field(item: Mapping[str, Any]) -> str:
+    text = item.get("text")
+    return text if isinstance(text, str) else ""
+
+
+def _reasoning_text(item: Mapping[str, Any]) -> str:
+    for key in ("summary", "content"):
+        values = item.get(key)
+        if isinstance(values, list):
+            text = "\n".join(value for value in values if isinstance(value, str))
+            if text.strip():
+                return text
+    return ""
+
+
+def _status_suffix(item: Mapping[str, Any]) -> str:
+    status = item.get("status")
+    return f" ({status})" if status in {"failed", "declined"} else ""
+
+
+def _command_text(item: Mapping[str, Any]) -> str:
+    command = item.get("command")
+    if not isinstance(command, str) or not command:
+        return ""
+    text = f"$ {command}{_status_suffix(item)}"
+    output = item.get("aggregatedOutput")
+    if isinstance(output, str) and output:
+        text = f"{text}\n{output}"
+    return text
+
+
+def _file_change_text(item: Mapping[str, Any]) -> str:
+    changes = item.get("changes")
+    if not isinstance(changes, list) or not changes:
+        return ""
+    lines = []
+    for change in changes[:_MAX_LISTED_ITEMS]:
+        if not isinstance(change, Mapping) or not isinstance(change.get("path"), str):
+            continue
+        kind = change.get("kind")
+        kind = kind.get("type") if isinstance(kind, Mapping) else kind
+        diff = change.get("diff")
+        added = removed = 0
+        if isinstance(diff, str):
+            for line in diff.splitlines():
+                if line.startswith("+") and not line.startswith("+++"):
+                    added += 1
+                elif line.startswith("-") and not line.startswith("---"):
+                    removed += 1
+        lines.append(f"{kind or 'update'} {change['path']} (+{added} -{removed})")
+    if len(changes) > _MAX_LISTED_ITEMS:
+        lines.append(f"… {len(changes) - _MAX_LISTED_ITEMS} more")
+    return f"{len(changes)} file(s){_status_suffix(item)}\n" + "\n".join(lines)
+
+
+def _json_snippet(value: Any) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return ""
+    return text if len(text) <= _MAX_ARGUMENT_CHARS else text[:_MAX_ARGUMENT_CHARS] + "…"
+
+
+def _content_text(items: Any) -> str:
+    if not isinstance(items, list):
+        return ""
+    return "\n".join(
+        part["text"]
+        for part in items
+        if isinstance(part, Mapping) and isinstance(part.get("text"), str)
+    )
+
+
+def _mcp_tool_text(item: Mapping[str, Any]) -> str:
+    name = f"{item.get('server')}/{item.get('tool')}"
+    text = f"{name} {_json_snippet(item.get('arguments'))}{_status_suffix(item)}"
+    error = item.get("error")
+    result = item.get("result")
+    detail = (
+        error.get("message")
+        if isinstance(error, Mapping)
+        else _content_text(result.get("content") if isinstance(result, Mapping) else None)
+    )
+    if isinstance(detail, str) and detail:
+        text = f"{text}\n{detail}"
+    return text
+
+
+def _dynamic_tool_text(item: Mapping[str, Any]) -> str:
+    namespace = item.get("namespace")
+    name = f"{namespace}/{item.get('tool')}" if namespace else str(item.get("tool"))
+    text = f"{name} {_json_snippet(item.get('arguments'))}{_status_suffix(item)}"
+    detail = _content_text(item.get("contentItems"))
+    return f"{text}\n{detail}" if detail else text
+
+
+def _collab_agent_text(item: Mapping[str, Any]) -> str:
+    prompt = item.get("prompt")
+    text = f"{item.get('tool')}{_status_suffix(item)}"
+    return f"{text}\n{prompt}" if isinstance(prompt, str) and prompt else text
+
+
+_MAX_LISTED_ITEMS = 16
+_MAX_ARGUMENT_CHARS = 300
+_RENDERERS: dict[str, Callable[[Mapping[str, Any]], str]] = {
+    "userMessage": _user_message_text,
+    "agentMessage": _text_field,
+    "plan": _text_field,
+    "reasoning": _reasoning_text,
+    "commandExecution": _command_text,
+    "fileChange": _file_change_text,
+    "mcpToolCall": _mcp_tool_text,
+    "dynamicToolCall": _dynamic_tool_text,
+    "collabAgentToolCall": _collab_agent_text,
+}
 
 
 def _status_name(thread: Mapping[str, Any]) -> str:
@@ -1168,29 +1298,9 @@ def _turn_terminal_state(thread: Mapping[str, Any], turn_id: str) -> str | None:
 def _terminal_output(
     thread: Mapping[str, Any], turn_id: str, max_bytes: int
 ) -> str:
-    turns = thread.get("turns")
-    if not isinstance(turns, list) or max_bytes <= 0:
+    if max_bytes <= 0:
         return ""
-    for turn in reversed(turns):
-        if not isinstance(turn, Mapping) or turn.get("id", turn.get("turnId")) != turn_id:
-            continue
-        items = turn.get("items")
-        if not isinstance(items, list):
-            return ""
-        parts: list[str] = []
-        for item in items:
-            if not isinstance(item, Mapping):
-                continue
-            if item.get("type") == "agentMessage":
-                text = item.get("text")
-            elif item.get("type") == "commandExecution":
-                text = item.get("aggregatedOutput")
-            else:
-                continue
-            if isinstance(text, str) and text:
-                parts.append(text)
-        return _bounded_output_text("\n\n".join(parts), max_bytes)
-    return ""
+    return _bounded_output_text("\n\n".join(_turn_sections(thread, turn_id)), max_bytes)
 
 
 def _bounded_output_text(value: str, max_bytes: int) -> str:
@@ -1211,47 +1321,61 @@ def _running_event(
         "status": "running",
         "activitySummary": "Remote session is running.",
     }
-    visible_output = _visible_output_tail(thread, turn_id, MAX_ACTIVITY_DELTA_BYTES)
-    if not visible_output or visible_output == stored.last_visible_output:
-        return event
-    if visible_output.startswith(stored.last_visible_output):
-        delta = visible_output[len(stored.last_visible_output) :]
-    else:
-        delta = visible_output
+    sections = _turn_sections(thread, turn_id, _MAX_SECTION_BYTES)
+    delta = _sections_delta(stored.last_sections, sections)
     if not delta:
         return event
+    stored.last_sections = sections
     stored.activity_cursor += 1
-    stored.last_visible_output = visible_output
-    event["outputDelta"] = delta
+    event["outputDelta"] = _bounded_output_tail(delta, MAX_ACTIVITY_DELTA_BYTES)
     event["outputCursor"] = f"activity_{stored.activity_cursor}"
     return event
 
 
-def _visible_output_tail(
-    thread: Mapping[str, Any], turn_id: str, max_bytes: int
-) -> str:
+_MAX_SECTION_BYTES = 16 * 1024
+
+
+def _turn_sections(
+    thread: Mapping[str, Any], turn_id: str, max_section_bytes: int | None = None
+) -> list[str]:
+    """Render every visible item of one turn, except the user's own input, as labeled sections."""
+
     turns = thread.get("turns")
     if not isinstance(turns, list):
-        return ""
+        return []
     for turn in reversed(turns):
         if not isinstance(turn, Mapping) or turn.get("id", turn.get("turnId")) != turn_id:
             continue
         items = turn.get("items")
         if not isinstance(items, list):
-            return ""
-        for item in reversed(items):
-            if not isinstance(item, Mapping):
+            return []
+        sections: list[str] = []
+        for item in items:
+            if not isinstance(item, Mapping) or item.get("type") == "userMessage":
                 continue
-            if item.get("type") == "agentMessage":
-                text = item.get("text")
-            elif item.get("type") == "commandExecution":
-                text = item.get("aggregatedOutput")
-            else:
+            item_type, text = _relay_item(item)
+            if item_type is None or text is None:
                 continue
-            if isinstance(text, str) and text:
-                return _bounded_output_tail(text, max_bytes)
-        return ""
-    return ""
+            if max_section_bytes is not None:
+                text = _bounded_output_text(text, max_section_bytes)
+            sections.append(_section(item_type, text))
+        return sections
+    return []
+
+
+def _sections_delta(previous: list[str], current: list[str]) -> str:
+    """Return what changed between two renderings, appending to grown sections in place."""
+
+    parts: list[str] = []
+    for index, section in enumerate(current):
+        old = previous[index] if index < len(previous) else None
+        if old == section:
+            continue
+        if old is not None and section.startswith(old):
+            parts.append(section[len(old) :])
+        else:
+            parts.append(f"\n{section}")
+    return "\n".join(parts).strip("\n")
 
 
 def _bounded_output_tail(value: str, max_bytes: int) -> str:

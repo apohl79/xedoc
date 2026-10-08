@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use serde_json::Value as JsonValue;
@@ -17,7 +18,19 @@ const MAX_IDENTIFIER_CHARS: usize = 128;
 const MAX_ACTIVITY_SUMMARY_CHARS: usize = 64;
 const MAX_OUTPUT_DELTA_BYTES: usize = 32 * 1024;
 const RUNNING_ACTIVITY_SUMMARY: &str = "Remote session is running.";
-const MAX_RECENT_OUTPUT_BYTES: usize = 4 * 1024;
+const MAX_RECENT_SECTIONS: usize = 6;
+const MAX_SECTION_LINE_CHARS: usize = 100;
+/// Headings the remote host puts on each rendered transcript item.
+const SECTION_LABELS: [&str; 8] = [
+    "User",
+    "Remote agent",
+    "Reasoning",
+    "Plan",
+    "Command",
+    "File change",
+    "Tool call",
+    "Sub-agent",
+];
 const DEFAULT_LIST_LIMIT: usize = 100;
 const MAX_LIST_LIMIT: usize = 100;
 
@@ -38,8 +51,8 @@ struct RemoteSessionEntry {
     root_thread_id: ThreadId,
     summary: RemoteSessionSummary,
     activity_cursor: Option<String>,
-    /// Tail of the remote output, used as input for generated activity summaries.
-    recent_output: String,
+    /// Latest transcript items, used as input for generated activity summaries.
+    recent_activity: VecDeque<ActivitySection>,
     output_dirty: bool,
     /// Generated summary and the remote turn it describes.
     generated_activity: Option<(Option<String>, String)>,
@@ -102,7 +115,7 @@ impl RemoteSessionRegistry {
                 root_thread_id,
                 summary: summary.clone(),
                 activity_cursor: None,
-                recent_output: String::new(),
+                recent_activity: VecDeque::new(),
                 output_dirty: false,
                 generated_activity: None,
             },
@@ -288,7 +301,10 @@ impl RemoteSessionRegistry {
             }
             any_running = true;
             if std::mem::take(&mut entry.output_dirty) {
-                inputs.push((remote_session_id.clone(), entry.recent_output.clone()));
+                inputs.push((
+                    remote_session_id.clone(),
+                    recent_activity_text(&entry.recent_activity),
+                ));
             }
         }
         if !any_running {
@@ -343,16 +359,57 @@ impl RemoteSessionRegistry {
     }
 }
 
+/// One transcript item reduced to its heading, first line and latest line.
+struct ActivitySection {
+    label: String,
+    first_line: String,
+    last_line: String,
+}
+
 fn note_output(entry: &mut RemoteSessionEntry, delta: &str) {
-    entry.recent_output.push_str(delta);
-    if entry.recent_output.len() > MAX_RECENT_OUTPUT_BYTES {
-        let mut cut = entry.recent_output.len() - MAX_RECENT_OUTPUT_BYTES;
-        while !entry.recent_output.is_char_boundary(cut) {
-            cut += 1;
+    for line in delta.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let heading = line
+            .strip_suffix(':')
+            .filter(|label| SECTION_LABELS.contains(label));
+        if let Some(label) = heading {
+            entry.recent_activity.push_back(ActivitySection {
+                label: label.to_string(),
+                first_line: String::new(),
+                last_line: String::new(),
+            });
+            if entry.recent_activity.len() > MAX_RECENT_SECTIONS {
+                entry.recent_activity.pop_front();
+            }
+        } else if let Some(section) = entry.recent_activity.back_mut() {
+            let line = line
+                .chars()
+                .take(MAX_SECTION_LINE_CHARS)
+                .collect::<String>();
+            if section.first_line.is_empty() {
+                section.first_line = line;
+            } else {
+                section.last_line = line;
+            }
         }
-        entry.recent_output.drain(..cut);
     }
     entry.output_dirty = true;
+}
+
+fn recent_activity_text(sections: &VecDeque<ActivitySection>) -> String {
+    sections
+        .iter()
+        .map(|section| {
+            if section.last_line.is_empty() {
+                format!("{}: {}", section.label, section.first_line)
+            } else {
+                format!(
+                    "{}: {} -> {}",
+                    section.label, section.first_line, section.last_line
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Keeps a generated summary instead of the extension's fixed running text.

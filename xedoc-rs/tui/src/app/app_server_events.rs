@@ -111,10 +111,7 @@ impl App {
                         .filter(|output_delta| !output_delta.trim().is_empty())
                 {
                     self.chat_widget.add_plain_history_lines(
-                        output_delta
-                            .lines()
-                            .map(|line| line.to_string().into())
-                            .collect(),
+                        super::remote_session_output::remote_output_lines(output_delta),
                     );
                 }
                 self.sync_active_agent_display();
