@@ -1180,7 +1180,11 @@ def _file_change_text(item: Mapping[str, Any]) -> str:
         kind = kind.get("type") if isinstance(kind, Mapping) else kind
         diff = change.get("diff")
         added = removed = 0
-        if isinstance(diff, str):
+        if isinstance(diff, str) and kind == "add":
+            added = len(diff.splitlines())
+        elif isinstance(diff, str) and kind == "delete":
+            removed = len(diff.splitlines())
+        elif isinstance(diff, str):
             for line in diff.splitlines():
                 if line.startswith("+") and not line.startswith("+++"):
                     added += 1

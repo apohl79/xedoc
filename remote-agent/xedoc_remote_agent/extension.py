@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import select
 import sys
 import threading
@@ -27,6 +28,12 @@ _WAIT_TIMEOUT_BUFFER_SECONDS = 5.0
 _SESSION_START_TIMEOUT_SECONDS = 30.0
 _REMOTE_SESSION_WATCH_POLL_SECONDS = 1.0
 _REMOTE_SESSION_UPDATE_BYTES = 4_096
+_MAX_LIVE_OUTPUT_BYTES = 64 * 1024
+_MAX_PROJECTED_OUTPUT_BYTES = 512 * 1024
+_SECTION_HEADING = re.compile(
+    r"^(User|Remote agent|Reasoning|Plan|Command|File change|Tool call|Sub-agent):$",
+    re.MULTILINE,
+)
 _REMOTE_NAMESPACE = "remote"
 _REMOTE_SESSION_CONTROL_METHOD = "remoteSession/control"
 _REMOTE_SESSION_REGISTER_METHOD = "script/remoteSessionRegister"
@@ -186,6 +193,9 @@ class RemoteAgentExtension:
         self._active_operations: dict[tuple[str, str], str] = {}
         # The registry only accepts a terminal update that names the active turn.
         self._remote_session_turns: dict[str, str] = {}
+        # Output already shown live for a session's current turn, so the final
+        # transcript projection does not repeat it.
+        self._live_output: dict[str, str] = {}
         self._remote_session_output_bytes: dict[tuple[str, str], int] = {}
         self._pending_remote_session_updates: queue.SimpleQueue[dict[str, Any]] = (
             queue.SimpleQueue()
@@ -451,8 +461,10 @@ class RemoteAgentExtension:
             terminal_status = "completed"
         skip_bytes = self._remote_session_output_bytes.get((host_id, identity[1]), 0)
         cursor: str | None = None
-        page_number = 0
         total_bytes = 0
+        pieces: list[str] = []
+        projected_bytes = 0
+        active_turn_id: str | None = None
         while True:
             read_params: dict[str, Any] = {
                 "hostId": host_id,
@@ -464,33 +476,35 @@ class RemoteAgentExtension:
                 "session/read",
                 read_params,
             )
+            active_turn_id = _optional_identifier(result.get("activeTurnId"))
             output_text = result.get("outputText")
             if isinstance(output_text, str) and output_text:
                 total_bytes += len(output_text.encode("utf-8"))
                 output_text, skip_bytes = _skip_output_prefix(
                     output_text, skip_bytes
                 )
-                for chunk_number, output_chunk in enumerate(
-                    _output_chunks(output_text), start=1
-                ):
-                    self._publish_remote_session_update(
-                        remote_session_id,
-                        {
-                            "status": terminal_status,
-                            "outputDelta": output_chunk,
-                            "outputCursor": (
-                                f"operation_{operation_id}_{page_number}_{chunk_number}"
-                            ),
-                        },
-                        _optional_identifier(result.get("activeTurnId")),
-                    )
+                if projected_bytes < _MAX_PROJECTED_OUTPUT_BYTES:
+                    pieces.append(output_text)
+                    projected_bytes += len(output_text.encode("utf-8"))
             cursor = _optional_identifier(result.get("nextCursor"))
             if cursor is None:
-                self._remote_session_output_bytes[(host_id, identity[1])] = (
-                    total_bytes
-                )
-                return
-            page_number += 1
+                break
+        self._remote_session_output_bytes[(host_id, identity[1])] = total_bytes
+        projection = _unseen_transcript(
+            "".join(pieces), self._live_output.pop(remote_session_id, "")
+        )
+        for chunk_number, output_chunk in enumerate(
+            _output_chunks(projection), start=1
+        ):
+            self._publish_remote_session_update(
+                remote_session_id,
+                {
+                    "status": terminal_status,
+                    "outputDelta": output_chunk,
+                    "outputCursor": f"operation_{operation_id}_0_{chunk_number}",
+                },
+                active_turn_id,
+            )
 
     def _read_remote_session_output_bytes(self, host_id: str, thread_id: str) -> int:
         cursor: str | None = None
@@ -675,7 +689,12 @@ class RemoteAgentExtension:
             params["outputCursor"] = _bounded_identifier(output_cursor)
         if turn_id is not None:
             params["remoteTurnId"] = turn_id
+            if self._remote_session_turns.get(remote_session_id) != turn_id:
+                self._live_output.pop(remote_session_id, None)
             self._remote_session_turns[remote_session_id] = turn_id
+        if "outputDelta" in params and params["outputCursor"].startswith("activity_"):
+            live = self._live_output.get(remote_session_id, "") + params["outputDelta"]
+            self._live_output[remote_session_id] = live[-_MAX_LIVE_OUTPUT_BYTES:]
         self._pending_remote_session_updates.put(params)
 
     def flush_remote_session_updates(self) -> None:
@@ -725,6 +744,46 @@ def _output_chunks(value: str) -> Sequence[str]:
             raise BrokerError.internal()
         offset = end
     return chunks
+
+
+def _unseen_transcript(transcript: str, live: str) -> str:
+    """Drop the user's own input and every part of the transcript already shown live."""
+
+    headings = list(_SECTION_HEADING.finditer(transcript))
+    if not headings:
+        return transcript
+    live_key = "".join(live.split())
+    parts: list[str] = []
+    for index, heading in enumerate(headings):
+        if heading.group(1) == "User":
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(transcript)
+        section = transcript[heading.start() : end].rstrip()
+        remainder = section[_shown_prefix_length(section, len(heading.group(0)), live_key) :]
+        if remainder.strip():
+            parts.append(remainder.lstrip("\n"))
+    return "\n\n".join(parts)
+
+
+def _shown_prefix_length(section: str, heading_length: int, live_key: str) -> int:
+    """Return how many leading characters of a section appear contiguously in the live output."""
+
+    positions = [i for i, character in enumerate(section) if not character.isspace()]
+    heading_chars = len("".join(section[:heading_length].split()))
+
+    def shown(count: int) -> bool:
+        return "".join(section[i] for i in positions[:count]) in live_key
+
+    if len(positions) < heading_chars or not shown(heading_chars):
+        return 0
+    low, high = heading_chars, len(positions)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if shown(middle):
+            low = middle
+        else:
+            high = middle - 1
+    return len(section) if low == len(positions) else positions[low]
 
 
 def _skip_output_prefix(value: str, skip_bytes: int) -> tuple[str, int]:

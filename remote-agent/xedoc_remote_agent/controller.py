@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path
 import threading
 from typing import Any, Callable, Mapping
@@ -16,6 +17,109 @@ from .workspaces import (
 )
 
 
+_MAX_LIVE_TURNS = 16
+_MAX_LIVE_ITEMS_PER_TURN = 256
+_MAX_LIVE_STRING_CHARS = 64 * 1024
+_MAX_LIVE_LIST_ITEMS = 64
+
+
+def _bounded_live_value(value: Any, depth: int = 0) -> Any:
+    """Copy an item with bounded strings and lists so live capture stays small."""
+
+    if isinstance(value, str):
+        if len(value) <= _MAX_LIVE_STRING_CHARS:
+            return value
+        return "…" + value[-(_MAX_LIVE_STRING_CHARS - 1) :]
+    if depth >= 8:
+        return None
+    if isinstance(value, list):
+        return [_bounded_live_value(v, depth + 1) for v in value[:_MAX_LIVE_LIST_ITEMS]]
+    if isinstance(value, dict):
+        return {
+            str(key): _bounded_live_value(v, depth + 1)
+            for key, v in list(value.items())[:_MAX_LIVE_LIST_ITEMS]
+        }
+    return value
+
+
+class _LiveTurn:
+    """Items the app-server announced for one turn this connection saw start."""
+
+    def __init__(self) -> None:
+        self.items: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self.completed = False
+
+
+class _LiveTurnItems:
+    """Bounded record of live turn items.
+
+    ``thread/read`` rebuilds turns from the rollout, which never stores command
+    executions or other transient items. Only the live ``item/*`` notifications
+    carry them, so the controller keeps what it observed for each turn.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._turns: OrderedDict[tuple[str, str], _LiveTurn] = OrderedDict()
+
+    def observe(self, message: Mapping[str, Any]) -> None:
+        method = message.get("method")
+        params = message.get("params")
+        if not isinstance(params, Mapping) or not isinstance(
+            params.get("threadId"), str
+        ):
+            return
+        thread_id = params["threadId"]
+        with self._lock:
+            if method == "turn/started" or method == "turn/completed":
+                turn = params.get("turn")
+                turn_id = turn.get("id") if isinstance(turn, Mapping) else None
+                if not isinstance(turn_id, str):
+                    return
+                if method == "turn/started":
+                    self._turns[(thread_id, turn_id)] = _LiveTurn()
+                    while len(self._turns) > _MAX_LIVE_TURNS:
+                        self._turns.popitem(last=False)
+                elif (thread_id, turn_id) in self._turns:
+                    self._turns[(thread_id, turn_id)].completed = True
+                return
+            if method not in {"item/started", "item/completed"}:
+                return
+            turn_id = params.get("turnId")
+            item = params.get("item")
+            if (
+                not isinstance(turn_id, str)
+                or not isinstance(item, Mapping)
+                or not isinstance(item.get("id"), str)
+            ):
+                return
+            live = self._turns.get((thread_id, turn_id))
+            if live is None:
+                return
+            if item["id"] not in live.items and len(live.items) >= _MAX_LIVE_ITEMS_PER_TURN:
+                return
+            live.items[item["id"]] = _bounded_live_value(dict(item))
+
+    def apply(self, thread_id: str, thread: Mapping[str, Any]) -> None:
+        """Swap in the observed item list for turns whose live record is complete."""
+
+        turns = thread.get("turns")
+        if not isinstance(turns, list):
+            return
+        with self._lock:
+            for turn in turns:
+                if not isinstance(turn, dict) or not isinstance(turn.get("id"), str):
+                    continue
+                live = self._turns.get((thread_id, turn["id"]))
+                if live is None or not live.items:
+                    continue
+                # A finished turn whose completion notification is still queued
+                # would lose its latest items here, so keep the stored rollout view.
+                if turn.get("status") != "inProgress" and not live.completed:
+                    continue
+                turn["items"] = [dict(item) for item in live.items.values()]
+
+
 class _ControllerConnection:
     """Thin, bounded adapter over ``SessionScriptClient``'s controller scope."""
 
@@ -27,6 +131,10 @@ class _ControllerConnection:
         self._client = client
         self._closed = False
         self._client_lock = threading.RLock()
+        self._live_items = _LiveTurnItems()
+        set_handler = getattr(client, "set_notification_handler", None)
+        if callable(set_handler):
+            set_handler(self._live_items.observe)
 
     @classmethod
     def _connect_from_bootstrap(
@@ -121,10 +229,14 @@ class _ControllerConnection:
         return self._request("thread/resume", {"threadId": thread_id})
 
     def _read_session(self, thread_id: str, *, include_turns: bool = False) -> dict[str, Any]:
-        return self._request(
+        response = self._request(
             "thread/read",
             {"threadId": thread_id, "includeTurns": include_turns},
         )
+        thread = response.get("thread")
+        if include_turns and isinstance(thread, dict):
+            self._live_items.apply(thread_id, thread)
+        return response
 
     def _start_turn(self, thread_id: str, message: str) -> dict[str, Any]:
         return self._request(
