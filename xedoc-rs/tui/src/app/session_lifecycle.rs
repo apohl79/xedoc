@@ -9,6 +9,7 @@ use crate::app_server_session::source_agent_path;
 use crate::app_server_session::thread_blocks_direct_input;
 use crate::city_lights::CityLightsStylize;
 use std::collections::HashSet;
+use xedoc_app_server_protocol::RemoteSessionStatus;
 use xedoc_config::types::ResumeCwdMode;
 
 #[derive(Clone, Copy)]
@@ -143,6 +144,8 @@ impl App {
         }
         let mut cursor: Option<String> = None;
         let mut seen_cursors = HashSet::new();
+        let mut items = Vec::new();
+        let mut session_state = None;
         loop {
             if let Some(cursor) = cursor.as_ref()
                 && !seen_cursors.insert(cursor.clone())
@@ -167,14 +170,23 @@ impl App {
                 }
             };
             cursor = read.remote_session.output_cursor.clone();
+            session_state = Some((
+                read.remote_session.status,
+                read.remote_session.active_turn_id.clone(),
+            ));
             self.upsert_remote_session_picker_entry(read.remote_session);
-            super::remote_session_items::show_remote_session_items(
-                &mut self.chat_widget,
-                read.items,
-            );
+            items.extend(read.items);
             if cursor.is_none() {
                 break;
             }
+        }
+        if let Some((status, active_turn_id)) = session_state {
+            super::remote_session_items::replay_remote_session_transcript(
+                &mut self.chat_widget,
+                items,
+                status,
+                active_turn_id.as_deref(),
+            );
         }
         self.sync_active_remote_session_running();
         self.sync_active_agent_label();
