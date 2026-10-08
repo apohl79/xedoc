@@ -457,7 +457,7 @@ tmux send-keys -t "$tui_pane" Down
 sleep 0.1
 tmux send-keys -t "$tui_pane" Enter
 for _ in {1..600}; do
-  tmux capture-pane -pt "$tui_pane" -S -160 | grep -Eq 'Remote session: xedoc-remote-agent-test|Remote agent:' && break
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -Eq 'Remote session: xedoc-remote-agent-test|target idle' && break
   if [[ "$(tmux display-message -p -t "$tui_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
     fail "coordinator TUI exited while attaching the remote session"
   fi
@@ -465,8 +465,8 @@ for _ in {1..600}; do
 done
 # A transcript longer than the rows above the viewport scrolls the header out of
 # tmux's partial scroll region (tmux keeps no scrollback for it), so also accept
-# the first transcript heading, which only a remote session produces.
-tmux capture-pane -pt "$tui_pane" -S -160 | grep -Eq 'Remote session: xedoc-remote-agent-test|Remote agent:' ||
+# the replayed remote transcript, which only a remote session produces.
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -Eq 'Remote session: xedoc-remote-agent-test|target idle' ||
   fail "coordinator TUI did not attach the selected remote session"
 # `select_remote_session` renders the header before it finishes reading the
 # existing remote transcript. Wait for the known transcript before submitting
@@ -488,7 +488,7 @@ tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target tui follow-up' ||
   fail "remote projection TUI did not return its direct follow-up result"
 
 # Run a remote turn that reasons, runs a command and edits a file: the remote
-# view must show every item type under its own heading.
+# view must render each item type as a standard history cell.
 tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_ITEMS_E2E'
 sleep 0.1
 tmux send-keys -t "$tui_pane" Enter
@@ -497,20 +497,34 @@ for _ in {1..1200}; do
   sleep 0.05
 done
 items_screen="$(tmux capture-pane -pt "$tui_pane" -S -300)"
-for expected in 'Reasoning:' 'items e2e reasoning' 'Command:' 'echo items-e2e-command-output' 'File change:' 'items-e2e-file.txt' 'items e2e done'; do
+for expected in '1 file edited' 'items-e2e-file.txt' 'items e2e done'; do
   printf '%s' "$items_screen" | grep -Fq -- "$expected" ||
     { printf '%s\n' "$items_screen" >&2; fail "remote TUI did not render '$expected' for the item-type turn"; }
 done
-printf '%s' "$items_screen" | grep -c 'items-e2e-command-output' | grep -qv '^0$' ||
-  fail "remote TUI did not render the command output"
+# Items render as the standard history cells, not as text sections or raw markdown.
+for forbidden in 'Reasoning:' 'Command:' 'File change:' 'Remote agent:' '\*\*items e2e' '```text'; do
+  if printf '%s' "$items_screen" | grep -Eq -- "$forbidden"; then
+    printf '%s\n' "$items_screen" >&2; fail "remote TUI rendered text-projection artifact '$forbidden'"
+  fi
+done
 # The terminal transcript projection lands after the live output; it must add
 # only what the live stream did not already show.
 sleep 8
 items_screen="$(tmux capture-pane -pt "$tui_pane" -S -300)"
-for once in 'items e2e reasoning' 'items e2e done'; do
-  [[ "$(printf '%s\n' "$items_screen" | grep -c -- "$once")" == 1 ]] ||
-    { printf '%s\n' "$items_screen" >&2; fail "remote TUI rendered '$once' more or less than once"; }
-done
+[[ "$(printf '%s\n' "$items_screen" | grep -c -- 'items e2e done')" == 1 ]] ||
+  { printf '%s\n' "$items_screen" >&2; fail "remote TUI rendered 'items e2e done' more or less than once"; }
+# Like a local thread, the coordinator groups tool calls into a summary and keeps
+# reasoning transcript-only; the transcript overlay must therefore hold the
+# reasoning once and count both the command and the file edit.
+tmux send-keys -t "$tui_pane" C-t
+sleep 1
+transcript_screen="$(tmux capture-pane -pt "$tui_pane" -S -300)"
+[[ "$(printf '%s\n' "$transcript_screen" | grep -c -- 'items e2e reasoning')" == 1 ]] ||
+  { printf '%s\n' "$transcript_screen" >&2; fail "remote transcript did not hold the reasoning exactly once"; }
+printf '%s' "$transcript_screen" | grep -Fq -- 'Calls: 2' ||
+  { printf '%s\n' "$transcript_screen" >&2; fail "remote transcript did not count the relayed command and file change"; }
+tmux send-keys -t "$tui_pane" q
+sleep 1
 
 # Keep a remote turn running so the picker must render the dedicated remote
 # activity, then exercise steering and interruption from the selected remote
