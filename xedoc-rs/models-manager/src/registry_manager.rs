@@ -50,8 +50,13 @@ impl RegistryModelsManager {
             ..Default::default()
         };
         let mut seen = HashSet::new();
+        let configured_provider = registry.provider(&self.provider_id);
         let mut models = discovered
             .into_iter()
+            .filter(|catalog_model| {
+                configured_provider
+                    .is_none_or(|provider| provider.models.contains_key(&catalog_model.slug))
+            })
             .map(|catalog_model| {
                 seen.insert(catalog_model.slug.clone());
                 let model = registry
