@@ -42,6 +42,7 @@ CLASSIFIER_FEEDBACK_EMBEDDING_CACHE_PATH = (
     STATE_DIR / "classifier-feedback-embeddings.json"
 )
 SESSION_DECISIONS_DIR = STATE_DIR / "session-decisions"
+BUDGET_LATCH_PATH = STATE_DIR / "budget-latch.json"
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MAX_CLASSIFIER_FEEDBACK_BYTES = 512 * 1024
 MAX_CLASSIFIER_FEEDBACK_EMBEDDING_CACHE_BYTES = 256 * 1024
@@ -2168,7 +2169,7 @@ def routing_tables_menu(policy, context):
                     "type": "text",
                     "id": "budget-threshold",
                     "label": "Switch threshold (percentage points)",
-                    "description": "Use the first table when first consumed % minus second consumed % is below this value.",
+                    "description": "Switch to the second table when first consumed % minus second consumed % reaches this value; stay on it until the second provider catches up.",
                     "value": str(budget["thresholdPercent"]),
                     "maxBytes": 3,
                     "sensitive": False,
@@ -3680,7 +3681,42 @@ def axis_class(policy, axis_id, class_id):
     return next(item for item in axis["classes"] if item["id"] == class_id)
 
 
-def selected_table(policy, context):
+def load_budget_latch(budget):
+    try:
+        with BUDGET_LATCH_PATH.open(encoding="utf-8") as source:
+            latch = json.load(source)
+    except (OSError, ValueError):
+        return None
+    providers = [budget["primaryProviderId"], budget["secondaryProviderId"]]
+    if isinstance(latch, dict) and latch.get("providers") == providers:
+        return latch.get("side")
+    return None
+
+
+def save_budget_latch(budget, side):
+    BUDGET_LATCH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{BUDGET_LATCH_PATH.name}.", dir=BUDGET_LATCH_PATH.parent, text=True
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            json.dump(
+                {
+                    "providers": [
+                        budget["primaryProviderId"],
+                        budget["secondaryProviderId"],
+                    ],
+                    "side": side,
+                },
+                out,
+            )
+        os.replace(temporary, BUDGET_LATCH_PATH)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def selected_table(policy, context, *, advance_budget_latch=False):
     ranking = policy["ranking"]
     mode = ranking["tableMode"]
     selection = ranking["tableSelection"]
@@ -3707,22 +3743,33 @@ def selected_table(policy, context):
         for value in (primary, secondary)
     ):
         return fallback, f"{fallback} (provider budgets unavailable)"
+    gap = primary - secondary
+    held = load_budget_latch(budget)
+    note = ""
     if primary >= 100 > secondary:
         side = "secondary"
     elif secondary >= 100 > primary:
         side = "primary"
+    elif gap >= budget["thresholdPercent"]:
+        side = "secondary"
+    elif held == "secondary" and gap > 0:
+        side = "secondary"
+        note = "; holding until secondary catches up"
     else:
-        side = (
-            "primary"
-            if primary - secondary < budget["thresholdPercent"]
-            else "secondary"
-        )
+        side = "primary"
+    # Previews and overrides replay saved contexts whose budgets may be stale,
+    # so only the live routing decision may move the latch.
+    if advance_budget_latch and side != held:
+        save_budget_latch(budget, side)
     provider_id = budget[f"{side}ProviderId"]
     table = selection[side]
-    return table, f"{table} ({provider_id}; {primary:.0f}% vs {secondary:.0f}% used)"
+    return (
+        table,
+        f"{table} ({provider_id}; {primary:.0f}% vs {secondary:.0f}% used{note})",
+    )
 
 
-def choose_route(policy, context, axes):
+def choose_route(policy, context, axes, *, advance_budget_latch=False):
     selected = [axis_class(policy, axis_id, axes[axis_id]) for axis_id in AXIS_VALUES]
     score = sum(item["points"] for item in selected)
     minimum_class = max(
@@ -3734,7 +3781,9 @@ def choose_route(policy, context, axes):
         key=CLASS_ORDER.__getitem__,
     )
     available = {route_key(route) for route in offered_routes(context)}
-    table, table_label = selected_table(policy, context)
+    table, table_label = selected_table(
+        policy, context, advance_budget_latch=advance_budget_latch
+    )
     eligible_entries = [
         entry
         for entry in ladder(policy, table)
@@ -5407,7 +5456,7 @@ def routing_decide(
     calibrated_confidence, raw_confidence = combined_confidence(
         policy, confidence_similarity, llm_confidence
     )
-    selection = choose_route(policy, context, axes)
+    selection = choose_route(policy, context, axes, advance_budget_latch=True)
     route = selection["route"]
     current = context.get("currentRoute")
     classification_conflict = classification_details["classificationConflict"]
