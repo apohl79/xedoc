@@ -48,6 +48,11 @@ TARGET_MARKER = "REMOTE_AGENT_PAIRING_E2E_TARGET"
 TUI_FOLLOW_UP_MARKER = "REMOTE_AGENT_PROJECTION_E2E_TUI_FOLLOW_UP"
 TUI_FOLLOW_UP_OUTPUT_MARKER = "target tui follow-up"
 TARGET_LIVE_OUTPUT_MARKER = "remote-agent pairing E2E live output"
+TARGET_ITEMS_MARKER = "REMOTE_AGENT_ITEMS_E2E"
+TARGET_ITEMS_REASONING = "items e2e reasoning"
+TARGET_ITEMS_COMMAND_OUTPUT = "items-e2e-command-output"
+TARGET_ITEMS_FILE = "items-e2e-file.txt"
+TARGET_ITEMS_DONE = "items e2e done"
 WORKSPACE_ID = "workspace_root"
 MAX_EVENTS = 256
 MAX_EVENT_BYTES = 8192
@@ -154,6 +159,37 @@ def _wait_for_state(path: Path, key: str, timeout: float = STATE_SYNC_TIMEOUT) -
             return value
         time.sleep(STATE_POLL_SECONDS)
     raise RuntimeError(f"timed out waiting for E2E state {key}")
+
+
+def _shell_call(
+    call_id: str, command: str, reasoning: str | None = None
+) -> list[dict[str, object]]:
+    response_id = f"pairing-e2e-{call_id}"
+    events = [_event("response.created", response={"id": response_id})]
+    if reasoning is not None:
+        events.append(
+            _event(
+                "response.output_item.done",
+                item={
+                    "type": "reasoning",
+                    "id": f"{response_id}-reasoning",
+                    "summary": [{"type": "summary_text", "text": reasoning}],
+                },
+            )
+        )
+    events.append(
+        _event(
+            "response.output_item.done",
+            item={
+                "type": "function_call",
+                "call_id": call_id,
+                "name": "shell_command",
+                "arguments": _json({"command": command}),
+            },
+        )
+    )
+    events.append(_completed(response_id))
+    return events
 
 
 def _usage() -> dict[str, object]:
@@ -636,7 +672,10 @@ def _source_events(
             targetThreadId=thread_id,
             targetTurnId=turn_id,
         )
-        if _wait_for_state(state_file, "remoteSummaryGenerated") is not True:
+        if (
+            _state_read(state_file).get("requireGeneratedSummary") is True
+            and _wait_for_state(state_file, "remoteSummaryGenerated") is not True
+        ):
             raise RuntimeError(
                 "the remote session never showed a model-generated activity summary"
             )
@@ -757,6 +796,21 @@ class ResponsesHandler(BaseHTTPRequestHandler):
                         break
                 if current_user_text is not None:
                     break
+        if current_user_text is not None and TARGET_ITEMS_MARKER in current_user_text:
+            outputs = _call_outputs(request)
+            if "items-patch" in outputs:
+                return "target-items-final", _assistant(TARGET_ITEMS_DONE)
+            if "items-shell" in outputs:
+                patch = (
+                    "apply_patch <<'EOF'\n*** Begin Patch\n"
+                    f"*** Add File: {TARGET_ITEMS_FILE}\n+items e2e\n*** End Patch\nEOF"
+                )
+                return "target-items-patch", _shell_call("items-patch", patch)
+            return "target-items-shell", _shell_call(
+                "items-shell",
+                f"echo {TARGET_ITEMS_COMMAND_OUTPUT}",
+                TARGET_ITEMS_REASONING,
+            )
         if current_user_text is not None and RESULT_MARKER in current_user_text:
             return "target-result", _assistant("remote-agent-e2e-tmp-entry")
         if current_user_text is not None and TUI_FOLLOW_UP_MARKER in current_user_text:
@@ -959,6 +1013,7 @@ class Controller:
         )
 
     def run(self) -> None:
+        _state_update(self.args.state_file, requireGeneratedSummary=True)
         self.source.initialize("pairing-e2e-source", "Pairing E2E source", "0.1.0")
         self.target.initialize("pairing-e2e-target", "Pairing E2E target", "0.1.0")
         response = self.source.request("thread/start", {"cwd": self.args.cwd})

@@ -215,7 +215,7 @@ cat >"$target_config" <<EOF
 model = "mock-model"
 model_provider = "remote_agent_e2e"
 approval_policy = "never"
-sandbox_mode = "read-only"
+sandbox_mode = "danger-full-access"
 auto_session_name = false
 [model_providers.remote_agent_e2e]
 name = "Docker remote-agent target mock"
@@ -261,7 +261,7 @@ docker cp "$target_config" "$container:/root/.xedoc/config.toml"
 docker exec "$container" mkdir -p /root/.xedoc/remote-agent
 docker cp "$target_bootstrap" "$container:/root/.xedoc/remote-agent/bootstrap.toml"
 docker exec "$container" chown root:root /root/.xedoc/remote-agent/bootstrap.toml
-for _ in {1..200}; do [[ -S "$socket" ]] && break; sleep 0.05; done
+for _ in {1..1200}; do [[ -S "$socket" ]] && break; sleep 0.05; done
 [[ -S "$socket" ]] || fail "coordinator app server did not create its socket"
 tmux split-window -d -t "$session":0 -v "exec sh -ceu 'for i in \$(seq 1 120); do env -u PYTHONPATH XEDOC_HOME=\"$home\" \"$host_agent\" ensure --xedoc-home \"$home\" && exit 0; sleep 1; done; exit 1'"
 tmux split-window -d -t "$session":0 -v "exec docker exec '$container' sh -ceu 'chmod 700 /root/.xedoc/remote-agent; chmod 600 /root/.xedoc/remote-agent/bootstrap.toml; xedoc app-server daemon start || true; for i in \$(seq 1 120); do xedoc-remote-agentd ensure && exit 0; sleep 1; done; exit 1'"
@@ -457,13 +457,16 @@ tmux send-keys -t "$tui_pane" Down
 sleep 0.1
 tmux send-keys -t "$tui_pane" Enter
 for _ in {1..600}; do
-  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session: xedoc-remote-agent-test' && break
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -Eq 'Remote session: xedoc-remote-agent-test|Remote agent:' && break
   if [[ "$(tmux display-message -p -t "$tui_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
     fail "coordinator TUI exited while attaching the remote session"
   fi
   sleep 0.05
 done
-tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session: xedoc-remote-agent-test' ||
+# A transcript longer than the rows above the viewport scrolls the header out of
+# tmux's partial scroll region (tmux keeps no scrollback for it), so also accept
+# the first transcript heading, which only a remote session produces.
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -Eq 'Remote session: xedoc-remote-agent-test|Remote agent:' ||
   fail "coordinator TUI did not attach the selected remote session"
 # `select_remote_session` renders the header before it finishes reading the
 # existing remote transcript. Wait for the known transcript before submitting
@@ -484,6 +487,31 @@ done
 tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'target tui follow-up' ||
   fail "remote projection TUI did not return its direct follow-up result"
 
+# Run a remote turn that reasons, runs a command and edits a file: the remote
+# view must show every item type under its own heading.
+tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_ITEMS_E2E'
+sleep 0.1
+tmux send-keys -t "$tui_pane" Enter
+for _ in {1..1200}; do
+  tmux capture-pane -pt "$tui_pane" -S -300 | grep -q 'items e2e done' && break
+  sleep 0.05
+done
+items_screen="$(tmux capture-pane -pt "$tui_pane" -S -300)"
+for expected in 'Reasoning:' 'items e2e reasoning' 'Command:' 'echo items-e2e-command-output' 'File change:' 'items-e2e-file.txt' 'items e2e done'; do
+  printf '%s' "$items_screen" | grep -Fq -- "$expected" ||
+    { printf '%s\n' "$items_screen" >&2; fail "remote TUI did not render '$expected' for the item-type turn"; }
+done
+printf '%s' "$items_screen" | grep -c 'items-e2e-command-output' | grep -qv '^0$' ||
+  fail "remote TUI did not render the command output"
+# The terminal transcript projection lands after the live output; it must add
+# only what the live stream did not already show.
+sleep 8
+items_screen="$(tmux capture-pane -pt "$tui_pane" -S -300)"
+for once in 'items e2e reasoning' 'items e2e done'; do
+  [[ "$(printf '%s\n' "$items_screen" | grep -c -- "$once")" == 1 ]] ||
+    { printf '%s\n' "$items_screen" >&2; fail "remote TUI rendered '$once' more or less than once"; }
+done
+
 # Keep a remote turn running so the picker must render the dedicated remote
 # activity, then exercise steering and interruption from the selected remote
 # TUI thread rather than only through the projection API.
@@ -496,17 +524,23 @@ for _ in {1..600}; do
 done
 tmux capture-pane -pt "$tui_pane" -S -200 | grep -q 'remote-agent pairing E2E live output' ||
   fail "remote projection TUI did not receive live remote activity"
+# The coordinator summarizes the live remote output every 12 seconds with its
+# fast model; give the first tick time to land before opening the picker.
+sleep 16
 tmux send-keys -t "$tui_pane" -l '/agents'
 sleep 0.1
 tmux send-keys -t "$tui_pane" Enter
 for _ in {1..600}; do
-  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session is running.' && break
+  tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Watching remote agent output' && break
   sleep 0.05
 done
-tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Remote session is running.' ||
-  fail "/agents did not render live remote activity"
+tmux capture-pane -pt "$tui_pane" -S -160 | grep -q 'Watching remote agent output' ||
+  fail "/agents did not render the generated remote activity summary"
 # The picker opens on the active (remote) row, so Enter keeps the remote thread selected.
 tmux send-keys -t "$tui_pane" Enter
+# Re-selecting re-attaches and replays the transcript; keys typed meanwhile arrive
+# as one burst, which the composer treats as a paste and Enter as a newline.
+sleep 5
 idle_count_before="$(tmux capture-pane -pt "$tui_pane" -S -200 | grep -c 'target idle' || true)"
 idle_count="$idle_count_before"
 tmux send-keys -t "$tui_pane" -l 'REMOTE_AGENT_PROJECTION_E2E_STEER'
