@@ -184,6 +184,8 @@ class RemoteAgentExtension:
         self._remote_hostnames: dict[str, str] = {}
         self._operation_sessions: dict[str, tuple[str, str | None, str | None]] = {}
         self._active_operations: dict[tuple[str, str], str] = {}
+        # The registry only accepts a terminal update that names the active turn.
+        self._remote_session_turns: dict[str, str] = {}
         self._remote_session_output_bytes: dict[tuple[str, str], int] = {}
         self._pending_remote_session_updates: queue.SimpleQueue[dict[str, Any]] = (
             queue.SimpleQueue()
@@ -352,6 +354,8 @@ class RemoteAgentExtension:
                     self._active_operations[(host_id, thread_id)] = operation_id
         if action == "send":
             turn_id = _optional_identifier(result.get("turnId"))
+            if turn_id is not None and remote_session_id is not None:
+                self._remote_session_turns[remote_session_id] = turn_id
             status = self._broker.call(
                 "session/status",
                 {"hostId": host_id, "threadId": thread_id},
@@ -515,7 +519,7 @@ class RemoteAgentExtension:
                     "status": "failed",
                     "activitySummary": "Remote session connection failed.",
                 },
-                None,
+                self._remote_session_turns.get(remote_session_id),
             )
 
     def _register_tool_remote_session(
@@ -671,6 +675,7 @@ class RemoteAgentExtension:
             params["outputCursor"] = _bounded_identifier(output_cursor)
         if turn_id is not None:
             params["remoteTurnId"] = turn_id
+            self._remote_session_turns[remote_session_id] = turn_id
         self._pending_remote_session_updates.put(params)
 
     def flush_remote_session_updates(self) -> None:

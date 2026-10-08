@@ -161,7 +161,7 @@ impl App {
                 Ok(response) => response,
                 Err(err) => {
                     self.chat_widget.add_error_message(format!(
-                        "Failed to read remote session {remote_session_id_value}: {err}"
+                        "Failed to read remote session {remote_session_id_value}: {err:#}"
                     ));
                     return Ok(());
                 }
@@ -249,7 +249,7 @@ impl App {
             }
             Err(err) => self
                 .chat_widget
-                .add_error_message(format!("Remote session operation failed: {err}")),
+                .add_error_message(format!("Remote session operation failed: {err:#}")),
         }
         self.sync_active_agent_display();
         Ok(true)
