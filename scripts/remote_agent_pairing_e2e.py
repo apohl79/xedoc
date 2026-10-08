@@ -743,6 +743,10 @@ class ResponsesHandler(BaseHTTPRequestHandler):
             if self.role == "source":
                 step, events = _source_events(request, self.state_file)
             else:
+                if "hosts_list" in json.dumps(request.get("tools", [])):
+                    raise RuntimeError(
+                        "managed target agent was given coordinator tools"
+                    )
                 step, events = self._target_events(request)
         except RuntimeError as error:
             self.request_log.add("mockError", error=str(error))

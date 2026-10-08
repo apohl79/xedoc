@@ -20,6 +20,7 @@ use xedoc_app_server_protocol::DynamicToolSpec;
 use xedoc_app_server_protocol::RemoteSessionControlParams;
 use xedoc_app_server_protocol::RemoteSessionControlResponse;
 use xedoc_app_server_protocol::ServerRequestPayload;
+use xedoc_config::RemoteAgentRole;
 use xedoc_core::XedocThread;
 use xedoc_protocol::ThreadId;
 
@@ -102,7 +103,14 @@ impl BuiltInRemoteAgentExtension {
         session_script_host: Arc<Mutex<SessionScriptHost>>,
     ) -> Self {
         Self {
-            enabled: config.remote_agent.is_some() && !cfg!(windows),
+            // Managed hosts only serve coordinators. Giving their local agent the
+            // coordinator tools makes it orchestrate through its own broker
+            // instead of simply working in its workspace.
+            enabled: config
+                .remote_agent
+                .as_ref()
+                .is_some_and(|remote_agent| remote_agent.role == RemoteAgentRole::Coordinator)
+                && !cfg!(windows),
             outgoing,
             session_script_registry,
             session_script_host,
