@@ -2386,6 +2386,22 @@
       ],
       "type": "string"
     },
+    "RemoteSessionItem": {
+      "description": "One transcript item of a remote session, in the remote host's own thread-item shape so a client renders it like an item of a local thread.",
+      "properties": {
+        "item": {
+          "$ref": "#/definitions/ThreadItem"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item",
+        "turnId"
+      ],
+      "type": "object"
+    },
     "RemoteSessionStatus": {
       "description": "Lifecycle state reported for a remote session.",
       "enum": [
@@ -2466,6 +2482,13 @@
     "RemoteSessionUpdatedNotification": {
       "description": "Signals a change to a root-thread-scoped remote session projection.",
       "properties": {
+        "items": {
+          "description": "Newly finished transcript items, in order.",
+          "items": {
+            "$ref": "#/definitions/RemoteSessionItem"
+          },
+          "type": "array"
+        },
         "outputDelta": {
           "type": [
             "string",
@@ -2480,6 +2503,7 @@
         }
       },
       "required": [
+        "items",
         "remoteSession",
         "threadId"
       ],

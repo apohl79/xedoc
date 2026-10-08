@@ -353,6 +353,7 @@ export type { RemoteSessionDetachResponse } from "./RemoteSessionDetachResponse"
 export type { RemoteSessionHostRole } from "./RemoteSessionHostRole";
 export type { RemoteSessionInputParams } from "./RemoteSessionInputParams";
 export type { RemoteSessionInputResponse } from "./RemoteSessionInputResponse";
+export type { RemoteSessionItem } from "./RemoteSessionItem";
 export type { RemoteSessionListParams } from "./RemoteSessionListParams";
 export type { RemoteSessionListResponse } from "./RemoteSessionListResponse";
 export type { RemoteSessionReadParams } from "./RemoteSessionReadParams";

@@ -16378,6 +16378,22 @@
         "title": "RemoteSessionInputResponse",
         "type": "object"
       },
+      "RemoteSessionItem": {
+        "description": "One transcript item of a remote session, in the remote host's own thread-item shape so a client renders it like an item of a local thread.",
+        "properties": {
+          "item": {
+            "$ref": "#/definitions/v2/ThreadItem"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "turnId"
+        ],
+        "type": "object"
+      },
       "RemoteSessionListParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "description": "Lists locally registered remote sessions for one root thread.",
@@ -16465,7 +16481,15 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "description": "Bounded output and summary for a remote session.",
         "properties": {
+          "items": {
+            "description": "Structured transcript items of the page.",
+            "items": {
+              "$ref": "#/definitions/v2/RemoteSessionItem"
+            },
+            "type": "array"
+          },
           "output": {
+            "description": "Text projection of the page, for clients that do not render items.",
             "type": "string"
           },
           "remoteSession": {
@@ -16473,6 +16497,7 @@
           }
         },
         "required": [
+          "items",
           "output",
           "remoteSession"
         ],
@@ -16624,6 +16649,15 @@
               }
             ]
           },
+          "items": {
+            "items": {
+              "$ref": "#/definitions/v2/RemoteSessionItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "outputCursor": {
             "type": [
               "string",
@@ -16676,6 +16710,13 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "description": "Signals a change to a root-thread-scoped remote session projection.",
         "properties": {
+          "items": {
+            "description": "Newly finished transcript items, in order.",
+            "items": {
+              "$ref": "#/definitions/v2/RemoteSessionItem"
+            },
+            "type": "array"
+          },
           "outputDelta": {
             "type": [
               "string",
@@ -16690,6 +16731,7 @@
           }
         },
         "required": [
+          "items",
           "remoteSession",
           "threadId"
         ],

@@ -23,6 +23,13 @@ from .peer_session_contract import (
     identifier as _identifier,
     validate_session_params,
 )
+from .peer_session_items import (
+    MAX_ENTRIES,
+    entry_key,
+    is_final,
+    project_entry,
+    take_within_budget,
+)
 from .peer_state import GrantPolicy
 from .workspaces import WorkspaceRegistry
 
@@ -32,6 +39,7 @@ _OPERATION_TTL_SECONDS = 300
 _POLL_INTERVAL_SECONDS = 0.1
 _MIN_RESULT_BYTES = 1024
 _TRANSCRIPT_PAGE_BYTES = 16 * 1024
+_MAX_TRANSCRIPT_ENTRIES = 512
 _MAX_TRANSCRIPT_SNAPSHOTS_PER_PEER = 4
 
 
@@ -42,6 +50,7 @@ class _StoredOperation:
     record: OperationRecord
     activity_cursor: int = 0
     last_sections: list[str] = field(default_factory=list)
+    sent_items: set[tuple[str, str, str]] = field(default_factory=set)
 
 
 @dataclass
@@ -60,7 +69,7 @@ class _Relay:
 class _TranscriptSnapshot:
     token: str
     peer_host_id: str
-    content: bytes
+    entries: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -473,11 +482,12 @@ class PeerSessionOperations:
                 thread,
                 cursor,
             )
-            output_text, next_offset = _transcript_page(
-                snapshot.content,
+            page, next_offset = _transcript_page(
+                snapshot.entries,
                 offset,
                 min(_TRANSCRIPT_PAGE_BYTES, self._max_result_bytes // 2),
             )
+            output_text = entries_text(page)
             if next_offset is None:
                 relay.transcript_snapshots.pop(snapshot.token, None)
                 next_cursor = None
@@ -492,6 +502,8 @@ class PeerSessionOperations:
         }
         if output_text:
             result["outputText"] = output_text
+        if page:
+            result["items"] = page
         active_turn_id = _active_turn_id(thread)
         if active_turn_id is not None:
             result["activeTurnId"] = active_turn_id
@@ -579,6 +591,9 @@ class PeerSessionOperations:
                 if stop_reason is not None:
                     return self._wait_result(stored, events, stop_reason)
                 last_event = event
+                stored.sent_items.update(
+                    entry_key(entry) for entry in event.get("items", [])
+                )
             if terminal is not None:
                 return self._wait_result(stored, events, "terminal")
             remaining = deadline - self._clock()
@@ -999,7 +1014,7 @@ def _transcript_snapshot(
         snapshot = _TranscriptSnapshot(
             token=secrets.token_hex(16),
             peer_host_id=peer_host_id,
-            content=_transcript_text(thread).encode("utf-8"),
+            entries=tuple(_transcript_entries(thread)),
         )
         relay.transcript_snapshots[snapshot.token] = snapshot
         return snapshot, 0
@@ -1010,25 +1025,22 @@ def _transcript_snapshot(
     return snapshot, offset
 
 
-def _transcript_page(content: bytes, offset: int, max_bytes: int) -> tuple[str, int | None]:
+def _transcript_page(
+    entries: tuple[dict[str, Any], ...], offset: int, max_bytes: int
+) -> tuple[list[dict[str, Any]], int | None]:
     if max_bytes < 1:
         raise BrokerError.limit_exceeded()
-    if offset > len(content):
+    if offset > len(entries):
         raise BrokerError.invalid_request()
-    if offset == len(content):
-        return "", None
-    end = min(offset + max_bytes, len(content))
-    while end > offset:
-        try:
-            page = content[offset:end].decode("utf-8")
-            break
-        except UnicodeDecodeError:
-            end -= 1
-    else:
-        raise BrokerError.internal()
-    if end >= len(content):
-        return page, None
-    return page, end
+    if offset == len(entries):
+        return [], None
+    page = take_within_budget(entries[offset:])
+    while len(page) > 1 and _encoded_size(page) > max_bytes:
+        page.pop()
+    if _encoded_size(page) > max_bytes:
+        raise BrokerError.limit_exceeded()
+    end = offset + len(page)
+    return page, (None if end >= len(entries) else end)
 
 
 def _transcript_cursor(cursor: Any) -> tuple[str, int]:
@@ -1043,11 +1055,44 @@ def _transcript_cursor(cursor: Any) -> tuple[str, int]:
     return token, int(offset)
 
 
-def _transcript_text(thread: Mapping[str, Any]) -> str:
-    parts: list[str] = []
-    for _, event_type, _, text in _transcript_sources(thread):
-        parts.append(_section(event_type, text))
-    return "\n\n".join(parts)
+def _transcript_entries(thread: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every finished item of every turn, oldest first, as bounded relay entries."""
+
+    turns = thread.get("turns")
+    if not isinstance(turns, list):
+        return []
+    entries: list[dict[str, Any]] = []
+    for turn in turns:
+        if isinstance(turn, Mapping):
+            entries.extend(_turn_entries(turn))
+    return entries[-_MAX_TRANSCRIPT_ENTRIES:]
+
+
+def _turn_entries(turn: Mapping[str, Any]) -> list[dict[str, Any]]:
+    try:
+        turn_id = _identifier(turn.get("id", turn.get("turnId")))
+    except BrokerError:
+        return []
+    items = turn.get("items")
+    if not isinstance(items, list):
+        return []
+    entries = (
+        project_entry(turn_id, item)
+        for item in items
+        if isinstance(item, Mapping) and is_final(item)
+    )
+    return [entry for entry in entries if entry is not None]
+
+
+def entries_text(entries: list[dict[str, Any]]) -> str:
+    """Render relayed entries as the labeled text sections models and logs read."""
+
+    sections = []
+    for entry in entries:
+        item_type, text = _relay_item(entry["item"])
+        if item_type is not None and text is not None:
+            sections.append(_section(item_type, text))
+    return "\n\n".join(sections)
 
 
 def _relay_page(
@@ -1319,20 +1364,29 @@ def _bounded_output_text(value: str, max_bytes: int) -> str:
 
 def _running_event(
     stored: _StoredOperation, thread: Mapping[str, Any], turn_id: str
-) -> dict[str, str]:
-    event = {
+) -> dict[str, Any]:
+    event: dict[str, Any] = {
         "type": "progress",
         "status": "running",
         "activitySummary": "Remote session is running.",
     }
     sections = _turn_sections(thread, turn_id, _MAX_SECTION_BYTES)
     delta = _sections_delta(stored.last_sections, sections)
-    if not delta:
-        return event
-    stored.last_sections = sections
-    stored.activity_cursor += 1
-    event["outputDelta"] = _bounded_output_tail(delta, MAX_ACTIVITY_DELTA_BYTES)
-    event["outputCursor"] = f"activity_{stored.activity_cursor}"
+    if delta:
+        stored.last_sections = sections
+        stored.activity_cursor += 1
+        event["outputDelta"] = _bounded_output_tail(delta, MAX_ACTIVITY_DELTA_BYTES)
+        event["outputCursor"] = f"activity_{stored.activity_cursor}"
+    unsent = [
+        entry
+        for turn in (thread.get("turns") if isinstance(thread.get("turns"), list) else [])
+        if isinstance(turn, Mapping) and turn.get("id", turn.get("turnId")) == turn_id
+        for entry in _turn_entries(turn)
+        if entry["item"]["type"] != "userMessage"
+        and entry_key(entry) not in stored.sent_items
+    ]
+    if unsent:
+        event["items"] = take_within_budget(unsent, MAX_ENTRIES)
     return event
 
 

@@ -9,6 +9,7 @@ use serde_json::Value as JsonValue;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 use xedoc_app_server_protocol::RemoteSessionControlAction;
+use xedoc_app_server_protocol::RemoteSessionItem;
 use xedoc_app_server_protocol::RemoteSessionStatus;
 use xedoc_app_server_protocol::RemoteSessionSummary;
 use xedoc_app_server_protocol::RemoteSessionUpdateParams;
@@ -17,6 +18,7 @@ use xedoc_protocol::ThreadId;
 const MAX_IDENTIFIER_CHARS: usize = 128;
 const MAX_ACTIVITY_SUMMARY_CHARS: usize = 64;
 const MAX_OUTPUT_DELTA_BYTES: usize = 32 * 1024;
+const MAX_ITEMS_PER_UPDATE: usize = 32;
 const RUNNING_ACTIVITY_SUMMARY: &str = "Remote session is running.";
 const MAX_RECENT_SECTIONS: usize = 6;
 const MAX_SECTION_LINE_CHARS: usize = 100;
@@ -68,6 +70,7 @@ pub(crate) struct RemoteSessionPage {
 pub(crate) struct RemoteSessionProjectionUpdate {
     pub(crate) summary: RemoteSessionSummary,
     pub(crate) output_delta: Option<String>,
+    pub(crate) items: Vec<RemoteSessionItem>,
 }
 
 impl RemoteSessionRegistry {
@@ -188,6 +191,7 @@ impl RemoteSessionRegistry {
         params: RemoteSessionUpdateParams,
     ) -> Result<RemoteSessionProjectionUpdate, String> {
         validate_update(&params)?;
+        let params_items = params.items.clone().unwrap_or_default();
         let mut state = self.state.lock().await;
         let entry = entry_for_root_mut(&mut state, root_thread_id, &params.remote_session_id)?;
         let accepts_update = accepts_update(entry, &params);
@@ -227,6 +231,7 @@ impl RemoteSessionRegistry {
         Ok(RemoteSessionProjectionUpdate {
             summary: entry.summary.clone(),
             output_delta,
+            items: params_items,
         })
     }
 
@@ -243,7 +248,8 @@ impl RemoteSessionRegistry {
         let object = result
             .as_object()
             .ok_or_else(|| "remote-agent control result must be an object".to_string())?;
-        let output_delta = apply_broker_result(entry, object)?;
+        let mut items = Vec::new();
+        let output_delta = apply_broker_result(entry, object, &mut items)?;
         if let Some(delta) = output_delta.as_deref() {
             note_output(entry, delta);
         }
@@ -271,6 +277,7 @@ impl RemoteSessionRegistry {
         Ok(RemoteSessionProjectionUpdate {
             summary: entry.summary.clone(),
             output_delta,
+            items,
         })
     }
 
@@ -355,6 +362,7 @@ impl RemoteSessionRegistry {
         Some(RemoteSessionProjectionUpdate {
             summary: entry.summary.clone(),
             output_delta: None,
+            items: Vec::new(),
         })
     }
 }
@@ -466,13 +474,20 @@ fn validate_update(params: &RemoteSessionUpdateParams) -> Result<(), String> {
     if let Some(activity_summary) = params.activity_summary.as_deref() {
         validate_activity_summary(activity_summary)?;
     }
-    if let Some(output_delta) = params.output_delta.as_deref() {
-        if output_delta.is_empty() || output_delta.len() > MAX_OUTPUT_DELTA_BYTES {
-            return Err("output delta is invalid".to_string());
-        }
+    if let Some(output_delta) = params.output_delta.as_deref()
+        && (output_delta.is_empty() || output_delta.len() > MAX_OUTPUT_DELTA_BYTES)
+    {
+        return Err("output delta is invalid".to_string());
     }
     if params.output_delta.is_some() != params.output_cursor.is_some() {
         return Err("output delta and cursor must be provided together".to_string());
+    }
+    if params
+        .items
+        .as_ref()
+        .is_some_and(|items| items.len() > MAX_ITEMS_PER_UPDATE)
+    {
+        return Err("too many remote session items".to_string());
     }
     Ok(())
 }
@@ -494,6 +509,7 @@ fn validate_activity_summary(value: &str) -> Result<(), String> {
 fn apply_broker_result(
     entry: &mut RemoteSessionEntry,
     object: &serde_json::Map<String, JsonValue>,
+    items: &mut Vec<RemoteSessionItem>,
 ) -> Result<Option<String>, String> {
     if let Some(workspace_id) = optional_identifier(object.get("workspaceId"), "workspace id")? {
         entry.summary.workspace_id = Some(workspace_id);
@@ -536,6 +552,7 @@ fn apply_broker_result(
     }
 
     let mut output_delta = optional_output_text(object.get("outputText"))?;
+    collect_items(object.get("items"), items);
     if let Some(events) = object.get("events") {
         let events = events
             .as_array()
@@ -570,6 +587,7 @@ fn apply_broker_result(
             {
                 entry.summary.activity_summary = Some(activity_summary);
             }
+            collect_items(event.get("items"), items);
             if let Some(cursor) = optional_identifier(event.get("outputCursor"), "output cursor")? {
                 entry.activity_cursor = Some(cursor);
             }
@@ -588,11 +606,25 @@ fn apply_broker_result(
         let nested_result = nested_result
             .as_object()
             .ok_or_else(|| "remote-agent nested result is invalid".to_string())?;
-        if let Some(nested_output_delta) = apply_broker_result(entry, nested_result)? {
+        if let Some(nested_output_delta) = apply_broker_result(entry, nested_result, items)? {
             append_output_delta(&mut output_delta, nested_output_delta);
         }
     }
     Ok(output_delta)
+}
+
+/// Collects relayed items, skipping any this build cannot represent so one unknown item
+/// cannot fail the whole operation.
+fn collect_items(value: Option<&JsonValue>, items: &mut Vec<RemoteSessionItem>) {
+    let Some(entries) = value.and_then(JsonValue::as_array) else {
+        return;
+    };
+    for entry in entries.iter().take(MAX_ITEMS_PER_UPDATE) {
+        match serde_json::from_value::<RemoteSessionItem>(entry.clone()) {
+            Ok(item) => items.push(item),
+            Err(error) => tracing::warn!("dropping remote session item: {error}"),
+        }
+    }
 }
 
 fn apply_status(

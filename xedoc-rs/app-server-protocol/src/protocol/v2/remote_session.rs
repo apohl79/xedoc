@@ -1,8 +1,19 @@
+use super::ThreadItem;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use ts_rs::TS;
+
+/// One transcript item of a remote session, in the remote host's own thread-item shape so a
+/// client renders it like an item of a local thread.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct RemoteSessionItem {
+    pub turn_id: String,
+    pub item: ThreadItem,
+}
 
 /// Root-thread scoped projection of a remote session.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -79,12 +90,15 @@ pub struct RemoteSessionReadParams {
 }
 
 /// Bounded output and summary for a remote session.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct RemoteSessionReadResponse {
     pub remote_session: RemoteSessionSummary,
+    /// Text projection of the page, for clients that do not render items.
     pub output: String,
+    /// Structured transcript items of the page.
+    pub items: Vec<RemoteSessionItem>,
 }
 
 /// Attaches the caller's root thread to a registered remote session.
@@ -182,7 +196,7 @@ pub struct RemoteSessionRegisterResponse {
 }
 
 /// Updates a remote session from the host-managed remote-agent extension.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct RemoteSessionUpdateParams {
@@ -195,6 +209,8 @@ pub struct RemoteSessionUpdateParams {
     pub output_delta: Option<String>,
     #[ts(optional = nullable)]
     pub output_cursor: Option<String>,
+    #[ts(optional = nullable)]
+    pub items: Option<Vec<RemoteSessionItem>>,
     #[ts(optional = nullable)]
     pub remote_turn_id: Option<String>,
     #[ts(optional = nullable)]
@@ -248,11 +264,13 @@ pub struct RemoteSessionControlResponse {
 }
 
 /// Signals a change to a root-thread-scoped remote session projection.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct RemoteSessionUpdatedNotification {
     pub thread_id: String,
     pub remote_session: RemoteSessionSummary,
     pub output_delta: Option<String>,
+    /// Newly finished transcript items, in order.
+    pub items: Vec<RemoteSessionItem>,
 }

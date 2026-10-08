@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import queue
-import re
 import select
 import sys
 import threading
@@ -15,6 +14,8 @@ from .errors import BrokerError
 from .ipc import PROTOCOL
 from .ipc import PROTOCOL_VERSION
 from .ipc import LocalIpcClient
+from .peer_session_items import entry_key, take_within_budget, without_items
+from .peer_sessions import entries_text
 from .workspaces import controller_identifier
 from .workspaces import load_bootstrap_descriptor
 
@@ -28,12 +29,7 @@ _WAIT_TIMEOUT_BUFFER_SECONDS = 5.0
 _SESSION_START_TIMEOUT_SECONDS = 30.0
 _REMOTE_SESSION_WATCH_POLL_SECONDS = 1.0
 _REMOTE_SESSION_UPDATE_BYTES = 4_096
-_MAX_LIVE_OUTPUT_BYTES = 64 * 1024
-_MAX_PROJECTED_OUTPUT_BYTES = 512 * 1024
-_SECTION_HEADING = re.compile(
-    r"^(User|Remote agent|Reasoning|Plan|Command|File change|Tool call|Sub-agent):$",
-    re.MULTILINE,
-)
+_MAX_FORWARDED_ITEMS = 4_096
 _REMOTE_NAMESPACE = "remote"
 _REMOTE_SESSION_CONTROL_METHOD = "remoteSession/control"
 _REMOTE_SESSION_REGISTER_METHOD = "script/remoteSessionRegister"
@@ -193,10 +189,9 @@ class RemoteAgentExtension:
         self._active_operations: dict[tuple[str, str], str] = {}
         # The registry only accepts a terminal update that names the active turn.
         self._remote_session_turns: dict[str, str] = {}
-        # Output already shown live for a session's current turn, so the final
-        # transcript projection does not repeat it.
-        self._live_output: dict[str, str] = {}
-        self._remote_session_output_bytes: dict[tuple[str, str], int] = {}
+        # Items already sent to the app-server per session, so the final
+        # transcript projection only adds what the live stream missed.
+        self._forwarded_items: dict[str, set[tuple[str, str, str]]] = {}
         self._pending_remote_session_updates: queue.SimpleQueue[dict[str, Any]] = (
             queue.SimpleQueue()
         )
@@ -339,6 +334,8 @@ class RemoteAgentExtension:
             ),
         )
         result = operation_result
+        if action == "read":
+            self._mark_forwarded(host_id, thread_id, result.get("items"))
         if action in {"attach", "steer", "cancel", "detach"}:
             completed = self._await_control_operation(host_id, operation_result)
             _require_completed_control_operation(action, completed)
@@ -435,15 +432,37 @@ class RemoteAgentExtension:
         except BrokerError:
             self._mark_remote_session_failed(operation_id)
 
+    def _mark_forwarded(self, host_id: str, thread_id: str, entries: Any) -> None:
+        if not isinstance(entries, list):
+            return
+        remote_session_id = self._remote_sessions.get((host_id, thread_id))
+        if remote_session_id is None:
+            return
+        forwarded = self._forwarded_items.setdefault(remote_session_id, set())
+        for entry in entries:
+            if len(forwarded) < _MAX_FORWARDED_ITEMS and isinstance(entry, Mapping):
+                forwarded.add(entry_key(entry))
+
     def _capture_remote_session_output(self, host_id: str, thread_id: str) -> None:
-        """Record the current transcript size so a later turn projects only its delta."""
+        """Record the items already in the transcript so a later turn projects only its own."""
 
         try:
-            self._remote_session_output_bytes[(host_id, thread_id)] = (
-                self._read_remote_session_output_bytes(host_id, thread_id)
-            )
+            for entries in self._read_transcript_pages(host_id, thread_id):
+                self._mark_forwarded(host_id, thread_id, entries)
         except BrokerError:
-            self._remote_session_output_bytes.pop((host_id, thread_id), None)
+            return
+
+    def _read_transcript_pages(self, host_id: str, thread_id: str):
+        cursor: str | None = None
+        while True:
+            params: dict[str, Any] = {"hostId": host_id, "threadId": thread_id}
+            if cursor is not None:
+                params["cursor"] = cursor
+            result = self._broker.call("session/read", params)
+            yield result.get("items")
+            cursor = _optional_identifier(result.get("nextCursor"))
+            if cursor is None:
+                return
 
     def _project_terminal_output(
         self, host_id: str, operation_id: str, terminal_result: Mapping[str, Any]
@@ -459,67 +478,31 @@ class RemoteAgentExtension:
         terminal_status = terminal_result.get("state")
         if terminal_status not in {"completed", "failed", "cancelled", "expired"}:
             terminal_status = "completed"
-        skip_bytes = self._remote_session_output_bytes.get((host_id, identity[1]), 0)
-        cursor: str | None = None
-        total_bytes = 0
-        pieces: list[str] = []
-        projected_bytes = 0
-        active_turn_id: str | None = None
-        while True:
-            read_params: dict[str, Any] = {
-                "hostId": host_id,
-                "threadId": identity[1],
-            }
-            if cursor is not None:
-                read_params["cursor"] = cursor
-            result = self._broker.call(
-                "session/read",
-                read_params,
-            )
-            active_turn_id = _optional_identifier(result.get("activeTurnId"))
-            output_text = result.get("outputText")
-            if isinstance(output_text, str) and output_text:
-                total_bytes += len(output_text.encode("utf-8"))
-                output_text, skip_bytes = _skip_output_prefix(
-                    output_text, skip_bytes
+        forwarded = self._forwarded_items.setdefault(remote_session_id, set())
+        unseen: list[dict[str, Any]] = []
+        for entries in self._read_transcript_pages(host_id, identity[1]):
+            if isinstance(entries, list):
+                unseen.extend(
+                    entry
+                    for entry in entries
+                    if isinstance(entry, dict)
+                    and entry["item"].get("type") != "userMessage"
+                    and entry_key(entry) not in forwarded
                 )
-                if projected_bytes < _MAX_PROJECTED_OUTPUT_BYTES:
-                    pieces.append(output_text)
-                    projected_bytes += len(output_text.encode("utf-8"))
-            cursor = _optional_identifier(result.get("nextCursor"))
-            if cursor is None:
-                break
-        self._remote_session_output_bytes[(host_id, identity[1])] = total_bytes
-        projection = _unseen_transcript(
-            "".join(pieces), self._live_output.pop(remote_session_id, "")
-        )
-        for chunk_number, output_chunk in enumerate(
-            _output_chunks(projection), start=1
-        ):
+        active_turn_id = self._remote_session_turns.get(remote_session_id)
+        chunk_number = 0
+        while unseen:
+            chunk = take_within_budget(unseen)
+            unseen = unseen[len(chunk) :]
+            chunk_number += 1
+            event: dict[str, Any] = {"status": terminal_status, "items": chunk}
+            text = entries_text(chunk)
+            if text:
+                event["outputDelta"] = text
+                event["outputCursor"] = f"operation_{operation_id}_0_{chunk_number}"
             self._publish_remote_session_update(
-                remote_session_id,
-                {
-                    "status": terminal_status,
-                    "outputDelta": output_chunk,
-                    "outputCursor": f"operation_{operation_id}_0_{chunk_number}",
-                },
-                active_turn_id,
+                remote_session_id, event, active_turn_id
             )
-
-    def _read_remote_session_output_bytes(self, host_id: str, thread_id: str) -> int:
-        cursor: str | None = None
-        total_bytes = 0
-        while True:
-            params: dict[str, Any] = {"hostId": host_id, "threadId": thread_id}
-            if cursor is not None:
-                params["cursor"] = cursor
-            result = self._broker.call("session/read", params)
-            output_text = result.get("outputText")
-            if isinstance(output_text, str):
-                total_bytes += len(output_text.encode("utf-8"))
-            cursor = _optional_identifier(result.get("nextCursor"))
-            if cursor is None:
-                return total_bytes
 
     def _mark_remote_session_failed(self, operation_id: str) -> None:
         identity = self._operation_sessions.get(operation_id)
@@ -687,14 +670,16 @@ class RemoteAgentExtension:
         if isinstance(output_delta, str) and isinstance(output_cursor, str):
             params["outputDelta"] = output_delta[:_REMOTE_SESSION_UPDATE_BYTES]
             params["outputCursor"] = _bounded_identifier(output_cursor)
+        items = event.get("items")
+        if isinstance(items, list) and items:
+            params["items"] = items
+            forwarded = self._forwarded_items.setdefault(remote_session_id, set())
+            for entry in items:
+                if len(forwarded) < _MAX_FORWARDED_ITEMS and isinstance(entry, Mapping):
+                    forwarded.add(entry_key(entry))
         if turn_id is not None:
             params["remoteTurnId"] = turn_id
-            if self._remote_session_turns.get(remote_session_id) != turn_id:
-                self._live_output.pop(remote_session_id, None)
             self._remote_session_turns[remote_session_id] = turn_id
-        if "outputDelta" in params and params["outputCursor"].startswith("activity_"):
-            live = self._live_output.get(remote_session_id, "") + params["outputDelta"]
-            self._live_output[remote_session_id] = live[-_MAX_LIVE_OUTPUT_BYTES:]
         self._pending_remote_session_updates.put(params)
 
     def flush_remote_session_updates(self) -> None:
@@ -726,73 +711,6 @@ def _optional_identifier(value: Any) -> str | None:
         return _bounded_identifier(value)
     except BrokerError:
         return None
-
-
-def _output_chunks(value: str) -> Sequence[str]:
-    content = value.encode("utf-8")
-    chunks: list[str] = []
-    offset = 0
-    while offset < len(content):
-        end = min(offset + _REMOTE_SESSION_UPDATE_BYTES, len(content))
-        while end > offset:
-            try:
-                chunks.append(content[offset:end].decode("utf-8"))
-                break
-            except UnicodeDecodeError:
-                end -= 1
-        else:
-            raise BrokerError.internal()
-        offset = end
-    return chunks
-
-
-def _unseen_transcript(transcript: str, live: str) -> str:
-    """Drop the user's own input and every part of the transcript already shown live."""
-
-    headings = list(_SECTION_HEADING.finditer(transcript))
-    if not headings:
-        return transcript
-    live_key = "".join(live.split())
-    parts: list[str] = []
-    for index, heading in enumerate(headings):
-        if heading.group(1) == "User":
-            continue
-        end = headings[index + 1].start() if index + 1 < len(headings) else len(transcript)
-        section = transcript[heading.start() : end].rstrip()
-        remainder = section[_shown_prefix_length(section, len(heading.group(0)), live_key) :]
-        if remainder.strip():
-            parts.append(remainder.lstrip("\n"))
-    return "\n\n".join(parts)
-
-
-def _shown_prefix_length(section: str, heading_length: int, live_key: str) -> int:
-    """Return how many leading characters of a section appear contiguously in the live output."""
-
-    positions = [i for i, character in enumerate(section) if not character.isspace()]
-    heading_chars = len("".join(section[:heading_length].split()))
-
-    def shown(count: int) -> bool:
-        return "".join(section[i] for i in positions[:count]) in live_key
-
-    if len(positions) < heading_chars or not shown(heading_chars):
-        return 0
-    low, high = heading_chars, len(positions)
-    while low < high:
-        middle = (low + high + 1) // 2
-        if shown(middle):
-            low = middle
-        else:
-            high = middle - 1
-    return len(section) if low == len(positions) else positions[low]
-
-
-def _skip_output_prefix(value: str, skip_bytes: int) -> tuple[str, int]:
-    if skip_bytes <= 0:
-        return value, 0
-    content = value.encode("utf-8")
-    if skip_bytes >= len(content):
-        return "", skip_bytes - len(content)
-    return content[skip_bytes:].decode("utf-8"), 0
 
 
 def _require_completed_control_operation(
@@ -849,7 +767,7 @@ def _model_visible_result(tool: str, result: Mapping[str, Any]) -> dict[str, Any
             ],
             "nextCursor": result.get("nextCursor"),
         }
-    return dict(result)
+    return without_items(dict(result))
 
 
 def _result_data(result: Mapping[str, Any]) -> list[Mapping[str, Any]]:

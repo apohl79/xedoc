@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from .errors import BrokerError
 from .models import MAX_ID_LENGTH, OperationState
+from .peer_session_items import validate_entries, without_items
 
 
 SESSION_OPERATIONS = frozenset(
@@ -135,7 +136,7 @@ def validate_session_result(
     result = dict(value)
     if encoded_size(result) > max_result_bytes:
         raise BrokerError.limit_exceeded()
-    _reject_sensitive(result)
+    _reject_sensitive(without_items(result))
     if operation == "session/send":
         allowed = {"operationId", "threadId", "turnId"}
         if set(result) - allowed or "operationId" not in result:
@@ -263,6 +264,7 @@ def _validate_read_result(value: Mapping[str, Any]) -> None:
         "nextCursor",
         "outputText",
         "activitySummary",
+        "items",
     }
     required = {
         "threadId",
@@ -297,6 +299,8 @@ def _validate_read_result(value: Mapping[str, Any]) -> None:
         or len(output_text.encode("utf-8")) > MAX_OUTPUT_TEXT_BYTES
     ):
         raise BrokerError.invalid_request()
+    if "items" in value:
+        validate_entries(value["items"])
     activity_summary = value.get("activitySummary")
     if activity_summary is not None and (
         not isinstance(activity_summary, str)
@@ -347,6 +351,7 @@ def _validate_wait_event(event: Any) -> None:
         "activitySummary",
         "outputDelta",
         "outputCursor",
+        "items",
     }
     if set(event) - allowed or set(event) < {"type", "status", "activitySummary"}:
         raise BrokerError.invalid_request()
@@ -364,6 +369,8 @@ def _validate_wait_event(event: Any) -> None:
         raise BrokerError.invalid_request()
     if output_cursor is not None:
         identifier(output_cursor)
+    if "items" in event:
+        validate_entries(event["items"])
 
 
 def _validate_wait_operation_result(

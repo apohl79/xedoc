@@ -168,11 +168,10 @@ impl App {
             };
             cursor = read.remote_session.output_cursor.clone();
             self.upsert_remote_session_picker_entry(read.remote_session);
-            if !read.output.trim().is_empty() {
-                self.chat_widget.add_plain_history_lines(
-                    super::remote_session_output::remote_output_lines(&read.output),
-                );
-            }
+            super::remote_session_items::show_remote_session_items(
+                &mut self.chat_widget,
+                read.items,
+            );
             if cursor.is_none() {
                 break;
             }

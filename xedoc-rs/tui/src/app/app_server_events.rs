@@ -104,14 +104,10 @@ impl App {
                 );
                 self.upsert_remote_session_picker_entry(notification.remote_session.clone());
                 self.sync_active_remote_session_running();
-                if self.active_remote_session.as_ref() == Some(&remote_session_id)
-                    && let Some(output_delta) = notification
-                        .output_delta
-                        .as_deref()
-                        .filter(|output_delta| !output_delta.trim().is_empty())
-                {
-                    self.chat_widget.add_plain_history_lines(
-                        super::remote_session_output::remote_output_lines(output_delta),
+                if self.active_remote_session.as_ref() == Some(&remote_session_id) {
+                    super::remote_session_items::show_remote_session_items(
+                        &mut self.chat_widget,
+                        notification.items.clone(),
                     );
                 }
                 self.sync_active_agent_display();

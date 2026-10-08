@@ -271,6 +271,7 @@ impl ThreadRequestProcessor {
             RemoteSessionProjectionUpdate {
                 summary: remote_session.clone(),
                 output_delta: None,
+                items: Vec::new(),
             },
         )
         .await;
@@ -346,6 +347,7 @@ impl ThreadRequestProcessor {
         Ok(RemoteSessionReadResponse {
             remote_session: update.summary,
             output: update.output_delta.unwrap_or_default(),
+            items: update.items,
         })
     }
 
@@ -580,6 +582,7 @@ impl ThreadRequestProcessor {
                 RemoteSessionProjectionUpdate {
                     summary: update.summary.clone(),
                     output_delta: update.output_delta.clone(),
+                    items: update.items.clone(),
                 },
             )
             .await;
@@ -610,6 +613,7 @@ impl ThreadRequestProcessor {
                     thread_id: root_thread_id.to_string(),
                     remote_session: update.summary,
                     output_delta: update.output_delta,
+                    items: update.items,
                 },
             ))
             .await;
