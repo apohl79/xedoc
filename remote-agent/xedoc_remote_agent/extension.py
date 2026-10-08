@@ -530,9 +530,22 @@ class RemoteAgentExtension:
         if tool in {"session_resume", "session_attach", "session_send", "session_steer"}:
             if thread_id is None:
                 return
-            self._register_remote_session(host_id, thread_id, host_name)
+            remote_session_id = self._register_remote_session(
+                host_id, thread_id, host_name
+            )
+            if tool in {"session_send", "session_steer"} and remote_session_id:
+                self._publish_remote_session_update(
+                    remote_session_id,
+                    {
+                        "status": "running",
+                        "activitySummary": "Remote session is running.",
+                    },
+                    _optional_identifier(result.get("turnId")),
+                )
         if operation_id is not None:
             self._operation_sessions[operation_id] = (host_id, thread_id, host_name)
+            if tool in {"session_send", "session_steer"}:
+                self._watch_control_operation(host_id, result)
 
     def _update_tool_remote_session(
         self, tool: str, arguments: Mapping[str, Any], result: Mapping[str, Any]
