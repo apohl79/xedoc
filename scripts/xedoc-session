@@ -175,7 +175,6 @@ def remote_agent_enrollment_command(
     role: str | None = None,
     code: str | None = None,
     endpoints: list[str] | None = None,
-    discovery_timeout: int | None = None,
     ttl_seconds: int | None = None,
 ) -> dict[str, object]:
     binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
@@ -191,8 +190,6 @@ def remote_agent_enrollment_command(
     if action == "discover" and endpoints:
         for endpoint in endpoints:
             command.extend(("--endpoint", endpoint))
-    if action == "discover" and discovery_timeout is not None:
-        command.extend(("--discovery-timeout", str(discovery_timeout)))
     if ttl_seconds is not None:
         command.extend(("--ttl-seconds", str(ttl_seconds)))
     try:
@@ -242,8 +239,19 @@ def ssh_target_for(candidate: dict[str, object], override: str | None) -> str | 
     return host or None
 
 
+def ssh_enrollment_unavailable(reason: str) -> None:
+    # The reason may carry text from the remote side; keep it to one printable line.
+    printable = "".join(character for character in reason if character.isprintable())
+    print(
+        f"SSH enrollment unavailable ({printable[:200]}); asking for the code.",
+        file=sys.stderr,
+    )
+
+
 def remote_agent_ssh_enrollment_code(
-    candidate: dict[str, object], ssh_target: str | None
+    candidate: dict[str, object],
+    ssh_target: str | None,
+    ssh_options: list[str] | None = None,
 ) -> str | None:
     """Ask the managed host for a short-lived enrollment code over SSH.
 
@@ -253,7 +261,11 @@ def remote_agent_ssh_enrollment_code(
     """
 
     target = ssh_target_for(candidate, ssh_target)
-    if target is None or target.startswith("-") or shutil.which("ssh") is None:
+    if target is None or target.startswith("-"):
+        ssh_enrollment_unavailable("no usable SSH target")
+        return None
+    if shutil.which("ssh") is None:
+        ssh_enrollment_unavailable("ssh is not installed")
         return None
     try:
         result = subprocess.run(
@@ -264,6 +276,11 @@ def remote_agent_ssh_enrollment_code(
                 "BatchMode=yes",
                 "-o",
                 "ConnectTimeout=5",
+                *(
+                    argument
+                    for option in ssh_options or []
+                    for argument in ("-o", option)
+                ),
                 "--",
                 target,
                 f"sh -lc '{SSH_ENROLLMENT_SCRIPT}'",
@@ -275,23 +292,28 @@ def remote_agent_ssh_enrollment_code(
             text=True,
             timeout=20,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired) as error:
+        ssh_enrollment_unavailable(f"{target}: {error}")
         return None
     if result.returncode != 0:
+        lines = result.stderr.strip().splitlines()
+        ssh_enrollment_unavailable(
+            f"{target}: {lines[-1] if lines else f'exit status {result.returncode}'}"
+        )
         return None
     try:
         issued = json.loads(result.stdout)
     except json.JSONDecodeError:
+        ssh_enrollment_unavailable(f"{target}: unexpected output")
         return None
-    if not isinstance(issued, dict):
-        return None
-    code = issued.get("code")
+    code = issued.get("code") if isinstance(issued, dict) else None
     if (
         not isinstance(code, str)
         or issued.get("hostId") != candidate.get("hostId")
         or issued.get("fingerprint") != candidate.get("fingerprint")
     ):
         # The login landed on a different host or account than the one discovered.
+        ssh_enrollment_unavailable(f"{target} is not the discovered host")
         return None
     print(
         f"Obtained a one-time enrollment code from {target} over SSH.",
@@ -300,17 +322,13 @@ def remote_agent_ssh_enrollment_code(
     return code
 
 
-def discovered_remote_agent_hosts(
-    endpoints: list[str], discovery_timeout: int | None
-) -> list[dict[str, object]]:
-    discovered = remote_agent_enrollment_command(
-        "discover", endpoints=endpoints, discovery_timeout=discovery_timeout
-    )
+def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
+    discovered = remote_agent_enrollment_command("discover", endpoints=args.endpoint)
     candidates = sorted(
         as_object_list(discovered.get("data", []), "discovered host"),
         key=lambda candidate: cast(str, candidate.get("hostId", "")),
     )
-    return [
+    hosts = [
         candidate
         for candidate in candidates
         if candidate.get("role") in REMOTE_AGENT_ROLES
@@ -319,21 +337,6 @@ def discovered_remote_agent_hosts(
         and isinstance(candidate.get("fingerprint"), str)
         and isinstance(candidate.get("endpoint"), str)
     ]
-
-
-def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
-    # Hosts announce themselves, so the passive cache answers at once; scan
-    # actively only when it is empty or direct destinations were requested.
-    hosts = (
-        []
-        if args.endpoint
-        else discovered_remote_agent_hosts(args.endpoint, discovery_timeout=0)
-    )
-    if not hosts or (
-        args.host_id is not None
-        and all(candidate["hostId"] != args.host_id for candidate in hosts)
-    ):
-        hosts = discovered_remote_agent_hosts(args.endpoint, discovery_timeout=None)
     if not hosts:
         raise AppServerError("no pairable or paired hosts were discovered")
     if args.host_id is None:
@@ -398,7 +401,9 @@ def remote_agent_enroll(args: argparse.Namespace) -> dict[str, object]:
     code = (
         None
         if args.no_ssh
-        else remote_agent_ssh_enrollment_code(candidate, args.ssh_target)
+        else remote_agent_ssh_enrollment_code(
+            candidate, args.ssh_target, args.ssh_option
+        )
     )
     if code is None:
         try:
@@ -969,6 +974,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--ssh-target",
         metavar="[USER@]HOST",
         help="SSH destination used to obtain a managed host's enrollment code.",
+    )
+    enroll_parser.add_argument(
+        "--ssh-option",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Extra ssh -o option, such as Port=2222; repeatable.",
     )
     enroll_parser.add_argument(
         "--no-ssh",

@@ -384,7 +384,7 @@ class PeerService:
                 self._presence.forget(record.host_id)
                 self._candidates.pop(record.host_id, None)
             return
-        if existing is not None and existing.certificate is not None:
+        if not self._lan_record_may_replace(record.host_id):
             return
         if existing is None and (
             sum(
@@ -408,6 +408,24 @@ class PeerService:
         }
         for host_id in self._presence.expired(announced):
             self._candidates.pop(host_id, None)
+
+    def _lan_record_may_replace(self, host_id: str) -> bool:
+        """Whether an unauthenticated LAN record may replace the cached candidate.
+
+        A describe-verified candidate is only kept while its host is paired or
+        statically configured. After an unpair it is stale: it lacks the
+        pairing endpoint a fresh LAN record carries.
+        """
+
+        existing = self._candidates.get(host_id)
+        return (
+            existing is None
+            or existing.certificate is None
+            or (
+                self.state.relationship(host_id) is None
+                and all(peer.certificate.host_id != host_id for peer in self._static_peers)
+            )
+        )
 
     def _start_host_refresh(self) -> None:
         self._refresh_stop = threading.Event()
@@ -618,9 +636,7 @@ class PeerService:
         if timeout_seconds > 0 and discovery is not None:
             remaining = max(0, int(deadline - time.monotonic() + 0.999))
             for record in discovery.discover(remaining, direct_endpoints):
-                if self._candidates.get(record.host_id, None) is None or (
-                    self._candidates[record.host_id].certificate is None
-                ):
+                if self._lan_record_may_replace(record.host_id):
                     self._candidates[record.host_id] = _discovered_lan_peer(record)
                     self._presence.seen(
                         record.host_id, ttl_seconds=float(record.ttl_seconds)
@@ -1565,6 +1581,10 @@ class PeerService:
             raise BrokerError.not_found()
         if action == "remove":
             self.state.remove(peer_host_id=peer_host_id, actor_host_id=self.host_id)
+            # The describe-verified entry has no pairing endpoint, so it cannot
+            # be paired again; the next announcement or scan repopulates it.
+            self._candidates.pop(peer_host_id, None)
+            self._presence.forget(peer_host_id)
         else:
             status = "revoked" if action == "revoke" else "suspended"
             self.state.set_status(
@@ -1785,10 +1805,10 @@ def _discovered_peer(response: Mapping[str, Any], peer: StaticPeer) -> Discovere
         or not secrets.compare_digest(fingerprint, peer.certificate.fingerprint)
     ):
         raise BrokerError.unauthorized()
-    endpoint = response.get("endpoint", peer.endpoint.value)
-    if not isinstance(endpoint, str):
-        raise BrokerError.invalid_request()
-    endpoint = PeerEndpoint.parse(endpoint).value
+    # The host reports the address it is bound to, which is a wildcard such as
+    # 0.0.0.0 behind a port mapping. The endpoint we reached it on is the one
+    # that works.
+    endpoint = peer.endpoint.value
     capabilities = response["capabilities"]
     if (
         not isinstance(capabilities, list)

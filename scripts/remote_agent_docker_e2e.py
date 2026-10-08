@@ -85,13 +85,18 @@ def discovery_relay_server(args: argparse.Namespace) -> int:
         listener.listen()
         while True:
             connection, _ = listener.accept()
+            # Announcements are forwarded too and get no reply; drop the
+            # exchange instead of ending the relay.
             with connection, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
-                connection.settimeout(args.timeout)
-                payload = _read_frame(connection)
-                udp.settimeout(args.timeout)
-                udp.sendto(payload, (args.udp_host, args.udp_port))
-                response, _ = udp.recvfrom(MAX_DISCOVERY_PACKET_BYTES)
-                _write_frame(connection, response)
+                try:
+                    connection.settimeout(args.timeout)
+                    payload = _read_frame(connection)
+                    udp.settimeout(args.timeout)
+                    udp.sendto(payload, (args.udp_host, args.udp_port))
+                    response, _ = udp.recvfrom(MAX_DISCOVERY_PACKET_BYTES)
+                    _write_frame(connection, response)
+                except (OSError, RuntimeError):
+                    continue
 
 
 def discovery_relay_client(args: argparse.Namespace) -> int:
@@ -100,12 +105,15 @@ def discovery_relay_client(args: argparse.Namespace) -> int:
         listener.bind((args.udp_host, args.udp_port))
         while True:
             payload, address = listener.recvfrom(MAX_DISCOVERY_PACKET_BYTES)
-            with socket.create_connection(
-                (args.tcp_host, args.tcp_port), timeout=args.timeout
-            ) as connection:
-                connection.settimeout(args.timeout)
-                _write_frame(connection, payload)
-                listener.sendto(_read_frame(connection), address)
+            try:
+                with socket.create_connection(
+                    (args.tcp_host, args.tcp_port), timeout=args.timeout
+                ) as connection:
+                    connection.settimeout(args.timeout)
+                    _write_frame(connection, payload)
+                    listener.sendto(_read_frame(connection), address)
+            except (OSError, RuntimeError):
+                continue
 
 
 def completed_task_result_is_valid(value: object) -> bool:

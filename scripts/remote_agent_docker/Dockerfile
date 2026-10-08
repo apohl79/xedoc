@@ -15,7 +15,7 @@ RUN mkdir -p /opt/xedoc \
 FROM ubuntu:24.04
 
 RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bubblewrap ca-certificates procps tini \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bubblewrap ca-certificates openssh-server procps tini \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=unpack /opt/xedoc /opt/xedoc
