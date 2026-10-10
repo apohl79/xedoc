@@ -1284,24 +1284,38 @@ configure_remote_agent
 
 # Deploy statusline script
 STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"
-if [ -f "$STATUSLINE_DST" ]; then
-  step "Keeping existing statusline script at $STATUSLINE_DST"
-else
-  STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
-  if [ ! -f "$STATUSLINE_SRC" ] && [ -z "$LOCAL_ZIP" ]; then
-    STATUSLINE_SRC="$tmp_dir/statusline.sh"
-    STATUSLINE_URL="https://raw.githubusercontent.com/$RELEASE_REPO/$tag/scripts/statusline.sh"
-    step "Downloading statusline script"
-    download_file "$STATUSLINE_URL" "$STATUSLINE_SRC"
+STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
+if [ ! -f "$STATUSLINE_SRC" ] && [ -z "$LOCAL_ZIP" ]; then
+  STATUSLINE_SRC="$tmp_dir/statusline.sh"
+  STATUSLINE_URL="https://raw.githubusercontent.com/$RELEASE_REPO/$tag/scripts/statusline.sh"
+  step "Downloading statusline script"
+  download_file "$STATUSLINE_URL" "$STATUSLINE_SRC"
+fi
+if [ -f "$STATUSLINE_SRC" ]; then
+  if [ ! -f "$STATUSLINE_DST" ]; then
+    deploy_statusline=true
+  elif cmp -s "$STATUSLINE_SRC" "$STATUSLINE_DST"; then
+    step "Statusline script is up to date"
+    deploy_statusline=false
+  elif prompt_user_available; then
+    if prompt_yes_no "The statusline script changed. Update $STATUSLINE_DST?"; then
+      deploy_statusline=true
+    else
+      step "Keeping existing statusline script at $STATUSLINE_DST"
+      deploy_statusline=false
+    fi
+  else
+    step "Keeping existing statusline script at $STATUSLINE_DST"
+    deploy_statusline=false
   fi
-  if [ -f "$STATUSLINE_SRC" ]; then
+  if [ "$deploy_statusline" = true ]; then
     step "Deploying statusline script to $STATUSLINE_DST"
     mkdir -p "$XEDOC_HOME_DIR"
     cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
     chmod +x "$STATUSLINE_DST"
-  elif [ -n "$LOCAL_ZIP" ]; then
-    step "Skipping statusline script for local package"
   fi
+elif [ -n "$LOCAL_ZIP" ]; then
+  step "Skipping statusline script for local package"
 fi
 
 print_path_note
