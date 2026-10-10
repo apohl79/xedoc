@@ -44,6 +44,7 @@ BAZEL_RELEASE_CONFIGS = ("buildbuddy-generic-rbe", "xedoc-release")
 BAZEL_RELEASE_BUNDLE = "//xedoc-rs:xedoc-release-binaries"
 BAZEL_RELEASE_STARTUP_OPTIONS = ["--noexperimental_remote_repo_contents_cache"]
 BAZEL_RELEASE_CACHE_OPTIONS = ["--repo_contents_cache="]
+DEFAULT_BAZEL_REMOTE_JOBS = 30
 DEFAULT_RELEASE_TARGET = "macos-arm64"
 RELEASE_TARGET_ALIASES = {
     "macos-arm64": "aarch64-apple-darwin",
@@ -179,6 +180,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Maximum CPU resources for Bazel's local action scheduler. Does "
             "not change remote action concurrency."
+        ),
+    )
+    parser.add_argument(
+        "--bazel-remote-jobs",
+        type=positive_int_arg,
+        default=DEFAULT_BAZEL_REMOTE_JOBS,
+        help=(
+            "Maximum concurrent Bazel actions, including remote actions. "
+            "Lower values reduce local Bazel client thread pressure."
         ),
     )
     parser.add_argument(
@@ -369,6 +379,9 @@ def build_release(args: argparse.Namespace) -> None:
             bazel=getattr(args, "bazel", "bazel"),
             bazel_build_jobs=getattr(args, "bazel_build_jobs", None),
             bazel_max_heap_mb=getattr(args, "bazel_max_heap_mb", None),
+            bazel_remote_jobs=getattr(
+                args, "bazel_remote_jobs", DEFAULT_BAZEL_REMOTE_JOBS
+            ),
             source_root=source_root,
             targets=targets,
         )
@@ -653,6 +666,7 @@ def build_bazel_release_binaries_for_targets(
     bazel: str,
     bazel_build_jobs: int | None = None,
     bazel_max_heap_mb: int | None = None,
+    bazel_remote_jobs: int | None = None,
     source_root: Path,
     targets: list[str],
 ) -> dict[str, ReleaseBinaries]:
@@ -675,6 +689,9 @@ def build_bazel_release_binaries_for_targets(
         if bazel_build_jobs is not None
         else []
     )
+    remote_build_options = (
+        [f"--jobs={bazel_remote_jobs}"] if bazel_remote_jobs is not None else []
+    )
     options = [f"--config={config}" for config in BAZEL_RELEASE_CONFIGS]
     run(
         [
@@ -684,6 +701,7 @@ def build_bazel_release_binaries_for_targets(
             *BAZEL_RELEASE_CACHE_OPTIONS,
             *options,
             *local_build_options,
+            *remote_build_options,
             "--",
             *target_labels,
             *bwrap_labels.values(),
@@ -757,6 +775,7 @@ def build_bazel_release_binaries(
     bazel: str,
     bazel_build_jobs: int | None = None,
     bazel_max_heap_mb: int | None = None,
+    bazel_remote_jobs: int | None = None,
     source_root: Path,
     target: str,
 ) -> ReleaseBinaries:
@@ -774,6 +793,9 @@ def build_bazel_release_binaries(
         if bazel_build_jobs is not None
         else []
     )
+    remote_build_options = (
+        [f"--jobs={bazel_remote_jobs}"] if bazel_remote_jobs is not None else []
+    )
     run(
         [
             bazel,
@@ -782,6 +804,7 @@ def build_bazel_release_binaries(
             *BAZEL_RELEASE_CACHE_OPTIONS,
             *options,
             *local_build_options,
+            *remote_build_options,
             "--",
             BAZEL_RELEASE_BUNDLE,
         ],
