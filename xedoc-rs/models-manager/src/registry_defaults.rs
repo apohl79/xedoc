@@ -253,8 +253,8 @@ fn google_prices() -> BTreeMap<String, ModelTokenPrices> {
 
 fn deepseek_prices() -> BTreeMap<String, ModelTokenPrices> {
     [
-        ("deepseek-v4-pro", price(0.435, Some(0.003625), 0.87)),
-        ("deepseek-v4-flash", price(0.14, Some(0.0028), 0.28)),
+        ("deepseek-v4-pro", price(0.66, Some(0.022), 1.98)),
+        ("deepseek-v4-flash", price(0.15, Some(0.003), 0.60)),
     ]
     .into_iter()
     .map(|(model, prices)| (model.to_string(), prices))

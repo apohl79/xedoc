@@ -9,7 +9,6 @@ use crate::app_server_session::source_agent_path;
 use crate::app_server_session::thread_blocks_direct_input;
 use crate::city_lights::CityLightsStylize;
 use std::collections::HashSet;
-use xedoc_app_server_protocol::RemoteSessionStatus;
 use xedoc_config::types::ResumeCwdMode;
 
 #[derive(Clone, Copy)]
