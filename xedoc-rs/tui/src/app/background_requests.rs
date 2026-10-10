@@ -85,7 +85,27 @@ impl App {
         let request_handle = app_server.request_handle();
         let thread_id = self.current_displayed_thread_id();
         let app_event_tx = self.app_event_tx.clone();
+        let model_router_enabled = self
+            .config
+            .features
+            .enabled(xedoc_features::Feature::ModelRouter);
         tokio::spawn(async move {
+            if !model_router_enabled
+                && let Err(error) = crate::config_update::write_config_batch(
+                    request_handle.clone(),
+                    vec![crate::config_update::build_feature_enabled_edit(
+                        "model_router",
+                        true,
+                    )],
+                )
+                .await
+            {
+                app_event_tx.send(AppEvent::ModelRouterSettingsOpened {
+                    result: Err(error.to_string()),
+                    thread_id,
+                });
+                return;
+            }
             app_event_tx.send(AppEvent::ModelRouterSettingsOpened {
                 result: crate::config_update::open_model_router_settings(request_handle, thread_id)
                     .await
