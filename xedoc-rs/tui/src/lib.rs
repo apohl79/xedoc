@@ -122,7 +122,6 @@ mod managed_new_thread_defaults;
 pub(crate) use xedoc_tui_markdown as markdown_render;
 mod model_catalog;
 mod model_migration;
-pub(crate) use xedoc_tui_transcript::motion;
 mod multi_agents;
 mod notifications;
 pub(crate) mod onboarding;
