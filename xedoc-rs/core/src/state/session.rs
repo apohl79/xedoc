@@ -92,7 +92,15 @@ impl SessionCostTracker {
         let Some(prices) = prices else {
             return;
         };
-        let Some(model_prices) = prices.get(model_id) else {
+        let fallback_model_id = match model_id {
+            "deepseek-flash" | "deepseek-v4.1-flash" => Some("deepseek-v4-flash"),
+            "deepseek-v4.1-pro" => Some("deepseek-v4-pro"),
+            _ => None,
+        };
+        let Some(model_prices) = prices
+            .get(model_id)
+            .or_else(|| fallback_model_id.and_then(|model_id| prices.get(model_id)))
+        else {
             return;
         };
         self.has_priced_usage = true;
