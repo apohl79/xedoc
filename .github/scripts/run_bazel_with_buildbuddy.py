@@ -143,8 +143,16 @@ def bazel_args_with_remote_config(
     else:
         # `remote_config()` returns a configuration only when this key is present.
         api_key = env["BUILDBUDDY_API_KEY"]
+        try:
+            separator_idx = args.index("--")
+        except ValueError:
+            separator_idx = len(args)
         remote_args = [
-            f"--config={config}",
+            *(
+                []
+                if f"--config={config}" in args[:separator_idx]
+                else [f"--config={config}"]
+            ),
             f"--remote_header=x-buildbuddy-api-key={api_key}",
         ]
 
