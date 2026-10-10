@@ -95,7 +95,6 @@ common:xedoc-release --@rules_rust//rust/settings:lto=thin
 common:xedoc-release --@rules_rust//rust/settings:codegen_units=4
 common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Cdebuginfo=line-tables-only
 common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Csplit-debuginfo=off
-common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Cstrip=symbols
 
 # GitHub Actions CI configs.
 common:ci --remote_download_minimal
