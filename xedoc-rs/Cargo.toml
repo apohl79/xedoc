@@ -169,7 +169,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.51.4"
+version = "1.51.5"
 # Track the edition for all workspace crates in one place. Individual
 # crates can still override this value, but keeping it here means new
 # crates created with `cargo new -w ...` automatically inherit the 2024
@@ -625,12 +625,10 @@ strip = "symbols"
 
 [profile.release]
 lto = "thin"
-debug = "line-tables-only"
+debug = "none"
 split-debuginfo = "off"
 incremental = true
-# Keep release binaries symbolicateable until packaging has archived the
-# sidecar symbols and stripped the binaries.
-strip = false
+strip = "symbols"
 
 # Balance parallel release code generation against binary size.
 codegen-units = 4

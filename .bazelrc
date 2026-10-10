@@ -87,16 +87,15 @@ common:remote --jobs=800
 # Enable pipelined compilation since we are not bound by local CPU count.
 #common:remote --@rules_rust//rust/settings:pipelined_compilation
 
-# Signed Xedoc release builds preserve the Cargo release profile while
-# allowing the configured Bazel executor/cache to compile the target graph.
+# Signed Xedoc release builds produce stripped binaries.
 common:xedoc-release --compilation_mode=opt
-common:xedoc-release --strip=never
+common:xedoc-release --strip=always
 common:xedoc-release --remote_download_toplevel
 common:xedoc-release --@rules_rust//rust/settings:lto=thin
 common:xedoc-release --@rules_rust//rust/settings:codegen_units=4
 common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Cdebuginfo=line-tables-only
 common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Csplit-debuginfo=off
-common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Cstrip=none
+common:xedoc-release --@rules_rust//rust/settings:extra_rustc_flag=-Cstrip=symbols
 
 # GitHub Actions CI configs.
 common:ci --remote_download_minimal
