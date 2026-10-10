@@ -28,6 +28,7 @@ DEFAULT_REF = "main"
 DEFAULT_GITHUB_REPO = "apohl79/xedoc"
 DEFAULT_GITHUB_ACCOUNT = "apohl79"
 DEFAULT_BUILD_SYSTEM = "bazel"
+DEFAULT_BAZEL = str(REPO_ROOT / ".github" / "scripts" / "run_bazel_with_buildbuddy.py")
 CARGO_BUILD_JOBS_ENV_VAR = "XEDOC_CARGO_BUILD_JOBS"
 PLACEHOLDER_CODESIGN_IDENTITY = "Developer ID Application: YOUR NAME (TEAMID)"
 DEVELOPER_ID_APPLICATION_PREFIX = "Developer ID Application:"
@@ -160,8 +161,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--bazel",
-        default="bazel",
-        help="Bazel executable to use for the release build.",
+        default=DEFAULT_BAZEL,
+        help=(
+            "Bazel executable or wrapper to use for the release build. "
+            "Defaults to the repository BuildBuddy wrapper."
+        ),
     )
     parser.add_argument(
         "--build-system",
