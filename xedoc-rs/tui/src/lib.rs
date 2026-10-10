@@ -1291,33 +1291,22 @@ async fn run_ratatui_app(
 
     let should_show_trust_screen_flag =
         !uses_remote_workspace && should_show_trust_screen(&initial_config);
-    let login_status = if initial_config.model_provider.requires_openai_auth {
-        let Some(app_server) = app_server.as_mut() else {
-            unreachable!("app server should exist when auth is required");
+    let login_status = {
+        let Some(app_server_session) = app_server.as_mut() else {
+            unreachable!("app server should exist before the login status read");
         };
-        get_login_status(app_server).await?
-    } else {
-        LoginStatus::NotAuthenticated
+        get_login_status(app_server_session).await?
     };
-    let should_show_onboarding =
-        should_show_onboarding(login_status, &initial_config, should_show_trust_screen_flag);
+    let should_show_onboarding = should_show_trust_screen_flag;
 
     let config = if should_show_onboarding {
-        let show_login_screen = should_show_login_screen(login_status, &initial_config);
         let onboarding_result = run_onboarding_app(
             OnboardingScreenArgs {
-                show_login_screen,
                 show_trust_screen: should_show_trust_screen_flag,
-                login_status,
                 app_server_request_handle: app_server
                     .as_ref()
                     .map(AppServerSession::request_handle),
                 config: initial_config.clone(),
-            },
-            if show_login_screen {
-                app_server.as_mut()
-            } else {
-                None
             },
             &mut tui,
         )
@@ -1335,11 +1324,9 @@ async fn run_ratatui_app(
                 exit_reason: ExitReason::UserRequested,
             });
         }
-        // If the user made an explicit trust decision, or we showed the login flow, reload config
-        // so current process state reflects persisted trust/auth changes.
-        if onboarding_result.directory_trust_persisted
-            || (show_login_screen && !uses_remote_workspace)
-        {
+        // Reload config after an explicit trust decision so current process
+        // state reflects the persisted project configuration.
+        if onboarding_result.directory_trust_persisted {
             load_config_or_exit(
                 cli_kv_overrides.clone(),
                 overrides.clone(),
@@ -1654,6 +1641,7 @@ async fn run_ratatui_app(
         images,
         session_selection,
         should_show_trust_screen, // Proxy to: is it a first run in this directory?
+        login_status == LoginStatus::NotAuthenticated,
         app_server_target,
         state_db,
         environment_manager,
@@ -1848,28 +1836,6 @@ async fn load_bootstrap_config_or_exit(
 /// Determine if the user has decided whether to trust the current directory.
 fn should_show_trust_screen(config: &Config) -> bool {
     config.active_project.trust_level.is_none()
-}
-
-fn should_show_onboarding(
-    login_status: LoginStatus,
-    config: &Config,
-    show_trust_screen: bool,
-) -> bool {
-    if show_trust_screen {
-        return true;
-    }
-
-    should_show_login_screen(login_status, config)
-}
-
-fn should_show_login_screen(login_status: LoginStatus, config: &Config) -> bool {
-    // Only show the login screen for providers that actually require OpenAI auth
-    // (OpenAI or equivalents). For OSS/other providers, skip login entirely.
-    if !config.model_provider.requires_openai_auth {
-        return false;
-    }
-
-    login_status == LoginStatus::NotAuthenticated
 }
 
 #[cfg(test)]

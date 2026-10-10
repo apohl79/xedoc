@@ -789,6 +789,7 @@ impl App {
         initial_images: Vec<PathBuf>,
         session_selection: SessionSelection,
         is_first_run: bool,
+        open_model_manager_on_startup: bool,
         app_server_target: AppServerTarget,
         state_db: Option<StateDbHandle>,
         environment_manager: Arc<EnvironmentManager>,
@@ -1090,6 +1091,9 @@ See the Xedoc keymap documentation for supported actions and examples."
             app.chat_widget.open_hooks_browser(entry);
         }
         app.app_event_tx.send(AppEvent::RefreshProviderBudgetUsage);
+        if open_model_manager_on_startup {
+            app.app_event_tx.send(AppEvent::FetchModelManager);
+        }
         let initial_session_started_at = Instant::now();
         if let Some(started) = initial_started_thread {
             let resumed_session =

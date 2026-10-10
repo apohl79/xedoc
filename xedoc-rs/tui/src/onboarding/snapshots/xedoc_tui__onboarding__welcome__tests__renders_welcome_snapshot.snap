@@ -1,5 +1,0 @@
----
-source: tui/src/onboarding/welcome.rs
-expression: terminal.backend()
----
-  Welcome to Xedoc, your command-line coding agent.
