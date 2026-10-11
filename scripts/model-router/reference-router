@@ -5322,6 +5322,7 @@ def routing_decide(
         mode == "shadow-subagents" and scope == "subagent"
     )
     if not (enabled or shadow):
+        session_router_mode = session_mode(context)
         return {
             "kind": "route",
             "decision": {
@@ -5331,10 +5332,16 @@ def routing_decide(
                 "summary": None,
                 "feedback": {
                     "enabled": False,
-                    "classification": "router inactive",
+                    "classification": (
+                        f"router inactive (effective mode: {mode}; "
+                        f"session override: {session_router_mode or 'none'})"
+                    ),
                     "confidence": 0.0,
                     "confidenceMargin": 0.0,
-                    "routingCalculation": "router inactive for this turn",
+                    "routingCalculation": (
+                        f"router inactive for this turn (effective mode: {mode}; "
+                        f"session override: {session_router_mode or 'none'})"
+                    ),
                     "rankingScore": None,
                     "rankingMinimumClass": None,
                     "rankingMaximumClass": None,

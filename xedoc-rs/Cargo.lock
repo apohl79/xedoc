@@ -12292,7 +12292,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-cli"
-version = "1.51.9"
+version = "1.51.10"
 dependencies = [
  "anyhow",
  "app_test_support",
