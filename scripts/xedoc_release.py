@@ -19,6 +19,8 @@ from xedoc_package.archive import write_archive
 from xedoc_package.model_router_runtime import build_runtime_archive
 from xedoc_package.model_router_runtime import runtime_asset_name
 from xedoc_package.model_router_runtime import runtime_id
+from xedoc_package.model_router_runtime import runtime_reference
+from xedoc_package.model_router_runtime import runtime_release_tag
 from xedoc_package.model_router_runtime import RuntimeReference
 from xedoc_package.remote_agent_runtime import build_remote_agent_runtime
 from xedoc_package.remote_agent_runtime import sign_macos_runtime_binary
@@ -417,6 +419,7 @@ def build_release(args: argparse.Namespace) -> None:
             source_root=source_root,
             target=target,
             version=version,
+            github_env=github_env,
         )
         for target in targets
     ]
@@ -480,6 +483,7 @@ def package_release_target(
     source_root: Path,
     target: str,
     version: str,
+    github_env: dict[str, str] | None,
 ) -> ReleasePackage:
     spec = TARGET_SPECS[target]
     signing_script = source_root / ".github/scripts/macos-signing/sign_macos_code.sh"
@@ -496,7 +500,9 @@ def package_release_target(
     archive_outputs = [
         resolve_repo_path(path) for path in getattr(args, "archive_output", [])
     ] or [output_dir / version / f"xedoc-{target}-{version}.zip"]
-    runtime_id_value = runtime_id()
+    if target.endswith("apple-darwin") and codesign_identity is None:
+        raise RuntimeError(f"Missing codesign identity for macOS target {target}.")
+    runtime_id_value = runtime_id(target, codesign_identity)
     explicit_runtime_archive_output = getattr(
         args, "model_router_runtime_archive_output", None
     )
@@ -508,11 +514,34 @@ def package_release_target(
         / runtime_id_value
         / runtime_asset_name(runtime_id_value, target)
     )
-    runtime_reference = build_runtime_archive(
-        spec,
-        runtime_archive_output,
-        force=args.force,
-    )
+    sign_macho = None
+    if target.endswith("apple-darwin"):
+
+        def sign_macho(path: Path) -> None:
+            sign_macos_runtime_binary(
+                path, codesign_identity, signing_script, entitlements
+            )
+
+    runtime_reference = None
+    if not args.skip_github_release:
+        runtime_reference = download_published_runtime_archive(
+            gh=args.gh,
+            repo=args.github_repo,
+            archive_path=runtime_archive_output,
+            runtime_id_value=runtime_id_value,
+            target=target,
+            spec=spec,
+            signing_identity=codesign_identity,
+            env=github_env,
+        )
+    if runtime_reference is None:
+        runtime_reference = build_runtime_archive(
+            spec,
+            runtime_archive_output,
+            force=args.force,
+            signing_identity=codesign_identity,
+            sign_macho=sign_macho,
+        )
     remote_agent_runtime = None
     remote_agent_runtime_output = None
     if not spec.is_windows:
@@ -524,18 +553,6 @@ def package_release_target(
             if getattr(args, "remote_agent_runtime_dir", None) is not None
             else None
         )
-        sign_macho = None
-        if target.endswith("apple-darwin"):
-            if codesign_identity is None:
-                raise RuntimeError(
-                    f"Missing codesign identity for macOS target {target}."
-                )
-
-            def sign_macho(path: Path) -> None:
-                sign_macos_runtime_binary(
-                    path, codesign_identity, signing_script, entitlements
-                )
-
         remote_agent_runtime = build_remote_agent_runtime(
             spec,
             remote_agent_runtime_output,
@@ -1611,6 +1628,60 @@ def publish_github_release(
             cwd=REPO_ROOT,
             env=env,
         )
+
+
+def download_published_runtime_archive(
+    *,
+    gh: str,
+    repo: str,
+    archive_path: Path,
+    runtime_id_value: str,
+    target: str,
+    spec: TargetSpec,
+    signing_identity: str | None,
+    env: dict[str, str] | None = None,
+) -> RuntimeReference | None:
+    tag = runtime_release_tag(runtime_id_value)
+    if not github_release_exists(gh=gh, repo=repo, tag=tag, env=env):
+        return None
+
+    asset_name = runtime_asset_name(runtime_id_value, target)
+    expected_digest = github_release_asset_digest(
+        gh=gh,
+        repo=repo,
+        tag=tag,
+        asset_name=asset_name,
+        env=env,
+    )
+    if expected_digest is None:
+        return None
+
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            gh,
+            "release",
+            "download",
+            tag,
+            "--repo",
+            repo,
+            "--pattern",
+            asset_name,
+            "--dir",
+            str(archive_path.parent),
+            "--clobber",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+    )
+    reference = runtime_reference(spec, archive_path, signing_identity)
+    if reference.sha256 != expected_digest:
+        raise RuntimeError(
+            f"Downloaded immutable runtime {asset_name} digest mismatch: "
+            f"expected {expected_digest}, got {reference.sha256}."
+        )
+    print(f"Reusing immutable model-router runtime release {tag} in {repo}.")
+    return reference
 
 
 def publish_immutable_runtime_release(

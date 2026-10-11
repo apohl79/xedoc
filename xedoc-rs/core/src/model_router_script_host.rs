@@ -953,10 +953,26 @@ fn bundled_router_argv() -> Option<Vec<OsString>> {
     InstallContext::current()
         .bundled_resource(BUNDLED_ROUTER_SCRIPT_PATH)
         .map(|path| {
-            vec![
-                OsString::from(bundled_router_python_command()),
-                path.into_path_buf().into_os_string(),
-            ]
+            let script_path = path.into_path_buf();
+            let package_root = script_path
+                .parent()
+                .and_then(std::path::Path::parent)
+                .and_then(std::path::Path::parent);
+            let bundled_python = package_root.map(|root| {
+                root.join("xedoc-resources")
+                    .join("remote-agent")
+                    .join("runtime")
+                    .join("python")
+                    .join("bin")
+                    .join("python3")
+            });
+            let python = bundled_python
+                .filter(|python| python.is_file())
+                .map_or_else(
+                    || OsString::from(bundled_router_python_command()),
+                    |python| python.into_os_string(),
+                );
+            vec![python, script_path.into_os_string()]
         })
 }
 

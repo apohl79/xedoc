@@ -3126,11 +3126,24 @@ def explicit_continuation_prompt(prompt):
 def semantic_embeddings(texts):
     if not RUNTIME_DIR.is_dir():
         raise RuntimeError("semantic router runtime is not installed")
-    python = (
+    router_python = (
         RUNTIME_DIR / "python" / "python.exe"
         if os.name == "nt"
         else RUNTIME_DIR / "python" / "bin" / "python3"
     )
+    if os.name != "nt":
+        shared_python = (
+            Path(__file__).resolve().parents[2]
+            / "xedoc-resources"
+            / "remote-agent"
+            / "runtime"
+            / "python"
+            / "bin"
+            / "python3"
+        )
+        if shared_python.is_file():
+            router_python = shared_python
+    python = router_python
     if not python.is_file():
         raise RuntimeError("semantic router Python runtime is missing")
     state_path = RUNTIME_DIR.resolve().parent / "embedder-daemon.json"

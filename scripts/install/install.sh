@@ -202,7 +202,7 @@ restart_model_router_daemon() {
     state_path="$legacy_state_path"
   fi
   embedder="$daemon_release_dir/xedoc-resources/model-router/reference-router-embedder.py"
-  python="$(runtime_python "$runtime_dir")"
+  python="$(runtime_python "$daemon_release_dir" "$runtime_dir")"
 
   if ! embedder_daemon_is_running "$state_path"; then
     [ -f "$state_path" ] && rm -f "$state_path"
@@ -954,7 +954,14 @@ validate_runtime_metadata() {
 }
 
 runtime_python() {
-  runtime_dir="$1"
+  release_dir="$1"
+  runtime_dir="$2"
+
+  bundled_python="$release_dir/xedoc-resources/remote-agent/runtime/python/bin/python3"
+  if [ -x "$bundled_python" ]; then
+    printf '%s\n' "$bundled_python"
+    return
+  fi
 
   if [ -x "$runtime_dir/python/python.exe" ]; then
     printf '%s\n' "$runtime_dir/python/python.exe"
@@ -1003,7 +1010,7 @@ warm_router_runtime() {
   runtime_state_dir="$(dirname "$runtime_real_dir")"
   state_path="$runtime_state_dir/embedder-daemon.json"
   embedder="$release_dir/xedoc-resources/model-router/reference-router-embedder.py"
-  python="$(runtime_python "$runtime_dir")"
+  python="$(runtime_python "$release_dir" "$runtime_dir")"
 
   [ -x "$python" ] && [ -f "$embedder" ] || return
   step "Starting model-router semantic runtime"

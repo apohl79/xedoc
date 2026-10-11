@@ -9,14 +9,14 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
-from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .targets import TargetSpec
 
 
-RUNTIME_SERIES = "r2"
+RUNTIME_SERIES = "r3"
 RUNTIME_MANIFEST = "model-router-runtime.json"
 PYTHON_RELEASE = "20260814"
 PYTHON_VERSION = "3.12.14"
@@ -54,10 +54,10 @@ MODEL_FILES = {
 
 @dataclass(frozen=True)
 class RuntimeDistribution:
-    python_url: str
-    python_sha256: str
     pip_platform: str
     onnxruntime_version: str
+    python_url: str | None = None
+    python_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,72 +76,59 @@ class RuntimeReference:
         }
 
 
-def python_distribution(
-    target: str,
-    sha256: str,
-    pip_platform: str,
-    onnxruntime_version: str,
+def runtime_distribution(
+    pip_platform: str, onnxruntime_version: str
 ) -> RuntimeDistribution:
-    filename = (
-        f"cpython-{PYTHON_VERSION}+{PYTHON_RELEASE}-{target}"
-        "-install_only_stripped.tar.gz"
-    )
     return RuntimeDistribution(
-        python_url=(
-            "https://github.com/astral-sh/python-build-standalone/releases/download/"
-            f"{PYTHON_RELEASE}/{filename.replace('+', '%2B')}"
-        ),
-        python_sha256=sha256,
         pip_platform=pip_platform,
         onnxruntime_version=onnxruntime_version,
     )
 
 
+def windows_distribution(
+    target: str, sha256: str, pip_platform: str
+) -> RuntimeDistribution:
+    filename = (
+        f"cpython-{PYTHON_VERSION}+{PYTHON_RELEASE}-{target}"
+        "-install_only_stripped.tar.gz"
+    )
+    distribution = runtime_distribution(pip_platform, "1.30.0")
+    return RuntimeDistribution(
+        pip_platform=distribution.pip_platform,
+        onnxruntime_version=distribution.onnxruntime_version,
+        python_url=(
+            "https://github.com/astral-sh/python-build-standalone/releases/download/"
+            f"{PYTHON_RELEASE}/{filename.replace('+', '%2B')}"
+        ),
+        python_sha256=sha256,
+    )
+
+
 RUNTIME_DISTRIBUTIONS: dict[str, RuntimeDistribution] = {
-    "aarch64-apple-darwin": python_distribution(
-        "aarch64-apple-darwin",
-        "dd5b76ab11451a4a4367c17c61d944dded56b425396b07f102922a7ebef7d55f",
-        "macosx_11_0_arm64",
-        "1.19.2",
+    "aarch64-apple-darwin": runtime_distribution("macosx_11_0_arm64", "1.19.2"),
+    "x86_64-apple-darwin": runtime_distribution("macosx_11_0_x86_64", "1.19.2"),
+    "aarch64-unknown-linux-gnu": runtime_distribution(
+        "manylinux_2_27_aarch64", "1.19.2"
     ),
-    "x86_64-apple-darwin": python_distribution(
-        "x86_64-apple-darwin",
-        "aec265e3cddaccdb2a3d783331596351b24d4a63c97af0a38f75f643c9451de9",
-        "macosx_11_0_x86_64",
-        "1.19.2",
-    ),
-    "aarch64-unknown-linux-gnu": python_distribution(
-        "aarch64-unknown-linux-gnu",
-        "2d8e17dfd732102cfeb18e0e1fa6769b24caa034e159981129590fe409c7157a",
-        "manylinux_2_27_aarch64",
-        "1.19.2",
-    ),
-    "x86_64-unknown-linux-gnu": python_distribution(
-        "x86_64-unknown-linux-gnu",
-        "5acfa3e9ba26b51ae161c83aff278da915b590d22373a424b2ba55b8afe91fcc",
-        "manylinux_2_27_x86_64",
-        "1.19.2",
-    ),
-    "aarch64-pc-windows-msvc": python_distribution(
+    "x86_64-unknown-linux-gnu": runtime_distribution("manylinux_2_27_x86_64", "1.19.2"),
+    "aarch64-pc-windows-msvc": windows_distribution(
         "aarch64-pc-windows-msvc",
         "1e1de8b5d0df73b965aa72f0c27d5c617a5d7256ce6d205228a0f9638bf6df21",
         "win_arm64",
-        "1.30.0",
     ),
-    "x86_64-pc-windows-msvc": python_distribution(
+    "x86_64-pc-windows-msvc": windows_distribution(
         "x86_64-pc-windows-msvc",
         "89f18f6932917163b74339ebcec2645c8e47ae7f1c5f2ac37f2b4f4cf3beb647",
         "win_amd64",
-        "1.30.0",
     ),
 }
 
 
-def runtime_id() -> str:
-    """Return the logical runtime identity shared by every supported target."""
+def runtime_id(target: str, signing_identity: str | None = None) -> str:
+    """Return the runtime identity for a target and its signing configuration."""
     digest = hashlib.sha256(
         json.dumps(
-            runtime_identity_inputs(),
+            runtime_identity_inputs(target, signing_identity),
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
@@ -149,7 +136,9 @@ def runtime_id() -> str:
     return f"{RUNTIME_SERIES}-sha256-{digest}"
 
 
-def runtime_identity_inputs() -> dict[str, object]:
+def runtime_identity_inputs(
+    target: str, signing_identity: str | None = None
+) -> dict[str, object]:
     """Return every immutable input that defines a router runtime revision."""
     if not SEMANTIC_POLICY_SOURCE.is_file():
         raise RuntimeError(
@@ -157,14 +146,19 @@ def runtime_identity_inputs() -> dict[str, object]:
         )
     return {
         "runtimeSeries": RUNTIME_SERIES,
-        "python": {
-            "release": PYTHON_RELEASE,
-            "version": PYTHON_VERSION,
-            "distributions": {
-                target: asdict(distribution)
-                for target, distribution in sorted(RUNTIME_DISTRIBUTIONS.items())
-            },
+        "sharedPythonVersion": PYTHON_VERSION,
+        "targets": {
+            target: {
+                "pipPlatform": distribution.pip_platform,
+                "onnxruntimeVersion": distribution.onnxruntime_version,
+                "pythonUrl": distribution.python_url,
+                "pythonSha256": distribution.python_sha256,
+            }
+            for target, distribution in sorted(RUNTIME_DISTRIBUTIONS.items())
         },
+        "macosSigningIdentity": (
+            signing_identity if target.endswith("apple-darwin") else None
+        ),
         "wheels": load_wheel_lock(),
         "model": {
             "name": MODEL_NAME,
@@ -185,8 +179,12 @@ def runtime_asset_name(runtime_id_value: str, target: str) -> str:
     return f"xedoc-model-router-runtime-{target}-{runtime_id_value}.zip"
 
 
-def runtime_reference(spec: TargetSpec, archive_path: Path) -> RuntimeReference:
-    runtime_id_value = runtime_id()
+def runtime_reference(
+    spec: TargetSpec,
+    archive_path: Path,
+    signing_identity: str | None = None,
+) -> RuntimeReference:
+    runtime_id_value = runtime_id(spec.target, signing_identity)
     return RuntimeReference(
         runtime_id=runtime_id_value,
         asset_name=runtime_asset_name(runtime_id_value, spec.target),
@@ -200,6 +198,8 @@ def build_runtime_archive(
     destination: Path,
     *,
     force: bool,
+    signing_identity: str | None = None,
+    sign_macho: Callable[[Path], None] | None = None,
 ) -> RuntimeReference:
     """Build one reproducible, checksummed target runtime archive."""
     try:
@@ -209,7 +209,7 @@ def build_runtime_archive(
             f"No semantic model-router runtime is available for {spec.target}."
         ) from error
 
-    runtime_id_value = runtime_id()
+    runtime_id_value = runtime_id(spec.target, signing_identity)
     expected_asset_name = runtime_asset_name(runtime_id_value, spec.target)
     if destination.name != expected_asset_name:
         raise RuntimeError(
@@ -220,15 +220,28 @@ def build_runtime_archive(
     with tempfile.TemporaryDirectory(prefix="xedoc-model-router-runtime-") as temp:
         root = Path(temp) / "runtime"
         root.mkdir()
-        archive = Path(temp) / "python.tar.gz"
-        download_file(distribution.python_url, archive, distribution.python_sha256)
-        extract_tar(archive, root)
+        if (
+            distribution.python_url is not None
+            and distribution.python_sha256 is not None
+        ):
+            archive = Path(temp) / "python.tar.gz"
+            download_file(distribution.python_url, archive, distribution.python_sha256)
+            extract_tar(archive, root)
         wheel_set = install_wheels(
             root=root,
             target=spec.target,
             distribution=distribution,
             temp_dir=Path(temp),
         )
+        if spec.target.endswith("apple-darwin"):
+            if sign_macho is None:
+                raise RuntimeError(
+                    "A macOS signing callback is required for model-router "
+                    "runtime extensions."
+                )
+            for path in sorted((root / "site-packages").rglob("*")):
+                if path.is_file() and path.suffix in {".dylib", ".so"}:
+                    sign_macho(path)
         download_model(root / "arctic-embed-xs")
         copy_classifier_weights(root)
         write_manifest(
@@ -240,7 +253,7 @@ def build_runtime_archive(
         )
         write_runtime_archive(root, destination, force=force)
 
-    return runtime_reference(spec, destination)
+    return runtime_reference(spec, destination, signing_identity)
 
 
 def install_wheels(
@@ -423,33 +436,31 @@ def write_manifest(
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+    manifest = {
+        "runtimeId": runtime_id_value,
+        "target": target,
+        "sharedPythonVersion": PYTHON_VERSION,
+        "wheelSet": wheel_set,
+        "installedDistributions": installed_wheels(root),
+        "model": {
+            "name": MODEL_NAME,
+            "files": MODEL_FILES,
+        },
+        "classifierWeights": {
+            "path": SEMANTIC_POLICY_PATH.as_posix(),
+            "sha256": sha256_file(root / SEMANTIC_POLICY_PATH),
+        },
+        "files": checksums,
+    }
+    if distribution.python_url is not None and distribution.python_sha256 is not None:
+        manifest["pythonDistribution"] = {
+            "release": PYTHON_RELEASE,
+            "version": PYTHON_VERSION,
+            "url": distribution.python_url,
+            "sha256": distribution.python_sha256,
+        }
     (root / RUNTIME_MANIFEST).write_text(
-        json.dumps(
-            {
-                "runtimeId": runtime_id_value,
-                "target": target,
-                "pythonDistribution": {
-                    "release": PYTHON_RELEASE,
-                    "version": PYTHON_VERSION,
-                    "url": distribution.python_url,
-                    "sha256": distribution.python_sha256,
-                },
-                "wheelSet": wheel_set,
-                "installedDistributions": installed_wheels(root),
-                "model": {
-                    "name": MODEL_NAME,
-                    "files": MODEL_FILES,
-                },
-                "classifierWeights": {
-                    "path": SEMANTIC_POLICY_PATH.as_posix(),
-                    "sha256": sha256_file(root / SEMANTIC_POLICY_PATH),
-                },
-                "files": checksums,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
