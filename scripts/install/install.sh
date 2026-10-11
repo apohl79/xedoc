@@ -15,8 +15,6 @@ REMOTE_AGENT_BIN_PATH="$BIN_DIR/xedoc-remote-agentd"
 XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
 NON_INTERACTIVE="${XEDOC_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
-APP_SERVER_START_METHOD_PATH="$XEDOC_HOME_DIR/app-server-daemon/start-method"
-ZSHRC_APP_SERVER_CHOICE_PATH="$XEDOC_HOME_DIR/app-server-daemon/zshrc-start"
 LAUNCH_AGENT_PATH="$HOME/Library/LaunchAgents/com.xedoc.app-server.plist"
 STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
@@ -342,14 +340,6 @@ configure_app_server_startup() {
   fi
 
   if [ -z "$choice" ]; then
-    legacy_choice="$(sed -n '1p' "$ZSHRC_APP_SERVER_CHOICE_PATH" 2>/dev/null || true)"
-    case "$legacy_choice" in
-      enabled) choice="zshrc" ;;
-      disabled) choice="none" ;;
-    esac
-  fi
-
-  if [ -z "$choice" ]; then
     if ! prompt_user_available; then
       return
     fi
@@ -376,14 +366,10 @@ configure_app_server_startup() {
       return
     fi
     write_launch_agent
-    mkdir -p "$(dirname "$APP_SERVER_START_METHOD_PATH")"
-    printf '%s\n' "launchagent" >"$APP_SERVER_START_METHOD_PATH"
     zshrc_app_server_action="launchagent"
     return
   fi
   if [ "$choice" != "zshrc" ]; then
-    mkdir -p "$(dirname "$APP_SERVER_START_METHOD_PATH")"
-    printf '%s\n' "none" >"$APP_SERVER_START_METHOD_PATH"
     zshrc_app_server_action="disabled"
     return
   fi
