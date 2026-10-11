@@ -15,7 +15,9 @@ REMOTE_AGENT_BIN_PATH="$BIN_DIR/xedoc-remote-agentd"
 XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
 NON_INTERACTIVE="${XEDOC_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
+APP_SERVER_START_METHOD_PATH="$XEDOC_HOME_DIR/app-server-daemon/start-method"
 ZSHRC_APP_SERVER_CHOICE_PATH="$XEDOC_HOME_DIR/app-server-daemon/zshrc-start"
+LAUNCH_AGENT_PATH="$HOME/Library/LaunchAgents/com.xedoc.app-server.plist"
 STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
@@ -236,27 +238,6 @@ restart_model_router_daemon() {
   fi
 }
 
-read_zshrc_app_server_choice() {
-  if [ ! -f "$ZSHRC_APP_SERVER_CHOICE_PATH" ]; then
-    return 1
-  fi
-
-  choice="$(sed -n '1p' "$ZSHRC_APP_SERVER_CHOICE_PATH" 2>/dev/null || true)"
-  case "$choice" in
-    enabled | disabled)
-      printf '%s\n' "$choice"
-      return 0
-      ;;
-  esac
-
-  return 1
-}
-
-write_zshrc_app_server_choice() {
-  mkdir -p "$(dirname "$ZSHRC_APP_SERVER_CHOICE_PATH")"
-  printf '%s\n' "$1" >"$ZSHRC_APP_SERVER_CHOICE_PATH"
-}
-
 rewrite_zshrc_app_server_block() {
   zshrc_begin_marker="# >>> Xedoc app-server installer >>>"
   zshrc_end_marker="# <<< Xedoc app-server installer <<<"
@@ -314,33 +295,99 @@ append_zshrc_app_server_block() {
   } >>"$ZSHRC_PATH"
 }
 
-configure_zshrc_app_server() {
+write_launch_agent() {
+  mkdir -p "$(dirname "$LAUNCH_AGENT_PATH")"
+  launch_agent_binary_path="$(
+    printf '%s\n' "$BIN_PATH" |
+      sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g"
+  )"
+  cat >"$LAUNCH_AGENT_PATH" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.xedoc.app-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$launch_agent_binary_path</string>
+    <string>app-server</string>
+    <string>daemon</string>
+    <string>start</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+</dict>
+</plist>
+EOF
+  launchctl bootout "gui/$(id -u)" "$LAUNCH_AGENT_PATH" >/dev/null 2>&1 || true
+  launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENT_PATH" >/dev/null 2>&1 ||
+    printf 'WARNING: Could not load the Xedoc app-server LaunchAgent. Load it with: launchctl bootstrap gui/$(id -u) "%s"\n' "$LAUNCH_AGENT_PATH" >&2
+}
+
+configure_app_server_startup() {
   zshrc_app_server_action="skipped"
-  choice="$(read_zshrc_app_server_choice || true)"
+  choice=""
 
-  case "$choice" in
-    enabled | disabled)
-      ;;
-    *)
-      if ! prompt_user_available; then
-        return
-      fi
-      if prompt_yes_no "Start the Xedoc app-server automatically from ~/.zshrc?"; then
-        choice="enabled"
+  zshrc_begin_marker="# >>> Xedoc app-server installer >>>"
+  zshrc_end_marker="# <<< Xedoc app-server installer <<<"
+  if [ -f "$LAUNCH_AGENT_PATH" ]; then
+    choice="launchagent"
+  elif [ -f "$ZSHRC_PATH" ] &&
+    grep -F "$zshrc_begin_marker" "$ZSHRC_PATH" >/dev/null 2>&1 &&
+    grep -F "$zshrc_end_marker" "$ZSHRC_PATH" >/dev/null 2>&1; then
+    choice="zshrc"
+  fi
+
+  if [ -z "$choice" ]; then
+    legacy_choice="$(sed -n '1p' "$ZSHRC_APP_SERVER_CHOICE_PATH" 2>/dev/null || true)"
+    case "$legacy_choice" in
+      enabled) choice="zshrc" ;;
+      disabled) choice="none" ;;
+    esac
+  fi
+
+  if [ -z "$choice" ]; then
+    if ! prompt_user_available; then
+      return
+    fi
+    while [ -z "$choice" ]; do
+      printf 'Choose Xedoc app-server auto-start: [l]aunchagent, [z]shrc, [n]one: ' >/dev/tty 2>/dev/null ||
+        printf 'Choose Xedoc app-server auto-start: [l]aunchagent, [z]shrc, [n]one: '
+      if ( : </dev/tty ) 2>/dev/null; then
+        IFS= read -r answer </dev/tty || return
       else
-        choice="disabled"
+        IFS= read -r answer || return
       fi
-      write_zshrc_app_server_choice "$choice"
-      ;;
-  esac
+      case "$answer" in
+        l | L | launchagent | LaunchAgent) choice="launchagent" ;;
+        z | Z | zshrc | ZSHRC) choice="zshrc" ;;
+        n | N | none | NONE) choice="none" ;;
+        *) printf 'Enter l, z, or n.\n' >/dev/tty 2>/dev/null || printf 'Enter l, z, or n.\n' ;;
+      esac
+    done
+  fi
 
-  if [ "$choice" = "disabled" ]; then
+  if [ "$choice" = "launchagent" ]; then
+    if [ "$(uname -s)" != "Darwin" ]; then
+      step "LaunchAgents are only available on macOS; app-server auto-start was not configured"
+      return
+    fi
+    write_launch_agent
+    mkdir -p "$(dirname "$APP_SERVER_START_METHOD_PATH")"
+    printf '%s\n' "launchagent" >"$APP_SERVER_START_METHOD_PATH"
+    zshrc_app_server_action="launchagent"
+    return
+  fi
+  if [ "$choice" != "zshrc" ]; then
+    mkdir -p "$(dirname "$APP_SERVER_START_METHOD_PATH")"
+    printf '%s\n' "none" >"$APP_SERVER_START_METHOD_PATH"
     zshrc_app_server_action="disabled"
     return
   fi
 
-  zshrc_begin_marker="# >>> Xedoc app-server installer >>>"
-  zshrc_end_marker="# <<< Xedoc app-server installer <<<"
   zshrc_start_line="  \"$BIN_PATH\" app-server daemon start >/dev/null 2>&1 &!"
   if [ -f "$ZSHRC_PATH" ] &&
     grep -F "$zshrc_begin_marker" "$ZSHRC_PATH" >/dev/null 2>&1 &&
@@ -1121,6 +1168,9 @@ print_path_note() {
 
 print_zshrc_app_server_instructions() {
   case "$zshrc_app_server_action" in
+    launchagent)
+      step "App-server startup is configured with $LAUNCH_AGENT_PATH"
+      ;;
     added)
       step "App-server startup was added to $ZSHRC_PATH"
       ;;
@@ -1284,7 +1334,7 @@ else
   update_visible_command
   "$BIN_PATH" --version >/dev/null
   restart_running_app_server
-  configure_zshrc_app_server
+  configure_app_server_startup
 fi
 
 configure_remote_agent
