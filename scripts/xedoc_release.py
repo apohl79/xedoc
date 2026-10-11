@@ -224,11 +224,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--notarytool-keychain-profile",
-        default=os.environ.get("APPLE_NOTARYTOOL_KEYCHAIN_PROFILE"),
-        help=(
-            "Keychain profile for xcrun notarytool. Can also be set with "
-            "APPLE_NOTARYTOOL_KEYCHAIN_PROFILE."
-        ),
+        help="Keychain profile for xcrun notarytool.",
     )
     parser.add_argument(
         "--github-repo",

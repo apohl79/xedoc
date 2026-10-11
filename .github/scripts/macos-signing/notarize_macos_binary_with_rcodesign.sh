@@ -176,14 +176,13 @@ discover_notarytool_profiles_from_keychain() {
 
 if [[ "$notarization_backend" == "notarytool" ]]; then
   add_notarytool_profile_candidate "$notarytool_profile_arg"
-  add_notarytool_profile_candidate "${APPLE_NOTARYTOOL_KEYCHAIN_PROFILE:-}"
+  while IFS= read -r candidate; do
+    add_notarytool_profile_candidate "$candidate"
+  done < <(discover_notarytool_profiles_from_keychain)
   add_notarytool_profile_candidate "${NOTARYTOOL_PROFILE:-}"
   for candidate in ${NOTARYTOOL_PROFILE_CANDIDATES//,/ }; do
     add_notarytool_profile_candidate "$candidate"
   done
-  while IFS= read -r candidate; do
-    add_notarytool_profile_candidate "$candidate"
-  done < <(discover_notarytool_profiles_from_keychain)
   add_notarytool_profile_candidate "app-notary"
   add_notarytool_profile_candidate "xedoc-notary"
   add_notarytool_profile_candidate "xedoc"
@@ -199,7 +198,7 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
     fi
   done
   if [[ -z "$notarytool_profile" ]]; then
-    echo "No usable notarytool keychain profile was found; pass --notarytool-keychain-profile or set APPLE_NOTARYTOOL_KEYCHAIN_PROFILE." >&2
+    echo "No usable notarytool keychain profile was found." >&2
     exit 1
   fi
 fi
