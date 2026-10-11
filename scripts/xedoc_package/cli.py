@@ -11,10 +11,12 @@ from .layout import prepare_package_dir
 from .layout import validate_package_dir
 from .model_router_runtime import RuntimeReference
 from .remote_agent_runtime import build_remote_agent_runtime
+from .remote_agent_runtime import sign_macos_runtime_binary
 from .ripgrep import resolve_rg_bin
 from .targets import PACKAGE_VARIANTS
 from .targets import TARGET_SPECS
 from .targets import PackageInputs
+from .targets import REPO_ROOT
 from .targets import default_target
 from .targets import resolve_input_path
 from .version import read_workspace_version
@@ -132,6 +134,10 @@ def parse_args() -> argparse.Namespace:
             "the package builder downloads and verifies the declared target runtime."
         ),
     )
+    parser.add_argument(
+        "--macos-codesign-identity",
+        help="Sign the packaged macOS remote-agent runtime before hashing it.",
+    )
     return parser.parse_args()
 
 
@@ -163,6 +169,8 @@ def main() -> int:
         ),
     )
     version = args.version or read_workspace_version()
+    if args.macos_codesign_identity and not spec.target.endswith("apple-darwin"):
+        raise RuntimeError("--macos-codesign-identity requires a macOS target")
     model_router_runtime = runtime_reference_from_args(args)
     prepare_package_dir(package_dir, force=args.force)
     remote_agent_runtime = (
@@ -176,6 +184,19 @@ def main() -> int:
                 args.remote_agent_runtime_dir.resolve()
                 if args.remote_agent_runtime_dir is not None
                 else None
+            ),
+            sign_macho=(
+                lambda path: (
+                    sign_macos_runtime_binary(
+                        path,
+                        args.macos_codesign_identity,
+                        REPO_ROOT / ".github/scripts/macos-signing/sign_macos_code.sh",
+                        REPO_ROOT
+                        / ".github/scripts/macos-signing/xedoc.entitlements.plist",
+                    )
+                    if args.macos_codesign_identity
+                    else None
+                )
             ),
         )
     )

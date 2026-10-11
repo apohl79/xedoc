@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 
 from xedoc_package.targets import TARGET_SPECS
@@ -20,6 +21,7 @@ from xedoc_package.model_router_runtime import runtime_asset_name
 from xedoc_package.model_router_runtime import runtime_id
 from xedoc_package.model_router_runtime import RuntimeReference
 from xedoc_package.remote_agent_runtime import build_remote_agent_runtime
+from xedoc_package.remote_agent_runtime import sign_macos_runtime_binary
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -216,7 +218,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--notarize",
         action="store_true",
-        help="Submit the signed packaged macOS binary to Apple notarization.",
+        help="Submit the signed macOS package ZIP to Apple notarization.",
     )
     parser.add_argument(
         "--github-repo",
@@ -522,11 +524,24 @@ def package_release_target(
             if getattr(args, "remote_agent_runtime_dir", None) is not None
             else None
         )
+        sign_macho = None
+        if target.endswith("apple-darwin"):
+            if codesign_identity is None:
+                raise RuntimeError(
+                    f"Missing codesign identity for macOS target {target}."
+                )
+
+            def sign_macho(path: Path) -> None:
+                sign_macos_runtime_binary(
+                    path, codesign_identity, signing_script, entitlements
+                )
+
         remote_agent_runtime = build_remote_agent_runtime(
             spec,
             remote_agent_runtime_output,
             force=args.force,
             source=remote_agent_runtime_source,
+            sign_macho=sign_macho,
         )
 
     package_args = [
@@ -558,6 +573,8 @@ def package_release_target(
         package_args.extend(
             ["--remote-agent-runtime-dir", str(remote_agent_runtime.root.parent)]
         )
+        if target.endswith("apple-darwin"):
+            package_args.extend(["--macos-codesign-identity", codesign_identity])
     if release_binaries.bwrap is not None:
         package_args.extend(["--bwrap-bin", str(release_binaries.bwrap)])
     if args.force:
@@ -586,22 +603,49 @@ def package_release_target(
                 str(packaged_entrypoint),
             ]
         )
-        if getattr(args, "notarize", False) and not args.skip_github_release:
+        packaged_rg = package_dir / "xedoc-path" / spec.rg_name
+        run(
+            [
+                str(signing_script),
+                "--target",
+                str(packaged_rg),
+                "--identity",
+                codesign_identity,
+                "--options",
+                "runtime",
+                "--timestamp",
+                "true",
+            ],
+            cwd=source_root,
+        )
+        run(["codesign", "--verify", "--strict", str(packaged_rg)])
+    for archive_output in archive_outputs:
+        write_archive(package_dir, archive_output, force=args.force)
+    if (
+        target.endswith("apple-darwin")
+        and getattr(args, "notarize", False)
+        and not args.skip_github_release
+    ):
+        notarization_zip = next(
+            (path for path in archive_outputs if path.suffix == ".zip"), None
+        )
+        with tempfile.TemporaryDirectory(prefix="xedoc-notarization-") as temp_dir:
+            if notarization_zip is None:
+                notarization_zip = Path(temp_dir) / "xedoc-package.zip"
+                write_archive(package_dir, notarization_zip, force=False)
             run(
                 [
                     str(
                         source_root
                         / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
                     ),
-                    "--binary",
-                    str(packaged_entrypoint),
+                    "--archive",
+                    str(notarization_zip),
                     "--report-dir",
                     str(output_dir / version / "notarization" / target),
                 ],
                 cwd=source_root,
             )
-    for archive_output in archive_outputs:
-        write_archive(package_dir, archive_output, force=args.force)
 
     return ReleasePackage(
         target=target,

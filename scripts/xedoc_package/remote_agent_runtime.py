@@ -9,9 +9,11 @@ from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
 import stat
+import subprocess
 import tarfile
 import tempfile
 from typing import Any
+from typing import Callable
 from typing import Iterable
 from urllib.parse import urlparse
 import urllib.request
@@ -133,12 +135,34 @@ class RemoteAgentRuntimeReference:
         }
 
 
+def sign_macos_runtime_binary(
+    path: Path, identity: str, signing_script: Path, entitlements: Path
+) -> None:
+    command = [
+        str(signing_script),
+        "--target",
+        str(path),
+        "--identity",
+        identity,
+        "--options",
+        "runtime",
+        "--timestamp",
+        "true",
+    ]
+    if path.parent.name == "bin":
+        command.extend(("--identifier", f"com.xedoc.remote-agent.{path.name}"))
+        command.extend(("--entitlements", str(entitlements)))
+    subprocess.check_call(command)
+    subprocess.check_call(["codesign", "--verify", "--strict", str(path)])
+
+
 def build_remote_agent_runtime(
     spec: TargetSpec,
     destination: Path,
     *,
     force: bool,
     source: Path | None = None,
+    sign_macho: Callable[[Path], None] | None = None,
 ) -> RemoteAgentRuntimeReference:
     """Build a target-pinned runtime and dependency closure into ``destination``.
 
@@ -180,6 +204,22 @@ def build_remote_agent_runtime(
             dependency_destination,
             Path(temp) / "wheels",
         )
+        if sign_macho is not None:
+            for path in sorted(python_root.rglob("*")):
+                if path.is_file() and not path.is_symlink():
+                    with path.open("rb") as file:
+                        header = file.read(4)
+                    if header in {
+                        b"\xfe\xed\xfa\xce",
+                        b"\xce\xfa\xed\xfe",
+                        b"\xfe\xed\xfa\xcf",
+                        b"\xcf\xfa\xed\xfe",
+                        b"\xca\xfe\xba\xbe",
+                        b"\xbe\xba\xfe\xca",
+                        b"\xca\xfe\xba\xbf",
+                        b"\xbf\xba\xfe\xca",
+                    }:
+                        sign_macho(path)
         _validate_runtime(python_root, spec, dependency_lock)
         runtime_sha256 = hash_tree(python_root)
         runtime_id = runtime_identity(

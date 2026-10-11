@@ -435,9 +435,10 @@ The fork adds release helpers for building Xedoc packages from `main`.
   identity.
 - The signing identity defaults to the sole Developer ID Application
   certificate returned by the macOS keychain.
-- Pass `--notarize` to sign Mach-O files included in the package and submit ZIP
-  archives with `xcrun notarytool`. The notarytool credentials must first be
-  stored with `xcrun notarytool store-credentials`. If exactly one matching
+- macOS releases sign the CLI and bundled remote-agent Python and native
+  extensions before the package hashes are written. Pass `--notarize` to submit
+  the complete signed package ZIP with `xcrun notarytool`. Store credentials
+  with `xcrun notarytool store-credentials`. If exactly one matching
   profile is in the macOS keychain, it is selected automatically; otherwise
   pass the profile with `--notarytool-keychain-profile` or
   `APPLE_NOTARYTOOL_KEYCHAIN_PROFILE`.

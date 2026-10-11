@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
 
-# Submits a signed standalone macOS binary to Apple notarization. CI uses
-# rcodesign; macOS release builds fall back to native xcrun notarytool.
-# Standalone binaries cannot carry a stapled ticket, so the binary is submitted
-# in a ZIP and the successful notarization log is retained.
+# Submits a signed macOS package ZIP or standalone binary to Apple notarization.
+# CI uses rcodesign; macOS release builds fall back to native xcrun notarytool.
+# Standalone binaries cannot carry a stapled ticket, so they are submitted in a
+# ZIP and the successful notarization log is retained.
 
 set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: notarize_macos_binary_with_rcodesign.sh --binary PATH [--report-dir PATH] [--max-wait-seconds SECONDS]
+Usage: notarize_macos_binary_with_rcodesign.sh (--binary PATH | --archive ZIP) [--report-dir PATH] [--max-wait-seconds SECONDS]
 
 Options:
   --binary PATH                 Signed standalone macOS binary to notarize.
+  --archive ZIP                 Signed macOS package ZIP to notarize.
   --report-dir PATH             Directory for notarization logs.
   --max-wait-seconds SECONDS    Maximum rcodesign notarization wait time.
 EOF
 }
 
 binary_path=""
+input_archive=""
 report_dir="${RUNNER_TEMP:-/tmp}/macos-binary-notarization-verification"
 max_wait_seconds="600"
 
@@ -26,6 +28,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --binary)
       binary_path="${2:-}"
+      shift 2
+      ;;
+    --archive)
+      input_archive="${2:-}"
       shift 2
       ;;
     --report-dir)
@@ -48,14 +54,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$binary_path" ]]; then
-  echo "--binary is required." >&2
+if [[ -z "$binary_path" && -z "$input_archive" ]] || [[ -n "$binary_path" && -n "$input_archive" ]]; then
+  echo "Pass exactly one of --binary or --archive." >&2
   usage
   exit 2
 fi
 
-if [[ ! -f "$binary_path" ]]; then
-  echo "Binary does not exist: $binary_path" >&2
+input_path="${binary_path:-$input_archive}"
+if [[ ! -f "$input_path" ]]; then
+  echo "Notarization input does not exist: $input_path" >&2
+  exit 1
+fi
+if [[ -n "$input_archive" && "$input_archive" != *.zip ]]; then
+  echo "Notarization archive must be a ZIP: $input_archive" >&2
   exit 1
 fi
 
@@ -150,8 +161,8 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
     fi
   done
   if [[ -z "$notarytool_profile" ]]; then
-    echo "No usable notarytool keychain profile was found; skipping notarization." >&2
-    exit 0
+    echo "No usable notarytool keychain profile was found." >&2
+    exit 1
   fi
 fi
 
@@ -189,14 +200,17 @@ if [[ -z "$notarytool_profile" ]]; then
   chmod 600 "$private_key_path"
 fi
 
-binary_name="$(basename "$binary_path")"
-archive_path="$notarization_temp_dir/${binary_name}.zip"
-(
-  cd "$(dirname "$binary_path")"
-  zip -q "$archive_path" "$binary_name"
-)
+input_name="$(basename "$input_path")"
+archive_path="$input_archive"
+if [[ -n "$binary_path" ]]; then
+  archive_path="$notarization_temp_dir/${input_name}.zip"
+  (
+    cd "$(dirname "$binary_path")"
+    zip -q "$archive_path" "$input_name"
+  )
+fi
 
-notarization_log="$report_dir/${binary_name}-notarization.log"
+notarization_log="$report_dir/${input_name}-notarization.log"
 case "$notarization_backend" in
   rcodesign)
     api_key_path="$notarization_temp_dir/app-store-connect-api-key.json"
@@ -237,10 +251,10 @@ case "$notarization_backend" in
 esac
 
 {
-  echo "binary_name=$binary_name"
+  echo "input_name=$input_name"
   echo "max_wait_seconds=$max_wait_seconds"
-  echo "binary_sha256=$(shasum -a 256 "$binary_path" | awk '{ print $1 }')"
+  echo "input_sha256=$(shasum -a 256 "$input_path" | awk '{ print $1 }')"
   echo "notarization_backend=$notarization_backend"
   echo "notarytool_profile=$notarytool_profile"
   echo "notarization=completed"
-} >"$report_dir/${binary_name}-notarization-summary.txt"
+} >"$report_dir/${input_name}-notarization-summary.txt"
