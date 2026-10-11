@@ -117,20 +117,37 @@ discover_notarytool_profiles_from_keychain() {
     return 0
   fi
 
-  security dump-keychain 2>/dev/null | awk '
+  local profile_pattern
+  profile_pattern='
     function value(line) {
       sub(/^.*<blob>="/, "", line)
       sub(/".*$/, "", line)
       return line
     }
+    function emit_profile(line, profile) {
+      if (match(line, /com[.]apple[.]gke[.]notary[.]tool[.]saved-creds[.]/)) {
+        profile = substr(line, RSTART + RLENGTH)
+        sub(/".*$/, "", profile)
+        if (profile != "") {
+          print profile
+        }
+      } else if (match(line, /com[.]apple[.]gke[.]notary[.]tool[.]/)) {
+        profile = substr(line, RSTART + RLENGTH)
+        sub(/".*$/, "", profile)
+        if (profile != "" && profile !~ /^saved-creds[.]/) {
+          print profile
+        }
+      }
+    }
     function emit() {
       if (account != "" && service == "com.apple.gke.notary.tool") {
-        print account
-      } else if (service ~ /^com[.]apple[.]gke[.]notary[.]tool[.]/) {
-        sub(/^com[.]apple[.]gke[.]notary[.]tool[.]/, "", service)
-        if (service != "") {
-          print service
+        if (account ~ /com[.]apple[.]gke[.]notary[.]tool[.]saved-creds[.]/) {
+          emit_profile(account)
+        } else {
+          print account
         }
+      } else if (service ~ /^com[.]apple[.]gke[.]notary[.]tool[.]/) {
+        emit_profile(service)
       }
     }
     /^keychain:/ {
@@ -141,8 +158,20 @@ discover_notarytool_profiles_from_keychain() {
     }
     /"acct"<blob>=/ { account = value($0) }
     /"svce"<blob>=/ { service = value($0) }
+    { emit_profile($0) }
     END { emit() }
   '
+
+  local profiles
+  profiles="$(security dump-keychain 2>/dev/null | awk "$profile_pattern" || true)"
+  if [[ -n "$profiles" ]]; then
+    printf '%s\n' "$profiles"
+    return 0
+  fi
+
+  security find-generic-password \
+    -s "com.apple.gke.notary.tool" \
+    2>/dev/null | awk "$profile_pattern" || true
 }
 
 if [[ "$notarization_backend" == "notarytool" ]]; then
