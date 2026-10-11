@@ -9,18 +9,21 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: notarize_macos_binary_with_rcodesign.sh (--binary PATH | --archive ZIP) [--report-dir PATH] [--max-wait-seconds SECONDS]
+Usage: notarize_macos_binary_with_rcodesign.sh (--binary PATH | --archive ZIP) [--report-dir PATH] [--max-wait-seconds SECONDS] [--notarytool-keychain-profile NAME]
 
 Options:
   --binary PATH                 Signed standalone macOS binary to notarize.
   --archive ZIP                 Signed macOS package ZIP to notarize.
   --report-dir PATH             Directory for notarization logs.
   --max-wait-seconds SECONDS    Maximum rcodesign notarization wait time.
+  --notarytool-keychain-profile NAME
+                                Keychain profile for xcrun notarytool.
 EOF
 }
 
 binary_path=""
 input_archive=""
+notarytool_profile_arg=""
 report_dir="${RUNNER_TEMP:-/tmp}/macos-binary-notarization-verification"
 max_wait_seconds="600"
 
@@ -40,6 +43,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --max-wait-seconds)
       max_wait_seconds="${2:-}"
+      shift 2
+      ;;
+    --notarytool-keychain-profile)
+      notarytool_profile_arg="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -139,6 +146,8 @@ discover_notarytool_profiles_from_keychain() {
 }
 
 if [[ "$notarization_backend" == "notarytool" ]]; then
+  add_notarytool_profile_candidate "$notarytool_profile_arg"
+  add_notarytool_profile_candidate "${APPLE_NOTARYTOOL_KEYCHAIN_PROFILE:-}"
   add_notarytool_profile_candidate "${NOTARYTOOL_PROFILE:-}"
   for candidate in ${NOTARYTOOL_PROFILE_CANDIDATES//,/ }; do
     add_notarytool_profile_candidate "$candidate"
@@ -161,7 +170,7 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
     fi
   done
   if [[ -z "$notarytool_profile" ]]; then
-    echo "No usable notarytool keychain profile was found." >&2
+    echo "No usable notarytool keychain profile was found; pass --notarytool-keychain-profile or set APPLE_NOTARYTOOL_KEYCHAIN_PROFILE." >&2
     exit 1
   fi
 fi

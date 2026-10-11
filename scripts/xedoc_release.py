@@ -223,6 +223,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Submit the signed macOS package ZIP to Apple notarization.",
     )
     parser.add_argument(
+        "--notarytool-keychain-profile",
+        default=os.environ.get("APPLE_NOTARYTOOL_KEYCHAIN_PROFILE"),
+        help=(
+            "Keychain profile for xcrun notarytool. Can also be set with "
+            "APPLE_NOTARYTOOL_KEYCHAIN_PROFILE."
+        ),
+    )
+    parser.add_argument(
         "--github-repo",
         default=DEFAULT_GITHUB_REPO,
         help="GitHub repository that receives the release and uploaded archives.",
@@ -650,19 +658,24 @@ def package_release_target(
             if notarization_zip is None:
                 notarization_zip = Path(temp_dir) / "xedoc-package.zip"
                 write_archive(package_dir, notarization_zip, force=False)
-            run(
-                [
-                    str(
-                        source_root
-                        / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
-                    ),
-                    "--archive",
-                    str(notarization_zip),
-                    "--report-dir",
-                    str(output_dir / version / "notarization" / target),
-                ],
-                cwd=source_root,
+            notarization_command = [
+                str(
+                    source_root
+                    / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
+                ),
+                "--archive",
+                str(notarization_zip),
+                "--report-dir",
+                str(output_dir / version / "notarization" / target),
+            ]
+            notarytool_keychain_profile = getattr(
+                args, "notarytool_keychain_profile", None
             )
+            if notarytool_keychain_profile:
+                notarization_command.extend(
+                    ["--notarytool-keychain-profile", notarytool_keychain_profile]
+                )
+            run(notarization_command, cwd=source_root)
 
     return ReleasePackage(
         target=target,
