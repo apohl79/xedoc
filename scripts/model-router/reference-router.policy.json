@@ -193,27 +193,27 @@
         "ranges": [
           {
             "maximumRank": 5,
-            "maximumScore": 8,
+            "maximumScore": 7,
             "minimumRank": 1,
             "minimumScore": 3
           },
           {
             "maximumRank": 8,
-            "maximumScore": 15,
+            "maximumScore": 14,
             "minimumRank": 6,
-            "minimumScore": 9
+            "minimumScore": 8
           },
           {
             "maximumRank": 10,
-            "maximumScore": 22,
+            "maximumScore": 20,
             "minimumRank": 9,
-            "minimumScore": 16
+            "minimumScore": 15
           },
           {
             "maximumRank": 15,
             "maximumScore": 35,
             "minimumRank": 11,
-            "minimumScore": 23
+            "minimumScore": 21
           }
         ]
       },
@@ -223,27 +223,27 @@
         "ranges": [
           {
             "maximumRank": 5,
-            "maximumScore": 6,
+            "maximumScore": 5,
             "minimumRank": 1,
             "minimumScore": 3
           },
           {
             "maximumRank": 8,
-            "maximumScore": 12,
+            "maximumScore": 10,
             "minimumRank": 6,
-            "minimumScore": 7
+            "minimumScore": 6
           },
           {
             "maximumRank": 10,
-            "maximumScore": 18,
+            "maximumScore": 15,
             "minimumRank": 9,
-            "minimumScore": 13
+            "minimumScore": 11
           },
           {
             "maximumRank": 15,
             "maximumScore": 35,
             "minimumRank": 11,
-            "minimumScore": 19
+            "minimumScore": 16
           }
         ]
       }

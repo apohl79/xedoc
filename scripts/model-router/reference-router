@@ -164,20 +164,20 @@ DEFAULT_RANKING_CURVES = [
         "id": "balanced",
         "label": "Balanced — escalate with mixed difficulty",
         "ranges": [
-            {"minimumScore": 3, "maximumScore": 8, "minimumRank": 1, "maximumRank": 5},
-            {"minimumScore": 9, "maximumScore": 15, "minimumRank": 6, "maximumRank": 8},
-            {"minimumScore": 16, "maximumScore": 22, "minimumRank": 9, "maximumRank": 10},
-            {"minimumScore": 23, "maximumScore": 35, "minimumRank": 11, "maximumRank": 15},
+            {"minimumScore": 3, "maximumScore": 7, "minimumRank": 1, "maximumRank": 5},
+            {"minimumScore": 8, "maximumScore": 14, "minimumRank": 6, "maximumRank": 8},
+            {"minimumScore": 15, "maximumScore": 20, "minimumRank": 9, "maximumRank": 10},
+            {"minimumScore": 21, "maximumScore": 35, "minimumRank": 11, "maximumRank": 15},
         ],
     },
     {
         "id": "aggressive",
         "label": "Higher — favor smarter models sooner",
         "ranges": [
-            {"minimumScore": 3, "maximumScore": 6, "minimumRank": 1, "maximumRank": 5},
-            {"minimumScore": 7, "maximumScore": 12, "minimumRank": 6, "maximumRank": 8},
-            {"minimumScore": 13, "maximumScore": 18, "minimumRank": 9, "maximumRank": 10},
-            {"minimumScore": 19, "maximumScore": 35, "minimumRank": 11, "maximumRank": 15},
+            {"minimumScore": 3, "maximumScore": 5, "minimumRank": 1, "maximumRank": 5},
+            {"minimumScore": 6, "maximumScore": 10, "minimumRank": 6, "maximumRank": 8},
+            {"minimumScore": 11, "maximumScore": 15, "minimumRank": 9, "maximumRank": 10},
+            {"minimumScore": 16, "maximumScore": 35, "minimumRank": 11, "maximumRank": 15},
         ],
     },
 ]
