@@ -188,6 +188,7 @@ pub(crate) struct SessionState {
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
     model_router_session_mode: Option<String>,
+    model_router_mode_revision: u64,
     /// Route and multi-agent guidance applied by the model router, paired with the session route
     /// they were chosen against. Retained-route decisions (e.g. steering) reuse them while the
     /// session route is unchanged.
@@ -229,6 +230,7 @@ impl SessionState {
             mcp_dependency_prompted: HashSet::new(),
             additional_context: AdditionalContextStore::default(),
             model_router_session_mode: None,
+            model_router_mode_revision: 0,
             model_router_applied_route: None,
             previous_turn_settings: None,
             auto_compact_window: AutoCompactWindow::new_with_ids(auto_compact_window_ids),
@@ -264,7 +266,19 @@ impl SessionState {
     }
 
     pub(crate) fn set_model_router_session_mode(&mut self, mode: Option<String>) {
-        self.model_router_session_mode = mode;
+        if self.model_router_session_mode != mode {
+            self.model_router_session_mode = mode;
+            self.model_router_mode_revision = self.model_router_mode_revision.wrapping_add(1);
+            self.model_router_applied_route = None;
+        }
+    }
+
+    pub(crate) fn model_router_mode_revision(&self) -> u64 {
+        self.model_router_mode_revision
+    }
+
+    pub(crate) fn clear_model_router_applied_route(&mut self) {
+        self.model_router_applied_route = None;
     }
 
     /// Returns the router-applied route and its multi-agent guidance if they were chosen against

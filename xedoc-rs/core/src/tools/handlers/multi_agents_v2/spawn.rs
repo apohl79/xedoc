@@ -101,6 +101,7 @@ async fn handle_spawn_agent(
     let mut router_event = None;
     let mut router_decision_id = None;
     let mut router_event_emitted = false;
+    let mut routing_mode_revision_for_spawn = None;
     if let Some(script_host) =
         crate::model_router_script_host::ModelRouterScriptHost::from_config(&config)
     {
@@ -108,6 +109,8 @@ async fn handle_spawn_agent(
             crate::model_router::eligible_script_routes(&config, &session.services.models_manager)
                 .await;
         if let Some(current_route) = crate::model_router::current_script_route(&config) {
+            let routing_mode_revision = session.model_router_mode_revision().await;
+            routing_mode_revision_for_spawn = Some(routing_mode_revision);
             let context = crate::session::model_router_script_context::build(
                 crate::session::model_router_script_context::RoutingContextInput {
                     session: session.as_ref(),
@@ -173,6 +176,13 @@ async fn handle_spawn_agent(
                 ) => crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(interaction),
             };
             loop {
+                if session.model_router_mode_revision().await != routing_mode_revision {
+                    config = orchestrator_config.clone();
+                    router_event = None;
+                    router_decision_id = None;
+                    router_event_emitted = false;
+                    break;
+                }
                 match outcome {
                     crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
                         decision,
@@ -184,6 +194,10 @@ async fn handle_spawn_agent(
                             &route,
                         )
                         .await;
+                        if session.model_router_mode_revision().await != routing_mode_revision {
+                            config = orchestrator_config.clone();
+                            break;
+                        }
                         if applied {
                             config.model_router_instructions = decision.model_instructions.clone();
                         }
@@ -301,9 +315,23 @@ async fn handle_spawn_agent(
                     }
                 }
             }
+            if session.model_router_mode_revision().await != routing_mode_revision {
+                config = orchestrator_config.clone();
+                router_event = None;
+                router_decision_id = None;
+                router_event_emitted = false;
+            }
         }
     }
 
+    if let Some(revision) = routing_mode_revision_for_spawn
+        && session.model_router_mode_revision().await != revision
+    {
+        config = orchestrator_config.clone();
+        router_event = None;
+        router_decision_id = None;
+        router_event_emitted = false;
+    }
     if let Some(result) = try_spawn_ab_pair(
         &session,
         turn.as_ref(),
@@ -320,6 +348,14 @@ async fn handle_spawn_agent(
     .await?
     {
         return Ok(result);
+    }
+    if let Some(revision) = routing_mode_revision_for_spawn
+        && session.model_router_mode_revision().await != revision
+    {
+        config = orchestrator_config;
+        router_event = None;
+        router_decision_id = None;
+        router_event_emitted = false;
     }
 
     let spawn_source = thread_spawn_source(

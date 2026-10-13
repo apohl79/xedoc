@@ -1187,6 +1187,8 @@ pub(crate) struct ModelRouterScriptDecision {
     pub(crate) reporting_baseline: Option<Route>,
     /// Route the script proposed, if any.
     pub(crate) proposed_route: Option<Route>,
+    /// Whether an inactive router must discard its previously applied root route.
+    pub(crate) reset_to_baseline: bool,
 }
 
 /// Host-validated disposition attached to a scripted decision.
@@ -1317,6 +1319,7 @@ fn validate_decision(
         id,
         disposition,
         route,
+        reset_to_baseline,
         reporting_baseline,
         summary,
         feedback,
@@ -1355,6 +1358,7 @@ fn validate_decision(
                 feedback,
                 reporting_baseline,
                 proposed_route: None,
+                reset_to_baseline,
             }),
             failure: None,
         },
@@ -1376,10 +1380,14 @@ fn validate_decision(
                 feedback,
                 reporting_baseline,
                 proposed_route: Some(route),
+                reset_to_baseline,
             }),
             failure: None,
         },
         (RouteDisposition::Apply, None) => {
+            ModelRouterScriptDecisionOutcome::fallback(ModelRouterScriptFailure::UnexpectedResult)
+        }
+        (RouteDisposition::Apply, Some(_)) if reset_to_baseline => {
             ModelRouterScriptDecisionOutcome::fallback(ModelRouterScriptFailure::UnexpectedResult)
         }
         (RouteDisposition::Apply, Some(route)) if !route_mutable => {
@@ -1392,6 +1400,7 @@ fn validate_decision(
                     feedback,
                     reporting_baseline,
                     proposed_route: Some(route),
+                    reset_to_baseline,
                 }),
                 failure: Some(ModelRouterScriptFailure::ImmutableRoute),
             }
@@ -1408,6 +1417,7 @@ fn validate_decision(
                 feedback,
                 reporting_baseline,
                 proposed_route: Some(route.clone()),
+                reset_to_baseline,
             };
             ModelRouterScriptDecisionOutcome::Apply { decision, route }
         }

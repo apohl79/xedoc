@@ -336,6 +336,7 @@ pub(super) async fn user_input_or_turn_inner(
                     &state.session_configuration,
                 )
             };
+            let mut routing_mode_revision_for_turn = None;
             if let Some(script_host) =
                 crate::model_router_script_host::ModelRouterScriptHost::from_config(&routing_config)
                 && let Some(baseline_route) =
@@ -346,10 +347,10 @@ pub(super) async fn user_input_or_turn_inner(
                     &sess.services.models_manager,
                 )
                 .await;
-                let (current_route, router_instructions) = sess
-                    .state
-                    .lock()
-                    .await
+                let state = sess.state.lock().await;
+                let routing_mode_revision = state.model_router_mode_revision();
+                routing_mode_revision_for_turn = Some(routing_mode_revision);
+                let (current_route, router_instructions) = state
                     .model_router_applied_route(&baseline_route)
                     .filter(|(route, _)| {
                         !explicit_route_override
@@ -360,6 +361,7 @@ pub(super) async fn user_input_or_turn_inner(
                             })
                     })
                     .unwrap_or_else(|| (baseline_route.clone(), None));
+                drop(state);
                 let cancellation = sess.begin_model_router_script_invocation().await;
                 let context = crate::session::model_router_script_context::build(
                     crate::session::model_router_script_context::RoutingContextInput {
@@ -439,11 +441,16 @@ pub(super) async fn user_input_or_turn_inner(
                 if cancellation.is_cancelled() {
                     return;
                 }
-                match outcome {
-                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
+                match (
+                    sess.state.lock().await.model_router_mode_revision()
+                        == routing_mode_revision,
+                    outcome,
+                ) {
+                    (false, _) => {}
+                    (true, crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
                         decision,
                         route,
-                    } => {
+                    }) => {
                         let model_instructions = decision.model_instructions.clone();
                         let routed_context = sess
                             .new_script_routed_turn_from_current_settings_with_sub_id(
@@ -453,37 +460,45 @@ pub(super) async fn user_input_or_turn_inner(
                                 model_instructions.as_deref(),
                             )
                             .await;
-                        if let Some(routed_context) = routed_context {
-                            sess.emit_and_remember_model_router_decision(
-                                current_context.as_ref(),
-                                crate::model_router_script_host::decision_event(
-                                    decision,
-                                    &route,
-                                    sess.thread_id.to_string(),
-                                    current_context.sub_id.clone(),
-                                    xedoc_protocol::protocol::ModelRouterScope::Root,
-                                    /*applied*/ true,
-                                    None,
-                                ),
-                            )
-                            .await;
+                        if let Some(routed_context) = routed_context
+                            && sess.state.lock().await.model_router_mode_revision()
+                                == routing_mode_revision
+                        {
                             if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
                                 startup_prewarm.abort().await;
                             }
                             if route != current_route {
                                 sess.force_full_context_replay().await;
                             }
-                            sess.state
-                                .lock()
-                                .await
-                                .set_model_router_applied_route(
+                            let mut state = sess.state.lock().await;
+                            let route_still_current =
+                                state.model_router_mode_revision() == routing_mode_revision;
+                            if route_still_current {
+                                state.set_model_router_applied_route(
                                     baseline_route.clone(),
                                     route.clone(),
                                     model_instructions,
                                 );
-                            current_context = routed_context;
-                            sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
+                            }
+                            drop(state);
+                            if route_still_current {
+                                current_context = routed_context;
+                                sess.emit_and_remember_model_router_decision(
+                                    current_context.as_ref(),
+                                    crate::model_router_script_host::decision_event(
+                                        decision,
+                                        &route,
+                                        sess.thread_id.to_string(),
+                                        current_context.sub_id.clone(),
+                                        xedoc_protocol::protocol::ModelRouterScope::Root,
+                                        /*applied*/ true,
+                                        None,
+                                    ),
+                                )
                                 .await;
+                                sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
+                                    .await;
+                            }
                         } else {
                             warn!(
                                 decision_id = %decision.id.as_str(),
@@ -504,9 +519,9 @@ pub(super) async fn user_input_or_turn_inner(
                             .await;
                         }
                     }
-                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(
+                    (true, crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Interaction(
                         interaction,
-                    ) => {
+                    )) => {
                         match crate::model_router_script_host::interaction_request(interaction) {
                             Ok((request, extension_id, interaction_id, continuation, state_revision)) => {
                                 if let Ok(surface) =
@@ -554,10 +569,16 @@ pub(super) async fn user_input_or_turn_inner(
                             }
                         }
                     }
-                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
+                    (true, crate::model_router_script_host::ModelRouterScriptInteractionOutcome::KeepCurrent {
                         decision,
                         failure,
-                    } => {
+                    }) => {
+                        let reset_to_baseline = decision
+                            .as_ref()
+                            .is_some_and(|decision| decision.reset_to_baseline);
+                        if reset_to_baseline {
+                            sess.state.lock().await.clear_model_router_applied_route();
+                        }
                         if let Some(failure) = failure.as_ref() {
                             warn!(
                                 failure = %failure.diagnostic(),
@@ -566,7 +587,8 @@ pub(super) async fn user_input_or_turn_inner(
                         } else if let Some(decision) = decision.as_ref() {
                             tracing::debug!(decision_id = %decision.id.as_str(), "scripted model-router retained current route");
                         }
-                        if (current_route != baseline_route || router_instructions.is_some())
+                        if !reset_to_baseline
+                            && (current_route != baseline_route || router_instructions.is_some())
                             && let Some(retained_context) = sess
                                 .new_script_routed_turn_from_current_settings_with_sub_id(
                                     sub_id.clone(),
@@ -583,7 +605,11 @@ pub(super) async fn user_input_or_turn_inner(
                                 current_context.as_ref(),
                                 crate::model_router_script_host::decision_event(
                                     decision,
-                                    &current_route,
+                                    if reset_to_baseline {
+                                        &baseline_route
+                                    } else {
+                                        &current_route
+                                    },
                                     sess.thread_id.to_string(),
                                     current_context.sub_id.clone(),
                                     xedoc_protocol::protocol::ModelRouterScope::Root,
@@ -594,15 +620,25 @@ pub(super) async fn user_input_or_turn_inner(
                             .await;
                         }
                     }
-                    crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Failure(
+                    (true, crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Failure(
                         failure,
-                    ) => {
+                    )) => {
                         warn!(
                             failure = %failure.diagnostic(),
                             "scripted model-router interaction failed; retaining current route"
                         );
                     }
                 }
+            }
+            if let Some(revision) = routing_mode_revision_for_turn
+                && sess.state.lock().await.model_router_mode_revision() != revision
+            {
+                current_context = sess
+                    .new_turn_from_current_settings_with_sub_id(
+                        sub_id.clone(),
+                        final_output_json_schema.clone(),
+                    )
+                    .await;
             }
             if let Some(responsesapi_client_metadata) = responsesapi_client_metadata {
                 current_context

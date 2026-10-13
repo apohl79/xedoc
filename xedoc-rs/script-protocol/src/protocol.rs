@@ -507,6 +507,9 @@ pub struct RouteDecision {
     pub disposition: RouteDisposition,
     /// Route required when the disposition is `apply`.
     pub route: Option<Route>,
+    /// Restore the configured root route instead of retaining a previously routed route.
+    #[serde(default)]
+    pub reset_to_baseline: bool,
     /// Script-owned route used to normalize cost reporting, when configured.
     #[serde(default)]
     pub reporting_baseline: Option<Route>,

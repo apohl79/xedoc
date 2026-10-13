@@ -5342,6 +5342,7 @@ def routing_decide(
                 "id": f"reference-{request['requestId']}-{policy['revision']}",
                 "disposition": "keepCurrent",
                 "route": None,
+                "resetToBaseline": True,
                 "summary": None,
                 "feedback": {
                     "enabled": False,
@@ -5640,6 +5641,8 @@ def routing_decide(
         steering=steering,
         classification_details=classification_details,
     )
+    if shadow and scope == "root":
+        result["decision"]["resetToBaseline"] = True
     return result
 
 
@@ -5839,6 +5842,10 @@ def approval_response(request, policy):
     current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
         current_context = rendered_context
+    mode = effective_mode(policy, request.get("context") or {})
+    scope = (current_context.get("turn") or {}).get("scope", "root")
+    if mode != "full" and not (scope == "subagent" and mode == "subagents"):
+        return routing_decide(request, policy)
     if policy_revision != str(policy["revision"]):
         return fresh_approval(
             policy,

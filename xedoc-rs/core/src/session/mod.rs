@@ -453,6 +453,10 @@ const CYBER_SAFETY_URL: &str = "https://developers.openai.com/codex/concepts/cyb
 const SCRIPTED_INTERACTION_MAX_LIFETIME_SECONDS: i64 = 5 * 60;
 
 impl Session {
+    pub(crate) async fn model_router_mode_revision(&self) -> u64 {
+        self.state.lock().await.model_router_mode_revision()
+    }
+
     pub(crate) async fn model_router_session_mode(&self) -> Option<String> {
         let session_mode = self
             .state
