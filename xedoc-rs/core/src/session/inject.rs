@@ -211,10 +211,9 @@ impl Session {
                     input,
                 ));
             }
-            match (
-                self.state.lock().await.model_router_mode_revision() == routing_mode_revision,
-                outcome,
-            ) {
+            let routing_mode_unchanged =
+                self.model_router_mode_revision().await == routing_mode_revision;
+            match (routing_mode_unchanged, outcome) {
                 (false, _) => {}
                 (true, ModelRouterScriptInteractionOutcome::Apply { decision, route }) => {
                     let model_instructions = decision.model_instructions.clone();

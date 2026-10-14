@@ -441,11 +441,9 @@ pub(super) async fn user_input_or_turn_inner(
                 if cancellation.is_cancelled() {
                     return;
                 }
-                match (
-                    sess.state.lock().await.model_router_mode_revision()
-                        == routing_mode_revision,
-                    outcome,
-                ) {
+                let routing_mode_unchanged =
+                    sess.model_router_mode_revision().await == routing_mode_revision;
+                match (routing_mode_unchanged, outcome) {
                     (false, _) => {}
                     (true, crate::model_router_script_host::ModelRouterScriptInteractionOutcome::Apply {
                         decision,
