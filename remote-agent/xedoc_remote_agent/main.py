@@ -297,7 +297,7 @@ def _wait_for_broker_or_stop(xedoc_home: Path, deadline: float) -> str | None:
         if controller_id is not None:
             return controller_id
         status = RemoteAgentDaemon.status(xedoc_home=xedoc_home).get("status")
-        if status == "stopped":
+        if status in {"stopped", "stale"}:
             return None
         if time.monotonic() >= deadline:
             raise BrokerError.unavailable()
@@ -322,7 +322,7 @@ def _wait_until_stopped(xedoc_home: Path, deadline: float) -> None:
             )
             is None
             and RemoteAgentDaemon.status(xedoc_home=xedoc_home).get("status")
-            == "stopped"
+            in {"stopped", "stale"}
         ):
             return
         if time.monotonic() >= deadline:
