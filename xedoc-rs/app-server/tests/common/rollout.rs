@@ -134,7 +134,7 @@ pub fn create_fake_rollout_with_token_usage(
             model_context_window: Some(200_000),
         }),
         rate_limits: None,
-        session_cost_usd: None,
+        session_cost_usd: Some(0.42),
         token_optimizer: None,
     }))?;
     let file_path = rollout_path(xedoc_home, filename_ts, &thread_id);

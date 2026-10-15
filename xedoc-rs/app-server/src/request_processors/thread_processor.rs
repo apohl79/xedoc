@@ -3464,9 +3464,8 @@ impl ThreadRequestProcessor {
                 let active_permission_profile = thread_response_active_permission_profile(
                     config_snapshot.active_permission_profile,
                 );
-                let token_usage_turn_id = include_turns.then(|| {
-                    restored_token_usage_turn_id(response_history.get_rollout_items(), &thread)
-                });
+                let token_usage_turn_id =
+                    restored_token_usage_turn_id(response_history.get_rollout_items(), &thread);
                 let mut initial_turns_page = if let Some(params) = initial_turns_page.as_ref() {
                     let initial_turns_page_result = if paginated_resume {
                         self.paginated_resume_initial_turns_page(thread_id, params)
@@ -3514,21 +3513,16 @@ impl ThreadRequestProcessor {
 
                 let connection_id = request_id.connection_id;
                 self.outgoing.send_response(request_id, response).await;
-                // `excludeTurns` is explicitly the cheap resume path, so avoid
-                // rebuilding history only to attribute a replayed usage update.
-                if let Some(token_usage_turn_id) = token_usage_turn_id {
-                    // The client needs restored usage before it starts another turn.
-                    // Sending after the response preserves JSON-RPC request ordering while
-                    // still filling the status line before the next turn lifecycle begins.
-                    send_thread_token_usage_update_to_connection(
-                        &self.outgoing,
-                        connection_id,
-                        thread_id,
-                        xedoc_thread.as_ref(),
-                        token_usage_turn_id,
-                    )
-                    .await;
-                }
+                // The client needs restored usage before it starts another turn. Sending after
+                // the response preserves JSON-RPC request ordering without returning turn data.
+                send_thread_token_usage_update_to_connection(
+                    &self.outgoing,
+                    connection_id,
+                    thread_id,
+                    xedoc_thread.as_ref(),
+                    token_usage_turn_id,
+                )
+                .await;
                 self.thread_goal_processor
                     .emit_resume_goal_snapshot_and_continue(thread_id, xedoc_thread.as_ref())
                     .await;

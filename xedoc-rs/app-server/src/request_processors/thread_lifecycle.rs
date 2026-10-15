@@ -644,9 +644,7 @@ pub(super) async fn handle_pending_thread_resume_request(
             .filter(|turn| matches!(turn.status, TurnStatus::InProgress))
             .map(|turn| turn.id.as_str()),
     );
-    let token_usage_turn_id = pending
-        .include_turns
-        .then(|| restored_token_usage_turn_id(&pending.history_items, &thread));
+    let token_usage_turn_id = restored_token_usage_turn_id(&pending.history_items, &thread);
     let mut initial_turns_page = if let Some(mut page) = pending.paginated_initial_turns_page.take()
     {
         super::thread_processor::normalize_thread_turns_status(
@@ -776,20 +774,16 @@ pub(super) async fn handle_pending_thread_resume_request(
         items_backwards_cursor,
     };
     outgoing.send_response(request_id, response).await;
-    // Match cold resume: metadata-only resume should attach the listener without
-    // paying the cost of turn reconstruction for historical usage replay.
-    if let Some(token_usage_turn_id) = token_usage_turn_id {
-        // Rejoining a loaded thread has the same UI contract as a cold resume, but
-        // uses the live conversation state instead of reconstructing a new session.
-        send_thread_token_usage_update_to_connection(
-            outgoing,
-            connection_id,
-            conversation_id,
-            conversation.as_ref(),
-            token_usage_turn_id,
-        )
-        .await;
-    }
+    // Rejoining a loaded thread has the same UI contract as a cold resume, but uses the
+    // live conversation state instead of reconstructing a new session.
+    send_thread_token_usage_update_to_connection(
+        outgoing,
+        connection_id,
+        conversation_id,
+        conversation.as_ref(),
+        token_usage_turn_id,
+    )
+    .await;
     if pending.emit_thread_goal_update {
         if let Some(state_db) = pending.thread_goal_state_db {
             send_thread_goal_snapshot_notification(outgoing, conversation_id, &state_db).await;

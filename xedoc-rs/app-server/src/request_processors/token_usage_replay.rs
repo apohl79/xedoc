@@ -82,7 +82,7 @@ fn latest_token_usage_turn_id_from_rollout_items(
     }
 
     let active_turn_id = builder.active_turn_id()?;
-    if turns.iter().any(|turn| turn.id == active_turn_id) {
+    if turns.is_empty() || turns.iter().any(|turn| turn.id == active_turn_id) {
         Some(active_turn_id.to_string())
     } else {
         builder
@@ -137,6 +137,17 @@ mod tests {
         assert_eq!(
             latest_token_usage_turn_id_from_rollout_items(&rollout_items, turns.as_slice()),
             Some("rebuilt-turn-id".to_string())
+        );
+    }
+
+    #[test]
+    fn replay_attribution_uses_history_when_turns_are_excluded() {
+        let rollout_items = token_usage_history();
+        let expected_turn_id = build_turns_from_rollout_items(&rollout_items)[0].id.clone();
+
+        assert_eq!(
+            latest_token_usage_turn_id_from_rollout_items(&rollout_items, &[]),
+            Some(expected_turn_id)
         );
     }
 

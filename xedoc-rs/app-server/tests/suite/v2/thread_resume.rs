@@ -1940,7 +1940,7 @@ async fn thread_resume_emits_restored_token_usage_before_next_turn() -> Result<(
 }
 
 #[tokio::test]
-async fn thread_resume_skips_restored_token_usage_when_turns_are_excluded() -> Result<()> {
+async fn thread_resume_replays_restored_token_usage_when_turns_are_excluded() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let xedoc_home = TempDir::new()?;
     create_config_toml(xedoc_home.path(), &server.uri())?;
@@ -1985,6 +1985,13 @@ async fn thread_resume_skips_restored_token_usage_when_turns_are_excluded() -> R
     };
     assert_eq!(notification.turn_id, expected_turn_id);
 
+    mcp.shutdown_gracefully().await?;
+    let mut mcp = TestAppServer::builder()
+        .with_xedoc_home(xedoc_home.path())
+        .build()
+        .await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+
     let second_resume_id = mcp
         .send_thread_resume_request(ThreadResumeParams {
             thread_id: conversation_id,
@@ -2007,11 +2014,15 @@ async fn thread_resume_skips_restored_token_usage_when_turns_are_excluded() -> R
         DEFAULT_READ_TIMEOUT,
         mcp.read_stream_until_notification_message("thread/tokenUsage/updated"),
     )
-    .await;
-    assert!(
-        second_note.is_err(),
-        "excludeTurns=true should not replay token usage"
-    );
+    .await??;
+    let parsed: ServerNotification = second_note.try_into()?;
+    let ServerNotification::ThreadTokenUsageUpdated(notification) = parsed else {
+        panic!("expected thread/tokenUsage/updated notification");
+    };
+
+    assert_eq!(notification.thread_id, resumed_again.id);
+    assert_eq!(notification.turn_id, expected_turn_id);
+    assert_eq!(notification.token_usage.session_cost_usd, Some(0.42));
 
     Ok(())
 }
