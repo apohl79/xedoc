@@ -352,8 +352,8 @@ fn router_mode_style(mode: &str, background: Option<Color>) -> Style {
         "shadow-subagents" | "shadow-full" => Color::Rgb(255, 165, 0),
         "subagents" => Color::Blue,
         "full" => Color::Green,
-        "off" => Color::Black,
-        _ => Color::Black,
+        "off" => Color::DarkGray,
+        _ => Color::DarkGray,
     };
     Style::default()
         .fg(foreground)
@@ -4892,13 +4892,14 @@ impl ChatComposer {
         let field_style = city_lights::composer_session_title_style();
         if let Some((model, effort, fast, router_mode)) = runtime_context {
             runtime_context_spans.push(Span::styled(" ", field_style));
-            if let Some(router_mode) = router_mode {
-                runtime_context_spans.push(Span::styled(
-                    "↳",
-                    router_mode_style(router_mode, city_lights::composer_model_name_style().bg),
-                ));
-                runtime_context_spans.push(Span::styled(" ", field_style));
-            }
+            runtime_context_spans.push(Span::styled(
+                "↳",
+                router_mode_style(
+                    router_mode.unwrap_or("off"),
+                    city_lights::composer_model_name_style().bg,
+                ),
+            ));
+            runtime_context_spans.push(Span::styled(" ", field_style));
             runtime_context_spans.push(Span::styled(
                 model,
                 city_lights::composer_model_name_style(),

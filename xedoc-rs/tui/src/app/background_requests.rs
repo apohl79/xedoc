@@ -31,7 +31,7 @@ impl App {
             app_event_tx.send(AppEvent::ModelRouterModeReadLoaded {
                 result: crate::config_update::read_model_router_mode(request_handle, thread_id)
                     .await
-                    .map_err(|error| error.to_string()),
+                    .map_err(|error| format!("{error:#}")),
                 thread_id,
             });
         });
@@ -55,7 +55,7 @@ impl App {
                     direction,
                 )
                 .await
-                .map_err(|error| error.to_string()),
+                .map_err(|error| format!("{error:#}")),
                 thread_id,
             });
         });
