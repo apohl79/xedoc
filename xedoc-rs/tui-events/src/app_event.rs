@@ -757,6 +757,17 @@ pub enum AppEvent {
         host_action: Option<ModelRouterSettingsHostAction>,
         thread_id: Option<ThreadId>,
     },
+    ModelRouterModeReadLoaded {
+        result: Result<xedoc_app_server_protocol::ModelRouterModeReadResponse, String>,
+        thread_id: Option<ThreadId>,
+    },
+    ModelRouterModeCycleRequested {
+        direction: xedoc_app_server_protocol::ModelRouterModeCycleDirection,
+    },
+    ModelRouterModeCycleLoaded {
+        result: Result<xedoc_app_server_protocol::ModelRouterModeCycleResponse, String>,
+        thread_id: ThreadId,
+    },
     ModelRouterAbControlLoaded {
         result: Result<(), String>,
     },

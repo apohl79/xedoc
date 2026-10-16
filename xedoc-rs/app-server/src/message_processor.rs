@@ -1055,6 +1055,16 @@ impl MessageProcessor {
                 .model_router_settings_respond(params)
                 .await
                 .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterModeRead { params, .. } => self
+                .config_processor
+                .model_router_mode_read(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ModelRouterModeCycle { params, .. } => self
+                .config_processor
+                .model_router_mode_cycle(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ModelRouterReportRead { params, .. } => self
                 .model_router_report_processor
                 .read(params)

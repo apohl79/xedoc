@@ -323,6 +323,7 @@ impl App {
             .map_err(|err| format!("failed to start a replacement thread: {err:#}"))?;
         self.replace_chat_widget_with_app_server_thread(
             tui,
+            app_server_client,
             started,
             ThreadAttachPresentation::SessionLineage,
             /*initial_user_message*/ None,

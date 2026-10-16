@@ -2440,6 +2440,54 @@
             },
             "method": {
               "enum": [
+                "modelRouter/mode/read"
+              ],
+              "title": "ModelRouter/mode/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ModelRouterModeReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelRouter/mode/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "modelRouter/mode/cycle"
+              ],
+              "title": "ModelRouter/mode/cycleRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ModelRouterModeCycleParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "ModelRouter/mode/cycleRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "modelRouterReport/read"
               ],
               "title": "ModelRouterReport/readRequestMethod",
@@ -9852,6 +9900,69 @@
           "type": "object"
         }
       ]
+    },
+    "ModelRouterModeCycleDirection": {
+      "enum": [
+        "previous",
+        "next"
+      ],
+      "type": "string"
+    },
+    "ModelRouterModeCycleParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/ModelRouterModeCycleDirection"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "threadId"
+      ],
+      "title": "ModelRouterModeCycleParams",
+      "type": "object"
+    },
+    "ModelRouterModeCycleResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "ModelRouterModeCycleResponse",
+      "type": "object"
+    },
+    "ModelRouterModeReadParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ModelRouterModeReadParams",
+      "type": "object"
+    },
+    "ModelRouterModeReadResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "ModelRouterModeReadResponse",
+      "type": "object"
     },
     "ModelRouterReportDay": {
       "description": "One persisted UTC-day aggregate for the local model router.",

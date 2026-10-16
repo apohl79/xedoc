@@ -904,6 +904,7 @@ impl App {
         }
         self.drain_active_thread_events(tui).await?;
         self.refresh_pending_thread_approvals().await;
+        self.refresh_model_router_mode(app_server, Some(thread_id));
 
         Ok(())
     }
@@ -982,11 +983,13 @@ impl App {
             .set_queue_submissions_until_session_configured(/*queue*/ false);
         match result {
             Ok(started) => {
+                let thread_id = started.session.thread_id;
                 if started.blocks_direct_input {
-                    self.mark_primary_thread_parent_owned(started.session.thread_id);
+                    self.mark_primary_thread_parent_owned(thread_id);
                 }
                 self.enqueue_primary_thread_session(started.session, started.turns)
                     .await?;
+                self.refresh_model_router_mode(app_server, Some(thread_id));
                 self.chat_widget.maybe_send_next_queued_input();
             }
             Err(err) => {
@@ -1041,6 +1044,7 @@ impl App {
                 if let Err(err) = self
                     .replace_chat_widget_with_app_server_thread(
                         tui,
+                        app_server,
                         started,
                         ThreadAttachPresentation::SessionLineage,
                         initial_user_message,
@@ -1076,6 +1080,7 @@ impl App {
     pub(super) async fn replace_chat_widget_with_app_server_thread(
         &mut self,
         tui: &mut tui::Tui,
+        app_server: &mut AppServerSession,
         started: AppServerStartedThread,
         presentation: ThreadAttachPresentation,
         initial_user_message: Option<crate::chatwidget::UserMessage>,
@@ -1099,6 +1104,7 @@ impl App {
             presentation,
         )
         .await?;
+        self.refresh_model_router_mode(app_server, self.active_thread_id);
         Ok(())
     }
 
@@ -1366,6 +1372,7 @@ impl App {
                 match self
                     .replace_chat_widget_with_app_server_thread(
                         tui,
+                        app_server,
                         resumed,
                         ThreadAttachPresentation::SessionLineage,
                         /*initial_user_message*/ None,

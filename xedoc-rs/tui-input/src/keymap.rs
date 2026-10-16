@@ -927,7 +927,7 @@ impl RuntimeKeymap {
                     alt(KeyCode::Char('.')),
                     shift(KeyCode::Up)
                 ],
-                edit_queued_message: default_bindings![alt(KeyCode::Up), shift(KeyCode::Left)],
+                edit_queued_message: default_bindings![alt(KeyCode::Up), alt(KeyCode::Down)],
             },
             composer: ComposerKeymap {
                 submit: default_bindings![plain(KeyCode::Enter)],
@@ -2225,7 +2225,7 @@ mod tests {
         );
         assert_eq!(
             runtime.chat.edit_queued_message,
-            vec![key_hint::alt(KeyCode::Up), key_hint::shift(KeyCode::Left)]
+            vec![key_hint::alt(KeyCode::Up), key_hint::alt(KeyCode::Down)]
         );
         assert_eq!(
             runtime.composer.history_search_previous,

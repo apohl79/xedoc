@@ -1498,8 +1498,8 @@ async fn unbound_queued_message_edit_does_not_fall_back_to_alt_up() {
 }
 
 #[tokio::test]
-async fn shift_left_edits_most_recent_queued_message_in_apple_terminal() {
-    assert_shift_left_edits_most_recent_queued_message_for_terminal(TerminalInfo {
+async fn terminal_binding_edits_most_recent_queued_message_in_apple_terminal() {
+    assert_terminal_binding_edits_most_recent_queued_message(TerminalInfo {
         name: TerminalName::AppleTerminal,
         term_program: None,
         version: None,
@@ -1510,8 +1510,8 @@ async fn shift_left_edits_most_recent_queued_message_in_apple_terminal() {
 }
 
 #[tokio::test]
-async fn shift_left_edits_most_recent_queued_message_in_warp_terminal() {
-    assert_shift_left_edits_most_recent_queued_message_for_terminal(TerminalInfo {
+async fn terminal_binding_edits_most_recent_queued_message_in_warp_terminal() {
+    assert_terminal_binding_edits_most_recent_queued_message(TerminalInfo {
         name: TerminalName::WarpTerminal,
         term_program: None,
         version: None,
@@ -1522,8 +1522,8 @@ async fn shift_left_edits_most_recent_queued_message_in_warp_terminal() {
 }
 
 #[tokio::test]
-async fn shift_left_edits_most_recent_queued_message_in_vscode_terminal() {
-    assert_shift_left_edits_most_recent_queued_message_for_terminal(TerminalInfo {
+async fn terminal_binding_edits_most_recent_queued_message_in_vscode_terminal() {
+    assert_terminal_binding_edits_most_recent_queued_message(TerminalInfo {
         name: TerminalName::VsCode,
         term_program: None,
         version: None,
@@ -1534,8 +1534,8 @@ async fn shift_left_edits_most_recent_queued_message_in_vscode_terminal() {
 }
 
 #[tokio::test]
-async fn shift_left_edits_most_recent_queued_message_in_tmux() {
-    assert_shift_left_edits_most_recent_queued_message_for_terminal(TerminalInfo {
+async fn terminal_binding_edits_most_recent_queued_message_in_tmux() {
+    assert_terminal_binding_edits_most_recent_queued_message(TerminalInfo {
         name: TerminalName::Iterm2,
         term_program: None,
         version: None,
@@ -1555,7 +1555,7 @@ fn queued_message_edit_binding_mapping_covers_special_terminals_and_tmux() {
             term: None,
             multiplexer: None,
         }),
-        crate::key_hint::shift(KeyCode::Left)
+        crate::key_hint::alt(KeyCode::Down)
     );
     assert_eq!(
         queued_message_edit_binding_for_terminal(TerminalInfo {
@@ -1565,7 +1565,7 @@ fn queued_message_edit_binding_mapping_covers_special_terminals_and_tmux() {
             term: None,
             multiplexer: None,
         }),
-        crate::key_hint::shift(KeyCode::Left)
+        crate::key_hint::alt(KeyCode::Down)
     );
     assert_eq!(
         queued_message_edit_binding_for_terminal(TerminalInfo {
@@ -1575,7 +1575,7 @@ fn queued_message_edit_binding_mapping_covers_special_terminals_and_tmux() {
             term: None,
             multiplexer: None,
         }),
-        crate::key_hint::shift(KeyCode::Left)
+        crate::key_hint::alt(KeyCode::Down)
     );
     assert_eq!(
         queued_message_edit_binding_for_terminal(TerminalInfo {
@@ -1585,7 +1585,7 @@ fn queued_message_edit_binding_mapping_covers_special_terminals_and_tmux() {
             term: None,
             multiplexer: Some(Multiplexer::Tmux { version: None }),
         }),
-        crate::key_hint::shift(KeyCode::Left)
+        crate::key_hint::alt(KeyCode::Down)
     );
     assert_eq!(
         queued_message_edit_binding_for_terminal(TerminalInfo {

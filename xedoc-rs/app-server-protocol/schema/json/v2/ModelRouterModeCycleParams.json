@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ModelRouterModeCycleDirection": {
+      "enum": [
+        "previous",
+        "next"
+      ],
+      "type": "string"
+    }
+  },
+  "properties": {
+    "direction": {
+      "$ref": "#/definitions/ModelRouterModeCycleDirection"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "direction",
+    "threadId"
+  ],
+  "title": "ModelRouterModeCycleParams",
+  "type": "object"
+}

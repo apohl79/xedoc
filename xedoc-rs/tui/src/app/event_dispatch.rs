@@ -203,6 +203,7 @@ impl App {
                             match self
                                 .replace_chat_widget_with_app_server_thread(
                                     tui,
+                                    app_server,
                                     forked,
                                     ThreadAttachPresentation::SessionLineage,
                                     /*initial_user_message*/ None,
@@ -297,6 +298,7 @@ impl App {
                         match self
                             .replace_chat_widget_with_app_server_thread(
                                 tui,
+                                app_server,
                                 forked,
                                 ThreadAttachPresentation::PromptEdit,
                                 /*initial_user_message*/ None,
@@ -1210,6 +1212,7 @@ impl App {
             }
             AppEvent::OpenModelRouterSettings => self.open_model_router_settings(app_server),
             AppEvent::ModelRouterSettingsOpened { result, thread_id } => {
+                self.refresh_model_router_mode(app_server, thread_id);
                 self.show_model_router_settings_result(result, thread_id);
             }
             AppEvent::ModelRouterSettingsResponse {
@@ -1235,6 +1238,15 @@ impl App {
                     .as_ref()
                     .is_ok_and(|response| response.error.is_none())
                     && host_action.is_some();
+                if result
+                    .as_ref()
+                    .is_ok_and(|response| response.error.is_none())
+                {
+                    self.refresh_model_router_mode(
+                        app_server,
+                        thread_id.or(self.current_displayed_thread_id()),
+                    );
+                }
                 if let Some(action) = host_action
                     && host_action_succeeded
                 {
@@ -1243,6 +1255,27 @@ impl App {
                 }
                 if !host_action_succeeded {
                     self.show_model_router_settings_respond_result(result, thread_id);
+                }
+            }
+            AppEvent::ModelRouterModeReadLoaded { result, thread_id } => {
+                if thread_id
+                    .is_none_or(|thread_id| self.current_displayed_thread_id() == Some(thread_id))
+                    && let Ok(response) = result
+                {
+                    self.chat_widget.set_model_router_mode(Some(response.mode));
+                }
+            }
+            AppEvent::ModelRouterModeCycleRequested { direction } => {
+                self.cycle_model_router_mode(app_server, direction);
+            }
+            AppEvent::ModelRouterModeCycleLoaded { result, thread_id } => {
+                if self.current_displayed_thread_id() == Some(thread_id) {
+                    match result {
+                        Ok(response) => self.chat_widget.set_model_router_mode(Some(response.mode)),
+                        Err(error) => self.chat_widget.add_error_message(format!(
+                            "Failed to cycle model-router mode: {error}"
+                        )),
+                    }
                 }
             }
             AppEvent::ModelRouterSettingsHostAction { action, thread_id } => match action {

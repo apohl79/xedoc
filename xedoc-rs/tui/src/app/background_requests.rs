@@ -20,6 +20,47 @@ use crate::hooks_rpc::write_hook_trusts;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 impl App {
+    pub(super) fn refresh_model_router_mode(
+        &mut self,
+        app_server: &AppServerSession,
+        thread_id: Option<xedoc_protocol::ThreadId>,
+    ) {
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            app_event_tx.send(AppEvent::ModelRouterModeReadLoaded {
+                result: crate::config_update::read_model_router_mode(request_handle, thread_id)
+                    .await
+                    .map_err(|error| error.to_string()),
+                thread_id,
+            });
+        });
+    }
+
+    pub(super) fn cycle_model_router_mode(
+        &mut self,
+        app_server: &AppServerSession,
+        direction: xedoc_app_server_protocol::ModelRouterModeCycleDirection,
+    ) {
+        let Some(thread_id) = self.current_displayed_thread_id() else {
+            return;
+        };
+        let request_handle = app_server.request_handle();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            app_event_tx.send(AppEvent::ModelRouterModeCycleLoaded {
+                result: crate::config_update::cycle_model_router_mode(
+                    request_handle,
+                    thread_id,
+                    direction,
+                )
+                .await
+                .map_err(|error| error.to_string()),
+                thread_id,
+            });
+        });
+    }
+
     pub(super) fn show_model_router_settings_result(
         &mut self,
         result: Result<xedoc_app_server_protocol::ModelRouterSettingsOpenResponse, String>,

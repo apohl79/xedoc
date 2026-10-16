@@ -190,8 +190,7 @@ const PARENT_OWNED_INPUT_MESSAGE: &str =
 ///
 /// Apple Terminal, Warp, and VSCode integrated terminals intercept or silently
 /// swallow Alt+Up, and tmux does not reliably pass that chord through. We fall
-/// back to Shift+Left for those environments while keeping the more discoverable
-/// Alt+Up everywhere else.
+/// back to Alt+Down for those environments while keeping Alt+Up everywhere else.
 ///
 /// The match is exhaustive so that adding a new `TerminalName` variant forces
 /// an explicit decision about which binding that terminal should use.
@@ -200,12 +199,12 @@ fn queued_message_edit_binding_for_terminal(terminal_info: TerminalInfo) -> KeyB
         terminal_info.multiplexer.as_ref(),
         Some(Multiplexer::Tmux { .. })
     ) {
-        return key_hint::shift(KeyCode::Left);
+        return key_hint::alt(KeyCode::Down);
     }
 
     match terminal_info.name {
         TerminalName::AppleTerminal | TerminalName::WarpTerminal | TerminalName::VsCode => {
-            key_hint::shift(KeyCode::Left)
+            key_hint::alt(KeyCode::Down)
         }
         TerminalName::Ghostty
         | TerminalName::Iterm2

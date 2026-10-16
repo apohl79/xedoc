@@ -238,6 +238,41 @@ pub(crate) async fn open_model_router_settings(
         .wrap_err("modelRouter/settings/open failed in TUI")
 }
 
+pub(crate) async fn read_model_router_mode(
+    request_handle: AppServerRequestHandle,
+    thread_id: Option<ThreadId>,
+) -> Result<xedoc_app_server_protocol::ModelRouterModeReadResponse> {
+    request_handle
+        .request_typed(ClientRequest::ModelRouterModeRead {
+            request_id: RequestId::String(format!("tui-model-router-mode-read-{}", Uuid::new_v4())),
+            params: xedoc_app_server_protocol::ModelRouterModeReadParams {
+                thread_id: thread_id.map(|thread_id| thread_id.to_string()),
+            },
+        })
+        .await
+        .wrap_err("modelRouter/mode/read failed in TUI")
+}
+
+pub(crate) async fn cycle_model_router_mode(
+    request_handle: AppServerRequestHandle,
+    thread_id: ThreadId,
+    direction: xedoc_app_server_protocol::ModelRouterModeCycleDirection,
+) -> Result<xedoc_app_server_protocol::ModelRouterModeCycleResponse> {
+    request_handle
+        .request_typed(ClientRequest::ModelRouterModeCycle {
+            request_id: RequestId::String(format!(
+                "tui-model-router-mode-cycle-{}",
+                Uuid::new_v4()
+            )),
+            params: xedoc_app_server_protocol::ModelRouterModeCycleParams {
+                thread_id: thread_id.to_string(),
+                direction,
+            },
+        })
+        .await
+        .wrap_err("modelRouter/mode/cycle failed in TUI")
+}
+
 pub(crate) async fn respond_model_router_settings(
     request_handle: AppServerRequestHandle,
     response: xedoc_app_server_protocol::ExtensionInteractionRequestResponse,

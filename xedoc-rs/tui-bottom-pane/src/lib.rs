@@ -227,6 +227,7 @@ pub struct BottomPane {
     is_model_router_running: bool,
     active_turn_started_at: Option<Instant>,
     runtime_context: Option<ComposerRuntimeContext>,
+    model_router_mode: Option<String>,
     active_turn_running: bool,
     can_disconnect_active_turn: bool,
     esc_backtrack_hint: bool,
@@ -302,6 +303,7 @@ impl BottomPane {
             is_model_router_running: false,
             active_turn_started_at: None,
             runtime_context: None,
+            model_router_mode: None,
             active_turn_running: false,
             can_disconnect_active_turn: false,
             status: None,
@@ -352,6 +354,11 @@ impl BottomPane {
             effort,
             fast,
         });
+    }
+
+    pub fn set_model_router_mode(&mut self, mode: Option<String>) {
+        self.model_router_mode = mode;
+        self.request_redraw();
     }
 
     /// Establishes a restored thread's effort without replaying its one-shot animation.
@@ -1883,6 +1890,7 @@ impl BottomPane {
                     .active_turn_started_at
                     .map(|started_at| started_at.elapsed().as_secs()),
                 runtime_context: self.runtime_context.as_ref(),
+                model_router_mode: self.model_router_mode.as_deref(),
             }));
             flex2.push(/*flex*/ 0, composer);
             RenderableItem::Owned(Box::new(flex2))
@@ -1929,6 +1937,7 @@ struct ChatComposerRightReserveRenderable<'a> {
     right_reserve: u16,
     active_turn_elapsed_seconds: Option<u64>,
     runtime_context: Option<&'a ComposerRuntimeContext>,
+    model_router_mode: Option<&'a str>,
 }
 
 impl Renderable for ChatComposerRightReserveRenderable<'_> {
@@ -1945,6 +1954,7 @@ impl Renderable for ChatComposerRightReserveRenderable<'_> {
                         context.model.as_str(),
                         context.effort.as_deref(),
                         context.fast,
+                        self.model_router_mode,
                     )
                 }),
             );

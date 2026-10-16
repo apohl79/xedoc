@@ -901,6 +901,18 @@ client_request_definitions! {
         serialization: global("model-router-settings"),
         response: v2::ModelRouterSettingsRespondResponse,
     },
+    #[experimental("modelRouter/mode/read")]
+    ModelRouterModeRead => "modelRouter/mode/read" {
+        params: v2::ModelRouterModeReadParams,
+        serialization: global("model-router-mode-read"),
+        response: v2::ModelRouterModeReadResponse,
+    },
+    #[experimental("modelRouter/mode/cycle")]
+    ModelRouterModeCycle => "modelRouter/mode/cycle" {
+        params: v2::ModelRouterModeCycleParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ModelRouterModeCycleResponse,
+    },
     #[experimental("modelRouterReport/read")]
     ModelRouterReportRead => "modelRouterReport/read" {
         params: v2::ModelRouterReportReadParams,

@@ -1104,6 +1104,7 @@ See the Xedoc keymap documentation for supported actions and examples."
             }
             app.enqueue_primary_thread_session(started.session, started.turns)
                 .await?;
+            app.refresh_model_router_mode(&app_server, Some(thread_id));
             if let Some(resumed_session) = resumed_session {
                 app.chat_widget.add_info_message(
                     format!("Resumed session: {resumed_session}"),

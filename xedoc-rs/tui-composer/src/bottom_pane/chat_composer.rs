@@ -6,6 +6,7 @@
 //! - Routing keys to the active popup (slash commands, file search, skill/apps mentions).
 //! - Promoting typed slash commands into atomic elements when the command name is completed.
 //! - Handling submit vs newline on Enter.
+//! - Cycling the session model-router mode with Shift+Left/Right when no popup is active.
 //! - Turning raw key streams into explicit paste operations on platforms where terminals
 //!   don't provide reliable bracketed paste (notably Windows).
 //!
@@ -344,6 +345,19 @@ fn runtime_context_separator_style() -> Style {
 fn runtime_context_separator_style_for(terminal_background: Option<(u8, u8, u8)>) -> Style {
     city_lights::composer_session_title_style()
         .fg(rgb_color(terminal_background.unwrap_or(city_lights::CL_BG)))
+}
+
+fn router_mode_style(mode: &str, background: Option<Color>) -> Style {
+    let foreground = match mode {
+        "shadow-subagents" | "shadow-full" => Color::Rgb(255, 165, 0),
+        "subagents" => Color::Blue,
+        "full" => Color::Green,
+        "off" => Color::Black,
+        _ => Color::Black,
+    };
+    Style::default()
+        .fg(foreground)
+        .bg(background.unwrap_or_default())
 }
 
 fn active_turn_timer_style() -> Style {
@@ -1938,6 +1952,24 @@ impl ChatComposer {
 
         if self.history_search.is_some() {
             return self.handle_history_search_key(key_event);
+        }
+
+        if !self.popups.active()
+            && key_event.modifiers == KeyModifiers::SHIFT
+            && key_event.kind == KeyEventKind::Press
+            && let Some(direction) = match key_event.code {
+                KeyCode::Left => {
+                    Some(xedoc_app_server_protocol::ModelRouterModeCycleDirection::Previous)
+                }
+                KeyCode::Right => {
+                    Some(xedoc_app_server_protocol::ModelRouterModeCycleDirection::Next)
+                }
+                _ => None,
+            }
+        {
+            self.app_event_tx
+                .send(AppEvent::ModelRouterModeCycleRequested { direction });
+            return (InputResult::None, true);
         }
 
         if Self::is_history_search_key(&key_event, &self.history_search_previous_keys) {
@@ -4545,7 +4577,7 @@ impl ChatComposer {
         mask_char: Option<char>,
         textarea_right_reserve: u16,
         active_turn_elapsed_seconds: Option<u64>,
-        runtime_context: Option<(&str, Option<&str>, bool)>,
+        runtime_context: Option<(&str, Option<&str>, bool, Option<&str>)>,
     ) {
         let [composer_rect, remote_images_rect, textarea_rect, popup_rect] =
             self.layout_areas_with_textarea_right_reserve(area, textarea_right_reserve);
@@ -4858,8 +4890,15 @@ impl ChatComposer {
         }
         let mut runtime_context_spans = Vec::new();
         let field_style = city_lights::composer_session_title_style();
-        if let Some((model, effort, fast)) = runtime_context {
+        if let Some((model, effort, fast, router_mode)) = runtime_context {
             runtime_context_spans.push(Span::styled(" ", field_style));
+            if let Some(router_mode) = router_mode {
+                runtime_context_spans.push(Span::styled(
+                    "↳",
+                    router_mode_style(router_mode, city_lights::composer_model_name_style().bg),
+                ));
+                runtime_context_spans.push(Span::styled(" ", field_style));
+            }
             runtime_context_spans.push(Span::styled(
                 model,
                 city_lights::composer_model_name_style(),
@@ -5699,7 +5738,7 @@ mod tests {
             /*mask_char*/ None,
             /*textarea_right_reserve*/ 0,
             elapsed_seconds,
-            /*runtime_context*/ Some(("gpt-5.6-terra", Some("medium"), fast)),
+            /*runtime_context*/ Some(("gpt-5.6-terra", Some("medium"), fast, None)),
         );
 
         let timer_row = area.height - 2;

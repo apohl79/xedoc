@@ -2329,6 +2329,39 @@
         }
       ]
     },
+    "ModelRouterModeCycleDirection": {
+      "enum": [
+        "previous",
+        "next"
+      ],
+      "type": "string"
+    },
+    "ModelRouterModeCycleParams": {
+      "properties": {
+        "direction": {
+          "$ref": "#/definitions/ModelRouterModeCycleDirection"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ModelRouterModeReadParams": {
+      "properties": {
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ModelRouterReportOpenParams": {
       "description": "Starts a local browser report for model-router activity.",
       "type": "object"
@@ -9526,6 +9559,54 @@
         "params"
       ],
       "title": "ModelRouter/settings/respondRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelRouter/mode/read"
+          ],
+          "title": "ModelRouter/mode/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterModeReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelRouter/mode/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "modelRouter/mode/cycle"
+          ],
+          "title": "ModelRouter/mode/cycleRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ModelRouterModeCycleParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "ModelRouter/mode/cycleRequest",
       "type": "object"
     },
     {

@@ -7,6 +7,11 @@ use xedoc_app_server_protocol::ModelRouterScope;
 use xedoc_protocol::config_types::ServiceTier;
 
 impl ChatWidget {
+    /// Updates the mode shown by the composer router indicator.
+    pub fn set_model_router_mode(&mut self, mode: Option<String>) {
+        self.bottom_pane.set_model_router_mode(mode);
+    }
+
     pub(super) fn on_model_router_activity(
         &mut self,
         notification: ModelRouterActivityNotification,

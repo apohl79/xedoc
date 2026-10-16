@@ -25,6 +25,11 @@ use xedoc_app_server_protocol::ExperimentalFeatureEnablementSetResponse;
 use xedoc_app_server_protocol::JSONRPCErrorError;
 use xedoc_app_server_protocol::ManagedHooksRequirements;
 use xedoc_app_server_protocol::ModelProviderCapabilitiesReadResponse;
+use xedoc_app_server_protocol::ModelRouterModeCycleDirection;
+use xedoc_app_server_protocol::ModelRouterModeCycleParams;
+use xedoc_app_server_protocol::ModelRouterModeCycleResponse;
+use xedoc_app_server_protocol::ModelRouterModeReadParams;
+use xedoc_app_server_protocol::ModelRouterModeReadResponse;
 use xedoc_app_server_protocol::ModelRouterSettingsInteraction;
 use xedoc_app_server_protocol::ModelRouterSettingsOpenResponse;
 use xedoc_app_server_protocol::ModelRouterSettingsRespondParams;
@@ -342,6 +347,68 @@ impl ConfigRequestProcessor {
         )
         .await;
         Ok(model_router_settings_open_response(result))
+    }
+
+    pub(crate) async fn model_router_mode_read(
+        &self,
+        params: ModelRouterModeReadParams,
+    ) -> Result<ModelRouterModeReadResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        let thread = self
+            .model_router_settings_thread(params.thread_id.as_deref())
+            .await?;
+        let session_mode = match thread.as_ref() {
+            Some(thread) => thread.model_router_session_mode().await,
+            None => None,
+        };
+        let mode =
+            xedoc_core::model_router_settings::effective_mode(&config, session_mode.as_deref())
+                .await
+                .map_err(|error| {
+                    internal_error(format!("failed to read model-router mode: {error}"))
+                })?;
+        Ok(ModelRouterModeReadResponse { mode })
+    }
+
+    pub(crate) async fn model_router_mode_cycle(
+        &self,
+        params: ModelRouterModeCycleParams,
+    ) -> Result<ModelRouterModeCycleResponse, JSONRPCErrorError> {
+        let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
+        if !xedoc_core::model_router_settings::is_available(&config) {
+            return Err(invalid_request(
+                "model-router mode cannot be cycled because no router host is available",
+            ));
+        }
+        let thread = self
+            .model_router_settings_thread(Some(&params.thread_id))
+            .await?
+            .ok_or_else(|| invalid_request("a thread is required to cycle model-router mode"))?;
+        let session_mode = thread.model_router_session_mode().await;
+        let current_mode =
+            xedoc_core::model_router_settings::effective_mode(&config, session_mode.as_deref())
+                .await
+                .map_err(|error| {
+                    internal_error(format!("failed to read model-router mode: {error}"))
+                })?;
+        let modes = ["off", "shadow-full", "subagents", "full"];
+        let current_index = modes
+            .iter()
+            .position(|mode| *mode == current_mode)
+            .unwrap_or_default();
+        let next_index = match params.direction {
+            ModelRouterModeCycleDirection::Previous => {
+                (current_index + modes.len() - 1) % modes.len()
+            }
+            ModelRouterModeCycleDirection::Next => (current_index + 1) % modes.len(),
+        };
+        let mode = modes[next_index];
+        thread
+            .set_model_router_session_mode(Some(mode.to_string()))
+            .await;
+        Ok(ModelRouterModeCycleResponse {
+            mode: mode.to_string(),
+        })
     }
 
     pub(crate) async fn model_router_settings_respond(

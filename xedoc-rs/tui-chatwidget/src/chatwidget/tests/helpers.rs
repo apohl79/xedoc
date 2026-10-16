@@ -974,12 +974,12 @@ pub(super) fn get_available_model(chat: &ChatWidget, model: &str) -> ModelPreset
         .unwrap_or_else(|| panic!("{model} preset not found"))
 }
 
-pub(super) async fn assert_shift_left_edits_most_recent_queued_message_for_terminal(
+pub(super) async fn assert_terminal_binding_edits_most_recent_queued_message(
     terminal_info: TerminalInfo,
 ) {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-    chat.queued_message_edit_hint_binding =
-        Some(queued_message_edit_binding_for_terminal(terminal_info));
+    let binding = queued_message_edit_binding_for_terminal(terminal_info);
+    chat.queued_message_edit_hint_binding = Some(binding);
     chat.bottom_pane
         .set_queued_message_edit_binding(chat.queued_message_edit_hint_binding);
 
@@ -995,8 +995,13 @@ pub(super) async fn assert_shift_left_edits_most_recent_queued_message_for_termi
         .push_back(UserMessage::from("second queued".to_string()).into());
     chat.refresh_pending_input_preview();
 
-    // Press Shift+Left to edit the most recent (last) queued message.
-    chat.handle_key_event(KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT));
+    // Press the selected terminal-specific binding.
+    let key_event = if binding == crate::key_hint::alt(KeyCode::Down) {
+        KeyEvent::new(KeyCode::Down, KeyModifiers::ALT)
+    } else {
+        KeyEvent::new(KeyCode::Up, KeyModifiers::ALT)
+    };
+    chat.handle_key_event(key_event);
 
     // Composer should now contain the last queued message.
     assert_eq!(

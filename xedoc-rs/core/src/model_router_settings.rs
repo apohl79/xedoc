@@ -17,6 +17,35 @@ use crate::model_router_script_host::interaction_response;
 
 const MAX_JEV_API_KEY_BYTES: usize = 4_096;
 
+/// Reports whether the configured router host can run for the supplied config.
+#[must_use]
+pub fn is_available(config: &Config) -> bool {
+    ModelRouterScriptHost::from_config(config).is_some()
+}
+
+/// Reads the effective router mode for a shared policy and optional session override.
+///
+/// # Errors
+///
+/// Returns an error when the configured router cannot report its policy state.
+pub async fn effective_mode(config: &Config, session_mode: Option<&str>) -> Result<String, String> {
+    let Some(host) = ModelRouterScriptHost::from_config(config) else {
+        return Ok("off".to_string());
+    };
+    let context = serde_json::json!({
+        "turn": {"scope": "root"},
+        "currentRoute": current_script_route(config),
+        "session": {"routerMode": session_mode},
+    });
+    let cancellation = CancellationToken::new();
+    let _cancel_on_drop = cancellation.clone().drop_guard();
+    let state = host
+        .state(context, cancellation)
+        .await
+        .map_err(settings_error)?;
+    Ok(session_mode.unwrap_or(&state.mode).to_string())
+}
+
 /// A script-requested update to the live session's router state.
 pub struct ModelRouterSettingsSessionUpdate {
     /// Mode override to retain until the session ends, or `None` for the shared policy mode.

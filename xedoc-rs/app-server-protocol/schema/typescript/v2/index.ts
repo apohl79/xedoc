@@ -263,6 +263,11 @@ export type { ModelRouterDecisionNotification } from "./ModelRouterDecisionNotif
 export type { ModelRouterDecisionReason } from "./ModelRouterDecisionReason";
 export type { ModelRouterDisposition } from "./ModelRouterDisposition";
 export type { ModelRouterEffectiveRoute } from "./ModelRouterEffectiveRoute";
+export type { ModelRouterModeCycleDirection } from "./ModelRouterModeCycleDirection";
+export type { ModelRouterModeCycleParams } from "./ModelRouterModeCycleParams";
+export type { ModelRouterModeCycleResponse } from "./ModelRouterModeCycleResponse";
+export type { ModelRouterModeReadParams } from "./ModelRouterModeReadParams";
+export type { ModelRouterModeReadResponse } from "./ModelRouterModeReadResponse";
 export type { ModelRouterReportDay } from "./ModelRouterReportDay";
 export type { ModelRouterReportDecision } from "./ModelRouterReportDecision";
 export type { ModelRouterReportOpenParams } from "./ModelRouterReportOpenParams";
