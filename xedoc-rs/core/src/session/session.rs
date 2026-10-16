@@ -568,7 +568,7 @@ impl Session {
 
     pub(crate) async fn model_client_for_turn(&self, turn_context: &TurnContext) -> ModelClient {
         let mut session_configuration = self.default_turn_configuration().await;
-        session_configuration.provider = turn_context.provider.info().clone();
+        session_configuration.provider = turn_context.config.model_provider.clone();
         Self::model_client(
             Arc::clone(&self.services.auth_manager),
             &session_configuration,

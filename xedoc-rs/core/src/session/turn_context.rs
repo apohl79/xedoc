@@ -40,6 +40,28 @@ impl Session {
             .set_workspace_roots(workspace_roots);
         per_turn_config.model_reasoning_effort =
             session_configuration.collaboration_mode.reasoning_effort();
+        let model = session_configuration.collaboration_mode.model();
+        let registry = per_turn_config.model_registry.snapshot();
+        if registry
+            .provider(&per_turn_config.model_provider_id)
+            .is_some_and(|provider| !provider.models.contains_key(model))
+        {
+            let matching_providers = registry
+                .providers
+                .iter()
+                .filter(|(provider_id, provider)| {
+                    per_turn_config.model_providers.contains_key(*provider_id)
+                        && provider.models.contains_key(model)
+                })
+                .map(|(provider_id, _)| provider_id);
+            if let Some(provider_id) = matching_providers.clone().next()
+                && matching_providers.count() == 1
+                && let Some(provider) = per_turn_config.model_providers.get(provider_id)
+            {
+                per_turn_config.model_provider_id.clone_from(provider_id);
+                per_turn_config.model_provider = provider.clone();
+            }
+        }
         per_turn_config.model_reasoning_summary = session_configuration.model_reasoning_summary;
         per_turn_config.service_tier = session_configuration.service_tier.clone();
         per_turn_config.personality = session_configuration.personality;
@@ -80,7 +102,6 @@ impl Session {
         session_id: SessionId,
         auth_manager: Option<Arc<AuthManager>>,
         session_telemetry: &SessionTelemetry,
-        provider: ModelProviderInfo,
         session_configuration: &SessionConfiguration,
         multi_agent_version: MultiAgentVersion,
         user_shell: &shell::Shell,
@@ -108,7 +129,7 @@ impl Session {
         let auth_manager_for_context = auth_manager.clone();
         let provider_for_context = create_turn_model_provider(
             per_turn_config.model_provider_id.clone(),
-            provider,
+            per_turn_config.model_provider.clone(),
             auth_manager,
         );
         let session_telemetry_for_context = session_telemetry;
@@ -364,7 +385,6 @@ impl Session {
             self.session_id(),
             Some(Arc::clone(&self.services.auth_manager)),
             &self.services.session_telemetry,
-            session_configuration.provider.clone(),
             &session_configuration,
             multi_agent_version,
             self.services.user_shell.as_ref(),
