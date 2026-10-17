@@ -507,6 +507,49 @@ pub(crate) async fn run_turn(
                 continue;
             }
             Err(e) => {
+                if let XedocErr::UsageLimitReached(limit) = &e
+                    && let Some(reset) = limit.resets_at
+                    && let Ok(delay) = (reset - chrono::Utc::now()).to_std()
+                {
+                    let session = Arc::downgrade(&sess);
+                    sess.send_event(
+                        &turn_context,
+                        EventMsg::Warning(WarningEvent {
+                            message: format!(
+                                "Usage limit reached. Work will continue automatically at {}.",
+                                reset.with_timezone(&chrono::Local).format("%-I:%M %p")
+                            ),
+                        }),
+                    )
+                    .await;
+                    tokio::spawn(async move {
+                        tokio::time::sleep(delay).await;
+                        let Some(session) = session.upgrade() else {
+                            return;
+                        };
+                        if session.active_turn.lock().await.is_some() {
+                            return;
+                        }
+                        let _ = session
+                            .tx_sub
+                            .send(xedoc_protocol::protocol::Submission {
+                                id: uuid::Uuid::now_v7().to_string(),
+                                op: xedoc_protocol::protocol::Op::UserInput {
+                                    items: vec![xedoc_protocol::user_input::UserInput::Text {
+                                        text: "continue".to_string(),
+                                        text_elements: Vec::new(),
+                                    }],
+                                    final_output_json_schema: None,
+                                    responsesapi_client_metadata: None,
+                                    additional_context: Default::default(),
+                                    thread_settings: Default::default(),
+                                },
+                                client_user_message_id: None,
+                                trace: None,
+                            })
+                            .await;
+                    });
+                }
                 info!("Turn error: {e:#}");
                 let error = e.to_xedoc_protocol_error();
                 sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())
