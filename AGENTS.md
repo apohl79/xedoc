@@ -93,6 +93,11 @@ Xedoc is a personal experimental harness where iteration speed takes priority. D
 repair, or maintain unit tests unless the user explicitly requests a future testing investment.
 Existing unit-test failures are not blockers. Do not run broad Bazel or Cargo test suites by
 default; use only the narrow behavioral validation that the user specifically asks for.
+When the user requests tmux testing, exercise every changed behavior in a real tmux session
+using a binary built from the current changes. Send the actual changed key bindings through
+tmux, verify the resulting UI and state (including toggling back), and report each observed
+result. A test target that fails before execution, or source inspection alone, does not count
+as a tmux test; report any blocked interaction explicitly.
 
 Before finalizing a large change to `xedoc-rs`, run `just fix -p <project>` (in `xedoc-rs` directory) to fix any linter issues in the code. Prefer scoping with `-p` to avoid slow workspace‑wide Clippy builds; only run `just fix` without `-p` if you changed shared crates. Do not re-run tests after running `fix` or `fmt`.
 

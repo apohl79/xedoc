@@ -121,6 +121,7 @@ pub struct ModelRouterModeCycleParams {
 pub enum ModelRouterModeCycleDirection {
     Previous,
     Next,
+    Toggle,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

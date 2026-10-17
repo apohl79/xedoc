@@ -1500,7 +1500,7 @@ fn validate_router_state(state: RouterState) -> Result<RouterState, ModelRouterS
         "off" | "shadow-subagents" | "shadow-full" | "subagents" | "full"
     ) || !matches!(
         state.approval.as_str(),
-        "off" | "changes" | "all" | "not-confident"
+        "off" | "policy" | "changes" | "all" | "not-confident"
     ) || !matches!(
         state.similarity_preset.as_str(),
         "strict" | "balanced" | "permissive"

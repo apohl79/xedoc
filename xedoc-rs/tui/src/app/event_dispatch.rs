@@ -1260,11 +1260,16 @@ impl App {
             AppEvent::ModelRouterModeReadLoaded { result, thread_id } => {
                 if thread_id
                     .is_none_or(|thread_id| self.current_displayed_thread_id() == Some(thread_id))
-                    && let Ok(response) = result
                 {
-                    self.chat_widget.set_model_router_mode(Some(response.mode));
+                    match result {
+                        Ok(response) => self.chat_widget.set_model_router_mode(Some(response.mode)),
+                        Err(error) => self.chat_widget.add_error_message(format!(
+                            "Failed to read model-router mode: {error}"
+                        )),
+                    }
                 }
             }
+            AppEvent::OpenModelPicker => self.chat_widget.open_model_popup(),
             AppEvent::ModelRouterModeCycleRequested { direction } => {
                 self.cycle_model_router_mode(app_server, direction);
             }

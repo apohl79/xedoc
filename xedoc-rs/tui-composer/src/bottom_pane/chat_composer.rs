@@ -6,7 +6,8 @@
 //! - Routing keys to the active popup (slash commands, file search, skill/apps mentions).
 //! - Promoting typed slash commands into atomic elements when the command name is completed.
 //! - Handling submit vs newline on Enter.
-//! - Cycling the session model-router mode with Shift+Left/Right when no popup is active.
+//! - Toggling the session model-router mode with Shift+Left and opening /model with
+//!   Shift+Right when no popup is active.
 //! - Turning raw key streams into explicit paste operations on platforms where terminals
 //!   don't provide reliable bracketed paste (notably Windows).
 //!
@@ -1957,19 +1958,22 @@ impl ChatComposer {
         if !self.popups.active()
             && key_event.modifiers == KeyModifiers::SHIFT
             && key_event.kind == KeyEventKind::Press
-            && let Some(direction) = match key_event.code {
+        {
+            match key_event.code {
                 KeyCode::Left => {
-                    Some(xedoc_app_server_protocol::ModelRouterModeCycleDirection::Previous)
+                    self.app_event_tx
+                        .send(AppEvent::ModelRouterModeCycleRequested {
+                            direction:
+                                xedoc_app_server_protocol::ModelRouterModeCycleDirection::Toggle,
+                        });
+                    return (InputResult::None, true);
                 }
                 KeyCode::Right => {
-                    Some(xedoc_app_server_protocol::ModelRouterModeCycleDirection::Next)
+                    self.app_event_tx.send(AppEvent::OpenModelPicker);
+                    return (InputResult::None, true);
                 }
-                _ => None,
+                _ => {}
             }
-        {
-            self.app_event_tx
-                .send(AppEvent::ModelRouterModeCycleRequested { direction });
-            return (InputResult::None, true);
         }
 
         if Self::is_history_search_key(&key_event, &self.history_search_previous_keys) {

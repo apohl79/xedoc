@@ -2332,7 +2332,8 @@
     "ModelRouterModeCycleDirection": {
       "enum": [
         "previous",
-        "next"
+        "next",
+        "toggle"
       ],
       "type": "string"
     },

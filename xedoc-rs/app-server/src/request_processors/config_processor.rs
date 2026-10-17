@@ -385,6 +385,19 @@ impl ConfigRequestProcessor {
             .await?
             .ok_or_else(|| invalid_request("a thread is required to cycle model-router mode"))?;
         let session_mode = thread.model_router_session_mode().await;
+        if params.direction == ModelRouterModeCycleDirection::Toggle {
+            let mode = if session_mode.as_deref() == Some("off") {
+                "full"
+            } else {
+                "off"
+            };
+            thread
+                .set_model_router_session_mode(Some(mode.to_string()))
+                .await;
+            return Ok(ModelRouterModeCycleResponse {
+                mode: mode.to_string(),
+            });
+        }
         let current_mode =
             xedoc_core::model_router_settings::effective_mode(&config, session_mode.as_deref())
                 .await
@@ -401,6 +414,7 @@ impl ConfigRequestProcessor {
                 (current_index + modes.len() - 1) % modes.len()
             }
             ModelRouterModeCycleDirection::Next => (current_index + 1) % modes.len(),
+            ModelRouterModeCycleDirection::Toggle => unreachable!("handled before reading state"),
         };
         let mode = modes[next_index];
         thread

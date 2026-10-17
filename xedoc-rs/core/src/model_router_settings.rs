@@ -32,6 +32,9 @@ pub async fn effective_mode(config: &Config, session_mode: Option<&str>) -> Resu
     let Some(host) = ModelRouterScriptHost::from_config(config) else {
         return Ok("off".to_string());
     };
+    if let Some(session_mode) = session_mode {
+        return Ok(session_mode.to_string());
+    }
     let context = serde_json::json!({
         "turn": {"scope": "root"},
         "currentRoute": current_script_route(config),

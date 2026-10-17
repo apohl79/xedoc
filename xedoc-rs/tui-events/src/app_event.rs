@@ -761,6 +761,7 @@ pub enum AppEvent {
         result: Result<xedoc_app_server_protocol::ModelRouterModeReadResponse, String>,
         thread_id: Option<ThreadId>,
     },
+    OpenModelPicker,
     ModelRouterModeCycleRequested {
         direction: xedoc_app_server_protocol::ModelRouterModeCycleDirection,
     },
