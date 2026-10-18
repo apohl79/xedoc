@@ -143,10 +143,6 @@ impl ChatWidget {
             {
                 self.flush_unified_exec_wait_streak();
             }
-            self.add_to_history(history_cell::new_unified_exec_interaction(
-                command_display,
-                stdin,
-            ));
         }
     }
 
