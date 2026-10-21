@@ -13138,7 +13138,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core-subagent-activity"
-version = "1.54.0"
+version = "1.54.1"
 dependencies = [
  "pretty_assertions",
  "xedoc-protocol",

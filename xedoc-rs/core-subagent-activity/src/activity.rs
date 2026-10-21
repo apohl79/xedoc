@@ -59,6 +59,15 @@ impl RecentSubAgentActivity {
     pub fn latest_display_hint(&self) -> Option<String> {
         self.items
             .back()
+            .map(|activity| {
+                if activity.starts_with("Tool ") {
+                    activity
+                        .split_once(": ")
+                        .map_or(activity.as_str(), |(label, _)| label)
+                } else {
+                    activity.as_str()
+                }
+            })
             .map(|activity| activity.chars().take(MAX_DISPLAY_ACTIVITY_CHARS).collect())
     }
 }
