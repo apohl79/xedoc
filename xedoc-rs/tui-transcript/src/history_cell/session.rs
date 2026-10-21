@@ -323,7 +323,7 @@ impl SessionHeaderHistoryCell {
 
 impl HistoryCell for SessionHeaderHistoryCell {
     fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
-        let mut spans = vec![format!("XEDOC {}", self.version).dim()];
+        let mut spans = vec![format!("  XEDOC {}", self.version).dim()];
         if self.yolo_mode {
             spans.extend([" (".dim(), "YOLO".cl_magenta().bold(), " mode)".dim()]);
         }
