@@ -242,9 +242,7 @@ pub fn has_yolo_permissions(
 pub struct SessionHeaderHistoryCell {
     version: &'static str,
     model: String,
-    model_style: Style,
     reasoning_effort: Option<ReasoningEffortConfig>,
-    show_fast_status: bool,
     directory: PathBuf,
     yolo_mode: bool,
 }
@@ -269,18 +267,16 @@ impl SessionHeaderHistoryCell {
 
     pub fn new_with_style(
         model: String,
-        model_style: Style,
+        _model_style: Style,
         reasoning_effort: Option<ReasoningEffortConfig>,
-        show_fast_status: bool,
+        _show_fast_status: bool,
         directory: PathBuf,
         version: &'static str,
     ) -> Self {
         Self {
             version,
             model,
-            model_style,
             reasoning_effort,
-            show_fast_status,
             directory,
             yolo_mode: false,
         }
@@ -323,73 +319,15 @@ impl SessionHeaderHistoryCell {
             .as_ref()
             .map(ReasoningEffortConfig::as_str)
     }
-
-    fn session_header_top_border(content_width: usize, version: &str) -> Line<'static> {
-        let title = "─ XEDOC ";
-        let version = format!(" {version} ─");
-        let separator_width = content_width.saturating_add(2).saturating_sub(
-            UnicodeWidthStr::width(title) + UnicodeWidthStr::width(version.as_str()),
-        );
-
-        vec![format!("╭{title}{}{version}╮", "─".repeat(separator_width)).dim()].into()
-    }
 }
 
 impl HistoryCell for SessionHeaderHistoryCell {
-    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let Some(inner_width) = card_inner_width(width, SESSION_HEADER_MAX_INNER_WIDTH) else {
-            return Vec::new();
-        };
-
-        let mut model_spans = vec![
-            Span::from(" "),
-            Span::styled(self.model.clone(), self.model_style),
-        ];
-        if let Some(reasoning) = self.reasoning_label() {
-            model_spans.push(" · ".dim());
-            model_spans.push(Span::from(reasoning.to_owned()));
-        }
-        if self.show_fast_status {
-            model_spans.push(" · ".dim());
-            model_spans.push(Span::styled("fast", self.model_style.cl_magenta()));
-        }
-
-        let content_width = inner_width.max(
-            model_spans
-                .iter()
-                .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
-                .sum(),
-        );
-        let yolo_width = self
-            .yolo_mode
-            .then_some(UnicodeWidthStr::width("YOLO"))
-            .unwrap_or_default();
-        let directory_gap_width = if self.yolo_mode {
-            1
-        } else {
-            Default::default()
-        };
-        let directory_width = content_width
-            .saturating_sub(1)
-            .saturating_sub(directory_gap_width)
-            .saturating_sub(yolo_width);
-        let directory = self.format_directory(Some(directory_width));
-        let directory_padding = content_width
-            .saturating_sub(1)
-            .saturating_sub(UnicodeWidthStr::width(directory.as_str()))
-            .saturating_sub(yolo_width);
-        let mut directory_spans = vec![Span::from(" "), Span::from(directory)];
+    fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
+        let mut spans = vec![format!("XEDOC {}", self.version).dim()];
         if self.yolo_mode {
-            directory_spans.push(Span::from(" ".repeat(directory_padding)));
-            directory_spans.push("YOLO".cl_magenta().bold());
+            spans.extend([" (".dim(), "YOLO".cl_magenta().bold(), " mode)".dim()]);
         }
-
-        let mut lines = with_border_with_inner_width(
-            vec![Line::from(model_spans), Line::from(directory_spans)],
-            content_width,
-        );
-        lines[0] = Self::session_header_top_border(content_width, self.version);
-        lines
+        vec![spans.into()]
     }
 
     fn raw_lines(&self) -> Vec<Line<'static>> {
