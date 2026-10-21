@@ -27,6 +27,7 @@ use std::task::Poll;
 
 use crossterm::event::Event;
 use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio_stream::Stream;
 use tokio_stream::wrappers::BroadcastStream;
@@ -51,6 +52,8 @@ pub trait EventSource: Send + 'static {
 pub struct EventBroker<S: EventSource = CrosstermEventSource> {
     state: Mutex<EventBrokerState<S>>,
     resume_events_tx: watch::Sender<()>,
+    browser_inputs: Mutex<mpsc::Receiver<TuiEvent>>,
+    browser_input_tx: mpsc::Sender<TuiEvent>,
 }
 
 /// Tracks state of underlying [`EventSource`].
@@ -80,9 +83,12 @@ impl<S: EventSource + Default> EventBrokerState<S> {
 impl<S: EventSource + Default> EventBroker<S> {
     pub fn new() -> Self {
         let (resume_events_tx, _resume_events_rx) = watch::channel(());
+        let (browser_input_tx, browser_inputs) = mpsc::channel(32);
         Self {
             state: Mutex::new(EventBrokerState::Start),
             resume_events_tx,
+            browser_inputs: Mutex::new(browser_inputs),
+            browser_input_tx,
         }
     }
 
@@ -97,6 +103,13 @@ impl<S: EventSource + Default> EventBroker<S> {
 
     /// Create a new instance of the underlying event source
     pub fn resume_events(&self) {
+        {
+            let mut inputs = self
+                .browser_inputs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            while inputs.try_recv().is_ok() {}
+        }
         let mut state = self
             .state
             .lock()
@@ -111,6 +124,10 @@ impl<S: EventSource + Default> EventBroker<S> {
     /// underlying crossterm stream to be recreated.
     pub fn resume_events_rx(&self) -> watch::Receiver<()> {
         self.resume_events_tx.subscribe()
+    }
+
+    pub(super) fn browser_input_sender(&self) -> mpsc::Sender<TuiEvent> {
+        self.browser_input_tx.clone()
     }
 }
 
@@ -179,6 +196,22 @@ impl<S: EventSource + Default + Unpin> TuiEventStream<S> {
         // Some crossterm events map to None (e.g. FocusLost, mouse); loop so we keep polling
         // until we return a mapped event, hit Pending, or see EOF/error.
         loop {
+            if !matches!(
+                *self
+                    .broker
+                    .state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                EventBrokerState::Paused
+            ) && let Poll::Ready(Some(event)) = self
+                .broker
+                .browser_inputs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .poll_recv(cx)
+            {
+                return Poll::Ready(Some(event));
+            }
             let poll_result = {
                 let mut state = self
                     .broker

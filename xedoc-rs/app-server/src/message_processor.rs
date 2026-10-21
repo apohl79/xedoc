@@ -81,6 +81,7 @@ use xedoc_state::log_db::LogDbLayer;
 
 use crate::model_router_report_server::ModelRouterReportServer;
 use crate::models_refresh_worker::ModelsRefreshWorker;
+use crate::web_ui_server::WebUiServer;
 
 const CONNECTION_RPC_DRAIN_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
 
@@ -166,6 +167,7 @@ pub(crate) struct MessageProcessor {
     model_manager_processor: ModelManagerRequestProcessor,
     model_router_report_processor: ModelRouterReportRequestProcessor,
     model_router_report_server: ModelRouterReportServer,
+    web_ui_server: WebUiServer,
     plugin_processor: PluginRequestProcessor,
     search_processor: SearchRequestProcessor,
     thread_goal_processor: ThreadGoalRequestProcessor,
@@ -451,6 +453,7 @@ impl MessageProcessor {
             model_router_report_processor.clone(),
             Arc::clone(&config),
         );
+        let web_ui_server = WebUiServer::new(Arc::clone(&thread_manager));
         let plugin_processor = PluginRequestProcessor::new(
             auth_manager.clone(),
             Arc::clone(&thread_manager),
@@ -535,6 +538,7 @@ impl MessageProcessor {
             model_manager_processor,
             model_router_report_processor,
             model_router_report_server,
+            web_ui_server,
             plugin_processor,
             search_processor,
             thread_goal_processor,
@@ -551,6 +555,7 @@ impl MessageProcessor {
         self.plugin_watcher.shutdown();
         self.skills_watcher.shutdown();
         self.model_router_report_server.shutdown();
+        self.web_ui_server.shutdown();
     }
 
     pub(crate) async fn process_request(
@@ -1073,6 +1078,11 @@ impl MessageProcessor {
             ClientRequest::ModelRouterReportOpen { params: _, .. } => self
                 .model_router_report_server
                 .open()
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ThreadWebUiOpen { params, .. } => self
+                .web_ui_server
+                .open(params)
                 .await
                 .map(|response| Some(response.into())),
             ClientRequest::SessionExtensionList { params, .. } => self

@@ -4,6 +4,7 @@ xedoc_rust_crate(
     name = "app-server",
     compile_data = glob([
         "src/model_router_report_assets/**",
+        "src/web_ui_assets/**",
     ]),
     crate_name = "xedoc_app_server",
     extra_binaries = [

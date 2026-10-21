@@ -530,6 +530,8 @@ export type { ThreadUnarchivedNotification } from "./ThreadUnarchivedNotificatio
 export type { ThreadUnsubscribeParams } from "./ThreadUnsubscribeParams";
 export type { ThreadUnsubscribeResponse } from "./ThreadUnsubscribeResponse";
 export type { ThreadUnsubscribeStatus } from "./ThreadUnsubscribeStatus";
+export type { ThreadWebUiOpenParams } from "./ThreadWebUiOpenParams";
+export type { ThreadWebUiOpenResponse } from "./ThreadWebUiOpenResponse";
 export type { TokenUsageBreakdown } from "./TokenUsageBreakdown";
 export type { TokenUsageOptimizerBreakdown } from "./TokenUsageOptimizerBreakdown";
 export type { TokenUsageOptimizerInsights } from "./TokenUsageOptimizerInsights";

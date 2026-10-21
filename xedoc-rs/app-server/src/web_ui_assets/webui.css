@@ -1,0 +1,105 @@
+:root {
+  color-scheme: dark;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #a8bac9;
+  background: #192229;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-bottom: 1px solid #35434d;
+  color: #8a9aa6;
+}
+
+.brand { color: #a8bac9; }
+
+#connection { font-size: 12px; }
+
+#connection[data-state="live"] { color: #8bbaa3; }
+
+button {
+  color: #a8bac9;
+  background: transparent;
+  border: 1px solid #52626d;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+
+button:hover:not(:disabled) { background: #28353e; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button:focus-visible, #composer:focus-visible { outline: 2px solid #b47af3; outline-offset: 3px; }
+
+#attach { margin-left: auto; width: 32px; height: 30px; font-size: 20px; line-height: 1; }
+
+#session {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 44px);
+  padding: 20px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+#history { flex: 1; min-height: 0; overflow: auto; }
+
+.history-cell, #live {
+  white-space: pre;
+  overflow-wrap: normal;
+  font: inherit;
+  line-height: 1;
+  tab-size: 4;
+}
+
+.history-cell { margin: 0 0 1.5em; }
+
+#composer { position: relative; flex: none; min-height: 4em; cursor: text; }
+#live { min-height: 4em; max-height: 60dvh; overflow: auto; }
+.line { display: block; min-height: 1lh; }
+.line > span { display: inline-block; vertical-align: top; }
+.cursor { color: #192229; background: #a8bac9; }
+#composer:focus-within .cursor { background: #65c5f5; }
+
+#input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  font: inherit;
+}
+
+#notice {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  left: 16px;
+  padding: 10px 14px;
+  color: #edb2a8;
+  background: #293039;
+  border: 1px solid #9d6b65;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+body.dragging #composer { outline: 2px dashed #b47af3; outline-offset: 4px; }
+
+::selection { color: #192229; background: #a8bac9; }
+
+@media (max-width: 600px) {
+  .toolbar { padding: 0 12px; }
+  #session { padding: 16px 12px; }
+}

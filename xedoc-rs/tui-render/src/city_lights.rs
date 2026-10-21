@@ -121,7 +121,7 @@ impl CityLightsStylize for String {
 /// message/composer area. Dark terminals get a subtle light tint; light
 /// terminals get a subtle dark tint.
 pub fn user_message_bg_cl(terminal_bg: Option<(u8, u8, u8)>) -> Color {
-    let use_light_tint = terminal_bg.is_none_or(crate::color::is_light);
+    let use_light_tint = crate::color::is_light(terminal_bg.unwrap_or(CL_BG));
     if use_light_tint {
         rgb(crate::color::blend(
             (0, 0, 0),

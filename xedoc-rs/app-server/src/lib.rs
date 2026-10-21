@@ -111,6 +111,7 @@ mod skills_watcher;
 mod thread_state;
 mod thread_status;
 mod transport;
+mod web_ui_server;
 
 pub(crate) use xedoc_app_server_jsonrpc::connection_rpc_gate;
 pub(crate) use xedoc_app_server_jsonrpc::error_code;

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Local capability URLs for the browser and its owning TUI.",
+  "properties": {
+    "bridgeUrl": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "bridgeUrl",
+    "url"
+  ],
+  "title": "ThreadWebUiOpenResponse",
+  "type": "object"
+}

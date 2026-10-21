@@ -17,6 +17,7 @@
 
 mod path;
 mod remote;
+pub mod web_ui;
 
 use std::error::Error;
 use std::fmt;

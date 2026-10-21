@@ -202,6 +202,7 @@ impl ChatWidget {
         }
 
         match cmd {
+            SlashCommand::WebUi => self.app_event_tx.send(AppEvent::OpenWebUi),
             SlashCommand::New => {
                 self.app_event_tx.send(AppEvent::NewSession);
             }
@@ -1079,6 +1080,7 @@ impl ChatWidget {
         match cmd {
             SlashCommand::Ide
             | SlashCommand::Status
+            | SlashCommand::WebUi
             | SlashCommand::DebugConfig
             | SlashCommand::Ps
             | SlashCommand::Stop

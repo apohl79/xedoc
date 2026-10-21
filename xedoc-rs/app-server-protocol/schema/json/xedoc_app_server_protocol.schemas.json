@@ -2168,6 +2168,30 @@
             },
             "method": {
               "enum": [
+                "thread/webUi/open"
+              ],
+              "title": "Thread/webUi/openRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/ThreadWebUiOpenParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/webUi/openRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "sessionExtension/list"
               ],
               "title": "SessionExtension/listRequestMethod",
@@ -23317,6 +23341,38 @@
           "unsubscribed"
         ],
         "type": "string"
+      },
+      "ThreadWebUiOpenParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Opens a loopback browser view of an active TUI session.",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "title": "ThreadWebUiOpenParams",
+        "type": "object"
+      },
+      "ThreadWebUiOpenResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Local capability URLs for the browser and its owning TUI.",
+        "properties": {
+          "bridgeUrl": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bridgeUrl",
+          "url"
+        ],
+        "title": "ThreadWebUiOpenResponse",
+        "type": "object"
       },
       "TokenOptimizerSessionStats": {
         "properties": {

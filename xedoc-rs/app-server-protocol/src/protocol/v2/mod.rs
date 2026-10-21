@@ -23,6 +23,7 @@ mod session_script;
 mod thread;
 mod thread_data;
 mod turn;
+mod web_ui;
 
 pub use account::*;
 pub use collaboration_mode::*;
@@ -48,6 +49,7 @@ pub use shared::*;
 pub use thread::*;
 pub use thread_data::*;
 pub use turn::*;
+pub use web_ui::*;
 
 #[cfg(test)]
 mod tests;

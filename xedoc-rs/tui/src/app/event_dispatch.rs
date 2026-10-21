@@ -525,6 +525,19 @@ impl App {
             AppEvent::OpenUrlInBrowser { url } => {
                 self.open_url_in_browser(url);
             }
+            AppEvent::OpenWebUi => self.open_web_ui(tui, app_server),
+            AppEvent::WebUiOpened { thread_id, result } => {
+                self.web_ui_opened(tui, thread_id, result);
+            }
+            AppEvent::WebUiInput {
+                thread_id,
+                input,
+                complete,
+            } => {
+                let result = self.handle_web_ui_input(tui, thread_id, input).await;
+                let _ = complete.send(());
+                return result;
+            }
             AppEvent::FetchModelManager => {
                 let generation = self.chat_widget.open_model_manager_loading();
                 self.fetch_model_manager(app_server, generation);

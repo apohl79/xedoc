@@ -925,6 +925,12 @@ client_request_definitions! {
         serialization: global("model-router-report"),
         response: v2::ModelRouterReportOpenResponse,
     },
+    #[experimental("thread/webUi/open")]
+    ThreadWebUiOpen => "thread/webUi/open" {
+        params: v2::ThreadWebUiOpenParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadWebUiOpenResponse,
+    },
     #[experimental("sessionExtension/list")]
     SessionExtensionList => "sessionExtension/list" {
         params: v2::SessionExtensionListParams,

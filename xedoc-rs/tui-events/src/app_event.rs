@@ -340,6 +340,20 @@ pub enum AppEvent {
         url: String,
     },
 
+    /// Open an app-server-hosted view of the live TUI controller.
+    OpenWebUi,
+    /// Result of opening a session browser bridge.
+    WebUiOpened {
+        thread_id: ThreadId,
+        result: Result<xedoc_app_server_protocol::ThreadWebUiOpenResponse, String>,
+    },
+    /// Browser input received on the authenticated session bridge.
+    WebUiInput {
+        thread_id: ThreadId,
+        input: String,
+        complete: tokio::sync::oneshot::Sender<()>,
+    },
+
     /// Fetch provider, model, authentication, and model-limit settings.
     FetchModelManager,
 

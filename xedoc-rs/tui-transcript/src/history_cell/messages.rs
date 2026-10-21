@@ -111,6 +111,10 @@ fn trim_trailing_blank_lines(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>
 }
 
 impl HistoryCell for UserHistoryCell {
+    fn display_background_style(&self) -> Option<Style> {
+        Some(user_message_style())
+    }
+
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let message = sanitize_user_text(&self.message);
         let text_elements = if message == self.message {

@@ -201,6 +201,7 @@ mod thread_goal_actions;
 mod thread_routing;
 mod thread_session_state;
 mod thread_settings;
+mod web_ui;
 
 use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;
@@ -1306,6 +1307,7 @@ See the Xedoc keymap documentation for supported actions and examples."
                 }
             }
         }
+        self.publish_web_ui(tui);
         Ok(AppRunControl::Continue)
     }
 

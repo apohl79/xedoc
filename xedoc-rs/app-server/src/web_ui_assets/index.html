@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="referrer" content="no-referrer">
+    <title>XEDOC</title>
+    <link rel="stylesheet" href="/webui.css">
+    <script src="/webui.js" defer></script>
+  </head>
+  <body>
+    <header class="toolbar">
+      <span class="brand">XEDOC</span>
+      <span id="connection" role="status">Connecting…</span>
+      <button id="earlier" type="button" hidden>↑ Earlier history</button>
+      <button id="attach" type="button" aria-label="Attach image" title="Attach image" disabled>＋</button>
+      <input id="images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+    </header>
+    <main id="session" aria-label="Session">
+      <div id="history" aria-label="Conversation history"></div>
+      <section id="composer" aria-label="Session controls" tabindex="0">
+        <div id="live"></div>
+        <textarea id="input" aria-label="Message and session keyboard input" autocomplete="off" autocapitalize="off" spellcheck="false" disabled></textarea>
+      </section>
+    </main>
+    <div id="notice" role="alert" hidden></div>
+  </body>
+</html>

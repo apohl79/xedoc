@@ -53,6 +53,23 @@ Backpressure behavior:
 
 ## Message Schema
 
+### Local session browser
+
+The experimental `thread/webUi/open` request takes `{ "threadId": "..." }` for a
+running thread and returns `{ "url": "...", "bridgeUrl": "..." }`. The app-server
+hosts the browser assets and WebSocket relay on `127.0.0.1` only. `/webui` in the
+owning TUI opens `url` and attaches its native renderer to `bridgeUrl`; browser
+input goes through the same TUI input handlers. The TUI must remain running.
+Large history cells are paged by row without splitting their browser history
+element. Image uploads accept PNG, JPEG, GIF, and WebP up to 8 MiB each, with at
+most 32 uploaded files retained for the lifetime of the attachment.
+
+Both URLs contain separate secret capabilities. Do not log or share them. Browser
+WebSockets require the exact loopback Host and Origin, and producer connections
+require their own capability. The relay keeps one bounded latest frame, limits
+frame and input sizes, disconnects slow clients, and shuts down with app-server.
+It does not expose the app-server JSON-RPC interface to the browser.
+
 Currently, you can dump a TypeScript version of the schema using `xedoc app-server generate-ts`, or a JSON Schema bundle via `xedoc app-server generate-json-schema`. Each output is specific to the version of Xedoc you used to run the command, so the generated artifacts are guaranteed to match that version.
 
 ```

@@ -530,6 +530,7 @@ pub enum TuiEvent {
 }
 
 pub struct Tui {
+    pub(crate) web_ui: Option<crate::web_ui::WebUiSession>,
     frame_requester: FrameRequester,
     draw_tx: broadcast::Sender<()>,
     event_broker: Arc<EventBroker>,
@@ -571,6 +572,10 @@ where
 }
 
 impl Tui {
+    pub(crate) fn browser_input_sender(&self) -> tokio::sync::mpsc::Sender<TuiEvent> {
+        self.event_broker.browser_input_sender()
+    }
+
     pub(crate) fn new(
         terminal: Terminal,
         enhanced_keys_supported: bool,
@@ -586,6 +591,7 @@ impl Tui {
 
         Self {
             frame_requester,
+            web_ui: None,
             draw_tx,
             event_broker: Arc::new(EventBroker::new()),
             terminal,
@@ -949,6 +955,9 @@ impl Tui {
 
             terminal.draw(|frame| {
                 draw_fn(frame);
+                if let Some(session) = &self.web_ui {
+                    session.publish_overlay(frame.buffer);
+                }
             })
         })?
     }

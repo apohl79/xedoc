@@ -7063,6 +7063,18 @@
       ],
       "type": "object"
     },
+    "ThreadWebUiOpenParams": {
+      "description": "Opens a loopback browser view of an active TUI session.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    },
     "TokenUsageOptimizerLevel": {
       "enum": [
         "conservative",
@@ -9656,6 +9668,30 @@
         "params"
       ],
       "title": "ModelRouterReport/openRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/webUi/open"
+          ],
+          "title": "Thread/webUi/openRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadWebUiOpenParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/webUi/openRequest",
       "type": "object"
     },
     {
