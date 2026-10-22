@@ -65,8 +65,14 @@ previews, and searchable model controls. Conversation Markdown reflows at the
 browser width; terminal dialogs remain available as a compatibility fallback.
 The TUI must remain running.
 Large history cells are paged by row without splitting their browser history
-element. Image uploads accept PNG, JPEG, GIF, and WebP up to 8 MiB each, with at
-most 32 uploaded files retained for the lifetime of the attachment.
+element. Dropping, pasting, or selecting files accepts up to 8 MiB each, with at
+most 32 uploaded files retained for the lifetime of the browser attachment.
+PNG, JPEG, GIF, and WebP keep image previews and `[Image #N]` anchors. Other files
+use `[Doc #N]` anchors that expand to saved local file references on submission;
+removing an anchor or its preview removes it from the draft. PDFs use native
+browser previews, and other documents show filename cards. Large PDF previews
+are local to the uploading page; reloaded or other browser pages only receive
+PDF preview data within a shared 512 KiB frame budget.
 
 Both URLs contain separate secret capabilities. Do not log or share them. Browser
 WebSockets require the exact loopback Host and Origin, and producer connections

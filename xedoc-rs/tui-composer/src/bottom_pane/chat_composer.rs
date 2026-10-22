@@ -1243,12 +1243,14 @@ impl ChatComposer {
     }
 
     /// Replace the composer content with text from an external editor.
-    /// Clears pending paste placeholders and keeps only attachments whose
+    /// Clears paste placeholders, preserves document references, and keeps attachments whose
     /// placeholder labels still appear in the new text. Image placeholders
     /// are renumbered to `[Image #M+1]..[Image #N]` (where `M` is the number of
     /// remote images). Cursor is placed at the end after rebuilding elements.
     pub fn apply_external_edit(&mut self, text: String) {
-        self.draft.pending_pastes.clear();
+        self.draft
+            .pending_pastes
+            .retain(|(anchor, _)| anchor.starts_with("[Doc #") && text.contains(anchor));
         let (text, _) = self.imported_text_for_textarea(text, Vec::new());
 
         // Count placeholder occurrences in the new text.
@@ -1285,6 +1287,9 @@ impl ChatComposer {
         let mut remaining: HashMap<&str, usize> = HashMap::new();
         for img in &self.attachments.local_images {
             *remaining.entry(img.placeholder.as_str()).or_insert(0) += 1;
+        }
+        for (anchor, _) in &self.draft.pending_pastes {
+            remaining.insert(anchor, text.match_indices(anchor).count());
         }
 
         let mut occurrences: Vec<(usize, &str)> = Vec::new();

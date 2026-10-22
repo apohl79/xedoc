@@ -6,7 +6,19 @@ impl ChatWidget {
     /// Exposes shared input state to a browser without duplicating composer behavior.
     pub fn browser_draft(&self) -> crate::bottom_pane::chat_composer::ComposerDraftSnapshot {
         let mut draft = self.bottom_pane.composer_draft_snapshot();
-        draft.text = self.bottom_pane.composer_text_with_pending();
+        if draft
+            .pending_pastes
+            .iter()
+            .any(|(anchor, _)| anchor.starts_with("[Doc #"))
+        {
+            for (anchor, text) in &draft.pending_pastes {
+                if !anchor.starts_with("[Doc #") {
+                    draft.text = draft.text.replace(anchor, text);
+                }
+            }
+        } else {
+            draft.text = self.bottom_pane.composer_text_with_pending();
+        }
         draft
     }
 
@@ -15,6 +27,25 @@ impl ChatWidget {
         if self.bottom_pane.composer_input_enabled() {
             self.apply_external_edit(text);
         }
+    }
+
+    /// Adds a file reference using the composer's shared submission placeholders.
+    pub fn attach_browser_document(&mut self, anchor: String, reference: String) {
+        if !self.bottom_pane.composer_input_enabled() {
+            return;
+        }
+        let draft = self.browser_draft();
+        let mut pending = draft.pending_pastes;
+        let separator = if draft.text.is_empty() || draft.text.ends_with(char::is_whitespace) {
+            ""
+        } else {
+            " "
+        };
+        let text = format!("{}{separator}{anchor}", draft.text);
+        self.apply_browser_draft(text.clone());
+        pending.push((anchor, reference));
+        self.bottom_pane.set_composer_pending_pastes(pending);
+        self.apply_browser_draft(text);
     }
 
     /// Returns composer layout and metadata for the native browser surface.

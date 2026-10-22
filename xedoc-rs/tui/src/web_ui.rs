@@ -40,6 +40,13 @@ pub(crate) enum BrowserInput {
         #[serde(rename = "dataUrl")]
         data_url: String,
     },
+    File {
+        name: String,
+        #[serde(rename = "dataUrl")]
+        data_url: String,
+        #[serde(default, rename = "uploadId")]
+        upload_id: String,
+    },
     Draft {
         text: String,
         revision: u64,
@@ -76,6 +83,7 @@ impl BrowserInput {
             Self::Paste { text } if text.len() <= 1_000_000 => Some(TuiEvent::Paste(text.clone())),
             Self::Paste { .. }
             | Self::Image { .. }
+            | Self::File { .. }
             | Self::History { .. }
             | Self::Draft { .. }
             | Self::RemoveImage { .. }
@@ -91,6 +99,7 @@ pub(crate) struct WebUiSession {
     pub(crate) frames: watch::Sender<Option<String>>,
     pub(crate) task: JoinHandle<()>,
     pub(crate) images: Vec<tempfile::NamedTempFile>,
+    pub(crate) documents: Vec<crate::web_ui_files::UploadedDocument>,
     pub(crate) history: HashMap<usize, CachedHistoryCell>,
     pub(crate) width: u16,
     pub(crate) active_thread: Option<ThreadId>,
@@ -146,6 +155,7 @@ impl WebUiSession {
             frames,
             task,
             images: Vec::new(),
+            documents: Vec::new(),
             history: HashMap::new(),
             width: 0,
             active_thread: None,

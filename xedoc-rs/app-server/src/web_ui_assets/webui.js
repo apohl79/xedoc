@@ -17,9 +17,15 @@
   const menu = document.getElementById("menu");
   const quoteSelection = document.getElementById("quote-selection");
   let selectedQuote = "";
+  let linkPreviewTimeout = null;
+  let linkPreviewAnchor = null;
+  let linkPreviewElement = null;
   const cells = new Map();
   const htmlById = new Map();
   const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+  const pdfPreviews = new Map();
+  const pendingPdfPreviews = [];
+  let uploadQueue = Promise.resolve();
   const capability = new URLSearchParams(location.hash.slice(1)).get("capability")
     || sessionStorage.getItem("xedoc-webui-capability");
   let socket;
@@ -255,6 +261,10 @@
       dirty = false;
       submitPending = false;
       pendingActions.length = 0;
+      for (const url of pdfPreviews.values()) URL.revokeObjectURL(url);
+      pdfPreviews.clear();
+      for (const preview of pendingPdfPreviews) URL.revokeObjectURL(preview.url);
+      pendingPdfPreviews.length = 0;
     }
     if (inFlight !== null && state.ackRevision >= inFlight) inFlight = null;
     if (!dirty && inFlight === null && !composing && editorText() !== state.text) {
@@ -271,26 +281,59 @@
     if (attachments.dataset.signature !== signature) {
       attachments.dataset.signature = signature;
       attachments.replaceChildren();
-      for (const image of state.attachments || []) {
+      const anchors = new Set((state.attachments || []).map((item) => item.anchor));
+      for (const [anchor, url] of pdfPreviews) {
+        if (!anchors.has(anchor)) {
+          URL.revokeObjectURL(url);
+          pdfPreviews.delete(anchor);
+        }
+      }
+      for (const item of state.attachments || []) {
         const figure = document.createElement("figure");
         figure.className = "attachment";
-        const preview = document.createElement("img");
-        if (/^data:image\/(?:png|jpeg|gif|webp);base64,/.test(image.dataUrl || "")) preview.src = image.dataUrl;
-        preview.alt = image.anchor;
+        const image = /^data:image\/(?:png|jpeg|gif|webp);base64,/.test(item.dataUrl || "");
+        const pdf = item.mimeType === "application/pdf";
+        if (image) {
+          const preview = document.createElement("img");
+          preview.src = item.dataUrl;
+          preview.alt = item.anchor;
+          figure.append(preview);
+        } else {
+          figure.classList.add("document-attachment");
+          if (pdf && !pdfPreviews.has(item.anchor)) {
+            const index = pendingPdfPreviews.findIndex((preview) => preview.uploadId === item.uploadId);
+            if (index !== -1) pdfPreviews.set(item.anchor, pendingPdfPreviews.splice(index, 1)[0].url);
+          }
+          const pdfUrl = pdfPreviews.get(item.anchor)
+            || (/^data:application\/pdf;base64,/.test(item.dataUrl || "") ? item.dataUrl : "");
+          if (pdf && pdfUrl) {
+            const preview = document.createElement("object");
+            preview.type = "application/pdf";
+            preview.data = pdfUrl;
+            preview.setAttribute("aria-label", item.name || item.anchor);
+            preview.textContent = item.name || item.anchor;
+            figure.append(preview);
+          }
+          const filename = document.createElement("div");
+          filename.className = "attachment-filename";
+          filename.textContent = item.name || item.anchor;
+          filename.title = item.name || item.anchor;
+          figure.append(filename);
+        }
         const caption = document.createElement("figcaption");
-        caption.textContent = image.anchor;
+        caption.textContent = item.anchor;
         const remove = document.createElement("button");
         remove.type = "button";
         remove.textContent = "×";
-        remove.setAttribute("aria-label", `Remove ${image.anchor}`);
+        remove.setAttribute("aria-label", `Remove ${item.anchor}`);
         remove.addEventListener("click", () => {
-          const text = editorText().replace(image.anchor, "");
+          const text = editorText().replace(item.anchor, "");
           renderEditor(text);
           dirty = true;
           flushDraft();
           input.focus();
         });
-        figure.append(preview, caption, remove);
+        figure.append(caption, remove);
         attachments.append(figure);
       }
     }
@@ -457,10 +500,23 @@
 
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
-    if (popupActive && !event.shiftKey
+    if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+        && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      if (editorText()) {
+        renderEditor("", [0, 0]);
+        dirty = true;
+        flushDraft();
+      }
+    } else if (popupActive && !event.shiftKey
         && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();
       pendingActions.push({ type: "key", key: event.key, ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey });
+      dirty = editorText() !== composerState?.text;
+      flushDraft();
+    } else if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      pendingActions.push({ type: "key", key: "Tab" });
       dirty = editorText() !== composerState?.text;
       flushDraft();
     } else if (event.key === "Enter" && event.shiftKey) {
@@ -538,7 +594,48 @@
   }
   document.addEventListener("selectionchange", updateQuoteSelection);
   history.addEventListener("scroll", () => { quoteSelection.hidden = true; });
-  window.addEventListener("resize", () => { quoteSelection.hidden = true; });
+  window.addEventListener("resize", () => {
+    quoteSelection.hidden = true;
+    clearLinkTargetPreview();
+  });
+  function clearLinkTargetPreview() {
+    if (linkPreviewTimeout !== null) clearTimeout(linkPreviewTimeout);
+    linkPreviewTimeout = null;
+    linkPreviewAnchor = null;
+    linkPreviewElement?.remove();
+    linkPreviewElement = null;
+  }
+  history.addEventListener("mouseover", (event) => {
+    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!anchor || !history.contains(anchor) || anchor === linkPreviewAnchor) return;
+    clearLinkTargetPreview();
+    linkPreviewAnchor = anchor;
+    const { clientX, clientY } = event;
+    linkPreviewTimeout = setTimeout(() => {
+      linkPreviewTimeout = null;
+      if (linkPreviewAnchor !== anchor || !anchor.isConnected) return;
+      const preview = document.createElement("div");
+      preview.id = "link-target-preview";
+      preview.setAttribute("role", "tooltip");
+      preview.textContent = anchor.href;
+      document.body.append(preview);
+      const { width, height } = preview.getBoundingClientRect();
+      const left = Math.max(8, Math.min(clientX + 12, innerWidth - width - 8));
+      const below = clientY + 18;
+      const top = below + height <= innerHeight - 8
+        ? below
+        : Math.max(8, clientY - height - 12);
+      preview.style.left = `${left}px`;
+      preview.style.top = `${top}px`;
+      linkPreviewElement = preview;
+    }, 1000);
+  });
+  history.addEventListener("mouseout", (event) => {
+    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!anchor || event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
+    if (anchor === linkPreviewAnchor) clearLinkTargetPreview();
+  });
+  history.addEventListener("click", clearLinkTargetPreview);
   quoteSelection.addEventListener("pointerdown", (event) => {
     event.preventDefault();
   });
@@ -547,7 +644,7 @@
     const source = editorText();
     const separator = source ? (source.endsWith("\n\n") ? "" : source.endsWith("\n") ? "\n" : "\n\n") : "";
     const quote = selectedQuote.split("\n").map((line) => `> ${line}`).join("\n");
-    const text = `${source}${separator}${quote}\n\n`;
+    const text = `${source}${separator}${quote}`;
     quoteSelection.hidden = true;
     selectedQuote = "";
     input.focus({ preventScroll: true });
@@ -578,17 +675,12 @@
     closeMenu();
   }).observe(history);
 
-  async function upload(file) {
-    if (!ready) return;
-    if (!imageTypes.has(file.type)) {
-      showNotice("Choose a PNG, JPEG, GIF, or WebP image.");
-      return;
-    }
+  async function upload(file, destination, threadId) {
+    if (!ready || destination !== socket || threadId !== activeThread) return;
     if (file.size > 8 * 1024 * 1024) {
-      showNotice("Images must be 8 MiB or smaller.");
+      showNotice("Files must be 8 MiB or smaller.");
       return;
     }
-    const destination = socket;
     try {
       const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -596,22 +688,37 @@
         reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
       });
-      if (destination !== socket || !ready) {
-        showNotice("Image not sent: session disconnected.");
+      if (destination !== socket || threadId !== activeThread || !ready) {
+        showNotice("File not sent: session disconnected.");
       } else {
-        pendingActions.push({ type: "image", dataUrl });
+        if (imageTypes.has(file.type)) {
+          pendingActions.push({ type: "image", dataUrl });
+        } else {
+          const uploadId = crypto.randomUUID();
+          if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+            if (pendingPdfPreviews.length >= 32) URL.revokeObjectURL(pendingPdfPreviews.shift().url);
+            pendingPdfPreviews.push({ uploadId, url: URL.createObjectURL(file) });
+          }
+          pendingActions.push({ type: "file", name: file.name, dataUrl, uploadId });
+        }
         flushDraft();
       }
     } catch {
-      showNotice("The image could not be read.");
+      showNotice("The file could not be read.");
     }
+  }
+
+  function queueUploads(files) {
+    const destination = socket;
+    const threadId = activeThread;
+    for (const file of files) uploadQueue = uploadQueue.then(() => upload(file, destination, threadId));
   }
 
   input.addEventListener("paste", (event) => {
     event.preventDefault();
     const files = Array.from(event.clipboardData?.files || []);
     if (files.length) {
-      for (const file of files) void upload(file);
+      queueUploads(files);
     } else {
       const text = event.clipboardData?.getData("text/plain");
       if (text) insertText(text);
@@ -619,7 +726,7 @@
   });
   attach.addEventListener("click", () => images.click());
   images.addEventListener("change", () => {
-    for (const file of images.files) void upload(file);
+    queueUploads(images.files);
     images.value = "";
     if (ready) input.focus({ preventScroll: true });
   });
@@ -634,11 +741,13 @@
   document.addEventListener("drop", (event) => {
     event.preventDefault();
     document.body.classList.remove("dragging");
-    for (const file of event.dataTransfer?.files || []) void upload(file);
+    queueUploads(event.dataTransfer?.files || []);
   });
   window.addEventListener("pagehide", () => {
     clearTimeout(reconnectTimer);
     socket?.close();
+    for (const url of pdfPreviews.values()) URL.revokeObjectURL(url);
+    for (const preview of pendingPdfPreviews) URL.revokeObjectURL(preview.url);
   });
 
   if (!capability) {

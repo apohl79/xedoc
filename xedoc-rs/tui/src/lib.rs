@@ -148,6 +148,7 @@ mod token_usage;
 mod transcript_reflow;
 mod tui;
 mod web_ui;
+mod web_ui_files;
 mod web_ui_html;
 pub use xedoc_tui_transcript::UpdateAction;
 pub(crate) use xedoc_tui_transcript::update_action;

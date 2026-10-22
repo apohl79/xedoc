@@ -344,7 +344,7 @@ fn secured(response: impl IntoResponse) -> Response {
         HeaderValue::from_static("nosniff"),
     );
     headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(
-        "default-src 'none'; base-uri 'none'; connect-src 'self'; img-src data:; form-action 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'",
+        "default-src 'none'; base-uri 'none'; connect-src 'self'; img-src data:; object-src blob: data:; form-action 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'",
     ));
     response
 }

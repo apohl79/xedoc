@@ -223,7 +223,7 @@ impl App {
                 if tui
                     .web_ui
                     .as_ref()
-                    .is_some_and(|session| session.images.len() < 32)
+                    .is_some_and(|session| session.images.len() + session.documents.len() < 32)
                 {
                     match tokio::task::spawn_blocking(move || upload_image(data_url)).await {
                         Ok(Ok(file)) => {
@@ -239,7 +239,46 @@ impl App {
                     }
                 } else {
                     self.chat_widget.add_error_message(
-                        "This browser session has reached its 32-image limit.".to_string(),
+                        "This browser session has reached its 32-file limit.".to_string(),
+                    );
+                }
+            }
+            Ok(BrowserInput::File {
+                name,
+                data_url,
+                upload_id,
+            }) => {
+                if tui
+                    .web_ui
+                    .as_ref()
+                    .is_some_and(|session| session.documents.len() + session.images.len() < 32)
+                {
+                    match tokio::task::spawn_blocking(move || {
+                        crate::web_ui_files::upload_document(name, data_url)
+                    })
+                    .await
+                    {
+                        Ok(Ok(mut document)) => {
+                            if let Some(session) = &mut tui.web_ui {
+                                document.anchor = format!("[Doc #{}]", session.documents.len() + 1);
+                                document.upload_id = upload_id.chars().take(64).collect();
+                                let reference = format!(
+                                    "{}: {}",
+                                    document.name,
+                                    serde_json::to_string(&document.path.to_string_lossy())?
+                                );
+                                self.chat_widget
+                                    .attach_browser_document(document.anchor.clone(), reference);
+                                session.documents.push(document);
+                            }
+                        }
+                        _ => self.chat_widget.add_error_message(
+                            "Could not attach file (maximum 8 MiB).".to_string(),
+                        ),
+                    }
+                } else {
+                    self.chat_widget.add_error_message(
+                        "This browser session has reached its 32-file limit.".to_string(),
                     );
                 }
             }
@@ -339,7 +378,7 @@ impl App {
         session
             .image_previews
             .retain(|path, _| draft.local_images.iter().any(|image| &image.path == path));
-        let attachments: Vec<_> = draft
+        let mut attachments: Vec<_> = draft
             .local_images
             .iter()
             .take(32)
@@ -351,6 +390,23 @@ impl App {
                 json!({"anchor": image.placeholder, "dataUrl": preview})
             })
             .collect();
+        let mut preview_bytes = 0;
+        for document in &session.documents {
+            if draft
+                .pending_pastes
+                .iter()
+                .any(|(anchor, _)| anchor == &document.anchor && draft.text.contains(anchor))
+            {
+                preview_bytes += document.preview.len();
+                attachments.push(json!({
+                    "anchor": document.anchor,
+                    "name": document.name,
+                    "mimeType": document.mime_type,
+                    "uploadId": document.upload_id,
+                    "dataUrl": if preview_bytes <= 512 * 1024 { &document.preview } else { "" },
+                }));
+            }
+        }
         let models: Vec<_> = self.model_catalog.try_list_models().unwrap_or_default().iter()
             .filter(|preset| preset.show_in_picker)
             .map(|preset| json!({
