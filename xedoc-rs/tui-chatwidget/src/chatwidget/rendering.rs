@@ -21,14 +21,22 @@ impl ChatWidget {
     pub fn browser_composer_context(
         &self,
         width: u16,
-    ) -> (u16, bool, Option<String>, Option<u64>, Option<String>) {
+    ) -> (
+        u16,
+        u16,
+        bool,
+        Option<String>,
+        Option<u64>,
+        Option<ratatui::text::Line<'static>>,
+    ) {
         let (router, elapsed) = self.bottom_pane.browser_context();
         (
             self.bottom_pane.browser_composer_height(width),
+            self.bottom_pane.browser_popup_height(width),
             self.bottom_pane.browser_has_dialog(),
             router.map(str::to_owned),
             elapsed,
-            self.bottom_pane.browser_status_line(),
+            self.bottom_pane.browser_status_line_styled(),
         )
     }
 

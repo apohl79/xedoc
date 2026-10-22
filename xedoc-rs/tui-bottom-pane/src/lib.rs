@@ -382,6 +382,10 @@ impl BottomPane {
         .desired_height(width)
     }
 
+    pub fn browser_popup_height(&self, width: u16) -> u16 {
+        self.composer.browser_popup_height(width)
+    }
+
     /// Whether an alternate renderer must retain the active terminal dialog.
     pub fn browser_has_dialog(&self) -> bool {
         self.active_view().is_some()
@@ -390,6 +394,10 @@ impl BottomPane {
     /// Returns the shared status line without terminal layout.
     pub fn browser_status_line(&self) -> Option<String> {
         self.composer.status_line_text()
+    }
+
+    pub fn browser_status_line_styled(&self) -> Option<Line<'static>> {
+        self.composer.browser_status_line()
     }
 
     /// Establishes a restored thread's effort without replaying its one-shot animation.

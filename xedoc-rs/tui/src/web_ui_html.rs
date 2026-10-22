@@ -35,7 +35,15 @@ pub(crate) fn history_cell_html(
             .wrap(Wrap { trim: false })
             .scroll((row_start, 0))
             .render(area, &mut buffer);
-        return buffer_html(&buffer, None);
+        let class = if cell.as_any().is::<UserHistoryCell>() {
+            "history-user-slice"
+        } else {
+            "history-slice"
+        };
+        return format!(
+            "<div class=\"{class}\">{}</div>",
+            buffer_html(&buffer, None)
+        );
     }
     if let Some(user) = cell.as_any().downcast_ref::<UserHistoryCell>() {
         let mut html = String::from("<div class=\"history-user\"><div>");
@@ -119,7 +127,8 @@ fn markdown_html(source: &str) -> String {
                         "<div class=\"table-scroll\"><table>".to_string(),
                         "</table></div>",
                     ),
-                    Tag::TableHead | Tag::TableRow => ("<tr>".to_string(), "</tr>"),
+                    Tag::TableHead => ("<tr class=\"table-head\">".to_string(), "</tr>"),
+                    Tag::TableRow => ("<tr>".to_string(), "</tr>"),
                     Tag::TableCell => ("<td>".to_string(), "</td>"),
                     Tag::Emphasis => ("<em>".to_string(), "</em>"),
                     Tag::Strong => ("<strong>".to_string(), "</strong>"),

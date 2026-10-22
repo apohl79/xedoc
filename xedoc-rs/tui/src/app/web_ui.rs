@@ -9,6 +9,8 @@ use std::time::Instant;
 use base64::Engine;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::widgets::Paragraph;
+use ratatui::widgets::Widget;
 use serde_json::json;
 use xedoc_app_server_protocol::ClientRequest;
 use xedoc_app_server_protocol::RequestId;
@@ -355,8 +357,18 @@ impl App {
                 "id": preset.model, "label": preset.display_name,
                 "efforts": preset.supported_reasoning_efforts.iter().map(|effort| effort.effort.to_string()).collect::<Vec<_>>(),
             })).collect();
-        let (composer_height, dialog, router, timer, status) =
+        let (composer_height, popup_height, dialog, router, timer, status) =
             self.chat_widget.browser_composer_context(width);
+        let status = status.map(|line| {
+            let status_width = u16::try_from(line.width())
+                .unwrap_or(u16::MAX)
+                .min(width)
+                .max(1);
+            let area = Rect::new(0, 0, status_width, 1);
+            let mut buffer = Buffer::empty(area);
+            Paragraph::new(line).render(area, &mut buffer);
+            buffer_html(&buffer, None)
+        });
         let active_html = self.chat_widget.browser_active_cell().map(|cell| {
             let rows = cell.desired_height(width);
             crate::web_ui_html::history_cell_html(cell, width, rows.saturating_sub(400), rows)
@@ -390,6 +402,18 @@ impl App {
                 .cloned()
                 .collect(),
         };
+        let popup_start = height.saturating_sub(popup_height);
+        let popup_area = Rect::new(0, popup_start, width, height.saturating_sub(popup_start));
+        let popup_buffer = Buffer {
+            area: popup_area,
+            content: buffer
+                .content
+                .iter()
+                .skip(usize::from(popup_start) * usize::from(width))
+                .take(usize::from(popup_area.width) * usize::from(popup_area.height))
+                .cloned()
+                .collect(),
+        };
         let frame = json!({
             "type": "frame", "threadId": session.thread_id.to_string(),
             "activeThreadId": active_thread.map(|id| id.to_string()),
@@ -398,7 +422,9 @@ impl App {
             "historyRowEnd": session.history_row_end,
             "live": if dialog || self.overlay.is_some() { buffer_html(&buffer, cursor) } else { String::new() },
             "overlay": self.overlay.is_some(),
-            "active": active_html, "activity": buffer_html(&activity_buffer, None), "status": status,
+            "active": active_html, "activity": buffer_html(&activity_buffer, None),
+            "popup": if popup_height > 0 { buffer_html(&popup_buffer, None) } else { String::new() },
+            "status": status,
             "composer": {
                 "text": draft.text, "revision": session.draft_revision, "ackRevision": session.draft_ack,
                 "attachments": attachments, "model": self.chat_widget.current_model(),

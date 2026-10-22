@@ -15,6 +15,8 @@
   const entry = document.getElementById("entry");
   const attachments = document.getElementById("attachments");
   const menu = document.getElementById("menu");
+  const quoteSelection = document.getElementById("quote-selection");
+  let selectedQuote = "";
   const cells = new Map();
   const htmlById = new Map();
   const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -28,6 +30,8 @@
   let noticeTimer;
   let lastLive = null;
   let lastActivity = null;
+  let lastPopup = null;
+  let popupActive = false;
   let activeThread = null;
   let activeWidth = null;
   let historyBefore = null;
@@ -48,6 +52,7 @@
     attach.disabled = !ready;
     document.getElementById("send").disabled = !ready;
     composer.setAttribute("aria-disabled", String(!ready));
+    if (!ready) quoteSelection.hidden = true;
   }
 
   function showNotice(message) {
@@ -115,12 +120,16 @@
     window.getSelection()?.setBaseAndExtent(...locate(offsets[0]), ...locate(offsets[1]));
   }
 
+  function editorPrefix(line) {
+    return line.match(/^(\s*[-*+] +|> +)(?=\S)/)?.[0];
+  }
+
   function renderEditor(text, selection = null) {
     input.replaceChildren();
     if (text) for (const line of text.split("\n")) {
       const element = document.createElement("div");
       element.className = "editor-line";
-      const prefix = line.match(/^(\s*[-*+] |> ?)/)?.[0];
+      const prefix = editorPrefix(line);
       if (prefix) {
         element.classList.add(prefix.trim().startsWith(">") ? "editor-quote" : "editor-list");
         const marker = document.createElement("span");
@@ -286,6 +295,7 @@
       }
     }
     entry.hidden = !!state.dialog;
+    if (state.dialog) quoteSelection.hidden = true;
     live.hidden = !state.dialog;
     activity.hidden = !!state.dialog || !activity.textContent.trim();
     if (state.dialog !== wasDialog && wasDialog !== undefined) {
@@ -395,11 +405,14 @@
       live.innerHTML = frame.live || "";
       lastLive = frame.live;
     }
-    if (lastActivity !== frame.activity) {
-      activity.innerHTML = frame.activity || "";
+    if (lastActivity !== frame.activity || lastPopup !== frame.popup) {
+      activity.innerHTML = `${frame.activity || ""}${frame.popup || ""}`;
       lastActivity = frame.activity;
+      lastPopup = frame.popup;
     }
-    document.getElementById("status").textContent = frame.status || "";
+    popupActive = !!frame.popup;
+    if (popupActive) activity.scrollTop = activity.scrollHeight;
+    document.getElementById("status").innerHTML = frame.status || "";
     if (frame.composer) renderComposer(frame.composer);
     const width = Math.max(40, Math.min(400, Math.floor(history.clientWidth / 8)));
     if (width !== previousWidth && send({ type: "resize", width })) previousWidth = width;
@@ -444,7 +457,13 @@
 
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
-    if (event.key === "Enter" && event.shiftKey) {
+    if (popupActive && !event.shiftKey
+        && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
+      event.preventDefault();
+      pendingActions.push({ type: "key", key: event.key, ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey });
+      dirty = editorText() !== composerState?.text;
+      flushDraft();
+    } else if (event.key === "Enter" && event.shiftKey) {
       event.preventDefault();
       insertText("\n");
     } else if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) {
@@ -452,7 +471,8 @@
       submit();
     } else if (event.key === "Escape") {
       closeMenu();
-      send({ type: "key", key: "Escape" });
+      pendingActions.push({ type: "key", key: "Escape" });
+      flushDraft();
     }
   });
 
@@ -473,7 +493,7 @@
     const text = editorText();
     const needsFormatting = text.split("\n").length !== input.children.length
       || Array.from(input.children).some((line) => {
-      const prefix = line.textContent.match(/^(\s*[-*+] |> ?)/)?.[0];
+      const prefix = editorPrefix(line.textContent);
       return !!prefix !== !!line.querySelector(".syntax-marker");
     });
     if (!text || needsFormatting) renderEditor(text, editorSelection());
@@ -486,10 +506,59 @@
     event.preventDefault();
     send({ type: "key", key: event.key, ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey });
   });
+  live.addEventListener("paste", (event) => {
+    const text = event.clipboardData?.getData("text/plain");
+    if (!text) return;
+    event.preventDefault();
+    send({ type: "paste", text });
+  });
   for (const kind of ["router", "model", "effort"]) {
     document.getElementById(kind).addEventListener("click", () => openMenu(kind));
   }
   document.getElementById("send").addEventListener("click", submit);
+  function updateQuoteSelection() {
+    const selection = window.getSelection();
+    selectedQuote = "";
+    quoteSelection.hidden = true;
+    if (!ready || composerState?.dialog || !selection?.rangeCount || selection.isCollapsed
+        || !history.contains(selection.anchorNode) || !history.contains(selection.focusNode)) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const bounds = history.getBoundingClientRect();
+    if (rect.bottom < bounds.top || rect.top > bounds.bottom) return;
+    selectedQuote = text;
+    quoteSelection.hidden = false;
+    const width = quoteSelection.offsetWidth;
+    const height = quoteSelection.offsetHeight;
+    quoteSelection.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
+    const top = rect.top - height - 8;
+    quoteSelection.style.top = `${Math.max(8, Math.min(top >= bounds.top ? top : rect.bottom + 8,
+      innerHeight - height - 8))}px`;
+  }
+  document.addEventListener("selectionchange", updateQuoteSelection);
+  history.addEventListener("scroll", () => { quoteSelection.hidden = true; });
+  window.addEventListener("resize", () => { quoteSelection.hidden = true; });
+  quoteSelection.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+  });
+  quoteSelection.addEventListener("click", () => {
+    if (!ready || composerState?.dialog || !selectedQuote) return;
+    const source = editorText();
+    const separator = source ? (source.endsWith("\n\n") ? "" : source.endsWith("\n") ? "\n" : "\n\n") : "";
+    const quote = selectedQuote.split("\n").map((line) => `> ${line}`).join("\n");
+    const text = `${source}${separator}${quote}\n\n`;
+    quoteSelection.hidden = true;
+    selectedQuote = "";
+    input.focus({ preventScroll: true });
+    renderEditor(text, [text.length, text.length]);
+    input.scrollTop = input.scrollHeight;
+    dirty = true;
+    flushDraft();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") quoteSelection.hidden = true;
+  });
   document.addEventListener("pointerdown", (event) => {
     if (!menu.contains(event.target) && !event.target.closest("#settings")) closeMenu();
   });

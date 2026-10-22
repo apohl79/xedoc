@@ -1784,6 +1784,10 @@ impl ChatComposer {
         self.footer.status_line_text()
     }
 
+    pub fn browser_status_line(&self) -> Option<Line<'static>> {
+        self.footer.status_line_value.clone()
+    }
+
     pub fn local_images(&self) -> Vec<LocalImageAttachment> {
         self.attachments.local_images()
     }
@@ -4539,13 +4543,23 @@ impl ChatComposer {
             + remote_images_height
             + remote_images_separator
             + 2
-            + match &self.popups.active {
-                ActivePopup::None => footer_total_height,
-                ActivePopup::Command(c) => c.calculate_required_height(width),
-                ActivePopup::File(c) => c.calculate_required_height(),
-                ActivePopup::Skill(c) => c.calculate_required_height(width),
-                ActivePopup::MentionV2(c) => c.calculate_required_height(width),
-            }
+            + self
+                .active_popup_height(width)
+                .unwrap_or(footer_total_height)
+    }
+
+    pub fn browser_popup_height(&self, width: u16) -> u16 {
+        self.active_popup_height(width).unwrap_or_default()
+    }
+
+    fn active_popup_height(&self, width: u16) -> Option<u16> {
+        match &self.popups.active {
+            ActivePopup::None => None,
+            ActivePopup::Command(popup) => Some(popup.calculate_required_height(width)),
+            ActivePopup::File(popup) => Some(popup.calculate_required_height()),
+            ActivePopup::Skill(popup) => Some(popup.calculate_required_height(width)),
+            ActivePopup::MentionV2(popup) => Some(popup.calculate_required_height(width)),
+        }
     }
 }
 
