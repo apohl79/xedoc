@@ -59,7 +59,11 @@ The experimental `thread/webUi/open` request takes `{ "threadId": "..." }` for a
 running thread and returns `{ "url": "...", "bridgeUrl": "..." }`. The app-server
 hosts the browser assets and WebSocket relay on `127.0.0.1` only. `/webui` in the
 owning TUI opens `url` and attaches its native renderer to `bridgeUrl`; browser
-input goes through the same TUI input handlers. The TUI must remain running.
+input and settings changes use the same TUI controller. The browser uses a
+native selectable editor, revision-checked draft synchronization, attachment
+previews, and searchable model controls. Conversation Markdown reflows at the
+browser width; terminal dialogs remain available as a compatibility fallback.
+The TUI must remain running.
 Large history cells are paged by row without splitting their browser history
 element. Image uploads accept PNG, JPEG, GIF, and WebP up to 8 MiB each, with at
 most 32 uploaded files retained for the lifetime of the attachment.

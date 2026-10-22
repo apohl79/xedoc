@@ -61,7 +61,6 @@ impl FooterState {
         self.flash = Some(FooterFlash { line, expires_at });
     }
 
-    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn status_line_text(&self) -> Option<String> {
         self.status_line_value.as_ref().map(|line| {
             line.spans

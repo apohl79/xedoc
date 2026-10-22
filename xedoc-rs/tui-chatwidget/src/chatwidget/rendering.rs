@@ -3,6 +3,35 @@
 use super::*;
 
 impl ChatWidget {
+    /// Exposes shared input state to a browser without duplicating composer behavior.
+    pub fn browser_draft(&self) -> crate::bottom_pane::chat_composer::ComposerDraftSnapshot {
+        let mut draft = self.bottom_pane.composer_draft_snapshot();
+        draft.text = self.bottom_pane.composer_text_with_pending();
+        draft
+    }
+
+    /// Reconciles a browser edit using the external-editor attachment rules.
+    pub fn apply_browser_draft(&mut self, text: String) {
+        if self.bottom_pane.composer_input_enabled() {
+            self.apply_external_edit(text);
+        }
+    }
+
+    /// Returns composer layout and metadata for the native browser surface.
+    pub fn browser_composer_context(
+        &self,
+        width: u16,
+    ) -> (u16, bool, Option<String>, Option<u64>, Option<String>) {
+        let (router, elapsed) = self.bottom_pane.browser_context();
+        (
+            self.bottom_pane.browser_composer_height(width),
+            self.bottom_pane.browser_has_dialog(),
+            router.map(str::to_owned),
+            elapsed,
+            self.bottom_pane.browser_status_line(),
+        )
+    }
+
     pub fn as_renderable(&self) -> RenderableItem<'_> {
         let active_cell_renderable = match &self.transcript.active_cell {
             Some(cell) => RenderableItem::Owned(Box::new(TranscriptAreaRenderable {
@@ -11,6 +40,23 @@ impl ChatWidget {
             })),
             None => RenderableItem::Owned(Box::new(())),
         };
+        self.renderable_with_active_cell(active_cell_renderable)
+    }
+
+    /// Exposes the same active history cell without imposing terminal layout.
+    pub fn browser_active_cell(&self) -> Option<&dyn HistoryCell> {
+        self.transcript.active_cell.as_deref()
+    }
+
+    /// Keeps shared activity surfaces while the browser lays out the active cell.
+    pub fn browser_renderable(&self) -> RenderableItem<'_> {
+        self.renderable_with_active_cell(RenderableItem::Owned(Box::new(())))
+    }
+
+    fn renderable_with_active_cell<'a>(
+        &'a self,
+        active_cell_renderable: RenderableItem<'a>,
+    ) -> RenderableItem<'a> {
         let active_hook_cell_renderable = match &self.active_hook_cell {
             Some(cell) if cell.should_render() => {
                 RenderableItem::Owned(Box::new(TranscriptAreaRenderable {

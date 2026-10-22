@@ -1780,7 +1780,6 @@ impl ChatComposer {
         self.attachments.local_image_paths()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
     pub fn status_line_text(&self) -> Option<String> {
         self.footer.status_line_text()
     }

@@ -382,6 +382,10 @@ pub struct AgentMarkdownCell {
 }
 
 impl AgentMarkdownCell {
+    pub fn markdown_source(&self) -> &str {
+        &self.markdown_source
+    }
+
     /// Create a finalized source-backed assistant message cell.
     ///
     /// `markdown_source` must be the raw source accumulated by the stream controller, not already

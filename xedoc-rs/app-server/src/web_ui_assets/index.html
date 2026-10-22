@@ -10,20 +10,35 @@
     <script src="/webui.js" defer></script>
   </head>
   <body>
-    <header class="toolbar">
-      <span class="brand">XEDOC</span>
-      <span id="connection" role="status">Connecting…</span>
-      <button id="earlier" type="button" hidden>↑ Earlier history</button>
-      <button id="attach" type="button" aria-label="Attach image" title="Attach image" disabled>＋</button>
-      <input id="images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
-    </header>
     <main id="session" aria-label="Session">
-      <div id="history" aria-label="Conversation history"></div>
-      <section id="composer" aria-label="Session controls" tabindex="0">
-        <div id="live"></div>
-        <textarea id="input" aria-label="Message and session keyboard input" autocomplete="off" autocapitalize="off" spellcheck="false" disabled></textarea>
+      <button id="earlier" type="button" hidden>↑ Earlier history</button>
+      <div id="history" aria-label="Conversation history"><div id="active" class="history-cell"></div></div>
+      <section id="composer" aria-label="Session controls">
+        <div id="activity" aria-live="polite"></div>
+        <div id="live" hidden tabindex="0" aria-label="Session dialog"></div>
+        <div id="entry">
+          <div class="editor-row">
+            <span class="prompt-marker" aria-hidden="true">❯</span>
+            <div id="input" role="textbox" aria-label="Message" aria-multiline="true" contenteditable="false" data-placeholder="Message Xedoc…" spellcheck="true"></div>
+          </div>
+          <div id="attachments" aria-label="Image attachments"></div>
+          <div class="entry-footer">
+            <button id="attach" type="button" aria-label="Attach image" title="Attach image" disabled>＋</button>
+            <input id="images" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+            <span id="session-name"></span>
+            <span id="turn-timer"></span>
+            <div id="settings">
+              <button id="router" type="button" aria-haspopup="menu" aria-expanded="false" title="Change router mode"></button>
+              <button id="model" type="button" aria-haspopup="menu" aria-expanded="false" title="Change model"></button>
+              <button id="effort" type="button" aria-haspopup="menu" aria-expanded="false" title="Change reasoning effort"></button>
+            </div>
+            <button id="send" type="button" aria-label="Send message" title="Send message" disabled>↑</button>
+          </div>
+        </div>
+        <div class="status-row"><span id="status"></span><span id="connection" role="status">Connecting…</span></div>
       </section>
     </main>
+    <div id="menu" role="menu" hidden></div>
     <div id="notice" role="alert" hidden></div>
   </body>
 </html>

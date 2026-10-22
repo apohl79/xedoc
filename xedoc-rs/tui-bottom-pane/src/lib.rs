@@ -361,6 +361,37 @@ impl BottomPane {
         self.request_redraw();
     }
 
+    /// Returns the current router mode and elapsed turn time for alternate renderers.
+    pub fn browser_context(&self) -> (Option<&str>, Option<u64>) {
+        (
+            self.model_router_mode.as_deref(),
+            self.active_turn_started_at
+                .map(|started| started.elapsed().as_secs()),
+        )
+    }
+
+    /// Reports the composer height independently of activity surfaces.
+    pub fn browser_composer_height(&self, width: u16) -> u16 {
+        ChatComposerRightReserveRenderable {
+            composer: &self.composer,
+            right_reserve: 0,
+            active_turn_elapsed_seconds: None,
+            runtime_context: self.runtime_context.as_ref(),
+            model_router_mode: self.model_router_mode.as_deref(),
+        }
+        .desired_height(width)
+    }
+
+    /// Whether an alternate renderer must retain the active terminal dialog.
+    pub fn browser_has_dialog(&self) -> bool {
+        self.active_view().is_some()
+    }
+
+    /// Returns the shared status line without terminal layout.
+    pub fn browser_status_line(&self) -> Option<String> {
+        self.composer.status_line_text()
+    }
+
     /// Establishes a restored thread's effort without replaying its one-shot animation.
     pub fn set_active_reasoning_effort_baseline(&mut self, effort: Option<&ReasoningEffort>) {
         self.composer.set_active_reasoning_effort_baseline(effort);

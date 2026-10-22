@@ -534,7 +534,9 @@ impl App {
                 input,
                 complete,
             } => {
-                let result = self.handle_web_ui_input(tui, thread_id, input).await;
+                let result = self
+                    .handle_web_ui_input(tui, app_server, thread_id, input)
+                    .await;
                 let _ = complete.send(());
                 return result;
             }

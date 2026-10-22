@@ -40,6 +40,23 @@ pub(crate) enum BrowserInput {
         #[serde(rename = "dataUrl")]
         data_url: String,
     },
+    Draft {
+        text: String,
+        revision: u64,
+        #[serde(rename = "baseRevision")]
+        base_revision: u64,
+    },
+    RemoveImage {
+        anchor: String,
+    },
+    Settings {
+        model: Option<String>,
+        effort: Option<String>,
+        router: Option<String>,
+    },
+    Resize {
+        width: u16,
+    },
     History {
         before: usize,
         #[serde(default, rename = "rowEnd")]
@@ -57,7 +74,13 @@ impl BrowserInput {
                 shift,
             } => browser_key(key, *ctrl, *alt, *shift).map(TuiEvent::Key),
             Self::Paste { text } if text.len() <= 1_000_000 => Some(TuiEvent::Paste(text.clone())),
-            Self::Paste { .. } | Self::Image { .. } | Self::History { .. } => None,
+            Self::Paste { .. }
+            | Self::Image { .. }
+            | Self::History { .. }
+            | Self::Draft { .. }
+            | Self::RemoveImage { .. }
+            | Self::Settings { .. }
+            | Self::Resize { .. } => None,
         }
     }
 }
@@ -74,6 +97,11 @@ pub(crate) struct WebUiSession {
     pub(crate) last_publish: Option<Instant>,
     pub(crate) history_end: Option<usize>,
     pub(crate) history_row_end: Option<u16>,
+    pub(crate) browser_width: Option<u16>,
+    pub(crate) draft_text: String,
+    pub(crate) draft_revision: u64,
+    pub(crate) draft_ack: u64,
+    pub(crate) image_previews: HashMap<std::path::PathBuf, String>,
 }
 
 pub(crate) struct CachedHistoryCell {
@@ -124,6 +152,11 @@ impl WebUiSession {
             last_publish: None,
             history_end: None,
             history_row_end: None,
+            browser_width: None,
+            draft_text: String::new(),
+            draft_revision: 0,
+            draft_ack: 0,
+            image_previews: HashMap::new(),
         }
     }
 
@@ -134,6 +167,7 @@ impl WebUiSession {
         {
             frame["live"] = crate::web_ui_html::buffer_html(buffer, None).into();
             frame["overlay"] = true.into();
+            frame["composer"]["dialog"] = true.into();
             self.frames.send_replace(Some(frame.to_string()));
         }
     }
