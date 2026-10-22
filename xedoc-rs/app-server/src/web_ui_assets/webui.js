@@ -450,6 +450,91 @@
     }
     if (lastActivity !== frame.activity || lastPopup !== frame.popup) {
       activity.innerHTML = `${frame.activity || ""}${frame.popup || ""}`;
+      const activityLines = [...activity.querySelectorAll(":scope > .line")];
+      const workingLine = activityLines.find((line) =>
+        /^\s*[•◦]?\s*Working\b/.test(line.textContent));
+      if (workingLine) {
+        const text = workingLine.textContent;
+        const interruptHintEnd = text.indexOf(" to interrupt");
+        const hintSearchStart = interruptHintEnd === -1
+          ? -1
+          : interruptHintEnd + " to interrupt".length;
+        const hintStart = hintSearchStart === -1
+          ? text.lastIndexOf(" • ctrl+d")
+          : text.indexOf(" • ", hintSearchStart);
+        if (hintStart !== -1) {
+          const closeParen = text.indexOf(")", hintStart);
+          const hintEnd = closeParen === -1 ? text.length : closeParen;
+          const range = document.createRange();
+          const walker = document.createTreeWalker(workingLine, NodeFilter.SHOW_TEXT);
+          let offset = 0;
+          let startNode;
+          let startOffset;
+          let endNode;
+          let endOffset;
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            const nodeEnd = offset + node.length;
+            if (!startNode && hintStart >= offset && hintStart <= nodeEnd) {
+              startNode = node;
+              startOffset = hintStart - offset;
+            }
+            if (hintEnd >= offset && hintEnd <= nodeEnd) {
+              endNode = node;
+              endOffset = hintEnd - offset;
+              break;
+            }
+            offset = nodeEnd;
+          }
+          if (startNode && endNode) {
+            range.setStart(startNode, startOffset);
+            range.setEnd(endNode, endOffset);
+            range.deleteContents();
+          }
+        }
+      }
+      const taskHeading = activityLines.findIndex((line) =>
+        /^\s*•\s*Tasks\s+\d+\/\d+/.test(line.textContent));
+      if (taskHeading !== -1) {
+        activityLines[taskHeading].classList.add("task-heading");
+        for (const line of activityLines.slice(taskHeading + 1)) {
+          const text = line.textContent;
+          const match = /^\s*(?:└\s*)?([✔□])\s+(.+)$/.exec(text);
+          if (!match) {
+            const overflow = /^\s*\.\.\. (\d+) more$/.exec(text);
+            if (!overflow) break;
+            line.classList.add("task-overflow");
+            line.textContent = `... ${overflow[1]} more`;
+            continue;
+          }
+          const markerStart = text.indexOf(match[1]);
+          const labelStart = markerStart + match[1].length + 1;
+          const copyStyledRange = (start, end) => {
+            const spans = [];
+            let offset = 0;
+            for (const span of line.children) {
+              const text = span.textContent;
+              const from = Math.max(0, start - offset);
+              const to = Math.min(text.length, end - offset);
+              if (from < to) {
+                const copy = span.cloneNode(false);
+                copy.textContent = text.slice(from, to);
+                spans.push(copy);
+              }
+              offset += text.length;
+            }
+            return spans;
+          };
+          const marker = document.createElement("span");
+          marker.className = "task-marker";
+          marker.append(...copyStyledRange(markerStart, markerStart + match[1].length));
+          const label = document.createElement("span");
+          label.className = "task-label";
+          label.append(...copyStyledRange(labelStart, text.length));
+          line.classList.add("task-row");
+          line.replaceChildren(marker, label);
+        }
+      }
       lastActivity = frame.activity;
       lastPopup = frame.popup;
     }

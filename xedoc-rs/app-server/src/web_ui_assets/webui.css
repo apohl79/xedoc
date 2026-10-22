@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--sans);
   font-size: 15px;
   line-height: 1.55;
   color: #a8bac9;
@@ -62,6 +63,12 @@ a { color: #8fc4e7; }
 #composer { flex: none; min-width: 0; }
 #activity { max-height: 32dvh; overflow: auto; font-family: var(--mono); font-size: 13px; margin-bottom: 10px; }
 #activity:empty { display: none; }
+#activity .task-heading, #activity .task-row { font-family: var(--sans); font-size: 15px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+#activity .task-heading { margin-bottom: 4px; }
+#activity .task-row { display: grid; grid-template-columns: 1.15em minmax(0, 1fr); gap: 8px; margin: 4px 0 0 2em; }
+#activity .task-marker { line-height: inherit; }
+#activity .task-label { min-width: 0; }
+#activity .task-overflow { margin: 4px 0 0 calc(2em + 1.15em + 8px); color: #778d9c; font-family: var(--sans); font-size: 13px; line-height: 1.45; white-space: normal; }
 #live { font-family: var(--mono); font-size: 13px; overflow: auto; max-height: 60dvh; line-height: 1; }
 #entry { border: 1px solid var(--border); border-radius: 8px; background: #1c272f; }
 #entry:focus-within { border-color: #6a8294; }
