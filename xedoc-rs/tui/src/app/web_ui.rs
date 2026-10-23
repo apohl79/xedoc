@@ -22,6 +22,7 @@ use super::App;
 use super::AppRunControl;
 use crate::app_event::AppEvent;
 use crate::app_server_session::AppServerSession;
+use crate::chatwidget::BrowserStreamContent;
 use crate::render::renderable::Renderable;
 use crate::tui::Tui;
 use crate::web_ui::BrowserInput;
@@ -114,6 +115,21 @@ impl App {
             return Ok(AppRunControl::Continue);
         }
         match serde_json::from_str::<BrowserInput>(&input) {
+            Ok(BrowserInput::Question {
+                request_id,
+                index,
+                action,
+                option,
+                text,
+            }) => {
+                self.chat_widget.handle_browser_question(
+                    &request_id,
+                    index,
+                    &action,
+                    option,
+                    text.as_deref(),
+                );
+            }
             Ok(BrowserInput::Resize { width }) => {
                 if let Some(session) = &mut tui.web_ui {
                     session.browser_width = Some(width.clamp(20, 400));
@@ -306,6 +322,10 @@ impl App {
             session.history.clear();
             session.history_end = None;
             session.history_row_end = None;
+            session.browser_stream_kind = None;
+            session.browser_stream_source_len = 0;
+            session.browser_stream_prefix.clear();
+            session.browser_stream_stable_pages = 0;
             session.width = width;
             session.active_thread = active_thread;
         }
@@ -315,8 +335,32 @@ impl App {
             .history_end
             .unwrap_or(self.transcript_cells.len())
             .min(self.transcript_cells.len());
+        let stream_content = self.chat_widget.browser_stream_content();
+        let mut streaming_history_start = end;
+        while streaming_history_start > 0 {
+            let cell = &self.transcript_cells[streaming_history_start - 1];
+            let is_stream_fragment = match stream_content.as_ref() {
+                Some(BrowserStreamContent::Assistant(_)) => {
+                    cell.as_any().is::<crate::history_cell::AgentMessageCell>()
+                }
+                Some(BrowserStreamContent::Plan(_)) => {
+                    cell.as_any()
+                        .is::<crate::history_cell::ProposedPlanStreamCell>()
+                }
+                None => false,
+            };
+            if !is_stream_fragment {
+                break;
+            }
+            streaming_history_start -= 1;
+        }
         for (index, cell) in self.transcript_cells[..end].iter().enumerate().rev() {
-            let row_total = cell.desired_height(width);
+            let hidden = index >= streaming_history_start && stream_content.is_some();
+            let row_total = if hidden {
+                1
+            } else {
+                crate::web_ui_html::history_cell_page_count(cell.as_ref())
+            };
             let row_end = if index + 1 == end {
                 session.history_row_end.unwrap_or(row_total).min(row_total)
             } else {
@@ -329,16 +373,24 @@ impl App {
             }) {
                 session.history.remove(&index);
             }
+            if hidden {
+                session.history.remove(&index);
+            }
             let cached = session.history.entry(index).or_insert_with(|| {
+                if hidden {
+                    return CachedHistoryCell {
+                        cell: cell.clone(),
+                        html: String::new(),
+                        row_start: 0,
+                        row_end: 1,
+                        row_total: 1,
+                    };
+                }
                 let mut rows = row_end.min(400);
                 loop {
                     let row_start = row_end.saturating_sub(rows);
-                    let html = crate::web_ui_html::history_cell_html(
-                        cell.as_ref(),
-                        width,
-                        row_start,
-                        row_end,
-                    );
+                    let html =
+                        crate::web_ui_html::history_cell_html(cell.as_ref(), row_start, row_end);
                     if json!(&html).to_string().len() <= HISTORY_BYTES / 2 || rows <= 1 {
                         break CachedHistoryCell {
                             cell: cell.clone(),
@@ -354,7 +406,7 @@ impl App {
             let fragment = json!({
                 "id": format!("{}-{index}", active_thread.map(|id| id.to_string()).unwrap_or_default()),
                 "html": cached.html, "rowStart": cached.row_start,
-                "rowEnd": cached.row_end, "rowTotal": cached.row_total,
+                "rowEnd": cached.row_end, "rowTotal": cached.row_total, "hidden": hidden,
             });
             bytes = bytes.saturating_add(fragment.to_string().len());
             if bytes > HISTORY_BYTES {
@@ -413,8 +465,21 @@ impl App {
                 "id": preset.model, "label": preset.display_name,
                 "efforts": preset.supported_reasoning_efforts.iter().map(|effort| effort.effort.to_string()).collect::<Vec<_>>(),
             })).collect();
-        let (composer_height, popup_height, dialog, router, timer, status) =
-            self.chat_widget.browser_composer_context(width);
+        let (
+            composer_height,
+            popup_height,
+            dialog,
+            router,
+            timer,
+            status,
+            display_model,
+            display_effort,
+        ) = self.chat_widget.browser_composer_context(width);
+        let question = self
+            .overlay
+            .is_none()
+            .then(|| self.chat_widget.browser_question())
+            .flatten();
         let status = status.map(|line| {
             let status_width = u16::try_from(line.width())
                 .unwrap_or(u16::MAX)
@@ -425,10 +490,86 @@ impl App {
             Paragraph::new(line).render(area, &mut buffer);
             buffer_html(&buffer, None)
         });
-        let active_html = self.chat_widget.browser_active_cell().map(|cell| {
-            let rows = cell.desired_height(width);
-            crate::web_ui_html::history_cell_html(cell, width, rows.saturating_sub(400), rows)
-        });
+        let stream_update = match stream_content.as_ref() {
+            Some(BrowserStreamContent::Assistant(source)) => {
+                let kind = crate::web_ui_html::StreamHtmlKind::Assistant;
+                let kind_name = "assistant";
+                let reset = session.browser_stream_kind.as_deref() != Some(kind_name)
+                    || source.len() < session.browser_stream_source_len
+                    || !source.starts_with(session.browser_stream_prefix.as_str());
+                let pages = crate::web_ui_html::markdown_pages(source);
+                let stable_page_count = pages.len().saturating_sub(1);
+                let stable_start = if reset {
+                    0
+                } else {
+                    session.browser_stream_stable_pages
+                };
+                let stable = (stable_start..stable_page_count)
+                    .map(|index| {
+                        crate::web_ui_html::stream_page_html(kind, pages[index], index == 0)
+                    })
+                    .collect::<Vec<_>>();
+                let tail = pages.last().map(|page| {
+                    crate::web_ui_html::stream_page_html(kind, page, stable_page_count == 0)
+                });
+                session.browser_stream_kind = Some(kind_name.to_string());
+                session.browser_stream_source_len = source.len();
+                session.browser_stream_prefix = source.chars().take(64).collect();
+                session.browser_stream_stable_pages = stable_page_count;
+                Some(json!({"reset": reset, "kind": kind_name, "stable": stable, "tail": tail}))
+            }
+            Some(BrowserStreamContent::Plan(source)) => {
+                let kind = crate::web_ui_html::StreamHtmlKind::Plan;
+                let kind_name = "plan";
+                let reset = session.browser_stream_kind.as_deref() != Some(kind_name)
+                    || source.len() < session.browser_stream_source_len
+                    || !source.starts_with(session.browser_stream_prefix.as_str());
+                let pages = crate::web_ui_html::markdown_pages(source);
+                let stable_page_count = pages.len().saturating_sub(1);
+                let stable_start = if reset {
+                    0
+                } else {
+                    session.browser_stream_stable_pages
+                };
+                let stable = (stable_start..stable_page_count)
+                    .map(|index| {
+                        crate::web_ui_html::stream_page_html(kind, pages[index], index == 0)
+                    })
+                    .collect::<Vec<_>>();
+                let tail = pages.last().map(|page| {
+                    crate::web_ui_html::stream_page_html(kind, page, stable_page_count == 0)
+                });
+                session.browser_stream_kind = Some(kind_name.to_string());
+                session.browser_stream_source_len = source.len();
+                session.browser_stream_prefix = source.chars().take(64).collect();
+                session.browser_stream_stable_pages = stable_page_count;
+                Some(json!({"reset": reset, "kind": kind_name, "stable": stable, "tail": tail}))
+            }
+            None if session.browser_stream_kind.is_some() => {
+                session.browser_stream_kind = None;
+                session.browser_stream_source_len = 0;
+                session.browser_stream_prefix.clear();
+                session.browser_stream_stable_pages = 0;
+                Some(json!({"reset": true, "kind": null, "stable": [], "tail": null}))
+            }
+            None => None,
+        };
+        let active_html = stream_content
+            .is_none()
+            .then(|| {
+                self.chat_widget.browser_active_cell().map(|cell| {
+                    let pages = crate::web_ui_html::history_cell_page_count(cell);
+                    crate::web_ui_html::history_cell_html(cell, pages.saturating_sub(400), pages)
+                })
+            })
+            .flatten();
+        let tool_summary = (!dialog && self.overlay.is_none())
+            .then(|| {
+                self.chat_widget
+                    .browser_tool_summary()
+                    .map(|cell| crate::web_ui_html::history_cell_html(cell, 0, 1))
+            })
+            .flatten();
         let renderable = if dialog || self.overlay.is_some() {
             self.chat_widget.as_renderable()
         } else {
@@ -476,15 +617,17 @@ impl App {
             "title": self.chat_widget.thread_name(), "width": width,
             "history": history, "historyStart": first, "historyEnd": end, "historyTotal": self.transcript_cells.len(),
             "historyRowEnd": session.history_row_end,
-            "live": if dialog || self.overlay.is_some() { buffer_html(&buffer, cursor) } else { String::new() },
+            "live": if question.is_none() && (dialog || self.overlay.is_some()) { buffer_html(&buffer, cursor) } else { String::new() },
+            "question": question,
             "overlay": self.overlay.is_some(),
-            "active": active_html, "activity": buffer_html(&activity_buffer, None),
+            "active": active_html, "stream": stream_update, "toolSummary": tool_summary, "activity": if question.is_none() { buffer_html(&activity_buffer, None) } else { String::new() },
             "popup": if popup_height > 0 { buffer_html(&popup_buffer, None) } else { String::new() },
             "status": status,
             "composer": {
                 "text": draft.text, "revision": session.draft_revision, "ackRevision": session.draft_ack,
                 "attachments": attachments, "model": self.chat_widget.current_model(),
                 "effort": self.chat_widget.current_reasoning_effort(),
+                "displayModel": display_model, "displayEffort": display_effort,
                 "router": router, "models": models,
                 "routerOptions": (["off", "shadow-full", "subagents", "full"].iter().map(|id| json!({"id":id,"label":id})).collect::<Vec<_>>()),
                 "sessionName": self.chat_widget.thread_name(), "timer": timer, "dialog": dialog || self.overlay.is_some(),

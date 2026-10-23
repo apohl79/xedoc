@@ -361,12 +361,18 @@ impl BottomPane {
         self.request_redraw();
     }
 
-    /// Returns the current router mode and elapsed turn time for alternate renderers.
-    pub fn browser_context(&self) -> (Option<&str>, Option<u64>) {
+    /// Returns router mode, elapsed time, and the displayed model pair for alternate renderers.
+    pub fn browser_context(&self) -> (Option<&str>, Option<u64>, Option<&str>, Option<&str>) {
         (
             self.model_router_mode.as_deref(),
             self.active_turn_started_at
                 .map(|started| started.elapsed().as_secs()),
+            self.runtime_context
+                .as_ref()
+                .map(|context| context.model.as_str()),
+            self.runtime_context
+                .as_ref()
+                .and_then(|context| context.effort.as_deref()),
         )
     }
 
@@ -389,6 +395,34 @@ impl BottomPane {
     /// Whether an alternate renderer must retain the active terminal dialog.
     pub fn browser_has_dialog(&self) -> bool {
         self.active_view().is_some()
+    }
+
+    /// Return the active question without terminal layout.
+    pub fn browser_question(&self) -> Option<bottom_pane_view::BrowserQuestion> {
+        self.active_view()
+            .and_then(BottomPaneView::browser_question)
+    }
+
+    /// Route native question controls through the shared view and completion cleanup.
+    pub fn handle_browser_question(
+        &mut self,
+        request_id: &str,
+        index: usize,
+        action: &str,
+        option: Option<usize>,
+        text: Option<&str>,
+    ) {
+        let Some(view) = self.view_stack.last_mut() else {
+            return;
+        };
+        if !view.handle_browser_question(request_id, index, action, option, text) {
+            return;
+        }
+        if view.is_complete() {
+            let completion = view.completion();
+            self.pop_active_view_with_completion(completion);
+        }
+        self.request_redraw();
     }
 
     /// Returns the shared status line without terminal layout.

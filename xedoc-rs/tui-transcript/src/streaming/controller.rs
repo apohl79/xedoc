@@ -553,6 +553,11 @@ impl StreamController {
         self.core.current_tail_lines()
     }
 
+    /// Return the complete markdown source accumulated for the active stream.
+    pub fn source(&self) -> &str {
+        self.core.state.collector.source()
+    }
+
     #[inline]
     pub fn tail_starts_stream(&self) -> bool {
         !self.header_emitted && self.core.enqueued_stable_len == 0
@@ -672,6 +677,11 @@ impl PlanStreamController {
     #[inline]
     pub fn current_tail_lines(&self) -> Vec<HyperlinkLine> {
         self.core.current_tail_lines()
+    }
+
+    /// Return the complete markdown source accumulated for the active plan.
+    pub fn source(&self) -> &str {
+        self.core.state.collector.source()
     }
 
     #[inline]

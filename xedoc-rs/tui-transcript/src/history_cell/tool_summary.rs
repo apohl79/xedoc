@@ -91,11 +91,9 @@ impl ToolCallCountSummaryCell {
     pub fn new(stats: ToolCallSummaryStats, cwd: PathBuf) -> Self {
         Self { stats, cwd }
     }
-}
 
-impl HistoryCell for ToolCallCountSummaryCell {
-    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let separator = "─".repeat(width as usize).dim();
+    /// Returns shared summary content without terminal separator rules.
+    pub fn summary_lines(&self) -> Vec<Line<'static>> {
         let mut summary = Vec::new();
         let mut file_detail_lines = Vec::new();
         if self.stats.files_edited > 0 {
@@ -170,7 +168,7 @@ impl HistoryCell for ToolCallCountSummaryCell {
             };
             summary.push(format!(" {} web {pages} fetched.", self.stats.web_pages_fetched).dim());
         }
-        let mut lines = vec![separator.clone().into()];
+        let mut lines = Vec::new();
         lines.push(
             vec!["• ".dim()]
                 .into_iter()
@@ -179,7 +177,16 @@ impl HistoryCell for ToolCallCountSummaryCell {
                 .into(),
         );
         lines.extend(file_detail_lines);
-        lines.push(separator.into());
+        lines
+    }
+}
+
+impl HistoryCell for ToolCallCountSummaryCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let separator = Line::from("─".repeat(usize::from(width)).dim());
+        let mut lines = vec![separator.clone()];
+        lines.extend(self.summary_lines());
+        lines.push(separator);
         lines
     }
 

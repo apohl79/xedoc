@@ -3,6 +3,24 @@
 use super::*;
 
 impl ChatWidget {
+    /// Expose the active shared question to native browser controls.
+    pub fn browser_question(&self) -> Option<serde_json::Value> {
+        self.bottom_pane.browser_question()
+    }
+
+    /// Reconcile browser question actions with the terminal view state.
+    pub fn handle_browser_question(
+        &mut self,
+        request_id: &str,
+        index: usize,
+        action: &str,
+        option: Option<usize>,
+        text: Option<&str>,
+    ) {
+        self.bottom_pane
+            .handle_browser_question(request_id, index, action, option, text);
+    }
+
     /// Exposes shared input state to a browser without duplicating composer behavior.
     pub fn browser_draft(&self) -> crate::bottom_pane::chat_composer::ComposerDraftSnapshot {
         let mut draft = self.bottom_pane.composer_draft_snapshot();
@@ -59,8 +77,10 @@ impl ChatWidget {
         Option<String>,
         Option<u64>,
         Option<ratatui::text::Line<'static>>,
+        String,
+        Option<String>,
     ) {
-        let (router, elapsed) = self.bottom_pane.browser_context();
+        let (router, elapsed, model, effort) = self.bottom_pane.browser_context();
         (
             self.bottom_pane.browser_composer_height(width),
             self.bottom_pane.browser_popup_height(width),
@@ -68,6 +88,13 @@ impl ChatWidget {
             router.map(str::to_owned),
             elapsed,
             self.bottom_pane.browser_status_line_styled(),
+            model.unwrap_or_else(|| self.current_model()).to_owned(),
+            if model.is_some() {
+                effort.map(str::to_owned)
+            } else {
+                self.current_reasoning_effort()
+                    .map(|effort| effort.as_str().to_owned())
+            },
         )
     }
 
@@ -79,32 +106,6 @@ impl ChatWidget {
             })),
             None => RenderableItem::Owned(Box::new(())),
         };
-        self.renderable_with_active_cell(active_cell_renderable)
-    }
-
-    /// Exposes the same active history cell without imposing terminal layout.
-    pub fn browser_active_cell(&self) -> Option<&dyn HistoryCell> {
-        self.transcript.active_cell.as_deref()
-    }
-
-    /// Keeps shared activity surfaces while the browser lays out the active cell.
-    pub fn browser_renderable(&self) -> RenderableItem<'_> {
-        self.renderable_with_active_cell(RenderableItem::Owned(Box::new(())))
-    }
-
-    fn renderable_with_active_cell<'a>(
-        &'a self,
-        active_cell_renderable: RenderableItem<'a>,
-    ) -> RenderableItem<'a> {
-        let active_hook_cell_renderable = match &self.active_hook_cell {
-            Some(cell) if cell.should_render() => {
-                RenderableItem::Owned(Box::new(TranscriptAreaRenderable {
-                    child: cell,
-                    top: 1,
-                }))
-            }
-            _ => RenderableItem::Owned(Box::new(())),
-        };
         let tool_summary_renderable = match &self.tool_call_summary {
             Some(summary)
                 if self.turn_lifecycle.agent_turn_running
@@ -113,6 +114,60 @@ impl ChatWidget {
             {
                 RenderableItem::Owned(Box::new(TranscriptAreaRenderable {
                     child: summary.cell(),
+                    top: 1,
+                }))
+            }
+            _ => RenderableItem::Owned(Box::new(())),
+        };
+        self.renderable_with_active_cell(active_cell_renderable, tool_summary_renderable)
+    }
+
+    /// Exposes the same active history cell without imposing terminal layout.
+    pub fn browser_active_cell(&self) -> Option<&dyn HistoryCell> {
+        self.transcript.active_cell.as_deref()
+    }
+
+    /// Exposes the live assistant or plan source for browser-native rendering.
+    pub fn browser_stream_content(&self) -> Option<BrowserStreamContent<'_>> {
+        self.stream_controller
+            .as_ref()
+            .map(|controller| BrowserStreamContent::Assistant(controller.source()))
+            .or_else(|| {
+                self.plan_stream_controller
+                    .as_ref()
+                    .map(|controller| BrowserStreamContent::Plan(controller.source()))
+            })
+    }
+
+    /// Exposes the live optimized tool summary for browser-native rendering.
+    pub fn browser_tool_summary(&self) -> Option<&dyn HistoryCell> {
+        self.tool_call_summary
+            .as_ref()
+            .filter(|summary| {
+                self.turn_lifecycle.agent_turn_running
+                    && self.optimized_tool_call_rendering()
+                    && summary.has_calls()
+            })
+            .map(|summary| summary.cell() as &dyn HistoryCell)
+    }
+
+    /// Keeps shared activity surfaces while the browser lays out the active cell.
+    pub fn browser_renderable(&self) -> RenderableItem<'_> {
+        self.renderable_with_active_cell(
+            RenderableItem::Owned(Box::new(())),
+            RenderableItem::Owned(Box::new(())),
+        )
+    }
+
+    fn renderable_with_active_cell<'a>(
+        &'a self,
+        active_cell_renderable: RenderableItem<'a>,
+        tool_summary_renderable: RenderableItem<'a>,
+    ) -> RenderableItem<'a> {
+        let active_hook_cell_renderable = match &self.active_hook_cell {
+            Some(cell) if cell.should_render() => {
+                RenderableItem::Owned(Box::new(TranscriptAreaRenderable {
+                    child: cell,
                     top: 1,
                 }))
             }

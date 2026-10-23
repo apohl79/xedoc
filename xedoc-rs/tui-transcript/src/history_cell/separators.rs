@@ -23,9 +23,9 @@ impl FinalMessageSeparator {
             runtime_metrics,
         }
     }
-}
-impl HistoryCell for FinalMessageSeparator {
-    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+
+    /// Returns the summary content without terminal separator rules.
+    pub fn summary_lines(&self) -> Vec<Line<'static>> {
         let mut label_parts = Vec::new();
         if let Some(elapsed_seconds) = self
             .elapsed_seconds
@@ -39,10 +39,23 @@ impl HistoryCell for FinalMessageSeparator {
         }
 
         if label_parts.is_empty() {
-            return vec![Line::from_iter(["─".repeat(width as usize).dim()])];
+            Vec::new()
+        } else {
+            vec![Line::from(label_parts.join(" • "))]
         }
-
-        let label = format!("─ {} ─", label_parts.join(" • "));
+    }
+}
+impl HistoryCell for FinalMessageSeparator {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let Some(summary) = self.summary_lines().into_iter().next() else {
+            return vec![Line::from_iter(["─".repeat(width as usize).dim()])];
+        };
+        let summary = summary
+            .spans
+            .into_iter()
+            .map(|span| span.content.into_owned())
+            .collect::<String>();
+        let label = format!("─ {summary} ─");
         let (label, _suffix, label_width) = take_prefix_by_width(&label, width as usize);
         vec![
             Line::from_iter([
@@ -54,22 +67,7 @@ impl HistoryCell for FinalMessageSeparator {
     }
 
     fn raw_lines(&self) -> Vec<Line<'static>> {
-        let mut label_parts = Vec::new();
-        if let Some(elapsed_seconds) = self
-            .elapsed_seconds
-            .filter(|seconds| *seconds > 60)
-            .map(crate::text_formatting::fmt_elapsed_compact)
-        {
-            label_parts.push(format!("Worked for {elapsed_seconds}"));
-        }
-        if let Some(metrics_label) = self.runtime_metrics.and_then(runtime_metrics_label) {
-            label_parts.push(metrics_label);
-        }
-        if label_parts.is_empty() {
-            Vec::new()
-        } else {
-            vec![Line::from(label_parts.join(" • "))]
-        }
+        self.summary_lines()
     }
 }
 

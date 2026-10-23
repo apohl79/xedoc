@@ -102,6 +102,11 @@ impl MarkdownStreamCollector {
         &self.buffer[..self.committed_source_len]
     }
 
+    /// Return the complete source accumulated for the current stream.
+    pub fn source(&self) -> &str {
+        &self.buffer
+    }
+
     /// Finalize the stream and transfer its complete raw source.
     ///
     /// Ensures the returned source chunk is newline-terminated when non-empty so callers can

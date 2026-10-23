@@ -61,6 +61,14 @@ pub(crate) enum BrowserInput {
         effort: Option<String>,
         router: Option<String>,
     },
+    Question {
+        #[serde(rename = "requestId")]
+        request_id: String,
+        index: usize,
+        action: String,
+        option: Option<usize>,
+        text: Option<String>,
+    },
     Resize {
         width: u16,
     },
@@ -88,6 +96,7 @@ impl BrowserInput {
             | Self::Draft { .. }
             | Self::RemoveImage { .. }
             | Self::Settings { .. }
+            | Self::Question { .. }
             | Self::Resize { .. } => None,
         }
     }
@@ -101,6 +110,10 @@ pub(crate) struct WebUiSession {
     pub(crate) images: Vec<tempfile::NamedTempFile>,
     pub(crate) documents: Vec<crate::web_ui_files::UploadedDocument>,
     pub(crate) history: HashMap<usize, CachedHistoryCell>,
+    pub(crate) browser_stream_kind: Option<String>,
+    pub(crate) browser_stream_source_len: usize,
+    pub(crate) browser_stream_prefix: String,
+    pub(crate) browser_stream_stable_pages: usize,
     pub(crate) width: u16,
     pub(crate) active_thread: Option<ThreadId>,
     pub(crate) last_publish: Option<Instant>,
@@ -157,6 +170,10 @@ impl WebUiSession {
             images: Vec::new(),
             documents: Vec::new(),
             history: HashMap::new(),
+            browser_stream_kind: None,
+            browser_stream_source_len: 0,
+            browser_stream_prefix: String::new(),
+            browser_stream_stable_pages: 0,
             width: 0,
             active_thread: None,
             last_publish: None,

@@ -378,6 +378,14 @@ mod settings_popups;
 mod side;
 use self::safety_buffering::SafetyBufferingState;
 mod status_state;
+
+/// Raw source for the browser's native rendering of the current stream.
+pub enum BrowserStreamContent<'a> {
+    /// An in-progress assistant response.
+    Assistant(&'a str),
+    /// An in-progress proposed plan.
+    Plan(&'a str),
+}
 use self::status_state::StatusIndicatorState;
 use self::status_state::StatusState;
 use self::status_state::TerminalTitleStatusKind;

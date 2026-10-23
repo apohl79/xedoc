@@ -311,7 +311,11 @@ async fn page() -> Response {
 
 async fn script() -> Response {
     asset(
-        include_str!("web_ui_assets/webui.js"),
+        concat!(
+            include_str!("web_ui_assets/question.js"),
+            "\n",
+            include_str!("web_ui_assets/webui.js")
+        ),
         "text/javascript; charset=utf-8",
     )
 }

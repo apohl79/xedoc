@@ -8,6 +8,9 @@ use xedoc_app_server_protocol::ToolRequestUserInputParams;
 
 use super::CancellationEvent;
 
+/// Structured question state for alternate browser rendering.
+pub type BrowserQuestion = serde_json::Value;
+
 /// Reason an active bottom-pane view finished.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ViewCompletion {
@@ -17,6 +20,23 @@ pub enum ViewCompletion {
 
 /// Trait implemented by every view that can be shown in the bottom pane.
 pub trait BottomPaneView: Renderable {
+    /// Return shared request-user-input state for native browser controls.
+    fn browser_question(&self) -> Option<BrowserQuestion> {
+        None
+    }
+
+    /// Apply a native browser action to the shared question state.
+    fn handle_browser_question(
+        &mut self,
+        _request_id: &str,
+        _index: usize,
+        _action: &str,
+        _option: Option<usize>,
+        _text: Option<&str>,
+    ) -> bool {
+        false
+    }
+
     /// Handle a key event while the view is active. A redraw is always
     /// scheduled after this call.
     fn handle_key_event(&mut self, _key_event: KeyEvent) {}

@@ -16,6 +16,7 @@
   const attachments = document.getElementById("attachments");
   const menu = document.getElementById("menu");
   const quoteSelection = document.getElementById("quote-selection");
+  const question = new window.XedocQuestion(document.getElementById("question"), send);
   let selectedQuote = "";
   let linkPreviewTimeout = null;
   let linkPreviewAnchor = null;
@@ -40,6 +41,8 @@
   let popupActive = false;
   let activeThread = null;
   let activeWidth = null;
+  let activeStreamKind = null;
+  let activeStreamTail = null;
   let historyBefore = null;
   let historyRequest = null;
   let composerState = null;
@@ -58,6 +61,7 @@
     attach.disabled = !ready;
     document.getElementById("send").disabled = !ready;
     composer.setAttribute("aria-disabled", String(!ready));
+    question.setEnabled(ready);
     if (!ready) quoteSelection.hidden = true;
   }
 
@@ -112,7 +116,9 @@
           let node;
           while ((node = walker.nextNode())) {
             if (node.parentElement?.classList.contains("syntax-marker") && offset <= node.length) {
-              return [line, 1];
+              const marker = node.parentElement;
+              const index = Array.prototype.indexOf.call(marker.parentNode.childNodes, marker);
+              return [marker.parentNode, index + (offset > 0 || index === 0 ? 1 : 0)];
             }
             if (offset <= node.length) return [node, offset];
             offset -= node.length;
@@ -127,28 +133,84 @@
   }
 
   function editorPrefix(line) {
-    return line.match(/^(\s*[-*+] +|> +)(?=\S)/)?.[0];
+    return line.match(/^(\s*(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?|> +|#{1,6} +)(?=\S)/)?.[0];
+  }
+
+  function markdownMarker(text) {
+    const marker = document.createElement("span");
+    marker.className = "syntax-marker";
+    marker.contentEditable = "false";
+    marker.textContent = text;
+    return marker;
+  }
+
+  function renderInlineMarkdown(parent, text) {
+    const pattern = /(`+)([^\n]*?)\1|\[([^\]\n]+)\]\(([^)\n]+)\)|(\*\*|__|~~)(?=\S)(.+?)\5|(\*|_)(?=\S)(.+?)\7|(?:\$[\w][\w./:-]*|\[(?:Image|Doc) #\d+\])/g;
+    let offset = 0;
+    for (const match of text.matchAll(pattern)) {
+      parent.append(document.createTextNode(text.slice(offset, match.index)));
+      let element;
+      if (match[1]) {
+        element = document.createElement("code");
+        element.append(markdownMarker(match[1]), document.createTextNode(match[2]), markdownMarker(match[1]));
+      } else if (match[3]) {
+        element = document.createElement("span");
+        element.className = "editor-link";
+        element.title = match[4];
+        element.append(markdownMarker("["), document.createTextNode(match[3]), markdownMarker(`](${match[4]})`));
+      } else if (match[5] || match[7]) {
+        const delimiter = match[5] || match[7];
+        element = document.createElement(delimiter === "~~" ? "s" : match[5] ? "strong" : "em");
+        element.append(markdownMarker(delimiter));
+        renderInlineMarkdown(element, match[6] || match[8]);
+        element.append(markdownMarker(delimiter));
+      } else {
+        element = document.createElement("span");
+        element.className = "editor-reference";
+        element.textContent = match[0];
+      }
+      parent.append(element);
+      offset = match.index + match[0].length;
+    }
+    parent.append(document.createTextNode(text.slice(offset)));
   }
 
   function renderEditor(text, selection = null) {
-    input.replaceChildren();
-    if (text) for (const line of text.split("\n")) {
+    const content = document.createElement("div");
+    let fence = null;
+    for (const line of text.split("\n")) {
       const element = document.createElement("div");
       element.className = "editor-line";
+      const fenceMatch = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
+      if (fenceMatch && (!fence || fenceMatch[1][0] === fence[0]
+          && fenceMatch[1].length >= fence.length && !fenceMatch[2].trim())) {
+        element.classList.add("editor-code", "editor-fence");
+        element.textContent = line;
+        fence = fence ? null : fenceMatch[1];
+        content.append(element);
+        continue;
+      }
+      if (fence) {
+        element.classList.add("editor-code");
+        element.textContent = line;
+        if (!line) element.append(document.createElement("br"));
+        content.append(element);
+        continue;
+      }
       const prefix = editorPrefix(line);
       if (prefix) {
-        element.classList.add(prefix.trim().startsWith(">") ? "editor-quote" : "editor-list");
-        const marker = document.createElement("span");
-        marker.className = "syntax-marker";
-        marker.contentEditable = "false";
-        marker.textContent = prefix;
-        element.append(marker, document.createTextNode(line.slice(prefix.length)));
-      } else {
-        element.textContent = line;
+        const heading = prefix.match(/^#+/);
+        element.classList.add(heading ? "editor-heading" : prefix.trim().startsWith(">") ? "editor-quote" : "editor-list");
+        if (heading) element.dataset.level = heading[0].length;
+        if (/^\s*\d/.test(prefix)) element.dataset.bullet = prefix.trim();
+        if (/\[[ xX]\]/.test(prefix)) element.dataset.bullet = /\[[xX]\]/.test(prefix) ? "☑" : "☐";
+        element.append(markdownMarker(prefix));
       }
+      renderInlineMarkdown(element, line.slice(prefix?.length || 0));
       if (!line) element.append(document.createElement("br"));
-      input.append(element);
+      content.append(element);
     }
+    if (input.innerHTML !== content.innerHTML) input.replaceChildren(...content.childNodes);
     restoreSelection(selection);
   }
 
@@ -268,11 +330,32 @@
     }
     if (inFlight !== null && state.ackRevision >= inFlight) inFlight = null;
     if (!dirty && inFlight === null && !composing && editorText() !== state.text) {
-      renderEditor(state.text, document.activeElement === input ? editorSelection() : null);
+      const previous = editorText();
+      const selection = document.activeElement === input ? editorSelection() : null;
+      if (selection) {
+        let start = 0;
+        while (start < previous.length && start < state.text.length
+            && previous[start] === state.text[start]) start++;
+        let end = previous.length;
+        let nextEnd = state.text.length;
+        while (end > start && nextEnd > start && previous[end - 1] === state.text[nextEnd - 1]) {
+          end--;
+          nextEnd--;
+        }
+        for (let index = 0; index < selection.length; index++) {
+          if (selection[index] >= start) {
+            selection[index] = selection[index] <= end ? nextEnd : selection[index] + nextEnd - end;
+          }
+        }
+      }
+      renderEditor(state.text, selection);
     }
     for (const kind of ["model", "effort", "router"]) {
       const button = document.getElementById(kind);
-      button.textContent = state[kind] || kind;
+      const value = kind === "model" ? state.displayModel ?? state.model
+        : kind === "effort" && Object.hasOwn(state, "displayEffort") ? state.displayEffort
+        : state[kind];
+      button.textContent = value || kind;
       button.disabled = !ready;
     }
     document.getElementById("session-name").textContent = state.sessionName || "";
@@ -339,11 +422,11 @@
     }
     entry.hidden = !!state.dialog;
     if (state.dialog) quoteSelection.hidden = true;
-    live.hidden = !state.dialog;
+    live.hidden = !state.dialog || !!question.state;
     activity.hidden = !!state.dialog || !activity.textContent.trim();
-    if (state.dialog !== wasDialog && wasDialog !== undefined) {
+    if (state.dialog !== wasDialog) {
       closeMenu();
-      (state.dialog ? live : input).focus({ preventScroll: true });
+      if (!question.state) (state.dialog ? live : input).focus({ preventScroll: true });
     }
     flushDraft();
   }
@@ -370,6 +453,7 @@
         element.dataset.cellId = cell.id;
         cells.set(cell.id, element);
       }
+      element.hidden = !!cell.hidden;
       let stored = htmlById.get(cell.id);
       if (!stored || stored.total !== cell.rowTotal) {
         element.replaceChildren();
@@ -541,11 +625,41 @@
     popupActive = !!frame.popup;
     if (popupActive) activity.scrollTop = activity.scrollHeight;
     document.getElementById("status").innerHTML = frame.status || "";
+    question.render(frame.question || null);
     if (frame.composer) renderComposer(frame.composer);
     const width = Math.max(40, Math.min(400, Math.floor(history.clientWidth / 8)));
     if (width !== previousWidth && send({ type: "resize", width })) previousWidth = width;
     if (frame.title) document.title = `${frame.title} · XEDOC`;
-    if (active.innerHTML !== (frame.active || "")) active.innerHTML = frame.active || "";
+    if (frame.stream) {
+      const update = frame.stream;
+      if (update.reset) {
+        active.replaceChildren();
+        activeStreamKind = update.kind;
+        activeStreamTail = null;
+      }
+      if (update.kind) {
+        activeStreamKind = update.kind;
+        for (const html of update.stable || []) {
+          const page = document.createElement("div");
+          page.innerHTML = html;
+          active.insertBefore(page, activeStreamTail);
+        }
+        if (update.tail !== null) {
+          if (!activeStreamTail) {
+            activeStreamTail = document.createElement("div");
+            active.append(activeStreamTail);
+          }
+          activeStreamTail.innerHTML = update.tail || "";
+        }
+      } else {
+        activeStreamKind = null;
+        activeStreamTail = null;
+      }
+    }
+    if (activeStreamKind === null) {
+      const activeHtml = `${frame.active || ""}${frame.toolSummary || ""}`;
+      if (active.innerHTML !== activeHtml) active.innerHTML = activeHtml;
+    }
     history.append(active);
     setConnection("Live", "live");
     if (following) history.scrollTop = history.scrollHeight;
@@ -585,7 +699,19 @@
 
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
-    if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+        && ["b", "i"].includes(event.key.toLowerCase())) {
+      event.preventDefault();
+      const text = editorText();
+      const selection = editorSelection() || [text.length, text.length];
+      const start = Math.min(...selection);
+      const end = Math.max(...selection);
+      const delimiter = event.key.toLowerCase() === "b" ? "**" : "*";
+      renderEditor(text.slice(0, start) + delimiter + text.slice(start, end) + delimiter + text.slice(end),
+        [start + delimiter.length, end + delimiter.length]);
+      dirty = true;
+      flushDraft();
+    } else if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
         && event.key.toLowerCase() === "c") {
       event.preventDefault();
       if (editorText()) {
@@ -626,18 +752,14 @@
   });
   input.addEventListener("compositionend", () => {
     composing = false;
+    renderEditor(editorText(), editorSelection());
     dirty = true;
     flushDraft();
   });
   input.addEventListener("input", () => {
     if (composing) return;
     const text = editorText();
-    const needsFormatting = text.split("\n").length !== input.children.length
-      || Array.from(input.children).some((line) => {
-      const prefix = editorPrefix(line.textContent);
-      return !!prefix !== !!line.querySelector(".syntax-marker");
-    });
-    if (!text || needsFormatting) renderEditor(text, editorSelection());
+    renderEditor(text, editorSelection());
     dirty = true;
     flushDraft();
   });

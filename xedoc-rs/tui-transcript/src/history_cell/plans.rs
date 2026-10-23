@@ -83,6 +83,13 @@ pub struct ProposedPlanCell {
     rendered_lines: MarkdownRenderCache,
 }
 
+impl ProposedPlanCell {
+    /// Returns the raw Markdown source used to render this plan.
+    pub fn markdown_source(&self) -> &str {
+        &self.plan_markdown
+    }
+}
+
 /// Transient proposed-plan history emitted while a plan is still streaming.
 ///
 /// The lines are already rendered for the stream's current width. A finalized transcript should not

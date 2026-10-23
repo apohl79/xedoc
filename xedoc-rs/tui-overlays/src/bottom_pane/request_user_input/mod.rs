@@ -19,6 +19,7 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
+mod browser;
 mod layout;
 mod render;
 
@@ -1181,6 +1182,21 @@ impl RequestUserInputOverlay {
 }
 
 impl BottomPaneView for RequestUserInputOverlay {
+    fn browser_question(&self) -> Option<serde_json::Value> {
+        self.browser_question_snapshot()
+    }
+
+    fn handle_browser_question(
+        &mut self,
+        request_id: &str,
+        index: usize,
+        action: &str,
+        option: Option<usize>,
+        text: Option<&str>,
+    ) -> bool {
+        self.apply_browser_question(request_id, index, action, option, text)
+    }
+
     fn prefer_esc_to_handle_key_event(&self) -> bool {
         true
     }

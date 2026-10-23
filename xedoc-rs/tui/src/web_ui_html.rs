@@ -3,82 +3,215 @@
 use std::fmt::Write;
 
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
-use ratatui::text::Text;
-use ratatui::widgets::Paragraph;
-use ratatui::widgets::Widget;
-use ratatui::widgets::Wrap;
 use unicode_width::UnicodeWidthStr;
 
 use crate::history_cell::AgentMarkdownCell;
 use crate::history_cell::AgentMessageCell;
+use crate::history_cell::FinalMessageSeparator;
 use crate::history_cell::HistoryCell;
+use crate::history_cell::ProposedPlanCell;
+use crate::history_cell::ToolCallCountSummaryCell;
 use crate::history_cell::UserHistoryCell;
 
-pub(crate) fn history_cell_html(
-    cell: &dyn HistoryCell,
-    width: u16,
-    row_start: u16,
-    row_end: u16,
-) -> String {
-    // Retain terminal row coordinates for bounded slices of unusually large cells.
-    if row_start != 0 || row_end < cell.desired_height(width) {
-        let area = Rect::new(0, 0, width, row_end.saturating_sub(row_start));
-        let mut buffer = Buffer::empty(area);
-        if let Some(style) = cell.display_background_style() {
-            buffer.set_style(area, style);
-        }
-        Paragraph::new(Text::from(cell.display_lines(width)))
-            .wrap(Wrap { trim: false })
-            .scroll((row_start, 0))
-            .render(area, &mut buffer);
-        let class = if cell.as_any().is::<UserHistoryCell>() {
-            "history-user-slice"
-        } else {
-            "history-slice"
-        };
-        return format!(
-            "<div class=\"{class}\">{}</div>",
-            buffer_html(&buffer, None)
-        );
+const HISTORY_LINES_PER_PAGE: usize = 240;
+const MARKDOWN_PAGE_BYTES: usize = 32 * 1024;
+
+#[derive(Clone, Copy)]
+pub(crate) enum StreamHtmlKind {
+    Assistant,
+    Plan,
+}
+
+pub(crate) fn history_cell_page_count(cell: &dyn HistoryCell) -> u16 {
+    let markdown_page_count = cell
+        .as_any()
+        .downcast_ref::<UserHistoryCell>()
+        .map(|user| markdown_pages(&user.message).len())
+        .or_else(|| {
+            cell.as_any()
+                .downcast_ref::<AgentMarkdownCell>()
+                .map(|message| markdown_pages(message.markdown_source()).len())
+        })
+        .or_else(|| {
+            cell.as_any()
+                .downcast_ref::<ProposedPlanCell>()
+                .map(|plan| markdown_pages(plan.markdown_source()).len())
+        });
+    if let Some(pages) = markdown_page_count {
+        return u16::try_from(pages).unwrap_or(u16::MAX);
     }
+    if cell.as_any().is::<ToolCallCountSummaryCell>() || cell.as_any().is::<FinalMessageSeparator>()
+    {
+        return 1;
+    }
+    let pages = cell
+        .display_lines(u16::MAX)
+        .len()
+        .div_ceil(HISTORY_LINES_PER_PAGE)
+        .max(1);
+    u16::try_from(pages).unwrap_or(u16::MAX)
+}
+
+pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_end: u16) -> String {
     if let Some(user) = cell.as_any().downcast_ref::<UserHistoryCell>() {
-        let mut html = String::from("<div class=\"history-user\"><div>");
-        for (index, _) in user.remote_image_urls.iter().enumerate() {
-            let _ = write!(
-                html,
-                "<div class=\"image-anchor\">[Image #{}]</div>",
-                index + 1
-            );
+        let pages = markdown_pages(&user.message);
+        let start = usize::from(page_start);
+        let end = usize::from(page_end).min(pages.len());
+        let mut html = String::new();
+        for (index, page) in pages
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(end.saturating_sub(start))
+        {
+            html.push_str("<div class=\"history-user\"><div>");
+            if index == 0 {
+                for (image_index, _) in user.remote_image_urls.iter().enumerate() {
+                    let _ = write!(
+                        html,
+                        "<div class=\"image-anchor\">[Image #{}]</div>",
+                        image_index + 1
+                    );
+                }
+            }
+            html.push_str(&markdown_html(page));
+            html.push_str("</div></div>");
         }
-        html.push_str(&markdown_html(&user.message));
-        html.push_str("</div></div>");
         return html;
     }
     if let Some(message) = cell.as_any().downcast_ref::<AgentMarkdownCell>() {
-        return format!(
-            "<div class=\"history-markdown\">{}</div>",
-            markdown_html(message.markdown_source())
+        return paged_markdown_html(
+            "history-markdown",
+            message.markdown_source(),
+            page_start,
+            page_end,
+            None,
         );
     }
-    let class = if cell.as_any().is::<AgentMessageCell>() {
-        "history-agent"
-    } else {
-        "history-tool"
-    };
-    let mut html =
-        format!("<div class=\"{class}\" style=\"white-space:pre-wrap;overflow-wrap:anywhere\">");
-    for line in cell.display_lines(4096) {
-        let _ = write!(
-            html,
-            "<div style=\"min-height:1.4em;{}\">",
-            css_style(line.style)
+    if let Some(plan) = cell.as_any().downcast_ref::<ProposedPlanCell>() {
+        return paged_markdown_html(
+            "history-plan",
+            plan.markdown_source(),
+            page_start,
+            page_end,
+            Some("Proposed Plan"),
         );
-        for span in line.spans {
-            let mut text = span.content.into_owned();
+    }
+    let (class, lines) =
+        if let Some(summary) = cell.as_any().downcast_ref::<ToolCallCountSummaryCell>() {
+            ("history-edit-summary", summary.summary_lines())
+        } else if let Some(summary) = cell.as_any().downcast_ref::<FinalMessageSeparator>() {
+            ("history-turn-summary", summary.summary_lines())
+        } else {
+            let class = if cell.as_any().is::<AgentMessageCell>() {
+                "history-agent"
+            } else {
+                "history-tool"
+            };
+            let lines = cell.display_lines(u16::MAX);
+            let start = usize::from(page_start).saturating_mul(HISTORY_LINES_PER_PAGE);
+            let end = usize::from(page_end)
+                .saturating_mul(HISTORY_LINES_PER_PAGE)
+                .min(lines.len());
+            (
+                class,
+                lines
+                    .into_iter()
+                    .skip(start)
+                    .take(end.saturating_sub(start))
+                    .collect(),
+            )
+        };
+    styled_lines_html(class, &lines)
+}
+
+fn paged_markdown_html(
+    class: &str,
+    source: &str,
+    page_start: u16,
+    page_end: u16,
+    heading: Option<&str>,
+) -> String {
+    let pages = markdown_pages(source);
+    let start = usize::from(page_start);
+    let end = usize::from(page_end).min(pages.len());
+    let mut html = String::new();
+    for (index, page) in pages
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(end.saturating_sub(start))
+    {
+        let _ = write!(html, "<div class=\"{class}\">");
+        if index == 0
+            && let Some(heading) = heading
+        {
+            let _ = write!(html, "<div class=\"plan-heading\">{heading}</div>");
+        }
+        html.push_str(&markdown_html(page));
+        html.push_str("</div>");
+    }
+    html
+}
+
+pub(crate) fn markdown_pages(source: &str) -> Vec<&str> {
+    let mut pages = Vec::new();
+    let mut page_start = 0;
+    let mut offset = 0;
+    let mut fence = None;
+    for line in source.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        let marker = trimmed
+            .bytes()
+            .take_while(|byte| matches!(byte, b'`' | b'~'))
+            .count();
+        if marker >= 3 {
+            let character = trimmed.as_bytes()[0];
+            if fence.is_some_and(|(active, length)| active == character && marker >= length) {
+                fence = None;
+            } else if fence.is_none() {
+                fence = Some((character, marker));
+            }
+        }
+        offset += line.len();
+        if fence.is_none() && line.trim().is_empty() && offset - page_start >= MARKDOWN_PAGE_BYTES {
+            pages.push(&source[page_start..offset]);
+            page_start = offset;
+        }
+    }
+    if page_start < source.len() || pages.is_empty() {
+        pages.push(&source[page_start..]);
+    }
+    pages
+}
+
+pub(crate) fn stream_page_html(kind: StreamHtmlKind, source: &str, first_page: bool) -> String {
+    match kind {
+        StreamHtmlKind::Assistant => format!(
+            "<div class=\"history-markdown history-streaming\">{}</div>",
+            markdown_html(source)
+        ),
+        StreamHtmlKind::Plan => format!(
+            "<div class=\"history-plan\">{}{}</div>",
+            if first_page {
+                "<div class=\"plan-heading\">Proposed Plan</div>"
+            } else {
+                ""
+            },
+            markdown_html(source)
+        ),
+    }
+}
+
+fn styled_lines_html(class: &str, lines: &[ratatui::text::Line<'static>]) -> String {
+    let mut html = format!("<div class=\"{class} history-lines\">");
+    for line in lines {
+        let _ = write!(html, "<div style=\"{}\">", css_style(line.style));
+        for span in &line.spans {
+            let mut text = span.content.to_string();
             flush_span(
                 &mut html,
                 &mut text,
