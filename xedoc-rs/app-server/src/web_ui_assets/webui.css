@@ -30,6 +30,7 @@ button:focus-visible, #live:focus-visible { outline: 2px solid var(--accent); ou
 #earlier { align-self: center; padding: 4px 12px; color: #8195a5; }
 .history-cell { margin: 0 0 22px; overflow-wrap: anywhere; min-width: 0; }
 .history-cell p { margin: .8em 0; white-space: pre-wrap; }
+.history-response-spacer { height: 1lh; }
 .history-markdown, .history-agent { padding: 0 8px 0 34px; }
 .history-markdown > :first-child { margin-top: 0; }
 .history-markdown > :last-child { margin-bottom: 0; }
