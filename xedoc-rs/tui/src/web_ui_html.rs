@@ -272,7 +272,9 @@ fn markdown_html(source: &str) -> String {
                             || destination.starts_with("https:")
                             || destination.starts_with("http:")
                             || destination.starts_with("mailto:");
-                        let mut open = String::from("<a rel=\"noreferrer\" href=\"");
+                        let mut open = String::from(
+                            "<a target=\"_blank\" rel=\"noopener noreferrer\" href=\"",
+                        );
                         escape_html(&mut open, if safe { &dest_url } else { "" });
                         open.push_str("\">");
                         (open, "</a>")

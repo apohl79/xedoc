@@ -39,6 +39,8 @@ pub(crate) enum BrowserInput {
     Image {
         #[serde(rename = "dataUrl")]
         data_url: String,
+        #[serde(default)]
+        cursor: Option<usize>,
     },
     File {
         name: String,

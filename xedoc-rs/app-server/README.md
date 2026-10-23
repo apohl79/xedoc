@@ -57,7 +57,7 @@ Backpressure behavior:
 
 The experimental `thread/webUi/open` request takes `{ "threadId": "..." }` for a
 running thread and returns `{ "url": "...", "bridgeUrl": "..." }`. The app-server
-hosts the browser assets and WebSocket relay on `127.0.0.1` only. `/webui` in the
+hosts the browser assets and WebSocket relay on `127.0.0.1` only. `/gui` in the
 owning TUI opens `url` and attaches its native renderer to `bridgeUrl`; browser
 input and settings changes use the same TUI controller. The browser uses a
 native selectable editor, revision-checked draft synchronization, attachment

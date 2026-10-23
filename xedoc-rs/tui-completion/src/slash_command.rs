@@ -42,7 +42,7 @@ pub enum SlashCommand {
     Diff,
     Mention,
     Status,
-    #[strum(serialize = "webui")]
+    #[strum(serialize = "gui")]
     WebUi,
     DebugConfig,
     Title,

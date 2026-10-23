@@ -235,7 +235,7 @@ impl App {
                 }
                 self.publish_web_ui(tui);
             }
-            Ok(BrowserInput::Image { data_url }) => {
+            Ok(BrowserInput::Image { data_url, cursor }) => {
                 if tui
                     .web_ui
                     .as_ref()
@@ -243,7 +243,20 @@ impl App {
                 {
                     match tokio::task::spawn_blocking(move || upload_image(data_url)).await {
                         Ok(Ok(file)) => {
+                            let mut text = self.chat_widget.browser_draft().text;
                             self.chat_widget.attach_image(file.path().to_path_buf());
+                            if let Some(cursor) = cursor
+                                && text.is_char_boundary(cursor)
+                                && let Some(image) = self
+                                    .chat_widget
+                                    .browser_draft()
+                                    .local_images
+                                    .iter()
+                                    .find(|image| image.path == file.path())
+                            {
+                                text.insert_str(cursor, &image.placeholder);
+                                self.chat_widget.apply_browser_draft(text);
+                            }
                             if let Some(session) = &mut tui.web_ui {
                                 session.images.push(file);
                             }

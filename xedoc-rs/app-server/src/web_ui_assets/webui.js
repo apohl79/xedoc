@@ -577,6 +577,41 @@
           }
         }
       }
+      for (const line of activityLines) {
+        const metadataMatch = /\([^)]*esc to interrupt[^)]*\)/.exec(line.textContent);
+        if (!metadataMatch) continue;
+        const metadataRange = document.createRange();
+        const textWalker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        let textOffset = 0;
+        let metadataStartNode;
+        let metadataStartOffset;
+        let metadataEndNode;
+        let metadataEndOffset;
+        const metadataStart = metadataMatch.index;
+        const metadataEnd = metadataStart + metadataMatch[0].length;
+        while (textWalker.nextNode()) {
+          const textNode = textWalker.currentNode;
+          const nodeEnd = textOffset + textNode.length;
+          if (!metadataStartNode && metadataStart >= textOffset && metadataStart <= nodeEnd) {
+            metadataStartNode = textNode;
+            metadataStartOffset = metadataStart - textOffset;
+          }
+          if (metadataEnd >= textOffset && metadataEnd <= nodeEnd) {
+            metadataEndNode = textNode;
+            metadataEndOffset = metadataEnd - textOffset;
+            break;
+          }
+          textOffset = nodeEnd;
+        }
+        if (metadataStartNode && metadataEndNode) {
+          metadataRange.setStart(metadataStartNode, metadataStartOffset);
+          metadataRange.setEnd(metadataEndNode, metadataEndOffset);
+          const metadata = document.createElement("span");
+          metadata.className = "activity-meta";
+          metadata.append(metadataRange.extractContents());
+          metadataRange.insertNode(metadata);
+        }
+      }
       const taskHeading = activityLines.findIndex((line) =>
         /^\s*•\s*Tasks\s+\d+\/\d+/.test(line.textContent));
       if (taskHeading !== -1) {
@@ -719,7 +754,8 @@
         dirty = true;
         flushDraft();
       }
-    } else if (popupActive && !event.shiftKey
+    } else if ((popupActive || (event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowUp"))
+        && !event.shiftKey
         && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();
       pendingActions.push({ type: "key", key: event.key, ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey });
@@ -884,6 +920,10 @@
 
   async function upload(file, destination, threadId) {
     if (!ready || destination !== socket || threadId !== activeThread) return;
+    const selection = editorSelection();
+    const cursor = selection
+      ? new TextEncoder().encode(editorText().slice(0, Math.min(...selection))).length
+      : undefined;
     if (file.size > 8 * 1024 * 1024) {
       showNotice("Files must be 8 MiB or smaller.");
       return;
@@ -899,7 +939,7 @@
         showNotice("File not sent: session disconnected.");
       } else {
         if (imageTypes.has(file.type)) {
-          pendingActions.push({ type: "image", dataUrl });
+          pendingActions.push({ type: "image", dataUrl, cursor });
         } else {
           const uploadId = crypto.randomUUID();
           if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
