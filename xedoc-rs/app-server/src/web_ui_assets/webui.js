@@ -725,6 +725,7 @@
           const label = document.createElement("span");
           label.className = "task-label activity-meta";
           label.append(...copyStyledRange(labelStart, text.length));
+          if (match[1] === "✔") line.classList.add("task-completed");
           line.classList.add("task-row");
           line.replaceChildren(marker, label);
         }
@@ -809,6 +810,8 @@
 
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
+    const emptyPromptHistoryKey = event.key === "ArrowUp" && !event.altKey && !event.ctrlKey
+      && !event.metaKey && !event.shiftKey && !editorText();
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && ["b", "i"].includes(event.key.toLowerCase())) {
       event.preventDefault();
@@ -829,7 +832,8 @@
         dirty = true;
         flushDraft();
       }
-    } else if ((popupActive || (event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowUp"))
+    } else if ((popupActive || emptyPromptHistoryKey
+        || (event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowUp"))
         && !event.shiftKey
         && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();
