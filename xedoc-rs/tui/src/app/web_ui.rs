@@ -640,6 +640,7 @@ impl App {
             "type": "frame", "threadId": session.thread_id.to_string(),
             "activeThreadId": active_thread.map(|id| id.to_string()),
             "title": self.chat_widget.thread_name(), "width": width,
+            "turnActive": self.chat_widget.browser_turn_active(),
             "history": history, "historyStart": first, "historyEnd": end, "historyTotal": self.transcript_cells.len(),
             "historyRowEnd": session.history_row_end,
             "live": if question.is_none() && (dialog || self.overlay.is_some()) { buffer_html(&buffer, cursor) } else { String::new() },
