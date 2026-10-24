@@ -3,6 +3,13 @@
 (() => {
   const history = document.getElementById("history");
   const active = document.getElementById("active");
+  const favicon = document.getElementById("favicon");
+  const staticFavicon = favicon.href;
+  const faviconCanvas = document.createElement("canvas");
+  faviconCanvas.width = 32;
+  faviconCanvas.height = 32;
+  const faviconContext = faviconCanvas.getContext("2d");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const live = document.getElementById("live");
   const composer = document.getElementById("composer");
   const input = document.getElementById("input");
@@ -52,6 +59,59 @@
   let submitPending = false;
   const pendingActions = [];
   let menuKind = null;
+  let faviconTurnActive = false;
+  let faviconAnimation = null;
+
+  function drawFavicon() {
+    if (!faviconContext) return;
+    const context = faviconContext;
+    context.clearRect(0, 0, faviconCanvas.width, faviconCanvas.height);
+    context.fillStyle = "#171d23";
+    context.beginPath();
+    context.roundRect(1, 1, 30, 30, 7);
+    context.fill();
+    context.strokeStyle = "#b47af3";
+    context.lineWidth = 3;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.beginPath();
+    context.moveTo(12, 9);
+    context.lineTo(19, 16);
+    context.lineTo(12, 23);
+    context.stroke();
+    if (faviconTurnActive) {
+      context.strokeStyle = "rgba(168, 186, 201, 0.35)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(16, 16, 13, 0, Math.PI * 2);
+      context.stroke();
+      const angle = reducedMotion.matches ? -Math.PI / 2 : performance.now() / 650;
+      context.fillStyle = "#00a8b5";
+      context.beginPath();
+      context.arc(16 + Math.cos(angle) * 10, 16 + Math.sin(angle) * 10, 2.5, 0, Math.PI * 2);
+      context.fill();
+    }
+    favicon.href = faviconCanvas.toDataURL("image/png");
+  }
+
+  function syncFaviconAnimation() {
+    clearInterval(faviconAnimation);
+    faviconAnimation = null;
+    if (!faviconTurnActive) {
+      favicon.href = staticFavicon;
+      return;
+    }
+    drawFavicon();
+    if (!reducedMotion.matches) faviconAnimation = setInterval(drawFavicon, 100);
+  }
+
+  function setFaviconTurnActive(turnActive) {
+    if (faviconTurnActive === turnActive) return;
+    faviconTurnActive = turnActive;
+    syncFaviconAnimation();
+  }
+
+  reducedMotion.addEventListener("change", syncFaviconAnimation);
 
   function setConnection(text, state) {
     ready = state === "live";
@@ -433,6 +493,7 @@
 
   function render(frame) {
     setConnection("Live", "live");
+    setFaviconTurnActive(!!frame.turnActive);
     history.hidden = !!frame.overlay;
     const following = history.scrollHeight - history.scrollTop - history.clientHeight < 80;
     if (activeThread !== frame.activeThreadId || activeWidth !== frame.width) {
@@ -664,6 +725,7 @@
           const label = document.createElement("span");
           label.className = "task-label activity-meta";
           label.append(...copyStyledRange(labelStart, text.length));
+          if (match[1] === "✔") line.classList.add("task-completed");
           line.classList.add("task-row");
           line.replaceChildren(marker, label);
         }
@@ -748,6 +810,8 @@
 
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
+    const emptyPromptHistoryKey = event.key === "ArrowUp" && !event.altKey && !event.ctrlKey
+      && !event.metaKey && !event.shiftKey && !editorText();
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && ["b", "i"].includes(event.key.toLowerCase())) {
       event.preventDefault();
@@ -768,7 +832,8 @@
         dirty = true;
         flushDraft();
       }
-    } else if ((popupActive || (event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowUp"))
+    } else if ((popupActive || emptyPromptHistoryKey
+        || (event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowUp"))
         && !event.shiftKey
         && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();

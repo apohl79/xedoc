@@ -151,6 +151,10 @@ impl ChatWidget {
             .map(|summary| summary.cell() as &dyn HistoryCell)
     }
 
+    pub fn browser_turn_active(&self) -> bool {
+        self.turn_lifecycle.agent_turn_running
+    }
+
     /// Keeps shared activity surfaces while the browser lays out the active cell.
     pub fn browser_renderable(&self) -> RenderableItem<'_> {
         self.renderable_with_active_cell(
