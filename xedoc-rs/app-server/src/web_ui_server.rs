@@ -123,6 +123,7 @@ impl WebUiServer {
             });
             let router = Router::new()
                 .route("/", get(page))
+                .route("/favicon.svg", get(favicon))
                 .route("/webui.js", get(script))
                 .route("/webui.css", get(styles))
                 .route("/session/{token}", get(browser_upgrade))
@@ -283,7 +284,7 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
                 match input {
                     Some(Ok(Message::Text(text))) => {
                         let valid = serde_json::from_str::<serde_json::Value>(&text)
-                            .is_ok_and(|input| matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "file" | "history" | "draft" | "removeImage" | "settings" | "question" | "resize")));
+                            .is_ok_and(|input| matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "file" | "history" | "draft" | "removeImage" | "settings" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt")));
                         if !valid || !state.producer_connected.load(Ordering::SeqCst) { break; }
                         if !matches!(timeout(SEND_TIMEOUT, state.inputs.send(text.to_string())).await, Ok(Ok(()))) { break; }
                     }
@@ -307,6 +308,10 @@ async fn page() -> Response {
         include_str!("web_ui_assets/index.html"),
         "text/html; charset=utf-8",
     )
+}
+
+async fn favicon() -> Response {
+    asset(include_str!("web_ui_assets/favicon.svg"), "image/svg+xml")
 }
 
 async fn script() -> Response {
@@ -348,7 +353,7 @@ fn secured(response: impl IntoResponse) -> Response {
         HeaderValue::from_static("nosniff"),
     );
     headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(
-        "default-src 'none'; base-uri 'none'; connect-src 'self'; img-src data:; object-src blob: data:; form-action 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'",
+        "default-src 'none'; base-uri 'none'; connect-src 'self'; img-src 'self' data:; object-src blob: data:; form-action 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'",
     ));
     response
 }

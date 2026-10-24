@@ -416,7 +416,11 @@
       const value = kind === "model" ? state.displayModel ?? state.model
         : kind === "effort" && Object.hasOwn(state, "displayEffort") ? state.displayEffort
         : state[kind];
-      button.textContent = value || kind;
+      if (kind === "router") {
+        button.querySelector(".router-mode").textContent = value || kind;
+      } else {
+        button.textContent = value || kind;
+      }
       button.disabled = !ready;
     }
     document.getElementById("session-name").textContent = state.sessionName || "";
@@ -532,6 +536,30 @@
         }
         const fragment = document.createElement("div");
         fragment.innerHTML = cell.html;
+        const textWalker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
+        const referencePattern = /\[(?:Image|Doc) #\d+\]/g;
+        const referenceNodes = [];
+        while (textWalker.nextNode()) {
+          const node = textWalker.currentNode;
+          if (!node.parentElement.closest("code, a") && referencePattern.test(node.data)) {
+            referenceNodes.push(node);
+          }
+          referencePattern.lastIndex = 0;
+        }
+        for (const node of referenceNodes) {
+          const replacement = document.createDocumentFragment();
+          let offset = 0;
+          for (const match of node.data.matchAll(referencePattern)) {
+            replacement.append(document.createTextNode(node.data.slice(offset, match.index)));
+            const reference = document.createElement("span");
+            reference.className = "editor-reference";
+            reference.textContent = match[0];
+            replacement.append(reference);
+            offset = match.index + match[0].length;
+          }
+          replacement.append(document.createTextNode(node.data.slice(offset)));
+          node.replaceWith(replacement);
+        }
         if (cell.rowStart === 0) {
           const response = fragment.querySelector(".history-markdown:not(.history-streaming)");
           if (response) {
@@ -811,7 +839,9 @@
 
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
-    const emptyPromptHistoryKey = event.key === "ArrowUp" && !event.altKey && !event.ctrlKey
+    const emptyPromptScheduledKey = event.key === "ArrowUp" && !event.altKey && !event.ctrlKey
+      && !event.metaKey && !event.shiftKey && !editorText();
+    const emptyPromptQueueKey = event.key === "ArrowUp" && event.altKey && !event.ctrlKey
       && !event.metaKey && !event.shiftKey && !editorText();
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && ["b", "i"].includes(event.key.toLowerCase())) {
@@ -833,8 +863,17 @@
         dirty = true;
         flushDraft();
       }
-    } else if ((popupActive || emptyPromptHistoryKey
-        || (event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowUp"))
+    } else if (!popupActive && emptyPromptScheduledKey) {
+      event.preventDefault();
+      pendingActions.push({ type: "recallScheduledPrompt" });
+      dirty = editorText() !== composerState?.text;
+      flushDraft();
+    } else if (!popupActive && emptyPromptQueueKey) {
+      event.preventDefault();
+      pendingActions.push({ type: "recallQueuedPrompt" });
+      dirty = editorText() !== composerState?.text;
+      flushDraft();
+    } else if (popupActive
         && !event.shiftKey
         && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();

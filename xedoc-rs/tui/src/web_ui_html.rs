@@ -544,14 +544,14 @@ fn css_style(style: Style) -> String {
     ] {
         if let Some(color) = color {
             if property == "color" && style.add_modifier.contains(Modifier::DIM) {
-                let _ = write!(css, "color:color-mix(in srgb,{color} 60%,transparent);");
+                css.push_str("color:var(--fg-dim);");
             } else {
                 let _ = write!(css, "{property}:{color};");
             }
         }
     }
     if foreground.is_none() && style.add_modifier.contains(Modifier::DIM) {
-        css.push_str("color:color-mix(in srgb,var(--fg,#c5cdd5) 60%,transparent);");
+        css.push_str("color:var(--fg-dim);");
     }
     for (modifier, rule) in [
         (Modifier::BOLD, "font-weight:700;"),

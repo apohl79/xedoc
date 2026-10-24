@@ -96,6 +96,19 @@ impl ChatWidget {
         }
     }
 
+    pub(super) fn pop_latest_pending_steer_composer_state(
+        &mut self,
+    ) -> Option<ThreadComposerState> {
+        let pending = self.input_queue.pending_steers.pop_back()?;
+        if let Some(id) = pending.id {
+            self.submit_op(AppCommand::cancel_pending_steer(id));
+        }
+        Some(Self::composer_state_from_user_message(
+            user_message_for_restore(pending.user_message, &pending.history_record),
+            Vec::new(),
+        ))
+    }
+
     pub(super) fn remove_recalled_queued_input(&mut self, entry: &HistoryEntry) -> bool {
         if let Some(index) = self.input_queue.pending_steers.iter().rposition(|pending| {
             history_entry_matches_user_message(

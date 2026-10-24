@@ -110,11 +110,7 @@ impl ChatWidget {
             && self.has_queued_follow_up_messages()
             && self.bottom_pane.no_modal_or_popup_active()
         {
-            if let Some(composer) = self.pop_latest_queued_composer_state() {
-                self.restore_composer_state(composer);
-                self.refresh_pending_input_preview();
-                self.request_redraw();
-            }
+            self.recall_latest_queued_prompt();
             return;
         }
 
@@ -414,6 +410,33 @@ impl ChatWidget {
 
         if self.is_cancellable_work_active() && self.submit_op(AppCommand::interrupt()) {
             self.pause_active_goal_for_interrupt();
+        }
+    }
+
+    /// Restore the newest scheduled prompt, falling back to history only when no
+    /// follow-up is queued.
+    pub fn recall_latest_scheduled_prompt(&mut self) {
+        if !self.bottom_pane.no_modal_or_popup_active() {
+            return;
+        }
+        if let Some(composer) = self.pop_latest_pending_steer_composer_state() {
+            self.restore_composer_state(composer);
+            self.refresh_pending_input_preview();
+            self.request_redraw();
+        } else if !self.has_queued_follow_up_messages() {
+            self.handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        }
+    }
+
+    /// Restore the newest queued follow-up prompt into the composer.
+    pub fn recall_latest_queued_prompt(&mut self) {
+        if !self.bottom_pane.no_modal_or_popup_active() {
+            return;
+        }
+        if let Some(composer) = self.pop_latest_queued_composer_state() {
+            self.restore_composer_state(composer);
+            self.refresh_pending_input_preview();
+            self.request_redraw();
         }
     }
 

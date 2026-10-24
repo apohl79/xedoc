@@ -33,6 +33,8 @@ pub(crate) enum BrowserInput {
         #[serde(default)]
         shift: bool,
     },
+    RecallScheduledPrompt,
+    RecallQueuedPrompt,
     Paste {
         text: String,
     },
@@ -92,6 +94,8 @@ impl BrowserInput {
             } => browser_key(key, *ctrl, *alt, *shift).map(TuiEvent::Key),
             Self::Paste { text } if text.len() <= 1_000_000 => Some(TuiEvent::Paste(text.clone())),
             Self::Paste { .. }
+            | Self::RecallScheduledPrompt
+            | Self::RecallQueuedPrompt
             | Self::Image { .. }
             | Self::File { .. }
             | Self::History { .. }
