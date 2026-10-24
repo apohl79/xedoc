@@ -115,6 +115,7 @@
 
   function setConnection(text, state) {
     ready = state === "live";
+    if (!ready) setFaviconTurnActive(false);
     connection.textContent = text;
     connection.dataset.state = state;
     input.contentEditable = String(ready);
