@@ -587,8 +587,10 @@
         }
       }
       for (const line of activityLines) {
+        const text = line.textContent;
+        const workingMatch = /^\s*[•◦]?\s*Working\b/.exec(text);
         const metadataMatch = /\([^)]*esc to interrupt[^)]*\)/.exec(line.textContent);
-        if (!metadataMatch) continue;
+        if (!workingMatch && !metadataMatch) continue;
         const metadataRange = document.createRange();
         const textWalker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
         let textOffset = 0;
@@ -596,8 +598,11 @@
         let metadataStartOffset;
         let metadataEndNode;
         let metadataEndOffset;
-        const metadataStart = metadataMatch.index;
-        const metadataEnd = metadataStart + metadataMatch[0].length;
+        const metadataStart = workingMatch
+          ? workingMatch.index + workingMatch[0].length
+          : metadataMatch.index;
+        const metadataEnd = workingMatch ? text.length : metadataStart + metadataMatch[0].length;
+        if (metadataStart >= metadataEnd) continue;
         while (textWalker.nextNode()) {
           const textNode = textWalker.currentNode;
           const nodeEnd = textOffset + textNode.length;
@@ -657,7 +662,7 @@
           marker.className = "task-marker";
           marker.append(...copyStyledRange(markerStart, markerStart + match[1].length));
           const label = document.createElement("span");
-          label.className = "task-label";
+          label.className = "task-label activity-meta";
           label.append(...copyStyledRange(labelStart, text.length));
           line.classList.add("task-row");
           line.replaceChildren(marker, label);

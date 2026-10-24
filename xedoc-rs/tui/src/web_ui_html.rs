@@ -232,34 +232,106 @@ fn markdown_html(source: &str) -> String {
 
     let mut html = String::new();
     let mut closing = Vec::new();
+    let source = normalize_blockquote_continuations(source);
+    let mut blockquote_depth = 0;
+    let mut suppress_next_block_margin = false;
     for event in Parser::new_ext(
-        source,
+        &source,
         Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH,
     ) {
         match event {
             Event::Start(tag) => {
+                let starts_blockquote = matches!(&tag, Tag::BlockQuote);
+                if starts_blockquote {
+                    blockquote_depth += 1;
+                }
+                let removes_following_margin = suppress_next_block_margin
+                    && matches!(
+                        &tag,
+                        Tag::Paragraph
+                            | Tag::Heading { .. }
+                            | Tag::BlockQuote
+                            | Tag::CodeBlock(_)
+                            | Tag::List(_)
+                            | Tag::Table(_)
+                    );
+                if removes_following_margin {
+                    suppress_next_block_margin = false;
+                }
                 let (open, close) = match tag {
+                    Tag::Paragraph if blockquote_depth > 0 => {
+                        ("<p style=\"margin-block: 0\">".to_string(), "</p>")
+                    }
+                    Tag::Paragraph if removes_following_margin => {
+                        ("<p style=\"margin-block-start: 0\">".to_string(), "</p>")
+                    }
                     Tag::Paragraph => ("<p>".to_string(), "</p>"),
-                    Tag::Heading { level, .. } => (
-                        format!("<{level}>"),
-                        match level {
-                            pulldown_cmark::HeadingLevel::H1 => "</h1>",
-                            pulldown_cmark::HeadingLevel::H2 => "</h2>",
-                            pulldown_cmark::HeadingLevel::H3 => "</h3>",
-                            pulldown_cmark::HeadingLevel::H4 => "</h4>",
-                            pulldown_cmark::HeadingLevel::H5 => "</h5>",
-                            pulldown_cmark::HeadingLevel::H6 => "</h6>",
-                        },
+                    Tag::Heading { level, .. } => {
+                        let margin = if removes_following_margin {
+                            " style=\"margin-block-start: 0\""
+                        } else {
+                            ""
+                        };
+                        (
+                            format!("<{level}{margin}>"),
+                            match level {
+                                pulldown_cmark::HeadingLevel::H1 => "</h1>",
+                                pulldown_cmark::HeadingLevel::H2 => "</h2>",
+                                pulldown_cmark::HeadingLevel::H3 => "</h3>",
+                                pulldown_cmark::HeadingLevel::H4 => "</h4>",
+                                pulldown_cmark::HeadingLevel::H5 => "</h5>",
+                                pulldown_cmark::HeadingLevel::H6 => "</h6>",
+                            },
+                        )
+                    }
+                    Tag::BlockQuote => (
+                        "<blockquote style=\"margin-block: 0; padding-block: 0\">".to_string(),
+                        "</blockquote>",
                     ),
-                    Tag::BlockQuote => ("<blockquote>".to_string(), "</blockquote>"),
-                    Tag::CodeBlock(_) => ("<pre><code>".to_string(), "</code></pre>"),
-                    Tag::List(Some(start)) => (format!("<ol start=\"{start}\">"), "</ol>"),
-                    Tag::List(None) => ("<ul>".to_string(), "</ul>"),
+                    Tag::CodeBlock(_) => {
+                        let margin = if removes_following_margin {
+                            " style=\"margin-block-start: 0\""
+                        } else {
+                            ""
+                        };
+                        (format!("<pre{margin}><code>"), "</code></pre>")
+                    }
+                    Tag::List(Some(start)) => {
+                        let margin = if removes_following_margin {
+                            "margin-block-start: 0; "
+                        } else {
+                            ""
+                        };
+                        (
+                            format!(
+                                "<ol start=\"{start}\" style=\"{margin}padding-left: calc(1.6em - 10px)\">"
+                            ),
+                            "</ol>",
+                        )
+                    }
+                    Tag::List(None) => {
+                        let margin = if removes_following_margin {
+                            "margin-block-start: 0; "
+                        } else {
+                            ""
+                        };
+                        (
+                            format!("<ul style=\"{margin}padding-left: calc(1.6em - 10px)\">"),
+                            "</ul>",
+                        )
+                    }
                     Tag::Item => ("<li>".to_string(), "</li>"),
-                    Tag::Table(_) => (
-                        "<div class=\"table-scroll\"><table>".to_string(),
-                        "</table></div>",
-                    ),
+                    Tag::Table(_) => {
+                        let margin = if removes_following_margin {
+                            " style=\"margin-block-start: 0\""
+                        } else {
+                            ""
+                        };
+                        (
+                            format!("<div class=\"table-scroll\"{margin}><table>"),
+                            "</table></div>",
+                        )
+                    }
                     Tag::TableHead => ("<tr class=\"table-head\">".to_string(), "</tr>"),
                     Tag::TableRow => ("<tr>".to_string(), "</tr>"),
                     Tag::TableCell => ("<td>".to_string(), "</td>"),
@@ -287,7 +359,17 @@ fn markdown_html(source: &str) -> String {
                 html.push_str(&open);
                 closing.push(close);
             }
-            Event::End(_) => html.push_str(closing.pop().unwrap_or_default()),
+            Event::End(tag) => {
+                html.push_str(closing.pop().unwrap_or_default());
+                if matches!(tag, pulldown_cmark::TagEnd::BlockQuote) {
+                    blockquote_depth -= 1;
+                    suppress_next_block_margin = true;
+                }
+            }
+            Event::Rule if suppress_next_block_margin => {
+                html.push_str("<hr style=\"margin-block-start: 0\">");
+                suppress_next_block_margin = false;
+            }
             Event::Text(text)
             | Event::Html(text)
             | Event::InlineHtml(text)
@@ -304,6 +386,92 @@ fn markdown_html(source: &str) -> String {
         }
     }
     html
+}
+
+fn normalize_blockquote_continuations(source: &str) -> String {
+    let mut normalized = String::with_capacity(source.len());
+    let mut previous_line_was_blockquote = false;
+    let mut fence: Option<(u8, usize, usize)> = None;
+
+    let fence_run = |line: &str| {
+        let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+        if indent > 3 {
+            return None;
+        }
+        let remainder = &line[indent..];
+        let marker = *remainder.as_bytes().first()?;
+        if marker != b'`' && marker != b'~' {
+            return None;
+        }
+        let length = remainder.bytes().take_while(|byte| *byte == marker).count();
+        (length >= 3).then_some((marker, length))
+    };
+
+    let fence_closes = |line: &str, marker: u8, length: usize| {
+        let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+        if indent > 3 {
+            return false;
+        }
+        let remainder = &line[indent..];
+        let marker_count = remainder.bytes().take_while(|byte| *byte == marker).count();
+        marker_count >= length && remainder[marker_count..].trim().is_empty()
+    };
+
+    for line in source.split_inclusive('\n') {
+        let source_line = line
+            .strip_suffix('\n')
+            .unwrap_or(line)
+            .trim_end_matches('\r');
+        let mut remainder = source_line;
+        let mut quote_depth = 0;
+        loop {
+            let indent = remainder.bytes().take_while(|byte| *byte == b' ').count();
+            if indent > 3 {
+                break;
+            }
+            remainder = &remainder[indent..];
+            let Some(after_marker) = remainder.strip_prefix('>') else {
+                break;
+            };
+            quote_depth += 1;
+            remainder = after_marker.strip_prefix(' ').unwrap_or(after_marker);
+        }
+
+        let (is_blockquote_line, fence_content) = match fence {
+            Some((_, _, fence_quote_depth)) if fence_quote_depth == 0 => (false, source_line),
+            Some((_, _, fence_quote_depth)) => (
+                quote_depth >= fence_quote_depth,
+                if quote_depth >= fence_quote_depth {
+                    remainder
+                } else {
+                    source_line
+                },
+            ),
+            None => (quote_depth > 0, remainder),
+        };
+
+        if previous_line_was_blockquote && !is_blockquote_line && !source_line.trim().is_empty() {
+            normalized.push('\n');
+        }
+        normalized.push_str(line);
+
+        match fence {
+            Some((_, _, fence_quote_depth)) if fence_quote_depth > 0 && !is_blockquote_line => {
+                fence = fence_run(fence_content).map(|(marker, length)| (marker, length, 0));
+            }
+            Some((marker, length, _)) if fence_closes(fence_content, marker, length) => {
+                fence = None;
+            }
+            Some(_) => {}
+            None => {
+                fence =
+                    fence_run(fence_content).map(|(marker, length)| (marker, length, quote_depth));
+            }
+        }
+        previous_line_was_blockquote = is_blockquote_line;
+    }
+
+    normalized
 }
 
 fn escape_html(html: &mut String, text: &str) {
@@ -368,19 +536,22 @@ fn css_style(style: Style) -> String {
     } else {
         (style.fg, style.bg)
     };
-    for (property, color) in [("color", foreground), ("background-color", background)] {
-        if let Some(color) = color
-            && let Some(color) = rgb(color)
-        {
+    let foreground = foreground.and_then(rgb);
+    let background = background.and_then(rgb);
+    for (property, color) in [
+        ("color", foreground.as_deref()),
+        ("background-color", background.as_deref()),
+    ] {
+        if let Some(color) = color {
             if property == "color" && style.add_modifier.contains(Modifier::DIM) {
-                let _ = write!(css, "color:color-mix(in srgb,{color} 65%,transparent);");
+                let _ = write!(css, "color:color-mix(in srgb,{color} 60%,transparent);");
             } else {
                 let _ = write!(css, "{property}:{color};");
             }
         }
     }
     if foreground.is_none() && style.add_modifier.contains(Modifier::DIM) {
-        css.push_str("color:color-mix(in srgb,var(--fg,#c5cdd5) 65%,transparent);");
+        css.push_str("color:color-mix(in srgb,var(--fg,#c5cdd5) 60%,transparent);");
     }
     for (modifier, rule) in [
         (Modifier::BOLD, "font-weight:700;"),

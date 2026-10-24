@@ -59,7 +59,7 @@ impl ChatWidget {
         } else {
             " "
         };
-        let text = format!("{}{separator}{anchor}", draft.text);
+        let text = format!("{}{separator}{anchor} ", draft.text);
         self.apply_browser_draft(text.clone());
         pending.push((anchor, reference));
         self.bottom_pane.set_composer_pending_pastes(pending);

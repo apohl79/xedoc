@@ -254,7 +254,19 @@ impl App {
                                     .iter()
                                     .find(|image| image.path == file.path())
                             {
-                                text.insert_str(cursor, &image.placeholder);
+                                let separator = if text
+                                    .get(cursor..)
+                                    .and_then(|remaining| remaining.chars().next())
+                                    .is_some_and(char::is_whitespace)
+                                {
+                                    ""
+                                } else {
+                                    " "
+                                };
+                                text.insert_str(
+                                    cursor,
+                                    &format!("{}{separator}", image.placeholder),
+                                );
                                 self.chat_widget.apply_browser_draft(text);
                             }
                             if let Some(session) = &mut tui.web_ui {
