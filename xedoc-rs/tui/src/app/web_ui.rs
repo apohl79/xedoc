@@ -115,15 +115,11 @@ impl App {
             return Ok(AppRunControl::Continue);
         }
         match serde_json::from_str::<BrowserInput>(&input) {
-            Ok(BrowserInput::RecallScheduledPrompt) => {
-                if self.chat_widget.composer_is_empty() {
-                    self.chat_widget.recall_latest_scheduled_prompt();
-                }
+            Ok(BrowserInput::RecallScheduledPrompt) if self.chat_widget.composer_is_empty() => {
+                self.chat_widget.recall_latest_scheduled_prompt();
             }
-            Ok(BrowserInput::RecallQueuedPrompt) => {
-                if self.chat_widget.composer_is_empty() {
-                    self.chat_widget.recall_latest_queued_prompt();
-                }
+            Ok(BrowserInput::RecallQueuedPrompt) if self.chat_widget.composer_is_empty() => {
+                self.chat_widget.recall_latest_queued_prompt();
             }
             Ok(BrowserInput::Question {
                 request_id,

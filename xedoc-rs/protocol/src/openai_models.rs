@@ -734,7 +734,6 @@ mod tests {
             used_fallback_model_metadata: false,
             supports_search_tool: false,
             use_responses_lite: false,
-            auto_review_model_override: None,
             tool_mode: None,
             multi_agent_version: None,
         }
@@ -1082,7 +1081,6 @@ mod tests {
         assert!(!model.supports_search_tool);
         assert!(!model.use_responses_lite);
         assert_eq!(model.comp_hash, None);
-        assert_eq!(model.auto_review_model_override, None);
         assert_eq!(model.tool_mode, None);
     }
 
