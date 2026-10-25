@@ -22,6 +22,11 @@ _ENSURE_POLL_SECONDS = 0.05
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "host-gui":
+        from .host_gui import main as host_gui_main
+
+        return host_gui_main(arguments[1:])
     parser = _parser()
     args = parser.parse_args(argv)
     if args.command == "audit" and args.action != "export":
@@ -133,6 +138,7 @@ def _parser() -> argparse.ArgumentParser:
             "certificate",
             "pairings",
             "enrollment",
+            "host-gui",
         ),
     )
     parser.add_argument("action", nargs="?")
@@ -315,15 +321,13 @@ def _request_shutdown(xedoc_home: Path, timeout: float) -> None:
 
 def _wait_until_stopped(xedoc_home: Path, deadline: float) -> None:
     while True:
-        if (
-            _broker_controller_id(
-                xedoc_home,
-                max(deadline - time.monotonic(), _ENSURE_POLL_SECONDS),
-            )
-            is None
-            and RemoteAgentDaemon.status(xedoc_home=xedoc_home).get("status")
-            in {"stopped", "stale"}
-        ):
+        if _broker_controller_id(
+            xedoc_home,
+            max(deadline - time.monotonic(), _ENSURE_POLL_SECONDS),
+        ) is None and RemoteAgentDaemon.status(xedoc_home=xedoc_home).get("status") in {
+            "stopped",
+            "stale",
+        }:
             return
         if time.monotonic() >= deadline:
             raise BrokerError.unavailable()

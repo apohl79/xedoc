@@ -267,6 +267,9 @@ def _payload_sources() -> dict[str, Path]:
         entries[
             f"xedoc_remote_agent/{path.relative_to(REMOTE_AGENT_PACKAGE_SOURCE)}"
         ] = path
+    for path in sorted((REMOTE_AGENT_PACKAGE_SOURCE / "host_assets").glob("*")):
+        if path.suffix in {".html", ".css", ".js"}:
+            entries[f"xedoc_remote_agent/host_assets/{path.name}"] = path
     for archive_name, path in entries.items():
         if not path.is_file():
             raise RuntimeError(f"Missing remote-agent payload source: {path}")

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Xedoc · Workspaces</title>
+  <link rel="stylesheet" href="/host.css">
+  <script src="/host.js" defer></script>
+</head>
+<body>
+  <header><strong><span class="accent">❯</span> Xedoc</strong><nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav></header>
+  <p id="notice" role="status" hidden></p>
+  <main id="login-view">
+    <form id="login" class="login">
+      <h1>Sign in</h1>
+      <label>Username<input name="username" autocomplete="username" required maxlength="64"></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+      <button class="primary">Sign in</button>
+    </form>
+  </main>
+  <main id="host-view" hidden>
+    <aside>
+      <div class="section-title"><h2>Workspaces</h2><button id="add-workspace" title="Add workspace" aria-label="Add workspace" hidden>＋</button></div>
+      <div id="workspaces"></div>
+      <div class="section-title project-sidebar-title"><h2>Projects</h2><button id="new-project" title="Add project" aria-label="Add project">＋</button></div>
+      <div id="projects"></div>
+    </aside>
+    <section class="content">
+      <div class="section-title"><div><h1 id="workspace-title">Workspaces</h1><p id="workspace-root" class="muted"></p></div><button id="remove-workspace" hidden>Remove workspace</button></div>
+      <div id="project-empty" class="empty-state">Select a project to view its sessions.</div>
+      <section id="session-workspace" hidden>
+        <div class="session-heading">
+          <div><h2 id="project-title"></h2><p id="project-path" class="muted"></p></div>
+          <button id="session-menu-button" aria-label="New or resume session">＋</button>
+        </div>
+        <div id="sessions" class="session-tabs" role="tablist" aria-label="Project sessions"></div>
+        <div id="session-empty" class="empty-state" hidden>No recent sessions. Start a new session or resume one.</div>
+        <section id="session-view" hidden>
+          <div id="session-status" class="session-status"></div>
+          <div id="transcript" aria-live="polite"></div>
+          <button id="load-older" hidden>Load earlier messages</button>
+          <form id="message-form" class="composer">
+            <textarea name="message" rows="3" placeholder="Message Xedoc…" maxlength="65536" required></textarea>
+            <button class="primary">Send</button>
+          </form>
+        </section>
+      </section>
+    </section>
+  </main>
+  <dialog id="workspace-dialog"><form id="workspace-form"><h2>Add workspace</h2><label>Workspace ID<input name="workspaceId" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" maxlength="64"></label><label>Root directory<input name="root" required></label><button id="browse" type="button">Choose directory…</button><label class="check"><input name="create" type="checkbox">Create directory if missing</label><footer><button type="button" data-close>Cancel</button><button class="primary">Add</button></footer></form></dialog>
+  <dialog id="picker"><div class="section-title"><h2>Choose directory</h2><button type="button" data-close aria-label="Close">×</button></div><form id="picker-form"><label>Server directory<input id="picker-path" required></label><button>Open</button></form><div id="directories"></div><footer><button id="choose-directory" class="primary">Select directory</button></footer></dialog>
+  <dialog id="project-dialog"><form id="project-form"><h2>Create project</h2><label>Directory name<input name="name" required maxlength="128"></label><footer><button type="button" data-close>Cancel</button><button class="primary">Create</button></footer></form></dialog>
+  <dialog id="session-menu"><h2>Project session</h2><p id="session-menu-project" class="muted"></p><div class="dialog-actions"><button id="new-session" class="primary">New session</button><button id="resume-session">Resume…</button><button type="button" data-close>Cancel</button></div></dialog>
+  <dialog id="resume-dialog"><div class="section-title"><div><h2>Resume session</h2><p id="resume-project" class="muted"></p></div><button type="button" data-close aria-label="Close">×</button></div><div id="resume-sessions"></div></dialog>
+  <dialog id="users-dialog"><div class="section-title"><h2>Users</h2><button type="button" data-close aria-label="Close">×</button></div><div id="users"></div><form id="user-form"><h3 id="user-heading">Add or update user</h3><label>Username<input name="username" required maxlength="64" autocomplete="off"></label><label>Password<input name="password" type="password" autocomplete="new-password" maxlength="1024" placeholder="Leave empty to keep existing password"></label><label>Role<select name="role"><option value="workspaceUser">Workspace user</option><option value="admin">Administrator</option></select></label><fieldset id="assignments"><legend>Assigned workspaces</legend></fieldset><footer><button class="primary">Save user</button></footer></form></dialog>
+</body>
+</html>

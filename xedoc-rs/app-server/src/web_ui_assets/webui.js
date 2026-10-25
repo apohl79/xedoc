@@ -262,6 +262,9 @@
       if (prefix) {
         const heading = prefix.match(/^#+/);
         element.classList.add(heading ? "editor-heading" : prefix.trim().startsWith(">") ? "editor-quote" : "editor-list");
+        if (element.classList.contains("editor-list")) {
+          element.style.marginLeft = `${prefix.match(/^\s*/)[0].replace(/\t/g, "  ").length / 2 * 1.2}em`;
+        }
         if (heading) element.dataset.level = heading[0].length;
         if (/^\s*\d/.test(prefix)) element.dataset.bullet = prefix.trim();
         if (/\[[ xX]\]/.test(prefix)) element.dataset.bullet = /\[[xX]\]/.test(prefix) ? "☑" : "☐";
@@ -284,6 +287,55 @@
       [start + text.length, start + text.length]);
     dirty = true;
     flushDraft();
+  }
+
+  function editList(key, unindent = false) {
+    const source = editorText();
+    const selection = editorSelection();
+    if (!selection) return false;
+    const start = Math.min(...selection);
+    const end = Math.max(...selection);
+    const lineStart = start === 0 ? 0 : source.lastIndexOf("\n", start - 1) + 1;
+    const lineEnd = source.indexOf("\n", start);
+    const line = source.slice(lineStart, lineEnd < 0 ? source.length : lineEnd);
+    const item = line.match(/^([ \t]*)([-*+]|\d+[.)]) (?:\[[ xX]\] )?/);
+    if (!item || input.children[source.slice(0, start).split("\n").length - 1]?.classList.contains("editor-code")) return false;
+    if (key === "Enter") {
+      if (!line.slice(item[0].length).trim()) {
+        renderEditor(source.slice(0, lineStart) + source.slice(lineStart + item[0].length),
+          [lineStart, lineStart]);
+        dirty = true;
+        flushDraft();
+        return true;
+      }
+      const marker = /^\d/.test(item[2])
+        ? `${Number.parseInt(item[2], 10) + 1}${item[2].slice(-1)}` : item[2];
+      insertText(`\n${item[1]}${marker} ${/\[[ xX]\] /.test(item[0]) ? "[ ] " : ""}`);
+      return true;
+    }
+    const lastLineStart = source.lastIndexOf("\n", Math.max(start, end - 1)) + 1;
+    const edits = [];
+    let position = lineStart;
+    while (position <= lastLineStart) {
+      const next = source.indexOf("\n", position);
+      const text = source.slice(position, next < 0 ? source.length : next);
+      if (/^[ \t]*(?:[-*+]|\d+[.)]) /.test(text)) {
+        const removed = unindent ? (text.match(/^(?: {1,2}|\t)/)?.[0].length || 0) : 0;
+        edits.push({ position, removed, added: unindent ? "" : "  " });
+      }
+      if (next < 0) break;
+      position = next + 1;
+    }
+    let result = source;
+    for (const edit of edits.slice().reverse()) {
+      result = result.slice(0, edit.position) + edit.added + result.slice(edit.position + edit.removed);
+    }
+    const adjust = (offset) => offset + edits.reduce((delta, edit) =>
+      delta + (edit.position <= offset ? edit.added.length - Math.min(edit.removed, offset - edit.position) : 0), 0);
+    renderEditor(result, selection.map(adjust));
+    dirty = true;
+    flushDraft();
+    return true;
   }
 
   function flushDraft() {
@@ -759,11 +811,14 @@
           };
           const marker = document.createElement("span");
           marker.className = "task-marker";
-          marker.append(...copyStyledRange(markerStart, markerStart + match[1].length));
+          const completed = match[1] === "✔";
+          marker.classList.add(completed ? "task-marker-checked" : "task-marker-empty");
+          marker.setAttribute("role", "img");
+          marker.setAttribute("aria-label", completed ? "Completed task" : "Incomplete task");
           const label = document.createElement("span");
           label.className = "task-label";
           label.append(...copyStyledRange(labelStart, text.length));
-          if (match[1] === "✔") line.classList.add("task-completed");
+          if (completed) line.classList.add("task-completed");
           line.classList.add("task-row");
           line.replaceChildren(marker, label);
         }
@@ -875,6 +930,9 @@
       pendingActions.push({ type: "key", key: event.key, ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey });
       dirty = editorText() !== composerState?.text;
       flushDraft();
+    } else if (event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey
+        && editList("Tab", event.shiftKey)) {
+      event.preventDefault();
     } else if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
       pendingActions.push({ type: "key", key: "Tab" });
@@ -882,7 +940,7 @@
       flushDraft();
     } else if (event.key === "Enter" && event.shiftKey) {
       event.preventDefault();
-      insertText("\n");
+      if (!editList("Enter")) insertText("\n");
     } else if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
       submit();
@@ -897,7 +955,7 @@
   input.addEventListener("beforeinput", (event) => {
     if (!composing && ["insertParagraph", "insertLineBreak"].includes(event.inputType)) {
       event.preventDefault();
-      insertText("\n");
+      if (!editList("Enter")) insertText("\n");
     }
   });
   input.addEventListener("compositionend", () => {
