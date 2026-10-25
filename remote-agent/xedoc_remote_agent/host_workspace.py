@@ -35,8 +35,16 @@ _THREAD_SOURCES = [
 
 
 class HostWorkspaces:
-    def __init__(self, home: Path) -> None:
+    def __init__(
+        self,
+        home: Path,
+        *,
+        bootstrap_path: Path | None = None,
+    ) -> None:
         self.home = home
+        self._bootstrap_path = bootstrap_path or (
+            home / "remote-agent" / "bootstrap.toml"
+        )
         self._session_state_path = home / "host-gui" / "closed-sessions.json"
         self._closed_sessions = self._read_session_state()
         self._client = None
@@ -111,9 +119,7 @@ class HostWorkspaces:
     def _request(self, method: str, params: dict) -> dict:
         try:
             if self._client is None:
-                descriptor = load_bootstrap_descriptor(
-                    self.home / "remote-agent" / "bootstrap.toml"
-                )
+                descriptor = load_bootstrap_descriptor(self._bootstrap_path)
                 client = _default_client_factory(descriptor.socket_path, 30.0)
                 try:
                     client.initialize("xedoc-host-gui", "Xedoc Host GUI", "0.1.0")

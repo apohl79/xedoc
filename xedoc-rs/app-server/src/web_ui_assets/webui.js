@@ -61,6 +61,111 @@
   let menuKind = null;
   let faviconTurnActive = false;
   let faviconAnimation = null;
+  let promptNavigation = null;
+
+  function promptHistory() {
+    return [...history.querySelectorAll(".history-user[data-prompt]")]
+      .map((cell) => cell.dataset.prompt);
+  }
+
+  function recallHistoryPrompt(text) {
+    renderEditor(text, [text.length, text.length]);
+    dirty = true;
+    flushDraft();
+  }
+
+  function searchPromptHistory() {
+    promptNavigation = null;
+    const prompts = promptHistory().reverse();
+    const dialog = document.createElement("dialog");
+    dialog.className = "prompt-history-search";
+    const search = document.createElement("input");
+    search.type = "search";
+    search.setAttribute("aria-label", "Search prompt history");
+    const results = document.createElement("div");
+    results.className = "prompt-history-results";
+    const render = () => {
+      results.replaceChildren();
+      for (const text of prompts.filter((text) =>
+        text.toLocaleLowerCase().includes(search.value.toLocaleLowerCase())).slice(0, 50)) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = text;
+        button.addEventListener("click", () => {
+          dialog.close();
+          input.focus();
+          recallHistoryPrompt(text);
+        });
+        results.append(button);
+      }
+    };
+    search.addEventListener("input", render);
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && event.target === search) {
+        event.preventDefault();
+        results.querySelector("button")?.click();
+      } else if (event.key === "ArrowDown" && event.target === search) {
+        event.preventDefault();
+        results.querySelector("button")?.focus();
+      }
+    });
+    dialog.addEventListener("close", () => { dialog.remove(); input.focus(); });
+    dialog.append(search, results);
+    document.body.append(dialog);
+    render();
+    dialog.showModal();
+    search.focus();
+  }
+
+  document.addEventListener("pointerdown", () => { promptNavigation = null; }, true);
+  input.addEventListener("blur", () => { promptNavigation = null; });
+  document.addEventListener("keydown", (event) => {
+    const focused = input.contains(event.target);
+    const plainArrow = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+      && ["ArrowUp", "ArrowDown"].includes(event.key);
+    const queuedRecall = event.key === "ArrowUp" && event.altKey
+      && !event.ctrlKey && !event.metaKey && !event.shiftKey && !editorText();
+    const arrow = plainArrow;
+    if (!focused || !arrow) promptNavigation = null;
+    if (!focused || !ready || popupActive || composing || event.isComposing) return;
+    if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+        && event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      searchPromptHistory();
+    } else if (queuedRecall) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      pendingActions.push({ type: "recallQueuedPrompt" });
+      dirty = editorText() !== composerState?.text;
+      flushDraft();
+    } else if (plainArrow && event.key === "ArrowUp" && !promptNavigation && !editorText()) {
+      const prompts = promptHistory();
+      promptNavigation = {
+        prompts,
+        index: Math.max(0, prompts.length - 1),
+        draft: editorText(),
+        awaitingScheduledRecall: true,
+      };
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      pendingActions.push({ type: "recallScheduledPrompt" });
+      dirty = editorText() !== composerState?.text;
+      flushDraft();
+    } else if (arrow && (promptNavigation || event.key === "ArrowUp" && !editorText())) {
+      if (!promptNavigation) {
+        const prompts = promptHistory();
+        promptNavigation = { prompts, index: prompts.length, draft: editorText() };
+      }
+      const navigation = promptNavigation;
+      if (!navigation.prompts.length) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      navigation.index = Math.max(0, Math.min(navigation.prompts.length,
+        navigation.index + (event.key === "ArrowUp" ? -1 : 1)));
+      recallHistoryPrompt(navigation.prompts[navigation.index] ?? navigation.draft);
+    }
+  }, true);
 
   function drawFavicon() {
     if (!faviconContext) return;
@@ -429,9 +534,16 @@
   function renderComposer(state) {
     const threadChanged = composerState && composerState.threadId !== activeThread;
     const wasDialog = composerState?.dialog;
+    if (promptNavigation?.awaitingScheduledRecall && state.text) {
+      const recalledIndex = promptNavigation.prompts.lastIndexOf(state.text);
+      promptNavigation.index = recalledIndex >= 0 ? recalledIndex : promptNavigation.prompts.length;
+      promptNavigation.awaitingScheduledRecall = false;
+    }
     composerState = { ...state, threadId: activeThread };
     revision = Math.max(revision, state.ackRevision || 0);
     if (threadChanged) {
+      promptNavigation = null;
+      document.querySelector(".prompt-history-search")?.close();
       inFlight = null;
       dirty = false;
       submitPending = false;
@@ -677,6 +789,33 @@
     if (lastActivity !== frame.activity || lastPopup !== frame.popup) {
       activity.innerHTML = `${frame.activity || ""}${frame.popup || ""}`;
       const activityLines = [...activity.querySelectorAll(":scope > .line")];
+      const copyStyledRange = (line, start, end) => {
+        const range = document.createRange();
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        let offset = 0;
+        let startNode;
+        let startOffset;
+        let endNode;
+        let endOffset;
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          const nodeEnd = offset + node.length;
+          if (!startNode && start >= offset && start <= nodeEnd) {
+            startNode = node;
+            startOffset = start - offset;
+          }
+          if (end >= offset && end <= nodeEnd) {
+            endNode = node;
+            endOffset = end - offset;
+            break;
+          }
+          offset = nodeEnd;
+        }
+        if (!startNode || !endNode) return document.createDocumentFragment();
+        range.setStart(startNode, startOffset);
+        range.setEnd(endNode, endOffset);
+        return range.cloneContents();
+      };
       const workingLine = activityLines.find((line) =>
         /^\s*[•◦]?\s*Working\b/.test(line.textContent));
       if (workingLine) {
@@ -765,8 +904,19 @@
         activityLines[agentHeading].classList.add("agent-heading");
         for (const line of activityLines.slice(agentHeading + 1)) {
           const text = line.textContent;
-          if (/^\s*└\s*□\s+/.test(text)) {
+          const match = /^\s*└\s*□\s+(.+)$/.exec(text);
+          if (match) {
+            const markerStart = text.indexOf("□");
+            const labelStart = markerStart + 2;
+            const marker = document.createElement("span");
+            marker.className = "agent-marker";
+            marker.setAttribute("role", "img");
+            marker.setAttribute("aria-label", "Agent in progress");
+            const label = document.createElement("span");
+            label.className = "agent-label";
+            label.append(copyStyledRange(line, labelStart, text.length));
             line.classList.add("agent-row");
+            line.replaceChildren(marker, label);
             continue;
           }
           const overflow = /^\s*\.\.\. (\d+) more$/.exec(text);
@@ -793,31 +943,19 @@
           }
           const markerStart = text.indexOf(match[1]);
           const labelStart = markerStart + match[1].length + 1;
-          const copyStyledRange = (start, end) => {
-            const spans = [];
-            let offset = 0;
-            for (const span of line.children) {
-              const text = span.textContent;
-              const from = Math.max(0, start - offset);
-              const to = Math.min(text.length, end - offset);
-              if (from < to) {
-                const copy = span.cloneNode(false);
-                copy.textContent = text.slice(from, to);
-                spans.push(copy);
-              }
-              offset += text.length;
-            }
-            return spans;
-          };
           const marker = document.createElement("span");
           marker.className = "task-marker";
           const completed = match[1] === "✔";
-          marker.classList.add(completed ? "task-marker-checked" : "task-marker-empty");
+          const running = !completed && [...line.children].some((span) =>
+            span.style.fontWeight === "700");
+          marker.classList.add(completed ? "task-marker-checked"
+            : running ? "task-marker-running" : "task-marker-empty");
           marker.setAttribute("role", "img");
-          marker.setAttribute("aria-label", completed ? "Completed task" : "Incomplete task");
+          marker.setAttribute("aria-label", completed ? "Completed task"
+            : running ? "Active task" : "Incomplete task");
           const label = document.createElement("span");
           label.className = "task-label";
-          label.append(...copyStyledRange(labelStart, text.length));
+          label.append(copyStyledRange(line, labelStart, text.length));
           if (completed) line.classList.add("task-completed");
           line.classList.add("task-row");
           line.replaceChildren(marker, label);
@@ -1069,18 +1207,6 @@
     dirty = true;
     flushDraft();
   });
-  document.addEventListener("keydown", (event) => {
-    if (!ready || event.key !== "ArrowUp" || composing || event.isComposing || popupActive || editorText()
-        || (!input.contains(event.target) && document.activeElement !== document.body)) return;
-    const scheduled = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-    const queued = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-    if (!scheduled && !queued) return;
-    event.preventDefault();
-    input.focus({ preventScroll: true });
-    pendingActions.push({ type: queued ? "recallQueuedPrompt" : "recallScheduledPrompt" });
-    dirty = editorText() !== composerState?.text;
-    flushDraft();
-  }, true);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") quoteSelection.hidden = true;
   });

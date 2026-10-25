@@ -9,26 +9,38 @@ import json
 import logging
 import os
 from pathlib import Path
+import socket
 import ssl
 import threading
 from urllib.parse import parse_qs, urlsplit
 
 from .errors import BrokerError, ErrorCode
 from .host_auth import HostAuth
+from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
 
 
 class HostServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, origin: str, home: Path):
+    def __init__(
+        self,
+        address,
+        origin: str,
+        home: Path,
+        *,
+        bootstrap_path: Path | None = None,
+    ):
+        self.address_family = (
+            socket.AF_INET6 if ":" in address[0] else socket.AF_INET
+        )
         self.origin = origin
         self.authority = urlsplit(origin).netloc
         self.secure = origin.startswith("https://")
         self.auth = HostAuth(home)
         if not self.auth.users:
             raise ValueError("Run host-gui setup before serving")
-        self.workspaces = HostWorkspaces(home)
+        self.workspaces = HostWorkspaces(home, bootstrap_path=bootstrap_path)
         self.slots = threading.BoundedSemaphore(16)
         self.tls_context = None
         super().__init__(address, HostHandler)
@@ -53,6 +65,53 @@ class HostServer(ThreadingHTTPServer):
             self.shutdown_request(request)
         finally:
             self.slots.release()
+
+
+class HostGuiService:
+    def __init__(self, home: Path, bootstrap_path: Path) -> None:
+        self.home = home
+        self.bootstrap_path = bootstrap_path
+        self.config = HostGuiConfig.load(home)
+        self.origin = self.config.origin
+        self.server: HostServer | None = None
+        self.thread: threading.Thread | None = None
+
+    def start(self) -> bool:
+        if not HostAuth(self.home).users:
+            return False
+        tls_context = self.config.create_tls_context()
+        server = HostServer(
+            (self.config.listen_address, self.config.port),
+            self.config.origin,
+            self.home,
+            bootstrap_path=self.bootstrap_path,
+        )
+        server.tls_context = tls_context
+        thread = threading.Thread(
+            target=server.serve_forever,
+            name="xedoc-host-gui",
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except BaseException:
+            server.server_close()
+            server.workspaces.close()
+            raise
+        self.server = server
+        self.thread = thread
+        return True
+
+    def stop(self) -> None:
+        server, self.server = self.server, None
+        thread, self.thread = self.thread, None
+        if server is None:
+            return
+        server.shutdown()
+        server.server_close()
+        server.workspaces.close()
+        if thread is not None:
+            thread.join(timeout=5)
 
 
 class HostHandler(BaseHTTPRequestHandler):
@@ -344,11 +403,97 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.action == "setup":
         auth = HostAuth(args.xedoc_home)
-        username = input("Administrator username: ").strip()
-        password = getpass.getpass("Password (at least 12 characters): ")
-        if password != getpass.getpass("Confirm password: "):
-            parser.error("Passwords do not match")
-        auth.save_user(username, "admin", [], password)
+        if auth.users:
+            print("Host GUI administrator is already configured.")
+            reconfigure = input("Configure its listener settings? [y/N]: ").strip()
+            if reconfigure.casefold() not in ("y", "yes"):
+                return 0
+        else:
+            username = input("Administrator username: ").strip()
+            password = getpass.getpass("Password (at least 12 characters): ")
+            if password != getpass.getpass("Confirm password: "):
+                parser.error("Passwords do not match")
+            try:
+                auth.save_user(username, "admin", [], password)
+            except ValueError as error:
+                parser.error(str(error))
+
+        remote_access = input(
+            "Enable remote access over HTTPS on your private network? [y/N]: "
+        ).strip()
+        try:
+            if remote_access.casefold() in ("y", "yes"):
+                origin = input(
+                    "HTTPS origin clients will visit "
+                    "(for example, https://xedoc.local:50000): "
+                ).strip()
+                origin_parts = urlsplit(origin)
+                if (
+                    origin_parts.scheme != "https"
+                    or not origin_parts.hostname
+                    or origin_parts.path
+                    or origin_parts.query
+                    or origin_parts.fragment
+                    or origin_parts.username
+                    or origin_parts.password
+                ):
+                    raise ValueError(
+                        "Remote Host GUI origins must be an exact HTTPS origin."
+                    )
+                hostname = origin_parts.hostname.lower()
+                authority = f"[{hostname}]" if ":" in hostname else hostname
+                port = origin_parts.port or 443
+                origin = f"https://{authority}"
+                if port != 443:
+                    origin = f"{origin}:{port}"
+                default_listener = "::" if ":" in hostname else "0.0.0.0"
+                listen_address = (
+                    input(
+                        "Listener address "
+                        f"[{default_listener}; use :: for IPv6-only networks]: "
+                    ).strip()
+                    or default_listener
+                )
+                use_existing_certificate = input(
+                    "Use an existing TLS certificate/key instead of generating a "
+                    "private CA and server certificate? [y/N]: "
+                ).strip()
+                if use_existing_certificate.casefold() in ("y", "yes"):
+                    cert = Path(input("TLS certificate chain PEM path: ").strip())
+                    key = Path(input("TLS private key PEM path: ").strip())
+                    tls_cert = cert.expanduser().resolve()
+                    tls_key = key.expanduser().resolve()
+                    ca_cert = None
+                else:
+                    tls_cert, tls_key, ca_cert = HostGuiConfig.generate_tls_material(
+                        args.xedoc_home, hostname
+                    )
+                config = HostGuiConfig(
+                    listen_address,
+                    port,
+                    origin,
+                    tls_cert,
+                    tls_key,
+                )
+                config.create_tls_context()
+            else:
+                config = HostGuiConfig.local_only()
+            config.save(args.xedoc_home)
+        except (OSError, ValueError, ssl.SSLError) as error:
+            parser.error(str(error))
+
+        print(f"Host GUI configured for {config.origin}.")
+        if remote_access.casefold() in ("y", "yes") and ca_cert:
+            print(
+                "HTTPS certificate generated. To avoid browser security warnings, "
+                "install this public CA certificate as trusted on each client:"
+            )
+            print(f"  {ca_cert}")
+            print(
+                "Trusting this private CA lets it issue certificates for any "
+                "hostname; keep host-gui/ca-key.pem private. Existing CA "
+                "material is reused when reconfiguring the listener."
+            )
         return 0
     origin = urlsplit(args.origin or "")
     if (

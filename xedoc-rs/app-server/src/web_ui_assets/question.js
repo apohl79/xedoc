@@ -116,6 +116,12 @@ window.XedocQuestion = class {
         button.append(marker, text);
         button.addEventListener("click", () => this.act("select", { option: index }));
         button.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" && !event.isComposing) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.act("next");
+            return;
+          }
           const direction = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1
             : ["ArrowUp", "ArrowLeft"].includes(event.key) ? -1 : 0;
           if (!direction) return;

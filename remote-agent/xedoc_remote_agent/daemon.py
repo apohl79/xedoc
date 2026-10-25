@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import errno
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -206,6 +207,7 @@ class RemoteAgentDaemon:
         self._peer_server: PeerServer | None = None
         self._state: PeerState | None = None
         self._local_log: LocalLog | None = None
+        self._host_gui: Any | None = None
         self._lock: _ExclusiveLock | None = None
         self._pid_owner: str | None = None
         self._shutdown_reaper: threading.Thread | None = None
@@ -358,6 +360,7 @@ class RemoteAgentDaemon:
             self._shutdown.clear()
             if local_log is not None:
                 _record_log(local_log, "daemon.started", "ok")
+            self._start_host_gui()
             return self
 
     def stop(self) -> bool:
@@ -449,6 +452,12 @@ class RemoteAgentDaemon:
 
     def _finalize_shutdown_locked(self) -> None:
         self._ipc = None
+        host_gui, self._host_gui = self._host_gui, None
+        if host_gui is not None:
+            try:
+                host_gui.stop()
+            except Exception as error:
+                logging.warning("Could not stop the Host GUI service: %s", error)
         peer_service, self._peer_service = self._peer_service, None
         self._peer_server = None
         if peer_service is not None:
@@ -470,6 +479,25 @@ class RemoteAgentDaemon:
             lock.release()
         if local_log is not None:
             _record_log(local_log, "daemon.stopped", "ok")
+
+    def _start_host_gui(self) -> None:
+        try:
+            from .host_gui import HostGuiService
+
+            host_gui = HostGuiService(self.paths.xedoc_home, self.paths.bootstrap_path)
+            if not host_gui.start():
+                return
+        except Exception as error:
+            logging.warning(
+                "Could not start the Host GUI service: %s", error
+            )
+            if self._local_log is not None:
+                _record_log(self._local_log, "hostGui.startFailed", "error")
+            return
+        self._host_gui = host_gui
+        if self._local_log is not None:
+            _record_log(self._local_log, "hostGui.started", "ok")
+        print(f"Host GUI: {host_gui.origin}", flush=True)
 
     def _connect_controller(self) -> Any:
         host_id = self._effective_host_id

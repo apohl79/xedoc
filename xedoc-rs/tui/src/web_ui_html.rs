@@ -69,7 +69,13 @@ pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_en
             .skip(start)
             .take(end.saturating_sub(start))
         {
-            html.push_str("<div class=\"history-user\"><div>");
+            html.push_str("<div class=\"history-user\"");
+            if index == 0 {
+                html.push_str(" data-prompt=\"");
+                escape_html(&mut html, &user.message);
+                html.push('"');
+            }
+            html.push_str("><div>");
             if index == 0 {
                 for (image_index, _) in user.remote_image_urls.iter().enumerate() {
                     let _ = write!(
@@ -108,16 +114,50 @@ pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_en
         } else if let Some(summary) = cell.as_any().downcast_ref::<FinalMessageSeparator>() {
             ("history-turn-summary", summary.summary_lines())
         } else {
-            let class = if cell.as_any().is::<AgentMessageCell>() {
-                "history-agent"
-            } else if cell.as_any().is::<ToolCallSummaryCell>() {
-                "history-tool history-tool-call history-command"
-            } else if cell.as_any().is::<ExecCell>() {
-                "history-tool history-command"
-            } else {
-                "history-tool"
-            };
             let lines = cell.display_lines(u16::MAX);
+            let (class, lines) = if cell.as_any().is::<AgentMessageCell>() {
+                ("history-agent", lines)
+            } else if let Some(exec) = cell.as_any().downcast_ref::<ExecCell>() {
+                if exec.is_exploring_cell() {
+                    ("history-tool history-command", lines)
+                } else {
+                    let has_command_continuations = lines.iter().skip(1).any(|line| {
+                        line.spans
+                            .iter()
+                            .map(|span| span.content.as_ref())
+                            .collect::<String>()
+                            .starts_with("  │ ")
+                    });
+                    let mut command_lines = Vec::with_capacity(lines.len());
+                    for (index, mut line) in lines.into_iter().enumerate() {
+                        let is_command_continuation = line
+                            .spans
+                            .iter()
+                            .map(|span| span.content.as_ref())
+                            .collect::<String>()
+                            .starts_with("  │ ");
+                        if index == 0 {
+                            if has_command_continuations {
+                                line.spans.push(ratatui::text::Span::styled(
+                                    " …",
+                                    Style::default().add_modifier(Modifier::DIM),
+                                ));
+                            }
+                            command_lines.push(line);
+                        } else if !is_command_continuation {
+                            command_lines.push(line);
+                        }
+                    }
+                    (
+                        "history-tool history-command history-tool-box",
+                        command_lines,
+                    )
+                }
+            } else if cell.as_any().is::<ToolCallSummaryCell>() {
+                ("history-tool history-tool-call history-command", lines)
+            } else {
+                ("history-tool", lines)
+            };
             let start = usize::from(page_start).saturating_mul(HISTORY_LINES_PER_PAGE);
             let end = usize::from(page_end)
                 .saturating_mul(HISTORY_LINES_PER_PAGE)
@@ -214,8 +254,15 @@ pub(crate) fn stream_page_html(kind: StreamHtmlKind, source: &str, first_page: b
 
 fn styled_lines_html(class: &str, lines: &[ratatui::text::Line<'static>]) -> String {
     let mut html = format!("<div class=\"{class} history-lines\">");
-    for line in lines {
-        let _ = write!(html, "<div style=\"{}\">", css_style(line.style));
+    let command_cell = class
+        .split_ascii_whitespace()
+        .any(|class| class == "history-command");
+    for (index, line) in lines.iter().enumerate() {
+        let mut style = css_style(line.style);
+        if command_cell && index == 0 {
+            style.push_str("overflow:hidden;text-overflow:ellipsis;white-space:pre;");
+        }
+        let _ = write!(html, "<div style=\"{style}\">");
         for span in &line.spans {
             let mut text = span.content.to_string();
             flush_span(
@@ -525,7 +572,11 @@ fn flush_span(html: &mut String, text: &mut String, style: Option<(Style, bool)>
     if let Some((style, cursor)) = style {
         let class = if cursor { " class=\"cursor\"" } else { "" };
         let _ = write!(html, "<span{class} style=\"{}\">", css_style(style));
-        escape_html(html, text);
+        let translated = text
+            .replace("===", "≡")
+            .replace("=>", "⇒")
+            .replace("->", "→");
+        escape_html(html, &translated);
         html.push_str("</span>");
     }
     text.clear();

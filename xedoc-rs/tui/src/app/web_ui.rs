@@ -605,7 +605,7 @@ impl App {
                     .map(|cell| crate::web_ui_html::history_cell_html(cell, 0, 1))
             })
             .flatten();
-        let renderable = if dialog || self.overlay.is_some() {
+        let renderable = if self.overlay.is_some() {
             self.chat_widget.as_renderable()
         } else {
             self.chat_widget.browser_renderable()

@@ -155,8 +155,11 @@ impl ChatWidget {
         self.turn_lifecycle.agent_turn_running
     }
 
-    /// Keeps shared activity surfaces while the browser lays out the active cell.
+    /// Isolates terminal dialogs; otherwise keeps activity without browser-native history.
     pub fn browser_renderable(&self) -> RenderableItem<'_> {
+        if self.bottom_pane.browser_has_dialog() {
+            return self.bottom_pane.as_renderable();
+        }
         self.renderable_with_active_cell(
             RenderableItem::Owned(Box::new(())),
             RenderableItem::Owned(Box::new(())),

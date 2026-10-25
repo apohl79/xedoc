@@ -1042,6 +1042,7 @@ def configure_remote_agent_with_lifecycle(
         with AppServerClient(args.socket, args.timeout, args.client_name) as client:
             result = configure_remote_agent(client, args.reconfigure)
     write_remote_agent_bootstrap(args.socket, args.experimental)
+    setup_host_gui_if_missing()
     run_daemon_command(args.experimental, "restart")
     if result.get("role") == "managed":
         print(
@@ -1050,6 +1051,63 @@ def configure_remote_agent_with_lifecycle(
         )
         result["enrollment"] = remote_agent_enrollment_command("create")
     return result
+
+
+def setup_host_gui_if_missing() -> None:
+    xedoc_home = Path(os.environ.get("XEDOC_HOME", DEFAULT_XEDOC_HOME))
+    users_path = xedoc_home / "host-gui" / "users.json"
+    try:
+        users = json.loads(users_path.read_text()) if users_path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        users = {}
+    if isinstance(users, dict) and any(
+        isinstance(user, dict) and user.get("role") == "admin"
+        for user in users.values()
+    ):
+        return
+
+    agent_binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
+    if not agent_binary.is_file():
+        print(
+            "Host GUI setup is unavailable in this Xedoc installation.",
+            file=sys.stderr,
+        )
+        return
+    if not sys.stdin.isatty():
+        print(
+            "Host GUI setup requires an interactive terminal. Run "
+            "`xedoc-remote-agentd host-gui setup` after installation.",
+            file=sys.stderr,
+        )
+        return
+
+    print(
+        "First-time Host GUI setup: create its administrator account and "
+        "choose local or remote HTTPS access.",
+        file=sys.stderr,
+    )
+    result = subprocess.run(
+        [
+            str(agent_binary),
+            "host-gui",
+            "setup",
+            "--xedoc-home",
+            str(xedoc_home),
+        ],
+        check=False,
+    )
+    if result.returncode != 0:
+        print(
+            "Host GUI setup was not completed. Run "
+            "`xedoc-remote-agentd host-gui setup` later.",
+            file=sys.stderr,
+        )
+        return
+    print(
+        "The Host GUI will start with the remote-agent broker using the "
+        "listener settings you configured.",
+        file=sys.stderr,
+    )
 
 
 def run(args: argparse.Namespace) -> list[dict[str, object]] | dict[str, object]:
