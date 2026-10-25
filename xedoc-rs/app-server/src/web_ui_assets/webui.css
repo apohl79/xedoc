@@ -71,7 +71,8 @@ a { color: #8fc4e7; }
 .history-tool-call { background: var(--bg-history); border-radius: 6px; }
 .history-command > div:first-child { overflow: hidden; overflow-wrap: normal; text-overflow: ellipsis; white-space: pre; }
 .history-tool, .history-tool *, .history-tool-slice, .history-tool-slice * { font-family: var(--mono); }
-.history-tool > div, .history-agent > div { padding-left: 2ch; text-indent: -2ch; margin-left: -2ch; background-color: transparent !important; }
+.history-tool > div, .history-agent > div { padding-left: 2ch; text-indent: -2ch; margin-left: -2ch; }
+.history-agent > div { background-color: transparent !important; }
 .history-tool span, .history-tool-slice .line, .history-tool-slice span { background-color: transparent !important; }
 .history-edit-summary, .history-turn-summary { padding: 0 8px 0 26px; font-family: var(--mono); font-size: .9em; }
 .history-turn-summary {
