@@ -88,7 +88,6 @@ a { color: #8fc4e7; }
 }
 .history-turn-summary:empty::after { display: none; }
 .history-edit-summary > div { padding-left: 2ch; text-indent: -2ch; margin-left: -2ch; }
-.history-edit-summary > div:not(:first-child) { padding-left: 0; text-indent: -4ch; margin-left: 0; }
 .history-user-slice { padding: 14px 8px; background: var(--bg-history); border-radius: 6px; }
 .history-slice { padding: 0 8px; }
 .history-user-slice .line, .history-user-slice span, .history-slice .line { background-color: transparent !important; }
