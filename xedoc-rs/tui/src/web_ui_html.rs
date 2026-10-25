@@ -12,9 +12,15 @@ use crate::history_cell::AgentMarkdownCell;
 use crate::history_cell::AgentMessageCell;
 use crate::history_cell::FinalMessageSeparator;
 use crate::history_cell::HistoryCell;
+use crate::history_cell::McpToolCallCell;
+use crate::history_cell::PatchHistoryCell;
 use crate::history_cell::ProposedPlanCell;
+use crate::history_cell::RequestUserInputResultCell;
 use crate::history_cell::ToolCallCountSummaryCell;
+use crate::history_cell::UnifiedExecInteractionCell;
 use crate::history_cell::UserHistoryCell;
+use crate::history_cell::WebSearchCell;
+use xedoc_tui_transcript::exec_cell::ExecCell;
 
 const HISTORY_LINES_PER_PAGE: usize = 240;
 const MARKDOWN_PAGE_BYTES: usize = 32 * 1024;
@@ -108,6 +114,14 @@ pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_en
         } else {
             let class = if cell.as_any().is::<AgentMessageCell>() {
                 "history-agent"
+            } else if cell.as_any().is::<ExecCell>()
+                || cell.as_any().is::<McpToolCallCell>()
+                || cell.as_any().is::<PatchHistoryCell>()
+                || cell.as_any().is::<RequestUserInputResultCell>()
+                || cell.as_any().is::<UnifiedExecInteractionCell>()
+                || cell.as_any().is::<WebSearchCell>()
+            {
+                "history-tool history-tool-call"
             } else {
                 "history-tool"
             };

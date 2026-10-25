@@ -707,6 +707,24 @@
           metadataRange.insertNode(metadata);
         }
       }
+      const agentHeading = activityLines.findIndex((line) =>
+        /^\s*•\s*Agents\s*$/.test(line.textContent));
+      if (agentHeading !== -1) {
+        activityLines[agentHeading].classList.add("agent-heading");
+        for (const line of activityLines.slice(agentHeading + 1)) {
+          const text = line.textContent;
+          if (/^\s*└\s*□\s+/.test(text)) {
+            line.classList.add("agent-row");
+            continue;
+          }
+          const overflow = /^\s*\.\.\. (\d+) more$/.exec(text);
+          if (overflow) {
+            line.classList.add("agent-overflow");
+            continue;
+          }
+          break;
+        }
+      }
       const taskHeading = activityLines.findIndex((line) =>
         /^\s*•\s*Tasks\s+\d+\/\d+/.test(line.textContent));
       if (taskHeading !== -1) {
@@ -743,7 +761,7 @@
           marker.className = "task-marker";
           marker.append(...copyStyledRange(markerStart, markerStart + match[1].length));
           const label = document.createElement("span");
-          label.className = "task-label activity-meta";
+          label.className = "task-label";
           label.append(...copyStyledRange(labelStart, text.length));
           if (match[1] === "✔") line.classList.add("task-completed");
           line.classList.add("task-row");
@@ -830,10 +848,6 @@
 
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
-    const emptyPromptScheduledKey = event.key === "ArrowUp" && !event.altKey && !event.ctrlKey
-      && !event.metaKey && !event.shiftKey && !editorText();
-    const emptyPromptQueueKey = event.key === "ArrowUp" && event.altKey && !event.ctrlKey
-      && !event.metaKey && !event.shiftKey && !editorText();
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && ["b", "i"].includes(event.key.toLowerCase())) {
       event.preventDefault();
@@ -854,16 +868,6 @@
         dirty = true;
         flushDraft();
       }
-    } else if (!popupActive && emptyPromptScheduledKey) {
-      event.preventDefault();
-      pendingActions.push({ type: "recallScheduledPrompt" });
-      dirty = editorText() !== composerState?.text;
-      flushDraft();
-    } else if (!popupActive && emptyPromptQueueKey) {
-      event.preventDefault();
-      pendingActions.push({ type: "recallQueuedPrompt" });
-      dirty = editorText() !== composerState?.text;
-      flushDraft();
     } else if (popupActive
         && !event.shiftKey
         && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
@@ -950,6 +954,7 @@
   window.addEventListener("resize", () => {
     quoteSelection.hidden = true;
     clearLinkTargetPreview();
+    closeMenu();
   });
   function clearLinkTargetPreview() {
     if (linkPreviewTimeout !== null) clearTimeout(linkPreviewTimeout);
@@ -1007,6 +1012,18 @@
     flushDraft();
   });
   document.addEventListener("keydown", (event) => {
+    if (!ready || event.key !== "ArrowUp" || composing || event.isComposing || popupActive || editorText()
+        || (!input.contains(event.target) && document.activeElement !== document.body)) return;
+    const scheduled = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    const queued = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    if (!scheduled && !queued) return;
+    event.preventDefault();
+    input.focus({ preventScroll: true });
+    pendingActions.push({ type: queued ? "recallQueuedPrompt" : "recallScheduledPrompt" });
+    dirty = editorText() !== composerState?.text;
+    flushDraft();
+  }, true);
+  document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") quoteSelection.hidden = true;
   });
   document.addEventListener("pointerdown", (event) => {
@@ -1025,7 +1042,6 @@
   new ResizeObserver(() => {
     const width = Math.max(40, Math.min(400, Math.floor(history.clientWidth / 8)));
     if (width !== previousWidth && send({ type: "resize", width })) previousWidth = width;
-    closeMenu();
   }).observe(history);
 
   async function upload(file, destination, threadId) {
