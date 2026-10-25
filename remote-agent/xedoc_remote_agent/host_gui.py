@@ -410,7 +410,7 @@ def main(argv=None) -> int:
                 return 0
         else:
             username = input("Administrator username: ").strip()
-            password = getpass.getpass("Password (at least 12 characters): ")
+            password = getpass.getpass("Password (at least 6 characters): ")
             if password != getpass.getpass("Confirm password: "):
                 parser.error("Passwords do not match")
             try:

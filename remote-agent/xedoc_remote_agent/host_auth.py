@@ -54,8 +54,8 @@ class HostAuth:
             if not previous and len(self.users) >= 256:
                 raise ValueError("Account limit reached")
             if not previous or password:
-                if not isinstance(password, str) or not 12 <= len(password) <= 1024:
-                    raise ValueError("Passwords must contain 12–1024 characters")
+                if not isinstance(password, str) or not 6 <= len(password) <= 1024:
+                    raise ValueError("Passwords must contain 6–1024 characters")
                 salt = secrets.token_hex(32)
                 digest = self._digest(password, salt)
             else:
