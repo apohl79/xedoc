@@ -69,9 +69,10 @@ a { color: #8fc4e7; }
 .history-lines > div { min-height: 1.4em; white-space: pre-wrap; overflow-wrap: anywhere; }
 .history-tool, .history-tool-slice { padding: 0 8px; }
 .history-tool-box { background: var(--bg-history); border-radius: 6px; }
+.history-tool-box > div, .history-tool-call > div { overflow: hidden; overflow-wrap: normal; text-overflow: clip; white-space: pre; }
 .history-tool { padding-left: calc(10px + 2ch); }
 .history-tool-call { background: var(--bg-history); border-radius: 6px; }
-.history-command > div:first-child { overflow: hidden; overflow-wrap: normal; text-overflow: ellipsis; white-space: pre; }
+.history-command > div:first-child { overflow: hidden; overflow-wrap: normal; text-overflow: clip; white-space: pre; }
 .history-tool, .history-tool *, .history-tool-slice, .history-tool-slice * { font-family: var(--mono); }
 .history-tool > div, .history-agent > div { padding-left: 2ch; text-indent: -2ch; margin-left: -2ch; }
 .history-agent > div { background-color: transparent !important; }
