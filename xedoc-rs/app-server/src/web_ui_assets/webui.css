@@ -105,19 +105,14 @@ a { color: #8fc4e7; }
 #activity .task-heading { margin-bottom: 2px; }
 #activity .task-row { display: grid; grid-template-columns: 1.15em minmax(0, 1fr); gap: 8px; margin: 1px 0 0 2em; }
 #activity .agent-row { display: grid; grid-template-columns: 1.15em minmax(0, 1fr); gap: 8px; margin: 1px 0 0 2em; }
-#activity .agent-marker { display: inline-block; place-self: center; width: .9em; height: .9em; border: 2px solid #59616a; border-top-color: #00a8b5; border-radius: 50%; animation: activity-spin .85s linear infinite; }
-@keyframes activity-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  #activity .agent-marker { animation: none; }
-}
 #activity .agent-label { min-width: 0; }
 #activity .task-marker { display: inline-grid; place-items: center; place-self: center; width: .9em; height: .9em; border: 2px solid #8195a5; border-radius: 2px; font-family: var(--sans); font-size: inherit; line-height: 1; }
 #activity .task-marker-checked { border-color: #47c78a; background: #47c78a; color: var(--bg-main); }
 #activity .task-marker-checked::after { content: "✓"; font-size: .75em; font-weight: 700; }
-#activity .task-marker-running { border-radius: 50%; border-color: #00a8b5; border-right-color: transparent; animation: task-progress .8s linear infinite; }
-@keyframes task-progress { to { transform: rotate(360deg); } }
+#activity .agent-marker, #activity .task-marker-running { display: inline-block; place-self: center; width: .9em; height: .9em; border: 2px solid #59616a; border-top-color: #00a8b5; border-radius: 50%; animation: activity-spin .85s linear infinite; }
+@keyframes activity-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  #activity .task-marker-running { animation: none; }
+  #activity .agent-marker, #activity .task-marker-running { animation: none; }
 }
 .prompt-history-search { width: min(640px, 90vw); max-height: 70vh; padding: 12px; background: var(--bg-main); color: inherit; border: 1px solid var(--border); border-radius: 6px; }
 .prompt-history-search::backdrop { background: #0008; }

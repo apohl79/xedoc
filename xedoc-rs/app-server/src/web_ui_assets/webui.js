@@ -19,6 +19,7 @@
   const notice = document.getElementById("notice");
   const earlier = document.getElementById("earlier");
   const activity = document.getElementById("activity");
+  const activityAnimationOrigin = performance.now();
   const entry = document.getElementById("entry");
   const attachments = document.getElementById("attachments");
   const menu = document.getElementById("menu");
@@ -127,7 +128,10 @@
       && !event.ctrlKey && !event.metaKey && !event.shiftKey && !editorText();
     const arrow = plainArrow;
     if (!focused || !arrow) promptNavigation = null;
-    if (!focused || !ready || popupActive || composing || event.isComposing) return;
+    const otherInput = !focused && event.target instanceof Element
+      && event.target.closest("input, textarea, select, [contenteditable], dialog, [role=menu]");
+    if ((!focused && !queuedRecall) || otherInput
+        || !ready || popupActive || composing || event.isComposing) return;
     if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
         && event.key.toLowerCase() === "r") {
       event.preventDefault();
@@ -136,6 +140,7 @@
     } else if (queuedRecall) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      input.focus({ preventScroll: true });
       pendingActions.push({ type: "recallQueuedPrompt" });
       dirty = editorText() !== composerState?.text;
       flushDraft();
@@ -910,6 +915,7 @@
             const labelStart = markerStart + 2;
             const marker = document.createElement("span");
             marker.className = "agent-marker";
+            marker.style.animationDelay = `${activityAnimationOrigin - performance.now()}ms`;
             marker.setAttribute("role", "img");
             marker.setAttribute("aria-label", "Agent in progress");
             const label = document.createElement("span");
@@ -950,6 +956,9 @@
             span.style.fontWeight === "700");
           marker.classList.add(completed ? "task-marker-checked"
             : running ? "task-marker-running" : "task-marker-empty");
+          if (running) {
+            marker.style.animationDelay = `${activityAnimationOrigin - performance.now()}ms`;
+          }
           marker.setAttribute("role", "img");
           marker.setAttribute("aria-label", completed ? "Completed task"
             : running ? "Active task" : "Incomplete task");
