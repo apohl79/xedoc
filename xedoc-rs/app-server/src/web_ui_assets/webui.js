@@ -560,15 +560,6 @@
           replacement.append(document.createTextNode(node.data.slice(offset)));
           node.replaceWith(replacement);
         }
-        if (cell.rowStart === 0) {
-          const response = fragment.querySelector(".history-markdown:not(.history-streaming)");
-          if (response) {
-            const spacer = document.createElement("div");
-            spacer.className = "history-response-spacer";
-            spacer.setAttribute("aria-hidden", "true");
-            response.before(spacer);
-          }
-        }
         stored.chunks.set(cell.rowStart, {
           html: cell.html, end: cell.rowEnd, element: fragment,
         });
