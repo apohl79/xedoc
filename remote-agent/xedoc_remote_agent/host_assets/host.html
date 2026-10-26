@@ -21,11 +21,10 @@
   <main id="host-view" hidden>
     <button id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
     <aside id="sidebar" aria-label="Workspaces and projects">
-      <div class="sidebar-brand"><strong><span class="accent">❯</span> Xedoc</strong><button id="sidebar-lock" title="Keep sidebar open" aria-label="Keep sidebar open" aria-pressed="false">⇥</button></div>
+      <div class="sidebar-brand"><strong><span class="accent">❯</span> Xedoc</strong><button id="sidebar-lock" title="Allow sidebar to auto-hide" aria-label="Allow sidebar to auto-hide" aria-pressed="true">⇥</button></div>
       <nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav>
-      <div class="section-title"><h2>Workspaces</h2><button id="add-workspace" title="Add workspace" aria-label="Add workspace" hidden>＋</button></div>
+      <div class="section-title workspace-sidebar-title"><h2>Workspaces</h2><button id="add-workspace" title="Add workspace" aria-label="Add workspace" hidden>＋</button></div>
       <div id="workspaces"></div>
-      <button id="remove-workspace" hidden>Remove workspace</button>
       <div class="section-title project-sidebar-title"><h2>Projects</h2><button id="new-project" title="Add project" aria-label="Add project">＋</button></div>
       <div id="projects"></div>
     </aside>

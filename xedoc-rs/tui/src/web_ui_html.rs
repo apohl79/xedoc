@@ -545,19 +545,53 @@ pub(crate) fn buffer_html(buffer: &Buffer, cursor: Option<(u16, u16)>) -> String
     for row in buffer.area.top()..buffer.area.bottom() {
         html.push_str("<div class=\"line\">");
         let mut column = buffer.area.left();
-        let mut text = String::new();
-        let mut previous = None;
+        let mut cells = Vec::new();
         while column < buffer.area.right() {
             let cell = &buffer[(column, row)];
-            let style = cell.style();
-            let at_cursor = cursor == Some((column, row));
+            cells.push((
+                cell.symbol().to_string(),
+                cell.style(),
+                cursor == Some((column, row)),
+            ));
+            column =
+                column.saturating_add(u16::try_from(cell.symbol().width().max(1)).unwrap_or(1));
+        }
+        let mut text = String::new();
+        let mut previous = None;
+        let mut cell_index = 0;
+        while cell_index < cells.len() {
+            let replacement = match (
+                cells.get(cell_index).map(|cell| cell.0.as_str()),
+                cells.get(cell_index + 1).map(|cell| cell.0.as_str()),
+                cells.get(cell_index + 2).map(|cell| cell.0.as_str()),
+            ) {
+                (Some("="), Some("="), Some("=")) => Some(("≡", 3)),
+                (Some("="), Some(">"), _) => Some(("⇒", 2)),
+                (Some("-"), Some(">"), _) => Some(("→", 2)),
+                _ => None,
+            };
+            let (symbol, style, at_cursor, consumed) = match replacement {
+                Some((symbol, consumed)) => (
+                    symbol,
+                    cells[cell_index].1,
+                    cells[cell_index..cell_index + consumed]
+                        .iter()
+                        .any(|cell| cell.2),
+                    consumed,
+                ),
+                None => (
+                    cells[cell_index].0.as_str(),
+                    cells[cell_index].1,
+                    cells[cell_index].2,
+                    1,
+                ),
+            };
             if previous != Some((style, at_cursor)) {
                 flush_span(&mut html, &mut text, previous);
                 previous = Some((style, at_cursor));
             }
-            text.push_str(cell.symbol());
-            column =
-                column.saturating_add(u16::try_from(cell.symbol().width().max(1)).unwrap_or(1));
+            text.push_str(symbol);
+            cell_index += consumed;
         }
         flush_span(&mut html, &mut text, previous);
         html.push_str("</div>");
@@ -572,11 +606,7 @@ fn flush_span(html: &mut String, text: &mut String, style: Option<(Style, bool)>
     if let Some((style, cursor)) = style {
         let class = if cursor { " class=\"cursor\"" } else { "" };
         let _ = write!(html, "<span{class} style=\"{}\">", css_style(style));
-        let translated = text
-            .replace("===", "≡")
-            .replace("=>", "⇒")
-            .replace("->", "→");
-        escape_html(html, &translated);
+        escape_html(html, text);
         html.push_str("</span>");
     }
     text.clear();

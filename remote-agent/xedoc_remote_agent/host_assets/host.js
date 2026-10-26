@@ -19,7 +19,7 @@
   let refreshingRestartState = false;
   let sidebarLocked = (() => {
     try {
-      const saved = localStorage.getItem("xedoc-host-sidebar-locked");
+      const saved = localStorage.getItem("xedoc-host-sidebar-locked-v2");
       return saved === null || saved === "true";
     } catch {
       return true;
@@ -63,7 +63,7 @@
   function setSidebarLocked(locked) {
     sidebarLocked = locked;
     try {
-      localStorage.setItem("xedoc-host-sidebar-locked", String(locked));
+      localStorage.setItem("xedoc-host-sidebar-locked-v2", String(locked));
     } catch {
       // Keep the current session usable when browser storage is unavailable.
     }
@@ -196,6 +196,7 @@
       activeThread = null;
     }
     byId("workspaces").replaceChildren(...state.workspaces.map((entry) => {
+      const row = text("div", "", "workspace-row");
       const element = button(entry.workspaceId, async () => {
         selectedWorkspace = entry.workspaceId;
         selectedProject = null;
@@ -205,7 +206,42 @@
       });
       element.className = `workspace${selectedWorkspace === entry.workspaceId ? " selected" : ""}`;
       element.dataset.id = entry.workspaceId;
-      return element;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "workspace-remove";
+      remove.title = `Remove ${entry.workspaceId}`;
+      remove.setAttribute("aria-label", remove.title);
+      remove.hidden = !admin;
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 20 20");
+      icon.setAttribute("fill", "none");
+      icon.setAttribute("stroke", "currentColor");
+      icon.setAttribute("stroke-width", "1.6");
+      icon.setAttribute("stroke-linecap", "round");
+      icon.setAttribute("stroke-linejoin", "round");
+      icon.setAttribute("aria-hidden", "true");
+      const bin = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      bin.setAttribute("d", "M3.5 5.5h13M8 5.5V3.8h4v1.7m3.2 0-.8 10.7H5.6L4.8 5.5m3.4 3v4.7m3.6-4.7v4.7");
+      icon.append(bin);
+      remove.append(icon);
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        run(async () => {
+          if (!confirm(`Remove workspace “${entry.workspaceId}”? Its directories will not be deleted.`)) return;
+          await api("workspace/remove", { workspaceId: entry.workspaceId });
+          projectCache.clear();
+          projectActivityLoaded.clear();
+          projectActivityRefreshAt.clear();
+          if (selectedWorkspace === entry.workspaceId) {
+            selectedWorkspace = null;
+            selectedProject = null;
+            activeThread = null;
+          }
+          await refresh();
+        });
+      });
+      row.append(element, remove);
+      return row;
     }));
     if (state.restartRequired) {
       notice("Workspace configuration saved. The broker will restart automatically after active turns finish.");
@@ -285,7 +321,6 @@
     sessionFrames.forEach((frame) => { frame.hidden = true; });
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
     byId("host-view").classList.toggle("has-project", Boolean(entry && selectedProject));
-    byId("remove-workspace").hidden = !entry || state.account.role !== "admin";
     byId("new-project").hidden = !entry;
     byId("project-empty").hidden = Boolean(entry && selectedProject);
     byId("session-workspace").hidden = !entry || !selectedProject;
@@ -709,17 +744,6 @@
     projectActivityRefreshAt.clear();
     await refresh();
   });
-  byId("remove-workspace").addEventListener("click", () => run(async () => {
-    if (!confirm(`Remove workspace “${selectedWorkspace}”? Its directories will not be deleted.`)) return;
-    await api("workspace/remove", { workspaceId: selectedWorkspace });
-    projectCache.clear();
-    projectActivityLoaded.clear();
-    projectActivityRefreshAt.clear();
-    selectedWorkspace = null;
-    selectedProject = null;
-    activeThread = null;
-    await refresh();
-  }));
   byId("new-project").addEventListener("click", () => {
     if (!selectedWorkspace) return;
     byId("project-form").reset();
