@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Xedoc · Workspaces</title>
+  <title>Xedoc</title>
   <link rel="stylesheet" href="/host.css">
   <script src="/activity.js" defer></script>
   <script src="/host.js" defer></script>
@@ -19,7 +19,7 @@
     </form>
   </main>
   <main id="host-view" hidden>
-    <button id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="false">☰</button>
+    <button id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
     <aside id="sidebar" aria-label="Workspaces and projects">
       <div class="sidebar-brand"><strong><span class="accent">❯</span> Xedoc</strong><button id="sidebar-lock" title="Keep sidebar open" aria-label="Keep sidebar open" aria-pressed="false">⇥</button></div>
       <nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav>
@@ -35,6 +35,7 @@
         <div class="tab-strip"><span id="project-title"></span><div id="sessions" class="session-tabs" role="tablist" aria-label="Project sessions"></div><button id="session-menu-button" title="New or resume session" aria-label="New or resume session">＋</button></div>
         <div id="session-empty" class="empty-state" hidden>No recent sessions. Start a new session or resume one.</div>
         <section id="session-view" hidden>
+          <div id="session-loading" class="loading loading-session" role="status" hidden>Loading session…</div>
           <div id="session-frames"></div>
         </section>
       </section>

@@ -47,12 +47,15 @@ window.XedocHostActivity = class {
   }
 
   observeProjects(projects, workspaceId) {
+    let observedActivity = false;
     for (const project of projects) {
       for (const session of project.sessionActivity || []) {
         this.observe(session, workspaceId, project.name);
+        observedActivity = true;
       }
     }
     this.paint();
+    if (!observedActivity) return;
     try {
       localStorage.setItem(`xedoc-last-active:${this.account}`, String(Date.now() / 1000));
       this.lastVisit = Date.now() / 1000;

@@ -140,7 +140,7 @@ class HostAuth:
             if len(self.sessions) >= 256:
                 self.sessions.pop(next(iter(self.sessions)))
             token = secrets.token_urlsafe(48)
-            self.sessions[token] = (name, now + 12 * 3600)
+            self.sessions[token] = (name, now + 7 * 24 * 3600)
             return token
 
     def account(self, token: str) -> dict:

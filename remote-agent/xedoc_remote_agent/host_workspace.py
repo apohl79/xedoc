@@ -54,6 +54,9 @@ class HostWorkspaces:
         self._session_state_path = home / "host-gui" / "closed-sessions.json"
         self._closed_sessions = self._read_session_state()
         self._client = None
+        self._activity_client = None
+        self._activity_lock = threading.Lock()
+        self._closed = False
         self._live_items = _LiveTurnItems()
         self._active_turns: dict[str, str] = {}
         self._lock = threading.RLock()
@@ -123,27 +126,47 @@ class HostWorkspaces:
                 self._closed_sessions[username] = old_value
             raise
 
+    def _new_client(self, *, observe_notifications: bool) -> Any:
+        descriptor = load_bootstrap_descriptor(self._bootstrap_path)
+        client = _default_client_factory(descriptor.socket_path, 30.0)
+        try:
+            client.initialize("xedoc-host-gui", "Xedoc Host GUI", "0.1.0")
+            if observe_notifications:
+                set_handler = getattr(client, "set_notification_handler", None)
+                if callable(set_handler):
+                    set_handler(self._observe_notification)
+            client.set_server_request_handler(lambda message: None)
+            return client
+        except Exception:
+            client.close()
+            raise
+
     def _request(self, method: str, params: dict) -> dict:
         with self._lock:
             try:
+                if self._closed:
+                    raise BrokerError.unavailable()
                 if self._client is None:
-                    descriptor = load_bootstrap_descriptor(self._bootstrap_path)
-                    client = _default_client_factory(descriptor.socket_path, 30.0)
-                    try:
-                        client.initialize("xedoc-host-gui", "Xedoc Host GUI", "0.1.0")
-                    except Exception:
-                        client.close()
-                        raise
-                    set_handler = getattr(client, "set_notification_handler", None)
-                    if callable(set_handler):
-                        set_handler(self._observe_notification)
-                    client.set_server_request_handler(lambda message: None)
-                    self._client = client
+                    self._client = self._new_client(observe_notifications=True)
                 return self._client.request(method, params)
             except Exception as error:
                 if self._client is not None:
                     self._client.close()
                     self._client = None
+                raise map_controller_error(error) from error
+
+    def _activity_request(self, method: str, params: dict) -> dict:
+        with self._activity_lock:
+            try:
+                if self._closed:
+                    raise BrokerError.unavailable()
+                if self._activity_client is None:
+                    self._activity_client = self._new_client(observe_notifications=False)
+                return self._activity_client.request(method, params)
+            except Exception as error:
+                if self._activity_client is not None:
+                    self._activity_client.close()
+                    self._activity_client = None
                 raise map_controller_error(error) from error
 
     def _config(self) -> tuple[dict, dict]:
@@ -339,12 +362,13 @@ class HostWorkspaces:
             if workspace_id not in roots:
                 raise BrokerError.not_found()
             projects = self.browse(roots[workspace_id])["entries"]
-            activity = {}
-            session_activity = {}
+        activity = {}
+        session_activity = {}
+        if activity_only:
             cutoff = int(time.time()) - 48 * 3600
             cursor = None
             for _ in range(_SESSION_HISTORY_LIMIT):
-                page = self._request(
+                page = self._activity_request(
                     "thread/list",
                     {
                         "limit": _SESSION_PAGE_SIZE,
@@ -354,7 +378,7 @@ class HostWorkspaces:
                         "modelProviders": [],
                         "sourceKinds": _THREAD_SOURCES,
                         "archived": False,
-                        "useStateDbOnly": activity_only,
+                        "useStateDbOnly": True,
                     },
                 )
                 for thread in page.get("data", []):
@@ -368,7 +392,9 @@ class HostWorkspaces:
                         if (
                             isinstance(thread_id, str)
                             and len(thread_id) <= _SESSION_ID_LIMIT
-                            and (updated >= cutoff or status.get("type") == "active")
+                            and (
+                                updated >= cutoff or status.get("type") == "active"
+                            )
                         ):
                             entries = session_activity.setdefault(key, [])
                             if len(entries) < 500:
@@ -390,13 +416,13 @@ class HostWorkspaces:
                 cursor = page.get("nextCursor")
                 if not cursor:
                     break
-            for project in projects:
-                key = os.path.normcase(os.path.realpath(project["path"]))
-                project["updatedAt"] = activity.get(key, 0)
-                project["sessionActivity"] = session_activity.get(key, [])
-            return sorted(
-                projects, key=lambda project: (-project["updatedAt"], project["name"])
-            )
+        for project in projects:
+            key = os.path.normcase(os.path.realpath(project["path"]))
+            project["updatedAt"] = activity.get(key, 0)
+            project["sessionActivity"] = session_activity.get(key, [])
+        return sorted(
+            projects, key=lambda project: (-project["updatedAt"], project["name"])
+        )
 
     def create_project(self, workspace_id: str, name: str) -> None:
         if (
@@ -823,6 +849,11 @@ class HostWorkspaces:
 
     def close(self) -> None:
         with self._lock:
+            self._closed = True
             if self._client is not None:
                 self._client.close()
                 self._client = None
+        with self._activity_lock:
+            if self._activity_client is not None:
+                self._activity_client.close()
+                self._activity_client = None

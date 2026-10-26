@@ -194,7 +194,7 @@ class HostHandler(BaseHTTPRequestHandler):
             self.send_header(
                 "Set-Cookie",
                 f"xedoc_host={cookie}; Path=/; HttpOnly; SameSite=Strict; "
-                f"Max-Age={43200 if cookie else 0}"
+                f"Max-Age={604800 if cookie else 0}"
                 + ("; Secure" if self.server.secure else ""),
             )
         self.end_headers()
@@ -290,7 +290,8 @@ class HostHandler(BaseHTTPRequestHandler):
                     for entry in state["workspaces"]
                     if entry["workspaceId"] in allowed
                 ]
-                self.reply(200, {**state, "account": account})
+                hostname = socket.gethostname().split(".", 1)[0]
+                self.reply(200, {**state, "account": account, "hostname": hostname})
                 return
             workspace_id = (
                 body.get("workspaceId")

@@ -7,11 +7,24 @@
   let activeThread = null;
   let projectRequest = 0;
   let sessionRequest = 0;
+  let projectViewRequest = 0;
+  let accountGeneration = 0;
   const sessionFrames = new Map();
   const openedSessions = new Map();
+  const projectCache = new Map();
+  const sessionCache = new Map();
+  const projectActivityLoaded = new Set();
+  const projectActivityRefreshAt = new Map();
   const activity = new window.XedocHostActivity();
   let refreshingRestartState = false;
-  let sidebarLocked = false;
+  let sidebarLocked = (() => {
+    try {
+      const saved = localStorage.getItem("xedoc-host-sidebar-locked");
+      return saved === null || saved === "true";
+    } catch {
+      return true;
+    }
+  })();
 
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "xedoc-session-activity") return;
@@ -41,13 +54,31 @@
   }
 
   function setSidebarOpen(open) {
-    byId("host-view").classList.toggle("sidebar-open", open);
+    const hostView = byId("host-view");
+    hostView.classList.toggle("sidebar-open", open);
+    hostView.classList.toggle("sidebar-hidden", !sidebarLocked);
     byId("sidebar-toggle").setAttribute("aria-expanded", String(open));
   }
 
+  function setSidebarLocked(locked) {
+    sidebarLocked = locked;
+    try {
+      localStorage.setItem("xedoc-host-sidebar-locked", String(locked));
+    } catch {
+      // Keep the current session usable when browser storage is unavailable.
+    }
+    const button = byId("sidebar-lock");
+    button.setAttribute("aria-pressed", String(locked));
+    button.title = locked ? "Allow sidebar to auto-hide" : "Keep sidebar visible";
+    button.setAttribute("aria-label", button.title);
+    const toggle = byId("sidebar-toggle");
+    toggle.title = locked ? "Hide sidebar" : "Keep sidebar visible";
+    toggle.setAttribute("aria-label", toggle.title);
+    setSidebarOpen(locked);
+  }
+
   byId("sidebar-toggle").addEventListener("pointerenter", () => setSidebarOpen(true));
-  byId("sidebar-toggle").addEventListener("click", () =>
-    setSidebarOpen(!byId("host-view").classList.contains("sidebar-open")));
+  byId("sidebar-toggle").addEventListener("click", () => setSidebarLocked(!sidebarLocked));
   byId("sidebar").addEventListener("pointerleave", () => {
     if (!sidebarLocked) setSidebarOpen(false);
   });
@@ -57,10 +88,7 @@
       && !byId("sidebar").matches(":hover")) setSidebarOpen(false);
   });
   byId("sidebar-lock").addEventListener("click", () => {
-    sidebarLocked = !sidebarLocked;
-    byId("sidebar-lock").setAttribute("aria-pressed", String(sidebarLocked));
-    byId("host-view").classList.toggle("sidebar-locked", sidebarLocked);
-    setSidebarOpen(sidebarLocked);
+    setSidebarLocked(!sidebarLocked);
   });
 
   function notice(message = "") {
@@ -87,7 +115,17 @@
     return `${path}?${params.toString()}`;
   }
 
+  function projectCacheKey(workspaceId, username = state?.account?.username) {
+    return username ? JSON.stringify([username, workspaceId]) : null;
+  }
+
+  function projectSessionKey(workspaceId, projectName, username = state?.account?.username) {
+    return username ? JSON.stringify([username, workspaceId, projectName]) : null;
+  }
+
   function showLogin() {
+    accountGeneration++;
+    projectViewRequest++;
     state = null;
     activeThread = null;
     selectedWorkspace = null;
@@ -97,6 +135,10 @@
     activity.setAccount(null);
     sessionFrames.clear();
     openedSessions.clear();
+    projectCache.clear();
+    sessionCache.clear();
+    projectActivityLoaded.clear();
+    projectActivityRefreshAt.clear();
     byId("session-frames").replaceChildren();
     byId("host-view").hidden = true;
     byId("navigation").hidden = true;
@@ -138,9 +180,11 @@
 
   async function refresh() {
     state = await api("state");
+    document.title = `Xedoc - ${state.hostname || "Host"}`;
     activity.setAccount(state.account.username);
     byId("login-view").hidden = true;
     byId("host-view").hidden = false;
+    setSidebarLocked(sidebarLocked);
     byId("navigation").hidden = false;
     byId("identity").textContent = state.account.username;
     const admin = state.account.role === "admin";
@@ -156,6 +200,7 @@
         selectedWorkspace = entry.workspaceId;
         selectedProject = null;
         activeThread = null;
+        sessionRequest++;
         await renderWorkspace();
       });
       element.className = `workspace${selectedWorkspace === entry.workspaceId ? " selected" : ""}`;
@@ -168,6 +213,42 @@
     await renderWorkspace();
   }
 
+  function applyProjectActivity(workspaceId, projects) {
+    const key = projectCacheKey(workspaceId);
+    if (!key) return;
+    projectCache.set(key, projects);
+    projectActivityLoaded.add(key);
+    projectActivityRefreshAt.set(key, Date.now());
+    activity.observeProjects(projects, workspaceId);
+    if (workspaceId !== selectedWorkspace) return;
+    const rows = new Map([...byId("projects").children].map((row) => {
+      const project = row.querySelector(".project");
+      return [project?.dataset.name, row];
+    }));
+    const pins = new Set(projectPins());
+    const sorted = [...projects].sort((left, right) =>
+      Number(pins.has(right.name)) - Number(pins.has(left.name))
+      || (right.updatedAt || 0) - (left.updatedAt || 0)
+      || left.name.localeCompare(right.name));
+    for (const project of sorted) {
+      const row = rows.get(project.name);
+      if (row) byId("projects").append(row);
+    }
+    activity.paint();
+  }
+
+  async function refreshProjectActivity(workspaceId, force = false) {
+    const username = state?.account?.username;
+    const generation = accountGeneration;
+    const key = projectCacheKey(workspaceId, username);
+    if (!key || (!force && projectActivityLoaded.has(key))) return;
+    const result = await api(
+      `projects?workspaceId=${encodeURIComponent(workspaceId)}&activity=1`
+    );
+    if (generation !== accountGeneration || state?.account?.username !== username) return;
+    applyProjectActivity(workspaceId, result.projects || []);
+  }
+
   async function refreshRestartState() {
     if (refreshingRestartState) return;
     refreshingRestartState = true;
@@ -175,10 +256,14 @@
     try {
       state = await api("state");
       const workspaceId = selectedWorkspace;
-      if (workspaceId) {
-        const result = await api(`projects?workspaceId=${encodeURIComponent(workspaceId)}&activity=1`);
+      const key = projectCacheKey(workspaceId);
+      if (
+        key
+        && projectActivityLoaded.has(key)
+        && Date.now() - (projectActivityRefreshAt.get(key) || 0) >= 30_000
+      ) {
+        await refreshProjectActivity(workspaceId, true);
         if (workspaceId === selectedWorkspace && state) {
-          activity.observeProjects(result.projects || [], workspaceId);
           activity.markVisible();
         }
       }
@@ -196,6 +281,7 @@
   }
 
   async function renderWorkspace() {
+    projectViewRequest++;
     sessionFrames.forEach((frame) => { frame.hidden = true; });
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
     byId("host-view").classList.toggle("has-project", Boolean(entry && selectedProject));
@@ -206,23 +292,61 @@
     document.querySelectorAll(".workspace").forEach((element) => {
       element.classList.toggle("selected", element.dataset.id === selectedWorkspace);
     });
-    byId("projects").replaceChildren();
     const request = ++projectRequest;
+    const username = state.account.username;
+    const generation = accountGeneration;
+    const cacheKey = projectCacheKey(selectedWorkspace, username);
+    const cachedProjects = projectCache.get(cacheKey);
     if (!entry) {
+      byId("projects").replaceChildren();
       byId("session-workspace").hidden = true;
       byId("project-empty").textContent = "No workspaces are assigned to this account.";
       byId("project-empty").hidden = false;
       return;
     }
     byId("project-empty").textContent = "Select a project to view its sessions.";
-    const result = await api(`projects?workspaceId=${encodeURIComponent(selectedWorkspace)}`);
-    if (request !== projectRequest) return;
-    activity.observeProjects(result.projects || [], selectedWorkspace);
+    let workspaceProjects = cachedProjects;
+    if (!workspaceProjects) {
+      byId("projects").replaceChildren(text("div", "Loading projects…", "loading loading-row"));
+      byId("project-empty").classList.add("loading");
+      byId("project-empty").textContent = "Loading projects…";
+      byId("project-empty").hidden = false;
+      try {
+        const result = await api(
+          `projects?workspaceId=${encodeURIComponent(selectedWorkspace)}`
+        );
+        if (
+          request !== projectRequest
+          || generation !== accountGeneration
+          || state?.account?.username !== username
+        ) return;
+        workspaceProjects = result.projects || [];
+        projectCache.set(cacheKey, workspaceProjects);
+      } catch (error) {
+        if (request === projectRequest) {
+          byId("project-empty").textContent = "Could not load projects.";
+        }
+        throw error;
+      } finally {
+        if (
+          request === projectRequest
+          && generation === accountGeneration
+          && state?.account?.username === username
+        ) byId("project-empty").classList.remove("loading");
+      }
+    }
+    if (
+      request !== projectRequest
+      || generation !== accountGeneration
+      || state?.account?.username !== username
+    ) return;
+    byId("project-empty").textContent = "Select a project to view its sessions.";
     const pins = new Set(projectPins());
-    const projects = (result.projects || []).sort((left, right) =>
+    const projects = [...workspaceProjects].sort((left, right) =>
       Number(pins.has(right.name)) - Number(pins.has(left.name))
       || (right.updatedAt || 0) - (left.updatedAt || 0)
       || left.name.localeCompare(right.name));
+    byId("projects").replaceChildren();
     if (!projects.some((project) => project.name === selectedProject)) {
       selectedProject = projects[0]?.name || null;
       activeThread = null;
@@ -232,7 +356,11 @@
       const element = button("", async () => {
         if (selectedProject !== project.name) activeThread = null;
         selectedProject = project.name;
-        await renderWorkspace();
+        document.querySelectorAll(".project").forEach((item) => {
+          item.classList.toggle("selected", item.dataset.name === selectedProject);
+        });
+        byId("host-view").classList.add("has-project");
+        await renderProject(project);
       });
       element.className = `project${selectedProject === project.name ? " selected" : ""}`;
       element.title = project.path;
@@ -265,39 +393,109 @@
       const project = projects.find((item) => item.name === selectedProject);
       if (project) await renderProject(project);
     }
+    if (request === projectRequest && !projectActivityLoaded.has(cacheKey)) {
+      void refreshProjectActivity(selectedWorkspace).catch(() => {});
+    }
   }
 
   async function renderProject(project) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     const request = ++sessionRequest;
+    const viewRequest = ++projectViewRequest;
+    const username = state.account.username;
+    const generation = accountGeneration;
+    const isCurrentView = () => (
+      viewRequest === projectViewRequest
+      && generation === accountGeneration
+      && state?.account?.username === username
+      && workspaceId === selectedWorkspace
+      && projectName === selectedProject
+    );
     if (!project || !workspaceId || !projectName) return;
     byId("project-empty").hidden = true;
     byId("session-workspace").hidden = false;
     byId("project-title").textContent = project.name;
-    const response = await api(query("project/sessions", {
-      workspaceId,
-      projectName,
-    }));
-    if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
-    const sessions = projectSessions(response.sessions);
+    const key = projectSessionKey(workspaceId, projectName, username);
+    const cachedSessions = sessionCache.get(key);
+    if (cachedSessions) {
+      const threadId = applyProjectSessions(cachedSessions);
+      if (threadId) {
+        byId("session-view").hidden = false;
+        void openSession(threadId).catch((error) => notice(error.message));
+      } else {
+        byId("session-view").hidden = true;
+      }
+      api(query("project/sessions", { workspaceId, projectName }))
+        .then((response) => {
+          if (!isCurrentView()) return;
+          sessionCache.set(key, response.sessions || []);
+          const previousThread = activeThread;
+          const threadId = applyProjectSessions(response.sessions || []);
+          if (threadId !== previousThread) {
+            if (threadId) {
+              byId("session-view").hidden = false;
+              void openSession(threadId).catch((error) => notice(error.message));
+            } else {
+              byId("session-view").hidden = true;
+              sessionFrames.forEach((frame) => { frame.hidden = true; });
+            }
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+    byId("sessions").replaceChildren();
+    byId("session-empty").classList.add("loading");
+    byId("session-empty").textContent = "Loading sessions…";
+    byId("session-empty").hidden = false;
+    byId("session-view").hidden = true;
+    try {
+      const response = await api(query("project/sessions", {
+        workspaceId,
+        projectName,
+      }));
+      if (
+        request !== sessionRequest
+        || !isCurrentView()
+      ) return;
+      sessionCache.set(key, response.sessions || []);
+      const threadId = applyProjectSessions(response.sessions || []);
+      if (threadId) {
+        byId("session-view").hidden = false;
+        await openSession(threadId);
+      } else {
+        sessionFrames.forEach((frame) => { frame.hidden = true; });
+      }
+    } catch (error) {
+      if (isCurrentView() && byId("session-empty").classList.contains("loading")) {
+        byId("session-empty").textContent = "Could not load sessions.";
+        byId("session-empty").hidden = false;
+      }
+      throw error;
+    } finally {
+      if (isCurrentView()) byId("session-empty").classList.remove("loading");
+    }
+  }
+
+  function applyProjectSessions(items) {
+    const sessions = projectSessions(items);
     byId("sessions").replaceChildren(...sessions.map((session) => sessionTab(session)));
+    byId("session-empty").classList.remove("loading");
+    byId("session-empty").textContent = sessions.length
+      ? ""
+      : "No recent sessions. Start a new session or resume one.";
     byId("session-empty").hidden = sessions.length > 0;
     if (!sessions.some((session) => session.threadId === activeThread)) {
       activeThread = sessions[0]?.threadId || null;
     }
-    if (!activeThread) {
-      byId("session-view").hidden = true;
-      sessionFrames.forEach((frame) => { frame.hidden = true; });
-      return;
-    }
-    byId("session-view").hidden = false;
-    await openSession(activeThread);
+    return activeThread;
   }
 
   function sessionTab(session) {
     const element = document.createElement("div");
     element.className = "session-tab";
+    element.dataset.threadId = session.threadId;
     element.setAttribute("role", "tab");
     element.setAttribute("aria-selected", String(session.threadId === activeThread));
     element.tabIndex = 0;
@@ -332,60 +530,75 @@
     return result;
   }
 
-  async function refreshTabs(openedSession = null) {
-    const workspaceId = selectedWorkspace;
-    const projectName = selectedProject;
-    if (!workspaceId || !projectName) return;
-    const response = await api(query("project/sessions", {
-      workspaceId,
-      projectName,
-    }));
-    if (workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
-    const sessions = projectSessions(response.sessions);
-    if (openedSession && !sessions.some((session) => session.threadId === openedSession.threadId)) {
-      sessions.unshift(openedSession);
-    }
-    byId("sessions").replaceChildren(...sessions.map(sessionTab));
-    activity.paint();
-    byId("session-empty").hidden = sessions.length > 0;
-    if (!sessions.some((session) => session.threadId === activeThread)) {
-      activeThread = sessions[0]?.threadId || null;
-    }
-  }
-
   async function openSession(threadId, archived = false) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     if (!workspaceId || !projectName) return;
     const request = ++sessionRequest;
-    const openedSession = await api("session/open", { workspaceId, projectName, threadId, archived });
-    if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
-    activeThread = threadId;
-    openedSessions.set(threadId, { ...openedSession, workspaceId, projectName, threadId });
-    byId("session-view").hidden = false;
-    await refreshTabs({ threadId, title: openedSession.title || threadId });
-    const result = await api("session/gui", { workspaceId, projectName, threadId });
-    if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
-    let frame = sessionFrames.get(threadId);
-    if (!frame) {
-      frame = document.createElement("iframe");
-      frame.className = "session-frame";
-      frame.title = openedSession.title || "Xedoc session";
-      sessionFrames.set(threadId, frame);
-      byId("session-frames").append(frame);
+    const cachedFrame = sessionFrames.get(threadId);
+    if (cachedFrame && openedSessions.has(threadId)) {
+      activeThread = threadId;
+      byId("session-view").hidden = false;
+      byId("session-loading").hidden = true;
+      sessionFrames.forEach((frame) => { frame.hidden = frame !== cachedFrame; });
+      document.querySelectorAll(".session-tab").forEach((tab) => {
+        tab.setAttribute("aria-selected", String(tab.dataset.threadId === threadId));
+      });
+      activity.markVisible();
+      return;
     }
-    if (frame.getAttribute("src") !== result.guiUrl) frame.src = result.guiUrl;
-    sessionFrames.forEach((item) => { item.hidden = item !== frame; });
-    activity.markVisible();
+    byId("session-view").hidden = false;
+    byId("session-loading").hidden = false;
+    sessionFrames.forEach((frame) => { frame.hidden = true; });
+    try {
+      const openedSession = await api("session/open", {
+        workspaceId,
+        projectName,
+        threadId,
+        archived,
+      });
+      if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
+      activeThread = threadId;
+      openedSessions.set(threadId, { ...openedSession, workspaceId, projectName, threadId });
+      if (![...byId("sessions").children].some((tab) => tab.dataset.threadId === threadId)) {
+        byId("sessions").prepend(sessionTab({ ...openedSession, threadId }));
+      }
+      byId("session-empty").hidden = true;
+      document.querySelectorAll(".session-tab").forEach((tab) => {
+        tab.setAttribute("aria-selected", String(tab.dataset.threadId === threadId));
+      });
+      const result = await api("session/gui", { workspaceId, projectName, threadId });
+      if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
+      let frame = sessionFrames.get(threadId);
+      if (!frame) {
+        frame = document.createElement("iframe");
+        frame.className = "session-frame";
+        frame.title = openedSession.title || "Xedoc session";
+        frame.addEventListener("load", () => {
+          if (activeThread === threadId) byId("session-loading").hidden = true;
+        });
+        sessionFrames.set(threadId, frame);
+        byId("session-frames").append(frame);
+      }
+      if (frame.getAttribute("src") !== result.guiUrl) frame.src = result.guiUrl;
+      else byId("session-loading").hidden = true;
+      sessionFrames.forEach((item) => { item.hidden = item !== frame; });
+      activity.markVisible();
+    } catch (error) {
+      if (request === sessionRequest) byId("session-loading").hidden = true;
+      throw error;
+    }
   }
 
   async function closeSession(threadId) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
+    sessionRequest++;
     await api("session/close", { workspaceId, projectName, threadId });
     sessionFrames.get(threadId)?.remove();
     sessionFrames.delete(threadId);
     openedSessions.delete(threadId);
+    sessionCache.delete(projectSessionKey(workspaceId, projectName));
     if (threadId === activeThread) {
       activeThread = null;
       byId("session-view").hidden = true;
@@ -395,24 +608,44 @@
 
   async function startNewSession() {
     byId("session-menu").close();
-    const result = await api("session/new", {
-      workspaceId: selectedWorkspace,
-      projectName: selectedProject,
-    });
-    activeThread = result.threadId;
-    await openSession(result.threadId);
+    byId("session-view").hidden = false;
+    byId("session-loading").hidden = false;
+    sessionFrames.forEach((frame) => { frame.hidden = true; });
+    try {
+      const result = await api("session/new", {
+        workspaceId: selectedWorkspace,
+        projectName: selectedProject,
+      });
+      const key = projectSessionKey(selectedWorkspace, selectedProject);
+      const sessions = sessionCache.get(key) || [];
+      if (!sessions.some((session) => session.threadId === result.threadId)) {
+        sessions.unshift({ ...result, updatedAt: Math.floor(Date.now() / 1000) });
+      }
+      sessionCache.set(key, sessions);
+      activeThread = result.threadId;
+      await openSession(result.threadId);
+    } catch (error) {
+      byId("session-loading").hidden = true;
+      throw error;
+    }
   }
 
   async function showResumePicker() {
     byId("session-menu").close();
     byId("resume-project").textContent = selectedProject;
-    byId("resume-sessions").replaceChildren(text("p", "Loading sessions…", "muted"));
+    byId("resume-sessions").replaceChildren(text("p", "Loading sessions…", "loading"));
     byId("resume-dialog").showModal();
-    const response = await api(query("project/sessions", {
-      workspaceId: selectedWorkspace,
-      projectName: selectedProject,
-      includeHistory: "1",
-    }));
+    let response;
+    try {
+      response = await api(query("project/sessions", {
+        workspaceId: selectedWorkspace,
+        projectName: selectedProject,
+        includeHistory: "1",
+      }));
+    } catch (error) {
+      byId("resume-sessions").replaceChildren(text("p", "Could not load sessions.", "muted"));
+      throw error;
+    }
     const sessions = response.sessions || [];
     byId("resume-sessions").replaceChildren(...sessions.map((session) => {
       const element = document.createElement("button");
@@ -471,11 +704,17 @@
       create: data.has("create"),
     });
     byId("workspace-dialog").close();
+    projectCache.clear();
+    projectActivityLoaded.clear();
+    projectActivityRefreshAt.clear();
     await refresh();
   });
   byId("remove-workspace").addEventListener("click", () => run(async () => {
     if (!confirm(`Remove workspace “${selectedWorkspace}”? Its directories will not be deleted.`)) return;
     await api("workspace/remove", { workspaceId: selectedWorkspace });
+    projectCache.clear();
+    projectActivityLoaded.clear();
+    projectActivityRefreshAt.clear();
     selectedWorkspace = null;
     selectedProject = null;
     activeThread = null;
@@ -490,6 +729,10 @@
     await api("project/create", { workspaceId: selectedWorkspace, name: data.get("name") });
     byId("project-dialog").close();
     selectedProject = data.get("name");
+    const cacheKey = projectCacheKey(selectedWorkspace);
+    projectCache.delete(cacheKey);
+    projectActivityLoaded.delete(cacheKey);
+    projectActivityRefreshAt.delete(cacheKey);
     await renderWorkspace();
   });
   async function browse(path = "") {
@@ -566,7 +809,7 @@
     if (state && !byId("host-view").hidden) {
       refreshRestartState();
     }
-  }, 2000);
+  }, 10000);
   run(async () => {
     try {
       await refresh();

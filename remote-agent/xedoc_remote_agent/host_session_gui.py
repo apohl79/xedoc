@@ -96,24 +96,29 @@ class HostSessionGuis:
         ):
             raise BrokerError.unavailable("Invalid local GUI address")
         with self.lock:
+            connected = None
             for token, entry in list(self.entries.items()):
                 if (entry["username"], entry["threadId"]) == (username, thread_id):
-                    if entry["address"].netloc == address.netloc and self._connected(
-                        address
-                    ):
-                        return {"guiUrl": f"/session-ui/{token}/#capability={token}"}
+                    if entry["address"].netloc == address.netloc:
+                        connected = self._connected(address)
+                        if connected:
+                            return {
+                                "guiUrl": f"/session-ui/{token}/#capability={token}"
+                            }
                     self.entries.pop(token)
-            if not self._connected(address):
+            if connected is not True:
                 previous = self.producers.pop(thread_id, None)
                 if previous is not None:
                     previous.close()
+                if connected is None:
+                    connected = self._connected(address)
             if len(self.entries) >= 16:
                 raise BrokerError.limit_exceeded(
                     "Close a session tab before opening another"
                 )
             client = None
             try:
-                if not self._connected(address):
+                if not connected:
                     binary = (
                         self.home
                         / "packages"
@@ -152,13 +157,16 @@ class HostSessionGuis:
                         }
                     )
                     deadline = time.monotonic() + 20
-                    while not self._connected(address):
-                        if client.stopped.is_set() or time.monotonic() >= deadline:
+                    while True:
+                        remaining = deadline - time.monotonic()
+                        if client.stopped.is_set() or remaining <= 0:
                             raise BrokerError.unavailable(
                                 "Original GUI did not start. Use a binary supporting --gui-hosted "
                                 "and complete any first-run trust or sign-in screens in the TUI."
                             )
-                        time.sleep(0.1)
+                        if self._connected(address, timeout=min(0.5, remaining)):
+                            break
+                        time.sleep(min(0.1, max(0, deadline - time.monotonic())))
                 token = secrets.token_hex(24)
                 self.entries[token] = {
                     "username": username,
@@ -176,14 +184,13 @@ class HostSessionGuis:
                 raise
 
     @staticmethod
-    def _connected(address):
+    def _connected(address, *, timeout=0.5):
         connection = http.client.HTTPConnection(
-            address.hostname, address.port, timeout=3
+            address.hostname, address.port, timeout=timeout
         )
         try:
             connection.request("GET", "/")
             response = connection.getresponse()
-            response.read(2_000_000)
             return response.getheader("X-Xedoc-Producer-Connected") == "true"
         except (http.client.HTTPException, OSError):
             return False
