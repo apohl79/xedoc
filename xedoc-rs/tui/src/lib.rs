@@ -1650,6 +1650,7 @@ async fn run_ratatui_app(
         startup_elapsed_before_app,
         startup_bootstrap,
         startup_hooks_browser,
+        cli.gui_hosted,
     )
     .await;
 

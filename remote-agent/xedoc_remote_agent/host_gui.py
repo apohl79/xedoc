@@ -19,6 +19,7 @@ from .errors import BrokerError, ErrorCode
 from .host_auth import HostAuth
 from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
+from .host_session_gui import HostSessionGuis, proxy_session_gui
 from .work_admission import WorkAdmissionGate
 
 
@@ -35,9 +36,7 @@ class HostServer(ThreadingHTTPServer):
         on_workspace_config_changed: Callable[[], None] | None = None,
         work_admission: WorkAdmissionGate | None = None,
     ):
-        self.address_family = (
-            socket.AF_INET6 if ":" in address[0] else socket.AF_INET
-        )
+        self.address_family = socket.AF_INET6 if ":" in address[0] else socket.AF_INET
         self.origin = origin
         self.authority = urlsplit(origin).netloc
         self.secure = origin.startswith("https://")
@@ -50,9 +49,14 @@ class HostServer(ThreadingHTTPServer):
             on_config_changed=on_workspace_config_changed,
             work_admission=work_admission,
         )
-        self.slots = threading.BoundedSemaphore(16)
+        self.session_guis = HostSessionGuis(home, self.workspaces._bootstrap_path)
+        self.slots = threading.BoundedSemaphore(48)
         self.tls_context = None
         super().__init__(address, HostHandler)
+
+    def server_close(self):
+        self.session_guis.close()
+        super().server_close()
 
     def process_request(self, request, client_address):
         if not self.slots.acquire(blocking=False):
@@ -154,7 +158,15 @@ class HostHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.dispatch()
 
-    def reply(self, status, value, *, content_type="application/json", cookie=None):
+    def reply(
+        self,
+        status,
+        value,
+        *,
+        content_type="application/json",
+        cookie=None,
+        session_frame=False,
+    ):
         body = value if isinstance(value, bytes) else json.dumps(value).encode()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -164,8 +176,15 @@ class HostHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+            (
+                "default-src 'none'; base-uri 'none'; connect-src 'self'; "
+                "img-src 'self' data:; object-src blob: data:; form-action 'none'; "
+                "frame-ancestors 'self'; script-src 'self'; style-src 'self'; "
+                "style-src-attr 'unsafe-inline'"
+                if session_frame
+                else "default-src 'self'; script-src 'self'; style-src 'self'; "
+                "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+            ),
         )
         if cookie is not None:
             self.send_header(
@@ -198,15 +217,22 @@ class HostHandler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(size))
                 if not isinstance(body, dict):
                     raise ValueError("Expected JSON object")
-            if self.command == "GET" and path in ("/", "/host.js", "/host.css"):
+            if self.command == "GET" and path in (
+                "/",
+                "/host.js",
+                "/activity.js",
+                "/host.css",
+            ):
                 asset = {
                     "/": "host.html",
                     "/host.js": "host.js",
+                    "/activity.js": "activity.js",
                     "/host.css": "host.css",
                 }[path]
                 kind = {
                     "/": "text/html; charset=utf-8",
                     "/host.js": "text/javascript",
+                    "/activity.js": "text/javascript",
                     "/host.css": "text/css",
                 }[path]
                 self.reply(
@@ -228,8 +254,18 @@ class HostHandler(BaseHTTPRequestHandler):
             account = self.server.auth.account(token)
             admin = account["role"] == "admin"
             service = self.server.workspaces
+            if self.command == "GET" and path.startswith("/session-ui/"):
+                parts = path.split("/", 3)
+                if len(parts) != 4:
+                    self.reply(404, {"error": "Not found"})
+                    return
+                gui_token, resource = parts[2:]
+                entry = self.server.session_guis.entry(gui_token, account)
+                proxy_session_gui(self, entry, gui_token, resource, token)
+                return
             if self.command == "POST" and path == "/api/logout":
                 self.server.auth.logout(token)
+                self.server.session_guis.close(account["username"])
                 self.reply(200, {"ok": True}, cookie="")
                 return
             if self.command == "GET" and path == "/api/state":
@@ -258,6 +294,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/session/data",
                 "/api/session/close",
                 "/api/session/turn",
+                "/api/session/gui",
             ):
                 if not admin and workspace_id not in account["workspaces"]:
                     self.reply(403, {"error": "Workspace access denied"})
@@ -267,6 +304,26 @@ class HostHandler(BaseHTTPRequestHandler):
                     if self.command == "POST"
                     else parse_qs(parsed.query).get("projectName", [""])[0]
                 )
+                if self.command == "POST" and path == "/api/session/gui":
+                    thread_id = body.get("threadId")
+                    with service._lock:
+                        project = service._project_path(workspace_id, project_name)
+                        service._thread_for_project(thread_id, project)
+                        result = service._request(
+                            "thread/webUi/open", {"threadId": thread_id}
+                        )
+                    self.reply(
+                        200,
+                        self.server.session_guis.open(
+                            account["username"],
+                            workspace_id,
+                            project_name,
+                            thread_id,
+                            project,
+                            result["url"],
+                        ),
+                    )
+                    return
                 if self.command == "GET" and path == "/api/project/sessions":
                     include_history = (
                         parse_qs(parsed.query).get("includeHistory", [""])[0] == "1"
@@ -320,6 +377,9 @@ class HostHandler(BaseHTTPRequestHandler):
                         project_name,
                         body.get("threadId"),
                     )
+                    self.server.session_guis.close(
+                        account["username"], body.get("threadId")
+                    )
                     self.reply(200, {"ok": True})
                     return
                 if self.command == "POST" and path == "/api/session/turn":
@@ -339,7 +399,18 @@ class HostHandler(BaseHTTPRequestHandler):
                     self.reply(403, {"error": "Workspace access denied"})
                     return
                 if self.command == "GET" and path == "/api/projects":
-                    self.reply(200, {"projects": service.projects(workspace_id)})
+                    self.reply(
+                        200,
+                        {
+                            "projects": service.projects(
+                                workspace_id,
+                                activity_only=parse_qs(parsed.query).get(
+                                    "activity", [""]
+                                )[0]
+                                == "1",
+                            )
+                        },
+                    )
                     return
                 if self.command == "POST" and path == "/api/project/create":
                     service.create_project(workspace_id, body.get("name"))
@@ -363,6 +434,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 service.add(workspace_id, body.get("root"), body.get("create") is True)
             elif self.command == "POST" and path == "/api/workspace/remove":
                 service.remove(workspace_id)
+                self.server.session_guis.close(workspace_id=workspace_id)
             elif self.command == "POST" and path == "/api/user/save":
                 assignments = body.get("workspaces", [])
                 known = {

@@ -579,7 +579,7 @@ and the JSON-RPC primitive for existing app-server methods.
 | `request(method, params)` | Send any permitted JSON-RPC request and return its object result. Raises `RpcError` for a JSON-RPC error. |
 | `request_error(method, params)` | Send a request expected to fail and return its error message. Useful in tests. |
 | `set_notification_handler(handler)` | Set a callback for server notifications. |
-| `set_server_request_handler(handler)` | Set a callback for incoming JSON-RPC server requests. Its returned object becomes the response result. Without a handler, the SDK returns JSON-RPC `-32601`. |
+| `set_server_request_handler(handler)` | Set a callback for incoming JSON-RPC server requests. Its returned object becomes the response result; returning `None` leaves the request unanswered for another controller. Without a handler, the SDK returns JSON-RPC `-32601`. |
 | `receive_message()` / `handle_message(message)` | Receive and dispatch a message manually; useful for custom event loops. |
 | `send_result(id, result)` / `send_error(id, code, message)` | Send a manual response to an incoming JSON-RPC server request. |
 | `close()` | Close the WebSocket transport or release the child transport. |

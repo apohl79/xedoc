@@ -63,6 +63,7 @@
   let faviconTurnActive = false;
   let faviconAnimation = null;
   let promptNavigation = null;
+  let hostActivityKey = null;
 
   function promptHistory() {
     return [...history.querySelectorAll(".history-user[data-prompt]")]
@@ -668,6 +669,16 @@
   function render(frame) {
     setConnection("Live", "live");
     setFaviconTurnActive(!!frame.turnActive);
+    const hostActivity = {
+      type: "xedoc-session-activity",
+      turnActive: !!frame.turnActive,
+      needsInput: !!frame.question,
+    };
+    const activityKey = JSON.stringify(hostActivity);
+    if (window.parent !== window && activityKey !== hostActivityKey) {
+      hostActivityKey = activityKey;
+      window.parent.postMessage(hostActivity, location.origin);
+    }
     history.hidden = !!frame.overlay;
     const following = history.scrollHeight - history.scrollTop - history.clientHeight < 80;
     if (activeThread !== frame.activeThreadId || activeWidth !== frame.width) {

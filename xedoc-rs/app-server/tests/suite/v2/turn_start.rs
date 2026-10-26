@@ -2522,6 +2522,7 @@ async fn turn_start_explicit_local_environment_updates_legacy_cwd_between_turns(
             }],
             responsesapi_client_metadata: None,
             additional_context: None,
+            environment_variables: None,
             cwd: None,
             runtime_workspace_roots: None,
             approval_policy: Some(xedoc_app_server_protocol::AskForApproval::Never),

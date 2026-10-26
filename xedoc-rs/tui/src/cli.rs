@@ -16,6 +16,10 @@ pub struct Cli {
     #[arg(long = "strict-config", default_value_t = false)]
     pub strict_config: bool,
 
+    /// Start the session web UI producer without opening a browser.
+    #[arg(long, hide = true)]
+    pub gui_hosted: bool,
+
     // Internal controls set by the top-level `xedoc resume` subcommand.
     // These are not exposed as user flags on the base `xedoc` command.
     #[clap(skip)]

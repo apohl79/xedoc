@@ -2503,6 +2503,7 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
     let TuiCli {
         shared,
         strict_config,
+        gui_hosted,
         approval_policy,
         web_search,
         prompt,
@@ -2517,6 +2518,9 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
     }
     if web_search {
         interactive.web_search = true;
+    }
+    if gui_hosted {
+        interactive.gui_hosted = true;
     }
     if strict_config {
         interactive.strict_config = true;

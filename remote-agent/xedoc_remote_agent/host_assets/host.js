@@ -7,12 +7,61 @@
   let activeThread = null;
   let projectRequest = 0;
   let sessionRequest = 0;
-  let latestTurns = [];
-  let olderTurns = [];
-  let olderCursor = null;
-  let transcriptKey = "";
-  let loadingSession = false;
+  const sessionFrames = new Map();
+  const openedSessions = new Map();
+  const activity = new window.XedocHostActivity();
   let refreshingRestartState = false;
+  let sidebarLocked = false;
+
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin || event.data?.type !== "xedoc-session-activity") return;
+    const entry = [...sessionFrames].find(([, frame]) => frame.contentWindow === event.source);
+    if (!entry) return;
+    const [threadId] = entry;
+    const session = openedSessions.get(threadId);
+    if (!session) return;
+    const needsInput = Boolean(event.data.needsInput);
+    activity.observe({
+      threadId,
+      status: event.data.turnActive || needsInput ? "active" : "idle",
+      needsInput,
+    }, session.workspaceId, session.projectName);
+    activity.paint();
+  });
+  document.addEventListener("visibilitychange", () => activity.markVisible());
+  window.addEventListener("focus", () => activity.markVisible());
+
+  function projectPins() {
+    try {
+      const pins = JSON.parse(localStorage.getItem(`xedoc-pins:${state.account.username}:${selectedWorkspace}`));
+      return Array.isArray(pins) ? pins.filter((name) => typeof name === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function setSidebarOpen(open) {
+    byId("host-view").classList.toggle("sidebar-open", open);
+    byId("sidebar-toggle").setAttribute("aria-expanded", String(open));
+  }
+
+  byId("sidebar-toggle").addEventListener("pointerenter", () => setSidebarOpen(true));
+  byId("sidebar-toggle").addEventListener("click", () =>
+    setSidebarOpen(!byId("host-view").classList.contains("sidebar-open")));
+  byId("sidebar").addEventListener("pointerleave", () => {
+    if (!sidebarLocked) setSidebarOpen(false);
+  });
+  byId("sidebar").addEventListener("focusin", () => setSidebarOpen(true));
+  byId("sidebar").addEventListener("focusout", (event) => {
+    if (!sidebarLocked && !byId("sidebar").contains(event.relatedTarget)
+      && !byId("sidebar").matches(":hover")) setSidebarOpen(false);
+  });
+  byId("sidebar-lock").addEventListener("click", () => {
+    sidebarLocked = !sidebarLocked;
+    byId("sidebar-lock").setAttribute("aria-pressed", String(sidebarLocked));
+    byId("host-view").classList.toggle("sidebar-locked", sidebarLocked);
+    setSidebarOpen(sidebarLocked);
+  });
 
   function notice(message = "") {
     byId("notice").textContent = message;
@@ -41,6 +90,14 @@
   function showLogin() {
     state = null;
     activeThread = null;
+    selectedWorkspace = null;
+    selectedProject = null;
+    projectRequest++;
+    sessionRequest++;
+    activity.setAccount(null);
+    sessionFrames.clear();
+    openedSessions.clear();
+    byId("session-frames").replaceChildren();
     byId("host-view").hidden = true;
     byId("navigation").hidden = true;
     byId("login-view").hidden = false;
@@ -81,6 +138,7 @@
 
   async function refresh() {
     state = await api("state");
+    activity.setAccount(state.account.username);
     byId("login-view").hidden = true;
     byId("host-view").hidden = false;
     byId("navigation").hidden = false;
@@ -116,12 +174,19 @@
     const previous = state;
     try {
       state = await api("state");
+      const workspaceId = selectedWorkspace;
+      if (workspaceId) {
+        const result = await api(`projects?workspaceId=${encodeURIComponent(workspaceId)}&activity=1`);
+        if (workspaceId === selectedWorkspace && state) {
+          activity.observeProjects(result.projects || [], workspaceId);
+          activity.markVisible();
+        }
+      }
       if (previous?.restartRequired && !state.restartRequired) {
         notice("Workspace configuration saved. The broker restarted automatically.");
         window.setTimeout(() => {
           if (state && !state.restartRequired) notice();
         }, 4000);
-        if (activeThread && !byId("host-view").hidden) await loadSession();
       }
     } catch {
       // The broker briefly drops the connection while restarting.
@@ -131,13 +196,9 @@
   }
 
   async function renderWorkspace() {
+    sessionFrames.forEach((frame) => { frame.hidden = true; });
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
     byId("host-view").classList.toggle("has-project", Boolean(entry && selectedProject));
-    byId("workspace-heading").hidden = Boolean(
-      entry && selectedProject && state.account.role !== "admin",
-    );
-    byId("workspace-title").textContent = entry?.workspaceId || "Workspaces";
-    byId("workspace-root").textContent = entry?.root || "";
     byId("remove-workspace").hidden = !entry || state.account.role !== "admin";
     byId("new-project").hidden = !entry;
     byId("project-empty").hidden = Boolean(entry && selectedProject);
@@ -156,14 +217,19 @@
     byId("project-empty").textContent = "Select a project to view its sessions.";
     const result = await api(`projects?workspaceId=${encodeURIComponent(selectedWorkspace)}`);
     if (request !== projectRequest) return;
-    const projects = result.projects || [];
+    activity.observeProjects(result.projects || [], selectedWorkspace);
+    const pins = new Set(projectPins());
+    const projects = (result.projects || []).sort((left, right) =>
+      Number(pins.has(right.name)) - Number(pins.has(left.name))
+      || (right.updatedAt || 0) - (left.updatedAt || 0)
+      || left.name.localeCompare(right.name));
     if (!projects.some((project) => project.name === selectedProject)) {
       selectedProject = projects[0]?.name || null;
       activeThread = null;
     }
     byId("host-view").classList.toggle("has-project", Boolean(selectedProject));
     byId("projects").replaceChildren(...projects.map((project) => {
-      const element = button(project.name, async () => {
+      const element = button("", async () => {
         if (selectedProject !== project.name) activeThread = null;
         selectedProject = project.name;
         await renderWorkspace();
@@ -171,8 +237,23 @@
       element.className = `project${selectedProject === project.name ? " selected" : ""}`;
       element.title = project.path;
       element.dataset.name = project.name;
-      return element;
+      element.append(text("span", project.name, "project-label"));
+      activity.attach(element, selectedWorkspace, project.name);
+      const pin = button(pins.has(project.name) ? "★" : "☆", async () => {
+        if (pins.has(project.name)) pins.delete(project.name);
+        else pins.add(project.name);
+        localStorage.setItem(`xedoc-pins:${state.account.username}:${selectedWorkspace}`, JSON.stringify([...pins]));
+        await renderWorkspace();
+      });
+      pin.className = "project-pin";
+      pin.title = `${pins.has(project.name) ? "Unpin" : "Pin"} ${project.name}`;
+      pin.setAttribute("aria-label", pin.title);
+      pin.setAttribute("aria-pressed", String(pins.has(project.name)));
+      const row = text("div", "", "project-row");
+      row.append(element, pin);
+      return row;
     }));
+    activity.paint();
     if (!projects.length) {
       byId("projects").append(text("p", "No projects yet.", "muted"));
       byId("project-empty").textContent = "Create a project directory to start a session.";
@@ -194,13 +275,12 @@
     byId("project-empty").hidden = true;
     byId("session-workspace").hidden = false;
     byId("project-title").textContent = project.name;
-    byId("project-path").textContent = project.path;
     const response = await api(query("project/sessions", {
       workspaceId,
       projectName,
     }));
     if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
-    const sessions = response.sessions || [];
+    const sessions = projectSessions(response.sessions);
     byId("sessions").replaceChildren(...sessions.map((session) => sessionTab(session)));
     byId("session-empty").hidden = sessions.length > 0;
     if (!sessions.some((session) => session.threadId === activeThread)) {
@@ -208,11 +288,7 @@
     }
     if (!activeThread) {
       byId("session-view").hidden = true;
-      byId("load-older").hidden = true;
-      latestTurns = [];
-      olderTurns = [];
-      olderCursor = null;
-      transcriptKey = "";
+      sessionFrames.forEach((frame) => { frame.hidden = true; });
       return;
     }
     byId("session-view").hidden = false;
@@ -226,6 +302,8 @@
     element.setAttribute("aria-selected", String(session.threadId === activeThread));
     element.tabIndex = 0;
     element.title = session.title || session.threadId;
+    activity.attach(element, selectedWorkspace, selectedProject, session.threadId);
+    if (session.status) activity.observe(session, selectedWorkspace, selectedProject);
     const label = text("span", session.title || session.threadId);
     const close = text("button", "×", "close-tab");
     close.type = "button";
@@ -245,6 +323,15 @@
     return element;
   }
 
+  function projectSessions(sessions = []) {
+    const result = [...sessions];
+    for (const session of openedSessions.values()) {
+      if (session.workspaceId === selectedWorkspace && session.projectName === selectedProject
+        && !result.some((item) => item.threadId === session.threadId)) result.push(session);
+    }
+    return result;
+  }
+
   async function refreshTabs(openedSession = null) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
@@ -254,11 +341,12 @@
       projectName,
     }));
     if (workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
-    const sessions = response.sessions || [];
+    const sessions = projectSessions(response.sessions);
     if (openedSession && !sessions.some((session) => session.threadId === openedSession.threadId)) {
       sessions.unshift(openedSession);
     }
     byId("sessions").replaceChildren(...sessions.map(sessionTab));
+    activity.paint();
     byId("session-empty").hidden = sessions.length > 0;
     if (!sessions.some((session) => session.threadId === activeThread)) {
       activeThread = sessions[0]?.threadId || null;
@@ -273,202 +361,36 @@
     const openedSession = await api("session/open", { workspaceId, projectName, threadId, archived });
     if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
     activeThread = threadId;
-    latestTurns = [];
-    olderTurns = [];
-    olderCursor = null;
-    transcriptKey = "";
+    openedSessions.set(threadId, { ...openedSession, workspaceId, projectName, threadId });
     byId("session-view").hidden = false;
     await refreshTabs({ threadId, title: openedSession.title || threadId });
-    await loadSession();
+    const result = await api("session/gui", { workspaceId, projectName, threadId });
+    if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
+    let frame = sessionFrames.get(threadId);
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.className = "session-frame";
+      frame.title = openedSession.title || "Xedoc session";
+      sessionFrames.set(threadId, frame);
+      byId("session-frames").append(frame);
+    }
+    if (frame.getAttribute("src") !== result.guiUrl) frame.src = result.guiUrl;
+    sessionFrames.forEach((item) => { item.hidden = item !== frame; });
+    activity.markVisible();
   }
 
   async function closeSession(threadId) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     await api("session/close", { workspaceId, projectName, threadId });
+    sessionFrames.get(threadId)?.remove();
+    sessionFrames.delete(threadId);
+    openedSessions.delete(threadId);
     if (threadId === activeThread) {
       activeThread = null;
-      latestTurns = [];
-      olderTurns = [];
-      olderCursor = null;
-      transcriptKey = "";
       byId("session-view").hidden = true;
     }
     await renderWorkspace();
-  }
-
-  function sessionDataUrl(cursor = "") {
-    const values = { workspaceId: selectedWorkspace, projectName: selectedProject, threadId: activeThread };
-    if (cursor) values.cursor = cursor;
-    return query("session/data", values);
-  }
-
-  async function loadSession({ older = false } = {}) {
-    if (!activeThread || loadingSession) return;
-    loadingSession = true;
-    const currentThread = activeThread;
-    try {
-      const response = await api(sessionDataUrl(older ? olderCursor : ""));
-      if (currentThread !== activeThread) return;
-      if (older) {
-        const known = new Set(olderTurns.map((turn) => turn.id));
-        olderTurns = [...response.turns.filter((turn) => !known.has(turn.id)), ...olderTurns];
-        olderCursor = response.nextCursor || null;
-      } else {
-        latestTurns = response.turns || [];
-        if (!olderTurns.length) olderCursor = response.nextCursor || null;
-      }
-      byId("session-status").textContent = `Session ${response.thread.status}`;
-      byId("load-older").hidden = !olderCursor;
-      const turns = [...olderTurns, ...latestTurns];
-      const key = JSON.stringify(turns);
-      if (key !== transcriptKey) {
-        transcriptKey = key;
-        renderTranscript(turns, older);
-      }
-    } finally {
-      loadingSession = false;
-    }
-  }
-
-  function renderTranscript(turns, preserveOlderScroll = false) {
-    const transcript = byId("transcript");
-    const wasNearBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
-    const previousHeight = transcript.scrollHeight;
-    const articles = turns.map((turn) => {
-      const article = text("article", "", "turn");
-      for (const item of turn.items || []) {
-        if (item.type === "userMessage") {
-          article.append(renderMarkdown(item.text, "message user"));
-        } else if (item.type === "agentMessage") {
-          article.append(renderMarkdown(item.text, "message assistant"));
-        } else if (item.type === "tool") {
-          const tool = text("div", "", "tool-message");
-          tool.append(text("strong", item.label));
-          if (item.text) tool.append(text("pre", item.text));
-          if (item.output) tool.append(text("pre", item.output));
-          article.append(tool);
-        }
-      }
-      return article;
-    });
-    transcript.replaceChildren(...articles);
-    if (preserveOlderScroll) transcript.scrollTop += transcript.scrollHeight - previousHeight;
-    else if (wasNearBottom) transcript.scrollTop = transcript.scrollHeight;
-  }
-
-  function appendInlineMarkdown(parent, source) {
-    const pattern = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|`([^`]+)`|\*\*(.+?)\*\*|\*(.+?)\*)/g;
-    let offset = 0;
-    for (const match of source.matchAll(pattern)) {
-      parent.append(document.createTextNode(source.slice(offset, match.index)));
-      if (match[2]) {
-        const link = text("a", match[2]);
-        link.href = match[3];
-        link.target = "_blank";
-        link.rel = "noreferrer noopener";
-        parent.append(link);
-      } else if (match[4]) {
-        parent.append(text("code", match[4]));
-      } else if (match[5]) {
-        parent.append(text("strong", match[5]));
-      } else if (match[6]) {
-        parent.append(text("em", match[6]));
-      }
-      offset = match.index + match[0].length;
-    }
-    parent.append(document.createTextNode(source.slice(offset)));
-  }
-
-  function renderMarkdown(source, className) {
-    const container = text("div", "", className);
-    const lines = String(source || "").split("\n");
-    let paragraph = [];
-    let list = null;
-    let listKind = "";
-    let codeLines = [];
-    let inCode = false;
-
-    function flushParagraph() {
-      if (!paragraph.length) return;
-      const element = text("p", "");
-      appendInlineMarkdown(element, paragraph.join(" "));
-      container.append(element);
-      paragraph = [];
-    }
-
-    function flushList() {
-      if (!list) return;
-      container.append(list);
-      list = null;
-      listKind = "";
-    }
-
-    function flushCode() {
-      const pre = text("pre", "");
-      pre.append(text("code", codeLines.join("\n")));
-      container.append(pre);
-      codeLines = [];
-    }
-
-    for (const line of lines) {
-      if (/^\s*```/.test(line)) {
-        if (inCode) flushCode();
-        else {
-          flushParagraph();
-          flushList();
-        }
-        inCode = !inCode;
-        continue;
-      }
-      if (inCode) {
-        codeLines.push(line);
-        continue;
-      }
-      if (!line.trim()) {
-        flushParagraph();
-        flushList();
-        continue;
-      }
-      const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-      if (heading) {
-        flushParagraph();
-        flushList();
-        const element = text(`h${heading[1].length}`, "");
-        appendInlineMarkdown(element, heading[2]);
-        container.append(element);
-        continue;
-      }
-      const item = /^\s*([-*+]|\d+[.)])\s+(.+)$/.exec(line);
-      if (item) {
-        flushParagraph();
-        const kind = /^\d/.test(item[1]) ? "ol" : "ul";
-        if (listKind !== kind) {
-          flushList();
-          list = document.createElement(kind);
-          listKind = kind;
-        }
-        const element = text("li", "");
-        appendInlineMarkdown(element, item[2]);
-        list.append(element);
-        continue;
-      }
-      const quote = /^\s*>\s?(.*)$/.exec(line);
-      if (quote) {
-        flushParagraph();
-        flushList();
-        const element = text("blockquote", "");
-        appendInlineMarkdown(element, quote[1]);
-        container.append(element);
-        continue;
-      }
-      flushList();
-      paragraph.push(line.trim());
-    }
-    if (inCode) flushCode();
-    flushParagraph();
-    flushList();
-    return container;
   }
 
   async function startNewSession() {
@@ -478,8 +400,7 @@
       projectName: selectedProject,
     });
     activeThread = result.threadId;
-    await renderWorkspace();
-    byId("message-form").elements.message.focus();
+    await openSession(result.threadId);
   }
 
   async function showResumePicker() {
@@ -498,6 +419,8 @@
       element.type = "button";
       element.append(text("span", session.title || session.threadId), text("small",
         session.updatedAt ? new Date(session.updatedAt * 1000).toLocaleString() : ""));
+      activity.observe(session, selectedWorkspace, selectedProject);
+      activity.attach(element, selectedWorkspace, selectedProject, session.threadId);
       element.addEventListener("click", () => run(async () => {
         byId("resume-dialog").close();
         activeThread = session.threadId;
@@ -505,6 +428,7 @@
       }));
       return element;
     }));
+    activity.paint();
     if (!sessions.length) byId("resume-sessions").append(text("p", "No previous sessions in this project.", "muted"));
   }
 
@@ -592,23 +516,6 @@
   });
   byId("new-session").addEventListener("click", () => run(startNewSession));
   byId("resume-session").addEventListener("click", () => run(showResumePicker));
-  byId("load-older").addEventListener("click", () => run(() => loadSession({ older: true })));
-  form("message-form", async (data, element) => {
-    await api("session/turn", {
-      workspaceId: selectedWorkspace,
-      projectName: selectedProject,
-      threadId: activeThread,
-      message: data.get("message"),
-    });
-    element.reset();
-    await loadSession();
-  });
-  byId("message-form").elements.message.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      byId("message-form").requestSubmit();
-    }
-  });
 
   async function users() {
     const result = await api("users");
@@ -656,13 +563,8 @@
   });
 
   setInterval(() => {
-    if (state?.restartRequired) {
+    if (state && !byId("host-view").hidden) {
       refreshRestartState();
-      if (activeThread && !byId("host-view").hidden) {
-        loadSession().catch(() => {});
-      }
-    } else if (state && activeThread && !byId("host-view").hidden) {
-      run(loadSession);
     }
   }, 2000);
   run(async () => {

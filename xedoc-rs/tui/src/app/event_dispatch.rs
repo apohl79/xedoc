@@ -6,6 +6,7 @@
 use super::resize_reflow::trailing_run_start;
 use super::session_lifecycle::ThreadAttachPresentation;
 use super::*;
+use crate::app_event::WebUiOpenMode;
 use crate::app_server_session::ForkGoalContinuation;
 use crate::city_lights::CityLightsStylize;
 use crate::config_update::format_config_error;
@@ -525,9 +526,13 @@ impl App {
             AppEvent::OpenUrlInBrowser { url } => {
                 self.open_url_in_browser(url);
             }
-            AppEvent::OpenWebUi => self.open_web_ui(tui, app_server),
-            AppEvent::WebUiOpened { thread_id, result } => {
-                self.web_ui_opened(tui, thread_id, result);
+            AppEvent::OpenWebUi => self.open_web_ui(tui, app_server, WebUiOpenMode::Browser),
+            AppEvent::WebUiOpened {
+                thread_id,
+                mode,
+                result,
+            } => {
+                self.web_ui_opened(tui, thread_id, mode, result);
             }
             AppEvent::WebUiInput {
                 thread_id,

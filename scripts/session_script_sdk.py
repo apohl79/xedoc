@@ -251,7 +251,7 @@ class SessionScriptClient:
         self._next_id = 1
         self._notification_handler: Optional[Callable[[dict[str, Any]], None]] = None
         self._server_request_handler: Optional[
-            Callable[[dict[str, Any]], dict[str, Any]]
+            Callable[[dict[str, Any]], Optional[dict[str, Any]]]
         ] = None
         self._buffered_responses: dict[int | str, dict[str, Any]] = {}
 
@@ -282,8 +282,10 @@ class SessionScriptClient:
         self._notification_handler = notification_handler
 
     def set_server_request_handler(
-        self, server_request_handler: Callable[[dict[str, Any]], dict[str, Any]]
+        self,
+        server_request_handler: Callable[[dict[str, Any]], Optional[dict[str, Any]]],
     ) -> None:
+        """Handle requests, or return None to leave them for another controller."""
         self._server_request_handler = server_request_handler
 
     def initialize(self, client_name: str, title: str, version: str) -> None:
@@ -520,4 +522,6 @@ class SessionScriptClient:
                 request_id, -32601, "script does not handle server requests"
             )
         else:
-            self.send_result(request_id, self._server_request_handler(message))
+            response = self._server_request_handler(message)
+            if response is not None:
+                self.send_result(request_id, response)

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use std::time::Instant;
 
 use axum::Router;
 use axum::extract::Path;
@@ -51,6 +52,8 @@ struct RunningSession {
     address: SocketAddr,
     browser_token: String,
     producer_token: String,
+    state: Arc<SessionState>,
+    created_at: Instant,
 }
 
 struct SessionState {
@@ -82,15 +85,33 @@ impl WebUiServer {
     ) -> Result<ThreadWebUiOpenResponse, JSONRPCErrorError> {
         let thread_id = ThreadId::from_string(&params.thread_id)
             .map_err(|_| invalid_request("invalid thread ID"))?;
-        self.threads
+        let thread = self
+            .threads
             .get_thread(thread_id)
             .await
             .map_err(|_| invalid_request("web UI requires a running thread"))?;
+        thread.ensure_rollout_materialized().await;
+        thread
+            .flush_rollout()
+            .await
+            .map_err(|_| internal_error("failed to persist session for browser attachment"))?;
         if self.shutdown.is_cancelled() {
             return Err(internal_error("web UI server is shutting down"));
         }
         let mut sessions = self.sessions.lock().await;
         if !sessions.contains_key(&thread_id) {
+            if sessions.len() >= 16 {
+                sessions.retain(|_, session| {
+                    let in_use = session.created_at.elapsed()
+                        < Duration::from_secs(/*secs*/ 30)
+                        || session.state.producer_connected.load(Ordering::SeqCst)
+                        || session.state.connections.available_permits() < 8;
+                    if !in_use {
+                        session.state.shutdown.cancel();
+                    }
+                    in_use
+                });
+            }
             if sessions.len() >= 16 {
                 return Err(invalid_request("too many browser sessions"));
             }
@@ -119,7 +140,7 @@ impl WebUiServer {
                 input_receiver: Mutex::new(Some(input_receiver)),
                 producer_connected: AtomicBool::new(false),
                 connections: Arc::new(Semaphore::new(/*permits*/ 8)),
-                shutdown: self.shutdown.clone(),
+                shutdown: self.shutdown.child_token(),
             });
             let router = Router::new()
                 .route("/", get(page))
@@ -128,8 +149,8 @@ impl WebUiServer {
                 .route("/webui.css", get(styles))
                 .route("/session/{token}", get(browser_upgrade))
                 .route("/bridge/{token}", get(producer_upgrade))
-                .with_state(state);
-            let shutdown = self.shutdown.clone();
+                .with_state(Arc::clone(&state));
+            let shutdown = state.shutdown.clone();
             tokio::spawn(async move {
                 if axum::serve(listener, router)
                     .with_graceful_shutdown(shutdown.cancelled_owned())
@@ -145,6 +166,8 @@ impl WebUiServer {
                     address,
                     browser_token,
                     producer_token,
+                    state,
+                    created_at: Instant::now(),
                 },
             );
         }
@@ -303,11 +326,20 @@ async fn send(socket: &mut WebSocket, text: String) -> bool {
     )
 }
 
-async fn page() -> Response {
-    asset(
+async fn page(State(state): State<Arc<SessionState>>) -> Response {
+    let mut response = asset(
         include_str!("web_ui_assets/index.html"),
         "text/html; charset=utf-8",
-    )
+    );
+    response.headers_mut().insert(
+        "x-xedoc-producer-connected",
+        HeaderValue::from_static(if state.producer_connected.load(Ordering::SeqCst) {
+            "true"
+        } else {
+            "false"
+        }),
+    );
+    response
 }
 
 async fn favicon() -> Response {

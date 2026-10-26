@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Xedoc · Workspaces</title>
   <link rel="stylesheet" href="/host.css">
+  <script src="/activity.js" defer></script>
   <script src="/host.js" defer></script>
 </head>
 <body>
-  <header><strong><span class="accent">❯</span> Xedoc</strong><nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav></header>
   <p id="notice" role="status" hidden></p>
   <main id="login-view">
     <form id="login" class="login">
@@ -19,30 +19,23 @@
     </form>
   </main>
   <main id="host-view" hidden>
-    <aside>
+    <button id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="false">☰</button>
+    <aside id="sidebar" aria-label="Workspaces and projects">
+      <div class="sidebar-brand"><strong><span class="accent">❯</span> Xedoc</strong><button id="sidebar-lock" title="Keep sidebar open" aria-label="Keep sidebar open" aria-pressed="false">⇥</button></div>
+      <nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav>
       <div class="section-title"><h2>Workspaces</h2><button id="add-workspace" title="Add workspace" aria-label="Add workspace" hidden>＋</button></div>
       <div id="workspaces"></div>
+      <button id="remove-workspace" hidden>Remove workspace</button>
       <div class="section-title project-sidebar-title"><h2>Projects</h2><button id="new-project" title="Add project" aria-label="Add project">＋</button></div>
       <div id="projects"></div>
     </aside>
     <section class="content">
-      <div id="workspace-heading" class="section-title"><div><h1 id="workspace-title">Workspaces</h1><p id="workspace-root" class="muted"></p></div><button id="remove-workspace" hidden>Remove workspace</button></div>
       <div id="project-empty" class="empty-state">Select a project to view its sessions.</div>
       <section id="session-workspace" hidden>
-        <div class="session-heading">
-          <div><h2 id="project-title"></h2><p id="project-path" class="muted"></p></div>
-          <button id="session-menu-button" aria-label="New or resume session">＋</button>
-        </div>
-        <div id="sessions" class="session-tabs" role="tablist" aria-label="Project sessions"></div>
+        <div class="tab-strip"><span id="project-title"></span><div id="sessions" class="session-tabs" role="tablist" aria-label="Project sessions"></div><button id="session-menu-button" title="New or resume session" aria-label="New or resume session">＋</button></div>
         <div id="session-empty" class="empty-state" hidden>No recent sessions. Start a new session or resume one.</div>
         <section id="session-view" hidden>
-          <div id="session-status" class="session-status"></div>
-          <div id="transcript" aria-live="polite"></div>
-          <button id="load-older" hidden>Load earlier messages</button>
-          <form id="message-form" class="composer">
-            <textarea name="message" rows="3" placeholder="Message Xedoc…" maxlength="65536" required></textarea>
-            <button class="primary">Send</button>
-          </form>
+          <div id="session-frames"></div>
         </section>
       </section>
     </section>

@@ -55,6 +55,13 @@ use xedoc_tui_input::UserMessage;
 
 use xedoc_tui_transcript::history_cell::HistoryCell;
 
+/// Determines whether a session WebUI should open in a browser or be hosted by a parent GUI.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WebUiOpenMode {
+    Browser,
+    Hosted,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadGoalSetMode {
     ConfirmIfExists,
@@ -345,6 +352,7 @@ pub enum AppEvent {
     /// Result of opening a session browser bridge.
     WebUiOpened {
         thread_id: ThreadId,
+        mode: WebUiOpenMode,
         result: Result<xedoc_app_server_protocol::ThreadWebUiOpenResponse, String>,
     },
     /// Browser input received on the authenticated session bridge.

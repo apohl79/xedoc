@@ -21,6 +21,7 @@ use xedoc_protocol::ThreadId;
 use super::App;
 use super::AppRunControl;
 use crate::app_event::AppEvent;
+use crate::app_event::WebUiOpenMode;
 use crate::app_server_session::AppServerSession;
 use crate::chatwidget::BrowserStreamContent;
 use crate::render::renderable::Renderable;
@@ -34,11 +35,16 @@ const FRAME_INTERVAL: Duration = Duration::from_millis(/*millis*/ 80);
 const HISTORY_BYTES: usize = 1_000_000;
 
 impl App {
-    pub(super) fn open_web_ui(&mut self, tui: &mut Tui, app_server: &AppServerSession) {
+    pub(super) fn open_web_ui(
+        &mut self,
+        tui: &mut Tui,
+        app_server: &AppServerSession,
+        mode: WebUiOpenMode,
+    ) {
         if let Some(session) = &tui.web_ui
             && !session.task.is_finished()
         {
-            self.open_session_web_ui(session.url.clone());
+            self.open_session_web_ui(session.url.clone(), mode);
             return;
         }
         let Some(thread_id) = self.chat_widget.thread_id() else {
@@ -58,7 +64,11 @@ impl App {
                 })
                 .await
                 .map_err(|_| "Failed to open the local session web UI.".to_string());
-            events.send(AppEvent::WebUiOpened { thread_id, result });
+            events.send(AppEvent::WebUiOpened {
+                thread_id,
+                mode,
+                result,
+            });
         });
     }
 
@@ -66,6 +76,7 @@ impl App {
         &mut self,
         tui: &mut Tui,
         thread_id: ThreadId,
+        mode: WebUiOpenMode,
         result: Result<ThreadWebUiOpenResponse, String>,
     ) {
         match result {
@@ -83,7 +94,7 @@ impl App {
                     tui.browser_input_sender(),
                 ));
                 self.publish_web_ui(tui);
-                self.open_session_web_ui(url);
+                self.open_session_web_ui(url, mode);
             }
             Ok(_) => {}
             Err(error) => self.chat_widget.add_error_message(error),
@@ -91,7 +102,10 @@ impl App {
         tui.frame_requester().schedule_frame();
     }
 
-    fn open_session_web_ui(&mut self, url: String) {
+    fn open_session_web_ui(&mut self, url: String, mode: WebUiOpenMode) {
+        if mode == WebUiOpenMode::Hosted {
+            return;
+        }
         if open_web_ui_in_cmux(&url) {
             self.chat_widget
                 .add_info_message(format!("Opened {url} in your browser."), /*hint*/ None);

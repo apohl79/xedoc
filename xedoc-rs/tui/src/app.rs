@@ -10,6 +10,7 @@ use crate::app_event::AppEvent;
 use crate::app_event::ExitMode;
 use crate::app_event::HistoryLookupResponse;
 use crate::app_event::PermissionProfileSelection;
+use crate::app_event::WebUiOpenMode;
 use crate::app_event_sender::AppEventSender;
 use crate::app_server_session::AppServerBootstrap;
 use crate::app_server_session::AppServerSession;
@@ -797,6 +798,7 @@ impl App {
         startup_elapsed_before_app: Duration,
         startup_bootstrap: Option<AppServerBootstrap>,
         startup_hooks_browser: Option<HooksListEntry>,
+        gui_hosted: bool,
     ) -> Result<AppExitInfo> {
         use tokio_stream::StreamExt;
         let startup_started_at = Instant::now();
@@ -1137,6 +1139,7 @@ See the Xedoc keymap documentation for supported actions and examples."
 
         let mut listen_for_app_server_events = true;
         let mut waiting_for_initial_session_configured = wait_for_initial_session_configured;
+        let mut gui_hosted_started = false;
 
         #[cfg(not(debug_assertions))]
         let pre_loop_exit_reason = if let Some(latest_version) = upgrade_version {
@@ -1191,7 +1194,13 @@ See the Xedoc keymap documentation for supported actions and examples."
                     }
                     event = tui_events.next() => {
                         if let Some(event) = event {
-                            match app.handle_tui_event(tui, &mut app_server, event).await {
+                            match app.handle_tui_event(
+                                tui,
+                                &mut app_server,
+                                event,
+                                gui_hosted,
+                                &mut gui_hosted_started,
+                            ).await {
                                 Ok(control) => control,
                                 Err(err) => break Err(err),
                             }
@@ -1262,6 +1271,8 @@ See the Xedoc keymap documentation for supported actions and examples."
         tui: &mut tui::Tui,
         app_server: &mut AppServerSession,
         event: TuiEvent,
+        gui_hosted: bool,
+        gui_hosted_started: &mut bool,
     ) -> Result<AppRunControl> {
         if matches!(event, TuiEvent::Draw | TuiEvent::Resize) {
             self.handle_draw_pre_render(tui)?;
@@ -1306,6 +1317,10 @@ See the Xedoc keymap documentation for supported actions and examples."
                     }
                 }
             }
+        }
+        if gui_hosted && !*gui_hosted_started && self.chat_widget.thread_id().is_some() {
+            *gui_hosted_started = true;
+            self.open_web_ui(tui, app_server, WebUiOpenMode::Hosted);
         }
         self.publish_web_ui(tui);
         Ok(AppRunControl::Continue)

@@ -137,6 +137,7 @@ class HostWorkspaces:
                     set_handler = getattr(client, "set_notification_handler", None)
                     if callable(set_handler):
                         set_handler(self._observe_notification)
+                    client.set_server_request_handler(lambda message: None)
                     self._client = client
                 return self._client.request(method, params)
             except Exception as error:
@@ -331,13 +332,71 @@ class HostWorkspaces:
             del roots[workspace_id]
             self._write(roots, layer)
 
-    def projects(self, workspace_id: str) -> list[dict]:
+    def projects(self, workspace_id: str, *, activity_only: bool = False) -> list[dict]:
         _validate_workspace_id(workspace_id)
         with self._lock:
             roots, _ = self._config()
             if workspace_id not in roots:
                 raise BrokerError.not_found()
-            return self.browse(roots[workspace_id])["entries"]
+            projects = self.browse(roots[workspace_id])["entries"]
+            activity = {}
+            session_activity = {}
+            cutoff = int(time.time()) - 48 * 3600
+            cursor = None
+            for _ in range(_SESSION_HISTORY_LIMIT):
+                page = self._request(
+                    "thread/list",
+                    {
+                        "limit": _SESSION_PAGE_SIZE,
+                        "cursor": cursor,
+                        "sortKey": "updated_at",
+                        "sortDirection": "desc",
+                        "modelProviders": [],
+                        "sourceKinds": _THREAD_SOURCES,
+                        "archived": False,
+                        "useStateDbOnly": activity_only,
+                    },
+                )
+                for thread in page.get("data", []):
+                    cwd, updated = thread.get("cwd"), thread.get("updatedAt")
+                    if isinstance(cwd, str) and isinstance(updated, int):
+                        key = os.path.normcase(os.path.realpath(cwd))
+                        activity[key] = max(activity.get(key, 0), updated)
+                        status = thread.get("status")
+                        status = status if isinstance(status, dict) else {}
+                        thread_id = thread.get("id")
+                        if (
+                            isinstance(thread_id, str)
+                            and len(thread_id) <= _SESSION_ID_LIMIT
+                            and (updated >= cutoff or status.get("type") == "active")
+                        ):
+                            entries = session_activity.setdefault(key, [])
+                            if len(entries) < 500:
+                                entries.append(
+                                    {
+                                        "threadId": thread_id,
+                                        "status": status.get("type", "unknown"),
+                                        "needsInput": any(
+                                            flag
+                                            in (
+                                                "waitingOnApproval",
+                                                "waitingOnUserInput",
+                                            )
+                                            for flag in status.get("activeFlags", [])
+                                        ),
+                                        "updatedAt": updated,
+                                    }
+                                )
+                cursor = page.get("nextCursor")
+                if not cursor:
+                    break
+            for project in projects:
+                key = os.path.normcase(os.path.realpath(project["path"]))
+                project["updatedAt"] = activity.get(key, 0)
+                project["sessionActivity"] = session_activity.get(key, [])
+            return sorted(
+                projects, key=lambda project: (-project["updatedAt"], project["name"])
+            )
 
     def create_project(self, workspace_id: str, name: str) -> None:
         if (
@@ -466,8 +525,13 @@ class HostWorkspaces:
                                 continue
                         except (OSError, ValueError, RuntimeError):
                             continue
-                        if not include_history and (
-                            not isinstance(updated, int) or updated < cutoff
+                        if (
+                            not include_history
+                            and (not isinstance(updated, int) or updated < cutoff)
+                            and (
+                                not isinstance(item.get("status"), dict)
+                                or item["status"].get("type") != "active"
+                            )
                         ):
                             continue
                         if not include_history and thread_id in closed:
@@ -483,6 +547,14 @@ class HostWorkspaces:
                                 "status": item.get("status", {}).get("type", "unknown")
                                 if isinstance(item.get("status"), dict)
                                 else "unknown",
+                                "needsInput": any(
+                                    flag in ("waitingOnApproval", "waitingOnUserInput")
+                                    for flag in item.get("status", {}).get(
+                                        "activeFlags", []
+                                    )
+                                )
+                                if isinstance(item.get("status"), dict)
+                                else False,
                             }
                         )
                     cursor = page.get("nextCursor")
@@ -501,6 +573,7 @@ class HostWorkspaces:
             thread_id = thread.get("id") if isinstance(thread, dict) else None
             if not isinstance(thread_id, str):
                 raise BrokerError.internal()
+            self._request("thread/webUi/open", {"threadId": thread_id})
             self._remember_closed(username, thread_id, False)
             return {
                 "threadId": thread_id,
@@ -583,9 +656,10 @@ class HostWorkspaces:
                     try:
                         item_page = self._request("thread/items/list", item_params)
                     except BrokerError as error:
-                        if (
-                            item_params["limit"] > 1
-                            and "message exceeds the size limit" in str(error.__cause__)
+                        if item_params[
+                            "limit"
+                        ] > 1 and "message exceeds the size limit" in str(
+                            error.__cause__
                         ):
                             item_limit = max(1, item_params["limit"] // 2)
                             continue
@@ -594,7 +668,8 @@ class HostWorkspaces:
                     turn["items"].extend(
                         entry["item"]
                         for entry in entries
-                        if isinstance(entry, dict) and isinstance(entry.get("item"), dict)
+                        if isinstance(entry, dict)
+                        and isinstance(entry.get("item"), dict)
                     )
                     next_cursor = item_page.get("nextCursor")
                     if not entries or not next_cursor or next_cursor == item_cursor:
