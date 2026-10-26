@@ -228,7 +228,10 @@ def proxy_session_gui(handler, entry, token, resource, cookie):
     prefix = f"/session-ui/{token}"
     if resource == f"session/{token}":
         if (
-            handler.headers.get("Origin") != handler.server.origin
+            handler.headers.get("Origin")
+            != handler.server.origin_for_authority(
+                handler.headers.get("Host", "")
+            )
             or handler.headers.get("Upgrade", "").lower() != "websocket"
         ):
             handler.reply(403, {"error": "Unexpected GUI connection"})

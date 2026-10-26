@@ -54,6 +54,10 @@ class HostServer(ThreadingHTTPServer):
         self.tls_context = None
         super().__init__(address, HostHandler)
 
+    def origin_for_authority(self, authority: str) -> str:
+        scheme = "https" if self.secure else "http"
+        return f"{scheme}://{authority}"
+
     def server_close(self):
         self.session_guis.close()
         super().server_close()
@@ -198,14 +202,20 @@ class HostHandler(BaseHTTPRequestHandler):
 
     def dispatch(self):
         try:
-            if self.headers.get("Host") != self.server.authority:
+            authority = self.headers.get("Host", "")
+            if not authority or (
+                not self.server.secure and authority != self.server.authority
+            ):
                 self.reply(403, {"error": "Unexpected host"})
                 return
             parsed = urlsplit(self.path)
             path = parsed.path
             body = {}
             if self.command == "POST":
-                if self.headers.get("Origin") != self.server.origin:
+                if (
+                    self.headers.get("Origin")
+                    != self.server.origin_for_authority(authority)
+                ):
                     self.reply(403, {"error": "Unexpected origin"})
                     return
                 size = int(self.headers.get("Content-Length", "0"))

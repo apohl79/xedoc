@@ -1,7 +1,20 @@
 #!/bin/sh
 set -eu
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+launcher=$0
+case $launcher in
+    */*) ;;
+    *) launcher=$(command -v "$launcher") ;;
+esac
+while [ -L "$launcher" ]; do
+    launcher_dir=$(CDPATH= cd -- "$(dirname -- "$launcher")" && pwd -P)
+    link=$(readlink "$launcher")
+    case $link in
+        /*) launcher=$link ;;
+        *) launcher=$launcher_dir/$link ;;
+    esac
+done
+script_dir=$(CDPATH= cd -- "$(dirname -- "$launcher")" && pwd -P)
 package_root=$(CDPATH= cd -- "$script_dir/.." && pwd -P)
 python="$package_root/xedoc-resources/remote-agent/runtime/python/bin/python3"
 payload="$package_root/xedoc-resources/remote-agent/remote-agent.pyz"
