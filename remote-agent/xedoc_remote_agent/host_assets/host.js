@@ -12,6 +12,7 @@
   let olderCursor = null;
   let transcriptKey = "";
   let loadingSession = false;
+  let refreshingRestartState = false;
 
   function notice(message = "") {
     byId("notice").textContent = message;
@@ -104,13 +105,37 @@
       return element;
     }));
     if (state.restartRequired) {
-      notice("Workspace configuration saved. Restart the remote-agent broker when its current operations have finished.");
+      notice("Workspace configuration saved. The broker will restart automatically after active turns finish.");
     }
     await renderWorkspace();
   }
 
+  async function refreshRestartState() {
+    if (refreshingRestartState) return;
+    refreshingRestartState = true;
+    const previous = state;
+    try {
+      state = await api("state");
+      if (previous?.restartRequired && !state.restartRequired) {
+        notice("Workspace configuration saved. The broker restarted automatically.");
+        window.setTimeout(() => {
+          if (state && !state.restartRequired) notice();
+        }, 4000);
+        if (activeThread && !byId("host-view").hidden) await loadSession();
+      }
+    } catch {
+      // The broker briefly drops the connection while restarting.
+    } finally {
+      refreshingRestartState = false;
+    }
+  }
+
   async function renderWorkspace() {
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
+    byId("host-view").classList.toggle("has-project", Boolean(entry && selectedProject));
+    byId("workspace-heading").hidden = Boolean(
+      entry && selectedProject && state.account.role !== "admin",
+    );
     byId("workspace-title").textContent = entry?.workspaceId || "Workspaces";
     byId("workspace-root").textContent = entry?.root || "";
     byId("remove-workspace").hidden = !entry || state.account.role !== "admin";
@@ -136,6 +161,7 @@
       selectedProject = projects[0]?.name || null;
       activeThread = null;
     }
+    byId("host-view").classList.toggle("has-project", Boolean(selectedProject));
     byId("projects").replaceChildren(...projects.map((project) => {
       const element = button(project.name, async () => {
         if (selectedProject !== project.name) activeThread = null;
@@ -219,7 +245,7 @@
     return element;
   }
 
-  async function refreshTabs() {
+  async function refreshTabs(openedSession = null) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     if (!workspaceId || !projectName) return;
@@ -229,6 +255,9 @@
     }));
     if (workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
     const sessions = response.sessions || [];
+    if (openedSession && !sessions.some((session) => session.threadId === openedSession.threadId)) {
+      sessions.unshift(openedSession);
+    }
     byId("sessions").replaceChildren(...sessions.map(sessionTab));
     byId("session-empty").hidden = sessions.length > 0;
     if (!sessions.some((session) => session.threadId === activeThread)) {
@@ -236,12 +265,12 @@
     }
   }
 
-  async function openSession(threadId) {
+  async function openSession(threadId, archived = false) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     if (!workspaceId || !projectName) return;
     const request = ++sessionRequest;
-    await api("session/open", { workspaceId, projectName, threadId });
+    const openedSession = await api("session/open", { workspaceId, projectName, threadId, archived });
     if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
     activeThread = threadId;
     latestTurns = [];
@@ -249,7 +278,7 @@
     olderCursor = null;
     transcriptKey = "";
     byId("session-view").hidden = false;
-    await refreshTabs();
+    await refreshTabs({ threadId, title: openedSession.title || threadId });
     await loadSession();
   }
 
@@ -472,7 +501,7 @@
       element.addEventListener("click", () => run(async () => {
         byId("resume-dialog").close();
         activeThread = session.threadId;
-        await openSession(session.threadId);
+        await openSession(session.threadId, session.archived);
       }));
       return element;
     }));
@@ -627,7 +656,14 @@
   });
 
   setInterval(() => {
-    if (state && activeThread && !byId("host-view").hidden) run(loadSession);
+    if (state?.restartRequired) {
+      refreshRestartState();
+      if (activeThread && !byId("host-view").hidden) {
+        loadSession().catch(() => {});
+      }
+    } else if (state && activeThread && !byId("host-view").hidden) {
+      run(loadSession);
+    }
   }, 2000);
   run(async () => {
     try {

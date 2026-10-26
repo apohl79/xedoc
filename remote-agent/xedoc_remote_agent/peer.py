@@ -70,6 +70,7 @@ from .peer_transport import (
     bootstrap_server_tls_context,
     server_tls_context,
 )
+from .work_admission import WorkAdmissionGate
 
 
 StaticPeer = PeerTarget
@@ -186,6 +187,7 @@ class PeerService:
         catalog: Any,
         session_operations: PeerSessionOperations | None = None,
         message_service: MessageService | None = None,
+        work_admission: WorkAdmissionGate | None = None,
     ) -> None:
         if not isinstance(identity, HostIdentity) or not isinstance(state, PeerState):
             raise BrokerError.invalid_request()
@@ -198,6 +200,7 @@ class PeerService:
         ):
             raise BrokerError.invalid_request()
         self._session_operations = session_operations
+        self._work_admission = work_admission or WorkAdmissionGate()
         if message_service is not None and not isinstance(message_service, MessageService):
             raise BrokerError.invalid_request()
         self._message_service = message_service
@@ -1136,55 +1139,18 @@ class PeerService:
             _exact_fields(params, set())
             return self._describe(), None
         if operation == MESSAGE_OPERATION:
-            messages = self._message_service
-            if messages is None:
-                raise BrokerError.unavailable()
-            message_source, message = validate_peer_message(
-                params, self.config.limits.max_message_bytes
-            )
-            if message_source.host_id != source_host_id:
-                raise BrokerError.unauthorized()
-            scope = (
-                "cancellation"
-                if message.delivery == DELIVERY_INTERRUPT
-                else "sessionWrite"
-            )
-            admission = self.state.admit_write(
-                peer_host_id=source_host_id,
-                peer_role=source_role,
-                certificate_fingerprint=certificate.fingerprint,
-                scope=scope,
-            )
-            return (
-                messages.receive_peer(
-                    source_host_id,
-                    params,
-                    admission.policy,
-                    lambda: self.state.validate_admission(admission),
-                ),
-                admission,
-            )
-        if operation in SESSION_OPERATIONS:
-            sessions = self._session_operations
-            if sessions is None:
-                raise BrokerError.unavailable()
-            peer_params = validate_session_params(operation, params)
-            if operation in {
-                "session/attach",
-                "session/read",
-                "session/status",
-                "session/wait",
-            }:
-                admission = self.state.admit_read(
-                    peer_host_id=source_host_id,
-                    peer_role=source_role,
-                    certificate_fingerprint=certificate.fingerprint,
-                    scope="sessionRead",
+            with self._work_admission.admit():
+                messages = self._message_service
+                if messages is None:
+                    raise BrokerError.unavailable()
+                message_source, message = validate_peer_message(
+                    params, self.config.limits.max_message_bytes
                 )
-            else:
+                if message_source.host_id != source_host_id:
+                    raise BrokerError.unauthorized()
                 scope = (
                     "cancellation"
-                    if operation == "session/cancel"
+                    if message.delivery == DELIVERY_INTERRUPT
                     else "sessionWrite"
                 )
                 admission = self.state.admit_write(
@@ -1193,16 +1159,55 @@ class PeerService:
                     certificate_fingerprint=certificate.fingerprint,
                     scope=scope,
                 )
-            return (
-                sessions.handle(
-                    source_host_id,
-                    operation,
-                    peer_params,
-                    admission.policy,
-                    lambda: self.state.validate_admission(admission),
-                ),
-                admission,
-            )
+                return (
+                    messages.receive_peer(
+                        source_host_id,
+                        params,
+                        admission.policy,
+                        lambda: self.state.validate_admission(admission),
+                    ),
+                    admission,
+                )
+        if operation in SESSION_OPERATIONS:
+            with self._work_admission.admit():
+                sessions = self._session_operations
+                if sessions is None:
+                    raise BrokerError.unavailable()
+                peer_params = validate_session_params(operation, params)
+                if operation in {
+                    "session/attach",
+                    "session/read",
+                    "session/status",
+                    "session/wait",
+                }:
+                    admission = self.state.admit_read(
+                        peer_host_id=source_host_id,
+                        peer_role=source_role,
+                        certificate_fingerprint=certificate.fingerprint,
+                        scope="sessionRead",
+                    )
+                else:
+                    scope = (
+                        "cancellation"
+                        if operation == "session/cancel"
+                        else "sessionWrite"
+                    )
+                    admission = self.state.admit_write(
+                        peer_host_id=source_host_id,
+                        peer_role=source_role,
+                        certificate_fingerprint=certificate.fingerprint,
+                        scope=scope,
+                    )
+                return (
+                    sessions.handle(
+                        source_host_id,
+                        operation,
+                        peer_params,
+                        admission.policy,
+                        lambda: self.state.validate_admission(admission),
+                    ),
+                    admission,
+                )
         if operation not in {"workspace/list", "session/list", "session/search"}:
             raise BrokerError.not_found()
         scope = "workspaceRead" if operation == "workspace/list" else "sessionRead"

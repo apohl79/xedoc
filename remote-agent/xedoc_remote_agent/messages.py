@@ -30,6 +30,7 @@ from .peer_state import (
     _prepare_private_file,
     _secure_sqlite_files,
 )
+from .work_admission import WorkAdmissionGate
 from .workspaces import WorkspaceRegistry
 
 
@@ -75,10 +76,12 @@ class MessageService:
         max_attached_sessions: int,
         max_message_bytes: int,
         max_result_bytes: int,
+        work_admission: WorkAdmissionGate | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         required = (
             "_read_session",
+            "_latest_active_turn_id",
             "_start_turn",
             "_steer_turn",
             "_interrupt_turn",
@@ -114,12 +117,14 @@ class MessageService:
             _MAX_INBOX_PER_TARGET, max(1, max_attached_sessions)
         )
         self._clock = clock
+        self._work_admission = work_admission or WorkAdmissionGate()
         self._database_path = self._directory / _STATE_NAME
         self._lock = threading.RLock()
         self._stopping = threading.Event()
         self._wake = threading.Event()
         self._worker: threading.Thread | None = None
         self._peer_service: Any | None = None
+        self._active_turns: dict[str, str] = {}
         _prepare_private_directory(self._directory)
         _prepare_private_file(self._database_path)
         self._initialize()
@@ -162,6 +167,40 @@ class MessageService:
         with self._lock:
             if self._worker is worker and (worker is None or not worker.is_alive()):
                 self._worker = None
+
+    def has_active_work(self) -> bool:
+        """Report queued deliveries and turns started by the deferred worker."""
+
+        with self._lock, self._connection() as connection:
+            pending = connection.execute(
+                """
+                SELECT 1 FROM messages
+                WHERE target_host_id = ?
+                  AND state IN ('queued', 'forwarding', 'delivering', 'interrupting')
+                LIMIT 1
+                """,
+                (self._host_id,),
+            ).fetchone()
+            active_turns = tuple(self._active_turns.items())
+        if pending is not None:
+            return True
+        for thread_id, expected_turn_id in active_turns:
+            try:
+                active_turn_id = self._controller._latest_active_turn_id(thread_id)
+            except BrokerError as error:
+                if error.code is not ErrorCode.NOT_FOUND:
+                    return True
+                active_turn_id = None
+            except Exception:
+                return True
+            with self._lock:
+                if self._active_turns.get(thread_id) == expected_turn_id:
+                    if active_turn_id is None:
+                        self._active_turns.pop(thread_id, None)
+                    else:
+                        self._active_turns[thread_id] = active_turn_id
+        with self._lock:
+            return bool(self._active_turns)
 
     def submit_local(
         self, source: MessageSource, params: Mapping[str, Any]
@@ -342,27 +381,30 @@ class MessageService:
     def _deliver_when_idle(self, stored: _StoredMessage) -> None:
         claimed = False
         try:
-            policy, ensure_authorized = self._delivery_admission(stored)
-            snapshot = self._target_snapshot(
-                stored.submission.target.thread_id,
-                policy,
-                ensure_authorized,
-                include_turns=False,
-            )
-            if snapshot.is_running:
-                return
-            ensure_authorized()
-            if not self._claim(stored, "delivering"):
-                return
-            claimed = True
-            _turn_id(
-                self._controller._start_turn(
+            with self._work_admission.admit():
+                policy, ensure_authorized = self._delivery_admission(stored)
+                snapshot = self._target_snapshot(
                     stored.submission.target.thread_id,
-                    _transcript_message(stored, self._max_message_bytes),
+                    policy,
+                    ensure_authorized,
+                    include_turns=False,
                 )
-            )
-            self._transition(stored, "delivered")
-            self._audit(stored.source, "message.delivered", "ok", None)
+                if snapshot.is_running:
+                    return
+                ensure_authorized()
+                if not self._claim(stored, "delivering"):
+                    return
+                claimed = True
+                turn_id = _turn_id(
+                    self._controller._start_turn(
+                        stored.submission.target.thread_id,
+                        _transcript_message(stored, self._max_message_bytes),
+                    )
+                )
+                with self._lock:
+                    self._active_turns[stored.submission.target.thread_id] = turn_id
+                self._transition(stored, "delivered")
+                self._audit(stored.source, "message.delivered", "ok", None)
         except BaseException as error:
             mapped = map_controller_error(error)
             if mapped.code is ErrorCode.CONFLICT:

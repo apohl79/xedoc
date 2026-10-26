@@ -11,7 +11,7 @@ import threading
 import time
 from typing import Any, Callable, Mapping
 
-from .errors import BrokerError, map_controller_error
+from .errors import BrokerError, ErrorCode, map_controller_error
 from .models import OperationRecord, OperationState
 from .peer_session_contract import (
     ITEM_LABELS,
@@ -118,6 +118,7 @@ class PeerSessionOperations:
             "_resume_session",
             "_attach_session",
             "_read_session",
+            "_latest_active_turn_id",
             "_start_turn",
             "_steer_turn",
             "_interrupt_turn",
@@ -155,7 +156,38 @@ class PeerSessionOperations:
         self._subscribing: set[str] = set()
         self._detaching: set[str] = set()
         self._turn_starting: set[str] = set()
+        self._in_flight = 0
         self._lock = threading.RLock()
+
+    def has_active_work(self) -> bool:
+        with self._lock:
+            if self._in_flight or self._turn_starting:
+                return True
+            active_turns = tuple(self._active_turns.items())
+        for thread_id, known_turn in active_turns:
+            try:
+                active_turn_id = self._controller._latest_active_turn_id(thread_id)
+            except BrokerError as error:
+                if error.code is not ErrorCode.NOT_FOUND:
+                    return True
+                with self._lock:
+                    if self._active_turns.get(thread_id) == known_turn:
+                        self._active_turns.pop(thread_id, None)
+            except Exception:
+                return True
+            else:
+                with self._lock:
+                    if self._active_turns.get(thread_id) == known_turn:
+                        if active_turn_id is None:
+                            self._active_turns.pop(thread_id, None)
+                        else:
+                            self._active_turns[thread_id] = _ActiveTurn(
+                                peer_host_id=known_turn.peer_host_id,
+                                operation_id=known_turn.operation_id,
+                                turn_id=active_turn_id,
+                            )
+        with self._lock:
+            return bool(self._in_flight or self._turn_starting or self._active_turns)
 
     def handle(
         self,
@@ -167,29 +199,35 @@ class PeerSessionOperations:
     ) -> dict[str, Any]:
         """Execute one fixed operation after peer admission has created a policy."""
 
-        peer_host_id = _identifier(peer_host_id)
-        if not isinstance(policy, GrantPolicy) or not callable(ensure_authorized):
-            raise BrokerError.invalid_request()
-        params = validate_session_params(operation, params)
-        if operation == "session/start":
-            return self._start(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/resume":
-            return self._resume(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/attach":
-            return self._attach(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/read":
-            return self._read(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/send":
-            return self._send(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/steer":
-            return self._steer(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/status":
-            return self._status(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/wait":
-            return self._wait(peer_host_id, params, policy, ensure_authorized)
-        if operation == "session/cancel":
-            return self._cancel(peer_host_id, params, policy, ensure_authorized)
-        return self._detach(peer_host_id, params, policy, ensure_authorized)
+        with self._lock:
+            self._in_flight += 1
+        try:
+            peer_host_id = _identifier(peer_host_id)
+            if not isinstance(policy, GrantPolicy) or not callable(ensure_authorized):
+                raise BrokerError.invalid_request()
+            params = validate_session_params(operation, params)
+            if operation == "session/start":
+                return self._start(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/resume":
+                return self._resume(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/attach":
+                return self._attach(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/read":
+                return self._read(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/send":
+                return self._send(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/steer":
+                return self._steer(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/status":
+                return self._status(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/wait":
+                return self._wait(peer_host_id, params, policy, ensure_authorized)
+            if operation == "session/cancel":
+                return self._cancel(peer_host_id, params, policy, ensure_authorized)
+            return self._detach(peer_host_id, params, policy, ensure_authorized)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
 
     def detach_peer(self, peer_host_id: str) -> None:
         """Detach one relationship's relays without ever interrupting a turn."""
@@ -229,11 +267,6 @@ class PeerSessionOperations:
                 finally:
                     with self._lock:
                         self._detaching.discard(thread_id)
-        with self._lock:
-            for thread_id, active in tuple(self._active_turns.items()):
-                if active.peer_host_id == peer_host_id:
-                    self._active_turns.pop(thread_id, None)
-
     def _start(
         self,
         peer_host_id: str,
@@ -618,7 +651,7 @@ class PeerSessionOperations:
             ensure_authorized()
             self._controller._interrupt_turn(thread_id, turn_id)
             with self._lock:
-                active = self._active_turns.pop(thread_id, None)
+                active = self._active_turns.get(thread_id)
                 if active is not None:
                     source = self._records.get(active.operation_id)
                     if source is not None:
@@ -824,9 +857,6 @@ class PeerSessionOperations:
                 self._set_record_locked(
                     stored, OperationState.EXPIRED, error=BrokerError.unavailable()
                 )
-                active = self._active_turns.get(record.thread_id or "")
-                if active is not None and active.operation_id == record.operation_id:
-                    self._active_turns.pop(record.thread_id or "", None)
 
     def _attachment_count_locked(self) -> int:
         return sum(len(attachments) for attachments in self._peer_attachments.values())

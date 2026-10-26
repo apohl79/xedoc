@@ -6,9 +6,11 @@ from pathlib import Path
 import tempfile
 import threading
 import time
+from typing import Any, Callable, Mapping
 
 from .controller import _LiveTurnItems, _default_client_factory
-from .errors import BrokerError, map_controller_error
+from .errors import BrokerError, ErrorCode, map_controller_error
+from .work_admission import WorkAdmissionGate
 from .workspaces import _validate_workspace_id, load_bootstrap_descriptor
 
 
@@ -40,15 +42,20 @@ class HostWorkspaces:
         home: Path,
         *,
         bootstrap_path: Path | None = None,
+        on_config_changed: Callable[[], None] | None = None,
+        work_admission: WorkAdmissionGate | None = None,
     ) -> None:
         self.home = home
         self._bootstrap_path = bootstrap_path or (
             home / "remote-agent" / "bootstrap.toml"
         )
+        self._on_config_changed = on_config_changed
+        self._work_admission = work_admission or WorkAdmissionGate()
         self._session_state_path = home / "host-gui" / "closed-sessions.json"
         self._closed_sessions = self._read_session_state()
         self._client = None
         self._live_items = _LiveTurnItems()
+        self._active_turns: dict[str, str] = {}
         self._lock = threading.RLock()
         self._restart_required = False
 
@@ -117,25 +124,26 @@ class HostWorkspaces:
             raise
 
     def _request(self, method: str, params: dict) -> dict:
-        try:
-            if self._client is None:
-                descriptor = load_bootstrap_descriptor(self._bootstrap_path)
-                client = _default_client_factory(descriptor.socket_path, 30.0)
-                try:
-                    client.initialize("xedoc-host-gui", "Xedoc Host GUI", "0.1.0")
-                except Exception:
-                    client.close()
-                    raise
-                set_handler = getattr(client, "set_notification_handler", None)
-                if callable(set_handler):
-                    set_handler(self._live_items.observe)
-                self._client = client
-            return self._client.request(method, params)
-        except Exception as error:
-            if self._client is not None:
-                self._client.close()
-                self._client = None
-            raise map_controller_error(error) from error
+        with self._lock:
+            try:
+                if self._client is None:
+                    descriptor = load_bootstrap_descriptor(self._bootstrap_path)
+                    client = _default_client_factory(descriptor.socket_path, 30.0)
+                    try:
+                        client.initialize("xedoc-host-gui", "Xedoc Host GUI", "0.1.0")
+                    except Exception:
+                        client.close()
+                        raise
+                    set_handler = getattr(client, "set_notification_handler", None)
+                    if callable(set_handler):
+                        set_handler(self._observe_notification)
+                    self._client = client
+                return self._client.request(method, params)
+            except Exception as error:
+                if self._client is not None:
+                    self._client.close()
+                    self._client = None
+                raise map_controller_error(error) from error
 
     def _config(self) -> tuple[dict, dict]:
         response = self._request("config/read", {"includeLayers": True})
@@ -219,11 +227,66 @@ class HostWorkspaces:
                 "expectedVersion": layer["version"],
             },
         )
-        self._restart_required = True
         if result.get("status") != "ok":
             raise BrokerError.conflict(
                 "Workspace config is overridden by another host layer"
             )
+        self._restart_required = True
+        if self._on_config_changed is not None:
+            self._on_config_changed()
+
+    def has_active_turns(self) -> bool:
+        with self._lock:
+            active_turns = tuple(self._active_turns.items())
+        for thread_id, turn_id in active_turns:
+            try:
+                response = self._request(
+                    "thread/turns/list",
+                    {
+                        "threadId": thread_id,
+                        "limit": 1,
+                        "sortDirection": "desc",
+                        "itemsView": "notLoaded",
+                    },
+                )
+            except BrokerError as error:
+                if error.code is not ErrorCode.NOT_FOUND:
+                    return True
+                still_active = False
+            except Exception:
+                return True
+            else:
+                turns = response.get("data", [])
+                still_active = isinstance(turns, list) and any(
+                    isinstance(turn, dict)
+                    and turn.get("id") == turn_id
+                    and turn.get("status") in {"inProgress", "active"}
+                    for turn in turns
+                )
+            with self._lock:
+                if not still_active and self._active_turns.get(thread_id) == turn_id:
+                    self._active_turns.pop(thread_id, None)
+        with self._lock:
+            return bool(self._active_turns)
+
+    def _observe_notification(self, message: Mapping[str, Any]) -> None:
+        self._live_items.observe(message)
+        params = message.get("params")
+        if not isinstance(params, dict):
+            return
+        thread_id = params.get("threadId")
+        turn = params.get("turn")
+        turn_id = turn.get("id") if isinstance(turn, dict) else None
+        if not isinstance(thread_id, str) or not isinstance(turn_id, str):
+            return
+        with self._lock:
+            if message.get("method") == "turn/started":
+                self._active_turns[thread_id] = turn_id
+            elif (
+                message.get("method") == "turn/completed"
+                and self._active_turns.get(thread_id) == turn_id
+            ):
+                self._active_turns.pop(thread_id, None)
 
     def add(self, workspace_id: str, root: str, create: bool) -> None:
         _validate_workspace_id(workspace_id)
@@ -415,6 +478,7 @@ class HostWorkspaces:
                                 "title": str(
                                     item.get("name") or item.get("preview") or thread_id
                                 )[:256],
+                                "archived": archived,
                                 "updatedAt": updated if isinstance(updated, int) else 0,
                                 "status": item.get("status", {}).get("type", "unknown")
                                 if isinstance(item.get("status"), dict)
@@ -430,7 +494,7 @@ class HostWorkspaces:
             return sessions[:500]
 
     def new_session(self, username: str, workspace_id: str, project_name: str) -> dict:
-        with self._lock:
+        with self._work_admission.admit(), self._lock:
             project = self._project_path(workspace_id, project_name)
             response = self._request("thread/start", {"cwd": str(project)})
             thread = response.get("thread")
@@ -444,11 +508,19 @@ class HostWorkspaces:
             }
 
     def resume_session(
-        self, username: str, workspace_id: str, project_name: str, thread_id: str
+        self,
+        username: str,
+        workspace_id: str,
+        project_name: str,
+        thread_id: str,
+        *,
+        archived: bool = False,
     ) -> dict:
-        with self._lock:
+        with self._work_admission.admit(), self._lock:
             project = self._project_path(workspace_id, project_name)
             self._thread_for_project(thread_id, project)
+            if archived:
+                self._request("thread/unarchive", {"threadId": thread_id})
             response = self._request(
                 "thread/resume",
                 {
@@ -484,7 +556,7 @@ class HostWorkspaces:
                 "threadId": thread_id,
                 "limit": _WEB_TURN_LIMIT,
                 "sortDirection": "desc",
-                "itemsView": "full",
+                "itemsView": "notLoaded",
             }
             if cursor:
                 if not isinstance(cursor, str) or len(cursor) > 4096:
@@ -494,6 +566,40 @@ class HostWorkspaces:
             turns = page.get("data", [])
             if not isinstance(turns, list):
                 turns = []
+            for turn in turns:
+                if not isinstance(turn, dict):
+                    continue
+                turn["items"] = []
+                item_cursor = None
+                item_limit = _WEB_ITEM_LIMIT
+                while len(turn["items"]) < _WEB_ITEM_LIMIT:
+                    item_params = {
+                        "threadId": thread_id,
+                        "turnId": turn["id"],
+                        "limit": min(item_limit, _WEB_ITEM_LIMIT - len(turn["items"])),
+                        "sortDirection": "asc",
+                        "cursor": item_cursor,
+                    }
+                    try:
+                        item_page = self._request("thread/items/list", item_params)
+                    except BrokerError as error:
+                        if (
+                            item_params["limit"] > 1
+                            and "message exceeds the size limit" in str(error.__cause__)
+                        ):
+                            item_limit = max(1, item_params["limit"] // 2)
+                            continue
+                        raise
+                    entries = item_page.get("data", [])
+                    turn["items"].extend(
+                        entry["item"]
+                        for entry in entries
+                        if isinstance(entry, dict) and isinstance(entry.get("item"), dict)
+                    )
+                    next_cursor = item_page.get("nextCursor")
+                    if not entries or not next_cursor or next_cursor == item_cursor:
+                        break
+                    item_cursor = next_cursor
             live_thread = {"turns": turns}
             self._live_items.apply(thread_id, live_thread)
             remaining = _WEB_TRANSCRIPT_LIMIT
@@ -618,18 +724,27 @@ class HostWorkspaces:
             or len(message) > 64 * 1024
         ):
             raise BrokerError.invalid_request("Message must contain 1–64 KiB of text")
-        with self._lock:
+        with self._work_admission.admit(), self._lock:
             project = self._project_path(workspace_id, project_name)
             if thread_id in self._closed_sessions.get(username, []):
                 raise BrokerError.not_found()
             self._thread_for_project(thread_id, project)
-            return self._request(
+            response = self._request(
                 "turn/start",
                 {
                     "threadId": thread_id,
                     "input": [{"type": "text", "text": message}],
                 },
             )
+            turn = response.get("turn")
+            turn_id = (
+                turn.get("id", turn.get("turnId"))
+                if isinstance(turn, dict)
+                else response.get("turnId")
+            )
+            if isinstance(turn_id, str):
+                self._active_turns[thread_id] = turn_id
+            return response
 
     def close(self) -> None:
         with self._lock:

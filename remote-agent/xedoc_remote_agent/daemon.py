@@ -17,6 +17,7 @@ import secrets
 import signal
 import stat
 import threading
+import time
 from typing import Any, Callable, Mapping
 
 from .controller import BrokerController
@@ -38,6 +39,7 @@ from .peer_state import export_existing_audit
 from .workspaces import controller_identifier
 from .workspaces import load_bootstrap_descriptor
 from .workspaces import selected_bootstrap_path
+from .work_admission import WorkAdmissionGate
 
 
 PID_NAME = "broker.pid"
@@ -46,6 +48,9 @@ STATE_VERSION = 1
 MAX_PID_STATE_BYTES = 4096
 MAX_DOCTOR_BYTES = 16 * 1024
 MAX_OWNER_IPC_BYTES = 64 * 1024
+_RESTART_RESPONSE_DELAY_SECONDS = 0.5
+_RESTART_IDLE_POLL_SECONDS = 1.0
+_RESTART_IDLE_GRACE_SECONDS = 1.0
 
 ControllerFactory = Callable[..., Any]
 ClientFactory = Callable[[Path, float], Any]
@@ -201,6 +206,7 @@ class RemoteAgentDaemon:
         self._shutdown = threading.Event()
         self._controller: Any | None = None
         self._operations: SessionOperations | None = None
+        self._peer_sessions: PeerSessionOperations | None = None
         self._message_service: MessageService | None = None
         self._ipc: LocalIpcServer | None = None
         self._peer_service: PeerService | None = None
@@ -211,6 +217,9 @@ class RemoteAgentDaemon:
         self._lock: _ExclusiveLock | None = None
         self._pid_owner: str | None = None
         self._shutdown_reaper: threading.Thread | None = None
+        self._restart_requested = threading.Event()
+        self._restart_waiter: threading.Thread | None = None
+        self._work_admission = WorkAdmissionGate()
 
     @property
     def running(self) -> bool:
@@ -258,6 +267,7 @@ class RemoteAgentDaemon:
             local_log: LocalLog | None = None
             try:
                 _claim_pid(self.paths.pid_path, owner)
+                self._work_admission.open()
                 identity = PeerState(
                     self.paths.directory,
                     audit_retention_days=90,
@@ -295,6 +305,7 @@ class RemoteAgentDaemon:
                     max_attached_sessions=limits.max_attached_sessions,
                     max_message_bytes=limits.max_message_bytes,
                     max_result_bytes=limits.max_result_bytes,
+                    work_admission=self._work_admission,
                 )
                 peer_service = PeerService(
                     identity=identity,
@@ -303,6 +314,7 @@ class RemoteAgentDaemon:
                     catalog=catalog,
                     session_operations=peer_sessions,
                     message_service=message_service,
+                    work_admission=self._work_admission,
                 )
                 message_service.set_peer_service(peer_service)
                 message_service.start()
@@ -318,6 +330,7 @@ class RemoteAgentDaemon:
                     shutdown_callback=self.request_shutdown,
                     xedoc_home=self.paths.xedoc_home,
                     controller_id=controller_id,
+                    work_admission=self._work_admission,
                 )
                 ipc.start()
             except BrokerError:
@@ -348,6 +361,7 @@ class RemoteAgentDaemon:
                 raise map_controller_error(error) from error
             self._controller = controller
             self._operations = operations
+            self._peer_sessions = peer_sessions
             self._message_service = message_service
             self._ipc = ipc
             self._peer_service = peer_service
@@ -367,6 +381,7 @@ class RemoteAgentDaemon:
         """Stop serving and report whether ownership was fully released."""
 
         with self._lifecycle_lock:
+            self._work_admission.close()
             self._shutdown.set()
             peer_service = self._peer_service
             if peer_service is not None:
@@ -387,9 +402,133 @@ class RemoteAgentDaemon:
     def request_shutdown(self) -> None:
         """Wake a foreground ``serve`` loop without touching a remote PID."""
 
+        self._restart_requested.clear()
+        self._work_admission.close()
         self._shutdown.set()
         if self._local_log is not None:
             _record_log(self._local_log, "daemon.shutdownRequested", "ok")
+
+    def request_restart_after_idle(self) -> None:
+        """Restart after workspace changes once broker turns have finished."""
+
+        with self._lifecycle_lock:
+            if (
+                self._ipc is None
+                or not self._ipc.running
+                or self._shutdown.is_set()
+            ):
+                return
+            self._restart_requested.set()
+            waiter = self._restart_waiter
+            if waiter is not None and waiter.is_alive():
+                return
+            waiter = threading.Thread(
+                target=self._restart_when_idle,
+                name="xedoc-remote-agentd-restart",
+                daemon=True,
+            )
+            self._restart_waiter = waiter
+            try:
+                waiter.start()
+            except RuntimeError:
+                self._restart_waiter = None
+                self._restart_requested.clear()
+                logging.exception("Could not schedule the remote-agent restart")
+
+    def _restart_when_idle(self) -> None:
+        if self._shutdown.wait(_RESTART_RESPONSE_DELAY_SECONDS):
+            return
+        idle_since: float | None = None
+        warned = False
+        while not self._shutdown.wait(_RESTART_IDLE_POLL_SECONDS):
+            if not self._restart_requested.is_set():
+                return
+            try:
+                has_active_work = self._has_active_work()
+                warned = False
+            except Exception:
+                if not warned:
+                    logging.warning(
+                        "Could not check active remote-agent work before restart",
+                        exc_info=True,
+                    )
+                    warned = True
+                idle_since = None
+                continue
+            if has_active_work:
+                idle_since = None
+                continue
+            if idle_since is None:
+                idle_since = time.monotonic()
+                continue
+            if time.monotonic() - idle_since < _RESTART_IDLE_GRACE_SECONDS:
+                continue
+            with self._lifecycle_lock:
+                if (
+                    self._restart_requested.is_set()
+                    and self._ipc is not None
+                    and self._ipc.running
+                    and not self._shutdown.is_set()
+                ):
+                    self._work_admission.close()
+                else:
+                    return
+            try:
+                has_active_work = self._has_active_work()
+                warned = False
+            except Exception:
+                with self._lifecycle_lock:
+                    can_resume = (
+                        self._restart_requested.is_set()
+                        and self._ipc is not None
+                        and self._ipc.running
+                        and not self._shutdown.is_set()
+                    )
+                    if can_resume:
+                        self._work_admission.open()
+                if not can_resume:
+                    return
+                idle_since = None
+                if not warned:
+                    logging.warning(
+                        "Could not check active remote-agent work before restart",
+                        exc_info=True,
+                    )
+                    warned = True
+                continue
+            with self._lifecycle_lock:
+                if (
+                    not self._restart_requested.is_set()
+                    or self._ipc is None
+                    or not self._ipc.running
+                    or self._shutdown.is_set()
+                ):
+                    return
+                if has_active_work:
+                    self._work_admission.open()
+                    idle_since = None
+                    continue
+                if self._local_log is not None:
+                    _record_log(self._local_log, "daemon.restartRequested", "ok")
+                self._shutdown.set()
+                return
+
+    def _has_active_work(self) -> bool:
+        if self._work_admission.in_flight:
+            return True
+        with self._lifecycle_lock:
+            operations = self._operations
+            peer_sessions = self._peer_sessions
+            host_gui = self._host_gui
+        if operations is not None and operations.has_active_work():
+            return True
+        if peer_sessions is not None and peer_sessions.has_active_work():
+            return True
+        if host_gui is not None and host_gui.has_active_turns():
+            return True
+        with self._lifecycle_lock:
+            message_service = self._message_service
+        return message_service is not None and message_service.has_active_work()
 
     def wait(self, timeout: float | None = None) -> bool:
         if timeout is not None and (
@@ -403,7 +542,6 @@ class RemoteAgentDaemon:
     def serve(self, *, install_signal_handlers: bool = True) -> int:
         """Serve in the foreground until shutdown or SIGINT/SIGTERM."""
 
-        self.start()
         previous: dict[int, Any] = {}
         exit_code = 0
         try:
@@ -418,8 +556,27 @@ class RemoteAgentDaemon:
                         signal.signal(signum, handle_signal)
                     except (OSError, ValueError):
                         continue
-            while self.running and not self._shutdown.wait(0.25):
-                pass
+            while True:
+                self.start()
+                while self.running and not self._shutdown.wait(0.25):
+                    pass
+                restart = self._restart_requested.is_set()
+                if not self.stop():
+                    if not restart:
+                        exit_code = 1
+                        break
+                    ipc = self.ipc
+                    if ipc is not None:
+                        ipc.wait_shutdown()
+                        with self._lifecycle_lock:
+                            if self._ipc is ipc and ipc.shutdown_complete:
+                                self._finalize_shutdown_locked()
+                    if self.ipc is not None:
+                        exit_code = 1
+                        break
+                if not restart:
+                    break
+                self._restart_requested.clear()
         except KeyboardInterrupt:
             pass
         finally:
@@ -428,7 +585,7 @@ class RemoteAgentDaemon:
                     signal.signal(signum, handler)
                 except (OSError, ValueError):
                     pass
-            if not self.stop():
+            if self.running and not self.stop():
                 exit_code = 1
         return exit_code
 
@@ -464,6 +621,7 @@ class RemoteAgentDaemon:
             peer_service.stop_listener()
         controller, self._controller = self._controller, None
         self._operations = None
+        self._peer_sessions = None
         message_service, self._message_service = self._message_service, None
         if message_service is not None:
             message_service.stop()
@@ -472,6 +630,7 @@ class RemoteAgentDaemon:
         local_log, self._local_log = self._local_log, None
         self._state = None
         self._shutdown_reaper = None
+        self._restart_waiter = None
         _close_controller(controller)
         if owner is not None:
             _release_pid(self.paths.pid_path, owner)
@@ -484,7 +643,12 @@ class RemoteAgentDaemon:
         try:
             from .host_gui import HostGuiService
 
-            host_gui = HostGuiService(self.paths.xedoc_home, self.paths.bootstrap_path)
+            host_gui = HostGuiService(
+                self.paths.xedoc_home,
+                self.paths.bootstrap_path,
+                on_workspace_config_changed=self.request_restart_after_idle,
+                work_admission=self._work_admission,
+            )
             if not host_gui.start():
                 return
         except Exception as error:

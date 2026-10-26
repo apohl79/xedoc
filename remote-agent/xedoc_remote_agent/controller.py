@@ -238,6 +238,30 @@ class _ControllerConnection:
             self._live_items.apply(thread_id, thread)
         return response
 
+    def _latest_active_turn_id(self, thread_id: str) -> str | None:
+        page = self._request(
+            "thread/turns/list",
+            {
+                "threadId": thread_id,
+                "limit": 1,
+                "sortDirection": "desc",
+                "itemsView": "notLoaded",
+            },
+        )
+        turns = page.get("data")
+        if not isinstance(turns, list):
+            raise BrokerError.internal()
+        for turn in turns:
+            if not isinstance(turn, Mapping):
+                continue
+            if turn.get("status") not in {"inProgress", "active", "running"}:
+                continue
+            turn_id = turn.get("id")
+            if not isinstance(turn_id, str) or not turn_id:
+                raise BrokerError.internal()
+            return turn_id
+        return None
+
     def _start_turn(self, thread_id: str, message: str) -> dict[str, Any]:
         return self._request(
             "turn/start",

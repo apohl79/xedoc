@@ -25,6 +25,7 @@ from .errors import BrokerError, ErrorCode
 from .extension_bindings import ExtensionBindingRegistry
 from .messages import MessageService
 from .models import MAX_ID_LENGTH
+from .work_admission import WorkAdmissionGate
 
 
 PROTOCOL = "xedoc.remote-agent.local"
@@ -75,6 +76,16 @@ _SESSION_OPERATION_FIELDS: dict[str, tuple[set[str], set[str]]] = {
     ),
     "session/detach": ({"hostId", "threadId"}, {"threadId"}),
 }
+_SESSION_WORK_METHODS = {
+    "session/start",
+    "session/resume",
+    "session/attach",
+    "session/send",
+    "session/steer",
+    "session/cancel",
+    "session/detach",
+    "session/message",
+}
 
 
 class LocalIpcServer:
@@ -93,6 +104,7 @@ class LocalIpcServer:
         shutdown_callback: Callable[[], None] | None = None,
         xedoc_home: str | os.PathLike[str] | None = None,
         controller_id: str | None = None,
+        work_admission: WorkAdmissionGate | None = None,
         max_clients: int = MAX_CLIENTS,
     ) -> None:
         _require_unix_sockets()
@@ -108,6 +120,7 @@ class LocalIpcServer:
         self._catalog = catalog
         self._operations = operations
         self._peer_service = peer_service
+        self._work_admission = work_admission or WorkAdmissionGate()
         if message_service is not None and not isinstance(message_service, MessageService):
             raise BrokerError.invalid_request()
         if shutdown_callback is not None and not callable(shutdown_callback):
@@ -343,6 +356,15 @@ class LocalIpcServer:
                 return
 
     def _dispatch(
+        self, request: Mapping[str, Any], request_id: str
+    ) -> dict[str, Any]:
+        method = request.get("method")
+        if isinstance(method, str) and method in _SESSION_WORK_METHODS:
+            with self._work_admission.admit():
+                return self._dispatch_request(request, request_id)
+        return self._dispatch_request(request, request_id)
+
+    def _dispatch_request(
         self, request: Mapping[str, Any], request_id: str
     ) -> dict[str, Any]:
         if not _REQUIRED_REQUEST_FIELDS <= set(request) <= _REQUEST_FIELDS:

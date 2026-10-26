@@ -12,12 +12,14 @@ from pathlib import Path
 import socket
 import ssl
 import threading
+from typing import Callable
 from urllib.parse import parse_qs, urlsplit
 
 from .errors import BrokerError, ErrorCode
 from .host_auth import HostAuth
 from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
+from .work_admission import WorkAdmissionGate
 
 
 class HostServer(ThreadingHTTPServer):
@@ -30,6 +32,8 @@ class HostServer(ThreadingHTTPServer):
         home: Path,
         *,
         bootstrap_path: Path | None = None,
+        on_workspace_config_changed: Callable[[], None] | None = None,
+        work_admission: WorkAdmissionGate | None = None,
     ):
         self.address_family = (
             socket.AF_INET6 if ":" in address[0] else socket.AF_INET
@@ -40,7 +44,12 @@ class HostServer(ThreadingHTTPServer):
         self.auth = HostAuth(home)
         if not self.auth.users:
             raise ValueError("Run host-gui setup before serving")
-        self.workspaces = HostWorkspaces(home, bootstrap_path=bootstrap_path)
+        self.workspaces = HostWorkspaces(
+            home,
+            bootstrap_path=bootstrap_path,
+            on_config_changed=on_workspace_config_changed,
+            work_admission=work_admission,
+        )
         self.slots = threading.BoundedSemaphore(16)
         self.tls_context = None
         super().__init__(address, HostHandler)
@@ -68,9 +77,18 @@ class HostServer(ThreadingHTTPServer):
 
 
 class HostGuiService:
-    def __init__(self, home: Path, bootstrap_path: Path) -> None:
+    def __init__(
+        self,
+        home: Path,
+        bootstrap_path: Path,
+        *,
+        on_workspace_config_changed: Callable[[], None] | None = None,
+        work_admission: WorkAdmissionGate | None = None,
+    ) -> None:
         self.home = home
         self.bootstrap_path = bootstrap_path
+        self.on_workspace_config_changed = on_workspace_config_changed
+        self.work_admission = work_admission
         self.config = HostGuiConfig.load(home)
         self.origin = self.config.origin
         self.server: HostServer | None = None
@@ -85,6 +103,8 @@ class HostGuiService:
             self.config.origin,
             self.home,
             bootstrap_path=self.bootstrap_path,
+            on_workspace_config_changed=self.on_workspace_config_changed,
+            work_admission=self.work_admission,
         )
         server.tls_context = tls_context
         thread = threading.Thread(
@@ -112,6 +132,10 @@ class HostGuiService:
         server.workspaces.close()
         if thread is not None:
             thread.join(timeout=5)
+
+    def has_active_turns(self) -> bool:
+        server = self.server
+        return server is not None and server.workspaces.has_active_turns()
 
 
 class HostHandler(BaseHTTPRequestHandler):
@@ -271,6 +295,7 @@ class HostHandler(BaseHTTPRequestHandler):
                             workspace_id,
                             project_name,
                             body.get("threadId"),
+                            archived=body.get("archived") is True,
                         ),
                     )
                     return

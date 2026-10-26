@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any, Callable, Mapping
 
-from .errors import BrokerError, map_controller_error
+from .errors import BrokerError, ErrorCode, map_controller_error
 from .models import (
     MAX_ID_LENGTH,
     OperationHandle,
@@ -187,6 +187,7 @@ class SessionOperations:
             "_resume_session",
             "_attach_session",
             "_read_session",
+            "_latest_active_turn_id",
             "_start_turn",
             "_steer_turn",
             "_interrupt_turn",
@@ -205,6 +206,8 @@ class SessionOperations:
         self._attachment_transitions: set[str] = set()
         self._pending_attachments = 0
         self._active_turns: dict[str, str] = {}
+        self._turn_starting: set[str] = set()
+        self._in_flight = 0
         self._lock = threading.RLock()
         self._store = _OperationStore(
             max_records=min(
@@ -220,6 +223,33 @@ class SessionOperations:
             "session/start",
             lambda record: self._start(record, cwd),
         )
+
+    def has_active_work(self) -> bool:
+        with self._lock:
+            if self._in_flight or self._turn_starting:
+                return True
+            active_turns = tuple(self._active_turns.items())
+        for thread_id, known_turn_id in active_turns:
+            try:
+                active_turn_id = self._controller._latest_active_turn_id(thread_id)
+            except BrokerError as error:
+                if error.code is not ErrorCode.NOT_FOUND:
+                    return True
+                with self._lock:
+                    if self._active_turns.get(thread_id) == known_turn_id:
+                        self._active_turns.pop(thread_id, None)
+            except Exception:
+                return True
+            else:
+                with self._lock:
+                    if self._active_turns.get(thread_id) != known_turn_id:
+                        continue
+                    if active_turn_id is None:
+                        self._active_turns.pop(thread_id, None)
+                    else:
+                        self._active_turns[thread_id] = active_turn_id
+        with self._lock:
+            return bool(self._in_flight or self._turn_starting or self._active_turns)
 
     def resume(self, request: Mapping[str, Any]) -> OperationHandle:
         thread_id = self._thread_request(request)
@@ -381,14 +411,20 @@ class SessionOperations:
     def _run(
         self, operation: str, action: Callable[[OperationRecord], None]
     ) -> OperationHandle:
-        record = self._store.create(self._entity_id, operation)
-        self._store.transition(record, OperationState.RUNNING)
+        with self._lock:
+            self._in_flight += 1
         try:
-            action(record)
-        except BaseException as error:
-            mapped = map_controller_error(error)
-            self._store.transition(record, OperationState.FAILED, error=mapped)
-        return OperationHandle(record.operation_id)
+            record = self._store.create(self._entity_id, operation)
+            self._store.transition(record, OperationState.RUNNING)
+            try:
+                action(record)
+            except BaseException as error:
+                mapped = map_controller_error(error)
+                self._store.transition(record, OperationState.FAILED, error=mapped)
+            return OperationHandle(record.operation_id)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
 
     def _start(self, record: OperationRecord, cwd: Path) -> None:
         response = self._controller._start_session(str(cwd))
@@ -475,13 +511,21 @@ class SessionOperations:
         )
 
     def _send(self, record: OperationRecord, thread_id: str, message: str) -> None:
-        response = self._controller._start_turn(thread_id, message)
-        turn = response.get("turn") if isinstance(response, Mapping) else None
-        if not isinstance(turn, Mapping):
-            raise BrokerError.internal()
-        turn_id = _identifier(turn.get("id", turn.get("turnId")))
         with self._lock:
-            self._active_turns[thread_id] = turn_id
+            self._turn_starting.add(thread_id)
+        try:
+            response = self._controller._start_turn(thread_id, message)
+            turn = response.get("turn") if isinstance(response, Mapping) else None
+            if not isinstance(turn, Mapping):
+                raise BrokerError.internal()
+            turn_id = _identifier(turn.get("id", turn.get("turnId")))
+            with self._lock:
+                self._turn_starting.discard(thread_id)
+                self._active_turns[thread_id] = turn_id
+        except BaseException:
+            with self._lock:
+                self._turn_starting.discard(thread_id)
+            raise
         self._store.transition(
             record,
             OperationState.COMPLETED,
@@ -517,8 +561,6 @@ class SessionOperations:
         self, record: OperationRecord, thread_id: str, turn_id: str
     ) -> None:
         self._controller._interrupt_turn(thread_id, turn_id)
-        with self._lock:
-            self._active_turns.pop(thread_id, None)
         self._store.transition(
             record,
             OperationState.CANCELLED,
@@ -532,7 +574,6 @@ class SessionOperations:
             self._controller._unsubscribe(thread_id)
             with self._lock:
                 self._attachments.remove(thread_id)
-                self._active_turns.pop(thread_id, None)
         finally:
             with self._lock:
                 self._attachment_transitions.discard(thread_id)
