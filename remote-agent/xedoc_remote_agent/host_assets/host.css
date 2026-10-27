@@ -131,8 +131,18 @@ aside button.workspace {
   overflow-wrap: anywhere;
 }
 aside button.workspace.selected, aside button.project.selected {
+  position: relative;
   background: #292631;
   color: #e4d7f2;
+}
+aside button.workspace.selected::before, aside button.project.selected::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(to bottom, #292631, var(--brand), #292631);
+  content: "";
+  pointer-events: none;
 }
 .workspace-remove {
   position: absolute;
@@ -173,10 +183,36 @@ aside button.project {
   border-color: transparent;
   background: transparent;
 }
-.project-row { display: flex; align-items: center; gap: 2px; }
-.project-row button.project { display: flex; align-items: center; min-width: 0; flex: 1; }
+.project-row { position: relative; display: flex; min-width: 0; align-items: center; }
+.project-row button.project {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  padding-right: 34px;
+}
 .project-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.project-pin { padding: 1px 5px; border: 0; background: transparent; color: var(--muted); }
+.project-pin {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  display: grid;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  pointer-events: none;
+}
+.project-row:hover .project-pin,
+.project-row:focus-within .project-pin {
+  opacity: 1;
+  pointer-events: auto;
+}
 .project-pin[aria-pressed="true"] { color: var(--brand); }
 .session-state { display: inline-flex; flex: none; align-items: center; gap: 4px; margin-left: 5px; vertical-align: middle; }
 .session-state > span { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; }
@@ -221,17 +257,52 @@ aside button.project {
 .dialog-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 .project-source { display: flex; gap: 3px; margin: 9px 0; }
 .project-source button { flex: 1; }
-.project-source button[aria-pressed="true"] { color: #e0f7f4; background: var(--accent-soft); }
+.project-source button[aria-pressed="true"] {
+  color: #f4eafa;
+  background: color-mix(in srgb, var(--brand) 22%, #292631);
+}
 #project-clone-fields { display: grid; }
 #resume-sessions { max-height: 60vh; overflow: auto; }
 #resume-sessions button { display: flex; width: 100%; justify-content: space-between; text-align: left; gap: 8px; margin: 2px 0; }
 #resume-sessions button span { overflow: hidden; text-overflow: ellipsis; }
 #resume-sessions small { color: var(--muted); white-space: nowrap; }
-dialog { width: min(560px, calc(100% - 32px)); max-height: 85dvh; background: var(--raised); border: 1px solid var(--border-strong); border-radius: 5px; padding: 15px; color: var(--text); box-shadow: 0 16px 48px #0007; }
-dialog::backdrop { background: #05090dbb; }
+dialog {
+  width: min(560px, calc(100% - 32px));
+  max-height: 85dvh;
+  background: color-mix(in srgb, var(--brand) 9%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--border-strong));
+  border-radius: 5px;
+  padding: 15px;
+  color: var(--text);
+  box-shadow: 0 16px 48px #0007;
+}
+dialog::backdrop { background: rgb(18 8 29 / 80%); }
+dialog button {
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+}
+dialog button:hover {
+  background: color-mix(in srgb, var(--brand) 15%, var(--hover));
+}
+dialog button.primary {
+  background: color-mix(in srgb, var(--brand) 34%, #292631);
+  color: #f6edff;
+}
+dialog button.primary:hover {
+  background: color-mix(in srgb, var(--brand) 44%, #292631);
+}
+dialog input, dialog select {
+  background: color-mix(in srgb, var(--brand) 3%, var(--canvas));
+  border-color: color-mix(in srgb, var(--brand) 34%, var(--border-strong));
+}
+dialog input:focus, dialog select:focus,
+dialog button:focus-visible {
+  outline-color: var(--brand);
+}
 footer { display: flex; justify-content: end; gap: 5px; margin-top: 12px; }
 #directories { max-height: 35dvh; overflow: auto; } #directories button { display: block; width: 100%; text-align: left; margin: 2px 0; }
-fieldset { border: 1px solid var(--border); margin: 7px 0; } #users { margin-bottom: 14px; }
+fieldset { border: 1px solid var(--border); margin: 7px 0; }
+dialog fieldset { border-color: color-mix(in srgb, var(--brand) 34%, var(--border)); }
+#users { margin-bottom: 14px; }
 @media (prefers-reduced-motion: reduce) {
   aside, button { transition: none; }
   .state-running, .loading::before { animation: none; }
