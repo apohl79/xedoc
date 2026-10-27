@@ -212,9 +212,8 @@ class HostHandler(BaseHTTPRequestHandler):
             path = parsed.path
             body = {}
             if self.command == "POST":
-                if (
-                    self.headers.get("Origin")
-                    != self.server.origin_for_authority(authority)
+                if self.headers.get("Origin") != self.server.origin_for_authority(
+                    authority
                 ):
                     self.reply(403, {"error": "Unexpected origin"})
                     return
@@ -232,18 +231,21 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/host.js",
                 "/activity.js",
                 "/host.css",
+                "/favicon.svg",
             ):
                 asset = {
                     "/": "host.html",
                     "/host.js": "host.js",
                     "/activity.js": "activity.js",
                     "/host.css": "host.css",
+                    "/favicon.svg": "favicon.svg",
                 }[path]
                 kind = {
                     "/": "text/html; charset=utf-8",
                     "/host.js": "text/javascript",
                     "/activity.js": "text/javascript",
                     "/host.css": "text/css",
+                    "/favicon.svg": "image/svg+xml",
                 }[path]
                 self.reply(
                     200,
@@ -405,7 +407,11 @@ class HostHandler(BaseHTTPRequestHandler):
                     return
                 self.reply(404, {"error": "Not found"})
                 return
-            if path in ("/api/projects", "/api/project/create"):
+            if path in (
+                "/api/projects",
+                "/api/project/create",
+                "/api/project/clone",
+            ):
                 if not admin and workspace_id not in account["workspaces"]:
                     self.reply(403, {"error": "Workspace access denied"})
                     return
@@ -426,6 +432,23 @@ class HostHandler(BaseHTTPRequestHandler):
                 if self.command == "POST" and path == "/api/project/create":
                     service.create_project(workspace_id, body.get("name"))
                     self.reply(200, {"ok": True})
+                    return
+                if self.command == "POST" and path == "/api/project/clone":
+                    if body.get("source") == "github" and not admin:
+                        self.reply(
+                            403,
+                            {
+                                "error": "Administrator access is required to use the host GitHub CLI credentials"
+                            },
+                        )
+                        return
+                    name = service.clone_project(
+                        workspace_id,
+                        body.get("url"),
+                        body.get("name"),
+                        body.get("source", "https"),
+                    )
+                    self.reply(200, {"name": name})
                     return
             if not admin:
                 self.reply(403, {"error": "Administrator access required"})

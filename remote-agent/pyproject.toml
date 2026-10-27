@@ -18,4 +18,9 @@ xedoc-remote-agentd = "xedoc_remote_agent.main:main"
 where = ["."]
 
 [tool.setuptools.package-data]
-xedoc_remote_agent = ["host_assets/*.css", "host_assets/*.html", "host_assets/*.js"]
+xedoc_remote_agent = [
+    "host_assets/*.css",
+    "host_assets/*.html",
+    "host_assets/*.js",
+    "host_assets/*.svg",
+]

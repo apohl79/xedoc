@@ -2,11 +2,14 @@
 
 import json
 import os
-from pathlib import Path
+import re
+import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable, Mapping
+from urllib.parse import unquote, urlsplit
 
 from .controller import _LiveTurnItems, _default_client_factory
 from .errors import BrokerError, ErrorCode, map_controller_error
@@ -22,6 +25,9 @@ _WEB_TURN_LIMIT = 50
 _WEB_ITEM_LIMIT = 40
 _WEB_TEXT_LIMIT = 16_384
 _WEB_TRANSCRIPT_LIMIT = 900_000
+_PROJECT_CLONE_TIMEOUT = 600
+_PROJECT_CLONE_LIMIT = 2
+_PROJECT_CLONE_TEMP_PREFIX = ".xedoc-host-clone-"
 _THREAD_SOURCES = [
     "cli",
     "vscode",
@@ -34,6 +40,105 @@ _THREAD_SOURCES = [
     "subAgentOther",
     "unknown",
 ]
+
+
+def _valid_project_name(name: Any) -> bool:
+    return (
+        isinstance(name, str)
+        and bool(name.strip())
+        and len(name) <= 255
+        and name not in {".", ".."}
+        and "/" not in name
+        and "\\" not in name
+        and "\0" not in name
+    )
+
+
+def _public_https_repository_name(remote_url: Any) -> str:
+    if (
+        not isinstance(remote_url, str)
+        or not remote_url
+        or len(remote_url) > 2048
+        or remote_url != remote_url.strip()
+        or any(character.isspace() or ord(character) < 32 for character in remote_url)
+    ):
+        raise BrokerError.invalid_request("A public HTTPS repository URL is required")
+    try:
+        parsed = urlsplit(remote_url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as error:
+        raise BrokerError.invalid_request(
+            "A public HTTPS repository URL is required"
+        ) from error
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or port == 0
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise BrokerError.invalid_request("A public HTTPS repository URL is required")
+    repository_path = parsed.path.rstrip("/")
+    if not repository_path:
+        raise BrokerError.invalid_request("A repository path is required")
+    name = unquote(repository_path.rsplit("/", 1)[-1])
+    if name.casefold().endswith(".git"):
+        name = name[:-4]
+    if not _valid_project_name(name):
+        raise BrokerError.invalid_request("Repository URL has no valid project name")
+    return name
+
+
+def _github_repository(remote: Any) -> tuple[str, str]:
+    if (
+        not isinstance(remote, str)
+        or not remote
+        or len(remote) > 2048
+        or remote != remote.strip()
+        or any(character.isspace() or ord(character) < 32 for character in remote)
+    ):
+        raise BrokerError.invalid_request(
+            "A GitHub repository or HTTPS URL is required"
+        )
+    if "://" in remote:
+        try:
+            parsed = urlsplit(remote)
+            port = parsed.port
+        except ValueError as error:
+            raise BrokerError.invalid_request(
+                "A GitHub repository or HTTPS URL is required"
+            ) from error
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "github.com"
+            or port is not None
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise BrokerError.invalid_request(
+                "Only github.com HTTPS repository URLs are supported"
+            )
+        parts = parsed.path.strip("/").split("/")
+    else:
+        parts = remote.split("/")
+    if len(parts) != 2:
+        raise BrokerError.invalid_request(
+            "Use a GitHub repository URL or owner/repository"
+        )
+    owner, repository = parts
+    if repository.casefold().endswith(".git"):
+        repository = repository[:-4]
+    if any(
+        not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", part) or part in {".", ".."}
+        for part in (owner, repository)
+    ):
+        raise BrokerError.invalid_request("GitHub repository name is invalid")
+    return f"https://github.com/{owner}/{repository}", repository
 
 
 class HostWorkspaces:
@@ -56,6 +161,7 @@ class HostWorkspaces:
         self._client = None
         self._activity_client = None
         self._activity_lock = threading.Lock()
+        self._project_clone_slots = threading.BoundedSemaphore(_PROJECT_CLONE_LIMIT)
         self._closed = False
         self._live_items = _LiveTurnItems()
         self._active_turns: dict[str, str] = {}
@@ -161,7 +267,9 @@ class HostWorkspaces:
                 if self._closed:
                     raise BrokerError.unavailable()
                 if self._activity_client is None:
-                    self._activity_client = self._new_client(observe_notifications=False)
+                    self._activity_client = self._new_client(
+                        observe_notifications=False
+                    )
                 return self._activity_client.request(method, params)
             except Exception as error:
                 if self._activity_client is not None:
@@ -222,7 +330,9 @@ class HostWorkspaces:
             entries = []
             with os.scandir(directory) as children:
                 for child in children:
-                    if child.is_dir(follow_symlinks=False):
+                    if child.is_dir(
+                        follow_symlinks=False
+                    ) and not child.name.startswith(_PROJECT_CLONE_TEMP_PREFIX):
                         entries.append(
                             {"name": child.name, "path": str(directory / child.name)}
                         )
@@ -392,9 +502,7 @@ class HostWorkspaces:
                         if (
                             isinstance(thread_id, str)
                             and len(thread_id) <= _SESSION_ID_LIMIT
-                            and (
-                                updated >= cutoff or status.get("type") == "active"
-                            )
+                            and (updated >= cutoff or status.get("type") == "active")
                         ):
                             entries = session_activity.setdefault(key, [])
                             if len(entries) < 500:
@@ -425,15 +533,7 @@ class HostWorkspaces:
         )
 
     def create_project(self, workspace_id: str, name: str) -> None:
-        if (
-            not isinstance(name, str)
-            or not name.strip()
-            or len(name) > 255
-            or name in {".", ".."}
-            or "/" in name
-            or "\\" in name
-            or "\0" in name
-        ):
+        if not _valid_project_name(name):
             raise BrokerError.invalid_request(
                 "A single project directory name is required"
             )
@@ -454,17 +554,167 @@ class HostWorkspaces:
                     "Project directory cannot be created"
                 ) from error
 
+    def clone_project(
+        self,
+        workspace_id: str,
+        remote_url: str,
+        name: str | None = None,
+        source: str = "https",
+    ) -> str:
+        if source == "https":
+            clone_source = remote_url
+            suggested_name = _public_https_repository_name(remote_url)
+        elif source == "github":
+            clone_source, suggested_name = _github_repository(remote_url)
+        else:
+            raise BrokerError.invalid_request("Unsupported repository clone source")
+        project_name = suggested_name if name in (None, "") else name
+        if not _valid_project_name(project_name) or ":" in project_name:
+            raise BrokerError.invalid_request(
+                "A single project directory name is required"
+            )
+        if not self._project_clone_slots.acquire(blocking=False):
+            raise BrokerError.conflict("Too many repository clones are running")
+        try:
+            with self._lock:
+                roots, _ = self._config()
+                if workspace_id not in roots:
+                    raise BrokerError.not_found()
+                root = Path(roots[workspace_id]).resolve(strict=True)
+                project_candidate = root / project_name
+                if project_candidate.is_symlink():
+                    raise BrokerError.invalid_request(
+                        "Project directory cannot be a symlink"
+                    )
+                project = project_candidate.resolve()
+                if project.parent != root:
+                    raise BrokerError.invalid_request(
+                        "Project must be inside its workspace"
+                    )
+                if project.exists() or project.is_symlink():
+                    raise BrokerError.conflict("Project directory already exists")
+
+            try:
+                with tempfile.TemporaryDirectory(
+                    prefix=_PROJECT_CLONE_TEMP_PREFIX, dir=root
+                ) as temporary:
+                    temporary_path = Path(temporary)
+                    config = temporary_path / "gitconfig"
+                    config.touch(mode=0o600)
+                    isolated_home = temporary_path / "home"
+                    isolated_home.mkdir(mode=0o700)
+                    netrc = isolated_home / ".netrc"
+                    netrc.touch(mode=0o600)
+                    clone_path = temporary_path / "repository"
+                    environment = {
+                        key: value
+                        for key, value in os.environ.items()
+                        if not key.startswith("GIT_")
+                    }
+                    if source == "https":
+                        environment["HOME"] = str(isolated_home)
+                        environment["USERPROFILE"] = str(isolated_home)
+                        environment["APPDATA"] = str(
+                            isolated_home / "AppData" / "Roaming"
+                        )
+                        environment["LOCALAPPDATA"] = str(
+                            isolated_home / "AppData" / "Local"
+                        )
+                        environment["XDG_CONFIG_HOME"] = str(isolated_home / ".config")
+                        environment["CURL_HOME"] = str(isolated_home)
+                        environment["NETRC"] = str(netrc)
+                        environment.pop("SSH_ASKPASS", None)
+                        environment["SSH_ASKPASS_REQUIRE"] = "never"
+                        environment["GIT_CONFIG_GLOBAL"] = str(config)
+                        environment["GIT_CONFIG_NOSYSTEM"] = "1"
+                        environment["GIT_CEILING_DIRECTORIES"] = str(temporary_path)
+                        command = [
+                            "git",
+                            "-c",
+                            "credential.helper=",
+                            "-c",
+                            "protocol.allow=never",
+                            "-c",
+                            "protocol.https.allow=always",
+                            "clone",
+                            "--quiet",
+                            "--",
+                            clone_source,
+                            str(clone_path),
+                        ]
+                    else:
+                        environment["GH_PROMPT_DISABLED"] = "1"
+                        command = [
+                            "gh",
+                            "repo",
+                            "clone",
+                            clone_source,
+                            str(clone_path),
+                        ]
+                    environment["GIT_TERMINAL_PROMPT"] = "0"
+                    try:
+                        result = subprocess.run(
+                            command,
+                            cwd=temporary_path,
+                            env=environment,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=_PROJECT_CLONE_TIMEOUT,
+                            check=False,
+                        )
+                    except FileNotFoundError as error:
+                        raise BrokerError.unavailable(
+                            "GitHub CLI (gh) is not installed on the host"
+                            if source == "github"
+                            else "Git is not installed on the host"
+                        ) from error
+                    except subprocess.TimeoutExpired as error:
+                        raise BrokerError.unavailable(
+                            "Repository clone timed out"
+                        ) from error
+                    if result.returncode != 0:
+                        raise BrokerError.invalid_request(
+                            "GitHub clone failed; verify gh is authenticated and can access the repository"
+                            if source == "github"
+                            else "Git clone failed; verify the public HTTPS URL"
+                        )
+
+                    with self._lock:
+                        roots, _ = self._config()
+                        if workspace_id not in roots:
+                            raise BrokerError.not_found()
+                        if Path(roots[workspace_id]).resolve(strict=True) != root:
+                            raise BrokerError.conflict(
+                                "Workspace root changed during repository clone"
+                            )
+                        project_candidate = root / project_name
+                        if project_candidate.is_symlink():
+                            raise BrokerError.invalid_request(
+                                "Project directory cannot be a symlink"
+                            )
+                        if project_candidate.resolve().parent != root:
+                            raise BrokerError.invalid_request(
+                                "Project must be inside its workspace"
+                            )
+                        if project.exists() or project.is_symlink():
+                            raise BrokerError.conflict(
+                                "Project directory already exists"
+                            )
+                        clone_path.rename(project)
+                    return project_name
+            except BrokerError:
+                raise
+            except (OSError, RuntimeError, ValueError) as error:
+                raise BrokerError.invalid_request(
+                    "Project directory cannot be created"
+                ) from error
+        finally:
+            self._project_clone_slots.release()
+
     def _project_path(self, workspace_id: str, project_name: str) -> Path:
         _validate_workspace_id(workspace_id)
-        if (
-            not isinstance(project_name, str)
-            or not project_name.strip()
-            or len(project_name) > 255
-            or project_name in {".", ".."}
-            or "/" in project_name
-            or "\\" in project_name
-            or "\0" in project_name
-        ):
+        if not _valid_project_name(project_name):
             raise BrokerError.invalid_request(
                 "A single project directory name is required"
             )

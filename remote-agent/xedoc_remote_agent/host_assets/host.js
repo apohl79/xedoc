@@ -4,6 +4,7 @@
   let state = null;
   let selectedWorkspace = null;
   let selectedProject = null;
+  let projectSource = "create";
   let activeThread = null;
   let projectRequest = 0;
   let sessionRequest = 0;
@@ -26,6 +27,17 @@
     }
   })();
 
+  function markActiveSessionVisited() {
+    if (document.visibilityState !== "visible" || !activeThread) return;
+    const frame = sessionFrames.get(activeThread);
+    if (frame && !frame.hidden) activity.markVisited(activeThread);
+  }
+
+  function refreshVisibleActivity() {
+    markActiveSessionVisited();
+    activity.markVisible();
+  }
+
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "xedoc-session-activity") return;
     const entry = [...sessionFrames].find(([, frame]) => frame.contentWindow === event.source);
@@ -39,10 +51,11 @@
       status: event.data.turnActive || needsInput ? "active" : "idle",
       needsInput,
     }, session.workspaceId, session.projectName);
+    if (activeThread === threadId) markActiveSessionVisited();
     activity.paint();
   });
-  document.addEventListener("visibilitychange", () => activity.markVisible());
-  window.addEventListener("focus", () => activity.markVisible());
+  document.addEventListener("visibilitychange", refreshVisibleActivity);
+  window.addEventListener("focus", refreshVisibleActivity);
 
   function projectPins() {
     try {
@@ -51,6 +64,19 @@
     } catch {
       return [];
     }
+  }
+
+  function applyProjectFilter() {
+    const query = byId("project-search").value.trim().toLowerCase();
+    const rows = [...byId("projects").children].filter((row) =>
+      row.querySelector(".project"));
+    let visible = 0;
+    for (const row of rows) {
+      const matches = row.querySelector(".project").dataset.name.toLowerCase().includes(query);
+      row.hidden = !matches;
+      if (matches) visible++;
+    }
+    byId("project-search-empty").hidden = !query || rows.length === 0 || visible > 0;
   }
 
   function setSidebarOpen(open) {
@@ -334,6 +360,7 @@
     const cachedProjects = projectCache.get(cacheKey);
     if (!entry) {
       byId("projects").replaceChildren();
+      applyProjectFilter();
       byId("session-workspace").hidden = true;
       byId("project-empty").textContent = "No workspaces are assigned to this account.";
       byId("project-empty").hidden = false;
@@ -343,6 +370,7 @@
     let workspaceProjects = cachedProjects;
     if (!workspaceProjects) {
       byId("projects").replaceChildren(text("div", "Loading projects…", "loading loading-row"));
+      applyProjectFilter();
       byId("project-empty").classList.add("loading");
       byId("project-empty").textContent = "Loading projects…";
       byId("project-empty").hidden = false;
@@ -416,6 +444,7 @@
       row.append(element, pin);
       return row;
     }));
+    applyProjectFilter();
     activity.paint();
     if (!projects.length) {
       byId("projects").append(text("p", "No projects yet.", "muted"));
@@ -579,6 +608,7 @@
       document.querySelectorAll(".session-tab").forEach((tab) => {
         tab.setAttribute("aria-selected", String(tab.dataset.threadId === threadId));
       });
+      markActiveSessionVisited();
       activity.markVisible();
       return;
     }
@@ -618,6 +648,7 @@
       if (frame.getAttribute("src") !== result.guiUrl) frame.src = result.guiUrl;
       else byId("session-loading").hidden = true;
       sessionFrames.forEach((item) => { item.hidden = item !== frame; });
+      markActiveSessionVisited();
       activity.markVisible();
     } catch (error) {
       if (request === sessionRequest) byId("session-loading").hidden = true;
@@ -744,15 +775,80 @@
     projectActivityRefreshAt.clear();
     await refresh();
   });
+  byId("search-projects").addEventListener("click", () => {
+    const search = byId("project-search");
+    const opening = search.hidden;
+    search.hidden = !opening;
+    byId("search-projects").setAttribute("aria-expanded", String(opening));
+    if (opening) {
+      search.focus();
+    } else {
+      search.value = "";
+      applyProjectFilter();
+      byId("search-projects").focus();
+    }
+  });
+  byId("project-search").addEventListener("input", applyProjectFilter);
+  byId("project-search").addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    byId("search-projects").click();
+  });
+  function setProjectSource(source) {
+    projectSource = source;
+    const cloning = source === "clone";
+    const github = source === "github";
+    const usingClone = cloning || github;
+    document.querySelectorAll("[data-project-source]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.projectSource === source));
+    });
+    byId("project-name-field").hidden = usingClone;
+    const name = byId("project-form").elements.namedItem("name");
+    name.disabled = usingClone;
+    name.required = !usingClone;
+    byId("project-clone-fields").hidden = !usingClone;
+    const url = byId("project-form").elements.namedItem("url");
+    url.disabled = !usingClone;
+    url.required = usingClone;
+    url.type = github ? "text" : "url";
+    url.placeholder = github ? "owner/repository or https://github.com/owner/repository" : "https://github.com/owner/repository.git";
+    byId("project-clone-label").textContent = github ? "GitHub repository or URL" : "Public HTTPS repository URL";
+    byId("project-clone-help").hidden = !github;
+    byId("project-form").elements.namedItem("cloneName").disabled = !usingClone;
+    byId("project-submit").textContent = usingClone ? "Clone" : "Create";
+  }
+  document.querySelectorAll("[data-project-source]").forEach((button) => {
+    button.addEventListener("click", () => setProjectSource(button.dataset.projectSource));
+  });
   byId("new-project").addEventListener("click", () => {
     if (!selectedWorkspace) return;
     byId("project-form").reset();
+    setProjectSource("create");
     byId("project-dialog").showModal();
   });
   form("project-form", async (data) => {
-    await api("project/create", { workspaceId: selectedWorkspace, name: data.get("name") });
+    let name = data.get("name");
+    if (projectSource === "clone" || projectSource === "github") {
+      const submit = byId("project-submit");
+      submit.textContent = "Cloning…";
+      try {
+        const result = await api("project/clone", {
+          workspaceId: selectedWorkspace,
+          url: data.get("url"),
+          name: data.get("cloneName"),
+          source: projectSource === "github" ? "github" : "https",
+        });
+        name = result.name;
+      } finally {
+        submit.textContent = "Clone";
+      }
+    } else {
+      await api("project/create", { workspaceId: selectedWorkspace, name });
+    }
     byId("project-dialog").close();
-    selectedProject = data.get("name");
+    selectedProject = name;
+    byId("project-search").value = "";
+    applyProjectFilter();
     const cacheKey = projectCacheKey(selectedWorkspace);
     projectCache.delete(cacheKey);
     projectActivityLoaded.delete(cacheKey);

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Xedoc</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/host.css">
   <script src="/activity.js" defer></script>
   <script src="/host.js" defer></script>
@@ -21,12 +22,14 @@
   <main id="host-view" hidden>
     <button id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
     <aside id="sidebar" aria-label="Workspaces and projects">
-      <div class="sidebar-brand"><strong><span class="accent">❯</span> Xedoc</strong><button id="sidebar-lock" title="Allow sidebar to auto-hide" aria-label="Allow sidebar to auto-hide" aria-pressed="true">⇥</button></div>
+      <div class="sidebar-brand"><strong><svg class="brand-mark" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M4 3.5 10 10l-6 6.5" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m16 3.5-6 6.5 6 6.5" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Xedoc</strong><button id="sidebar-lock" title="Allow sidebar to auto-hide" aria-label="Allow sidebar to auto-hide" aria-pressed="true">⇥</button></div>
       <nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav>
       <div class="section-title workspace-sidebar-title"><h2>Workspaces</h2><button id="add-workspace" title="Add workspace" aria-label="Add workspace" hidden>＋</button></div>
       <div id="workspaces"></div>
-      <div class="section-title project-sidebar-title"><h2>Projects</h2><button id="new-project" title="Add project" aria-label="Add project">＋</button></div>
+      <div class="section-title project-sidebar-title"><h2>Projects</h2><div class="project-sidebar-actions"><button id="search-projects" title="Search projects" aria-label="Search projects" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="6.5" cy="6.5" r="4.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m10 10 3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><button id="new-project" title="Add project" aria-label="Add project">＋</button></div></div>
+      <input id="project-search" class="project-search" type="search" placeholder="Filter projects" autocomplete="off" aria-label="Filter projects" hidden>
       <div id="projects"></div>
+      <p id="project-search-empty" class="muted project-search-empty" hidden>No matching projects.</p>
     </aside>
     <section class="content">
       <div id="project-empty" class="empty-state">Select a project to view its sessions.</div>
@@ -42,7 +45,7 @@
   </main>
   <dialog id="workspace-dialog"><form id="workspace-form"><h2>Add workspace</h2><label>Workspace ID<input name="workspaceId" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" maxlength="64"></label><label>Root directory<input name="root" required></label><button id="browse" type="button">Choose directory…</button><label class="check"><input name="create" type="checkbox">Create directory if missing</label><footer><button type="button" data-close>Cancel</button><button class="primary">Add</button></footer></form></dialog>
   <dialog id="picker"><div class="section-title"><h2>Choose directory</h2><button type="button" data-close aria-label="Close">×</button></div><form id="picker-form"><label>Server directory<input id="picker-path" required></label><button>Open</button></form><div id="directories"></div><footer><button id="choose-directory" class="primary">Select directory</button></footer></dialog>
-  <dialog id="project-dialog"><form id="project-form"><h2>Create project</h2><label>Directory name<input name="name" required maxlength="128"></label><footer><button type="button" data-close>Cancel</button><button class="primary">Create</button></footer></form></dialog>
+  <dialog id="project-dialog"><form id="project-form"><h2>Add project</h2><div class="project-source" role="group" aria-label="Project source"><button type="button" data-project-source="create" aria-pressed="true">New folder</button><button type="button" data-project-source="clone" aria-pressed="false">Public HTTPS</button><button type="button" data-project-source="github" aria-pressed="false" title="Uses the host administrator’s authenticated gh CLI">GitHub via gh</button></div><label id="project-name-field">Directory name<input name="name" required maxlength="128"></label><div id="project-clone-fields" hidden><label><span id="project-clone-label">Public HTTPS repository URL</span><input name="url" type="url" inputmode="url" placeholder="https://github.com/owner/repository.git" autocomplete="off" disabled></label><label>Directory name (optional)<input name="cloneName" maxlength="128" autocomplete="off" disabled></label><p id="project-clone-help" class="muted" hidden>Uses the host administrator’s authenticated GitHub CLI session. Admins only.</p></div><footer><button type="button" data-close>Cancel</button><button id="project-submit" class="primary">Create</button></footer></form></dialog>
   <dialog id="session-menu"><h2>Project session</h2><p id="session-menu-project" class="muted"></p><div class="dialog-actions"><button id="new-session" class="primary">New session</button><button id="resume-session">Resume…</button><button type="button" data-close>Cancel</button></div></dialog>
   <dialog id="resume-dialog"><div class="section-title"><div><h2>Resume session</h2><p id="resume-project" class="muted"></p></div><button type="button" data-close aria-label="Close">×</button></div><div id="resume-sessions"></div></dialog>
   <dialog id="users-dialog"><div class="section-title"><h2>Users</h2><button type="button" data-close aria-label="Close">×</button></div><div id="users"></div><form id="user-form"><h3 id="user-heading">Add or update user</h3><label>Username<input name="username" required maxlength="64" autocomplete="off"></label><label>Password<input name="password" type="password" autocomplete="new-password" minlength="6" maxlength="1024" placeholder="Leave empty to keep existing password"></label><label>Role<select name="role"><option value="workspaceUser">Workspace user</option><option value="admin">Administrator</option></select></label><fieldset id="assignments"><legend>Assigned workspaces</legend></fieldset><footer><button class="primary">Save user</button></footer></form></dialog>

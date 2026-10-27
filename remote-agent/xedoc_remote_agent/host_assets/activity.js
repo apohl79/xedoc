@@ -89,6 +89,15 @@ window.XedocHostActivity = class {
     this.paint();
   }
 
+  markVisited(threadId) {
+    const session = this.sessions.get(threadId);
+    if (!session?.completed) return;
+    session.completed = false;
+    this.saved[threadId] = { updatedAt: session.updatedAt, completed: false };
+    this.persist();
+    this.paint();
+  }
+
   paint() {
     for (const group of document.querySelectorAll(".session-state")) {
       const sessions = [...this.sessions.values()].filter((session) =>
