@@ -130,7 +130,7 @@ aside button.workspace {
   overflow-wrap: anywhere;
 }
 aside button.workspace.selected, aside button.project.selected {
-  background: color-mix(in srgb, var(--brand) 17%, var(--sidebar));
+  background: #292631;
   color: #e4d7f2;
 }
 .workspace-remove {
