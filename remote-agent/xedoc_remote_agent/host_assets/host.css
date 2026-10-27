@@ -90,7 +90,8 @@ aside {
 .sidebar-brand { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
 .sidebar-brand strong { display: flex; align-items: center; gap: 0; font-size: 14px; letter-spacing: .01em; }
 .brand-mark { display: block; flex: none; width: 18px; height: 18px; }
-.update-button { width: 100%; text-align: left; color: var(--muted); }
+#navigation button { display: grid; flex: none; width: 28px; height: 28px; padding: 0; place-items: center; }
+#navigation svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 #update-dialog { width: min(1040px, calc(100vw - 24px)); max-width: none; }
 .update-toolbar { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
 #update-version { flex: 1; }

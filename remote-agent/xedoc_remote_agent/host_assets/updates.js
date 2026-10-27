@@ -103,7 +103,7 @@ window.XedocHostUpdates = class {
       this.byId("status").textContent = result.supported
         ? messages[result.status] : "Updates require a macOS or Linux host";
       if (this.latest === result.currentVersion) this.byId("install").hidden = true;
-      if (this.running) this.byId("button").textContent = "Updating…";
+      if (this.running) this.byId("button").title = "Updating…";
       if (job) {
         this.byId("terminal").hidden = false;
         this.byId("keys").hidden = !this.running;
@@ -131,14 +131,15 @@ window.XedocHostUpdates = class {
         this.latest = release.latestVersion;
         this.byId("install").textContent = `Install ${release.latestVersion}`;
         this.byId("install").hidden = !release.available || !release.supported;
-        this.byId("button").textContent = release.available
+        this.byId("button").title = release.available
           ? `Update · ${release.latestVersion}` : "Updates";
         this.byId("status").textContent = result.status === "idle"
           ? `Latest ${release.latestVersion}` : messages[result.status];
       } else if (!this.running) {
-        this.byId("button").textContent = this.byId("install").hidden
+        this.byId("button").title = this.byId("install").hidden
           ? "Updates" : `Update · ${this.latest}`;
       }
+      this.byId("button").setAttribute("aria-label", this.byId("button").title);
     } catch (error) {
       if (generation === this.generation) {
         this.byId("status").textContent = this.running

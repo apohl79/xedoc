@@ -28,8 +28,12 @@
     <button id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
     <aside id="sidebar" aria-label="Workspaces and projects">
       <div class="sidebar-brand"><strong aria-label="Xedoc"><svg class="brand-mark" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="m16 3.5-6 6.5 6 6.5" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 3.5 10 10l-6 6.5" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>edoc</strong><button id="sidebar-lock" title="Allow sidebar to auto-hide" aria-label="Allow sidebar to auto-hide" aria-pressed="true">⇥</button></div>
-      <nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav>
-      <button id="update-button" class="update-button" hidden>Updates</button>
+      <nav id="navigation" hidden>
+        <span id="identity"></span>
+        <button id="users-button" title="Users" aria-label="Users" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/><circle cx="9" cy="7" r="4"/></svg></button>
+        <button id="update-button" title="Updates" aria-label="Updates" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></button>
+        <button id="logout" title="Sign out" aria-label="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5M21 12H9"/></svg></button>
+      </nav>
       <div class="section-title workspace-sidebar-title"><h2>Workspaces</h2><button id="add-workspace" title="Add workspace" aria-label="Add workspace" hidden>＋</button></div>
       <div id="workspaces"></div>
       <div class="section-title project-sidebar-title"><h2>Projects</h2><div class="project-sidebar-actions"><button id="search-projects" title="Search projects" aria-label="Search projects" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="6.5" cy="6.5" r="4.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m10 10 3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><button id="new-project" title="Add project" aria-label="Add project">＋</button></div></div>

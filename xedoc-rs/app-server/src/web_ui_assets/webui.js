@@ -11,6 +11,8 @@
   const faviconContext = faviconCanvas.getContext("2d");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const live = document.getElementById("live");
+  const liveFrame = document.getElementById("live-frame");
+  const session = document.getElementById("session");
   const composer = document.getElementById("composer");
   const input = document.getElementById("input");
   const connection = document.getElementById("connection");
@@ -44,6 +46,7 @@
   let reconnectTimer;
   let noticeTimer;
   let lastLive = null;
+  let liveOverlay = false;
   let lastActivity = null;
   let lastPopup = null;
   let popupActive = false;
@@ -680,6 +683,8 @@
       window.parent.postMessage(hostActivity, location.origin);
     }
     history.hidden = !!frame.overlay;
+    const wasLiveOverlay = liveOverlay;
+    liveOverlay = !!frame.overlay;
     const following = history.scrollHeight - history.scrollTop - history.clientHeight < 80;
     if (activeThread !== frame.activeThreadId || activeWidth !== frame.width) {
       history.replaceChildren();
@@ -799,8 +804,9 @@
       send({ type: "history", before: frame.historyTotal });
     }
     if (lastLive !== frame.live) {
-      live.innerHTML = frame.live || "";
+      liveFrame.innerHTML = frame.live || "";
       lastLive = frame.live;
+      fitLiveFrame();
     }
     if (lastActivity !== frame.activity || lastPopup !== frame.popup) {
       activity.innerHTML = `${frame.activity || ""}${frame.popup || ""}`;
@@ -989,8 +995,8 @@
     document.getElementById("status").innerHTML = frame.status || "";
     question.render(frame.question || null);
     if (frame.composer) renderComposer(frame.composer);
-    const width = Math.max(40, Math.min(400, Math.floor(history.clientWidth / 8)));
-    if (width !== previousWidth && send({ type: "resize", width })) previousWidth = width;
+    if (wasLiveOverlay !== liveOverlay) fitLiveFrame();
+    syncBrowserTerminalWidth();
     if (frame.title) document.title = `${frame.title} · XEDOC`;
     if (frame.stream) {
       const update = frame.stream;
@@ -1033,6 +1039,26 @@
     earlier.disabled = true;
     send({ type: "history", ...historyBefore });
   });
+
+  function browserTerminalWidth() {
+    const availableWidth = history.hidden ? session.clientWidth - 16 : history.clientWidth;
+    return Math.max(40, Math.min(400, Math.floor(availableWidth / 8)));
+  }
+
+  function syncBrowserTerminalWidth() {
+    const width = browserTerminalWidth();
+    if (width !== previousWidth && send({ type: "resize", width })) previousWidth = width;
+  }
+
+  function fitLiveFrame() {
+    liveFrame.style.zoom = "1";
+    if (!liveOverlay || !liveFrame.firstElementChild) return;
+    const { width, height } = liveFrame.getBoundingClientRect();
+    if (!width || !height) return;
+    const maxWidth = Math.max(1, window.innerWidth - 32);
+    const maxHeight = Math.max(1, Math.min(window.innerHeight * 0.82, 720));
+    liveFrame.style.zoom = String(Math.min(1, maxWidth / width, maxHeight / height));
+  }
 
   function connect() {
     setConnection("Connecting…", "connecting");
@@ -1243,10 +1269,11 @@
     }
   });
   let previousWidth;
-  new ResizeObserver(() => {
-    const width = Math.max(40, Math.min(400, Math.floor(history.clientWidth / 8)));
-    if (width !== previousWidth && send({ type: "resize", width })) previousWidth = width;
-  }).observe(history);
+  new ResizeObserver(syncBrowserTerminalWidth).observe(history);
+  window.addEventListener("resize", () => {
+    if (liveOverlay) fitLiveFrame();
+    syncBrowserTerminalWidth();
+  });
 
   async function upload(file, destination, threadId) {
     if (!ready || destination !== socket || threadId !== activeThread) return;
