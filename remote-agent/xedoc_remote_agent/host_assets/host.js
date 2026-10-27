@@ -17,6 +17,7 @@
   const projectActivityLoaded = new Set();
   const projectActivityRefreshAt = new Map();
   const activity = new window.XedocHostActivity();
+  const updates = new window.XedocHostUpdates(api);
   let refreshingRestartState = false;
   let sidebarLocked = (() => {
     try {
@@ -153,6 +154,7 @@
     accountGeneration++;
     projectViewRequest++;
     state = null;
+    updates.setAccount(null);
     activeThread = null;
     selectedWorkspace = null;
     selectedProject = null;
@@ -214,6 +216,7 @@
     byId("navigation").hidden = false;
     byId("identity").textContent = state.account.username;
     const admin = state.account.role === "admin";
+    updates.setAccount(state.account);
     byId("users-button").hidden = !admin;
     byId("add-workspace").hidden = !admin;
     if (!state.workspaces.some((entry) => entry.workspaceId === selectedWorkspace)) {
@@ -317,6 +320,20 @@
     const previous = state;
     try {
       state = await api("state");
+      if (previous?.instanceId && previous.instanceId !== state.instanceId) {
+        const generation = accountGeneration;
+        for (const [threadId, frame] of sessionFrames) {
+          const session = openedSessions.get(threadId);
+          if (!session) continue;
+          const result = await api("session/gui", {
+            workspaceId: session.workspaceId,
+            projectName: session.projectName,
+            threadId,
+          });
+          if (generation !== accountGeneration) return;
+          if (sessionFrames.get(threadId) === frame) frame.src = result.guiUrl;
+        }
+      }
       const workspaceId = selectedWorkspace;
       const key = projectCacheKey(workspaceId);
       if (
@@ -336,6 +353,7 @@
         }, 4000);
       }
     } catch {
+      if (state && previous?.instanceId) state.instanceId = previous.instanceId;
       // The broker briefly drops the connection while restarting.
     } finally {
       refreshingRestartState = false;

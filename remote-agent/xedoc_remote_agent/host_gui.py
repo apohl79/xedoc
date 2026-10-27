@@ -8,6 +8,7 @@ from importlib.resources import files
 import json
 import logging
 import os
+import secrets
 from pathlib import Path
 import socket
 import ssl
@@ -20,6 +21,7 @@ from .host_auth import HostAuth
 from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
 from .host_session_gui import HostSessionGuis, proxy_session_gui
+from .host_updates import HostUpdates
 from .work_admission import WorkAdmissionGate
 
 
@@ -40,7 +42,9 @@ class HostServer(ThreadingHTTPServer):
         self.origin = origin
         self.authority = urlsplit(origin).netloc
         self.secure = origin.startswith("https://")
+        self.instance_id = secrets.token_hex(16)
         self.auth = HostAuth(home)
+        self.updates = HostUpdates(home)
         if not self.auth.users:
             raise ValueError("Run host-gui setup before serving")
         self.workspaces = HostWorkspaces(
@@ -187,6 +191,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "style-src-attr 'unsafe-inline'"
                 if session_frame
                 else "default-src 'self'; script-src 'self'; style-src 'self'; "
+                "style-src-elem 'self' 'unsafe-inline'; "
                 "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
             ),
         )
@@ -230,22 +235,37 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/",
                 "/host.js",
                 "/activity.js",
+                "/updates.js",
+                "/xterm.js",
+                "/xterm.css",
                 "/host.css",
                 "/favicon.svg",
+                "/favicon.png",
+                "/favicon.ico",
             ):
                 asset = {
                     "/": "host.html",
                     "/host.js": "host.js",
                     "/activity.js": "activity.js",
+                    "/updates.js": "updates.js",
+                    "/xterm.js": "xterm.js",
+                    "/xterm.css": "xterm.css",
                     "/host.css": "host.css",
                     "/favicon.svg": "favicon.svg",
+                    "/favicon.png": "favicon.png",
+                    "/favicon.ico": "favicon.ico",
                 }[path]
                 kind = {
                     "/": "text/html; charset=utf-8",
                     "/host.js": "text/javascript",
                     "/activity.js": "text/javascript",
+                    "/updates.js": "text/javascript",
+                    "/xterm.js": "text/javascript",
+                    "/xterm.css": "text/css",
                     "/host.css": "text/css",
                     "/favicon.svg": "image/svg+xml",
+                    "/favicon.png": "image/png",
+                    "/favicon.ico": "image/x-icon",
                 }[path]
                 self.reply(
                     200,
@@ -293,7 +313,15 @@ class HostHandler(BaseHTTPRequestHandler):
                     if entry["workspaceId"] in allowed
                 ]
                 hostname = socket.gethostname().split(".", 1)[0]
-                self.reply(200, {**state, "account": account, "hostname": hostname})
+                self.reply(
+                    200,
+                    {
+                        **state,
+                        "account": account,
+                        "hostname": hostname,
+                        "instanceId": self.server.instance_id,
+                    },
+                )
                 return
             workspace_id = (
                 body.get("workspaceId")
@@ -452,6 +480,20 @@ class HostHandler(BaseHTTPRequestHandler):
                     return
             if not admin:
                 self.reply(403, {"error": "Administrator access required"})
+                return
+            if self.command == "GET" and path == "/api/update/check":
+                self.reply(200, self.server.updates.check())
+                return
+            if self.command == "GET" and path == "/api/update/status":
+                cursor = int(parse_qs(parsed.query).get("cursor", ["0"])[0])
+                self.reply(200, self.server.updates.status(cursor))
+                return
+            if self.command == "POST" and path == "/api/update/start":
+                self.reply(200, self.server.updates.start(body.get("tag")))
+                return
+            if self.command == "POST" and path == "/api/update/input":
+                self.server.updates.input(body.get("data"))
+                self.reply(200, {"ok": True})
                 return
             if self.command == "GET" and path == "/api/users":
                 self.reply(200, {"users": self.server.auth.public_users()})

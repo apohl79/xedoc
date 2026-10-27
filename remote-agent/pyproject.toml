@@ -23,4 +23,7 @@ xedoc_remote_agent = [
     "host_assets/*.html",
     "host_assets/*.js",
     "host_assets/*.svg",
+    "host_assets/*.png",
+    "host_assets/*.ico",
+    "host_assets/*LICENSE.txt",
 ]

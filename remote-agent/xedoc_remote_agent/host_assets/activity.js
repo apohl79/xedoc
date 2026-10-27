@@ -104,10 +104,13 @@ window.XedocHostActivity = class {
         session.workspaceId === group.dataset.workspace
         && session.projectName === group.dataset.project
         && (!group.dataset.thread || session.threadId === group.dataset.thread));
+      const selectedTab = group.closest(".session-tab")
+        ?.getAttribute("aria-selected") === "true";
       const states = {
         running: sessions.some((session) => session.active && !session.needsInput),
         waiting: sessions.some((session) => session.needsInput),
-        completed: sessions.some((session) => session.completed && !session.active),
+        completed: !selectedTab
+          && sessions.some((session) => session.completed && !session.active),
       };
       group.hidden = !Object.values(states).some(Boolean);
       for (const marker of group.children) marker.hidden = !states[marker.dataset.kind];

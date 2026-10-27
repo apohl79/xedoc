@@ -4,8 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Xedoc</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="shortcut icon" href="/favicon.ico?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
   <link rel="stylesheet" href="/host.css">
+  <link rel="stylesheet" href="/xterm.css">
+  <script src="/xterm.js" defer></script>
+  <script src="/updates.js" defer></script>
   <script src="/activity.js" defer></script>
   <script src="/host.js" defer></script>
 </head>
@@ -22,8 +27,9 @@
   <main id="host-view" hidden>
     <button id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded="true">☰</button>
     <aside id="sidebar" aria-label="Workspaces and projects">
-      <div class="sidebar-brand"><strong><svg class="brand-mark" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M4 3.5 10 10l-6 6.5" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m16 3.5-6 6.5 6 6.5" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Xedoc</strong><button id="sidebar-lock" title="Allow sidebar to auto-hide" aria-label="Allow sidebar to auto-hide" aria-pressed="true">⇥</button></div>
+      <div class="sidebar-brand"><strong aria-label="Xedoc"><svg class="brand-mark" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="m16 3.5-6 6.5 6 6.5" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 3.5 10 10l-6 6.5" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>edoc</strong><button id="sidebar-lock" title="Allow sidebar to auto-hide" aria-label="Allow sidebar to auto-hide" aria-pressed="true">⇥</button></div>
       <nav id="navigation" hidden><span id="identity"></span><button id="users-button" hidden>Users</button><button id="logout">Sign out</button></nav>
+      <button id="update-button" class="update-button" hidden>Updates</button>
       <div class="section-title workspace-sidebar-title"><h2>Workspaces</h2><button id="add-workspace" title="Add workspace" aria-label="Add workspace" hidden>＋</button></div>
       <div id="workspaces"></div>
       <div class="section-title project-sidebar-title"><h2>Projects</h2><div class="project-sidebar-actions"><button id="search-projects" title="Search projects" aria-label="Search projects" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="6.5" cy="6.5" r="4.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m10 10 3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><button id="new-project" title="Add project" aria-label="Add project">＋</button></div></div>
@@ -49,5 +55,12 @@
   <dialog id="session-menu"><h2>Project session</h2><p id="session-menu-project" class="muted"></p><div class="dialog-actions"><button id="new-session" class="primary">New session</button><button id="resume-session">Resume…</button><button type="button" data-close>Cancel</button></div></dialog>
   <dialog id="resume-dialog"><div class="section-title"><div><h2>Resume session</h2><p id="resume-project" class="muted"></p></div><button type="button" data-close aria-label="Close">×</button></div><div id="resume-sessions"></div></dialog>
   <dialog id="users-dialog"><div class="section-title"><h2>Users</h2><button type="button" data-close aria-label="Close">×</button></div><div id="users"></div><form id="user-form"><h3 id="user-heading">Add or update user</h3><label>Username<input name="username" required maxlength="64" autocomplete="off"></label><label>Password<input name="password" type="password" autocomplete="new-password" minlength="6" maxlength="1024" placeholder="Leave empty to keep existing password"></label><label>Role<select name="role"><option value="workspaceUser">Workspace user</option><option value="admin">Administrator</option></select></label><fieldset id="assignments"><legend>Assigned workspaces</legend></fieldset><footer><button class="primary">Save user</button></footer></form></dialog>
+  <dialog id="update-dialog" aria-labelledby="update-heading">
+    <div class="section-title"><h2 id="update-heading">Xedoc updates</h2><button type="button" data-close aria-label="Close">×</button></div>
+    <div class="update-toolbar"><span id="update-version" class="muted"></span><button id="update-check">Check</button><button id="update-install" class="primary" hidden>Install update</button></div>
+    <p id="update-status" role="status"></p>
+    <div id="update-terminal" aria-label="Interactive Xedoc installer" hidden></div>
+    <footer id="update-keys" hidden><button type="button" data-update-key="up" aria-label="Up">↑</button><button type="button" data-update-key="down" aria-label="Down">↓</button><button type="button" data-update-key="tab">Tab</button><button type="button" data-update-key="escape">Esc</button><button type="button" data-update-key="enter">Enter</button></footer>
+  </dialog>
 </body>
 </html>

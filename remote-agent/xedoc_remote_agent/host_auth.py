@@ -16,6 +16,7 @@ class HostAuth:
     def __init__(self, home: Path) -> None:
         self.directory = home / "host-gui"
         self.path = self.directory / "users.json"
+        self.session_path = self.directory / "sessions.json"
         self.lock = threading.RLock()
         self.sessions: dict[str, tuple[str, float]] = {}
         self.failures: dict[str, tuple[int, float]] = {}
@@ -24,6 +25,17 @@ class HostAuth:
             if self.path.stat().st_size > 1024 * 1024:
                 raise ValueError("Account store exceeds size limit")
             self.users = json.loads(self.path.read_text())
+        if self.session_path.exists():
+            if self.session_path.stat().st_size > 128 * 1024:
+                raise ValueError("Login store exceeds size limit")
+            stored = json.loads(self.session_path.read_text())
+            if stored.get("usersHash") == self._users_hash():
+                now = time.time()
+                self.sessions = {
+                    key: (value[0], value[1])
+                    for key, value in stored["sessions"].items()
+                    if value[1] > now and value[0] in self.users
+                }
 
     def public_users(self) -> list[dict]:
         with self.lock:
@@ -102,6 +114,28 @@ class HostAuth:
                 os.unlink(temporary)
         self.users = users
         self.sessions.clear()
+        self._persist_sessions()
+
+    def _users_hash(self) -> str:
+        return hashlib.sha256(
+            json.dumps(self.users, sort_keys=True).encode()
+        ).hexdigest()
+
+    def _persist_sessions(self) -> None:
+        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(dir=self.directory)
+        try:
+            with os.fdopen(descriptor, "w") as stream:
+                json.dump(
+                    {"usersHash": self._users_hash(), "sessions": self.sessions},
+                    stream,
+                )
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.session_path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     @staticmethod
     def _digest(password: str, salt: str) -> str:
@@ -134,20 +168,26 @@ class HostAuth:
                 self.failures[address] = (attempts + 1, deadline)
                 raise PermissionError("Invalid credentials")
             self.failures.pop(address, None)
+            now = time.time()
             self.sessions = {
                 key: value for key, value in self.sessions.items() if value[1] > now
             }
             if len(self.sessions) >= 256:
                 self.sessions.pop(next(iter(self.sessions)))
             token = secrets.token_urlsafe(48)
-            self.sessions[token] = (name, now + 7 * 24 * 3600)
+            self.sessions[hashlib.sha256(token.encode()).hexdigest()] = (
+                name,
+                now + 7 * 24 * 3600,
+            )
+            self._persist_sessions()
             return token
 
     def account(self, token: str) -> dict:
         with self.lock:
-            name, deadline = self.sessions.get(token, ("", 0))
-            if deadline <= time.monotonic() or name not in self.users:
-                self.sessions.pop(token, None)
+            key = hashlib.sha256(token.encode()).hexdigest()
+            name, deadline = self.sessions.get(key, ("", 0))
+            if deadline <= time.time() or name not in self.users:
+                self.sessions.pop(key, None)
                 raise PermissionError("Login required")
             user = self.users[name]
             return {
@@ -158,4 +198,5 @@ class HostAuth:
 
     def logout(self, token: str) -> None:
         with self.lock:
-            self.sessions.pop(token, None)
+            self.sessions.pop(hashlib.sha256(token.encode()).hexdigest(), None)
+            self._persist_sessions()

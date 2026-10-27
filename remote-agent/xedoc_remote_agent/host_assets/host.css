@@ -87,8 +87,16 @@ aside {
 .sidebar-open aside { transform: translateX(0); visibility: visible; }
 .sidebar-hidden { padding-left: 8px !important; }
 .sidebar-brand { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
-.sidebar-brand strong { display: flex; align-items: center; gap: 4px; font-size: 14px; letter-spacing: .01em; }
+.sidebar-brand strong { display: flex; align-items: center; gap: 0; font-size: 14px; letter-spacing: .01em; }
 .brand-mark { display: block; flex: none; width: 18px; height: 18px; }
+.update-button { width: 100%; text-align: left; color: var(--muted); }
+#update-dialog { width: min(1040px, calc(100vw - 24px)); max-width: none; }
+.update-toolbar { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+#update-version { flex: 1; }
+#update-status { min-height: 20px; color: var(--muted); }
+#update-terminal { padding: 6px; background: var(--sidebar); overflow: auto; }
+#update-terminal .xterm { min-width: 730px; }
+#update-keys { justify-content: flex-start; gap: 4px; }
 .sidebar-brand button { padding: 1px 5px; background: transparent; }
 #identity {
   flex: 1;
