@@ -6,6 +6,15 @@
   let selectedProject = null;
   let projectSource = "create";
   let activeThread = null;
+  const savedViewKey = "xedoc-host-view-v1";
+  let pendingView = (() => {
+    try {
+      const view = JSON.parse(sessionStorage.getItem(savedViewKey) || "null");
+      return view && typeof view === "object" ? view : null;
+    } catch {
+      return null;
+    }
+  })();
   let projectRequest = 0;
   let sessionRequest = 0;
   let projectViewRequest = 0;
@@ -57,6 +66,19 @@
   });
   document.addEventListener("visibilitychange", refreshVisibleActivity);
   window.addEventListener("focus", refreshVisibleActivity);
+  window.addEventListener("pagehide", () => {
+    if (!state) return;
+    try {
+      sessionStorage.setItem(savedViewKey, JSON.stringify({
+        username: state.account.username,
+        workspaceId: selectedWorkspace,
+        projectName: selectedProject,
+        threadId: activeThread,
+      }));
+    } catch {
+      // Do not block navigation when session storage is unavailable.
+    }
+  });
 
   function projectPins() {
     try {
@@ -208,6 +230,18 @@
 
   async function refresh() {
     state = await api("state");
+    const restoredView = pendingView;
+    pendingView = null;
+    try {
+      sessionStorage.removeItem(savedViewKey);
+    } catch {
+      // Keep the current view usable when browser storage is unavailable.
+    }
+    if (restoredView?.username === state.account.username) {
+      selectedWorkspace = restoredView.workspaceId;
+      selectedProject = restoredView.projectName;
+      activeThread = restoredView.threadId;
+    }
     document.title = `Xedoc - ${state.hostname || "Host"}`;
     activity.setAccount(state.account.username);
     byId("login-view").hidden = true;

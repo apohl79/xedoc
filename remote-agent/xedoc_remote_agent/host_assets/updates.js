@@ -88,6 +88,7 @@ window.XedocHostUpdates = class {
         this.terminal?.reset();
         if (requestedCursor > 0) return;
       }
+      const wasRunning = this.running;
       this.running = ["starting", "running"].includes(result.status);
       this.byId("check").disabled = this.running;
       this.byId("install").disabled = this.running;
@@ -119,6 +120,10 @@ window.XedocHostUpdates = class {
         if (bytes.length) this.terminal.write(bytes);
       }
       this.cursor = result.cursor;
+      if (wasRunning && result.status === "completed") {
+        window.setTimeout(() => window.location.reload(), 250);
+        return;
+      }
       if (check && !this.running) {
         this.byId("status").textContent = "Checking for updates…";
         const release = await this.api("update/check");
