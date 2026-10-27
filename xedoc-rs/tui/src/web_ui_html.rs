@@ -319,24 +319,17 @@ fn markdown_html(source: &str) -> String {
                         ("<p style=\"margin-block-start: 0\">".to_string(), "</p>")
                     }
                     Tag::Paragraph => ("<p>".to_string(), "</p>"),
-                    Tag::Heading { level, .. } => {
-                        let margin = if removes_following_margin {
-                            " style=\"margin-block-start: 0\""
-                        } else {
-                            ""
-                        };
-                        (
-                            format!("<{level}{margin}>"),
-                            match level {
-                                pulldown_cmark::HeadingLevel::H1 => "</h1>",
-                                pulldown_cmark::HeadingLevel::H2 => "</h2>",
-                                pulldown_cmark::HeadingLevel::H3 => "</h3>",
-                                pulldown_cmark::HeadingLevel::H4 => "</h4>",
-                                pulldown_cmark::HeadingLevel::H5 => "</h5>",
-                                pulldown_cmark::HeadingLevel::H6 => "</h6>",
-                            },
-                        )
-                    }
+                    Tag::Heading { level, .. } => (
+                        format!("<{level}>"),
+                        match level {
+                            pulldown_cmark::HeadingLevel::H1 => "</h1>",
+                            pulldown_cmark::HeadingLevel::H2 => "</h2>",
+                            pulldown_cmark::HeadingLevel::H3 => "</h3>",
+                            pulldown_cmark::HeadingLevel::H4 => "</h4>",
+                            pulldown_cmark::HeadingLevel::H5 => "</h5>",
+                            pulldown_cmark::HeadingLevel::H6 => "</h6>",
+                        },
+                    ),
                     Tag::BlockQuote => (
                         "<blockquote style=\"margin-block: 0; padding-block: 0\">".to_string(),
                         "</blockquote>",

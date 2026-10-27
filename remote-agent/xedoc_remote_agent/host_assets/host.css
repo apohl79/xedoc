@@ -181,7 +181,7 @@ aside button.project {
 .session-state > span { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; }
 .state-running { border: 2px solid #59656d; border-top-color: var(--accent); animation: host-spin .85s linear infinite; }
 .state-waiting { background: var(--warning); box-shadow: inset 0 0 0 2px var(--sidebar); border: 1px solid var(--warning); }
-.state-completed { display: inline-grid !important; place-items: center; background: #5ad3ac; color: #14211d; font-size: 8px; font-weight: 800; line-height: 1; }
+.state-completed { display: inline-grid; place-items: center; background: #5ad3ac; color: #14211d; font-size: 8px; font-weight: 800; line-height: 1; }
 .state-completed::after { content: "✓"; }
 @keyframes host-spin { to { transform: rotate(360deg); } }
 .tab-strip { position: relative; isolation: isolate; display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 4px; background: var(--tabbar); }
@@ -194,7 +194,7 @@ aside button.project {
 .session-heading p { display: none; overflow-wrap: anywhere; }
 .session-tabs { position: relative; z-index: 1; display: flex; min-width: 0; gap: 3px; overflow-x: auto; align-self: stretch; align-items: end; scrollbar-width: none; }
 .session-tabs::-webkit-scrollbar { display: none; }
-.session-tab { flex: none; max-width: 260px; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid #000; border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer; color: var(--muted); background: transparent; font-size: 12px; }
+.session-tab { flex: none; max-width: 260px; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid #000; border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer; color: var(--muted); background: transparent; font-size: 11px; }
 .session-tab:hover { color: var(--text); background: var(--surface); }
 .session-tab[aria-selected="true"] {
   position: relative;
