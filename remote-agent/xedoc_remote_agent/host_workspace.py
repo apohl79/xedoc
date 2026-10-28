@@ -471,7 +471,11 @@ class HostWorkspaces:
             roots, _ = self._config()
             if workspace_id not in roots:
                 raise BrokerError.not_found()
-            projects = self.browse(roots[workspace_id])["entries"]
+            projects = [
+                project
+                for project in self.browse(roots[workspace_id])["entries"]
+                if not project["name"].startswith(".")
+            ]
         activity = {}
         session_activity = {}
         if activity_only:

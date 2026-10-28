@@ -730,10 +730,12 @@ def main(argv=None) -> int:
         ).strip()
         try:
             if remote_access.casefold() in ("y", "yes"):
+                default_origin = (
+                    f"https://{socket.gethostname().split('.', 1)[0]}:50000"
+                )
                 origin = input(
-                    "HTTPS origin clients will visit "
-                    "(for example, https://xedoc.local:50000): "
-                ).strip()
+                    f"HTTPS origin clients will visit [{default_origin}]: "
+                ).strip() or default_origin
                 origin_parts = urlsplit(origin)
                 if (
                     origin_parts.scheme != "https"
