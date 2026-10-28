@@ -37,8 +37,13 @@ button {
 button:hover { background: var(--hover); }
 button:disabled { opacity: .5; cursor: wait; }
 button:focus-visible, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.primary { background: #28545a; color: #e4fbf8; }
-.primary:hover { background: #32676b; }
+.primary {
+  background: color-mix(in srgb, var(--brand) 34%, #292631);
+  color: #f6edff;
+}
+.primary:hover {
+  background: color-mix(in srgb, var(--brand) 44%, #292631);
+}
 input, select {
   display: block;
   width: 100%;
@@ -275,8 +280,8 @@ aside button.project {
 dialog {
   width: min(560px, calc(100% - 32px));
   max-height: 85dvh;
-  background: color-mix(in srgb, var(--brand) 9%, var(--raised));
-  border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--border-strong));
+  background: var(--canvas);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 15px;
   color: var(--text);
@@ -289,26 +294,44 @@ dialog button {
 dialog button:hover {
   background: color-mix(in srgb, var(--brand) 15%, var(--hover));
 }
-dialog button.primary {
-  background: color-mix(in srgb, var(--brand) 34%, #292631);
-  color: #f6edff;
-}
-dialog button.primary:hover {
-  background: color-mix(in srgb, var(--brand) 44%, #292631);
-}
 dialog input, dialog select {
-  background: color-mix(in srgb, var(--brand) 3%, var(--canvas));
-  border-color: color-mix(in srgb, var(--brand) 34%, var(--border-strong));
+  background: var(--canvas);
+  border-color: var(--border-strong);
 }
 dialog input:focus, dialog select:focus,
 dialog button:focus-visible {
-  outline-color: var(--brand);
+  outline-color: var(--accent);
 }
 footer { display: flex; justify-content: end; gap: 5px; margin-top: 12px; }
 #directories { max-height: 35dvh; overflow: auto; } #directories button { display: block; width: 100%; text-align: left; margin: 2px 0; }
 fieldset { border: 1px solid var(--border); margin: 7px 0; }
-dialog fieldset { border-color: color-mix(in srgb, var(--brand) 34%, var(--border)); }
+dialog fieldset { border-color: var(--border); }
 #users { margin-bottom: 14px; }
+.row-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+.row-actions .icon-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+}
+.row-actions .icon-button:hover { color: var(--text); }
+.row-actions svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 @media (prefers-reduced-motion: reduce) {
   aside, button { transition: none; }
   .state-running, .loading::before { animation: none; }

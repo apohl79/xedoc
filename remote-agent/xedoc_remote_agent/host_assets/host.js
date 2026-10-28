@@ -237,6 +237,24 @@
     return element;
   }
 
+  function iconButton(label, paths, action) {
+    const element = button("", action);
+    element.className = "icon-button";
+    element.title = label;
+    element.setAttribute("aria-label", label);
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    icon.setAttribute("focusable", "false");
+    for (const pathData of paths) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathData);
+      icon.append(path);
+    }
+    element.append(icon);
+    return element;
+  }
+
   async function run(action) {
     try {
       notice();
@@ -969,19 +987,24 @@
     const formElement = byId("user-form");
     byId("users").replaceChildren(...result.users.map((user) => {
       const element = row(user.username, user.role === "admin" ? "Administrator" : user.workspaces.join(", "));
-      element.append(button("Edit", () => {
-        formElement.elements.username.value = user.username;
-        formElement.elements.password.value = "";
-        formElement.elements.role.value = user.role;
-        formElement.querySelectorAll("[name=workspace]").forEach((input) => {
-          input.checked = user.workspaces.includes(input.value);
-        });
-      }), button("Remove", async () => {
-        if (confirm(`Remove user “${user.username}”?`)) {
-          await api("user/remove", { username: user.username });
-          await refresh();
-        }
-      }));
+      const actions = text("div", "", "row-actions");
+      actions.append(
+        iconButton(`Edit ${user.username}`, ["M12 20h9", "M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z", "m15 5 4 4"], () => {
+          formElement.elements.username.value = user.username;
+          formElement.elements.password.value = "";
+          formElement.elements.role.value = user.role;
+          formElement.querySelectorAll("[name=workspace]").forEach((input) => {
+            input.checked = user.workspaces.includes(input.value);
+          });
+        }),
+        iconButton(`Remove ${user.username}`, ["M3 6h18", "M8 6V4h8v2", "m19 6-1 14H6L5 6", "M10 11v5", "M14 11v5"], async () => {
+          if (confirm(`Remove user “${user.username}”?`)) {
+            await api("user/remove", { username: user.username });
+            await refresh();
+          }
+        }),
+      );
+      element.append(actions);
       return element;
     }));
     byId("assignments").replaceChildren(text("legend", "Assigned workspaces"), ...state.workspaces.map((workspace) => {
