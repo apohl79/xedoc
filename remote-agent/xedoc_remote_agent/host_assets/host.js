@@ -19,6 +19,7 @@
   let sessionRequest = 0;
   let projectViewRequest = 0;
   let accountGeneration = 0;
+  let hostDiscoveryGeneration = 0;
   const sessionFrames = new Map();
   const openedSessions = new Map();
   const projectCache = new Map();
@@ -186,6 +187,68 @@
     return result;
   }
 
+  async function loadHostInfo() {
+    try {
+      const response = await fetch("/api/host-info", { cache: "no-store" });
+      if (!response.ok) return;
+      const result = await response.json();
+      if (typeof result.hostname !== "string" || !result.hostname.trim()) return;
+      const hostname = result.hostname.trim();
+      byId("login-hostname").textContent = `Host: ${hostname}`;
+      byId("login-hostname").hidden = false;
+      if (!state) document.title = `Xedoc - ${hostname}`;
+    } catch {
+      // The login form remains usable if host information is unavailable.
+    }
+  }
+
+  async function showDiscoveredHosts() {
+    const dialog = byId("hosts-dialog");
+    const status = byId("hosts-status");
+    const list = byId("discovered-hosts");
+    const request = ++hostDiscoveryGeneration;
+    list.replaceChildren();
+    status.className = "loading loading-row";
+    status.textContent = "Searching local network…";
+    status.hidden = false;
+    byId("host-name-button").setAttribute("aria-expanded", "true");
+    dialog.showModal();
+    try {
+      const result = await api("hosts/discover");
+      if (!dialog.open || request !== hostDiscoveryGeneration) return;
+      const links = [];
+      for (const host of result.hosts || []) {
+        if (typeof host.hostname !== "string" || typeof host.origin !== "string") continue;
+        let url;
+        try {
+          url = new URL(host.origin);
+        } catch {
+          continue;
+        }
+        if (url.protocol !== "https:" || !url.hostname || url.username || url.password
+          || url.pathname !== "/" || url.search || url.hash) continue;
+        const link = document.createElement("a");
+        link.className = "host-candidate";
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.append(text("strong", host.hostname), text("small", url.host));
+        link.addEventListener("click", () => dialog.close());
+        links.push(link);
+      }
+      list.replaceChildren(...links);
+      status.className = "muted";
+      status.textContent = links.length
+        ? "Choose a host to open it in a new tab."
+        : "No secure Xedoc hosts found.";
+      status.hidden = false;
+    } catch (error) {
+      if (!dialog.open || request !== hostDiscoveryGeneration) return;
+      status.className = "muted";
+      status.textContent = error.message || "Host discovery failed.";
+    }
+  }
+
   function query(path, values) {
     const params = new URLSearchParams(values);
     return `${path}?${params.toString()}`;
@@ -288,6 +351,12 @@
       activeThread = restoredView.threadId;
     }
     document.title = `Xedoc - ${state.hostname || "Host"}`;
+    byId("login-hostname").textContent = `Host: ${state.hostname || "Host"}`;
+    byId("login-hostname").hidden = false;
+    byId("host-name-button").textContent = state.hostname || "Host";
+    byId("host-name-button").title = `Discover Xedoc hosts from ${state.hostname || "Host"}`;
+    byId("host-name-button").setAttribute("aria-label", `Discover Xedoc hosts from ${state.hostname || "Host"}`);
+    byId("host-name-button").hidden = false;
     activity.setAccount(state.account.username);
     byId("login-view").hidden = true;
     byId("host-view").hidden = false;
@@ -981,6 +1050,11 @@
   });
   byId("new-session").addEventListener("click", () => run(startNewSession));
   byId("resume-session").addEventListener("click", () => run(showResumePicker));
+  byId("host-name-button").addEventListener("click", () => showDiscoveredHosts());
+  byId("hosts-dialog").addEventListener("close", () => {
+    hostDiscoveryGeneration++;
+    byId("host-name-button").setAttribute("aria-expanded", "false");
+  });
 
   async function users() {
     const result = await api("users");
@@ -1037,6 +1111,7 @@
       refreshRestartState();
     }
   }, 10000);
+  void loadHostInfo();
   run(async () => {
     try {
       await refresh();

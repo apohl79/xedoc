@@ -25,6 +25,7 @@ from .host_ca import (
     join_discovered_authority,
 )
 from .host_ca_discovery import HostCADiscovery, discover_shared_cas
+from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
 from .host_session_gui import HostSessionGuis, proxy_session_gui
@@ -49,6 +50,7 @@ class HostServer(ThreadingHTTPServer):
         self.origin = origin
         self.authority = urlsplit(origin).netloc
         self.secure = origin.startswith("https://")
+        self.hostname = socket.gethostname().split(".", 1)[0]
         self.instance_id = secrets.token_hex(16)
         self.auth = HostAuth(home)
         self.ca = HostCA(home)
@@ -66,6 +68,7 @@ class HostServer(ThreadingHTTPServer):
         self.tls_context = None
         super().__init__(address, HostHandler)
         self.ca_discovery: HostCADiscovery | None = None
+        self.host_discovery: HostGuiDiscovery | None = None
         tls_config = HostGuiConfig.load(home)
         ca_certificate = self.ca.directory / "server-cert.pem"
         ca_key = self.ca.directory / "server-key.pem"
@@ -87,12 +90,21 @@ class HostServer(ThreadingHTTPServer):
                     logging.warning("Host GUI CA LAN discovery is unavailable")
             except (OSError, ValueError):
                 logging.warning("Host GUI CA LAN discovery is unavailable")
+        if self.secure:
+            discovery = HostGuiDiscovery(self.hostname, self.origin)
+            if discovery.start():
+                self.host_discovery = discovery
+            else:
+                logging.warning("Host GUI LAN discovery is unavailable")
 
     def origin_for_authority(self, authority: str) -> str:
         scheme = "https" if self.secure else "http"
         return f"{scheme}://{authority}"
 
     def server_close(self):
+        if self.host_discovery is not None:
+            self.host_discovery.stop()
+            self.host_discovery = None
         if self.ca_discovery is not None:
             self.ca_discovery.stop()
             self.ca_discovery = None
@@ -308,6 +320,9 @@ class HostHandler(BaseHTTPRequestHandler):
                     content_type=kind,
                 )
                 return
+            if self.command == "GET" and path == "/api/host-info":
+                self.reply(200, {"hostname": self.server.hostname})
+                return
             if self.command == "POST" and path == "/api/login":
                 token = self.server.auth.login(
                     body.get("username"), body.get("password"), self.client_address[0]
@@ -366,6 +381,20 @@ class HostHandler(BaseHTTPRequestHandler):
             account = self.server.auth.account(token)
             admin = account["role"] == "admin"
             service = self.server.workspaces
+            if self.command == "GET" and path == "/api/hosts/discover":
+                hosts = discover_host_guis(
+                    current_origin=self.server.origin_for_authority(authority)
+                )
+                self.reply(
+                    200,
+                    {
+                        "hosts": [
+                            {"hostname": host.hostname, "origin": host.origin}
+                            for host in hosts
+                        ]
+                    },
+                )
+                return
             if self.command == "GET" and path.startswith("/session-ui/"):
                 parts = path.split("/", 3)
                 if len(parts) != 4:
@@ -392,13 +421,12 @@ class HostHandler(BaseHTTPRequestHandler):
                     for entry in state["workspaces"]
                     if entry["workspaceId"] in allowed
                 ]
-                hostname = socket.gethostname().split(".", 1)[0]
                 self.reply(
                     200,
                     {
                         **state,
                         "account": account,
-                        "hostname": hostname,
+                        "hostname": self.server.hostname,
                         "instanceId": self.server.instance_id,
                     },
                 )
