@@ -48,6 +48,32 @@
     activity.markVisible();
   }
 
+  function updateSessionTitle(threadId, title) {
+    if (typeof title !== "string" || !title.trim()) return;
+    const normalizedTitle = title.trim();
+    const session = openedSessions.get(threadId);
+    if (session) {
+      session.title = normalizedTitle;
+      const cachedSessions = sessionCache.get(
+        projectSessionKey(session.workspaceId, session.projectName),
+      );
+      const cachedSession = cachedSessions?.find((item) => item.threadId === threadId);
+      if (cachedSession) cachedSession.title = normalizedTitle;
+    }
+    const tab = [...byId("sessions").children].find(
+      (item) => item.dataset.threadId === threadId,
+    );
+    if (tab) {
+      tab.title = normalizedTitle;
+      const label = tab.querySelector(".session-title");
+      if (label) label.textContent = normalizedTitle;
+      const close = tab.querySelector(".close-tab");
+      if (close) close.setAttribute("aria-label", `Close ${normalizedTitle}`);
+    }
+    const frame = sessionFrames.get(threadId);
+    if (frame) frame.title = normalizedTitle;
+  }
+
   window.addEventListener("message", (event) => {
     if (event.origin !== location.origin || event.data?.type !== "xedoc-session-activity") return;
     const entry = [...sessionFrames].find(([, frame]) => frame.contentWindow === event.source);
@@ -55,6 +81,7 @@
     const [threadId] = entry;
     const session = openedSessions.get(threadId);
     if (!session) return;
+    updateSessionTitle(threadId, event.data.title);
     const needsInput = Boolean(event.data.needsInput);
     activity.observe({
       threadId,
@@ -618,7 +645,7 @@
     element.title = session.title || session.threadId;
     activity.attach(element, selectedWorkspace, selectedProject, session.threadId);
     if (session.status) activity.observe(session, selectedWorkspace, selectedProject);
-    const label = text("span", session.title || session.threadId);
+    const label = text("span", session.title || session.threadId, "session-title");
     const close = text("button", "×", "close-tab");
     close.type = "button";
     close.setAttribute("aria-label", `Close ${session.title || "session"}`);
@@ -677,7 +704,12 @@
       if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
       activeThread = threadId;
       openedSessions.set(threadId, { ...openedSession, workspaceId, projectName, threadId });
-      if (![...byId("sessions").children].some((tab) => tab.dataset.threadId === threadId)) {
+      const existingTab = [...byId("sessions").children].find(
+        (tab) => tab.dataset.threadId === threadId,
+      );
+      if (existingTab) {
+        updateSessionTitle(threadId, openedSession.title);
+      } else {
         byId("sessions").prepend(sessionTab({ ...openedSession, threadId }));
       }
       byId("session-empty").hidden = true;

@@ -676,6 +676,7 @@
       type: "xedoc-session-activity",
       turnActive: !!frame.turnActive,
       needsInput: !!frame.question,
+      title: frame.title || "",
     };
     const activityKey = JSON.stringify(hostActivity);
     if (window.parent !== window && activityKey !== hostActivityKey) {
