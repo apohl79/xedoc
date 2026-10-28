@@ -219,10 +219,15 @@ class HostHandler(BaseHTTPRequestHandler):
         content_type="application/json",
         cookie=None,
         session_frame=False,
+        attachment_name=None,
     ):
         body = value if isinstance(value, bytes) else json.dumps(value).encode()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if attachment_name is not None:
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{attachment_name}"'
+            )
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -334,6 +339,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     200,
                     self.server.ca.certificate(),
                     content_type="application/x-x509-ca-cert",
+                    attachment_name="xedoc-lan-ca.crt",
                 )
                 return
             if self.command == "GET" and path == "/ca.mobileconfig":
@@ -341,6 +347,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     200,
                     self.server.ca.mobileconfig(),
                     content_type="application/x-apple-aspen-config",
+                    attachment_name="xedoc-lan-ca.mobileconfig",
                 )
                 return
             if self.command == "GET" and path == "/api/ca/fingerprint":
