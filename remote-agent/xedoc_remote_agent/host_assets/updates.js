@@ -17,7 +17,7 @@ window.XedocHostUpdates = class {
     });
     this.byId("check").addEventListener("click", () => this.refresh(true));
     this.byId("install").addEventListener("click", async () => {
-      if (!this.latest || !confirm(`Install Xedoc ${this.latest}?`)) return;
+      if (!this.latest) return;
       this.byId("install").disabled = true;
       try {
         await this.api("update/start", { tag: `v${this.latest}` });
