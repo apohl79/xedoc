@@ -99,13 +99,13 @@ aside {
 .sidebar-open aside { transform: translateX(0); visibility: visible; }
 .sidebar-hidden { padding-left: 8px !important; }
 .sidebar-brand { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
-.sidebar-brand-label { display: flex; min-width: 0; align-items: center; gap: 5px; }
+.sidebar-brand-label { display: flex; min-width: 0; align-items: flex-end; gap: 5px; }
 .sidebar-brand strong { display: flex; align-items: center; gap: 0; font-size: 14px; letter-spacing: .01em; }
 .brand-mark { display: block; flex: none; width: 18px; height: 18px; }
 #host-name-button {
   max-width: 105px;
   overflow: hidden;
-  padding: 2px 4px;
+  padding: 0 4px;
   color: var(--muted);
   background: transparent;
   border: 0;

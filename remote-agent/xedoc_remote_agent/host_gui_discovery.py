@@ -1,15 +1,18 @@
 """Bounded LAN discovery for Xedoc Host GUI instances."""
 
-from dataclasses import dataclass
 import ipaddress
 import json
+import logging
 import secrets
 import socket
 import threading
 import time
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+from .lan_interfaces import ipv4_broadcasts
 
+logger = logging.getLogger(__name__)
 DISCOVERY_PROTOCOL = "xedoc.host-gui.discovery"
 DISCOVERY_VERSION = 1
 DISCOVERY_GROUP = "239.255.70.42"
@@ -46,7 +49,12 @@ class HostGuiDiscovery:
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("", DISCOVERY_PORT))
             membership = socket.inet_aton(DISCOVERY_GROUP) + socket.inet_aton("0.0.0.0")
-            listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+            try:
+                listener.setsockopt(
+                    socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership
+                )
+            except OSError:
+                logger.warning("Host GUI multicast unavailable; using LAN broadcast")
             listener.settimeout(0.25)
         except OSError:
             if listener is not None:
@@ -129,7 +137,23 @@ def discover_host_guis(
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as client:
         client.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
         client.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-        client.sendto(query, (DISCOVERY_GROUP, DISCOVERY_PORT))
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        destinations = {DISCOVERY_GROUP, "255.255.255.255", "127.0.0.1"}
+        try:
+            destinations.update(ipv4_broadcasts())
+        except OSError:
+            logger.exception("Cannot enumerate Host GUI discovery interfaces")
+        sent = False
+        for destination in sorted(destinations):
+            try:
+                client.sendto(query, (destination, DISCOVERY_PORT))
+                sent = True
+            except OSError:
+                logger.debug(
+                    "Host GUI discovery destination unavailable: %s", destination
+                )
+        if not sent:
+            raise OSError("No network interface available for Host GUI discovery")
         while len(candidates) < MAX_CANDIDATES:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -138,6 +162,8 @@ def discover_host_guis(
             try:
                 payload, _address = client.recvfrom(MAX_PACKET_BYTES + 1)
             except TimeoutError:
+                continue
+            except ConnectionResetError:
                 continue
             candidate = _candidate(payload, query_id)
             if candidate is None or (

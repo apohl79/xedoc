@@ -382,9 +382,19 @@ class HostHandler(BaseHTTPRequestHandler):
             admin = account["role"] == "admin"
             service = self.server.workspaces
             if self.command == "GET" and path == "/api/hosts/discover":
-                hosts = discover_host_guis(
-                    current_origin=self.server.origin_for_authority(authority)
-                )
+                try:
+                    hosts = discover_host_guis(
+                        current_origin=self.server.origin_for_authority(authority)
+                    )
+                except OSError:
+                    logging.exception("Host GUI LAN discovery failed")
+                    self.reply(
+                        503,
+                        {
+                            "error": "LAN discovery unavailable; check network interfaces and UDP port 43391"
+                        },
+                    )
+                    return
                 self.reply(
                     200,
                     {
