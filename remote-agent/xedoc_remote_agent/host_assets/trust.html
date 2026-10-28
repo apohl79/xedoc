@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trust this network · Xedoc</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/host.css">
+  <script src="/trust.js" defer></script>
+</head>
+<body class="trust-page">
+  <main class="login">
+    <h1>Set up trusted HTTPS</h1>
+    <p>Do this once on each device you use to access Xedoc. Hosts enrolled by this coordinator will use the same private certificate authority (CA).</p>
+    <ol class="trust-steps">
+      <li>
+        <h2>Verify the CA</h2>
+        <p>Before installing anything, compare the SHA-256 fingerprint below with the coordinator administrator using a separate trusted channel, such as a call or in person. Stop if it does not match or you cannot verify it.</p>
+        <code id="ca-fingerprint">Loading…</code>
+      </li>
+      <li>
+        <h2>Download the public CA</h2>
+        <p>For Windows, macOS, Linux, Android, or Firefox: <a href="/ca.crt" download="xedoc-lan-ca.crt">Download the Xedoc CA certificate</a>.</p>
+        <p>For iPhone or iPad: <a href="/ca.mobileconfig" download="xedoc-lan-ca.mobileconfig">Download the Apple installation profile</a>. It contains only the public CA certificate.</p>
+        <p>Install a download only after verifying its fingerprint. Never download or share <code>ca-key.pem</code>; it is the private signing key.</p>
+      </li>
+      <li>
+        <h2>Install and trust it</h2>
+        <p>Choose your device or browser for the steps:</p>
+        <details open><summary>Windows · Chrome / Edge</summary>
+          <p>Open the downloaded certificate → Install Certificate → Current User → Place all certificates in the following store → Trusted Root Certification Authorities → Finish. Restart the browser.</p>
+        </details>
+        <details><summary>macOS · Safari / Chrome</summary>
+          <p>Open the certificate in Keychain Access and add it to the login keychain. Open the certificate → Trust → When using this certificate: Always Trust. Confirm with your password, then restart the browser.</p>
+        </details>
+        <details><summary>Linux · Chrome</summary>
+          <p>Open <code>chrome://certificate-manager</code> → Custom → Installed by you. Import the downloaded CA as a trusted certificate.</p>
+        </details>
+        <details><summary>Firefox</summary>
+          <p>Settings → Privacy &amp; Security → Certificates → View Certificates → Authorities → Import. Select the CA and trust it to identify websites.</p>
+        </details>
+        <details><summary>iPhone / iPad</summary>
+          <p>In Safari, download the Apple installation profile above. Open Settings → Profile Downloaded → Install and follow the prompts. Then go to Settings → General → About → Certificate Trust Settings and enable full trust for the Xedoc CA. A downloaded profile is not fully trusted for websites until you enable this setting.</p>
+        </details>
+        <details><summary>Android</summary>
+          <p>Settings → Security → Encryption &amp; credentials → Install a certificate → CA certificate. Select the downloaded certificate. Menu names vary by device; some apps may not use user-installed CAs.</p>
+        </details>
+      </li>
+      <li>
+        <h2>Reconnect to Xedoc</h2>
+        <p>Reload the Xedoc page. The browser should now accept HTTPS certificates issued by this CA for enrolled hosts.</p>
+      </li>
+    </ol>
+    <p class="muted">Before the CA is trusted, your browser may warn that this connection is not private. Do not bypass that warning blindly. If you cannot verify this page’s fingerprint or your browser will not let you reach it, ask the coordinator administrator for the public CA file and its fingerprint through a trusted channel. Verify the fingerprint before installing the file.</p>
+    <p class="muted">Trust this CA only if you control or trust its administrator. A trusted CA can issue certificates for websites. Never install a CA whose fingerprint you have not verified.</p>
+    <p><a href="/">Back to Xedoc</a></p>
+  </main>
+</body>
+</html>

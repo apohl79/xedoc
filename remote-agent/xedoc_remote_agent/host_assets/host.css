@@ -52,6 +52,12 @@ label { display: block; }
 label.check { display: flex; align-items: center; gap: 7px; margin: 7px 0; }
 .check input { display: inline; width: auto; margin: 0; }
 .login { max-width: 360px; margin: 10vh auto; padding: 18px; }
+.trust-page { display: block; height: auto; overflow: auto; }
+.trust-page .login { max-width: 640px; margin: 24px auto; }
+.trust-page p, .trust-page details { margin: 12px 0; }
+.trust-page summary { cursor: pointer; font-weight: 600; }
+.trust-page a { color: var(--brand); }
+#ca-fingerprint { display: block; overflow-wrap: anywhere; }
 #notice { margin: 0; padding: 6px 12px; background: #372f29; color: var(--warning); overflow-wrap: anywhere; }
 #host-view { display: flex; flex: 1; min-height: 0; position: relative; padding-left: 228px; }
 #sidebar-toggle {

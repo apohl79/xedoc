@@ -18,6 +18,13 @@ from urllib.parse import parse_qs, urlsplit
 
 from .errors import BrokerError, ErrorCode
 from .host_auth import HostAuth
+from .host_ca import (
+    HostCA,
+    approved_names,
+    join_authority,
+    join_discovered_authority,
+)
+from .host_ca_discovery import HostCADiscovery, discover_shared_cas
 from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
 from .host_session_gui import HostSessionGuis, proxy_session_gui
@@ -44,6 +51,7 @@ class HostServer(ThreadingHTTPServer):
         self.secure = origin.startswith("https://")
         self.instance_id = secrets.token_hex(16)
         self.auth = HostAuth(home)
+        self.ca = HostCA(home)
         self.updates = HostUpdates(home)
         if not self.auth.users:
             raise ValueError("Run host-gui setup before serving")
@@ -57,12 +65,37 @@ class HostServer(ThreadingHTTPServer):
         self.slots = threading.BoundedSemaphore(48)
         self.tls_context = None
         super().__init__(address, HostHandler)
+        self.ca_discovery: HostCADiscovery | None = None
+        tls_config = HostGuiConfig.load(home)
+        ca_certificate = self.ca.directory / "server-cert.pem"
+        ca_key = self.ca.directory / "server-key.pem"
+        if (
+            self.secure
+            and (self.ca.directory / "ca-key.pem").exists()
+            and tls_config.tls_cert is not None
+            and tls_config.tls_key is not None
+            and tls_config.tls_cert.resolve() == ca_certificate.resolve()
+            and tls_config.tls_key.resolve() == ca_key.resolve()
+        ):
+            try:
+                discovery = HostCADiscovery(
+                    socket.gethostname(), self.origin, self.ca.fingerprint()
+                )
+                if discovery.start():
+                    self.ca_discovery = discovery
+                else:
+                    logging.warning("Host GUI CA LAN discovery is unavailable")
+            except (OSError, ValueError):
+                logging.warning("Host GUI CA LAN discovery is unavailable")
 
     def origin_for_authority(self, authority: str) -> str:
         scheme = "https" if self.secure else "http"
         return f"{scheme}://{authority}"
 
     def server_close(self):
+        if self.ca_discovery is not None:
+            self.ca_discovery.stop()
+            self.ca_discovery = None
         self.session_guis.close()
         super().server_close()
 
@@ -280,6 +313,53 @@ class HostHandler(BaseHTTPRequestHandler):
                     body.get("username"), body.get("password"), self.client_address[0]
                 )
                 self.reply(200, {"ok": True}, cookie=token)
+                return
+            if self.command == "GET" and path == "/ca.crt":
+                self.reply(
+                    200,
+                    self.server.ca.certificate(),
+                    content_type="application/x-x509-ca-cert",
+                )
+                return
+            if self.command == "GET" and path == "/ca.mobileconfig":
+                self.reply(
+                    200,
+                    self.server.ca.mobileconfig(),
+                    content_type="application/x-apple-aspen-config",
+                )
+                return
+            if self.command == "GET" and path == "/api/ca/fingerprint":
+                self.reply(200, {"sha256": self.server.ca.fingerprint()})
+                return
+            if self.command == "GET" and path in ("/trust", "/trust.js"):
+                asset = "trust.html" if path == "/trust" else "trust.js"
+                self.reply(
+                    200,
+                    files("xedoc_remote_agent")
+                    .joinpath("host_assets", asset)
+                    .read_bytes(),
+                    content_type="text/html; charset=utf-8"
+                    if path == "/trust"
+                    else "text/javascript",
+                )
+                return
+            if self.command == "POST" and path == "/api/ca/enroll":
+                self.reply(
+                    200, self.server.ca.enroll(body.get("token"), body.get("csr"))
+                )
+                return
+            if self.command == "POST" and path == "/api/ca/enroll/discovered":
+                discovery = self.server.ca_discovery
+                if discovery is None or not discovery.consume_challenge(
+                    body.get("challenge"), self.client_address[0]
+                ):
+                    raise PermissionError("Invalid or expired CA discovery challenge")
+                self.reply(
+                    200,
+                    self.server.ca.enroll_discovered(
+                        body.get("csr"), self.client_address[0]
+                    ),
+                )
                 return
             cookies = SimpleCookie(self.headers.get("Cookie", ""))
             token = cookies["xedoc_host"].value if "xedoc_host" in cookies else ""
@@ -561,7 +641,7 @@ class HostHandler(BaseHTTPRequestHandler):
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="xedoc-remote-agentd host-gui")
-    parser.add_argument("action", choices=("setup", "serve"))
+    parser.add_argument("action", choices=("setup", "serve", "invite"))
     parser.add_argument(
         "--xedoc-home",
         type=Path,
@@ -574,6 +654,22 @@ def main(argv=None) -> int:
     parser.add_argument("--tls-key")
     parser.add_argument("--allow-insecure-http", action="store_true")
     args = parser.parse_args(argv)
+    if args.action == "invite":
+        try:
+            config = HostGuiConfig.load(args.xedoc_home)
+            if not config.origin.startswith("https://"):
+                raise ValueError("Configure HTTPS before inviting another host")
+            names = input(
+                "Exact DNS names/IPs for the new host (comma separated): "
+            ).strip()
+            invitation = HostCA(args.xedoc_home).invite(config.origin, names)
+            print(
+                "Paste this private, single-use invitation into the new host's setup within 10 minutes:"
+            )
+            print(invitation)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        return 0
     if args.action == "setup":
         auth = HostAuth(args.xedoc_home)
         if auth.users:
@@ -638,9 +734,96 @@ def main(argv=None) -> int:
                     tls_key = key.expanduser().resolve()
                     ca_cert = None
                 else:
-                    tls_cert, tls_key, ca_cert = HostGuiConfig.generate_tls_material(
-                        args.xedoc_home, hostname
-                    )
+                    ca_directory = args.xedoc_home / "host-gui"
+                    ca_key_path = ca_directory / "ca-key.pem"
+                    ca_cert_path = ca_directory / "ca-cert.pem"
+                    if ca_cert_path.exists() and not ca_key_path.exists():
+                        tls_cert, tls_key, ca_cert = HostCA(
+                            args.xedoc_home
+                        ).existing_server_identity(hostname)
+                    elif ca_key_path.exists() or ca_cert_path.exists():
+                        tls_cert, tls_key, ca_cert = (
+                            HostGuiConfig.generate_tls_material(
+                                args.xedoc_home, hostname
+                            )
+                        )
+                    else:
+                        print(
+                            "Searching the local network for an IPv4-reachable coordinator CA...",
+                            flush=True,
+                        )
+                        try:
+                            candidates = discover_shared_cas()
+                        except OSError as error:
+                            print(f"CA discovery failed: {error}", flush=True)
+                            candidates = ()
+                        candidate = None
+                        manual_joined = False
+                        if candidates:
+                            for index, item in enumerate(candidates, start=1):
+                                print(
+                                    f"{index}. {item.hostname} — {item.origin} — "
+                                    f"SHA-256 {item.fingerprint}",
+                                    flush=True,
+                                )
+                            if len(candidates) == 1:
+                                candidate = candidates[0]
+                            else:
+                                choice = input(
+                                    "Coordinator number, or 0 to create a local CA: "
+                                ).strip()
+                                if choice.isdigit() and 1 <= int(choice) <= len(
+                                    candidates
+                                ):
+                                    candidate = candidates[int(choice) - 1]
+                            if candidate is not None:
+                                print(
+                                    "This CA will sign this host's HTTPS certificate. "
+                                    "Only continue if you recognize and trust this coordinator.",
+                                    flush=True,
+                                )
+                                use_shared_ca = input(
+                                    f"Use the shared CA from {candidate.hostname}? [y/N]: "
+                                ).strip()
+                                if use_shared_ca.casefold() not in ("y", "yes"):
+                                    candidate = None
+                        else:
+                            invitation = getpass.getpass(
+                                "No IPv4-reachable coordinator CA found. Paste a manual invitation, "
+                                "or press Enter to create a local CA: "
+                            ).strip()
+                            if invitation:
+                                names = (
+                                    input(
+                                        f"Certificate names approved by the coordinator [{hostname}]: "
+                                    ).strip()
+                                    or hostname
+                                )
+                                if hostname not in {
+                                    str(name.value) for name in approved_names(names)
+                                }:
+                                    raise ValueError(
+                                        "Certificate names must include the HTTPS origin hostname"
+                                    )
+                                tls_cert, tls_key, ca_cert = join_authority(
+                                    args.xedoc_home, invitation, names
+                                )
+                                manual_joined = True
+                        if candidate is not None:
+                            tls_cert, tls_key, ca_cert = join_discovered_authority(
+                                args.xedoc_home,
+                                candidate.origin,
+                                candidate.fingerprint,
+                                candidate.challenge,
+                                candidate.client_address,
+                                hostname,
+                            )
+                        elif not manual_joined:
+                            tls_cert, tls_key, ca_cert = (
+                                HostGuiConfig.generate_tls_material(
+                                    args.xedoc_home, hostname
+                                )
+                            )
                 config = HostGuiConfig(
                     listen_address,
                     port,
@@ -662,6 +845,12 @@ def main(argv=None) -> int:
                 "install this public CA certificate as trusted on each client:"
             )
             print(f"  {ca_cert}")
+            print(f"CA SHA-256: {HostCA(args.xedoc_home).fingerprint()}")
+            print(f"Client trust/download page: {config.origin}/trust")
+            if (args.xedoc_home / "host-gui" / "ca-key.pem").exists():
+                print(
+                    "To enroll another LAN host, run: xedoc-remote-agentd host-gui invite"
+                )
             print(
                 "Trusting this private CA lets it issue certificates for any "
                 "hostname; keep host-gui/ca-key.pem private. Existing CA "
